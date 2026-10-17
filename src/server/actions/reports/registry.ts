@@ -14,6 +14,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
+import {listReportTemplates as listScopedTemplates,listBrandingProfiles as listScopedBrandingProfiles} from "./templates";
 import type {
   ReportRegistryEntry,
   ReportTemplate,
@@ -84,49 +85,15 @@ export async function getReportRegistryDetail(
 export async function listReportTemplates(): Promise<
   ActionResult<ReportTemplate[]>
 > {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "reports.view")) {
-      return { success: false, error: "You do not have permission to view reports." };
-    }
-
-    const db = createAdminClient();
-    const { data, error } = await db
-      .from("erp_report_templates")
-      .select("*")
-      .eq("is_active", true)
-      .is("deleted_at", null)
-      .order("template_name");
-
-    if (error) return { success: false, error: error.message };
-    return { success: true, data: (data ?? []) as ReportTemplate[] };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
-  }
+  const result=await listScopedTemplates();
+  return result.success?{success:true,data:result.data?.filter(t=>t.is_active)??[]}:result;
 }
 
 export async function listReportBrandingProfiles(): Promise<
   ActionResult<ReportBrandingProfile[]>
 > {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "reports.view")) {
-      return { success: false, error: "You do not have permission to view reports." };
-    }
-
-    const db = createAdminClient();
-    const { data, error } = await db
-      .from("erp_report_branding_profiles")
-      .select("*")
-      .eq("is_active", true)
-      .is("deleted_at", null)
-      .order("profile_name");
-
-    if (error) return { success: false, error: error.message };
-    return { success: true, data: (data ?? []) as ReportBrandingProfile[] };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
-  }
+  const result=await listScopedBrandingProfiles();
+  return result.success?{success:true,data:result.data?.filter(p=>p.is_active)??[]}:result;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

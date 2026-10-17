@@ -79,6 +79,8 @@ export type WorkspaceAction =
   | { type: "CLOSE_TAB"; tabId: string }
   | { type: "CLOSE_OTHER_TABS"; tabId: string }
   | { type: "CLOSE_ALL_CLOSABLE" }
+  /** Current authorization revoked these routes, including a formerly pinned Home. */
+  | { type: "REVOKE_TABS"; tabIds: string[] }
   | { type: "SET_ACTIVE_TAB"; tabId: string }
   | { type: "MARK_DIRTY"; tabId: string; dirty: boolean }
   | { type: "MARK_CHILD_DIALOG_OPEN"; tabId: string; open: boolean }

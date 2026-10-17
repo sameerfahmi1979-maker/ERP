@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,7 +15,6 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import type { LookupCategory } from "@/features/master-data/lookups/types";
-import { createLookupCategory, updateLookupCategory } from "@/server/actions/master-data/lookups";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { Folder, Settings, Shield, Info } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -28,6 +28,9 @@ import {
   ERPRecordSectionPanel,
 } from "@/components/workspace/erp-record-workspace-form";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
+import {useLookupMutation,lookupDraftMatches} from '@/features/master-data/lookups/use-lookup-mutation';
+import {lookupCapabilities} from '@/features/master-data/lookups/permissions';
+import {categoryFormPayload} from '@/features/master-data/lookups/form-data';
 
 type LookupCategoryWorkspaceFormProps = {
   category?: LookupCategory | null;
@@ -37,11 +40,19 @@ type LookupCategoryWorkspaceFormProps = {
 
 const FORM_ID = "lookup-category-workspace-form";
 
-export function LookupCategoryWorkspaceForm({ category, mode }: LookupCategoryWorkspaceFormProps) {
-  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
+export function LookupCategoryWorkspaceForm(props:LookupCategoryWorkspaceFormProps) {
+ return <LookupCategoryFormSession key={props.category?.id ?? 'new'} {...props}/>;
+}
+function LookupCategoryFormSession({ category, mode, authContext }: LookupCategoryWorkspaceFormProps) {
+  const { closeTab, activeTab, markDirty, forceCloseActiveTab, updateTabRoute, renameTab, isTabActive } = useWorkspace();
+  const router = useRouter();
   const queryClient = useQueryClient();
+  const capabilities=lookupCapabilities(authContext);
+  const session=useLookupMutation(FORM_ID,category?.id??null,category?.workspace_revision);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [localError, setLocalError] = useState<string|null>(null);
+  const localBlocked = useRef(false);
   const sections = [
     { id: "basic", label: "Basic Info", icon: Folder },
     { id: "scope", label: "Scope & Behavior", icon: Settings },
@@ -50,11 +61,12 @@ export function LookupCategoryWorkspaceForm({ category, mode }: LookupCategoryWo
   ];
   const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "basic", sections.map(section => section.id));
 
-  const isEditing = mode === "edit";
-  const isViewing = mode === "view";
+  const isEditing = mode === "edit" || session.savedId !== null;
+  const isViewing = mode === "view" || !capabilities.manage || (!!category?.is_locked && !capabilities.lock);
 
   const { isDirty, resetDirty } = useFormDirty({ formId: FORM_ID, enabled: !isViewing });
-  const { getDraftDefault, getDraftBoolean, syncDraft, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
+  const { getDraftDefault, getDraftBoolean, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
+  const [recordCode, setRecordCode] = useState(() => category?.category_code ?? getDraftDefault("category_code", ""));
 
   useEffect(() => {
     if (activeTab?.id) markDirty(activeTab.id, isDirty);
@@ -63,75 +75,81 @@ export function LookupCategoryWorkspaceForm({ category, mode }: LookupCategoryWo
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 
-  const handleSave = async (): Promise<boolean> => {
-    if (isViewing) return false;
-    const form = document.getElementById(FORM_ID) as HTMLFormElement;
-    const formData = new FormData(form);
+  const handleSave = async (closeAfter = false): Promise<boolean> => {
+    if (!session.isCurrent() || isViewing || isSubmitting || session.blocked || localBlocked.current) return false;
     setIsSubmitting(true);
+    let acknowledged = false;
     try {
-      const data = {
-        category_code: (formData.get("category_code") as string).toUpperCase(),
-        category_name_en: formData.get("category_name_en") as string,
-        category_name_ar: (formData.get("category_name_ar") as string) || null,
-        description: (formData.get("description") as string) || null,
-        module_code: (formData.get("module_code") as string) || null,
-        category_scope: (formData.get("category_scope") as "GLOBAL" | "COMPANY" | "BRANCH" | "MODULE") || "GLOBAL",
-        supports_hierarchy: formData.get("supports_hierarchy") === "on",
-        supports_color: formData.get("supports_color") === "on",
-        supports_icon: formData.get("supports_icon") === "on",
-        supports_effective_dates: formData.get("supports_effective_dates") === "on",
-        supports_metadata: formData.get("supports_metadata") === "on",
-        is_active: formData.get("is_active") === "on",
-        is_locked: formData.get("is_locked") === "on",
-        sort_order: parseInt(formData.get("sort_order") as string) || 0,
-      };
-
-      let result;
-      if (isEditing && category) {
-        result = await updateLookupCategory({ id: category.id, ...data });
-      } else {
-        result = await createLookupCategory(data);
-      }
-
-      if (result.success) {
-        toast.success(`Lookup category ${isEditing ? "updated" : "created"} successfully`);
-        clearDraft();
-        resetDirty();
-        invalidateAllLookups(queryClient);
+      const form=document.getElementById(FORM_ID) as HTMLFormElement;
+      const creating=session.savedId===null;
+      const result=await session.run(session.uncertain?undefined:{
+        kind:'category',action:'save',categoryId:null,categoryRevision:null,
+        data:categoryFormPayload(new FormData(form),creating),
+      });
+      if(!session.isCurrent())return false;
+      if(result.success) {
+        if(!result.acknowledged){toast.warning('Saved, but this workspace could not acknowledge it. Reopen the record.');return false;}
+        acknowledged=true;
+        const original=result.retainedCommand,receipt=result.data;
+        if(!original||!receipt)throw Error('Acknowledged identity is unavailable.');
+        const code=typeof original.data.category_code==='string'?original.data.category_code:recordCode;
+        const name=String(original.data.category_name_en??category?.category_name_en??code);
+        const unchanged=lookupDraftMatches(form,original);
+        setRecordCode(code);
+        const route=`/admin/master-data/lookups/categories/record/${receipt.id}?mode=edit`;
+        let failed=false;
+        const effect=(action:()=>void)=>{if(session.isCurrent())try{action();}catch{failed=true;}};
+        if(unchanged)effect(()=>{clearDraft();resetDirty();});
+        else effect(()=>{syncDraft();writeDraftField('category_code',code);});
+        if(activeTab){
+          effect(()=>markDirty(activeTab.id,!unchanged));
+          effect(()=>updateTabRoute(activeTab.id,route,receipt.id,'edit'));
+          effect(()=>renameTab(activeTab.id,name,code));
+        }
+        effect(()=>invalidateAllLookups(queryClient));
+        if(!closeAfter&&creating&&activeTab)effect(()=>{if(isTabActive(activeTab.id))router.replace(route);});
+        if(failed)throw Error('Local display could not refresh.');
+        effect(()=>toast.success('Lookup category saved.'));
+        if(closeAfter&&unchanged)effect(()=>forceCloseActiveTab());
+        if(failed)throw Error('Local completion could not finish.');
         return true;
-      } else {
-        toast.error(result.error ?? "Failed to save lookup category");
-        return false;
       }
-    } catch {
-      toast.error("An unexpected error occurred");
-      return false;
-    } finally {
-      setIsSubmitting(false);
+      toast.error(result.error??'The lookup could not be saved.');return false;
+    }catch{
+      if(!session.isCurrent())return acknowledged;
+      if(acknowledged){
+        localBlocked.current=true;
+        const error='Saved. A local view could not refresh; reopen it before another change.';
+        setLocalError(error);try{toast.warning(error);}catch{/* Feedback cannot retry a confirmed save. */}
+        return true;
+      }
+      toast.error('Check the rendered fields and metadata. Your entries are retained.');return false;
     }
+    finally{if(session.isCurrent())setIsSubmitting(false);}
   };
 
   const handleSaveAndClose = async () => {
-    const success = await handleSave();
-    if (success) forceCloseActiveTab();
+    await handleSave(true);
   };
 
   return (
     <ERPRecordWorkspaceForm
-      mode={mode}
+      mode={isViewing ? "view" : isEditing ? "edit" : "add"}
       title={isViewing ? "View Lookup Category" : isEditing ? "Edit Lookup Category" : "New Lookup Category"}
-      subtitle={category ? `Category Code: ${category.category_code}` : "Create a new lookup category"}
-      recordCode={category?.category_code}
+      subtitle={isEditing || category ? `Category Code: ${recordCode}` : "Create a new lookup category"}
+      recordCode={isEditing || category ? recordCode : undefined}
       sections={sections}
       activeSection={activeSection}
       onSectionChange={setActiveSection}
       isDirty={isDirty}
-      onSave={isViewing ? undefined : handleSave}
-      onSaveAndClose={isViewing ? undefined : handleSaveAndClose}
+      onSave={isViewing || session.blocked || localError ? undefined : handleSave}
+      onSaveAndClose={isViewing || session.blocked || localError ? undefined : handleSaveAndClose}
       onRequestClose={handleRequestClose}
       isSubmitting={isSubmitting}
     >
+      {(localError||session.message||session.recoveryError) && <div role="alert" className="m-4 rounded border p-3"><p>{localError??session.message??session.recoveryError}</p>{session.uncertain&&!session.blocked&&!localError&&<button type="button" onClick={()=>void handleSave()} disabled={session.working}>Recover original request</button>}</div>}
       <form id={FORM_ID} onSubmit={(e) => { e.preventDefault(); handleSaveAndClose(); }} onInput={syncDraft} onChange={syncDraft}>
+        <fieldset disabled={isViewing||session.working||session.uncertain||session.blocked||!!localError} className="contents">
         <ERPRecordSectionPanel id="basic" activeId={activeSection} title="Basic Information">
           <div className="grid grid-cols-12 gap-4">
             <div className="space-y-2 col-span-6">
@@ -140,8 +158,9 @@ export function LookupCategoryWorkspaceForm({ category, mode }: LookupCategoryWo
                 id="category_code"
                 name="category_code"
                 required
-                defaultValue={getDraftDefault("category_code", category?.category_code ?? "")}
-                disabled={isViewing || isEditing}
+                value={recordCode}
+                onChange={(event)=>setRecordCode(event.target.value)}
+                disabled={isViewing || isEditing || session.savedId!==null}
                 placeholder="STATUS_TYPES"
                 className="uppercase"
                 maxLength={100}
@@ -268,8 +287,8 @@ export function LookupCategoryWorkspaceForm({ category, mode }: LookupCategoryWo
             </div>
             <div className="space-y-2 col-span-6">
               <div className="flex items-center space-x-2">
-                <Checkbox id="is_locked" name="is_locked" defaultChecked={getDraftBoolean("is_locked", category?.is_locked ?? false)} disabled={isViewing} />
-                <Label htmlFor="is_locked" className="text-sm font-normal cursor-pointer">Locked (prevents modification)</Label>
+                <Checkbox id="is_locked" checked={category?.is_locked??false} disabled />
+                <Label htmlFor="is_locked" className="text-sm font-normal cursor-pointer">Locked — change using the list Lock/Unlock command</Label>
               </div>
             </div>
             {category?.is_system && (
@@ -303,6 +322,7 @@ export function LookupCategoryWorkspaceForm({ category, mode }: LookupCategoryWo
             <p className="text-sm text-muted-foreground">Audit information will be available after saving</p>
           )}
         </ERPRecordSectionPanel>
+        </fieldset>
       </form>
     </ERPRecordWorkspaceForm>
   );

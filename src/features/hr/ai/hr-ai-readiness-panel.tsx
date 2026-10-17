@@ -15,11 +15,11 @@ import type { HrAiReadinessExplanation } from "@/lib/hr/ai/types";
 import { cn } from "@/lib/utils";
 
 const STATUS_CONFIG = {
-  ready:        { color: "text-emerald-600", Icon: CheckCircle2 },
-  not_ready:    { color: "text-red-600",     Icon: XCircle },
-  blocked:      { color: "text-red-700",     Icon: XCircle },
-  expired:      { color: "text-orange-600",  Icon: AlertTriangle },
-  needs_review: { color: "text-amber-600",   Icon: Clock },
+  ready:        { color: "text-emerald-600 dark:text-emerald-300", Icon: CheckCircle2 },
+  not_ready:    { color: "text-red-600 dark:text-red-300",     Icon: XCircle },
+  blocked:      { color: "text-red-700 dark:text-red-200",     Icon: XCircle },
+  expired:      { color: "text-orange-600 dark:text-orange-300",  Icon: AlertTriangle },
+  needs_review: { color: "text-amber-600 dark:text-amber-300",   Icon: Clock },
   unknown:      { color: "text-muted-foreground", Icon: Info },
 };
 
@@ -95,9 +95,9 @@ export function HrAiReadinessPanel({ employeeId, canUse }: Props) {
               <p className="text-xs font-semibold mb-1.5">Blocking Issues</p>
               <div className="space-y-1">
                 {result.blockingItems.map((item, i) => (
-                  <div key={i} className="text-xs border border-red-200 bg-red-50 rounded p-2">
-                    <span className="font-medium text-red-700">{item.item}</span>
-                    {item.reason && <span className="text-red-500 ml-1">— {item.reason}</span>}
+                  <div key={i} className="text-xs border border-red-200 bg-red-50 rounded p-2 dark:border-red-800 dark:bg-red-950">
+                    <span className="font-medium text-red-700 dark:text-red-200">{item.item}</span>
+                    {item.reason && <span className="text-red-500 ml-1 dark:text-red-300">— {item.reason}</span>}
                   </div>
                 ))}
               </div>

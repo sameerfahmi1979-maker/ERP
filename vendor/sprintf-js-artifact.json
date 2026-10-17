@@ -1,0 +1,9 @@
+{
+  "artifact": "vendor/sprintf-js-1.0.3-algt.1.tgz",
+  "sha256": "06a933e90dfbbcc5d80d90f377efb333d48e1025626276c48a20b2ee0b77cc5f",
+  "integrity": "sha512-qDxl7KBVdDAgO3olB8iDWggwNA3O4xJvs+/jOGfkPo54JKfZ+rGjwiifQ4PPrvjci5/+wOw6Y3GGZHHnRNTJpg==",
+  "package": "sprintf-js",
+  "version": "1.0.3-algt.1",
+  "provenance": "vendor/PATCH-MANIFEST.json",
+  "status": "Unchanged PERF bounded-precision patch packaged without dependency symlinks; not an upstream fix."
+}

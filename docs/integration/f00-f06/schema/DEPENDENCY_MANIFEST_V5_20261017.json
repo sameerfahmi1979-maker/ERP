@@ -1,0 +1,1556 @@
+{
+  "version": 5,
+  "kind": "reviewed-explicit-dependency-source-manifest-not-application-receipt",
+  "source": {
+    "F06": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+    "PERF": "581cf501890bb9a8b3116d4e5858d5efa58bf163"
+  },
+  "counts": {
+    "predecessor": 26,
+    "F06": 85,
+    "PERF": 16,
+    "composition": 5,
+    "total": 132
+  },
+  "baseline": {
+    "required": "separately verified F02 schema-only predecessor",
+    "automaticLegacyReplay": false
+  },
+  "historicalManifest": {
+    "path": "docs/integration/f00-f06/schema/MIGRATION_MANIFEST_20261016.json",
+    "sha256": "73589b225359030d071f3649ff7b3a27b2f467abcdac2236026f5bb48a74c990",
+    "digest": "4b60e6f567234eacf1d0391789b09a60bdef47f5852180e424c6bb3aa95bb980",
+    "count": 128
+  },
+  "dependencyEdges": [
+    {
+      "before": "20261013125825_perf_hr_compliance_read_subjects.sql",
+      "after": "20261016111938_integration_perf_document_lineage.sql"
+    },
+    {
+      "before": "20261016111938_integration_perf_document_lineage.sql",
+      "after": "20261014065706_perf_item4_statement_permission_reads.sql"
+    },
+    {
+      "before": "20261014065706_perf_item4_statement_permission_reads.sql",
+      "after": "20261014072522_perf_dms_notification_subject_sets.sql"
+    },
+    {
+      "before": "20261014072522_perf_dms_notification_subject_sets.sql",
+      "after": "20261014030458_perf_candidate_document_subject_set.sql"
+    },
+    {
+      "before": "20261014030458_perf_candidate_document_subject_set.sql",
+      "after": "20261014040457_perf_candidate_document_read_projection.sql"
+    },
+    {
+      "before": "20261015203354_f06_finance_receipt_read_privilege.sql",
+      "after": "20261016121837_integration_raw_branding_acl_boundary.sql"
+    },
+    {
+      "before": "20261016121837_integration_raw_branding_acl_boundary.sql",
+      "after": "20261016092335_integration_f06_perf_template_selection.sql"
+    },
+    {
+      "before": "20261016092335_integration_f06_perf_template_selection.sql",
+      "after": "20261016193054_perf_template_branding_statement_set.sql"
+    },
+    {
+      "before": "20261016193054_perf_template_branding_statement_set.sql",
+      "after": "20261017092052_perf_upload_inbox_authority_set.sql"
+    }
+  ],
+  "relocations": [
+    {
+      "name": "20261014065706_perf_item4_statement_permission_reads.sql",
+      "originalOrder": 120,
+      "reason": "Both original guards require pre-candidate-expansion reader hash; statement policy is the notification prerequisite."
+    },
+    {
+      "name": "20261014072522_perf_dms_notification_subject_sets.sql",
+      "originalOrder": 121,
+      "reason": "Both original guards require pre-candidate-expansion reader hash; statement policy is the notification prerequisite."
+    }
+  ],
+  "digest": "a8961f7d01f9e0d269c7c3051a63b355d35299b0b8a754469f13da570ad8c716",
+  "applicationRules": [
+    "Immutable131 dependency prefix plus one additive Inbox SELECT-authority performance migration.",
+    "Reconcile the exact live ERP history/catalog; skip already applied predecessors without rewriting their history.",
+    "The new migration requires the accepted131 preimage and preserves F03 point authority and all write predicates.",
+    "Rollback-only native differentials are not committed132 replay, ordinary SDK acceptance or production performance.",
+    "Before release require exact132 application/replay/catalog receipts, affected native acceptance, backup/recovery and matching application checks.",
+    "A source manifest is not a main-merge, deployment or production-write authorization."
+  ],
+  "migrations": [
+    {
+      "order": 1,
+      "name": "20260923062254_f03_auth_principal_and_lifecycle.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260923062254_f03_auth_principal_and_lifecycle.sql",
+      "sha256": "6a64646b2e972c33fbd4e1c460f7691a2edb4d573bad76a541815c30238762c8",
+      "bytes": 7683,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 1
+    },
+    {
+      "order": 2,
+      "name": "20260923062901_f03_password_completion_transaction.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260923062901_f03_password_completion_transaction.sql",
+      "sha256": "fea710ec35b30a4c84c0f6322b26abf1fda9005edf53f6e1eecc57e1b482cd82",
+      "bytes": 2674,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 2
+    },
+    {
+      "order": 3,
+      "name": "20260923063512_f03_security_delivery_and_throttles.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260923063512_f03_security_delivery_and_throttles.sql",
+      "sha256": "99296ef5efa3fcb3255e20a06c86ad7030acddb31c3b15c84d526dd15c9c8950",
+      "bytes": 3194,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 3
+    },
+    {
+      "order": 4,
+      "name": "20260923064605_f03_role_administration_guards.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260923064605_f03_role_administration_guards.sql",
+      "sha256": "cbf989ee7b336c0377670416b775875f18fe7a9c27907e74d0ae13b32deac8f8",
+      "bytes": 8236,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 4
+    },
+    {
+      "order": 5,
+      "name": "20260923070016_f03_role_transactions_and_delegation.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260923070016_f03_role_transactions_and_delegation.sql",
+      "sha256": "35e40aecd13cf4d6a72e52af39c72c07b51e1dadb523fc4520e709aeb4d9024b",
+      "bytes": 6096,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 5
+    },
+    {
+      "order": 6,
+      "name": "20260923070453_f03_employee_subject_scopes.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260923070453_f03_employee_subject_scopes.sql",
+      "sha256": "c5d18a32d2e0b91c912ced9a4e311bc2601e4b75296247f35f1de204c1a82618",
+      "bytes": 14433,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 6
+    },
+    {
+      "order": 7,
+      "name": "20260923071412_f03_document_scope_and_content_policy.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260923071412_f03_document_scope_and_content_policy.sql",
+      "sha256": "fee6b8bd5f8f9dbb6dfba372d1a39ecd172beebdd86a89d2fa09459f2f839581",
+      "bytes": 7276,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 7
+    },
+    {
+      "order": 8,
+      "name": "20260923072530_f03_sensitive_employee_fields.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260923072530_f03_sensitive_employee_fields.sql",
+      "sha256": "9d6f451c506ece2c91a1a3c747bda2ec7d05405fdbeb89ca97a68523abaf7e67",
+      "bytes": 3206,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 8
+    },
+    {
+      "order": 9,
+      "name": "20260923073856_f03_identity_transfer_and_issued_file_scope.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260923073856_f03_identity_transfer_and_issued_file_scope.sql",
+      "sha256": "2176f9dd0c5c58c888cf1a992ddad15498e27b46ffe0a3ef7285f64fab06d93d",
+      "bytes": 5086,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 9
+    },
+    {
+      "order": 10,
+      "name": "20260923080016_f03_account_provisioning_journal.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260923080016_f03_account_provisioning_journal.sql",
+      "sha256": "4c2b35ba13849d778cdffaf9df5e845b69e3645d6e440d6f0d36908865d74978",
+      "bytes": 1287,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 10
+    },
+    {
+      "order": 11,
+      "name": "20260923081146_f03_permission_review_preconditions.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260923081146_f03_permission_review_preconditions.sql",
+      "sha256": "7a4972d398f7035a45df6fd67a457a2277b2dc1f14cc6cb6ec25dcc00cdd4b2a",
+      "bytes": 3311,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 11
+    },
+    {
+      "order": 12,
+      "name": "20260923082101_f03_document_content_projection.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260923082101_f03_document_content_projection.sql",
+      "sha256": "e9c148d098f584baa5b72cd841965c6e1cdcec0b2c0e352367e0b790d43f4cdb",
+      "bytes": 4796,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 12
+    },
+    {
+      "order": 13,
+      "name": "20260923084150_f03_medical_insurance_and_linked_evidence.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260923084150_f03_medical_insurance_and_linked_evidence.sql",
+      "sha256": "594e90e33cf8548fc5dd2da431ad401f17b1478d45a3cc16e516f09529272d7e",
+      "bytes": 8230,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 13
+    },
+    {
+      "order": 14,
+      "name": "20260923093112_f03_recruitment_subject_scopes.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260923093112_f03_recruitment_subject_scopes.sql",
+      "sha256": "c43f7dff139892e0cf45834886f46f0d01bc35634c74403782599d2756b5737a",
+      "bytes": 7613,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 14
+    },
+    {
+      "order": 15,
+      "name": "20260923094358_f03_recruitment_salary_projection.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260923094358_f03_recruitment_salary_projection.sql",
+      "sha256": "8e014baeee89d4da268128482f738897501b5f593914b8061e57237327009606",
+      "bytes": 5820,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 15
+    },
+    {
+      "order": 16,
+      "name": "20260923103234_f03_derived_document_write_guards.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260923103234_f03_derived_document_write_guards.sql",
+      "sha256": "d9f0ee5972f84ff8e863120e3412d22c42e7bce81490f33138238909773953ae",
+      "bytes": 3387,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 16
+    },
+    {
+      "order": 17,
+      "name": "20260923104636_f03_checked_semantic_search.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260923104636_f03_checked_semantic_search.sql",
+      "sha256": "45d298984ba7c8c3f9a9c4103a41d9989d4642f91eced3c37542dcc3bb226ded",
+      "bytes": 6887,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 17
+    },
+    {
+      "order": 18,
+      "name": "20260923110909_f03_duplicate_lookup_access.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260923110909_f03_duplicate_lookup_access.sql",
+      "sha256": "d86920efa291b5201adc1cf8fe98dedd2e58bff095aa4875bdf2afff3655c41c",
+      "bytes": 858,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 18
+    },
+    {
+      "order": 19,
+      "name": "20260924113604_f03_unlinked_upload_admission.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260924113604_f03_unlinked_upload_admission.sql",
+      "sha256": "796f7418993640a521b77c2cab0e68573559bf32dddf86552b0412c7fad3f2ff",
+      "bytes": 6568,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 19
+    },
+    {
+      "order": 20,
+      "name": "20260924114601_f03_intake_capability_scope.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260924114601_f03_intake_capability_scope.sql",
+      "sha256": "1868cde6f3c4b11a252e4bb509f1f7865a9835355b9ffd5fa1118e4835e99073",
+      "bytes": 2902,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 20
+    },
+    {
+      "order": 21,
+      "name": "20260924120341_f03_employee_scope_set.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260924120341_f03_employee_scope_set.sql",
+      "sha256": "636fc3fa72c13872e35526121e42526e8f0efded658abab74bed6a379ebe0990",
+      "bytes": 3015,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 21
+    },
+    {
+      "order": 22,
+      "name": "20260925082403_f03_branded_24h_invitations.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260925082403_f03_branded_24h_invitations.sql",
+      "sha256": "3487b52e765cb8beb58633543dbce6f0170dafd13b5d3b767624229541d42c1c",
+      "bytes": 3853,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 22
+    },
+    {
+      "order": 23,
+      "name": "20260928045514_f04_atomic_workspace_saves.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260928045514_f04_atomic_workspace_saves.sql",
+      "sha256": "589260c613288c4e0185fd59d9f6d3270d4120cd4ec370b281e124ffce2967b4",
+      "bytes": 11287,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 23
+    },
+    {
+      "order": 24,
+      "name": "20260928094530_f03_dms_projection_single_evaluation.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260928094530_f03_dms_projection_single_evaluation.sql",
+      "sha256": "de843079e8c156e9dd9852a4fda5d27c8324a7361dc1e13aa65cc12b26bd59c8",
+      "bytes": 5542,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 24
+    },
+    {
+      "order": 25,
+      "name": "20260930164345_f05_dms_workflow_atomic_configuration.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260930164345_f05_dms_workflow_atomic_configuration.sql",
+      "sha256": "d5321dc75d6ee69bebf0637df2154b164668002a4727112e68b2d5f77ec5d10e",
+      "bytes": 9334,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 25
+    },
+    {
+      "order": 26,
+      "name": "20260930175323_f05_dms_atomic_approval_steps.sql",
+      "group": "predecessor",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20260930175323_f05_dms_atomic_approval_steps.sql",
+      "sha256": "4c6f73172c003c8f0c17a8ec094372b5d6a068181a4ccefbc6296ad4917a21c0",
+      "bytes": 13641,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 26
+    },
+    {
+      "order": 27,
+      "name": "20261001133440_f06_shared_master_lifecycle.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261001133440_f06_shared_master_lifecycle.sql",
+      "sha256": "0ee95c11ece2d16779aa36b151af5a77958c2d70d612609a939896c4b7422854",
+      "bytes": 11534,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 27
+    },
+    {
+      "order": 28,
+      "name": "20261001140544_f06_master_relationship_validation.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261001140544_f06_master_relationship_validation.sql",
+      "sha256": "96ed29739893572e18956151d3c7aa99776aa772c3ebcc9c8030cf3ad5c9136f",
+      "bytes": 11453,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 28
+    },
+    {
+      "order": 29,
+      "name": "20261001145424_f06_calendar_atomic_saves.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261001145424_f06_calendar_atomic_saves.sql",
+      "sha256": "3c8ef1bf1363b735ddf4a164734af8cd1cf1ee9341e72a74a890b49aa69f477d",
+      "bytes": 7764,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 29
+    },
+    {
+      "order": 30,
+      "name": "20261003041704_f06_numbering_integrity.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003041704_f06_numbering_integrity.sql",
+      "sha256": "a431049b6daeb4c3e9941f233944e466614f8a0d6f62b78d898a831f1de6d12a",
+      "bytes": 25017,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 30
+    },
+    {
+      "order": 31,
+      "name": "20261003043129_f06_numbering_rule_saves.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003043129_f06_numbering_rule_saves.sql",
+      "sha256": "5e631e0ed0b910950824fb5a6d83485ae83712712e4931c27680c208de877e35",
+      "bytes": 7598,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 31
+    },
+    {
+      "order": 32,
+      "name": "20261003051057_f06_lookup_choice_authority.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003051057_f06_lookup_choice_authority.sql",
+      "sha256": "7a16cb41c93d72ecd6ca15523ebb22b9d3fc4a048a115e86167b08f7331c9454",
+      "bytes": 5433,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 32
+    },
+    {
+      "order": 33,
+      "name": "20261003053109_f06_provider_atomic_saves.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003053109_f06_provider_atomic_saves.sql",
+      "sha256": "e03372b6c17439bcd17331c5d5c2d2c041c73f2f8f17eb2d9966bea40f27c07f",
+      "bytes": 17858,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 33
+    },
+    {
+      "order": 34,
+      "name": "20261003054646_f06_provider_health_receipts.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003054646_f06_provider_health_receipts.sql",
+      "sha256": "192e2994ae8f205145353a527a8e9b0e1f666923219664df623fcb62b30f0f6f",
+      "bytes": 5218,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 34
+    },
+    {
+      "order": 35,
+      "name": "20261003055556_f06_provider_feature_flags.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003055556_f06_provider_feature_flags.sql",
+      "sha256": "3cb0211f2e7f168aafe128c2b1a7abe6e5ac1de68bc5e3b23c303e0259a4bf50",
+      "bytes": 6376,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 35
+    },
+    {
+      "order": 36,
+      "name": "20261003063636_f06_provider_secret_transaction.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003063636_f06_provider_secret_transaction.sql",
+      "sha256": "26f85ef8ed94d4001fe12ce5145d64c77a61bbf57cd151ff5aaa1b312ec5c042",
+      "bytes": 7452,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 36
+    },
+    {
+      "order": 37,
+      "name": "20261003073819_f06_branding_authority.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003073819_f06_branding_authority.sql",
+      "sha256": "724b6d939ff256d8d022c4b50d25a75818637f16acf4087defaeceaa6846ff93",
+      "bytes": 10802,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 37
+    },
+    {
+      "order": 38,
+      "name": "20261003075328_f06_branding_versioned_saves.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003075328_f06_branding_versioned_saves.sql",
+      "sha256": "5cd64dfbc58b2e830fb3a0bd28342d0921a32b8d2f10a11907ca5c9269eefbe1",
+      "bytes": 21810,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 38
+    },
+    {
+      "order": 39,
+      "name": "20261003082507_f06_branding_asset_lifecycle.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003082507_f06_branding_asset_lifecycle.sql",
+      "sha256": "7ef7cc09800c7624d67242d49fb3fb7974e95759c72ad46fa31c5ed62c560f81",
+      "bytes": 19958,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 39
+    },
+    {
+      "order": 40,
+      "name": "20261003090756_f06_company_branding_bootstrap.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003090756_f06_company_branding_bootstrap.sql",
+      "sha256": "ec8a81edaedc4ba40746d604ed8ff85f5e15537846e65266a5f87782fcb5459e",
+      "bytes": 10509,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 40
+    },
+    {
+      "order": 41,
+      "name": "20261003101926_f06_currency_integrity.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003101926_f06_currency_integrity.sql",
+      "sha256": "b19233762cb77caa2ad2848e30ea9058f70223af462ceb20f6c2c41b761126e5",
+      "bytes": 11780,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 41
+    },
+    {
+      "order": 42,
+      "name": "20261003111253_f06_template_branding_read_boundary.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003111253_f06_template_branding_read_boundary.sql",
+      "sha256": "8245dff2527b540252b9ecb970f26a3c103892868e4918d8e3c1ea9496ddfc1e",
+      "bytes": 2615,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 42
+    },
+    {
+      "order": 43,
+      "name": "20261003112917_f06_template_configuration_saves.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003112917_f06_template_configuration_saves.sql",
+      "sha256": "286ed463c6dd20837b5ac740b92d13d320cbe329fb21a32144c58a011c0cb2e6",
+      "bytes": 13738,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 43
+    },
+    {
+      "order": 44,
+      "name": "20261003122900_f06_template_governance_transactions.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003122900_f06_template_governance_transactions.sql",
+      "sha256": "c6f3a43a070a24b9b75a2f7421d19e5d0c806b729e0a47f24dcb29695c06e871",
+      "bytes": 17344,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 44
+    },
+    {
+      "order": 45,
+      "name": "20261003133837_f06_party_type_integrity.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003133837_f06_party_type_integrity.sql",
+      "sha256": "09ffcbb9b257f399cd29db37f2069b75f411d94241850502b2f7befabbf236c3",
+      "bytes": 10806,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 45
+    },
+    {
+      "order": 46,
+      "name": "20261003141728_f06_geography_relationship_integrity.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003141728_f06_geography_relationship_integrity.sql",
+      "sha256": "c92d55627da742827551a4c5b38f41bcbb178a5abdf0bae3c811c78d6d1397cd",
+      "bytes": 5507,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 46
+    },
+    {
+      "order": 47,
+      "name": "20261003143716_f06_geography_atomic_saves.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003143716_f06_geography_atomic_saves.sql",
+      "sha256": "e7f8ce7ee554f8590b505ae78e3ae6a7b1b384a47bfecc7818cbc10715f0c256",
+      "bytes": 15427,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 47
+    },
+    {
+      "order": 48,
+      "name": "20261003153529_f06_finance_hierarchy_integrity.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003153529_f06_finance_hierarchy_integrity.sql",
+      "sha256": "1e2bfc0d9bf6456d1c5daf80482e18121ca4a13ec7585738a346f40a4672accb",
+      "bytes": 11419,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 48
+    },
+    {
+      "order": 49,
+      "name": "20261003155834_f06_finance_center_atomic_saves.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003155834_f06_finance_center_atomic_saves.sql",
+      "sha256": "691e5ffdedad03c1a0988a5e91f9191b95466bb5e5c856e3c90853426f872441",
+      "bytes": 14418,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 49
+    },
+    {
+      "order": 50,
+      "name": "20261003164204_f06_uom_relationship_integrity.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003164204_f06_uom_relationship_integrity.sql",
+      "sha256": "88a55e8c5458754b0b9b9e77d7ac6133b616c9434df39fd9ffabded9fe4c9179",
+      "bytes": 6181,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 50
+    },
+    {
+      "order": 51,
+      "name": "20261003170835_f06_uom_atomic_saves.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003170835_f06_uom_atomic_saves.sql",
+      "sha256": "61fb48dc97afd2f3218eb857d40aad828792f709080b4ac160e75bf0408ed2eb",
+      "bytes": 13732,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 51
+    },
+    {
+      "order": 52,
+      "name": "20261003180144_f06_uom_conversion_compatibility.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003180144_f06_uom_conversion_compatibility.sql",
+      "sha256": "d8be5c51e1f39f0061370667dedab4d7f87b9c905c5570580e90fbec4b8f0d02",
+      "bytes": 2722,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 52
+    },
+    {
+      "order": 53,
+      "name": "20261003184420_f06_master_archive_recovery.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003184420_f06_master_archive_recovery.sql",
+      "sha256": "1c1e9b9edc90f46c32266855f082a5cfb92e5e3c22cb3016e02e8669faeb00dd",
+      "bytes": 3397,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 53
+    },
+    {
+      "order": 54,
+      "name": "20261003191553_f06_department_atomic_saves.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003191553_f06_department_atomic_saves.sql",
+      "sha256": "1347499ddbe31951b386c2b9da70d904311296b77f551892de955e2f0958a494",
+      "bytes": 15441,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 54
+    },
+    {
+      "order": 55,
+      "name": "20261003194135_f06_department_scope_catalogue.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003194135_f06_department_scope_catalogue.sql",
+      "sha256": "b28a2357edc2333f0e61888c02c1e755c007a2cdfe00d9a4c2f34f48c3331f5b",
+      "bytes": 2309,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 55
+    },
+    {
+      "order": 56,
+      "name": "20261003200805_f06_hr_lookup_atomic_saves.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003200805_f06_hr_lookup_atomic_saves.sql",
+      "sha256": "20973c8a5314eb03a42ed5cc5e16cdce5a6895b9e45c8e1d09d57dcfc203de8f",
+      "bytes": 16899,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 56
+    },
+    {
+      "order": 57,
+      "name": "20261003205623_f06_hr_specialized_atomic_saves.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003205623_f06_hr_specialized_atomic_saves.sql",
+      "sha256": "08176e3f9f74cf82f36b9efc85dddc66699b43103ae016a31c0282ace5c14611",
+      "bytes": 11880,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 57
+    },
+    {
+      "order": 58,
+      "name": "20261003213546_f06_hr_archive_recovery.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003213546_f06_hr_archive_recovery.sql",
+      "sha256": "bb88652d383bf3ede479ce6fbf383ac1f7197afed9e33fc8c9f7761bc270223e",
+      "bytes": 3306,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 58
+    },
+    {
+      "order": 59,
+      "name": "20261003232830_f06_calendar_history_protection.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261003232830_f06_calendar_history_protection.sql",
+      "sha256": "d5f5619d323605c3bcea8fcf49785672aa8faf58924b4db91a99ba4fcb955eec",
+      "bytes": 5082,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 59
+    },
+    {
+      "order": 60,
+      "name": "20261004000041_f06_numbering_failed_consumer_recovery.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004000041_f06_numbering_failed_consumer_recovery.sql",
+      "sha256": "ecbf0ea1328f21dcfca9e911279878fad28acad7715d695515eb6ecf60c736fa",
+      "bytes": 4345,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 60
+    },
+    {
+      "order": 61,
+      "name": "20261004002139_f06_finance_center_read_scope.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004002139_f06_finance_center_read_scope.sql",
+      "sha256": "ca606ef113728529d8d88019fadd97f298587825e76e92a2d86c933fc119aa58",
+      "bytes": 1855,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 61
+    },
+    {
+      "order": 62,
+      "name": "20261004003309_f06_finance_reference_labels.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004003309_f06_finance_reference_labels.sql",
+      "sha256": "1282a8863193b1ac8581309bb860a07acb73e9fe1aa0a01f9998aeecd50b5333",
+      "bytes": 4158,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 62
+    },
+    {
+      "order": 63,
+      "name": "20261004005131_f06_numbered_party_consumers.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004005131_f06_numbered_party_consumers.sql",
+      "sha256": "a3624cd29928e97f67924640d46f2bf6fe18853425b438e54e1f372972e32687",
+      "bytes": 9807,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 63
+    },
+    {
+      "order": 64,
+      "name": "20261004014535_f06_party_relationship_integrity.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004014535_f06_party_relationship_integrity.sql",
+      "sha256": "2d8a57524f4c9a191488f12db5800cf6ce0a7823e22fb46b2630f5da82a5f279",
+      "bytes": 8941,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 64
+    },
+    {
+      "order": 65,
+      "name": "20261004022939_f06_party_parent_read_relationship.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004022939_f06_party_parent_read_relationship.sql",
+      "sha256": "6aa5a176407a8576086b4802f3b5cbb808f11245bec0c043e7ad86f28da06081",
+      "bytes": 923,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 65
+    },
+    {
+      "order": 66,
+      "name": "20261004023537_f06_party_reference_labels.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004023537_f06_party_reference_labels.sql",
+      "sha256": "dcc4310cc74f1ff449a0ce8ff14fb11ba322aae86b70c11cb6faa74db6cc9458",
+      "bytes": 2816,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 66
+    },
+    {
+      "order": 67,
+      "name": "20261004032040_f06_party_revision_saves.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004032040_f06_party_revision_saves.sql",
+      "sha256": "b01d5658b279ebdf246391305103f02811369db369b892128b9cbd99b050d875",
+      "bytes": 9437,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 67
+    },
+    {
+      "order": 68,
+      "name": "20261004035929_f06_party_state_transactions.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004035929_f06_party_state_transactions.sql",
+      "sha256": "d35705a67d63b99f068e1262c377be7c32421528e1f075a830e586a862910da9",
+      "bytes": 11381,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 68
+    },
+    {
+      "order": 69,
+      "name": "20261004050931_f06_party_overview_authority.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004050931_f06_party_overview_authority.sql",
+      "sha256": "9db046e9103ebb969b9a2ff9f56f1d928b7024a93cf4ea1dd32482c8b8bcfb5c",
+      "bytes": 7728,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 69
+    },
+    {
+      "order": 70,
+      "name": "20261004052722_f06_party_ai_apply_transaction.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004052722_f06_party_ai_apply_transaction.sql",
+      "sha256": "785d53d1833ddfcb8f71aac344c7290f4772cc3738d65720124b9c8fe70975bf",
+      "bytes": 10432,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 70
+    },
+    {
+      "order": 71,
+      "name": "20261004054901_f06_party_creation_boundary.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004054901_f06_party_creation_boundary.sql",
+      "sha256": "06627f956dce3d11ed122d4b091d02c84b57349712ca9071878ae22e213fd29e",
+      "bytes": 11358,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 71
+    },
+    {
+      "order": 72,
+      "name": "20261004061721_f06_party_initial_type.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004061721_f06_party_initial_type.sql",
+      "sha256": "25a83dc89f04e4dfce87557cafe612d2dd01f981ae7a38baa3d2477232b825fc",
+      "bytes": 12825,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 72
+    },
+    {
+      "order": 73,
+      "name": "20261004100043_f06_party_address_atomic_save.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004100043_f06_party_address_atomic_save.sql",
+      "sha256": "edc9b723678289bf6bf81c2fea5da994a81465bcc9c90a5f9810896178fb10c0",
+      "bytes": 7535,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 73
+    },
+    {
+      "order": 74,
+      "name": "20261004101844_f06_party_child_atomic_saves.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004101844_f06_party_child_atomic_saves.sql",
+      "sha256": "398c5a2a6033ddc9eb34feb949620ac36c61c53e38a37cf1e29bd86736e7329a",
+      "bytes": 10704,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 74
+    },
+    {
+      "order": 75,
+      "name": "20261004103631_f06_party_child_relationship_integrity.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004103631_f06_party_child_relationship_integrity.sql",
+      "sha256": "cc859dc4629305b49e9b015a6474802a912dd93d1a79930467b0cc5a75b642d3",
+      "bytes": 6222,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 75
+    },
+    {
+      "order": 76,
+      "name": "20261004105426_f06_party_bank_verification.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004105426_f06_party_bank_verification.sql",
+      "sha256": "c417593ff8bfb7bdab43f00cd6203282fe2ca24320798a47ca51ed0204ac15e2",
+      "bytes": 5266,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 76
+    },
+    {
+      "order": 77,
+      "name": "20261004111818_f06_party_child_lifecycle.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004111818_f06_party_child_lifecycle.sql",
+      "sha256": "a35a24d68136e3e4ed5ca3af59ed3825659eaf07a143cb3bb9584cb98009b445",
+      "bytes": 11002,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 77
+    },
+    {
+      "order": 78,
+      "name": "20261004123307_f06_party_child_suggestion_transaction.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004123307_f06_party_child_suggestion_transaction.sql",
+      "sha256": "b1766ccf76e1f4972c66946955edb77536a328b1c3be6e7642d02ebde6352121",
+      "bytes": 10524,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 78
+    },
+    {
+      "order": 79,
+      "name": "20261004125147_f06_party_dms_apply_transaction.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004125147_f06_party_dms_apply_transaction.sql",
+      "sha256": "29cb8ec9c8131d8abcdf541b157d992e4eb7caa855ccadf15fbf527fbf5c7cad",
+      "bytes": 22661,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 79
+    },
+    {
+      "order": 80,
+      "name": "20261004134744_f06_party_dms_correction_transaction.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004134744_f06_party_dms_correction_transaction.sql",
+      "sha256": "6daca7b3789e6f8327b4b996682f6938356357e47298b3d45787b83147aed684",
+      "bytes": 18780,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 80
+    },
+    {
+      "order": 81,
+      "name": "20261004151625_f06_organization_branch_integrity.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004151625_f06_organization_branch_integrity.sql",
+      "sha256": "77baf51de12c98e5458f9ae6f04ede0c2875f820d698299a52829338a98e7e93",
+      "bytes": 10566,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 81
+    },
+    {
+      "order": 82,
+      "name": "20261004153827_f06_administration_atomic_saves.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004153827_f06_administration_atomic_saves.sql",
+      "sha256": "c0e2f7ff8faa79918951b3c428d583f38f69db8f95d6012c0d8d7c22dcbc1c33",
+      "bytes": 26530,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 82
+    },
+    {
+      "order": 83,
+      "name": "20261004154941_f06_company_suggestion_atomic.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004154941_f06_company_suggestion_atomic.sql",
+      "sha256": "aafb740327478ab85416fddf387cb1c2e28aff1b88da82b111e55cbd05644484",
+      "bytes": 13825,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 83
+    },
+    {
+      "order": 84,
+      "name": "20261004161054_f06_administration_write_boundary.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004161054_f06_administration_write_boundary.sql",
+      "sha256": "48eb7c99629320591819ce2dbd5ecf2722313cfca630638451ed52bab5a66bdf",
+      "bytes": 1547,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 84
+    },
+    {
+      "order": 85,
+      "name": "20261004162015_f06_branch_company_choices.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004162015_f06_branch_company_choices.sql",
+      "sha256": "b4317e78a1299e8c43a549e087f7d670fc6ca15187a8e7a86387054302314782",
+      "bytes": 2625,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 85
+    },
+    {
+      "order": 86,
+      "name": "20261004162445_f06_branding_lock_authority_recheck.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004162445_f06_branding_lock_authority_recheck.sql",
+      "sha256": "40afeeae3c9bf051d97d0ceed0b054d655d637bf1df5078f4b3b48329a517456",
+      "bytes": 10955,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 86
+    },
+    {
+      "order": 87,
+      "name": "20261004163146_f06_company_suggestion_lock_authority_recheck.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004163146_f06_company_suggestion_lock_authority_recheck.sql",
+      "sha256": "07860fa28ec76e06eed345d1743cb83b6d2f2c8b10073e472487af3d26ef4380",
+      "bytes": 10909,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 87
+    },
+    {
+      "order": 88,
+      "name": "20261004170344_f06_party_admin_master_atomic.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004170344_f06_party_admin_master_atomic.sql",
+      "sha256": "821871df43b7c9cc2ea4632613eddb0236afaea0420ea86f7a4ac700762a10ae",
+      "bytes": 19284,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 88
+    },
+    {
+      "order": 89,
+      "name": "20261004170921_f06_numbered_dms_metadata_consumer.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004170921_f06_numbered_dms_metadata_consumer.sql",
+      "sha256": "98800fefb766a0e3e81c55ee321266d35bc55184f7838fc0e93fbed0aca3152a",
+      "bytes": 13469,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 89
+    },
+    {
+      "order": 90,
+      "name": "20261004172428_f06_party_finance_atomic_save.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004172428_f06_party_finance_atomic_save.sql",
+      "sha256": "a73da1756460c84e135e18c852d54a78196f3b1129e9afc14f60f114ed785ec1",
+      "bytes": 12998,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 90
+    },
+    {
+      "order": 91,
+      "name": "20261004174935_f06_party_service_assignment_atomic.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004174935_f06_party_service_assignment_atomic.sql",
+      "sha256": "e7b93b95fd9990f69ba01e423e455b49392477f17f2769ac7a19e1e8a70cf72e",
+      "bytes": 12497,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 91
+    },
+    {
+      "order": 92,
+      "name": "20261004180226_f06_company_signatory_atomic.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004180226_f06_company_signatory_atomic.sql",
+      "sha256": "2622145bc696c83da328d57aa5f8f7e966db5e621e448c5ed010301b8456f982",
+      "bytes": 15547,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 92
+    },
+    {
+      "order": 93,
+      "name": "20261004181125_f06_numbered_batch_draft_consumer.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004181125_f06_numbered_batch_draft_consumer.sql",
+      "sha256": "336d620ed4354ee56cac99b3dc49f862201c43239bf6bd41932a52fa26d90c6a",
+      "bytes": 23703,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 93
+    },
+    {
+      "order": 94,
+      "name": "20261004182739_f06_numbered_recruitment_consumers.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004182739_f06_numbered_recruitment_consumers.sql",
+      "sha256": "2024485ce0cd63ceef1919deb691662057c3f97433c8de016b94f1c1b1d6ac22",
+      "bytes": 62596,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 94
+    },
+    {
+      "order": 95,
+      "name": "20261004184451_f06_numbered_upload_document_consumer.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004184451_f06_numbered_upload_document_consumer.sql",
+      "sha256": "9ed46caeb1c896004e93e68f5686839d28f0cba89823816ad5a25be2b5b97d37",
+      "bytes": 35940,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 95
+    },
+    {
+      "order": 96,
+      "name": "20261004192342_f06_numbered_hr_document_employee_consumer.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004192342_f06_numbered_hr_document_employee_consumer.sql",
+      "sha256": "f81d063be875e9982b9fcfee3ff19de5dab81aaeb470bf147fa78b7b6d9847d6",
+      "bytes": 50633,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 96
+    },
+    {
+      "order": 97,
+      "name": "20261004193518_f06_numbered_ai_intake_approval.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004193518_f06_numbered_ai_intake_approval.sql",
+      "sha256": "af63a8897a38aaf02485f659d29133bdab1f7b53a13e184b2bd087de3ffae31b",
+      "bytes": 74341,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 97
+    },
+    {
+      "order": 98,
+      "name": "20261004195946_f06_existing_helper_search_paths.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004195946_f06_existing_helper_search_paths.sql",
+      "sha256": "7e177e2cfa1d816a6f1041d01de38b2f512f710626403c0c782ac98b4b3cdda8",
+      "bytes": 2106,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 98
+    },
+    {
+      "order": 99,
+      "name": "20261004220907_f06_ai_approval_automatic_reminders.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261004220907_f06_ai_approval_automatic_reminders.sql",
+      "sha256": "c5c798e7b3ddcd18eb50dd8adef2d872c6c4eaaa0235bdfee172c44b650bc93f",
+      "bytes": 23021,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 99
+    },
+    {
+      "order": 100,
+      "name": "20261005083645_f06_atomic_batch_admission.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261005083645_f06_atomic_batch_admission.sql",
+      "sha256": "41df2415cb2aedb063d16aed60eeefa335dcaa094fcfc74fa618da4218eee956",
+      "bytes": 65286,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 100
+    },
+    {
+      "order": 101,
+      "name": "20261005153627_f06_durable_batch_draft_recovery.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261005153627_f06_durable_batch_draft_recovery.sql",
+      "sha256": "f93a7204ff727eb20a0de13ed7c91a158cdde1bf88b77043210f882668cb9e7e",
+      "bytes": 51469,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 101
+    },
+    {
+      "order": 102,
+      "name": "20261006123609_perf_p03_document_tag_count.sql",
+      "group": "PERF",
+      "commit": "581cf501890bb9a8b3116d4e5858d5efa58bf163",
+      "path": "supabase/migrations/20261006123609_perf_p03_document_tag_count.sql",
+      "sha256": "e106e353086e73133da17f844db5143a9c6dde73425f2b21885ac0e0426b221d",
+      "bytes": 2238,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 102
+    },
+    {
+      "order": 103,
+      "name": "20261006125436_perf_p03_protected_document_statement_scope.sql",
+      "group": "PERF",
+      "commit": "581cf501890bb9a8b3116d4e5858d5efa58bf163",
+      "path": "supabase/migrations/20261006125436_perf_p03_protected_document_statement_scope.sql",
+      "sha256": "d5d66c96fbfab0d419b401faf02c23265e2b18d089358a1a8e63fbb9cd944083",
+      "bytes": 8517,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 103
+    },
+    {
+      "order": 104,
+      "name": "20261006155439_perf_p04_renewal_read_scope.sql",
+      "group": "PERF",
+      "commit": "581cf501890bb9a8b3116d4e5858d5efa58bf163",
+      "path": "supabase/migrations/20261006155439_perf_p04_renewal_read_scope.sql",
+      "sha256": "047f7b61c2f6c1bb550c3d7d3102e14c22ee436b09de6e066445c0dafb02f5ac",
+      "bytes": 3612,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 104
+    },
+    {
+      "order": 105,
+      "name": "20261013064202_f06_finance_wait_authority.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261013064202_f06_finance_wait_authority.sql",
+      "sha256": "35b91543de275eb62b7e3c3c43a0422bec84b836d124ee50876296deb301947a",
+      "bytes": 13535,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 105
+    },
+    {
+      "order": 106,
+      "name": "20261013064225_f06_provider_wait_authority.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261013064225_f06_provider_wait_authority.sql",
+      "sha256": "c86edd08fa71f63ef06dd4021e1f547d4cfbb565c4c97723e112dadd1c7c7a97",
+      "bytes": 32893,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 106
+    },
+    {
+      "order": 107,
+      "name": "20261013110056_perf_hr_payroll_counted_inquiry.sql",
+      "group": "PERF",
+      "commit": "581cf501890bb9a8b3116d4e5858d5efa58bf163",
+      "path": "supabase/migrations/20261013110056_perf_hr_payroll_counted_inquiry.sql",
+      "sha256": "6c624b7c881756ef8444333abc87dde527216ceb9917293feb4bffe58bcfa699",
+      "bytes": 37296,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 107
+    },
+    {
+      "order": 108,
+      "name": "20261013115541_perf_recruitment_scope_tuple_reads.sql",
+      "group": "PERF",
+      "commit": "581cf501890bb9a8b3116d4e5858d5efa58bf163",
+      "path": "supabase/migrations/20261013115541_perf_recruitment_scope_tuple_reads.sql",
+      "sha256": "c214fb16c73e8dc05fc29561e310cde71c57b9e5b54872c196d93dd24a849e1f",
+      "bytes": 14491,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 108
+    },
+    {
+      "order": 109,
+      "name": "20261013124718_perf_recruitment_child_select_sets.sql",
+      "group": "PERF",
+      "commit": "581cf501890bb9a8b3116d4e5858d5efa58bf163",
+      "path": "supabase/migrations/20261013124718_perf_recruitment_child_select_sets.sql",
+      "sha256": "1ed06121f56eca960133ed77abbc19e5fa5aa328b4edbcf74573f5e3811462a3",
+      "bytes": 5428,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 109
+    },
+    {
+      "order": 110,
+      "name": "20261013125825_perf_hr_compliance_read_subjects.sql",
+      "group": "PERF",
+      "commit": "581cf501890bb9a8b3116d4e5858d5efa58bf163",
+      "path": "supabase/migrations/20261013125825_perf_hr_compliance_read_subjects.sql",
+      "sha256": "6b5991e13e1cd5465068f8ffb93868f3542bc0f20a05f0f0e995db20f51cf007",
+      "bytes": 10732,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 110
+    },
+    {
+      "name": "20261016111938_integration_perf_document_lineage.sql",
+      "group": "composition",
+      "commit": null,
+      "path": "supabase/migrations/20261016111938_integration_perf_document_lineage.sql",
+      "sha256": "8dbd51b2ee66293194f0ad40a1a51972a89a1272c424d6308139daed8e1cd2a2",
+      "bytes": 34392,
+      "normalization": "candidate UTF8 canonical LF only; verify final Git blob before application",
+      "originalOrder": null,
+      "order": 111
+    },
+    {
+      "order": 112,
+      "name": "20261014065706_perf_item4_statement_permission_reads.sql",
+      "group": "PERF",
+      "commit": "581cf501890bb9a8b3116d4e5858d5efa58bf163",
+      "path": "supabase/migrations/20261014065706_perf_item4_statement_permission_reads.sql",
+      "sha256": "cc1ac76ea18c640e1ff90aeb05be63a98984335398b0cf20275de6ed990e4571",
+      "bytes": 5661,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 120
+    },
+    {
+      "order": 113,
+      "name": "20261014072522_perf_dms_notification_subject_sets.sql",
+      "group": "PERF",
+      "commit": "581cf501890bb9a8b3116d4e5858d5efa58bf163",
+      "path": "supabase/migrations/20261014072522_perf_dms_notification_subject_sets.sql",
+      "sha256": "1798e1766ff99396d1fdd3dcdc90d6c7ff6852c357f4c8cefbe181870ac4ee24",
+      "bytes": 7222,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 121
+    },
+    {
+      "order": 114,
+      "name": "20261014030458_perf_candidate_document_subject_set.sql",
+      "group": "PERF",
+      "commit": "581cf501890bb9a8b3116d4e5858d5efa58bf163",
+      "path": "supabase/migrations/20261014030458_perf_candidate_document_subject_set.sql",
+      "sha256": "0a3b87770af3401698ea333611a4bbe2d6fa996a3b6ebed7748825bb6f9b3b31",
+      "bytes": 6253,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 111
+    },
+    {
+      "order": 115,
+      "name": "20261014035305_f06_batch_graph_record_dispatch.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261014035305_f06_batch_graph_record_dispatch.sql",
+      "sha256": "4492d4884b086b903bb6f3bb5e7269057aadadf33dea859a057b1841b6b81da7",
+      "bytes": 3397,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 112
+    },
+    {
+      "order": 116,
+      "name": "20261014040457_perf_candidate_document_read_projection.sql",
+      "group": "PERF",
+      "commit": "581cf501890bb9a8b3116d4e5858d5efa58bf163",
+      "path": "supabase/migrations/20261014040457_perf_candidate_document_read_projection.sql",
+      "sha256": "a43f85145c1191d10f1c62980fadb1c6ec7932a1fbbfe033a9eaed0f13ffb6a4",
+      "bytes": 2663,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 113
+    },
+    {
+      "order": 117,
+      "name": "20261014040817_f06_legacy_batch_source_dispatch.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261014040817_f06_legacy_batch_source_dispatch.sql",
+      "sha256": "12774d9e04986d90409ca0d445b22d550e0f0a8ed8a9941a986d61519b72e91e",
+      "bytes": 4142,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 114
+    },
+    {
+      "order": 118,
+      "name": "20261014041444_f06_batch_authority_record_binding.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261014041444_f06_batch_authority_record_binding.sql",
+      "sha256": "9bc9bde27a8537900518bb84ba46e15ca4c252e14ec36640775c65b0cc99d051",
+      "bytes": 4630,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 115
+    },
+    {
+      "order": 119,
+      "name": "20261014042017_f06_batch_context_active_status.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261014042017_f06_batch_context_active_status.sql",
+      "sha256": "260ae6a5c6ed545ea2020f8c752233e9bcc9dc8c51e0b6a13979ac1f5ff44617",
+      "bytes": 2622,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 116
+    },
+    {
+      "order": 120,
+      "name": "20261014060419_perf_report_history_read_contract.sql",
+      "group": "PERF",
+      "commit": "581cf501890bb9a8b3116d4e5858d5efa58bf163",
+      "path": "supabase/migrations/20261014060419_perf_report_history_read_contract.sql",
+      "sha256": "f0f34295560fbb4ff078d76f72046ba580f65edebb229b2cb9cab010e972ead5",
+      "bytes": 5015,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 117
+    },
+    {
+      "order": 121,
+      "name": "20261014061603_perf_email_queue_read_projection.sql",
+      "group": "PERF",
+      "commit": "581cf501890bb9a8b3116d4e5858d5efa58bf163",
+      "path": "supabase/migrations/20261014061603_perf_email_queue_read_projection.sql",
+      "sha256": "06f49c13ddeaef2661ab8c4f541e7816f13af86e893a2f1e018c4c68d8bee36b",
+      "bytes": 1219,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 118
+    },
+    {
+      "order": 122,
+      "name": "20261014062836_perf_notification_list_projections.sql",
+      "group": "PERF",
+      "commit": "581cf501890bb9a8b3116d4e5858d5efa58bf163",
+      "path": "supabase/migrations/20261014062836_perf_notification_list_projections.sql",
+      "sha256": "edace2c400d650b66411c75389918a30803f54b8850b631731ed028efdc8d252",
+      "bytes": 2078,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 119
+    },
+    {
+      "order": 123,
+      "name": "20261014082836_f06_batch_recovery_parameterized_seals.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261014082836_f06_batch_recovery_parameterized_seals.sql",
+      "sha256": "b05978d09a3478839c9f0ade897d1ec7f7ead9563867d566aed329092772ad63",
+      "bytes": 6146,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 122
+    },
+    {
+      "order": 124,
+      "name": "20261015122044_f06_lookup_atomic_contract.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261015122044_f06_lookup_atomic_contract.sql",
+      "sha256": "aa75b3c06dd680a0e0325729a5bec37c16fb37524404dbdaa758d73e8b20f87a",
+      "bytes": 24647,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 123
+    },
+    {
+      "order": 125,
+      "name": "20261015180904_f06_finance_reference_atomic_contract.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261015180904_f06_finance_reference_atomic_contract.sql",
+      "sha256": "a56d60469ceb6da3e8c3a56a62baeb034c20344c570afb1c6c4c0314c371b025",
+      "bytes": 24286,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 124
+    },
+    {
+      "order": 126,
+      "name": "20261015184500_perf_advisory_risk_select_initplans.sql",
+      "group": "PERF",
+      "commit": "581cf501890bb9a8b3116d4e5858d5efa58bf163",
+      "path": "supabase/migrations/20261015184500_perf_advisory_risk_select_initplans.sql",
+      "sha256": "68c5bfe22a5183cd14c6f77a29e66448a6c8f4f65e5ba95db19903b91a30879a",
+      "bytes": 3873,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 125
+    },
+    {
+      "order": 127,
+      "name": "20261015190000_perf_audit_global_select_initplan.sql",
+      "group": "PERF",
+      "commit": "581cf501890bb9a8b3116d4e5858d5efa58bf163",
+      "path": "supabase/migrations/20261015190000_perf_audit_global_select_initplan.sql",
+      "sha256": "884747c681ea26ce9717f12aaff1110c48aada7ce87415c18ffaa1ca69b6ffbd",
+      "bytes": 3925,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 126
+    },
+    {
+      "order": 128,
+      "name": "20261015203354_f06_finance_receipt_read_privilege.sql",
+      "group": "F06",
+      "commit": "cd23c1c73e0ca847a92d337e91bb1de131e17839",
+      "path": "supabase/migrations/20261015203354_f06_finance_receipt_read_privilege.sql",
+      "sha256": "f804f23c52992d6fd12d4cf9fdc564939b1d27702413fca6d7969cc9b59312f9",
+      "bytes": 4184,
+      "normalization": "immutable Git blob; no newline transformation",
+      "originalOrder": 127
+    },
+    {
+      "name": "20261016121837_integration_raw_branding_acl_boundary.sql",
+      "group": "composition",
+      "commit": null,
+      "path": "supabase/migrations/20261016121837_integration_raw_branding_acl_boundary.sql",
+      "sha256": "3d9036acc9be580316eff392501e15c7b3cb0c9d1be53c1936f761f6d0ab2158",
+      "bytes": 6565,
+      "normalization": "candidate UTF8 canonical LF only; verify final Git blob before application",
+      "originalOrder": null,
+      "order": 129
+    },
+    {
+      "order": 130,
+      "name": "20261016092335_integration_f06_perf_template_selection.sql",
+      "group": "composition",
+      "commit": null,
+      "path": "supabase/migrations/20261016092335_integration_f06_perf_template_selection.sql",
+      "sha256": "f5ee3e3b4841864a779a48bf38fa1ec3fdaa8af787cb4e42b28ee43a7203148d",
+      "bytes": 8706,
+      "normalization": "candidate UTF8 canonical LF only; verify final Git blob before application",
+      "originalOrder": 128
+    },
+    {
+      "order": 131,
+      "name": "20261016193054_perf_template_branding_statement_set.sql",
+      "group": "composition",
+      "commit": null,
+      "path": "supabase/migrations/20261016193054_perf_template_branding_statement_set.sql",
+      "sha256": "8088a1187fd763c264db14cfb3e864bc38d6fe1f8c216571f8d41d0e246b0328",
+      "bytes": 13639,
+      "normalization": "candidate UTF8 canonical LF only; verify final Git blob before application",
+      "originalOrder": null
+    },
+    {
+      "order": 132,
+      "name": "20261017092052_perf_upload_inbox_authority_set.sql",
+      "group": "composition",
+      "commit": null,
+      "path": "supabase/migrations/20261017092052_perf_upload_inbox_authority_set.sql",
+      "sha256": "45bf38215194cded825832dbda0053c225b9cdcd9a0e982e58b8672afa5f981c",
+      "bytes": 4079,
+      "normalization": "candidate UTF8 canonical LF only; verify final Git blob before application",
+      "originalOrder": null
+    }
+  ],
+  "previousDependencyManifest": {
+    "path": "docs/integration/f00-f06/schema/DEPENDENCY_MANIFEST_20261016.json",
+    "sha256": "2d0bc893a4e43fff6ee02fc9fd9f021c3ec169b324c2daf181ceb299f19ab34c",
+    "digest": "84c1d5ad7e6d35ea686a5a1a97cbd322d4ded33a40b7a5b9d8a2cb4aad1d526d",
+    "count": 129
+  },
+  "previousTemplateManifest": {
+    "path": "docs/integration/f00-f06/schema/DEPENDENCY_MANIFEST_V3_20261016.json",
+    "sha256": "d8836382b9a9aa2367ef774e4d86839d7a6607c058ad75acc65d853add13156b",
+    "digest": "45f8bb3e9bb0f2e99c41c7e0d6168745a618297183fce817a816c3adaf20a51b",
+    "count": 130
+  },
+  "previousInboxManifest": {
+    "path": "docs/integration/f00-f06/schema/DEPENDENCY_MANIFEST_V4_20261016.json",
+    "sha256": "c05ee4715b6d30a251ff27be9707594cbb846c43f01727effec286dc4bf9464b",
+    "digest": "da3c9e6461f0b39c6c4668dabc6b6fbfbf2677d7dd26228793b6ba6497b7a63e",
+    "count": 131
+  }
+}

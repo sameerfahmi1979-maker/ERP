@@ -1,5 +1,6 @@
 "use client";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import {readDmsSection} from "@/features/dms/documents/section-read";
+import { QueryReadBoundary } from "@/features/dms/documents/section-read-boundary";
 
 /**
  * DMS 12.1 — DmsDocumentContentSection
@@ -19,18 +20,15 @@ import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
  */
 
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
 import { toast } from "sonner";
 import { FileText, RefreshCw, AlertTriangle, Lock, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DmsBilingualText } from "./dms-bilingual-text";
 import { Badge } from "@/components/ui/badge";
 import { queryKeys } from "@/lib/query/query-keys";
-import {
-  getDocumentContentText,
-  resyncDocumentContentText,
-  type DocumentContentRow,
-} from "@/server/actions/dms/document-content";
+import { resyncDocumentContentText, type DocumentContentRow } from "@/server/actions/dms/document-content";
 import { format, parseISO } from "date-fns";
 
 // ── Source badge label ────────────────────────────────────────────────────────
@@ -70,8 +68,8 @@ export function DmsDocumentContentSection({
 
   const uiRead1 = useQuery<DocumentContentRow | null>({
     queryKey: queryKeys.dms.documentContent(documentId),
-    queryFn: async () => {
-      const r = await getDocumentContentText(documentId);
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getDocumentContentText", [documentId], signal);
       if (!r.success) {
         if (r.error?.includes("Access denied")) {
           return null; // handled as restricted below

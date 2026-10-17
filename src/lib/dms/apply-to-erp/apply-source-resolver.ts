@@ -212,6 +212,8 @@ export function resolvePartyChildRowProposals(opts: {
       sourceType,
       sourceId,
       sourceFieldCode:      field,
+      proposedValue: typeof proposedValue === 'string' ? proposedValue : undefined,
+      reviewedRevision: currentValues.workspace_revision == null ? undefined : String(currentValues.workspace_revision),
       targetTable:          targetKind,
       targetField:          field,
       targetRecordId,

@@ -69,7 +69,7 @@ export function ErpShell({
         <RealtimeProvider>
           <div className="algt-shell">
             <a className="algt-skip-link" href="#erp-main-content">Skip to content</a>
-            <AppHeader displayName={displayName} email={email} appName={appBranding?.appName}
+            <AppHeader notificationIdentity={principalId} displayName={displayName} email={email} appName={appBranding?.appName}
               canSearch={canAccessRoute('/search', permissionCodes, isGlobalAdmin)} onOpenNavigation={() => setMobileNavigation(true)} />
             <div className="algt-shell-body">
             <div className="algt-desktop-nav">

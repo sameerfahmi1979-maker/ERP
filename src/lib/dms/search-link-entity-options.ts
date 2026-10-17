@@ -4,6 +4,7 @@
 
 import { getDmsEntityTypeLabel } from "@/lib/dms/dms-entity-types";
 import { logger } from "@/lib/logger";
+import { literalContains, literalLike } from "@/lib/reads/search";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type DmsLinkEntityOption = {
@@ -25,7 +26,8 @@ const DEFAULT_LIMIT = 50;
 function sanitizeSearch(search?: string): string | null {
   const q = search?.trim();
   if (!q) return null;
-  return q.replace(/[%_]/g, "").slice(0, 80);
+  if(q.length>200)throw new Error("Invalid entity search");
+  return q;
 }
 
 function toOption(
@@ -56,18 +58,18 @@ async function searchEmployees(
     .select("id, employee_code, full_name_en, known_name")
     .is("deleted_at", null)
     .order("full_name_en", { ascending: true })
-    .limit(limit);
+    .order("id", { ascending: true }).limit(limit);
 
   if (search) {
     query = query.or(
-      `employee_code.ilike.%${search}%,full_name_en.ilike.%${search}%,full_name_ar.ilike.%${search}%,known_name.ilike.%${search}%`
+      `employee_code.ilike.${literalContains(search)},full_name_en.ilike.${literalContains(search)},full_name_ar.ilike.${literalContains(search)},known_name.ilike.${literalContains(search)}`
     );
   }
 
   const { data, error } = await query;
   if (error) {
     logSearchError("employees", error);
-    return [];
+    throw new Error("Linked entity search is unavailable");
   }
   return (data ?? []).map((row) =>
     toOption(
@@ -91,18 +93,18 @@ async function searchParties(
     .select("id, party_code, display_name, legal_name_en, trade_name_en")
     .eq("is_active", true)
     .order("display_name", { ascending: true })
-    .limit(limit);
+    .order("id", { ascending: true }).limit(limit);
 
   if (search) {
     query = query.or(
-      `display_name.ilike.%${search}%,party_code.ilike.%${search}%,legal_name_en.ilike.%${search}%,trade_name_en.ilike.%${search}%`
+      `display_name.ilike.${literalContains(search)},party_code.ilike.${literalContains(search)},legal_name_en.ilike.${literalContains(search)},trade_name_en.ilike.${literalContains(search)}`
     );
   }
 
   const { data, error } = await query;
   if (error) {
     logSearchError("parties", error);
-    return [];
+    throw new Error("Linked entity search is unavailable");
   }
   return (data ?? []).map((row) =>
     toOption(
@@ -125,18 +127,18 @@ async function searchCompanies(
     .from("owner_companies")
     .select("id, trade_name, legal_name_en, company_code")
     .order("trade_name", { ascending: true })
-    .limit(limit);
+    .order("id", { ascending: true }).limit(limit);
 
   if (search) {
     query = query.or(
-      `trade_name.ilike.%${search}%,legal_name_en.ilike.%${search}%,company_code.ilike.%${search}%`
+      `trade_name.ilike.${literalContains(search)},legal_name_en.ilike.${literalContains(search)},company_code.ilike.${literalContains(search)}`
     );
   }
 
   const { data, error } = await query;
   if (error) {
     logSearchError("employees", error);
-    return [];
+    throw new Error("Linked entity search is unavailable");
   }
   return (data ?? []).map((row) =>
     toOption(
@@ -156,18 +158,18 @@ async function searchBranches(
     .from("branches")
     .select("id, branch_name_en, branch_code")
     .order("branch_name_en", { ascending: true })
-    .limit(limit);
+    .order("id", { ascending: true }).limit(limit);
 
   if (search) {
     query = query.or(
-      `branch_name_en.ilike.%${search}%,branch_code.ilike.%${search}%`
+      `branch_name_en.ilike.${literalContains(search)},branch_code.ilike.${literalContains(search)}`
     );
   }
 
   const { data, error } = await query;
   if (error) {
     logSearchError("employees", error);
-    return [];
+    throw new Error("Linked entity search is unavailable");
   }
   return (data ?? []).map((row) =>
     toOption(
@@ -188,16 +190,16 @@ async function searchBanks(
     .select("id, bank_name_en, bank_code")
     .eq("is_active", true)
     .order("bank_name_en", { ascending: true })
-    .limit(limit);
+    .order("id", { ascending: true }).limit(limit);
 
   if (search) {
-    query = query.or(`bank_name_en.ilike.%${search}%,bank_code.ilike.%${search}%`);
+    query = query.or(`bank_name_en.ilike.${literalContains(search)},bank_code.ilike.${literalContains(search)}`);
   }
 
   const { data, error } = await query;
   if (error) {
     logSearchError("employees", error);
-    return [];
+    throw new Error("Linked entity search is unavailable");
   }
   return (data ?? []).map((row) =>
     toOption(
@@ -218,16 +220,16 @@ async function searchSites(
     .select("id, site_name, site_code")
     .is("deleted_at", null)
     .order("site_name", { ascending: true })
-    .limit(limit);
+    .order("id", { ascending: true }).limit(limit);
 
   if (search) {
-    query = query.or(`site_name.ilike.%${search}%,site_code.ilike.%${search}%`);
+    query = query.or(`site_name.ilike.${literalContains(search)},site_code.ilike.${literalContains(search)}`);
   }
 
   const { data, error } = await query;
   if (error) {
     logSearchError("employees", error);
-    return [];
+    throw new Error("Linked entity search is unavailable");
   }
   return (data ?? []).map((row) =>
     toOption(
@@ -256,16 +258,16 @@ async function searchPartyLicenses(
     .from("party_licenses")
     .select("id, license_number, license_code, party:parties(display_name, party_code)")
     .order("license_number", { ascending: true })
-    .limit(limit);
+    .order("id", { ascending: true }).limit(limit);
 
   if (search) {
-    query = query.or(`license_number.ilike.%${search}%,license_code.ilike.%${search}%`);
+    query = query.or(`license_number.ilike.${literalContains(search)},license_code.ilike.${literalContains(search)}`);
   }
 
   const { data, error } = await query;
   if (error) {
     logSearchError("employees", error);
-    return [];
+    throw new Error("Linked entity search is unavailable");
   }
   return (data ?? []).map((row) => {
     const party = Array.isArray(row.party) ? row.party[0] : row.party;
@@ -290,16 +292,16 @@ async function searchPartyTaxRegistrations(
     .from("party_tax_registrations")
     .select("id, trn, party:parties(display_name, party_code)")
     .order("trn", { ascending: true })
-    .limit(limit);
+    .order("id", { ascending: true }).limit(limit);
 
   if (search) {
-    query = query.ilike("trn", `%${search}%`);
+    query = query.ilike("trn", literalLike(search));
   }
 
   const { data, error } = await query;
   if (error) {
     logSearchError("employees", error);
-    return [];
+    throw new Error("Linked entity search is unavailable");
   }
   return (data ?? []).map((row) => {
     const party = Array.isArray(row.party) ? row.party[0] : row.party;
@@ -325,16 +327,16 @@ async function searchEmployeeDependents(
     .select("id, dependent_name_en, employee:employees(full_name_en, employee_code)")
     .is("deleted_at", null)
     .order("dependent_name_en", { ascending: true })
-    .limit(limit);
+    .order("id", { ascending: true }).limit(limit);
 
   if (search) {
-    query = query.ilike("dependent_name_en", `%${search}%`);
+    query = query.ilike("dependent_name_en", literalLike(search));
   }
 
   const { data, error } = await query;
   if (error) {
     logSearchError("employees", error);
-    return [];
+    throw new Error("Linked entity search is unavailable");
   }
   return (data ?? []).map((row) => {
     const emp = Array.isArray(row.employee) ? row.employee[0] : row.employee;
@@ -358,16 +360,16 @@ async function searchEmployeeIdentityDocuments(
       "id, document_number, document_type:hr_identity_document_types(name_en), employee:employees(full_name_en, employee_code)"
     )
     .order("document_number", { ascending: true })
-    .limit(limit);
+    .order("id", { ascending: true }).limit(limit);
 
   if (search) {
-    query = query.ilike("document_number", `%${search}%`);
+    query = query.ilike("document_number", literalLike(search));
   }
 
   const { data, error } = await query;
   if (error) {
     logSearchError("employees", error);
-    return [];
+    throw new Error("Linked entity search is unavailable");
   }
   return (data ?? []).map((row) => {
     const emp = Array.isArray(row.employee) ? row.employee[0] : row.employee;
@@ -389,6 +391,7 @@ export async function searchDmsLinkEntityOptionsForType(
   search?: string,
   limit = DEFAULT_LIMIT
 ): Promise<DmsLinkEntityOption[]> {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50) throw new Error("Invalid entity search limit");
   const q = sanitizeSearch(search);
 
   if (EMPLOYEE_ID_ENTITY_TYPES.has(entityType) || entityType.startsWith("employee")) {

@@ -23,6 +23,7 @@ import { backfillAllOrgBrandingProfiles } from "@/server/actions/organizations";
 import { cn } from "@/lib/utils";
 import { GovernanceStatusBadge, SecurityReviewBadge, GovernanceActionsDropdown } from "./template-governance-actions";
 import Link from "next/link";
+import {templateCapabilities,noTemplateCapabilities,type TemplateCapabilities} from '@/lib/report-center/template-capabilities';
 
 const profileTypeColors: Record<string, "default" | "secondary" | "outline"> = {
   company: "default",
@@ -38,6 +39,8 @@ interface Props {
   canUpload: boolean;
   canApprove: boolean;
   canPublish: boolean;
+  canBackfill?: boolean;
+  globalTemplateCapabilities?: TemplateCapabilities;
 }
 
 export function ReportTemplatesPageClient({
@@ -47,6 +50,8 @@ export function ReportTemplatesPageClient({
   canUpload,
   canApprove,
   canPublish,
+  canBackfill = false,
+  globalTemplateCapabilities=noTemplateCapabilities,
 }: Props) {
   const [profiles, setProfiles] = useState(initialProfiles);
   const [templates, setTemplates] = useState(initialTemplates);
@@ -83,11 +88,11 @@ export function ReportTemplatesPageClient({
   };
 
   const handleNewVersionCreated = (newTemplate: Partial<ReportTemplate> & { id: number }) => {
-    setTemplates((prev) => [newTemplate as ReportTemplate, ...prev]);
+    setTemplates((prev) => [newTemplate as ReportTemplate, ...prev.filter(t=>t.id!==newTemplate.id)]);
   };
 
   const handleBackfill = () => {
-    if (!canManage || backfillFlight.current) return;
+    if (!canBackfill || backfillFlight.current) return;
     backfillFlight.current = true;
     startBackfill(async () => {
       try {
@@ -179,7 +184,8 @@ export function ReportTemplatesPageClient({
         const hasLogo = p.has_report_logo ?? !!p.logo_url;
         const hasStamp = p.has_stamp ?? !!p.stamp_url;
         const hasSig = p.has_signature ?? !!p.signature_url;
-        const allMissing = !hasLogo && !hasStamp && !hasSig;
+        const canSeeSigningAssets = p.can_sign === true;
+        const allMissing = canSeeSigningAssets && !hasLogo && !hasStamp && !hasSig;
         return (
           <div className="flex items-center gap-2">
             <span
@@ -197,20 +203,20 @@ export function ReportTemplatesPageClient({
                 "text-[10px] flex items-center gap-0.5",
                 hasStamp ? "text-emerald-600" : "text-muted-foreground/50"
               )}
-              title="Stamp"
+              title={canSeeSigningAssets ? "Stamp" : "Stamp access restricted"}
             >
-              {hasStamp ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-              Stamp
+              {canSeeSigningAssets && (hasStamp ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />)}
+              {canSeeSigningAssets ? "Stamp" : "Stamp restricted"}
             </span>
             <span
               className={cn(
                 "text-[10px] flex items-center gap-0.5",
                 hasSig ? "text-emerald-600" : "text-muted-foreground/50"
               )}
-              title="Signature"
+              title={canSeeSigningAssets ? "Signature" : "Signature access restricted"}
             >
-              {hasSig ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-              Sig
+              {canSeeSigningAssets && (hasSig ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />)}
+              {canSeeSigningAssets ? "Sig" : "Signature restricted"}
             </span>
             {allMissing && (
               <span className="text-[9px] text-amber-600 font-medium">No assets</span>
@@ -251,9 +257,9 @@ export function ReportTemplatesPageClient({
       size: 80,
       cell: ({ row }) =>
         row.original.is_active ? (
-          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+          <span className="inline-flex items-center gap-1"><CheckCircle2 aria-hidden className="h-4 w-4 text-emerald-600" />Active</span>
         ) : (
-          <XCircle className="h-4 w-4 text-muted-foreground" />
+          <span className="inline-flex items-center gap-1"><XCircle aria-hidden className="h-4 w-4 text-muted-foreground" />Inactive</span>
         ),
       meta: { exportValue: (row) => (row.is_active ? "Yes" : "No") },
     },
@@ -271,6 +277,7 @@ export function ReportTemplatesPageClient({
                 size="icon"
                 className="h-7 w-7"
                 aria-label={`Edit branding profile ${row.original.profile_name}`}
+                disabled={row.original.can_manage !== true}
                 onClick={() => { setEditingProfile(row.original); setProfileDrawerOpen(true); }}
               >
                 <Pencil className="h-3.5 w-3.5" />
@@ -386,9 +393,9 @@ export function ReportTemplatesPageClient({
       size: 72,
       cell: ({ row }) =>
         row.original.is_active ? (
-          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+          <span className="inline-flex items-center gap-1"><CheckCircle2 aria-hidden className="h-4 w-4 text-emerald-600" />Active</span>
         ) : (
-          <XCircle className="h-4 w-4 text-muted-foreground" />
+          <span className="inline-flex items-center gap-1"><XCircle aria-hidden className="h-4 w-4 text-muted-foreground" />Inactive</span>
         ),
       meta: { exportValue: (row) => (row.is_active ? "Yes" : "No") },
     },
@@ -398,14 +405,17 @@ export function ReportTemplatesPageClient({
       size: 120,
       enableSorting: false,
       enableHiding: false,
-      cell: ({ row }) => (
+      cell: ({ row }) => {
+        const capability=templateCapabilities(row.original,profiles,globalTemplateCapabilities);
+        return (
         <div className="flex items-center gap-1">
-          {canManage && (
+          {canManage && capability.manage && (
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              disabled={row.original.governance_status === "archived"}
+              disabled={!['draft','rejected'].includes(row.original.governance_status??'draft')}
+              title={!['draft','rejected'].includes(row.original.governance_status??'draft')?'Create a new draft version to change a reviewed template.':undefined}
               aria-label={`Edit template ${row.original.template_name}`}
               onClick={() => { setEditingTemplate(row.original); setTemplateDrawerOpen(true); }}
             >
@@ -414,18 +424,18 @@ export function ReportTemplatesPageClient({
           )}
           {/* OFFICIAL DOCS.1 Package 8: Template Studio link retired — official
               documents use fixed code-based templates (src/lib/official-documents). */}
-          {(canManage || canApprove || canPublish) && (
+          {(capability.manage || capability.approve || capability.publish) && (
             <GovernanceActionsDropdown
               template={row.original}
-              canManage={canManage}
-              canApprove={canApprove}
-              canPublish={canPublish}
+              canManage={canManage&&capability.manage}
+              canApprove={canApprove&&capability.approve}
+              canPublish={canPublish&&capability.publish}
               onTemplateUpdated={handleTemplateGovernanceUpdated}
               onNewVersionCreated={handleNewVersionCreated}
             />
           )}
         </div>
-      ),
+      );},
       meta: { exportable: false },
     },
   ];
@@ -485,7 +495,7 @@ export function ReportTemplatesPageClient({
         </TabsList>
 
         <TabsContent value="profiles">
-          {canManage ? (
+          {canBackfill ? (
             <div className="flex flex-wrap gap-2 items-center justify-between py-2 px-1 mb-1">
               <p className="text-xs text-muted-foreground">
                 Profiles linked to owner companies. Missing profiles can be created via the
@@ -556,6 +566,7 @@ export function ReportTemplatesPageClient({
         onOpenChange={setTemplateDrawerOpen}
         template={editingTemplate}
         profiles={profiles}
+        canSignGlobal={globalTemplateCapabilities.sign}
         onSaved={handleTemplateSaved}
       />
     </div>

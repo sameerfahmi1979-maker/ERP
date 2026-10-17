@@ -1,10 +1,10 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { Bell, CheckCheck, ExternalLink, X } from "lucide-react";
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useState, useTransition, useLayoutEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -14,13 +14,9 @@ import { cn } from "@/lib/utils";
 import {
   dismissNotification,
   markAllMyNotificationsRead,
-  type NotificationRow,
 } from "@/server/actions/notifications/notifications";
 
-// ── Query keys ──────────────────────────────────────────────────────────────
-
-const UNREAD_COUNT_KEY = ["notifications", "unread-count"] as const;
-const MY_NOTIFS_KEY = ["notifications", "my", { status: "unread", limit: 10 }] as const;
+import {useNotificationUnread, useNotificationBellRows} from "@/hooks/use-notification-bell";
 
 // ── Severity badge color mapping ─────────────────────────────────────────────
 
@@ -32,45 +28,18 @@ function getBadgeColor(severity: string): string {
 
 // ── NotificationBell ──────────────────────────────────────────────────────────
 
-export function NotificationBell() {
+export function NotificationBell({identity}: {identity?: string}) {
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const queryClient = useQueryClient();
 
-  // Fetch unread count — drives the badge.
-  // WORKSPACE.PERF.1 UAT fix: this background poll runs on EVERY page every
-  // 60s. It must be a plain GET fetch, NOT a server action — a router.push
-  // performed while a server action is in flight gets reverted when the
-  // action resolves (the "AI Intake Review snaps back to Upload Inbox" bug).
-  const { data: countData } = useQuery({
-    queryKey: UNREAD_COUNT_KEY,
-    queryFn: async () => {
-      const res = await fetch("/api/notifications/bell", { cache: "no-store" });
-      if (!res.ok) return 0;
-      const json = (await res.json()) as { count?: number };
-      return json.count ?? 0;
-    },
-    staleTime: 30_000,
-    refetchInterval: 60_000,
-  });
-
-  const unreadCount = countData ?? 0;
-
-  // Fetch recent unread notifications for the dropdown — only when open.
-  // Same GET-route rule: the dropdown can be open while the user navigates.
-  const { data: notifsData, isLoading: notifsLoading } = useQuery({
-    queryKey: MY_NOTIFS_KEY,
-    queryFn: async () => {
-      const res = await fetch("/api/notifications/bell?list=1", { cache: "no-store" });
-      if (!res.ok) return [] as NotificationRow[];
-      const json = (await res.json()) as { notifications?: NotificationRow[] };
-      return json.notifications ?? [];
-    },
-    enabled: open,
-    staleTime: 10_000,
-  });
-
-  const notifications = notifsData ?? [];
+  const lifetime = useRef(false), flight = useRef(false);
+  useLayoutEffect(() => {lifetime.current = true; return () => {lifetime.current = false;};}, []);
+  const countRead = useNotificationUnread(identity), rowsRead = useNotificationBellRows(identity, open);
+  const failed = countRead.isError || (open && rowsRead.isError) || !identity;
+  const unreadCount = failed || countRead.isFetching ? 0 : countRead.data ?? 0;
+  const notifsLoading = rowsRead.isFetching || rowsRead.isPending;
+  const notifications = failed || notifsLoading ? [] : rowsRead.data ?? [];
 
   // Determine badge color from highest-severity notification
   const badgeColor =
@@ -84,35 +53,31 @@ export function NotificationBell() {
         )
       : "bg-blue-500";
 
+  function perform(action: () => Promise<{success: boolean; error?: string}>, close = false) {
+    if (!lifetime.current || flight.current || failed || countRead.isFetching || rowsRead.isFetching) return;
+    flight.current = true;
+    startTransition(async () => {
+      try {
+        const result = await action();
+        if (!lifetime.current) return;
+        if (result.success) {
+          invalidateMyNotifications(queryClient);
+          if (close) setOpen(false);
+        } else toast.error(result.error ?? "The change could not be confirmed.");
+      } catch {if (lifetime.current) toast.error("The change could not be confirmed. Refresh before retrying.");}
+      finally {flight.current = false;}
+    });
+  }
   function handleDismiss(id: number) {
-    startTransition(async () => {
-      const result = await dismissNotification(id);
-      if (result.success) {
-        invalidateMyNotifications(queryClient);
-      } else {
-        toast.error(result.error ?? "Failed to dismiss");
-      }
-    });
+    if (notifications.some(row => row.id === id)) perform(() => dismissNotification(id));
   }
-
-  function handleMarkAllRead() {
-    startTransition(async () => {
-      const result = await markAllMyNotificationsRead();
-      if (result.success) {
-        toast.success(`${result.data?.count ?? 0} notifications marked as read`);
-        invalidateMyNotifications(queryClient);
-        setOpen(false);
-      } else {
-        toast.error(result.error ?? "Failed");
-      }
-    });
-  }
+  function handleMarkAllRead() {perform(markAllMyNotificationsRead, true);}
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
-          aria-label="Notifications"
+          aria-label={failed ? "Notifications unavailable" : "Notifications"}
           aria-haspopup="true"
           aria-expanded={open}
           className={cn(
@@ -169,7 +134,7 @@ export function NotificationBell() {
 
         {/* Body */}
         <div className="max-h-[400px] overflow-y-auto">
-          {notifsLoading ? (
+          {failed ? <div role="alert" className="p-4 text-sm">Notifications could not be verified. {identity && <button className="underline" onClick={() => {void countRead.refetch(); void rowsRead.refetch();}}>Retry notifications</button>}</div> : notifsLoading ? (
             <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
               Loading...
             </div>

@@ -1,10 +1,10 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
-import { logAudit, createAuditDiff } from "@/server/actions/audit";
+import {saveAdministrationRecord} from '@/server/administration-save';
+import type {WorkspaceSaveContract} from '@/lib/workspace/save-contract';
+import type {WorkspaceSaveResult} from '@/server/workspace-save';
 import {
   createBranchSchema,
   updateBranchSchema,
@@ -16,307 +16,56 @@ export type ActionResult<T = unknown> = {
   success: boolean;
   data?: T;
   error?: string;
+  errorCode?: 'invalid' | 'denied' | 'not_found' | 'unavailable';
 };
 
 export async function getBranchById(id: number): Promise<ActionResult<import("@/types/domain").BranchWithCompany>> {
+  if (!Number.isSafeInteger(id) || id < 1) return {success:false,errorCode:'invalid',error:'Invalid branch reference.'};
   try {
     const ctx = await getAuthContext();
     if (!hasPermission(ctx, "branches.view")) {
-      return { success: false, error: "You do not have permission to view branches" };
+      return { success: false, errorCode:'denied', error: "You do not have permission to view branches" };
     }
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("branches")
       .select("*, owner_company:owner_companies(id, legal_name_en, company_code, status)")
       .eq("id", id)
-      .single();
-    if (error) { logger.error("getBranchById error", error); return { success: false, error: error.message }; }
-    if (!data) return { success: false, error: "Branch not found" };
+      .maybeSingle();
+    if (error) return {success:false,errorCode:'unavailable',error:'The branch could not be loaded. Please retry.'};
+    if (!data) return { success: false, errorCode:'not_found', error: "Branch not found" };
+    if (data.id !== id) return {success:false,errorCode:'unavailable',error:'The branch response could not be verified. Please retry.'};
     return { success: true, data: data as import("@/types/domain").BranchWithCompany };
-  } catch (error) {
-    logger.error("getBranchById exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  } catch {
+    return { success: false, errorCode:'unavailable', error:'The branch could not be loaded. Please retry.' };
   }
 }
 
-/**
- * Create a new branch
- * Server action with RLS and audit logging
- */
-export async function createBranch(
-  input: CreateBranchInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    // 1. Validate input
-    const result = createBranchSchema.safeParse(input);
-    
-    if (!result.success) {
-      const errors = result.error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; ');
-      return { success: false, error: errors };
-    }
-    
-    const validated = result.data;
+/** Atomic record/audit/receipt save; branding remains a separate reported step. */
+export async function createBranch(input: CreateBranchInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult & {warning?:string}> {
+  const parsed=createBranchSchema.safeParse(input);
+  if(!parsed.success)return {success:false,error:parsed.error.issues.map(i=>`${i.path.join('.')}: ${i.message}`).join('; ')};
+  const saved=await saveAdministrationRecord('branches',null,parsed.data,contract);
 
-    // 2. Check permissions
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "branches.manage")) {
-      return { success: false, error: "You do not have permission to create branches" };
-    }
-
-    // 3. Create branch
-    const supabase = await createClient();
-    
-    // Transform empty strings to null for optional fields
-    const dataToInsert = {
-      ...validated,
-      branch_name_ar: validated.branch_name_ar || null,
-      emirate: validated.emirate || null,
-      area: validated.area || null,
-      address_line_1: validated.address_line_1 || null,
-      address_line_2: validated.address_line_2 || null,
-      po_box: validated.po_box || null,
-      phone: validated.phone || null,
-      email: validated.email || null,
-      created_by: ctx.profile?.id ?? null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { data, error } = await supabase
-      .from("branches")
-      .insert(dataToInsert)
-      .select("id, branch_code, owner_company_id")
-      .single();
-
-    if (error) {
-      logger.error("createBranch error", error);
-      return { success: false, error: error.message };
-    }
-
-    // 4. Log audit
-    await logAudit({
-      module_code: "branches",
-      entity_name: "branches",
-      entity_id: data.id,
-      entity_reference: data.branch_code,
-      action: "create",
-      new_values: validated,
-      owner_company_id: data.owner_company_id,
-    });
-
-    // 5. Revalidate
-    revalidatePath("/admin/branches");
-
-    return { success: true, data: { id: data.id } };
-  } catch (error) {
-    logger.error("createBranch exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+  return saved;
 }
 
-/**
- * Update an existing branch
- * Server action with RLS and audit logging
- */
-export async function updateBranch(
-  input: UpdateBranchInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    // 1. Validate input
-    const result = updateBranchSchema.safeParse(input);
-    
-    if (!result.success) {
-      const errors = result.error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`).join('; ');
-      return { success: false, error: errors };
-    }
-    
-    const validated = result.data;
-    const { id, ...updates } = validated;
+export async function updateBranch(input: UpdateBranchInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult & {warning?:string}> {
+  const parsed=updateBranchSchema.safeParse(input);
+  if(!parsed.success)return {success:false,error:parsed.error.issues.map(i=>`${i.path.join('.')}: ${i.message}`).join('; ')};
+  const {id,...data}=parsed.data;
+  const saved=await saveAdministrationRecord('branches',id,data,contract);
 
-    // 2. Check permissions
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "branches.manage")) {
-      return { success: false, error: "You do not have permission to update branches" };
-    }
-
-    // 3. Get old values for audit
-    const supabase = await createClient();
-    const { data: oldData } = await supabase
-      .from("branches")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (!oldData) {
-      return { success: false, error: "Branch not found" };
-    }
-
-    // 4. Update branch
-    // Transform empty strings to null for optional fields
-    const dataToUpdate = {
-      ...updates,
-      branch_name_ar: updates.branch_name_ar === "" ? null : updates.branch_name_ar,
-      emirate: updates.emirate === "" ? null : updates.emirate,
-      area: updates.area === "" ? null : updates.area,
-      address_line_1: updates.address_line_1 === "" ? null : updates.address_line_1,
-      address_line_2: updates.address_line_2 === "" ? null : updates.address_line_2,
-      po_box: updates.po_box === "" ? null : updates.po_box,
-      phone: updates.phone === "" ? null : updates.phone,
-      email: updates.email === "" ? null : updates.email,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase
-      .from("branches")
-      .update(dataToUpdate)
-      .eq("id", id);
-
-    if (error) {
-      logger.error("updateBranch error", error);
-      return { success: false, error: error.message };
-    }
-
-    // 5. Log audit
-    const { old_values, new_values } = createAuditDiff(oldData, { ...oldData, ...dataToUpdate });
-    
-    await logAudit({
-      module_code: "branches",
-      entity_name: "branches",
-      entity_id: id,
-      entity_reference: oldData.branch_code,
-      action: "update",
-      old_values,
-      new_values,
-      owner_company_id: oldData.owner_company_id,
-      branch_id: id,
-    });
-
-    // 6. Revalidate
-    revalidatePath("/admin/branches");
-
-    return { success: true, data: { id } };
-  } catch (error) {
-    logger.error("updateBranch exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+  return saved;
 }
 
-/**
- * Delete a branch
- * Server action with RLS and audit logging
- * Note: Likely to fail if there are related users (CASCADE/RESTRICT)
- */
-export async function deleteBranch(id: number): Promise<ActionResult> {
-  try {
-    // 1. Check permissions
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "branches.manage")) {
-      return { success: false, error: "You do not have permission to delete branches" };
-    }
-
-    // 2. Get branch for audit
-    const supabase = await createClient();
-    const { data: oldData } = await supabase
-      .from("branches")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (!oldData) {
-      return { success: false, error: "Branch not found" };
-    }
-
-    // 3. Delete branch
-    const { error } = await supabase.from("branches").delete().eq("id", id);
-
-    if (error) {
-      logger.error("deleteBranch error", error);
-      return {
-        success: false,
-        error: error.message.includes("violates foreign key constraint")
-          ? "Cannot delete branch with existing users. Deactivate instead."
-          : error.message,
-      };
-    }
-
-    // 4. Log audit
-    await logAudit({
-      module_code: "branches",
-      entity_name: "branches",
-      entity_id: id,
-      entity_reference: oldData.branch_code,
-      action: "delete",
-      old_values: oldData,
-      owner_company_id: oldData.owner_company_id,
-      branch_id: id,
-    });
-
-    // 5. Revalidate
-    revalidatePath("/admin/branches");
-
-    return { success: true };
-  } catch (error) {
-    logger.error("deleteBranch exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+/** Compatibility name: retire without deleting referenced records or history. */
+export async function deleteBranch(id: number, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  return saveAdministrationRecord('branches',id,{status:'inactive'},contract);
 }
 
-/**
- * Change branch status (activate/deactivate/suspend)
- * Server action with RLS and audit logging
- */
-export async function updateBranchStatus(
-  id: number,
-  status: "active" | "inactive" | "suspended",
-): Promise<ActionResult> {
-  try {
-    // 1. Check permissions
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "branches.manage")) {
-      return { success: false, error: "You do not have permission to update branch status" };
-    }
-
-    // 2. Get old status for audit
-    const supabase = await createClient();
-    const { data: oldData } = await supabase
-      .from("branches")
-      .select("status, branch_code, owner_company_id")
-      .eq("id", id)
-      .single();
-
-    if (!oldData) {
-      return { success: false, error: "Branch not found" };
-    }
-
-    // 3. Update status
-    const { error } = await supabase
-      .from("branches")
-      .update({ status, updated_by: ctx.profile?.id ?? null })
-      .eq("id", id);
-
-    if (error) {
-      logger.error("updateBranchStatus error", error);
-      return { success: false, error: error.message };
-    }
-
-    // 4. Log audit
-    await logAudit({
-      module_code: "branches",
-      entity_name: "branches",
-      entity_id: id,
-      entity_reference: oldData.branch_code,
-      action: "status_change",
-      old_values: { status: oldData.status },
-      new_values: { status },
-      owner_company_id: oldData.owner_company_id,
-      branch_id: id,
-    });
-
-    // 5. Revalidate
-    revalidatePath("/admin/branches");
-
-    return { success: true };
-  } catch (error) {
-    logger.error("updateBranchStatus exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+/** Revision-safe, replayable lifecycle change with atomic audit. */
+export async function updateBranchStatus(id: number, status: 'active'|'inactive'|'suspended', contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  if(!['active','inactive','suspended'].includes(status))return {success:false,error:'Choose a valid record status.'};
+  return saveAdministrationRecord('branches',id,{status},contract);
 }

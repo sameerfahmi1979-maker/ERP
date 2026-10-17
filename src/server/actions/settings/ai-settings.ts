@@ -1,7 +1,14 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext } from "@/lib/rbac/check";
+import { hasGlobalPermission } from "@/lib/rbac/scope";
+import { recordProviderHealth } from "@/server/provider-health";
+import { saveProviderMutation, saveProviderFlagMutation } from "@/server/provider-save";
+import type { WorkspaceSaveContract } from "@/lib/workspace/save-contract";
+import type { WorkspaceSaveResult } from "@/server/workspace-save";
+import { workspaceValidationFailure } from "@/lib/workspace/field-errors";
+import { aiProviderCreateSchema as createProviderSchema, aiProviderUpdateSchema as updateProviderSchema } from "@/lib/settings/provider-configuration";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
@@ -14,39 +21,16 @@ import { timingSafeEqual } from "node:crypto";
 
 const REVALIDATE_PATH = "/admin/settings/ai";
 
+function refreshProviderSettings() {
+  try { revalidatePath(REVALIDATE_PATH); }
+  catch { /* Cache invalidation cannot undo an already confirmed result. */ }
+}
+
+function canReadProviders(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
+  return ["settings.ai.view","settings.ai.manage","settings.ai.test","settings.ai.secrets.manage"].some(code=>hasGlobalPermission(ctx,code));
+}
+
 // ── Zod Schemas ──────────────────────────────────────────────────────────────
-
-const providerTypeValues = [
-  "openai", "azure_openai", "azure_document_intelligence",
-  "google_document_ai", "aws_textract", "tesseract",
-  "local_ollama", "local_custom",
-] as const;
-
-const purposeValues = [
-  "general", "chat", "ocr", "classification", "extraction",
-  "embedding", "dms", "assistant",
-] as const;
-
-const createProviderSchema = z.object({
-  config_code: z.string().min(1).max(100).regex(/^[A-Z0-9_]+$/, "Use uppercase letters, numbers and underscores"),
-  provider_type: z.enum(providerTypeValues),
-  provider_name: z.string().min(1).max(200),
-  api_endpoint: z.string().url("Must be a valid URL").nullable().optional(),
-  model_id: z.string().max(200).nullable().optional(),
-  api_version: z.string().max(50).nullable().optional(),
-  purpose: z.enum(purposeValues),
-  is_default: z.boolean().default(false),
-  is_enabled: z.boolean().default(false),
-  is_active: z.boolean().default(true),
-  requires_human_review: z.boolean().default(true),
-  confidence_threshold: z.number().min(0).max(1).default(0.85),
-  config_json: z.record(z.string(), z.unknown()).nullable().optional(),
-  notes: z.string().max(1000).nullable().optional(),
-});
-
-const updateProviderSchema = createProviderSchema.partial().extend({
-  id: z.number().int().positive(),
-});
 
 const saveSecretSchema = z.object({
   id: z.number().int().positive(),
@@ -58,34 +42,12 @@ export type ActionResult<T = undefined> = T extends undefined
   ? { success: boolean; error?: string }
   : { success: boolean; data?: T; error?: string };
 
-/**
- * The DB enforces one default provider per purpose (partial unique index
- * idx_erp_ai_configs_one_default_per_purpose). Before setting a config as
- * default, demote any other default for the same purpose.
- */
-async function demoteOtherDefaultsForPurpose(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  purpose: string,
-  excludeId: number | null,
-  updatedBy: number | string | null
-): Promise<string | null> {
-  let query = supabase
-    .from("erp_ai_provider_configs")
-    .update({ is_default: false, updated_by: updatedBy, updated_at: new Date().toISOString() })
-    .eq("purpose", purpose)
-    .eq("is_default", true)
-    .is("deleted_at", null);
-  if (excludeId != null) query = query.neq("id", excludeId);
-  const { error } = await query;
-  return error ? error.message : null;
-}
-
 // ── Queries ──────────────────────────────────────────────────────────────────
 
 export async function getAiProviderConfigs(): Promise<ActionResult<AiProviderConfig[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "settings.ai.view")) {
+    if (!canReadProviders(ctx)) {
       return { success: false, error: "You do not have permission to view AI settings" };
     }
 
@@ -97,21 +59,21 @@ export async function getAiProviderConfigs(): Promise<ActionResult<AiProviderCon
       .order("purpose", { ascending: true })
       .order("config_code", { ascending: true });
 
-    if (error) return { success: false, error: error.message };
+    if (error) return { success: false, error: "AI provider configurations could not be loaded. Try loading settings again." };
 
     return {
       success: true,
       data: (data ?? []).map(mapToConfig),
     };
-  } catch (err) {
-    return { success: false, error: String(err) };
+  } catch {
+    return { success: false, error: "AI provider configurations could not be loaded. Try loading settings again." };
   }
 }
 
 export async function getAiProviderConfig(id: number): Promise<ActionResult<AiProviderConfig>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "settings.ai.view")) {
+    if (!canReadProviders(ctx)) {
       return { success: false, error: "You do not have permission to view AI settings" };
     }
 
@@ -125,15 +87,15 @@ export async function getAiProviderConfig(id: number): Promise<ActionResult<AiPr
 
     if (error || !data) return { success: false, error: error?.message ?? "Not found" };
     return { success: true, data: mapToConfig(data) };
-  } catch (err) {
-    return { success: false, error: String(err) };
+  } catch {
+    return { success: false, error: "Provider operation could not be confirmed. Review the current settings before retrying." };
   }
 }
 
 export async function getAiFeatureFlags(): Promise<ActionResult<AiFeatureFlag[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "settings.ai.view")) {
+    if (!hasGlobalPermission(ctx, "settings.ai.view") && !hasGlobalPermission(ctx, "settings.ai.manage")) {
       return { success: false, error: "You do not have permission to view AI settings" };
     }
 
@@ -143,12 +105,13 @@ export async function getAiFeatureFlags(): Promise<ActionResult<AiFeatureFlag[]>
       .select("*")
       .order("feature_code", { ascending: true });
 
-    if (error) return { success: false, error: error.message };
+    if (error) return { success: false, error: "AI feature flags could not be loaded. Try loading settings again." };
 
     return {
       success: true,
       data: (data ?? []).map((row) => ({
         id: row.id,
+        workspaceRevision: String(row.workspace_revision),
         featureCode: row.feature_code,
         featureName: row.feature_name,
         description: row.description ?? null,
@@ -157,155 +120,39 @@ export async function getAiFeatureFlags(): Promise<ActionResult<AiFeatureFlag[]>
         minConfidenceThreshold: parseFloat(row.min_confidence_threshold ?? "0.85"),
       })),
     };
-  } catch (err) {
-    return { success: false, error: String(err) };
+  } catch {
+    return { success: false, error: "AI feature flags could not be loaded. Try loading settings again." };
   }
 }
 
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
-export async function createAiProviderConfig(
-  input: z.infer<typeof createProviderSchema>
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "settings.ai.manage")) {
-      return { success: false, error: "You do not have permission to manage AI settings" };
-    }
-
-    const parsed = createProviderSchema.safeParse(input);
-    if (!parsed.success) {
-      return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
-    }
-
-    const supabase = await createClient();
-
-    if (parsed.data.is_default) {
-      const demoteError = await demoteOtherDefaultsForPurpose(
-        supabase, parsed.data.purpose, null, ctx.profile?.id ?? null
-      );
-      if (demoteError) return { success: false, error: demoteError };
-    }
-
-    const { data, error } = await supabase
-      .from("erp_ai_provider_configs")
-      .insert({
-        ...parsed.data,
-        config_json: parsed.data.config_json ?? null,
-        notes: parsed.data.notes ?? null,
-        last_test_status: "not_tested",
-        created_by: ctx.profile?.id ?? null,
-        updated_by: ctx.profile?.id ?? null,
-      })
-      .select("id")
-      .single();
-
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "SETTINGS",
-      entity_name: "erp_ai_provider_configs",
-      entity_id: data.id,
-      entity_reference: parsed.data.config_code,
-      action: "create",
-      new_values: { config_code: parsed.data.config_code, provider_type: parsed.data.provider_type, purpose: parsed.data.purpose },
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true, data: { id: data.id } };
-  } catch (err) {
-    return { success: false, error: String(err) };
-  }
+export async function createAiProviderConfig(input: z.input<typeof createProviderSchema>, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const ctx = await getAuthContext();
+  if (!hasGlobalPermission(ctx, "settings.ai.manage")) return {success:false,error:"Global provider management permission is required."};
+  const parsed = createProviderSchema.safeParse(input);
+  if (!parsed.success) return workspaceValidationFailure(parsed.error.issues);
+  const result = await saveProviderMutation("ai", null, "save", parsed.data, contract);
+  if (result.success) refreshProviderSettings();
+  return result;
 }
-
-export async function updateAiProviderConfig(
-  input: z.infer<typeof updateProviderSchema>
-): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "settings.ai.manage")) {
-      return { success: false, error: "You do not have permission to manage AI settings" };
-    }
-
-    const parsed = updateProviderSchema.safeParse(input);
-    if (!parsed.success) {
-      return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
-    }
-
-    const { id, ...fields } = parsed.data;
-    const supabase = await createClient();
-
-    if (fields.is_default && fields.purpose) {
-      const demoteError = await demoteOtherDefaultsForPurpose(
-        supabase, fields.purpose, id, ctx.profile?.id ?? null
-      );
-      if (demoteError) return { success: false, error: demoteError };
-    }
-
-    const { error } = await supabase
-      .from("erp_ai_provider_configs")
-      .update({ ...fields, updated_by: ctx.profile?.id ?? null, updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .is("deleted_at", null);
-
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "SETTINGS",
-      entity_name: "erp_ai_provider_configs",
-      entity_id: id,
-      entity_reference: `config_id_${id}`,
-      action: "update",
-      new_values: fields,
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (err) {
-    return { success: false, error: String(err) };
-  }
+export async function updateAiProviderConfig(input: z.input<typeof updateProviderSchema>, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const ctx = await getAuthContext();
+  if (!hasGlobalPermission(ctx, "settings.ai.manage")) return {success:false,error:"Global provider management permission is required."};
+  const parsed = updateProviderSchema.safeParse(input);
+  if (!parsed.success) return workspaceValidationFailure(parsed.error.issues);
+  const {id,...fields} = parsed.data;
+  const result = await saveProviderMutation("ai", id, "save", fields, contract);
+  if (result.success) refreshProviderSettings();
+  return result;
 }
-
-export async function deleteAiProviderConfig(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "settings.ai.manage")) {
-      return { success: false, error: "You do not have permission to manage AI settings" };
-    }
-
-    const supabase = await createClient();
-    const { data: existing } = await supabase
-      .from("erp_ai_provider_configs")
-      .select("config_code, is_default")
-      .eq("id", id)
-      .single();
-
-    if (existing?.is_default) {
-      return { success: false, error: "Cannot delete a default provider config. Set another provider as default first." };
-    }
-
-    const { error } = await supabase
-      .from("erp_ai_provider_configs")
-      .update({ deleted_at: new Date().toISOString(), updated_by: ctx.profile?.id ?? null })
-      .eq("id", id);
-
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "SETTINGS",
-      entity_name: "erp_ai_provider_configs",
-      entity_id: id,
-      entity_reference: existing?.config_code ?? String(id),
-      action: "delete",
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (err) {
-    return { success: false, error: String(err) };
-  }
+export async function deleteAiProviderConfig(id: number, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const ctx = await getAuthContext();
+  if (!hasGlobalPermission(ctx, "settings.ai.manage")) return {success:false,error:"Global provider management permission is required."};
+  const result = await saveProviderMutation("ai", id, "archive", {}, contract);
+  if (result.success) refreshProviderSettings();
+  return result;
 }
-
 /**
  * Saves the API key secret reference for a provider.
  * The actual key value is NEVER stored in the DB.
@@ -316,7 +163,7 @@ export async function saveAiProviderSecretReference(
 ): Promise<ActionResult> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "settings.ai.secrets.manage")) {
+    if (!hasGlobalPermission(ctx, "settings.ai.secrets.manage")) {
       return { success: false, error: "You do not have permission to manage AI secrets" };
     }
     const parsed = saveSecretSchema.omit({ secret_value: true }).safeParse(input);
@@ -340,10 +187,10 @@ export async function saveAiProviderSecretReference(
     }).eq("id", id).eq("provider_type", provider.provider_type).eq("updated_at", provider.updated_at)
       .eq("is_active", true).is("deleted_at", null).select("id");
     if (error || data?.length !== 1) return { success: false, error: "The provider changed while saving. Refresh it before trying again." };
-    await logAudit({ module_code: "SETTINGS", entity_name: "erp_ai_provider_configs", entity_id: id,
+    try { await logAudit({ module_code: "SETTINGS", entity_name: "erp_ai_provider_configs", entity_id: id,
       entity_reference: `secret_reference_updated_for_${id}`, action: "update",
-      new_values: { secret_ref, existing_deployment_key: true } });
-    revalidatePath(REVALIDATE_PATH);
+      new_values: { secret_ref, existing_deployment_key: true } }); } catch { /* Confirmed reference updates are not undone by audit transport failure. */ }
+    refreshProviderSettings();
     return { success: true };
   } catch {
     return { success: false, error: "The provider key reference could not be saved." };
@@ -355,7 +202,7 @@ export async function saveAiProviderSecret(
 ): Promise<ActionResult> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "settings.ai.secrets.manage")) {
+    if (!hasGlobalPermission(ctx, "settings.ai.secrets.manage")) {
       return { success: false, error: "You do not have permission to manage AI secrets" };
     }
 
@@ -412,17 +259,17 @@ export async function saveAiProviderSecret(
       new_values: { secret_ref, secret_updated: true },
     });
 
-    revalidatePath(REVALIDATE_PATH);
+    refreshProviderSettings();
     return { success: true };
-  } catch (err) {
-    return { success: false, error: String(err) };
+  } catch {
+    return { success: false, error: "Provider operation could not be confirmed. Review the current settings before retrying." };
   }
 }
 
 export async function testAiProviderConnection(id: number): Promise<ActionResult<{ message: string; ok: boolean; durationMs?: number }>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "settings.ai.test")) {
+    if (!hasGlobalPermission(ctx, "settings.ai.test")) {
       return { success: false, error: "You do not have permission to test AI connections" };
     }
 
@@ -445,89 +292,31 @@ export async function testAiProviderConnection(id: number): Promise<ActionResult
 
     const testResult = await provider.testConnection();
 
-    // Update test status in DB
-    await supabase
-      .from("erp_ai_provider_configs")
-      .update({
-        last_test_status: testResult.ok ? "success" : "failed",
-        last_test_at: new Date().toISOString(),
-        last_test_message: testResult.message,
-        updated_by: ctx.profile?.id ?? null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id);
-
-    // Log usage
-    await supabase
-      .from("erp_ai_usage_logs")
-      .insert({
-        provider_config_id: id,
-        feature_area: "settings_test",
-        operation_type: "test_connection",
-        model_id: row.model_id ?? null,
-        status: testResult.ok ? "success" : "failed",
-        duration_ms: testResult.durationMs ?? null,
-        error_message: testResult.ok ? null : testResult.message,
-        created_by: ctx.profile?.id ?? null,
-      });
-
-    await logAudit({
-      module_code: "SETTINGS",
-      entity_name: "erp_ai_provider_configs",
-      entity_id: id,
-      entity_reference: row.config_code,
-      action: "update",
-      new_values: { test_result: testResult.ok ? "success" : "failed", message: testResult.message },
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return {
-      success: true,
-      data: {
-        ok: testResult.ok,
-        message: testResult.message,
-        durationMs: testResult.durationMs,
-      },
-    };
-  } catch (err) {
-    return { success: false, error: String(err) };
+    if (!ctx.profile) return {success:false,error:"Not authenticated"};
+    const recorded = await recordProviderHealth("ai",id,row.workspace_revision,ctx.profile.id,testResult.ok,testResult.durationMs);
+    if (!recorded.success) return recorded;
+    refreshProviderSettings();
+    return {success:true,data:{ok:recorded.data.ok,message:recorded.data.message,durationMs:recorded.data.durationMs ?? undefined}};
+  } catch {
+    return { success: false, error: "Provider operation could not be confirmed. Review the current settings before retrying." };
   }
 }
 
 export async function updateAiFeatureFlag(
   featureCode: string,
-  updates: Partial<{ is_enabled: boolean; requires_human_review: boolean; min_confidence_threshold: number }>
-): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "settings.ai.manage")) {
-      return { success: false, error: "You do not have permission to manage AI settings" };
-    }
-
-    const supabase = await createClient();
-    const { error } = await supabase
-      .from("erp_ai_feature_flags")
-      .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq("feature_code", featureCode);
-
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "SETTINGS",
-      entity_name: "erp_ai_feature_flags",
-      entity_id: 0,
-      entity_reference: featureCode,
-      action: "update",
-      new_values: updates,
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (err) {
-    return { success: false, error: String(err) };
-  }
+  updates: Partial<{ is_enabled: boolean; requires_human_review: boolean; min_confidence_threshold: number }>,
+  contract?: WorkspaceSaveContract
+): Promise<WorkspaceSaveResult> {
+  const ctx = await getAuthContext();
+  if (!hasGlobalPermission(ctx, "settings.ai.manage"))
+    return {success:false,error:"Global feature administration permission is required."};
+  const schema = z.object({is_enabled:z.boolean().optional(),requires_human_review:z.boolean().optional(),min_confidence_threshold:z.number().min(0).max(1).optional()}).strict();
+  const parsed = schema.safeParse(updates);
+  if (!parsed.success) return workspaceValidationFailure(parsed.error.issues);
+  const result = await saveProviderFlagMutation("ai",featureCode,parsed.data,contract);
+  if (result.success) refreshProviderSettings();
+  return result;
 }
-
 export async function getAiUsageLogs(limit = 50): Promise<ActionResult<{
   id: number;
   featureArea: string;
@@ -542,7 +331,7 @@ export async function getAiUsageLogs(limit = 50): Promise<ActionResult<{
 }[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "settings.ai.usage.view")) {
+    if (!hasGlobalPermission(ctx, "settings.ai.usage.view")) {
       return { success: false, error: "You do not have permission to view AI usage logs" };
     }
 
@@ -553,7 +342,7 @@ export async function getAiUsageLogs(limit = 50): Promise<ActionResult<{
       .order("created_at", { ascending: false })
       .limit(limit);
 
-    if (error) return { success: false, error: error.message };
+    if (error) return { success: false, error: "AI usage logs could not be loaded. Try loading settings again." };
 
     return {
       success: true,
@@ -564,14 +353,14 @@ export async function getAiUsageLogs(limit = 50): Promise<ActionResult<{
         modelId: row.model_id ?? null,
         status: row.status,
         durationMs: row.duration_ms ?? null,
-        estimatedCost: row.estimated_cost ? parseFloat(String(row.estimated_cost)) : null,
+        estimatedCost: row.estimated_cost == null ? null : Number(row.estimated_cost),
         errorMessage: row.error_message ?? null,
         createdAt: row.created_at,
         providerName: (row.erp_ai_provider_configs as { provider_name?: string } | null)?.provider_name ?? null,
       })),
     };
-  } catch (err) {
-    return { success: false, error: String(err) };
+  } catch {
+    return { success: false, error: "AI usage logs could not be loaded. Try loading settings again." };
   }
 }
 
@@ -588,6 +377,7 @@ function maskSecret(value: string): string {
 function mapToConfig(row: Record<string, any>): AiProviderConfig {
   return {
     id: row.id,
+    workspaceRevision: String(row.workspace_revision),
     configCode: row.config_code,
     providerType: row.provider_type,
     providerName: row.provider_name,

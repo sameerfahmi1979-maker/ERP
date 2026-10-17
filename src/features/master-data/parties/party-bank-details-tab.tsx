@@ -12,9 +12,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Edit, Trash2, ShieldCheck, Lock, Landmark, ExternalLink } from "lucide-react";
+import { Plus, Edit, ShieldCheck, Lock, Landmark, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import {PartyChildLifecycleControl,usePartyChildLifecycle} from './party-child-lifecycle-control';
+import {PartyChildSaveDialog,type SavePartyChild} from './party-child-save-dialog';
+import {PartyBankVerificationDialog} from './party-bank-verification-dialog';
+import {hasGlobalPermission} from '@/lib/rbac/scope';
+import type {CreatePartyBankDetailInput} from './party-schemas';
+
 import { RequiredLabel } from "@/components/erp/required-label";
 import { checkDuplicateIban } from "@/server/actions/master-data/parties";
 import { CurrencySelect, BankSelect } from "@/components/erp/finance-basics";
@@ -27,8 +32,6 @@ import { useWorkspace } from "@/hooks/use-workspace";
 import {
   createPartyBankDetail,
   updatePartyBankDetail,
-  deletePartyBankDetail,
-  verifyPartyBankDetail,
 } from "@/server/actions/master-data/party-bank-details";
 import type { PartyBankDetail } from "./party-types";
 import type { AuthContext } from "@/lib/rbac/check";
@@ -58,10 +61,10 @@ const emptyForm = {
 export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpen }: PartyBankDetailsTabProps) {
   const queryClient = useQueryClient();
   const { openTab } = useWorkspace();
-  const canView = authContext.permissionCodes?.includes("master_data.parties.view_bank_details") ||
-    authContext.permissionCodes?.includes("master_data.parties.manage_bank_details");
-  const canManage = authContext.permissionCodes?.includes("master_data.parties.manage_bank_details");
-  const canVerify = authContext.permissionCodes?.includes("master_data.parties.verify_bank_details");
+  const canView = hasGlobalPermission(authContext,"master_data.parties.view_bank_details") ||
+    hasGlobalPermission(authContext,"master_data.parties.manage_bank_details");
+  const canManage = hasGlobalPermission(authContext,"master_data.parties.manage_bank_details");
+  const canVerify = hasGlobalPermission(authContext,"master_data.parties.verify_bank_details");
 
   // Finance Banks lookup for the bank selector
   const { options: bankOptions } = useBanksQuery();
@@ -69,9 +72,13 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
   const { items: bankDetails, isLoading, error: loadError, refetch } = usePartyBankDetailsQuery(canView ? partyId : null);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const lifecycle=usePartyChildLifecycle({entity:'party_bank_details',onSaved:()=>{invalidatePartyBankDetails(queryClient,partyId);},onOpenChange:onChildOpen});
+  const lifecycleOpen=lifecycle.isOpen;
+  const [verifying,setVerifying]=useState<PartyBankDetail|null>(null);
   const setDialogOpen = (open: boolean) => { setIsDialogOpen(open); onChildOpen?.(open); };
   const [editing, setEditing] = useState<PartyBankDetail | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [form, setForm] = useState({ ...emptyForm });
 
   // ERP REALTIME.1B — scoped live sync for this party's bank details.
@@ -81,7 +88,7 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
     table: "party_bank_details",
     event: "*",
     filter: `party_id=eq.${partyId}`,
-    enabled: canView && !isDialogOpen,
+    enabled: canView && !isDialogOpen && !verifying && !lifecycleOpen,
     debounceMs: 400,
     onEvent: () => {
       invalidatePartyBankDetails(queryClient, partyId);
@@ -111,6 +118,7 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
   };
 
   const openAdd = () => {
+    if(lifecycleOpen)return;
     setEditing(null);
     setForm({ ...emptyForm });
     setIbanWarning(null);
@@ -118,6 +126,7 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
   };
 
   const openEdit = (item: PartyBankDetail) => {
+    if(lifecycleOpen)return;
     setEditing(item);
     setIbanWarning(null);
     setForm({
@@ -137,30 +146,8 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
     setDialogOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!canManage) return;
-    if (!confirm("Delete this bank detail?")) return;
-    const result = await deletePartyBankDetail(id);
-    if (result.success) {
-      toast.success("Bank detail deleted");
-      invalidatePartyBankDetails(queryClient, partyId);
-    } else {
-      toast.error(result.error ?? "Failed to delete");
-    }
-  };
 
-  const handleVerify = async (id: number) => {
-    if (!canVerify) return;
-    const result = await verifyPartyBankDetail(id);
-    if (result.success) {
-      toast.success("Bank detail verified");
-      invalidatePartyBankDetails(queryClient, partyId);
-    } else {
-      toast.error(result.error ?? "Failed to verify");
-    }
-  };
-
-  const handleSubmit = async () => {
+  const handleSubmit = async (save:SavePartyChild<CreatePartyBankDetailInput>) => {
     if (!form.account_holder_name) {
       toast.error("Account holder name is required");
       return;
@@ -184,12 +171,10 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
         remarks: form.remarks || null,
       };
 
-      const result = editing
-        ? await updatePartyBankDetail({ id: editing.id, ...payload })
-        : await createPartyBankDetail(payload);
+      const result = await save(payload);
 
       if (result.success) {
-        toast.success(`Bank detail ${editing ? "updated" : "added"}`);
+        toast.success(result.data?.changed === false ? "No changes to save" : `Bank detail ${editing ? "updated" : "added"}`);
         setDialogOpen(false);
         invalidatePartyBankDetails(queryClient, partyId);
       } else {
@@ -201,6 +186,7 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
   };
 
   const columns: ColumnDef<PartyBankDetail>[] = [
+    {id:'archive_state',header:'Archive status',accessorFn:row=>row.archived_at?'Archived':'Current'},
     {id:"bank_detail_code",header:"Bank details",size:360,accessorFn:row=>[row.bank_detail_code,row.account_holder_name,row.bank_name,row.bank_name_text,row.iban,row.currency_code].filter(Boolean).join(" "),enableHiding:false,cell:({row})=>{const bank=row.original;return (<div className="space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-mono text-xs text-muted-foreground">{bank.bank_detail_code}</span>
@@ -217,19 +203,17 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
               </div>);}},
     {accessorKey:"is_verified",header:"Verified",},
     {id:"actions",header:"Actions",size:180,enableSorting:false,enableHiding:false,cell:({row})=>{const bank=row.original;return (<><div className="flex gap-1 shrink-0">
-                {canVerify && !bank.is_verified && (
-                  <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-green-600" title="Verify" aria-label="Verify bank details" onClick={() => handleVerify(bank.id)}>
+                {!disabled && canVerify && !bank.archived_at && !bank.is_verified && (
+                  <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-green-600" title="Verify" aria-label="Verify bank details" onClick={() => {setVerifying(bank);onChildOpen?.(true);}}>
                     <ShieldCheck className="h-3.5 w-3.5" />
                   </Button>
                 )}
                 {!disabled && canManage && (
                   <>
-                    <Button aria-label="Edit record" type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(bank)}>
+                    <Button aria-label="Edit record" type="button" variant="ghost" size="icon" className="h-7 w-7" disabled={Boolean(bank.archived_at)} onClick={() => openEdit(bank)}>
                       <Edit className="h-3.5 w-3.5" />
                     </Button>
-                    <Button aria-label="Delete record" type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(bank.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    <PartyChildLifecycleControl record={bank} onOpen={()=>lifecycle.open(bank,bank.bank_detail_code)}/>
                   </>
                 )}
               </div></>);}},
@@ -254,7 +238,15 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
       {loadError ? <div role="alert" className="rounded border p-4"><p>Bank details records could not be loaded.</p><Button type="button" variant="outline" onClick={refetch}>Try again</Button></div> :
         <ERPDataTable tableId={`party.bank-details:${partyId}`} resultsLabel="Bank details" data={bankDetails ?? []} columns={columns} enableRowSelection={false} />}
 
-      <ERPChildDialogForm
+      {verifying&&<PartyBankVerificationDialog key={`${verifying.id}:${verifying.workspace_revision}`} record={verifying}
+        onClose={()=>{setVerifying(null);onChildOpen?.(false);}}
+        onSaved={()=>invalidatePartyBankDetails(queryClient,partyId)}/>}
+      {isDialogOpen && <PartyChildSaveDialog
+        key={editing?.id ?? 'new'}
+        formId={`party-bank-details-tab:${partyId}`}
+        record={editing}
+        createAction={createPartyBankDetail}
+        updateAction={updatePartyBankDetail}
         open={isDialogOpen}
         onOpenChange={setDialogOpen}
         title={editing ? "Edit Bank Detail" : "Add Bank Detail"}
@@ -379,7 +371,8 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
             <Textarea aria-label="Remarks" value={form.remarks} onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} rows={2} />
           </div>
         </div>
-      </ERPChildDialogForm>
+      </PartyChildSaveDialog>}
+      {lifecycle.dialog}
     </div>
   );
 }

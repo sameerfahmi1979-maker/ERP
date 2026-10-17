@@ -1,4 +1,5 @@
 "use server";
+import {readAllPages} from "@/server/reads/all-pages";
 
 /**
  * DMS 12.4 — AI Link Suggestions Server Actions
@@ -431,16 +432,15 @@ export async function getDmsLinkSuggestions(
 
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const data = await readAllPages(async(from,to)=>await supabase
       .from("dms_ai_link_suggestions")
-      .select("id, document_id, entity_type, entity_id, entity_name, confidence, reason, status, created_at, reviewed_at")
+      .select("id, document_id, entity_type, entity_id, entity_name, confidence, reason, status, created_at, reviewed_at",{count:"exact"})
       .eq("document_id", documentId)
       .in("status", ["pending", "accepted", "rejected"])
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
-      .limit(20);
+      .order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
 
-    if (error) return { success: false, error: "Failed to load link suggestions." };
 
     const rows: DmsLinkSuggestionRow[] = (data ?? []).map((r) => ({
       id: (r as { id: number }).id,

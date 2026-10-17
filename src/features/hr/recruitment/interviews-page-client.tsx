@@ -1,108 +1,24 @@
 "use client";
-import { RecordCollection } from "@/components/erp/table/record-collection";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
-
-import { ERPCombobox } from "@/components/erp/combobox";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { queryKeys } from "@/lib/query/query-keys";
-import type { AuthContext } from "@/lib/rbac/check";
-import { listGlobalInterviews } from "@/server/actions/hr/recruitment";
-import { useQuery } from "@tanstack/react-query";
-import { Calendar } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
-
-type Props = { authContext: AuthContext };
-
-const STATUS_OPTIONS = [
-  { value: "scheduled", label: "Scheduled" },
-  { value: "completed", label: "Completed" },
-  { value: "cancelled", label: "Cancelled" },
-  { value: "no_show", label: "No Show" },
-  { value: "rescheduled", label: "Rescheduled" },
-];
-
-const STATUS_COLORS: Record<string, string> = {
-  scheduled: "bg-blue-100 text-blue-700",
-  completed: "bg-green-100 text-green-700",
-  cancelled: "bg-red-100 text-red-700",
-  no_show: "bg-amber-100 text-amber-700",
-  rescheduled: "bg-purple-100 text-purple-700",
-};
-
-const RESULT_COLORS: Record<string, string> = {
-  pass: "bg-green-100 text-green-700",
-  hold: "bg-amber-100 text-amber-700",
-  fail: "bg-red-100 text-red-700",
-  pending: "bg-slate-100 text-slate-700",
-};
-
-export function InterviewsPageClient({ authContext }: Props) {
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
-
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.recruitment.globalInterviews({ status: statusFilter }),
-    queryFn: () => listGlobalInterviews({ status: statusFilter ?? undefined, pageSize: 100 }),
-    staleTime: 30_000,
-  });
-  const { data: res, isLoading } = uiRead1;
-
-  const rows = Array.isArray(res?.data?.rows) ? res.data.rows : [];
-
-  return (
-    <QueryReadBoundary queries={[uiRead1]}><div className="p-6 max-w-5xl mx-auto space-y-4">
-      <div className="flex flex-wrap gap-2 items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900">Interviews</h1>
-          <p className="text-sm text-muted-foreground">{res?.data?.totalCount ?? 0} total</p>
-        </div>
-      </div>
-
-      <div className="flex gap-2 flex-wrap">
-        <ERPCombobox ariaLabel="Filter by status"
-          value={statusFilter}
-          onValueChange={(v) => setStatusFilter(v ? String(v) : null)}
-          options={[{ value: "", label: "All Statuses" }, ...STATUS_OPTIONS]}
-          placeholder="Filter by status"
-        />
-      </div>
-
-      {isLoading ? (
-        <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-16 rounded" />)}</div>
-      ) : rows.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground text-sm">
-          <Calendar className="h-10 w-10 mx-auto mb-2 opacity-40" />
-          No interviews found.
-        </div>
-      ) : (
-        <div className="border rounded-lg divide-y">
-          <RecordCollection id="hr.interviews-page-client.InterviewsPageClient.rows" rows={rows} fields={[{"id":"candidate_full_name_en","path":"candidate.full_name_en","label":"Full Name En"},{"id":"interview_round","path":"interview_round","label":"Interview Round"},{"id":"interview_status","path":"interview_status","label":"Interview Status"}]} renderRecord={(row) => (
-            <div key={row.id} className="flex items-center gap-3 p-4">
-              <Calendar className="h-4 w-4 text-slate-400 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-medium">{row.candidate?.full_name_en ?? "Unknown"}</span>
-                  {row.candidate?.candidate_code && <span className="text-xs font-mono text-muted-foreground">{row.candidate.candidate_code}</span>}
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[row.interview_status]}`}>{row.interview_status}</span>
-                  {row.result && <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${RESULT_COLORS[row.result]}`}>{row.result}</span>}
-                  <span className="text-xs text-muted-foreground capitalize">{row.interview_round.replace(/_/g, " ")} Round</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {row.interview_datetime ? new Date(row.interview_datetime).toLocaleString() : "No date set"}
-                  {row.interviewer && ` · Interviewer: ${row.interviewer.full_name_en ?? `User #${row.interviewer.id}`}`}
-                  {row.interview_location && ` · ${row.interview_location}`}
-                </p>
-              </div>
-              {row.candidate && (
-                <Link href={`/admin/hr/recruitment/candidates/record/${row.candidate_id}`}>
-                  <Button size="sm" variant="outline">View Candidate</Button>
-                </Link>
-              )}
-            </div>
-          )} />
-        </div>
-      )}
-    </div></QueryReadBoundary>
-  );
+import {useRecruitmentInquiry, useRecruitmentInquiryIdentity, type RecruitmentInquiryProps} from "@/hooks/use-hr-recruitment-inquiry";
+import {RecruitmentInquiryTable} from "./recruitment-inquiry-table";
+export function InterviewsPageClient(props: RecruitmentInquiryProps) {
+  const identity = useRecruitmentInquiryIdentity("interviews", props.authContext);
+  return <InterviewsSession key={identity} {...props} identity={identity} />;
+}
+function InterviewsSession(props: RecruitmentInquiryProps & {identity: string}) {
+  const read = useRecruitmentInquiry("interviews", props, props.identity);
+  return <div className="p-6 max-w-7xl mx-auto space-y-4"><h1 className="text-xl font-semibold">Interviews</h1>
+    <RecruitmentInquiryTable kind="interviews" identity={props.identity} read={read} columns={[
+      {id: "candidate_name", header: "Candidate", accessorFn: row => row.candidate?.full_name_en ?? "Restricted or unavailable", enableHiding: false, size: 240},
+      {id: "candidate_code", header: "Candidate code", accessorFn: row => row.candidate?.candidate_code ?? "—", size: 150},
+      {id: "interview_status", header: "Status", accessorKey: "interview_status", size: 150},
+      {id: "interview_round", header: "Round", accessorKey: "interview_round", size: 150},
+      {id: "result", header: "Result", accessorFn: row => row.result ?? "—", size: 120},
+      {id: "interview_datetime", header: "Interview date", accessorKey: "interview_datetime", size: 200, cell: ({row}) => row.original.interview_datetime ? new Date(row.original.interview_datetime).toLocaleString() : "No date set"},
+      {id: "interviewer", header: "Interviewer", accessorFn: row => row.interviewer?.full_name_en ?? "Restricted or unavailable", enableSorting: false, size: 200},
+      {id: "interview_location", header: "Location", accessorFn: row => row.interview_location ?? "—", size: 200},
+      {id: "actions", header: "Actions", enableSorting: false, cell: ({row}) => row.original.candidate && <Link prefetch={false} className="text-primary underline" href={`/admin/hr/recruitment/candidates/record/${row.original.candidate_id}`}>View Candidate</Link>},
+    ]} />
+  </div>;
 }

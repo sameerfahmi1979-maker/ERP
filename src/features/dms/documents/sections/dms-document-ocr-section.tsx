@@ -1,7 +1,8 @@
 "use client";
+import {readDmsSection} from "@/features/dms/documents/section-read";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { useGuardedTransition } from "@/hooks/use-guarded-transition";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import { QueryReadBoundary } from "@/features/dms/documents/section-read-boundary";
 
 /**
  * DMS.9 — DmsDocumentOcrSection
@@ -18,15 +19,9 @@ import { describeOcrStatusReadError, OcrStatusReadError } from "@/lib/dms/ocr/st
 import { DmsOcrStatusBadge } from "@/features/dms/ocr/dms-ocr-status-badge";
 import { invalidateDmsDocumentFiles, invalidateDmsOcr } from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
-import {
-  getDmsFileOcrText,
-  getDmsOcrJobs,
-  getDmsOcrStatus,
-  retryDmsOcrJob,
-  triggerDmsOcrForDocument,
-  type DmsOcrFileStatus,
-} from "@/server/actions/dms/ocr";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { retryDmsOcrJob, triggerDmsOcrForDocument, type DmsOcrFileStatus } from "@/server/actions/dms/ocr";
+import { useQueryClient } from "@tanstack/react-query";
+import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
 import { format, parseISO } from "date-fns";
 import { AlertCircle, Check, Copy, Info, RefreshCw, ScanText } from "lucide-react";
 import { useCallback, useState } from "react";
@@ -52,8 +47,8 @@ export function DmsDocumentOcrSection({
   // OCR status query
   const uiRead1 = useQuery({
     queryKey: queryKeys.dms.documentOcrStatus(documentId),
-    queryFn: async () => {
-      const r = await getDmsOcrStatus(documentId);
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getDmsOcrStatus", [documentId], signal);
       if (!r.success) throw new OcrStatusReadError(r.errorCode, r.reference);
       return r.data!;
     },
@@ -64,8 +59,8 @@ export function DmsDocumentOcrSection({
   // OCR jobs query (last 10)
   const uiRead2 = useQuery({
     queryKey: queryKeys.dms.ocrJobs({ documentId, limit: 10 }),
-    queryFn: async () => {
-      const r = await getDmsOcrJobs({ documentId, limit: 10, offset: 0 });
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getDmsOcrJobs", [{ documentId, limit: 10, offset: 0 }], signal);
       if (!r.success) throw new Error(r.error);
       return r.data ?? [];
     },
@@ -76,9 +71,9 @@ export function DmsDocumentOcrSection({
   // OCR text query (lazy — only when user clicks "View Text")
   const uiRead3 = useQuery({
     queryKey: queryKeys.dms.fileOcrText(selectedFileId ?? 0),
-    queryFn: async () => {
+    queryFn: async ({signal}) => {
       if (!selectedFileId) return null;
-      const r = await getDmsFileOcrText(selectedFileId);
+      const r = await readDmsSection("getDmsFileOcrText", [selectedFileId], signal);
       if (!r.success) throw new Error(r.error);
       return r.data ?? null;
     },

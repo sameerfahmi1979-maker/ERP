@@ -1,5 +1,4 @@
 "use client";
-import { useReasonDialog } from "@/hooks/use-reason-dialog";
 import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
@@ -20,7 +19,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { calculateLeaveDays, formatHours, getCurrentLeaveYear } from "@/lib/hr/time/date-utils";
@@ -33,8 +31,13 @@ import {
   getPunchTypeLabel,
 } from "@/lib/hr/time/status";
 import { queryKeys } from "@/lib/query/query-keys";
+import { invalidateHrEmployeeTime } from "@/lib/query/invalidation";
 import type { AuthContext } from "@/lib/rbac/check";
-import { getWorkCalendarComboboxOptions } from "@/server/actions/common-master-data/work-calendars";
+import {useHrTimeRecords} from "@/hooks/use-hr-time-records";
+import {timeRecordsReadIdentity, type TimeRecordDetailMap} from "@/lib/reads/hr-time-records-schema";
+import {TimeReadPause, useTimeReadAdmission, useTimeDialogLifetime, useTimeChildOpen} from "../time/time-read-admission";
+import {getWorkCalendarComboboxOptions,listActiveLeaveTypesForForm,listWorkShiftsForTimeTab} from "@/lib/reads/hr-time-choice-client";
+import {useRecordReadActive} from "@/hooks/use-record-read-active";
 import {
   approveAttendanceDailySummary,
   approveLeaveRequest,
@@ -49,23 +52,11 @@ import {
   createOrUpdateAttendanceDailySummary,
   createOrUpdateLeaveBalance,
   createOvertimeRecord,
-  listActiveLeaveTypesForForm,
-  listAttendanceCorrections,
-  listEmployeeAttendanceDailySummary,
-  listEmployeeAttendancePunches,
-  listEmployeeLeaveBalances,
-  listEmployeeLeaveRequests,
-  listEmployeeOvertimeRecords,
-  listEmployeeShiftAssignments,
-  listWorkShiftsForTimeTab,
   queryAttendanceDailySummary,
   rejectLeaveRequest,
   rejectOvertimeRecord,
   updateEmployeeShiftAssignment,
   updateOvertimeRecord,
-  type AttendanceDailySummaryRow,
-  type OvertimeRecordRow,
-  type ShiftAssignmentRow
 } from "@/server/actions/hr/time";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
@@ -84,7 +75,7 @@ import {
   Timer,
   XCircle,
 } from "lucide-react";
-import { useCallback, useState} from "react";
+import { useCallback, useLayoutEffect, useState} from "react";
 import { toast } from "sonner";
 
 // ── Props ──────────────────────────────────────────────────────────────────────
@@ -117,15 +108,35 @@ function fmtDatetime(d: string | null | undefined): string {
   try { return format(new Date(d), "dd MMM yyyy HH:mm"); } catch { return d; }
 }
 
+function TimeReadFeedback({read}: {read: {validationMessage: string | null; detailError: string | null; detailPending: boolean; detailUnavailable: boolean; detailQuery: {refetch: () => Promise<unknown>}}}) {
+  return <>{read.validationMessage && <p role="alert" className="mb-2 text-sm text-destructive">{read.validationMessage}</p>}
+    {read.detailPending && <p role="status">Checking the selected record…</p>}
+    {read.detailUnavailable && <p role="alert">The selected record is no longer available. Its editor has been retired.</p>}
+    {read.detailError && <p role="alert">{read.detailError} <Button type="button" variant="outline" onClick={() => void read.detailQuery.refetch()}>Retry selected record</Button></p>}
+  </>;
+}
+
 // ── Main Tab Component ─────────────────────────────────────────────────────────
 
 export function EmployeeTimeTab({ employeeId, authContext, onChildOpen }: Props) {
-  const canViewAttendance = checkPerm(authContext, "hr.attendance.view");
+  return <TimeSession key={JSON.stringify([employeeId, timeRecordsReadIdentity(authContext)])} employeeId={employeeId} authContext={authContext} onChildOpen={onChildOpen} />;
+}
+
+function TimeSession({employeeId, authContext, onChildOpen}: Props) {
+  const qc = useQueryClient(), identity = timeRecordsReadIdentity(authContext);
+  useLayoutEffect(() => () => {
+    const queryKey = ["hr", "time-records-options", identity]; void qc.cancelQueries({queryKey}); qc.removeQueries({queryKey});
+  }, [qc, identity]);
+  const [subjectDenied, setSubjectDenied] = useState(false);
+  const denySubject = useCallback(() => {setSubjectDenied(true); onChildOpen?.(false);}, [onChildOpen]);
+  const active = authContext.isAccountActive && !authContext.profile?.must_change_password;
+  // Existing F03 suffixes are request hints, never subject grants.
+  const canViewAttendance = ["hr.attendance.view", "hr.attendance.view.self", "hr.attendance.view.team"].some(code => checkPerm(authContext, code));
   const canManageAttendance = checkPerm(authContext, "hr.attendance.manage");
-  const canViewLeave = checkPerm(authContext, "hr.leave.view");
+  const canViewLeave = ["hr.leave.view", "hr.leave.view.self", "hr.leave.view.team", "hr.leave.manage"].some(code => checkPerm(authContext, code));
   const canManageLeave = checkPerm(authContext, "hr.leave.manage");
 
-  if (!canViewAttendance && !canViewLeave) {
+  if (!active || subjectDenied || !canViewAttendance && !canViewLeave) {
     return (
       <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
         <AlertTriangle className="h-4 w-4 mr-2" />
@@ -139,16 +150,19 @@ export function EmployeeTimeTab({ employeeId, authContext, onChildOpen }: Props)
       {canViewAttendance && (
         <>
           <AttendanceSection
+            authContext={authContext} onSubjectDenied={denySubject}
             employeeId={employeeId}
             canManage={canManageAttendance}
             onChildOpen={onChildOpen}
           />
           <ShiftCalendarSection
+            authContext={authContext} onSubjectDenied={denySubject}
             employeeId={employeeId}
             canManage={canManageAttendance}
             onChildOpen={onChildOpen}
           />
           <OvertimeSection
+            authContext={authContext} onSubjectDenied={denySubject}
             employeeId={employeeId}
             canManage={canManageAttendance}
             onChildOpen={onChildOpen}
@@ -157,6 +171,7 @@ export function EmployeeTimeTab({ employeeId, authContext, onChildOpen }: Props)
       )}
       {canViewLeave && (
         <LeaveSection
+          authContext={authContext} onSubjectDenied={denySubject}
           employeeId={employeeId}
           canManage={canManageLeave}
           onChildOpen={onChildOpen}
@@ -169,10 +184,12 @@ export function EmployeeTimeTab({ employeeId, authContext, onChildOpen }: Props)
 // ── 1. Attendance Section ──────────────────────────────────────────────────────
 
 function AttendanceSection({
+  authContext, onSubjectDenied,
   employeeId,
   canManage,
   onChildOpen,
 }: {
+  authContext: AuthContext; onSubjectDenied: () => void;
   employeeId: number;
   canManage: boolean;
   onChildOpen?: (open: boolean) => void;
@@ -180,12 +197,12 @@ function AttendanceSection({
   const qc = useQueryClient();
   const [isPending, startTransition] = useTransition();
   const [showPunches, setShowPunches] = useState(false);
-  const { askReason, reasonDialog } = useReasonDialog();
+  const [queryDialog, setQueryDialog] = useState<number | null>(null), [queryReason, setQueryReason] = useState("");
   const [showCorrections, setShowCorrections] = useState<number | null>(null);
 
   // Add/Edit Summary dialog
   const [summaryDialog, setSummaryDialog] = useState(false);
-  const [editSummary, setEditSummary] = useState<AttendanceDailySummaryRow | null>(null);
+  const [editSummary, setEditSummary] = useState<TimeRecordDetailMap["daily"] | null>(null);
   const [summaryForm, setSummaryForm] = useState({
     attendance_date: new Date().toISOString().slice(0, 10),
     attendance_type: "site" as const,
@@ -215,37 +232,26 @@ function AttendanceSection({
     onChildOpen?.(open);
   }, [onChildOpen]);
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.time.attendanceSummary(employeeId),
-    queryFn: async () => {
-      const r = await listEmployeeAttendanceDailySummary(employeeId, { page_size: 30 });
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data : null;
-    },
-  });
-  const { data: summaryData, isLoading: summaryLoading } = uiRead1;
+  const dailyRead = useHrTimeRecords("daily", employeeId, authContext, onSubjectDenied);
+  const punchRead = useHrTimeRecords("punches", employeeId, authContext, onSubjectDenied, {enabled: showPunches});
+  const correctionRead = useHrTimeRecords("corrections", employeeId, authContext, onSubjectDenied, {enabled: showCorrections !== null, summaryId: showCorrections ?? undefined});
+  const reads = [...dailyRead.reads, ...punchRead.reads, ...correctionRead.reads];
+  const admission = useTimeReadAdmission(canManage && dailyRead.access.canManage && (!showPunches || punchRead.access.canManage), reads, dailyRead.owner);
+  const summaryCurrent = useTimeDialogLifetime(`${dailyRead.owner}:summary:${editSummary?.id ?? "new"}`, summaryDialog);
+  const punchCurrent = useTimeDialogLifetime(`${dailyRead.owner}:punch`, punchDialog);
+  const correctionCurrent = useTimeDialogLifetime(`${dailyRead.owner}:correct:${correctDialog}`, correctDialog !== null);
+  const queryCurrent = useTimeDialogLifetime(`${dailyRead.owner}:query:${queryDialog}`, queryDialog !== null);
+  useTimeChildOpen(summaryDialog || punchDialog || correctDialog !== null || queryDialog !== null, onChildOpen);
+  if ((dailyRead.detailUnavailable || dailyRead.restricted) && (summaryDialog || correctDialog !== null || queryDialog !== null)) {
+    dailyRead.closeDetail(); setSummaryDialog(false); setEditSummary(null); setCorrectDialog(null); setQueryDialog(null);
+    setSummaryForm({attendance_date: "", attendance_type: "site", total_hours: "", overtime_hours: "0", late_minutes: "0", early_out_minutes: "0", is_missing_punch: false, notes: ""});
+    setCorrectForm({correction_reason: "", notes: ""}); setQueryReason("");
+  }
+  if ((dailyRead.restricted || punchRead.restricted) && punchDialog) {
+    setPunchDialog(false); setPunchForm({punch_datetime: "", punch_type: "in", punch_source: "manual", notes: ""});
+  }
 
-  const uiRead2 = useQuery({
-    queryKey: queryKeys.hr.time.attendancePunches(employeeId),
-    enabled: showPunches,
-    queryFn: async () => {
-      const r = await listEmployeeAttendancePunches(employeeId, { page_size: 50 });
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data : null;
-    },
-  });
-  const { data: punchData } = uiRead2;
-
-  const uiRead3 = useQuery({
-    queryKey: showCorrections != null ? queryKeys.hr.time.attendanceCorrections(showCorrections) : ["__disabled__"],
-    enabled: showCorrections != null,
-    queryFn: async () => {
-      if (showCorrections == null) return null;
-      const r = await listAttendanceCorrections(showCorrections);
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data : null;
-    },
-  });
-  const { data: correctionData } = uiRead3;
-
-  function resetSummaryForm(row?: AttendanceDailySummaryRow) {
+  function resetSummaryForm(row?: TimeRecordDetailMap["daily"]) {
     setSummaryForm({
       attendance_date: row?.attendance_date ?? new Date().toISOString().slice(0, 10),
       attendance_type: (row?.attendance_type as "site") ?? "site",
@@ -260,28 +266,46 @@ function AttendanceSection({
 
   function handleApprove(id: number) {
     startTransition(async () => {
+      if (!admission.canDispatch() || !dailyRead.isRowCurrent(id, ["pending"])) return;
       const r = await approveAttendanceDailySummary(id);
       if (r.success) {
-        toast.success("Attendance approved");
         qc.invalidateQueries({ queryKey: queryKeys.hr.time.attendanceSummary(employeeId) });
+        invalidateHrEmployeeTime(qc, employeeId);
+      }
+      if (!admission.isCurrent()) return;
+      if (r.success) {
+        toast.success("Attendance approved");
+        void dailyRead.refresh();
       } else toast.error(r.error ?? "Failed to approve");
     });
   }
 
   async function handleQuery(id: number) {
-    const reason = await askReason("Query attendance record");
-    if (!reason) return;
+    if (!admission.canDispatch()) return;
+    const row = await dailyRead.loadDetail(id);
+    if (!row || row.approval_status !== "pending" || !admission.isCurrent()) return;
+    setQueryReason(""); setQueryDialog(id); onChildOpen?.(true);
+  }
+  function submitQuery() {
     startTransition(async () => {
-      const r = await queryAttendanceDailySummary(id, reason);
+      if (!queryCurrent() || queryDialog === null || !queryReason.trim() || !admission.canDispatch() || !dailyRead.isDetailCurrent(queryDialog, ["pending"])) return;
+      const r = await queryAttendanceDailySummary(queryDialog, queryReason.trim());
       if (r.success) {
-        toast.success("Attendance queried");
         qc.invalidateQueries({ queryKey: queryKeys.hr.time.attendanceSummary(employeeId) });
+        invalidateHrEmployeeTime(qc, employeeId);
+      }
+      if (!admission.isCurrent()) return;
+      if (r.success) {
+        if (queryCurrent()) {dailyRead.closeDetail(); setQueryDialog(null); onChildOpen?.(false);}
+        toast.success("Attendance queried");
+        void dailyRead.refresh();
       } else toast.error(r.error ?? "Failed to query");
     });
   }
 
   function handleSummarySubmit() {
     startTransition(async () => {
+      if (!admission.canDispatch() || !summaryCurrent() || editSummary && !dailyRead.isDetailCurrent(editSummary.id)) return;
       const r = await createOrUpdateAttendanceDailySummary(employeeId, {
         attendance_date: summaryForm.attendance_date,
         attendance_type: summaryForm.attendance_type,
@@ -293,16 +317,21 @@ function AttendanceSection({
         notes: summaryForm.notes || null,
       });
       if (r.success) {
-        toast.success(editSummary ? "Attendance updated" : "Attendance recorded");
-        openDialog(false, setSummaryDialog);
-        setEditSummary(null);
         qc.invalidateQueries({ queryKey: queryKeys.hr.time.attendanceSummary(employeeId) });
+        invalidateHrEmployeeTime(qc, employeeId);
+      }
+      if (!admission.isCurrent()) return;
+      if (r.success) {
+        toast.success(editSummary ? "Attendance updated" : "Attendance recorded");
+        if (summaryCurrent()) {openDialog(false, setSummaryDialog); setEditSummary(null); dailyRead.closeDetail();}
+        void dailyRead.refresh();
       } else toast.error(r.error ?? "Failed to save");
     });
   }
 
   function handlePunchSubmit() {
     startTransition(async () => {
+      if (!admission.canDispatch() || !punchCurrent()) return;
       const r = await createEmployeeAttendancePunch(employeeId, {
         punch_datetime: new Date(punchForm.punch_datetime).toISOString(),
         punch_type: punchForm.punch_type,
@@ -310,9 +339,14 @@ function AttendanceSection({
         notes: punchForm.notes || null,
       });
       if (r.success) {
-        toast.success("Punch recorded");
-        openDialog(false, setPunchDialog);
         qc.invalidateQueries({ queryKey: queryKeys.hr.time.attendancePunches(employeeId) });
+        invalidateHrEmployeeTime(qc, employeeId);
+      }
+      if (!admission.isCurrent()) return;
+      if (r.success) {
+        toast.success("Punch recorded");
+        if (punchCurrent()) openDialog(false, setPunchDialog);
+        void punchRead.refresh();
       } else toast.error(r.error ?? "Failed to record punch");
     });
   }
@@ -323,41 +357,59 @@ function AttendanceSection({
       return;
     }
     startTransition(async () => {
+      if (!admission.canDispatch() || !correctionCurrent() || correctDialog !== summaryId || !dailyRead.isDetailCurrent(summaryId)) return;
       const r = await correctAttendanceDailySummary(summaryId, {
         correction_reason: correctForm.correction_reason,
         notes: correctForm.notes || null,
       });
       if (r.success) {
-        toast.success("Correction recorded");
-        setCorrectDialog(null);
-        onChildOpen?.(false);
         qc.invalidateQueries({ queryKey: queryKeys.hr.time.attendanceSummary(employeeId) });
         qc.invalidateQueries({ queryKey: queryKeys.hr.time.attendanceCorrections(summaryId) });
+        invalidateHrEmployeeTime(qc, employeeId);
+      }
+      if (!admission.isCurrent()) return;
+      if (r.success) {
+        toast.success("Correction recorded");
+        if (correctionCurrent()) {setCorrectDialog(null); dailyRead.closeDetail(); onChildOpen?.(false);}
+        void dailyRead.refresh(); void correctionRead.refresh();
       } else toast.error(r.error ?? "Failed to record correction");
     });
   }
 
-  const summaries = summaryData?.data ?? [];
-  const punches = punchData?.data ?? [];
-  const corrections = correctionData?.data ?? [];
+  const summaries = dailyRead.rows, punches = punchRead.rows, corrections = correctionRead.rows;
+  async function openSummary(id: number) {
+    if (!admission.canDispatch()) return;
+    const row = await dailyRead.loadDetail(id);
+    if (!row || !admission.isCurrent()) return;
+    resetSummaryForm(row); setEditSummary(row); openDialog(true, setSummaryDialog);
+  }
+  async function openCorrection(id: number) {
+    if (!admission.canDispatch()) return;
+    const row = await dailyRead.loadDetail(id);
+    if (!row || !admission.isCurrent()) return;
+    setCorrectForm({correction_reason: "", notes: ""}); setCorrectDialog(id); onChildOpen?.(true);
+  }
 
   return (
-    <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3]}><section>{reasonDialog}
+    <QueryReadBoundary queries={reads}><section>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Clock className="h-5 w-5 text-primary" />
           <h3 className="text-sm font-semibold">Attendance</h3>
-          <span className="text-xs text-muted-foreground">({summaryData?.count ?? 0} records)</span>
+          <span className="text-xs text-muted-foreground">({dailyRead.serverRead.totalCount ?? "?"} records)</span>
         </div>
-        {canManage && (
+        {canManage && dailyRead.access.canManage && (
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => {
+            <Button size="sm" variant="outline" disabled={!admission.ready} onClick={() => {
+              if (!admission.canDispatch()) return;
               setPunchForm({ punch_datetime: new Date().toISOString().slice(0, 16), punch_type: "in", punch_source: "manual", notes: "" });
               openDialog(true, setPunchDialog);
             }}>
               <Plus className="h-3.5 w-3.5 mr-1" /> Add Punch
             </Button>
-            <Button size="sm" variant="outline" onClick={() => {
+            <Button size="sm" variant="outline" disabled={!admission.ready} onClick={() => {
+              if (!admission.canDispatch()) return;
+              dailyRead.closeDetail();
               resetSummaryForm();
               setEditSummary(null);
               openDialog(true, setSummaryDialog);
@@ -368,13 +420,10 @@ function AttendanceSection({
         )}
       </div>
 
-      {summaryLoading ? (
-        <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-      ) : summaries.length === 0 ? (
-        <div className="text-sm text-muted-foreground py-6 text-center border rounded-md">No attendance records yet.</div>
-      ) : (
+      <TimeReadFeedback read={dailyRead} />
+      {dailyRead.restricted ? <p role="alert">Attendance access is restricted.</p> : (
         <div className="border rounded-md divide-y">
-          <RecordCollection id="hr.employee-time-tab.AttendanceSection.summaries" rows={summaries} fields={[{"id":"attendance_date","path":"attendance_date","label":"Attendance Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
+          <RecordCollection id="hr.employee-time-tab.AttendanceSection.summaries" rows={summaries} serverRead={dailyRead.serverRead} isLoading={dailyRead.busy} fields={[{"id":"attendance_date","path":"attendance_date","label":"Attendance Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
             const badge = getAttendanceStatusBadge(row.approval_status);
             return (
               <div key={row.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">
@@ -384,34 +433,26 @@ function AttendanceSection({
                 {row.is_missing_punch && <Badge variant="destructive" className="text-xs">Missing Punch</Badge>}
                 <Badge variant={badge.variant} className="text-xs">{badge.label}</Badge>
                 <div className="ml-auto flex gap-1 shrink-0">
-                  {canManage && row.approval_status === "pending" && (
+                  {canManage && dailyRead.access.canManage && row.approval_status === "pending" && (
                     <>
-                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => handleApprove(row.id)} disabled={isPending}>
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => handleApprove(row.id)} disabled={isPending || !admission.ready}>
                         <CheckCircle className="h-3.5 w-3.5 mr-1" /> Approve
                       </Button>
-                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => handleQuery(row.id)} disabled={isPending}>
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => handleQuery(row.id)} disabled={isPending || !admission.ready}>
                         <AlertTriangle className="h-3.5 w-3.5 mr-1" /> Query
                       </Button>
                     </>
                   )}
-                  {canManage && (
-                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => {
-                      setCorrectForm({ correction_reason: "", notes: "" });
-                      setCorrectDialog(row.id);
-                      onChildOpen?.(true);
-                    }}>
+                  {canManage && dailyRead.access.canManage && (
+                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={!admission.ready} onClick={() => void openCorrection(row.id)}>
                       <RefreshCw className="h-3.5 w-3.5 mr-1" /> Correct
                     </Button>
                   )}
-                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setShowCorrections(showCorrections === row.id ? null : row.id)}>
+                  <Button aria-label="Show correction history" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setShowCorrections(showCorrections === row.id ? null : row.id)}>
                     {showCorrections === row.id ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                   </Button>
-                  {canManage && (
-                    <Button aria-label="Edit record" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => {
-                      resetSummaryForm(row);
-                      setEditSummary(row);
-                      openDialog(true, setSummaryDialog);
-                    }}>
+                  {canManage && dailyRead.access.canManage && (
+                    <Button aria-label="Edit record" size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={!admission.ready} onClick={() => void openSummary(row.id)}>
                       <Edit2 className="h-3.5 w-3.5" />
                     </Button>
                   )}
@@ -423,26 +464,29 @@ function AttendanceSection({
       )}
 
       {/* Corrections sub-panel */}
-      {showCorrections != null && corrections.length > 0 && (
+      {showCorrections != null && (
         <div className="mt-2 border rounded-md bg-muted/30 p-3 text-xs space-y-1">
           <p className="font-medium text-muted-foreground mb-2">Correction History</p>
-          <RecordCollection id="hr.employee-time-tab.AttendanceSection.corrections" rows={corrections} fields={[{"id":"created_at","path":"created_at","label":"Created At"}]} renderRecord={(c) => (
+          <Button type="button" variant="outline" size="sm" onClick={() => setShowCorrections(null)}>Close history</Button>
+          <TimeReadFeedback read={correctionRead} />
+          {correctionRead.collectionUnavailable ? <p role="alert">The selected attendance record is no longer available. Close its history or select another permitted record.</p> : <RecordCollection id="hr.employee-time-tab.AttendanceSection.corrections" rows={corrections} serverRead={correctionRead.serverRead} isLoading={correctionRead.busy} fields={[{"id":"created_at","path":"created_at","label":"Created At"}]} renderRecord={(c) => (
             <div key={c.id} className="flex gap-2 text-muted-foreground">
               <span className="shrink-0">{fmtDatetime(c.created_at)}</span>
               <span>{c.correction_reason}</span>
             </div>
-          )} />
+          )} />}
         </div>
       )}
 
       {/* Raw punches toggle */}
       <div className="mt-3">
         <Button size="sm" variant="ghost" className="text-xs text-muted-foreground" onClick={() => setShowPunches(!showPunches)}>
-          {showPunches ? "Hide" : "Show"} Raw Punches ({punchData?.count ?? "?"})
+          {showPunches ? "Hide" : "Show"} Raw Punches ({punchRead.serverRead.totalCount ?? "?"})
         </Button>
-        {showPunches && punches.length > 0 && (
+        {showPunches && (
           <div className="mt-2 border rounded-md divide-y text-xs">
-            <RecordCollection id="hr.employee-time-tab.AttendanceSection.punches" rows={punches} fields={[{"id":"punch_datetime","path":"punch_datetime","label":"Punch Datetime"},{"id":"punch_type","path":"punch_type","label":"Punch Type"}]} renderRecord={(p) => (
+            <TimeReadFeedback read={punchRead} />
+            <RecordCollection id="hr.employee-time-tab.AttendanceSection.punches" rows={punches} serverRead={punchRead.serverRead} isLoading={punchRead.busy} fields={[{"id":"punch_datetime","path":"punch_datetime","label":"Punch Datetime"},{"id":"punch_type","path":"punch_type","label":"Punch Type"}]} renderRecord={(p) => (
               <div key={p.id} className="px-3 py-2 flex gap-3 text-muted-foreground">
                 <span>{fmtDatetime(p.punch_datetime)}</span>
                 <span className="font-medium">{getPunchTypeLabel(p.punch_type)}</span>
@@ -456,7 +500,7 @@ function AttendanceSection({
       {/* Add/Edit Summary Dialog */}
       <ERPChildDialogForm
         open={summaryDialog}
-        onOpenChange={(open) => openDialog(open, setSummaryDialog)}
+        onOpenChange={(open) => {if (!open) dailyRead.closeDetail(); openDialog(open, setSummaryDialog);}}
         title={editSummary ? "Edit Daily Attendance" : "Add Daily Attendance"}
         subtitle="Record approved daily attendance summary"
         icon={<Clock className="h-5 w-5" />}
@@ -464,7 +508,9 @@ function AttendanceSection({
         size="md"
         isSubmitting={isPending}
         onSubmit={handleSummarySubmit}
+        submitDisabled={!admission.ready}
       >
+        <TimeReadPause admission={admission} />
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
             <Label>Date <span className="text-destructive">*</span></Label>
@@ -522,7 +568,9 @@ function AttendanceSection({
         size="sm"
         isSubmitting={isPending}
         onSubmit={handlePunchSubmit}
+        submitDisabled={!admission.ready}
       >
+        <TimeReadPause admission={admission} />
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Punch Date/Time <span className="text-destructive">*</span></Label>
@@ -568,7 +616,7 @@ function AttendanceSection({
         <ERPChildDialogForm
           open={true}
           onOpenChange={(open) => {
-            if (!open) { setCorrectDialog(null); onChildOpen?.(false); }
+            if (!open) {dailyRead.closeDetail(); setCorrectDialog(null); onChildOpen?.(false); }
           }}
           title="Record Attendance Correction"
           subtitle="Append-only correction audit entry"
@@ -578,7 +626,9 @@ function AttendanceSection({
           submitLabel="Record Correction"
           isSubmitting={isPending}
           onSubmit={() => handleCorrectSubmit(correctDialog)}
+          submitDisabled={!admission.ready}
         >
+          <TimeReadPause admission={admission} />
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-12">
               <Label>Correction Reason <span className="text-destructive">*</span></Label>
@@ -591,6 +641,13 @@ function AttendanceSection({
           </div>
         </ERPChildDialogForm>
       )}
+      {queryDialog !== null && <ERPChildDialogForm open onOpenChange={open => {if (!open) {dailyRead.closeDetail(); setQueryDialog(null); onChildOpen?.(false);}}}
+        title="Query attendance record" subtitle="Review the selected record before continuing." mode="add" size="md" submitLabel="Continue"
+        onSubmit={submitQuery} submitDisabled={!admission.ready} isSubmitting={isPending}>
+        <TimeReadPause admission={admission} /><label className="grid gap-2 text-sm">Reason *
+          <Textarea aria-label="Reason" required value={queryReason} onChange={event => setQueryReason(event.target.value)} maxLength={2000} />
+        </label>
+      </ERPChildDialogForm>}
     </section></QueryReadBoundary>
   );
 }
@@ -598,10 +655,12 @@ function AttendanceSection({
 // ── 2. Shift & Calendar Section ────────────────────────────────────────────────
 
 function ShiftCalendarSection({
+  authContext, onSubjectDenied,
   employeeId,
   canManage,
   onChildOpen,
 }: {
+  authContext: AuthContext; onSubjectDenied: () => void;
   employeeId: number;
   canManage: boolean;
   onChildOpen?: (open: boolean) => void;
@@ -609,7 +668,7 @@ function ShiftCalendarSection({
   const qc = useQueryClient();
   const [isPending, startTransition] = useTransition();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<ShiftAssignmentRow | null>(null);
+  const [editing, setEditing] = useState<TimeRecordDetailMap["shifts"] | null>(null);
   const [form, setForm] = useState({
     work_calendar_id: "",
     work_shift_id: "",
@@ -626,37 +685,41 @@ function ShiftCalendarSection({
     onChildOpen?.(open);
   }, [onChildOpen]);
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.time.shiftAssignments(employeeId),
-    queryFn: async () => {
-      const r = await listEmployeeShiftAssignments(employeeId);
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data?.data ?? [] : [];
-    },
-  });
-  const { data, isLoading } = uiRead1;
+  const recordRead = useHrTimeRecords("shifts", employeeId, authContext, onSubjectDenied);
+  const sectionActive = useRecordReadActive();
 
   const uiRead2 = useQuery({
-    queryKey: ["common", "work-calendars-options"],
-    queryFn: async () => {
-      const r = await getWorkCalendarComboboxOptions();
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : [];
+    queryKey: ["hr", "time-records-options", recordRead.identity, "calendars", form.work_calendar_id],
+    enabled: sectionActive && canManage && recordRead.access.canManage && dialogOpen,
+    queryFn: async ({signal}) => {
+      const r = await getWorkCalendarComboboxOptions({selectedIds: form.work_calendar_id ? [Number(form.work_calendar_id)] : [], signal});
+      if (!r.success || !Array.isArray(r.data)) throw new Error("Records or choices could not be loaded."); return r.data;
     },
     staleTime: 5 * 60 * 1000,
   });
   const { data: calendarOptions } = uiRead2;
 
   const uiRead3 = useQuery({
-    queryKey: ["common", "work-shifts-options", form.work_calendar_id],
-    queryFn: async () => {
+    queryKey: ["hr", "time-records-options", recordRead.identity, "shifts", form.work_calendar_id, form.work_shift_id],
+    enabled: sectionActive && canManage && recordRead.access.canManage && dialogOpen,
+    queryFn: async ({signal}) => {
       const calId = form.work_calendar_id ? parseInt(form.work_calendar_id) : undefined;
-      const r = await listWorkShiftsForTimeTab(calId);
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? (r.data ?? []).map(s => ({ value: String(s.id), label: `${s.shift_name} (${s.shift_code})` })) : [];
+      const r = await listWorkShiftsForTimeTab(calId, {selectedIds: form.work_shift_id ? [Number(form.work_shift_id)] : [], signal});
+      if (!r.success || !Array.isArray(r.data)) throw new Error("Records or choices could not be loaded."); return r.data.map(s => ({ value: String(s.id), label: `${s.shift_name} (${s.shift_code})` }));
     },
     staleTime: 2 * 60 * 1000,
   });
   const { data: shiftOptions } = uiRead3;
+  const reads = [...recordRead.reads, ...(dialogOpen ? [uiRead2, uiRead3] : [])];
+  const admission = useTimeReadAdmission(canManage && recordRead.access.canManage, reads, recordRead.owner);
+  const dialogCurrent = useTimeDialogLifetime(`${recordRead.owner}:${editing?.id ?? "new"}`, dialogOpen);
+  useTimeChildOpen(dialogOpen, onChildOpen);
+  if ((recordRead.detailUnavailable || recordRead.restricted) && dialogOpen) {
+    recordRead.closeDetail(); setDialogOpen(false); setEditing(null);
+    setForm({work_calendar_id: "", work_shift_id: "", effective_from: "", effective_to: "", overtime_eligible: false, attendance_required: true, weekly_off_day: "", notes: ""});
+  }
 
-  function resetForm(row?: ShiftAssignmentRow) {
+  function resetForm(row?: TimeRecordDetailMap["shifts"]) {
     setForm({
       work_calendar_id: row?.work_calendar_id ? String(row.work_calendar_id) : "",
       work_shift_id: row?.work_shift_id ? String(row.work_shift_id) : "",
@@ -671,6 +734,7 @@ function ShiftCalendarSection({
 
   function handleSubmit() {
     startTransition(async () => {
+      if (!admission.canDispatch() || !dialogCurrent() || editing && !recordRead.isDetailCurrent(editing.id)) return;
       const payload = {
         work_calendar_id: form.work_calendar_id ? parseInt(form.work_calendar_id) : null,
         work_shift_id: form.work_shift_id ? parseInt(form.work_shift_id) : null,
@@ -685,40 +749,56 @@ function ShiftCalendarSection({
       const r = editing
         ? await updateEmployeeShiftAssignment(editing.id, payload)
         : await createEmployeeShiftAssignment(employeeId, payload);
-
+      if (r.success) {
+        qc.invalidateQueries({ queryKey: queryKeys.hr.time.shiftAssignments(employeeId) });
+        invalidateHrEmployeeTime(qc, employeeId);
+      }
+      if (!admission.isCurrent()) return;
       if (r.success) {
         toast.success(editing ? "Shift assignment updated" : "Shift assignment created");
-        openDialog(false);
-        setEditing(null);
-        qc.invalidateQueries({ queryKey: queryKeys.hr.time.shiftAssignments(employeeId) });
-        qc.invalidateQueries({ queryKey: queryKeys.hr.time.summary(employeeId) });
+        if (dialogCurrent()) {openDialog(false); setEditing(null); recordRead.closeDetail();}
+        void recordRead.refresh();
       } else toast.error(r.error ?? "Failed to save");
     });
   }
 
   function handleArchive(id: number) {
+    if (!admission.canDispatch() || !recordRead.isRowCurrent(id)) return;
     if (!confirm("Archive this shift assignment?")) return;
     startTransition(async () => {
+      if (!admission.canDispatch() || !recordRead.isRowCurrent(id)) return;
       const r = await archiveEmployeeShiftAssignment(id);
       if (r.success) {
-        toast.success("Shift assignment archived");
         qc.invalidateQueries({ queryKey: queryKeys.hr.time.shiftAssignments(employeeId) });
-        qc.invalidateQueries({ queryKey: queryKeys.hr.time.summary(employeeId) });
+        invalidateHrEmployeeTime(qc, employeeId);
+      }
+      if (!admission.isCurrent()) return;
+      if (r.success) {
+        toast.success("Shift assignment archived");
+        void recordRead.refresh();
       } else toast.error(r.error ?? "Failed to archive");
     });
   }
 
-  const assignments = data ?? [];
+  const assignments = recordRead.rows;
+  async function openEdit(id: number) {
+    if (!admission.canDispatch()) return;
+    const row = await recordRead.loadDetail(id);
+    if (!row || !admission.isCurrent()) return;
+    resetForm(row); setEditing(row); openDialog(true);
+  }
 
   return (
-    <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3]}><section>
+    <QueryReadBoundary queries={reads}><section>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Calendar className="h-5 w-5 text-primary" />
           <h3 className="text-sm font-semibold">Shift & Calendar</h3>
         </div>
-        {canManage && (
-          <Button size="sm" variant="outline" onClick={() => {
+        {canManage && recordRead.access.canManage && (
+          <Button size="sm" variant="outline" disabled={!admission.ready} onClick={() => {
+            if (!admission.canDispatch()) return;
+            recordRead.closeDetail();
             resetForm();
             setEditing(null);
             openDialog(true);
@@ -728,13 +808,10 @@ function ShiftCalendarSection({
         )}
       </div>
 
-      {isLoading ? (
-        <div className="space-y-2">{Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-      ) : assignments.length === 0 ? (
-        <div className="text-sm text-muted-foreground py-6 text-center border rounded-md">No shift assignments yet.</div>
-      ) : (
+      <TimeReadFeedback read={recordRead} />
+      {recordRead.restricted ? <p role="alert">Shift access is restricted.</p> : (
         <div className="border rounded-md divide-y">
-          <RecordCollection id="hr.employee-time-tab.ShiftCalendarSection.assignments" rows={assignments} fields={[{"id":"effective_from","path":"effective_from","label":"Effective From"},{"id":"effective_to","path":"effective_to","label":"Effective To"}]} renderRecord={(row) => (
+          <RecordCollection id="hr.employee-time-tab.ShiftCalendarSection.assignments" rows={assignments} serverRead={recordRead.serverRead} isLoading={recordRead.busy} fields={[{"id":"effective_from","path":"effective_from","label":"Effective From"},{"id":"effective_to","path":"effective_to","label":"Effective To"}]} renderRecord={(row) => (
             <div key={row.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">
               <div className="flex-1 min-w-0">
                 <p className="font-medium">{row.work_shift?.shift_name ?? "—"}</p>
@@ -742,16 +819,12 @@ function ShiftCalendarSection({
               </div>
               {row.overtime_eligible && <Badge variant="secondary" className="text-xs">OT Eligible</Badge>}
               {!row.attendance_required && <Badge variant="outline" className="text-xs">No Att. Req.</Badge>}
-              {canManage && (
+              {canManage && recordRead.access.canManage && (
                 <div className="flex gap-1 shrink-0">
-                  <Button aria-label="Edit record" size="sm" variant="ghost" className="h-7 px-2" onClick={() => {
-                    resetForm(row);
-                    setEditing(row);
-                    openDialog(true);
-                  }}>
+                  <Button aria-label="Edit record" size="sm" variant="ghost" className="h-7 px-2" disabled={!admission.ready} onClick={() => void openEdit(row.id)}>
                     <Edit2 className="h-3.5 w-3.5" />
                   </Button>
-                  <Button aria-label="Archive record" size="sm" variant="ghost" className="h-7 px-2 text-destructive" onClick={() => handleArchive(row.id)} disabled={isPending}>
+                    <Button aria-label="Archive record" size="sm" variant="ghost" className="h-7 px-2 text-destructive" onClick={() => handleArchive(row.id)} disabled={isPending || !admission.ready}>
                     <Archive className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -763,7 +836,7 @@ function ShiftCalendarSection({
 
       <ERPChildDialogForm
         open={dialogOpen}
-        onOpenChange={openDialog}
+        onOpenChange={open => {if (!open) recordRead.closeDetail(); openDialog(open);}}
         title={editing ? "Edit Shift Assignment" : "Add Shift Assignment"}
         subtitle="Assign employee to work calendar and shift"
         icon={<Calendar className="h-5 w-5" />}
@@ -771,7 +844,9 @@ function ShiftCalendarSection({
         size="md"
         isSubmitting={isPending}
         onSubmit={handleSubmit}
+        submitDisabled={!admission.ready}
       >
+        <TimeReadPause admission={admission} />
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
             <Label>Work Calendar</Label>
@@ -820,10 +895,12 @@ function ShiftCalendarSection({
 // ── 3. Leave Section ───────────────────────────────────────────────────────────
 
 function LeaveSection({
+  authContext, onSubjectDenied,
   employeeId,
   canManage,
   onChildOpen,
 }: {
+  authContext: AuthContext; onSubjectDenied: () => void;
   employeeId: number;
   canManage: boolean;
   onChildOpen?: (open: boolean) => void;
@@ -855,40 +932,39 @@ function LeaveSection({
     onChildOpen?.(open);
   }, [onChildOpen]);
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.time.leaveRequests(employeeId),
-    queryFn: async () => {
-      const r = await listEmployeeLeaveRequests(employeeId, { page_size: 30 });
-      if (!r.success) throw new Error(r.error ?? "Failed to load leave requests");
-      return r.data;
-    },
-    refetchOnMount: "always",
-  });
-  const { data: leaveData, isLoading: leaveLoading, isError: leaveError, error: leaveQueryError } = uiRead1;
-
-  const uiRead2 = useQuery({
-    queryKey: queryKeys.hr.time.leaveBalances(employeeId),
-    queryFn: async () => {
-      const r = await listEmployeeLeaveBalances(employeeId);
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data?.data ?? [] : [];
-    },
-  });
-  const { data: balData } = uiRead2;
-
+  const leaveRead = useHrTimeRecords("leave", employeeId, authContext, onSubjectDenied);
+  const sectionActive = useRecordReadActive();
+  const balanceRead = useHrTimeRecords("balances", employeeId, authContext, onSubjectDenied, {year: currentYear});
   const uiRead3 = useQuery({
-    queryKey: queryKeys.hr.time.activeLeaveTypes(),
-    queryFn: async () => {
-      const r = await listActiveLeaveTypesForForm();
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? (r.data?.data ?? []).map((lt) => ({ value: String(lt.id), label: lt.name_en })) : [];
+    queryKey: ["hr", "time-records-options", timeRecordsReadIdentity(authContext), "leave-types", form.leave_type_id, balForm.leave_type_id],
+    queryFn: async ({signal}) => {
+      const r = await listActiveLeaveTypesForForm({selectedIds: [...new Set([form.leave_type_id,balForm.leave_type_id].filter(Boolean).map(Number))], signal});
+      if (!r.success || !Array.isArray(r.data?.data)) throw new Error("Records or choices could not be loaded.");
+      return r.data.data.map((lt) => ({ value: String(lt.id), label: lt.name_en }));
     },
-    enabled: canManage,
+    enabled: sectionActive && canManage && (dialogOpen || balanceDialogOpen),
   });
-  const { data: leaveTypeOptions, refetch: refetchLeaveTypes } = uiRead3;
+  const { data: leaveTypeOptions } = uiRead3;
+  const reads = [...leaveRead.reads, ...balanceRead.reads, ...(dialogOpen || balanceDialogOpen ? [uiRead3] : [])];
+  const admission = useTimeReadAdmission(canManage && leaveRead.access.canManage && balanceRead.access.canManage, reads, leaveRead.owner);
+  const leaveCurrent = useTimeDialogLifetime(`${leaveRead.owner}:create`, dialogOpen);
+  const balanceCurrent = useTimeDialogLifetime(`${balanceRead.owner}:balance`, balanceDialogOpen);
+  const decisionCurrent = useTimeDialogLifetime(`${leaveRead.owner}:decision:${decisionDialog?.id}:${decisionDialog?.action}`, decisionDialog !== null);
+  useTimeChildOpen(dialogOpen || balanceDialogOpen || decisionDialog !== null, onChildOpen);
+  if ((leaveRead.detailUnavailable || leaveRead.restricted) && decisionDialog !== null) {
+    leaveRead.closeDetail(); setDecisionDialog(null); setDecisionReason("");
+  }
+  if ((leaveRead.restricted || balanceRead.restricted) && (dialogOpen || balanceDialogOpen)) {
+    setDialogOpen(false); setBalanceDialogOpen(false);
+    setForm({leave_type_id: "", start_date: "", end_date: "", reason: "", notes: ""});
+    setBalForm({leave_type_id: "", leave_year: "", entitled_days: "", used_days: "", carry_forward: ""});
+  }
 
   const totalDays = form.start_date && form.end_date ? calculateLeaveDays(form.start_date, form.end_date) : 0;
 
   function handleLeaveSubmit() {
     startTransition(async () => {
+      if (!admission.canDispatch() || !leaveCurrent()) return;
       const r = await createLeaveRequest(employeeId, {
         leave_type_id: parseInt(form.leave_type_id),
         start_date: form.start_date,
@@ -897,22 +973,31 @@ function LeaveSection({
         notes: form.notes || null,
       });
       if (r.success) {
-        toast.success("Leave request created");
-        openDialog(false, setDialogOpen);
         qc.invalidateQueries({ queryKey: queryKeys.hr.time.leaveRequests(employeeId) });
-        qc.invalidateQueries({ queryKey: queryKeys.hr.time.summary(employeeId) });
+        invalidateHrEmployeeTime(qc, employeeId);
+      }
+      if (!admission.isCurrent()) return;
+      if (r.success) {
+        toast.success("Leave request created");
+        if (leaveCurrent()) openDialog(false, setDialogOpen);
+        void leaveRead.refresh();
       } else toast.error(r.error ?? "Failed to create leave request");
     });
   }
 
   function handleApprove(id: number) {
     startTransition(async () => {
+      if (!admission.canDispatch() || !leaveRead.isRowCurrent(id, ["pending"])) return;
       const r = await approveLeaveRequest(id);
       if (r.success) {
-        toast.success("Leave approved");
         qc.invalidateQueries({ queryKey: queryKeys.hr.time.leaveRequests(employeeId) });
         qc.invalidateQueries({ queryKey: queryKeys.hr.time.leaveBalances(employeeId) });
-        qc.invalidateQueries({ queryKey: queryKeys.hr.time.summary(employeeId) });
+        invalidateHrEmployeeTime(qc, employeeId);
+      }
+      if (!admission.isCurrent()) return;
+      if (r.success) {
+        toast.success("Leave approved");
+        void leaveRead.refresh(); void balanceRead.refresh();
       } else toast.error(r.error ?? "Failed to approve");
     });
   }
@@ -920,21 +1005,26 @@ function LeaveSection({
   function handleDecisionSubmit() {
     if (!decisionDialog) return;
     startTransition(async () => {
+      if (!admission.canDispatch() || !decisionCurrent() || !leaveRead.isDetailCurrent(decisionDialog.id, decisionDialog.action === "reject" ? ["pending"] : ["pending", "approved"])) return;
       const r = decisionDialog.action === "reject"
         ? await rejectLeaveRequest(decisionDialog.id, decisionReason)
         : await cancelLeaveRequest(decisionDialog.id, decisionReason);
       if (r.success) {
-        toast.success(decisionDialog.action === "reject" ? "Leave rejected" : "Leave cancelled");
-        setDecisionDialog(null);
-        onChildOpen?.(false);
         qc.invalidateQueries({ queryKey: queryKeys.hr.time.leaveRequests(employeeId) });
-        qc.invalidateQueries({ queryKey: queryKeys.hr.time.summary(employeeId) });
+        invalidateHrEmployeeTime(qc, employeeId);
+      }
+      if (!admission.isCurrent()) return;
+      if (r.success) {
+        toast.success(decisionDialog.action === "reject" ? "Leave rejected" : "Leave cancelled");
+        void leaveRead.refresh(); void balanceRead.refresh();
+        if (decisionCurrent()) {leaveRead.closeDetail(); setDecisionDialog(null); onChildOpen?.(false);}
       } else toast.error(r.error ?? "Failed");
     });
   }
 
   function handleBalanceSubmit() {
     startTransition(async () => {
+      if (!admission.canDispatch() || !balanceCurrent()) return;
       const r = await createOrUpdateLeaveBalance(employeeId, {
         leave_type_id: parseInt(balForm.leave_type_id),
         leave_year: parseInt(balForm.leave_year),
@@ -943,36 +1033,45 @@ function LeaveSection({
         carry_forward: parseFloat(balForm.carry_forward) || 0,
       });
       if (r.success) {
-        toast.success("Leave balance updated");
-        openDialog(false, setBalanceDialogOpen);
         qc.invalidateQueries({ queryKey: queryKeys.hr.time.leaveBalances(employeeId) });
-        qc.invalidateQueries({ queryKey: queryKeys.hr.time.summary(employeeId) });
+        invalidateHrEmployeeTime(qc, employeeId);
+      }
+      if (!admission.isCurrent()) return;
+      if (r.success) {
+        toast.success("Leave balance updated");
+        void balanceRead.refresh();
+        if (balanceCurrent()) openDialog(false, setBalanceDialogOpen);
       } else toast.error(r.error ?? "Failed to update balance");
     });
   }
 
-  const leaves = leaveData?.data ?? [];
-  const balances = balData ?? [];
+  const leaves = leaveRead.rows, balances = balanceRead.rows;
+  async function openDecision(id: number, action: "reject" | "cancel") {
+    if (!admission.canDispatch()) return;
+    const row = await leaveRead.loadDetail(id);
+    if (!row || !admission.isCurrent() || !(action === "reject" ? ["pending"] : ["pending", "approved"]).includes(row.approval_status)) return;
+    setDecisionReason(""); setDecisionDialog({id, action}); onChildOpen?.(true);
+  }
 
   return (
-    <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3]}><section>
+    <QueryReadBoundary queries={reads}><section>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Plane className="h-5 w-5 text-primary" />
           <h3 className="text-sm font-semibold">Leave Requests & Balances</h3>
         </div>
-        {canManage && (
+        {canManage && leaveRead.access.canManage && balanceRead.access.canManage && (
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => {
+            <Button size="sm" variant="outline" disabled={!admission.ready} onClick={() => {
+              if (!admission.canDispatch()) return;
               setBalForm({ leave_type_id: "", leave_year: String(currentYear), entitled_days: "", used_days: "0", carry_forward: "0" });
-              void refetchLeaveTypes();
               openDialog(true, setBalanceDialogOpen);
             }}>
               <Plus className="h-3.5 w-3.5 mr-1" /> Update Balance
             </Button>
-            <Button size="sm" variant="outline" onClick={() => {
+            <Button size="sm" variant="outline" disabled={!admission.ready} onClick={() => {
+              if (!admission.canDispatch()) return;
               setForm({ leave_type_id: "", start_date: new Date().toISOString().slice(0, 10), end_date: new Date().toISOString().slice(0, 10), reason: "", notes: "" });
-              void refetchLeaveTypes();
               openDialog(true, setDialogOpen);
             }}>
               <Plus className="h-3.5 w-3.5 mr-1" /> Leave Request
@@ -982,12 +1081,19 @@ function LeaveSection({
       </div>
 
       {/* Leave Balances */}
+      <TimeReadFeedback read={leaveRead} />
+      {(leaveRead.restricted || balanceRead.restricted) && <p role="alert">Leave records are not available with your current access.</p>}
+      <div className="mb-2 flex items-center gap-3 text-xs" aria-label="Leave balance pages">
+        <span>{currentYear} leave balances: {balanceRead.serverRead.totalCount ?? "unknown"}</span>
+        <Button size="sm" variant="outline" disabled={balanceRead.busy || balanceRead.serverRead.pagination.pageIndex === 0} onClick={() => balanceRead.serverRead.onPaginationChange(old => ({...old, pageIndex: Math.max(0, old.pageIndex - 1)}))}>Previous balances</Button>
+        <Button size="sm" variant="outline" disabled={balanceRead.busy || balanceRead.serverRead.totalCount == null || (balanceRead.serverRead.pagination.pageIndex + 1) * balanceRead.serverRead.pagination.pageSize >= balanceRead.serverRead.totalCount} onClick={() => balanceRead.serverRead.onPaginationChange(old => ({...old, pageIndex: old.pageIndex + 1}))}>Next balances</Button>
+      </div>
       {balances.length > 0 && (
         <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4">
-          {balances.filter(b => b.leave_year === currentYear).map((b) => (
+          {balances.map((b) => (
             <div key={b.id} className="border rounded-md p-3 text-xs">
               <p className="font-medium text-muted-foreground">{b.leave_type?.name_en ?? "—"}</p>
-              <p className="text-lg font-bold mt-1">{b.balance_days ?? 0}<span className="text-xs font-normal text-muted-foreground ml-1">days</span></p>
+              <p className="text-lg font-bold mt-1">{b.balance_days ?? "—"}<span className="text-xs font-normal text-muted-foreground ml-1">days</span></p>
               <p className="text-muted-foreground">{b.used_days}/{b.entitled_days} used</p>
             </div>
           ))}
@@ -995,17 +1101,9 @@ function LeaveSection({
       )}
 
       {/* Leave Requests */}
-      {leaveLoading ? (
-        <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-      ) : leaveError ? (
-        <div className="text-sm text-destructive py-6 text-center border rounded-md">
-          {leaveQueryError instanceof Error ? leaveQueryError.message : "Failed to load leave requests"}
-        </div>
-      ) : leaves.length === 0 ? (
-        <div className="text-sm text-muted-foreground py-6 text-center border rounded-md">No leave requests yet.</div>
-      ) : (
+      {(
         <div className="border rounded-md divide-y">
-          <RecordCollection id="hr.employee-time-tab.LeaveSection.leaves" rows={leaves} fields={[{"id":"start_date","path":"start_date","label":"Start Date"},{"id":"end_date","path":"end_date","label":"End Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
+          <RecordCollection id="hr.employee-time-tab.LeaveSection.leaves" rows={leaves} serverRead={leaveRead.serverRead} fields={[{"id":"start_date","path":"start_date","label":"Start Date"},{"id":"end_date","path":"end_date","label":"End Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
             const badge = getLeaveApprovalStatusBadge(row.approval_status);
             return (
               <div key={row.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">
@@ -1014,28 +1112,20 @@ function LeaveSection({
                   <p className="text-xs text-muted-foreground">{fmtDate(row.start_date)} → {fmtDate(row.end_date)} · {row.total_days ?? 0} day(s)</p>
                 </div>
                 <Badge variant={badge.variant} className="text-xs">{badge.label}</Badge>
-                {canManage && (
+                {canManage && leaveRead.access.canManage && (
                   <div className="flex gap-1 shrink-0">
                     {row.approval_status === "pending" && (
                       <>
-                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => handleApprove(row.id)} disabled={isPending}>
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => handleApprove(row.id)} disabled={isPending || !admission.ready}>
                           <CheckCircle className="h-3.5 w-3.5 mr-1" /> Approve
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-destructive" onClick={() => {
-                          setDecisionReason("");
-                          setDecisionDialog({ id: row.id, action: "reject" });
-                          onChildOpen?.(true);
-                        }}>
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-destructive" disabled={!admission.ready} onClick={() => void openDecision(row.id, "reject")}>
                           <XCircle className="h-3.5 w-3.5 mr-1" /> Reject
                         </Button>
                       </>
                     )}
                     {["pending", "approved"].includes(row.approval_status) && (
-                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => {
-                        setDecisionReason("");
-                        setDecisionDialog({ id: row.id, action: "cancel" });
-                        onChildOpen?.(true);
-                      }}>
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={!admission.ready} onClick={() => void openDecision(row.id, "cancel")}>
                         <Ban className="h-3.5 w-3.5 mr-1" /> Cancel
                       </Button>
                     )}
@@ -1058,7 +1148,9 @@ function LeaveSection({
         size="md"
         isSubmitting={isPending}
         onSubmit={handleLeaveSubmit}
+        submitDisabled={!admission.ready}
       >
+        <TimeReadPause admission={admission} />
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Leave Type <span className="text-destructive">*</span></Label>
@@ -1098,7 +1190,9 @@ function LeaveSection({
         size="sm"
         isSubmitting={isPending}
         onSubmit={handleBalanceSubmit}
+        submitDisabled={!admission.ready}
       >
+        <TimeReadPause admission={admission} />
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Leave Type <span className="text-destructive">*</span></Label>
@@ -1133,7 +1227,7 @@ function LeaveSection({
         <ERPChildDialogForm
           open={true}
           onOpenChange={(open) => {
-            if (!open) { setDecisionDialog(null); onChildOpen?.(false); }
+            if (!open) { leaveRead.closeDetail(); setDecisionDialog(null); onChildOpen?.(false); }
           }}
           title={decisionDialog.action === "reject" ? "Reject Leave Request" : "Cancel Leave Request"}
           subtitle="Provide a reason for this action"
@@ -1143,7 +1237,9 @@ function LeaveSection({
           submitLabel={decisionDialog.action === "reject" ? "Reject" : "Cancel Leave"}
           isSubmitting={isPending}
           onSubmit={handleDecisionSubmit}
+          submitDisabled={!admission.ready}
         >
+          <TimeReadPause admission={admission} />
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-12">
               <Label>Reason</Label>
@@ -1159,10 +1255,12 @@ function LeaveSection({
 // ── 4. Overtime Section ────────────────────────────────────────────────────────
 
 function OvertimeSection({
+  authContext, onSubjectDenied,
   employeeId,
   canManage,
   onChildOpen,
 }: {
+  authContext: AuthContext; onSubjectDenied: () => void;
   employeeId: number;
   canManage: boolean;
   onChildOpen?: (open: boolean) => void;
@@ -1170,7 +1268,7 @@ function OvertimeSection({
   const qc = useQueryClient();
   const [isPending, startTransition] = useTransition();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<OvertimeRecordRow | null>(null);
+  const [editing, setEditing] = useState<TimeRecordDetailMap["overtime"] | null>(null);
   const [decisionDialog, setDecisionDialog] = useState<{ id: number; action: "reject" } | null>(null);
   const [decisionReason, setDecisionReason] = useState("");
   const [form, setForm] = useState({
@@ -1185,16 +1283,23 @@ function OvertimeSection({
     onChildOpen?.(open);
   }, [onChildOpen]);
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.time.overtimeRecords(employeeId),
-    queryFn: async () => {
-      const r = await listEmployeeOvertimeRecords(employeeId, { page_size: 30 });
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data : null;
-    },
-  });
-  const { data, isLoading } = uiRead1;
-
-  function resetForm(row?: OvertimeRecordRow) {
+  const recordRead = useHrTimeRecords("overtime", employeeId, authContext, onSubjectDenied);
+  const admission = useTimeReadAdmission(canManage && recordRead.access.canManage, recordRead.reads, recordRead.owner);
+  const dialogCurrent = useTimeDialogLifetime(`${recordRead.owner}:edit:${editing?.id ?? "new"}`, dialogOpen);
+  const decisionCurrent = useTimeDialogLifetime(`${recordRead.owner}:reject:${decisionDialog?.id}`, decisionDialog !== null);
+  useTimeChildOpen(dialogOpen || decisionDialog !== null, onChildOpen);
+  if ((recordRead.detailUnavailable || recordRead.restricted) && (dialogOpen || decisionDialog !== null)) {
+    recordRead.closeDetail(); setDialogOpen(false); setEditing(null); setDecisionDialog(null); setDecisionReason("");
+    setForm({overtime_date: "", hours: "", reason: "", notes: ""});
+  }
+  async function openRecord(id: number, reject = false) {
+    if (!admission.canDispatch()) return;
+    const row = await recordRead.loadDetail(id);
+    if (!row || !admission.isCurrent() || row.approval_status !== "pending") return;
+    if (reject) {setDecisionReason(""); setDecisionDialog({id, action: "reject"}); onChildOpen?.(true);}
+    else {resetForm(row); setEditing(row); openDialog(true);}
+  }
+  function resetForm(row?: TimeRecordDetailMap["overtime"]) {
     setForm({
       overtime_date: row?.overtime_date ?? new Date().toISOString().slice(0, 10),
       hours: row?.hours != null ? String(row.hours) : "",
@@ -1205,6 +1310,7 @@ function OvertimeSection({
 
   function handleSubmit() {
     startTransition(async () => {
+      if (!admission.canDispatch() || !dialogCurrent() || editing && !recordRead.isDetailCurrent(editing.id, ["pending"])) return;
       const payload = {
         overtime_date: form.overtime_date,
         hours: parseFloat(form.hours) || 0,
@@ -1215,24 +1321,31 @@ function OvertimeSection({
       const r = editing
         ? await updateOvertimeRecord(editing.id, payload)
         : await createOvertimeRecord(employeeId, payload);
-
+      if (r.success) {
+        qc.invalidateQueries({ queryKey: queryKeys.hr.time.overtimeRecords(employeeId) });
+        invalidateHrEmployeeTime(qc, employeeId);
+      }
+      if (!admission.isCurrent()) return;
       if (r.success) {
         toast.success(editing ? "Overtime updated" : "Overtime recorded");
-        openDialog(false);
-        setEditing(null);
-        qc.invalidateQueries({ queryKey: queryKeys.hr.time.overtimeRecords(employeeId) });
-        qc.invalidateQueries({ queryKey: queryKeys.hr.time.summary(employeeId) });
+        void recordRead.refresh();
+        if (dialogCurrent()) {recordRead.closeDetail(); openDialog(false); setEditing(null);}
       } else toast.error(r.error ?? "Failed to save");
     });
   }
 
   function handleApprove(id: number) {
     startTransition(async () => {
+      if (!admission.canDispatch() || !recordRead.isRowCurrent(id, ["pending"])) return;
       const r = await approveOvertimeRecord(id);
       if (r.success) {
-        toast.success("Overtime approved");
         qc.invalidateQueries({ queryKey: queryKeys.hr.time.overtimeRecords(employeeId) });
-        qc.invalidateQueries({ queryKey: queryKeys.hr.time.summary(employeeId) });
+        invalidateHrEmployeeTime(qc, employeeId);
+      }
+      if (!admission.isCurrent()) return;
+      if (r.success) {
+        toast.success("Overtime approved");
+        void recordRead.refresh();
       } else toast.error(r.error ?? "Failed to approve");
     });
   }
@@ -1240,42 +1353,54 @@ function OvertimeSection({
   function handleRejectSubmit() {
     if (!decisionDialog) return;
     startTransition(async () => {
+      if (!admission.canDispatch() || !decisionCurrent() || !recordRead.isDetailCurrent(decisionDialog.id, ["pending"])) return;
       const r = await rejectOvertimeRecord(decisionDialog.id, decisionReason);
       if (r.success) {
-        toast.success("Overtime rejected");
-        setDecisionDialog(null);
-        onChildOpen?.(false);
         qc.invalidateQueries({ queryKey: queryKeys.hr.time.overtimeRecords(employeeId) });
+        invalidateHrEmployeeTime(qc, employeeId);
+      }
+      if (!admission.isCurrent()) return;
+      if (r.success) {
+        toast.success("Overtime rejected");
+        void recordRead.refresh();
+        if (decisionCurrent()) {recordRead.closeDetail(); setDecisionDialog(null); onChildOpen?.(false);}
       } else toast.error(r.error ?? "Failed to reject");
     });
   }
 
   function handleArchive(id: number) {
-    if (!confirm("Archive this overtime record?")) return;
+    if (!admission.canDispatch() || !recordRead.isRowCurrent(id) || !confirm("Archive this overtime record?")) return;
     startTransition(async () => {
+      if (!admission.canDispatch() || !recordRead.isRowCurrent(id)) return;
       const r = await archiveOvertimeRecord(id);
       if (r.success) {
-        toast.success("Overtime archived");
         qc.invalidateQueries({ queryKey: queryKeys.hr.time.overtimeRecords(employeeId) });
+        invalidateHrEmployeeTime(qc, employeeId);
+      }
+      if (!admission.isCurrent()) return;
+      if (r.success) {
+        toast.success("Overtime archived");
+        void recordRead.refresh();
       } else toast.error(r.error ?? "Failed to archive");
     });
   }
 
-  const records = data?.data ?? [];
+  const records = recordRead.rows;
   const totalApprovedHours = records.filter(r => r.approval_status === "approved").reduce((s, r) => s + Number(r.hours), 0);
 
   return (
-    <QueryReadBoundary queries={[uiRead1]}><section>
+    <QueryReadBoundary queries={recordRead.reads}><section>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Timer className="h-5 w-5 text-primary" />
           <h3 className="text-sm font-semibold">Overtime</h3>
           {totalApprovedHours > 0 && (
-            <span className="text-xs text-muted-foreground">(Approved: {formatHours(totalApprovedHours)})</span>
+            <span className="text-xs text-muted-foreground">(Approved on this page: {formatHours(totalApprovedHours)})</span>
           )}
         </div>
-        {canManage && (
-          <Button size="sm" variant="outline" onClick={() => {
+        {canManage && recordRead.access.canManage && (
+          <Button size="sm" variant="outline" disabled={!admission.ready} onClick={() => {
+            if (!admission.canDispatch()) return;
             resetForm();
             setEditing(null);
             openDialog(true);
@@ -1285,13 +1410,11 @@ function OvertimeSection({
         )}
       </div>
 
-      {isLoading ? (
-        <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-      ) : records.length === 0 ? (
-        <div className="text-sm text-muted-foreground py-6 text-center border rounded-md">No overtime records yet.</div>
-      ) : (
+      <TimeReadFeedback read={recordRead} />
+      {recordRead.restricted && <p role="alert">Overtime records are not available with your current access.</p>}
+      {(
         <div className="border rounded-md divide-y">
-          <RecordCollection id="hr.employee-time-tab.OvertimeSection.records" rows={records} fields={[{"id":"overtime_date","path":"overtime_date","label":"Overtime Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
+          <RecordCollection id="hr.employee-time-tab.OvertimeSection.records" rows={records} serverRead={recordRead.serverRead} fields={[{"id":"overtime_date","path":"overtime_date","label":"Overtime Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
             const badge = getOvertimeApprovalStatusBadge(row.approval_status);
             return (
               <div key={row.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">
@@ -1299,30 +1422,22 @@ function OvertimeSection({
                 <span className="font-medium shrink-0">{formatHours(row.hours)}</span>
                 <span className="text-xs text-muted-foreground truncate flex-1">{row.reason ?? ""}</span>
                 <Badge variant={badge.variant} className="text-xs">{badge.label}</Badge>
-                {canManage && (
+                {canManage && recordRead.access.canManage && (
                   <div className="flex gap-1 shrink-0">
                     {row.approval_status === "pending" && (
                       <>
-                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => handleApprove(row.id)} disabled={isPending}>
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => handleApprove(row.id)} disabled={isPending || !admission.ready}>
                           <CheckCircle className="h-3.5 w-3.5 mr-1" /> Approve
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-destructive" onClick={() => {
-                          setDecisionReason("");
-                          setDecisionDialog({ id: row.id, action: "reject" });
-                          onChildOpen?.(true);
-                        }}>
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-destructive" disabled={!admission.ready} onClick={() => void openRecord(row.id, true)}>
                           <XCircle className="h-3.5 w-3.5 mr-1" /> Reject
                         </Button>
-                        <Button aria-label="Edit record" size="sm" variant="ghost" className="h-7 px-2" onClick={() => {
-                          resetForm(row);
-                          setEditing(row);
-                          openDialog(true);
-                        }}>
+                        <Button aria-label="Edit record" size="sm" variant="ghost" className="h-7 px-2" disabled={!admission.ready} onClick={() => void openRecord(row.id)}>
                           <Edit2 className="h-3.5 w-3.5" />
                         </Button>
                       </>
                     )}
-                    <Button aria-label="Archive record" size="sm" variant="ghost" className="h-7 px-2 text-destructive" onClick={() => handleArchive(row.id)} disabled={isPending}>
+                    <Button aria-label="Archive record" size="sm" variant="ghost" className="h-7 px-2 text-destructive" onClick={() => handleArchive(row.id)} disabled={isPending || !admission.ready}>
                       <Archive className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -1335,7 +1450,7 @@ function OvertimeSection({
 
       <ERPChildDialogForm
         open={dialogOpen}
-        onOpenChange={openDialog}
+        onOpenChange={open => {if (!open) recordRead.closeDetail(); openDialog(open);}}
         title={editing ? "Edit Overtime" : "Add Overtime Record"}
         subtitle="Record overtime hours"
         icon={<Timer className="h-5 w-5" />}
@@ -1343,7 +1458,9 @@ function OvertimeSection({
         size="sm"
         isSubmitting={isPending}
         onSubmit={handleSubmit}
+        submitDisabled={!admission.ready}
       >
+        <TimeReadPause admission={admission} />
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
             <Label>Date <span className="text-destructive">*</span></Label>
@@ -1368,7 +1485,7 @@ function OvertimeSection({
         <ERPChildDialogForm
           open={true}
           onOpenChange={(open) => {
-            if (!open) { setDecisionDialog(null); onChildOpen?.(false); }
+            if (!open) { recordRead.closeDetail(); setDecisionDialog(null); onChildOpen?.(false); }
           }}
           title="Reject Overtime Record"
           subtitle="Provide a reason for rejection"
@@ -1378,7 +1495,9 @@ function OvertimeSection({
           submitLabel="Reject"
           isSubmitting={isPending}
           onSubmit={handleRejectSubmit}
+          submitDisabled={!admission.ready}
         >
+          <TimeReadPause admission={admission} />
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-12">
               <Label>Reason</Label>

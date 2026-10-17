@@ -6,10 +6,15 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ApprovalHistoryRow } from "@/server/actions/dms/document-approvals";
+import {Button} from "@/components/ui/button";
 
 interface DmsApprovalHistorySectionProps {
   rows: ApprovalHistoryRow[];
   className?: string;
+  page?: number;
+  pageSize?: number;
+  totalCount?: number;
+  onPageChange?: (page: number) => void;
 }
 
 const ACTION_META: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
@@ -54,8 +59,8 @@ function formatDate(dateStr: string | null | undefined): string {
   }
 }
 
-export function DmsApprovalHistorySection({ rows, className }: DmsApprovalHistorySectionProps) {
-  if (rows.length === 0) {
+export function DmsApprovalHistorySection({ rows, className, page = 1, pageSize = 20, totalCount, onPageChange }: DmsApprovalHistorySectionProps) {
+  if (rows.length === 0 && (totalCount === undefined || totalCount === 0)) {
     return (
       <div className={cn("flex flex-col items-center gap-2 py-6 text-muted-foreground", className)}>
         <Clock className="h-5 w-5 opacity-40" />
@@ -66,6 +71,7 @@ export function DmsApprovalHistorySection({ rows, className }: DmsApprovalHistor
 
   return (
     <div className={cn("space-y-2", className)}>
+      {rows.length === 0 && <p className="text-xs text-muted-foreground">No approval history on this page.</p>}
       {rows.map((row, idx) => {
         const meta = ACTION_META[row.action] ?? {
           icon: <Clock className="h-3.5 w-3.5" />,
@@ -109,6 +115,11 @@ export function DmsApprovalHistorySection({ rows, className }: DmsApprovalHistor
           </div>
         );
       })}
+      {onPageChange && totalCount !== undefined && totalCount > 0 && <div className="flex items-center justify-between gap-2 text-xs">
+        <span>{totalCount} approval record{totalCount === 1 ? "" : "s"} · Page {page} of {Math.max(1, Math.ceil(totalCount / pageSize))}</span>
+        <div className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>Previous history</Button>
+          <Button size="sm" variant="outline" disabled={page * pageSize >= totalCount} onClick={() => onPageChange(page + 1)}>Next history</Button></div>
+      </div>}
     </div>
   );
 }

@@ -6,6 +6,9 @@ import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { rebuildDmsExpiryReminders } from "./expiry-reminders";
+import { readAllPages } from "@/server/reads/all-pages";
+import { renewalFilterSchema } from "@/server/reads/dms-renewal-contract";
+import { renewalBaseSelect, renewalBaseRowsSchema, hydrateRenewalReferences } from "@/server/reads/dms-renewal-references";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -55,15 +58,6 @@ function canManageRenewals(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
   return hasPermission(ctx, "dms.renewals.manage") || hasPermission(ctx, "dms.admin");
 }
 
-const RENEWAL_SELECT = `
-  id, document_id, renewal_no, status, priority, requested_by, assigned_to,
-  requested_at, target_renewal_date, old_expiry_date, new_expiry_date,
-  replacement_document_id, replacement_version_id, notes,
-  completed_at, cancelled_at, created_by, created_at, updated_at,
-  document:dms_documents!document_id(id, document_no, title, expiry_date, document_type_id),
-  requester:user_profiles!requested_by(full_name),
-  assignee:user_profiles!assigned_to(full_name)
-`;
 
 // ── getDmsRenewalRequests ─────────────────────────────────────────────────────
 
@@ -77,18 +71,22 @@ export type RenewalRequestsFilter = {
 export async function getDmsRenewalRequests(
   filter: RenewalRequestsFilter = {}
 ): Promise<ActionResult<DmsRenewalRequestRow[]>> {
+  const parsed = renewalFilterSchema.safeParse(filter);
+  if (!parsed.success) return { success: false, error: "Invalid renewal criteria" };
+  filter = parsed.data;
   try {
-    const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canViewRenewals(ctx)) return { success: false, error: "Permission denied" };
+    if (!ctx.isAccountActive || ctx.profile.must_change_password || !canViewRenewals(ctx)) return { success: false, error: "Permission denied" };
+    const supabase = await createClient();
 
+    const data = await readAllPages(async (from, to) => {
     let query = supabase
       .from("dms_renewal_requests")
-      .select(RENEWAL_SELECT)
+      .select(renewalBaseSelect, { count: "exact" })
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
-      .limit(200);
+      .order("id", { ascending: true }).range(from, to);
 
     if (filter.documentId) query = query.eq("document_id", filter.documentId);
     if (filter.status) query = query.eq("status", filter.status);
@@ -97,11 +95,12 @@ export async function getDmsRenewalRequests(
       query = query.not("status", "in", '("renewed","cancelled","rejected")');
     }
 
-    const { data, error } = await query;
-    if (error) return { success: false, error: error.message };
-    return { success: true, data: (data as unknown as DmsRenewalRequestRow[]) ?? [] };
-  } catch (e) {
-    return { success: false, error: String(e) };
+    const result = await query;
+    return { ...result, data: renewalBaseRowsSchema.parse(result.data) };
+    }, { identity: row => row.id, maxRows: 10000 });
+    return { success: true, data: await hydrateRenewalReferences(supabase, data) };
+  } catch {
+    return { success: false, error: "Renewal requests could not be completely loaded. Refine the filters or retry." };
   }
 }
 

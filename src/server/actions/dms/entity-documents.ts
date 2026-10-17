@@ -1,10 +1,6 @@
 "use server";
+import {readLegacyEntityDocuments} from "@/server/reads/dms-entity-documents";
 
-import {
-  countMissingRequiredDocuments,
-  loadLinkedDocuments,
-  loadRulesForEntityType,
-} from "@/lib/ai/common/compliance-checker";
 import {
   DMS_ENTITY_TYPE_CODES,
   isValidDmsEntityType
@@ -57,8 +53,8 @@ export type DmsEntityDocumentComplianceSummary = {
   totalDocuments: number;
   expiredDocuments: number;
   expiringSoonDocuments: number;
-  missingRequiredDocuments: number;
-  openComplianceFindings: number;
+  missingRequiredDocuments: number | null;
+  openComplianceFindings: number | null;
   highRiskDocuments: number;
   criticalRiskDocuments: number;
   latestExpiryDate: string | null;
@@ -76,131 +72,9 @@ const linkSchema = z.object({
 
 // ── getDmsDocumentsByEntity ────────────────────────────────────────────────────
 
-export async function getDmsDocumentsByEntity(
-  entityType: string,
-  entityId: number
-): Promise<ActionResult<DmsEntityDocumentRow[]>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-
-    const supabase = await createClient();
-
-    const { data, error } = await supabase
-      .from("dms_document_links")
-      .select(`
-        id,
-        is_primary,
-        link_role,
-        linked_at,
-        document_id,
-        document:dms_documents(
-          id,
-          document_no,
-          legacy_document_code,
-          title,
-          description,
-          status,
-          deleted_at,
-          confidentiality_level,
-          issue_date,
-          expiry_date,
-          migrated_from_table,
-          ai_risk_level,
-          ai_risk_score,
-          completeness_score,
-          created_at,
-          updated_at,
-          document_type:dms_document_types(type_code, name_en)
-        )
-      `)
-      .eq("entity_type", entityType)
-      .eq("entity_id", entityId)
-      .is("deleted_at", null)
-      .order("linked_at", { ascending: false });
-
-    if (error) return { success: false, error: error.message };
-
-    const isAdmin = hasPermission(ctx, "dms.admin");
-    const CONFIDENTIAL_LEVELS = ["hr", "legal", "executive"];
-
-    const documentIds = (data ?? [])
-      .map((link) => link.document_id)
-      .filter((id): id is number => id != null);
-
-    const filesCountByDocId = new Map<number, number>();
-    if (documentIds.length > 0) {
-      const { data: fileRows, error: fileError } = await supabase
-        .from("dms_document_files")
-        .select("document_id")
-        .in("document_id", documentIds)
-        .is("deleted_at", null);
-
-      if (fileError) return { success: false, error: fileError.message };
-
-      for (const row of fileRows ?? []) {
-        const docId = row.document_id as number;
-        filesCountByDocId.set(docId, (filesCountByDocId.get(docId) ?? 0) + 1);
-      }
-    }
-
-    const rows: DmsEntityDocumentRow[] = [];
-    for (const link of data ?? []) {
-      const doc = link.document as unknown as Record<string, unknown> | null;
-      if (!doc) continue;
-      // Skip documents that have been soft-deleted or hard-status-deleted
-      if (doc.deleted_at != null || doc.status === "deleted") continue;
-
-      const docType = doc.document_type as { type_code?: string; name_en?: string } | null;
-      const confidentiality = doc.confidentiality_level as string;
-      const isConfidential = CONFIDENTIAL_LEVELS.includes(confidentiality);
-
-      const filesCount = filesCountByDocId.get(link.document_id) ?? 0;
-
-      rows.push({
-        link_id: link.id,
-        link_is_primary: link.is_primary,
-        link_role: link.link_role,
-        linked_at: link.linked_at,
-        document_id: link.document_id,
-        document_no: doc.document_no as string,
-        legacy_document_code: doc.legacy_document_code as string | null,
-        title: doc.title as string,
-        description: doc.description as string | null,
-        status: doc.status as string,
-        confidentiality_level: confidentiality,
-        issue_date: doc.issue_date as string | null,
-        expiry_date: doc.expiry_date as string | null,
-        migrated_from_table: doc.migrated_from_table as string | null,
-        document_type_name: docType?.name_en ?? null,
-        document_type_code: docType?.type_code ?? null,
-        has_files: filesCount > 0,
-        files_count: filesCount,
-        // Content is loaded separately by the checked summary action, never by
-        // an embedded metadata join (which cannot apply column masking).
-        ai_summary:
-          isConfidential && !isAdmin
-            ? null
-            : (doc.ai_summary as string | null),
-        ai_risk_level: doc.ai_risk_level as string | null,
-        ai_risk_score:
-          doc.ai_risk_score != null ? Number(doc.ai_risk_score) : null,
-        completeness_score:
-          doc.completeness_score != null
-            ? Number(doc.completeness_score)
-            : null,
-        created_at: doc.created_at as string,
-        updated_at: doc.updated_at as string,
-      });
-    }
-
-    return { success: true, data: rows };
-  } catch (err) {
-    logger.error("getDmsDocumentsByEntity error", err);
-    return { success: false, error: "Failed to load entity documents" };
-  }
+export async function getDmsDocumentsByEntity(entityType:string,entityId:number):Promise<ActionResult<DmsEntityDocumentRow[]>> {
+  const r=await readLegacyEntityDocuments({operation:"list",entityType:entityType as import("@/lib/dms/dms-entity-types").DmsEntityTypeValue,entityId,offset:0,limit:100});
+  return r.collection?.kind==="list"?{success:true,data:r.collection.rows}:{success:false,error:r.error};
 }
 
 // ── linkDmsDocumentToEntity ────────────────────────────────────────────────────
@@ -448,112 +322,9 @@ export async function unlinkDmsDocumentFromEntity(
 
 // ── getDmsEntityDocumentComplianceSummary ──────────────────────────────────────
 
-export async function getDmsEntityDocumentComplianceSummary(
-  entityType: string,
-  entityId: number
-): Promise<ActionResult<DmsEntityDocumentComplianceSummary>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-
-    if (!isValidDmsEntityType(entityType)) {
-      return { success: false, error: `Unknown entity type: ${entityType}` };
-    }
-
-    const supabase = await createClient();
-    const admin = createAdminClient();
-
-    const { data, error } = await supabase
-      .from("dms_document_links")
-      .select(`
-        document_id,
-        document:dms_documents(
-          expiry_date,
-          ai_risk_level
-        )
-      `)
-      .eq("entity_type", entityType)
-      .eq("entity_id", entityId)
-      .is("deleted_at", null);
-
-    if (error) return { success: false, error: error.message };
-
-    const rules = await loadRulesForEntityType(admin, entityType);
-    const linkedDocuments = await loadLinkedDocuments(admin, entityType, entityId);
-    const missingRequiredDocuments = countMissingRequiredDocuments({
-      entityType,
-      rules,
-      linkedDocuments,
-    });
-
-    let openComplianceFindings = 0;
-    if (
-      hasPermission(ctx, "ai.compliance.view") ||
-      hasPermission(ctx, "ai.common.admin") ||
-      ctx.roleCodes.includes("system_admin")
-    ) {
-      const { count } = await supabase
-        .from("erp_ai_compliance_findings")
-        .select("id", { count: "exact", head: true })
-        .eq("entity_type", entityType)
-        .eq("entity_id", entityId)
-        .eq("status", "open")
-        .is("deleted_at", null);
-      openComplianceFindings = count ?? 0;
-    }
-
-    const now = new Date();
-    const soonThreshold = new Date(now);
-    soonThreshold.setDate(soonThreshold.getDate() + 30);
-
-    let expiredDocuments = 0;
-    let expiringSoonDocuments = 0;
-    let highRiskDocuments = 0;
-    let criticalRiskDocuments = 0;
-    let latestExpiryDate: string | null = null;
-
-    for (const link of data ?? []) {
-      const doc = link.document as unknown as {
-        expiry_date?: string | null;
-        ai_risk_level?: string | null;
-      } | null;
-      if (!doc) continue;
-
-      if (doc.expiry_date) {
-        const expiry = new Date(doc.expiry_date);
-        if (expiry < now) {
-          expiredDocuments++;
-        } else if (expiry <= soonThreshold) {
-          expiringSoonDocuments++;
-        }
-        if (!latestExpiryDate || doc.expiry_date > latestExpiryDate) {
-          latestExpiryDate = doc.expiry_date;
-        }
-      }
-
-      if (doc.ai_risk_level === "critical") criticalRiskDocuments++;
-      else if (doc.ai_risk_level === "high") highRiskDocuments++;
-    }
-
-    return {
-      success: true,
-      data: {
-        totalDocuments: (data ?? []).length,
-        expiredDocuments,
-        expiringSoonDocuments,
-        missingRequiredDocuments,
-        openComplianceFindings,
-        highRiskDocuments,
-        criticalRiskDocuments,
-        latestExpiryDate,
-      },
-    };
-  } catch (err) {
-    logger.error("getDmsEntityDocumentComplianceSummary error", err);
-    return { success: false, error: "Failed to load compliance summary" };
-  }
+export async function getDmsEntityDocumentComplianceSummary(entityType:string,entityId:number):Promise<ActionResult<DmsEntityDocumentComplianceSummary>> {
+  const r=await readLegacyEntityDocuments({operation:"summary",entityType:entityType as import("@/lib/dms/dms-entity-types").DmsEntityTypeValue,entityId});
+  return r.collection?.kind==="summary"?{success:true,data:r.collection.summary}:{success:false,error:r.error};
 }
 
 // ── getAvailableDmsDocumentsForLink ────────────────────────────────────────────
@@ -567,119 +338,12 @@ export type AvailableDmsDocumentOption = {
   status: string;
   issue_date: string | null;
   expiry_date: string | null;
-  has_extraction: boolean;
-  has_ocr: boolean;
+  has_extraction: boolean | null;
+  has_ocr: boolean | null;
   extracted_person_name: string | null;
 };
 
-export async function getAvailableDmsDocumentsForLink(
-  entityType: string,
-  entityId: number,
-  search?: string
-): Promise<ActionResult<AvailableDmsDocumentOption[]>> {
-  try {
-    const ctx = await getAuthContext();
-    const isAdmin = ctx.roleCodes?.includes("system_admin") || ctx.roleCodes?.includes("group_admin");
-    if (!isAdmin && !hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
-      return { success: false, error: "Permission denied: dms.documents.view required" };
-    }
-
-    const adminClient = createAdminClient();
-
-    // Get already-linked document IDs to exclude
-    const { data: existing } = await adminClient
-      .from("dms_document_links")
-      .select("document_id")
-      .eq("entity_type", entityType)
-      .eq("entity_id", entityId)
-      .is("deleted_at", null);
-
-    const excludeIds = (existing ?? []).map((r: { document_id: number }) => r.document_id);
-
-    let query = adminClient
-      .from("dms_documents")
-      .select(
-        `id, document_no, title, status, issue_date, expiry_date,
-        document_type:dms_document_types(name_en, code:type_code)`
-      )
-      .is("deleted_at", null)
-      .neq("status", "deleted")
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (search?.trim()) {
-      const s = `%${search.trim()}%`;
-      query = query.or(`document_no.ilike.${s},title.ilike.${s}`);
-    }
-
-    if (excludeIds.length > 0) {
-      query = query.not("id", "in", `(${excludeIds.join(",")})`);
-    }
-
-    const { data, error } = await query;
-    if (error) return { success: false, error: error.message };
-
-    const docIds = (data ?? []).map((d: Record<string, unknown>) => d.id as number);
-
-    const [extractionRows, ocrRows] = await Promise.all([
-      docIds.length > 0
-        ? adminClient
-            .from("dms_ai_extraction_results")
-            .select("document_id, extracted_fields_json")
-            .in("document_id", docIds)
-            .neq("ai_status", "superseded")
-            .order("created_at", { ascending: false })
-        : { data: [] as Array<{ document_id: number; extracted_fields_json: Record<string, unknown> }>, error: null },
-      docIds.length > 0
-        ? adminClient
-            .from("dms_document_files")
-            .select("document_id")
-            .in("document_id", docIds)
-            .not("ocr_text", "is", null)
-            .is("deleted_at", null)
-        : { data: [] as Array<{ document_id: number }>, error: null },
-    ]);
-
-    const extractionByDocId = new Map<number, Record<string, unknown>>();
-    for (const row of (extractionRows.data ?? []) as Array<{ document_id: number; extracted_fields_json: Record<string, unknown> }>) {
-      if (!extractionByDocId.has(row.document_id)) {
-        extractionByDocId.set(row.document_id, row.extracted_fields_json ?? {});
-      }
-    }
-
-    const ocrDocIds = new Set(
-      (ocrRows.data ?? []).map((r: { document_id: number }) => r.document_id)
-    );
-
-    const rows: AvailableDmsDocumentOption[] = (data ?? []).map((d: Record<string, unknown>) => {
-      const typeInfo = d.document_type as { name_en?: string; code?: string } | null;
-      const ef = extractionByDocId.get(d.id as number);
-      const extractedPersonName = ef
-        ? ((ef.full_name_en as string | null) ??
-            (ef.full_name as string | null) ??
-            (ef.holder_name as string | null) ??
-            (ef.person_name as string | null) ??
-            null)
-        : null;
-
-      return {
-        id: d.id as number,
-        document_no: d.document_no as string,
-        title: d.title as string,
-        document_type_name: typeInfo?.name_en ?? null,
-        document_type_code: typeInfo?.code ?? null,
-        status: d.status as string,
-        issue_date: (d.issue_date as string | null) ?? null,
-        expiry_date: (d.expiry_date as string | null) ?? null,
-        has_extraction: extractionByDocId.has(d.id as number),
-        has_ocr: ocrDocIds.has(d.id as number),
-        extracted_person_name: extractedPersonName,
-      };
-    });
-
-    return { success: true, data: rows };
-  } catch (err) {
-    logger.error("getAvailableDmsDocumentsForLink error", err);
-    return { success: false, error: "Failed to load available documents" };
-  }
+export async function getAvailableDmsDocumentsForLink(entityType:string,entityId:number,search?:string):Promise<ActionResult<AvailableDmsDocumentOption[]>> {
+  const r=await readLegacyEntityDocuments({operation:"attach",entityType:entityType as import("@/lib/dms/dms-entity-types").DmsEntityTypeValue,entityId,search:search??"",offset:0,limit:100});
+  return r.collection?.kind==="attach"?{success:true,data:r.collection.rows}:{success:false,error:r.error};
 }

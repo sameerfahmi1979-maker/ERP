@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/check";
 import { PartyWorkspaceForm } from "@/features/master-data/parties/party-workspace-form";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +29,7 @@ export default async function PartyNewPage({ searchParams }: Props) {
     redirect("/admin");
   }
 
-  if (!hasPermission(authContext, "master_data.parties.manage")) {
+  if (!hasPermission(authContext, "master_data.parties.create") || !hasGlobalPermission(authContext,"numbering.rules.generate")) {
     redirect("/admin/master-data/parties");
   }
 

@@ -1,9 +1,10 @@
 import { ERPPageHeader } from "@/components/erp/page-header";
+import { LoadError } from "@/components/erp/load-error";
 import { AddBranchButton } from "@/features/branches/add-branch-button";
 import { BranchesTable } from "@/features/branches/branches-table";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasPermissionInScope } from "@/lib/rbac/check";
 import { listBranches } from "@/server/queries/branches";
-import { listOrganizations } from "@/server/queries/organizations";
+import { readBranchCompanyChoices } from "@/server/queries/branch-company-choices";
 
 export default async function AdminBranchesPage() {
   const ctx = await getAuthContext();
@@ -24,9 +25,25 @@ export default async function AdminBranchesPage() {
     );
   }
 
-  const branches = await listBranches();
-  const organizations = await listOrganizations();
-  const canManage = hasPermission(ctx, "branches.manage");
+  const branches = await listBranches().catch(() => null);
+  if (!branches) {
+    return (
+      <div className="p-6 space-y-4">
+        <ERPPageHeader title="Branches" description="Manage organizational branches and locations" breadcrumbs={[{ label: "Admin", href: "/admin" }, { label: "Branches" }]} />
+        <LoadError title="Branches" retryHref="/admin/branches" />
+      </div>
+    );
+  }
+  const companies = await readBranchCompanyChoices().catch(() => null);
+  if (!companies) {
+    return (
+      <div className="p-6 space-y-4">
+        <ERPPageHeader title="Branches" description="Manage organizational branches and locations" breadcrumbs={[{ label: "Admin", href: "/admin" }, { label: "Branches" }]} />
+        <LoadError title="Branch company choices" retryHref="/admin/branches" />
+      </div>
+    );
+  }
+  const writableCompanies = companies.filter(company => hasPermissionInScope(ctx, "branches.manage", company.id));
 
   return (
     <div className="p-6 space-y-4">
@@ -37,10 +54,11 @@ export default async function AdminBranchesPage() {
           { label: "Admin", href: "/admin" },
           { label: "Branches" },
         ]}
-        actions={canManage ? <AddBranchButton companies={organizations} /> : null}
+        actions={writableCompanies.length > 0 ? <AddBranchButton companies={writableCompanies} /> : null}
       />
       <BranchesTable
         data={branches}
+        authContext={ctx}
         userProfileId={ctx.profile?.id || "default"}
         exportConfig={{
           title: "Branches",

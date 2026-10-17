@@ -1,36 +1,21 @@
 "use client";
+import {readDmsSection} from "@/features/dms/documents/section-read";
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FileSize } from "@/features/dms/upload/dms-file-size";
 import { DmsLoadError } from "@/features/dms/dms-load-error";
 import { FileTypeIcon } from "@/features/dms/upload/dms-file-type-icon";
 import {
-  invalidateDmsDocumentFiles,
-  invalidateDmsDocumentVersions,
-} from "@/lib/query/invalidation";
+  invalidateDmsDocumentFiles, invalidateDmsDocumentVersions, } from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
-import {
-  getDmsDocumentFiles,
-  getDmsDocumentVersions,
-  setDmsDocumentCurrentVersion,
-  unlinkDmsDocumentVersion,
-  type DmsDocumentFileRow,
-  type DmsDocumentVersionRow,
-} from "@/server/actions/dms/document-files";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { setDmsDocumentCurrentVersion, unlinkDmsDocumentVersion, type DmsDocumentFileRow, type DmsDocumentVersionRow } from "@/server/actions/dms/document-files";
+import { useQueryClient } from "@tanstack/react-query";
+import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
 import { format, parseISO } from "date-fns";
 import { CheckCircle2, Download, Eye, FileText, Star, Unlink, Upload } from "lucide-react";
+import { AlertDialog } from "@/features/dms/documents/section-read-boundary";
 import { useState } from "react";
 import { toast } from "sonner";
 import { DmsLinkVersionDialog } from "./dms-link-version-dialog";
@@ -62,8 +47,8 @@ export function DmsDocumentVersionsSection({
 
   const { data: versions = [], isLoading: versionsLoading, isError: versionsError, refetch: retryVersions, isFetching: versionsFetching } = useQuery({
     queryKey: queryKeys.dms.documentVersions(documentId),
-    queryFn: async () => {
-      const result = await getDmsDocumentVersions(documentId);
+    queryFn: async ({signal}) => {
+      const result = await readDmsSection("getDmsDocumentVersions", [documentId], signal);
       if (!result.success) throw new Error(result.error);
       return result.data ?? [];
     },
@@ -72,8 +57,8 @@ export function DmsDocumentVersionsSection({
 
   const { data: files = [], isLoading: filesLoading, isError: filesError, refetch: retryFiles, isFetching: filesFetching } = useQuery({
     queryKey: queryKeys.dms.documentFiles(documentId),
-    queryFn: async () => {
-      const result = await getDmsDocumentFiles(documentId);
+    queryFn: async ({signal}) => {
+      const result = await readDmsSection("getDmsDocumentFiles", [documentId], signal);
       if (!result.success) throw new Error(result.error);
       return result.data ?? [];
     },

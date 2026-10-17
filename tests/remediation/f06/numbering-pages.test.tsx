@@ -1,0 +1,28 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+import type {AuthContext} from '@/lib/rbac/check';
+const mock=vi.hoisted(()=>({ctx:{} as AuthContext,read:vi.fn(),list:vi.fn(),redirect:vi.fn(),notFound:vi.fn()}));
+vi.mock('@/lib/rbac/check',async()=>({...await import('@/lib/rbac/scope'),getAuthContext:async()=>mock.ctx}));
+vi.mock('next/navigation',()=>({redirect:(href:string)=>{mock.redirect(href);throw Error('REDIRECT');},notFound:()=>{mock.notFound();throw Error('NOT_FOUND');}}));
+vi.mock('@/server/actions/numbering',()=>({getNumberingRuleById:mock.read,getNumberingRules:mock.list}));
+vi.mock('@/features/numbering/components/numbering-rule-workspace-form',()=>({NumberingRuleWorkspaceForm:()=>null}));
+vi.mock('@/features/numbering/components/numbering-rules-table',()=>({NumberingRulesTable:()=>null}));
+vi.mock('@/components/erp/page-header',()=>({ERPPageHeader:()=>null}));
+import ListPage from '@/app/(protected)/admin/settings/numbering/page';
+import NewPage from '@/app/(protected)/admin/settings/numbering/record/new/page';
+import RecordPage from '@/app/(protected)/admin/settings/numbering/record/[id]/page';
+import {LoadError} from '@/components/erp/load-error';
+function permissions(...codes:string[]){mock.ctx={isAccountActive:true,profile:{id:1,must_change_password:false},globalPermissionCodes:codes,permissionCodes:codes,roleCodes:[],roleAssignments:[]} as unknown as AuthContext;}
+beforeEach(()=>{vi.clearAllMocks();permissions('numbering.rules.manage');mock.read.mockResolvedValue({success:true,data:{id:7,workspace_revision:2}});mock.list.mockResolvedValue({success:true,data:[]});});
+it('manager uses actual numbering.rules.manage for create rather than obsolete permission',async()=>{expect((await NewPage()).props.mode).toBe('add');expect(mock.redirect).not.toHaveBeenCalled();});
+it('view-only user cannot create',async()=>{permissions('numbering.rules.view');await expect(NewPage()).rejects.toThrow('REDIRECT');});
+it('manager can edit under the same permission as database and server',async()=>{const page=await RecordPage({params:Promise.resolve({id:'7'}),searchParams:Promise.resolve({mode:'edit'})});expect(page.props.mode).toBe('edit');});
+it('lock-only user can read the rule but not general-edit',async()=>{permissions('numbering.rules.lock');const page=await RecordPage({params:Promise.resolve({id:'7'}),searchParams:Promise.resolve({mode:'edit'})});expect(page.props.mode).toBe('view');});
+it('partially numeric IDs do not alias an existing record',async()=>{await expect(RecordPage({params:Promise.resolve({id:'7junk'}),searchParams:Promise.resolve({})})).rejects.toThrow('NOT_FOUND');expect(mock.read).not.toHaveBeenCalled();});
+it('failed reads are not falsely reported as missing records',async()=>{mock.read.mockResolvedValue({success:false,kind:'failed'});const page=await RecordPage({params:Promise.resolve({id:'7'}),searchParams:Promise.resolve({})});expect(page.type).toBe(LoadError);expect(mock.notFound).not.toHaveBeenCalled();});
+it('a confirmed missing record returns not found',async()=>{mock.read.mockResolvedValue({success:false,kind:'not_found'});await expect(RecordPage({params:Promise.resolve({id:'7'}),searchParams:Promise.resolve({})})).rejects.toThrow('NOT_FOUND');});
+it('denies list access before querying instead of showing an unavailable-service retry',async()=>{permissions();await expect(ListPage()).rejects.toThrow('REDIRECT');expect(mock.redirect).toHaveBeenCalledWith('/access-denied');expect(mock.list).not.toHaveBeenCalled();});
+it('handles a permission revocation between page guard and list action as denied',async()=>{mock.list.mockResolvedValue({success:false,kind:'forbidden'});await expect(ListPage()).rejects.toThrow('REDIRECT');expect(mock.redirect).toHaveBeenCalledWith('/access-denied');});
+it('keeps genuine service failures retryable for an authorized reader',async()=>{mock.list.mockResolvedValue({success:false,kind:'failed'});expect((await ListPage()).type).toBe(LoadError);expect(mock.redirect).not.toHaveBeenCalled();});
+it.each(['numbering.rules.view','numbering.rules.manage','numbering.rules.lock'])('shows a valid empty catalogue for %s with exact mutation capabilities',async(code)=>{permissions(code);const page=await ListPage();const table=page.props.children[1];expect(table.props).toMatchObject({rules:[],canManage:code==='numbering.rules.manage',canLock:code==='numbering.rules.lock'});});
+it('denies the detail route directly rather than sending users to an unavailable list',async()=>{permissions();await expect(RecordPage({params:Promise.resolve({id:'7'}),searchParams:Promise.resolve({})})).rejects.toThrow('REDIRECT');expect(mock.redirect).toHaveBeenCalledWith('/access-denied');expect(mock.read).not.toHaveBeenCalled();});
+it('handles permission revocation at detail read without calling it missing or failed',async()=>{mock.read.mockResolvedValue({success:false,kind:'forbidden'});await expect(RecordPage({params:Promise.resolve({id:'7'}),searchParams:Promise.resolve({})})).rejects.toThrow('REDIRECT');expect(mock.redirect).toHaveBeenCalledWith('/access-denied');expect(mock.notFound).not.toHaveBeenCalled();});

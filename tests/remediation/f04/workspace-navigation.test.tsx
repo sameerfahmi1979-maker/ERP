@@ -109,7 +109,7 @@ it("old close callback sees newly dirty state and asks before discarding",()=>{
   act(()=>oldClose(owner));fireEvent.click(screen.getByText("Discard"));expect(context.state.tabs.some(t=>t.id===owner)).toBe(false);
 });
 it("same-tick opens cannot exceed the cap or duplicate a route",()=>{
-  mount();act(()=>{const open=context.openTab;open({route:"/admin/users"});open({route:"/admin/users"});for(let i=0;i<20;i++)open({route:"/admin/hr/employees/record/"+(i+1)});});
+  mount();act(()=>{const open=context.openTab;open({route:"/admin/users"});open({route:"/admin/users"});for(let i=0;i<MAX_TABS+5;i++)open({route:"/admin/hr/employees/record/"+(i+1)});});
   expect(context.state.tabs.filter(t=>t.closable)).toHaveLength(MAX_TABS);
   expect(context.state.tabs.filter(t=>t.route==="/admin/users")).toHaveLength(1);
   expect(nav.warning).toHaveBeenCalled();
@@ -137,6 +137,6 @@ it("restored routes are filtered by current shell access",()=>{
 it("the reducer cannot activate a nonexistent tab or bypass admission through route sync",()=>{
   let state=workspaceReducer(getInitialState(),{type:"RESTORE_TABS",tabs:[],activeTabId:null});
   const active=state.activeTabId;state=workspaceReducer(state,{type:"SET_ACTIVE_TAB",tabId:"unknown"});expect(state.activeTabId).toBe(active);
-  for(let i=0;i<15;i++){const tab=createTabFromRoute("/admin/hr/employees/record/"+i);state=workspaceReducer(state,{type:"SYNC_ROUTE",route:tab.route,tab});}
+  for(let i=0;i<MAX_TABS+5;i++){const tab=createTabFromRoute("/admin/hr/employees/record/"+i);state=workspaceReducer(state,{type:"SYNC_ROUTE",route:tab.route,tab});}
   expect(state.tabs.filter(t=>t.closable)).toHaveLength(MAX_TABS);
 });

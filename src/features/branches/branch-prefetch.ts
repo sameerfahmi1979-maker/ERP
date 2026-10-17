@@ -25,7 +25,7 @@ export const BRANCH_FORM_PREFETCH = {
   lookupCategories: [] as const,
 
   masterQueries: [
-    { queryKey: queryKeys.countries(false, false), queryFn: () => fetchCountries(false, false) },
+    { queryKey: queryKeys.countries(false, false), queryFn: (signal) => fetchCountries(false, false, signal) },
   ],
 
   childTables: [] as const,

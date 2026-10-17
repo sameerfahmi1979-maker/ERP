@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
@@ -30,7 +32,14 @@ function SecretSession({
 }: AiProviderSecretDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [uncertain, setUncertain] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const terminal = useRef(false);
+  const flight = useRef(false);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const router = useRouter();
+  const display = (effect: () => void) => { try { effect(); } catch { if (alive.current) setSaveError("The display could not finish updating. The key save remains confirmed."); } };
   const [showKey, setShowKey] = useState(false);
   const suggestedRef = ENV_VAR_SUGGESTIONS[config.providerType] ?? "PROVIDER_API_KEY";
 
@@ -49,7 +58,8 @@ function SecretSession({
   };
 
   const handleSubmit = async () => {
-    if (isSubmitting || uncertain || !validate()) return;
+    if (flight.current || terminal.current || !validate()) return;
+    flight.current = true;
     setIsSubmitting(true);
     setSaveError(null);
     try {
@@ -58,38 +68,48 @@ function SecretSession({
         secret_value: secretValue,
         secret_ref: secretRef,
       }) : await saveAiProviderSecretReference({ id: config.id, secret_ref: secretRef.trim() });
-
+      if (!alive.current) return;
+      terminal.current = true;
+      setSubmitted(true);
+      setSecretValue("");
+      setShowKey(false);
       if (result.success) {
-        setSecretValue("");
-        onSaved();
+        setConfirmed(true);
+        display(onSaved);
       } else {
-        setSaveError(result.error ?? "The key update was not accepted. Check your permissions and the deployment secret policy before retrying.");
+        setSaveError("The key update could not be confirmed. Check the provider and deployment secret status before starting a new key change.");
       }
     } catch {
-      setUncertain(true);
-      setSaveError("The key update could not be confirmed. Check the provider status before submitting again.");
+      if (!alive.current) return;
+      terminal.current = true;
+      setSubmitted(true);
+      setSecretValue("");
+      setShowKey(false);
+      setSaveError("The key update could not be confirmed. Check the provider and deployment secret status before starting a new key change.");
     } finally {
-      setIsSubmitting(false);
+      flight.current = false;
+      if (alive.current) setIsSubmitting(false);
     }
   };
 
   return (
     <ERPChildDialogForm
       open={open}
-      onOpenChange={(o) => !o && onClose()}
+      onOpenChange={(o) => { if (!o) { try { onClose(); } catch { setSaveError(confirmed ? "The dialog could not close. The key save remains confirmed." : submitted ? "The dialog could not close. The key update remains unconfirmed; do not retry it here." : "The dialog could not close. Your unsent entries remain here."); } } }}
       title={`Update API Key — ${config.providerName}`}
       subtitle="Link an existing deployment key by leaving the key value blank."
       icon={<ShieldCheck className="h-5 w-5 text-violet-500" />}
       mode="edit"
       size="sm"
       isSubmitting={isSubmitting}
-      submitDisabled={uncertain}
-      onCancel={onClose}
+      submitDisabled={submitted}
+      isDirty={submitted ? false : undefined}
       onSubmit={handleSubmit}
       submitLabel="Save Key Reference"
     >
       {saveError && <div role="alert" className="rounded-sm border border-destructive p-3 text-sm text-destructive">{saveError}</div>}
-      <div className="flex flex-col gap-4 py-2">
+      {submitted && <div className="space-y-2">{confirmed && <p role="status">Key save confirmed.</p>}<Button type="button" variant="outline" onClick={() => { try { router.refresh(); } catch { setSaveError(confirmed ? "The display could not refresh. The key save remains confirmed." : "The display could not refresh. The key update remains unconfirmed; refreshing does not retry it."); } }}>Refresh settings only</Button></div>}
+      <fieldset disabled={submitted} className="flex flex-col gap-4 py-2">
         {config.maskedSecretPreview && (
           <div className="rounded-md bg-muted px-3 py-2 text-sm">
             Current:{" "}
@@ -159,10 +179,10 @@ function SecretSession({
           </div>
           {errors.secretValue && <p className="text-xs text-destructive">{errors.secretValue}</p>}
           <p className="text-xs text-muted-foreground">
-            Leave blank to use the existing Railway variable. Enter a new key only for an explicitly enabled server-file rotation.
+            Leave blank to use the existing Railway variable. Enter a new key only for an explicitly enabled server-file rotation. Field is cleared after every attempt.
           </p>
         </div>
-      </div>
+      </fieldset>
     </ERPChildDialogForm>
   );
 }

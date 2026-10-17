@@ -10,17 +10,18 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+
 import { ERPCombobox } from "@/components/erp/combobox";
-import { PlusCircle, Pencil, Trash2, Lock, MessageSquare } from "lucide-react";
+import { PlusCircle, Pencil, Lock, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
+import {PartyChildLifecycleControl,usePartyChildLifecycle} from './party-child-lifecycle-control';
+import {PartyChildSaveDialog,type SavePartyChild} from './party-child-save-dialog';
 import { format } from "date-fns";
 import {
   getPartyNotes,
   getPartyNoteTypes,
   createPartyNote,
   updatePartyNote,
-  deletePartyNote,
 } from "@/server/actions/master-data/party-notes";
 import { useChildTableQuery } from "@/hooks/child-tables/use-child-table-query";
 import { useQuery } from "@tanstack/react-query";
@@ -52,10 +53,13 @@ const emptyForm: FormState = {
 export function PartyNotesTab({ partyId, canManage, currentUserProfileId, onChildOpen }: Props) {
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const lifecycle=usePartyChildLifecycle({entity:'party_notes',onSaved:()=>{void queryClient.invalidateQueries({queryKey:['child','party_notes',partyId]});},onOpenChange:onChildOpen});
+  const lifecycleOpen=lifecycle.isOpen;
   const setDialogOpen = (open: boolean) => { setIsDialogOpen(open); onChildOpen?.(open); };
   const [editing, setEditing] = useState<PartyNote | null>(null);
   const [form, setForm] = useState<FormState>({ ...emptyForm });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
 
   const { data: notes, isLoading, error, refetch } = useChildTableQuery({
     tableName: "party_notes",
@@ -77,12 +81,14 @@ export function PartyNotesTab({ partyId, canManage, currentUserProfileId, onChil
   }));
 
   const openAdd = () => {
+    if(lifecycleOpen)return;
     setEditing(null);
     setForm({ ...emptyForm });
     setDialogOpen(true);
   };
 
   const openEdit = (note: PartyNote) => {
+    if(lifecycleOpen)return;
     setEditing(note);
     setForm({
       note_type_id: note.note_type_id,
@@ -94,7 +100,7 @@ export function PartyNotesTab({ partyId, canManage, currentUserProfileId, onChil
     setDialogOpen(true);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (save:SavePartyChild<Parameters<typeof createPartyNote>[0]>) => {
     if (!form.note_body.trim()) {
       toast.error("Note body is required");
       return;
@@ -109,37 +115,26 @@ export function PartyNotesTab({ partyId, canManage, currentUserProfileId, onChil
       follow_up_date: form.follow_up_date || null,
     };
 
-    const result = editing
-      ? await updatePartyNote({ id: editing.id, ...payload })
-      : await createPartyNote(payload);
+      const result = await save(payload);
 
     setIsSubmitting(false);
     if (!result.success) {
       toast.error(result.error ?? "Failed to save note");
       return;
     }
-    toast.success(editing ? "Note updated" : "Note added");
+    toast.success(result.data?.changed === false ? "No changes to save" : editing ? "Note updated" : "Note added");
     setDialogOpen(false);
     void queryClient.invalidateQueries({ queryKey: ["child", "party_notes", partyId] });
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Delete this note?")) return;
-    const result = await deletePartyNote(id);
-    if (!result.success) {
-      toast.error(result.error ?? "Failed to delete");
-      return;
-    }
-    toast.success("Note deleted");
-    void queryClient.invalidateQueries({ queryKey: ["child", "party_notes", partyId] });
-  };
 
   const columns: ColumnDef<PartyNote>[] = [
+    {id:'archive_state',header:'Archive status',accessorFn:row=>row.archived_at?'Archived':'Current'},
 { id:"note",header:"Note",size:340,accessorFn:note=>[note.note_title,note.note_body].filter(Boolean).join(" "),cell:({row})=><div><p className="font-medium">{row.original.note_title || "Note"}</p><p className="whitespace-pre-wrap">{row.original.note_body}</p>{row.original.is_private&&<Badge variant="secondary"><Lock className="h-3 w-3"/>Private</Badge>}</div>},
 {accessorKey:"note_type_name",header:"Type"},
 {accessorKey:"created_at",header:"Created",meta:{filter:{type:"date"}},cell:({row})=>format(new Date(row.original.created_at),"dd MMM yyyy HH:mm")},
 {accessorKey:"follow_up_date",header:"Follow-up",meta:{filter:{type:"date"}}},
-{id:"actions",header:"Actions",enableHiding:false,enableSorting:false,cell:({row})=>canManage&&currentUserProfileId&&row.original.created_by===currentUserProfileId?<div className="flex"><Button type="button" aria-label="Edit note" variant="ghost" onClick={()=>openEdit(row.original)}><Pencil className="h-4 w-4"/></Button><Button type="button" aria-label="Delete note" variant="ghost" onClick={()=>handleDelete(row.original.id)}><Trash2 className="h-4 w-4"/></Button></div>:null}];
+{id:"actions",header:"Actions",enableHiding:false,enableSorting:false,cell:({row})=>canManage&&currentUserProfileId&&row.original.created_by===currentUserProfileId?<div className="flex"><Button type="button" aria-label="Edit note" variant="ghost" disabled={Boolean(row.original.archived_at)} onClick={() => openEdit(row.original)}><Pencil className="h-4 w-4"/></Button><PartyChildLifecycleControl record={row.original} onOpen={()=>lifecycle.open(row.original,row.original.note_code)}/></div>:null}];
   if (isLoading) return <div className="flex items-center justify-center h-32 text-muted-foreground">Loading notes…</div>;
 
   return (
@@ -159,7 +154,12 @@ export function PartyNotesTab({ partyId, canManage, currentUserProfileId, onChil
 
       {error ? <div role="alert"><p>Notes could not be loaded.</p><Button type="button" onClick={refetch}>Try again</Button></div> : <ERPDataTable tableId={`party.notes:${partyId}`} resultsLabel="Notes" data={notes ?? []} columns={columns} enableRowSelection={false}/>}
 
-      <ERPChildDialogForm
+      {isDialogOpen && <PartyChildSaveDialog
+        key={editing?.id ?? 'new'}
+        formId={`party-notes-tab:${partyId}`}
+        record={editing}
+        createAction={createPartyNote}
+        updateAction={updatePartyNote}
         open={isDialogOpen}
         onOpenChange={setDialogOpen}
         title={editing ? "Edit Note" : "Add Note"}
@@ -199,7 +199,8 @@ export function PartyNotesTab({ partyId, canManage, currentUserProfileId, onChil
             <Label htmlFor="is_private">Private note</Label>
           </div>
         </div>
-      </ERPChildDialogForm>
+      </PartyChildSaveDialog>}
+      {lifecycle.dialog}
     </div>
   );
 }

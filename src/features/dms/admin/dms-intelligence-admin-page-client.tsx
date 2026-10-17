@@ -80,7 +80,7 @@ function HealthStatCard({ card }: { card: HealthCard }) {
           <Icon className="h-3.5 w-3.5" />
         </div>
         {card.warn && (
-          <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5" />
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 dark:text-amber-300" />
         )}
       </div>
       <div className="mt-3">
@@ -155,7 +155,7 @@ function ResultPanel({
         <div>
           <button
             type="button"
-            className="flex items-center gap-1 text-amber-600 font-medium"
+            className="flex items-center gap-1 text-amber-600 font-medium dark:text-amber-300"
             onClick={() => setExpanded((v) => !v)}
           >
             {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
@@ -871,11 +871,11 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
                 <div className="font-semibold text-foreground text-[11px] uppercase tracking-wide">Queue Status — OCR Backfill</div>
                 <div className="grid grid-cols-3 gap-1.5">
                   {[
-                    { label: "Queued",    value: ocrQueueSummary.queued,          color: "text-blue-600" },
-                    { label: "Running",   value: ocrQueueSummary.running,         color: "text-amber-600" },
-                    { label: "Retry",     value: ocrQueueSummary.retry_scheduled, color: "text-orange-600" },
-                    { label: "Completed", value: ocrQueueSummary.completed,       color: "text-green-600" },
-                    { label: "Failed",    value: ocrQueueSummary.failed,          color: "text-red-600" },
+                    { label: "Queued",    value: ocrQueueSummary.queued,          color: "text-blue-600 dark:text-blue-300" },
+                    { label: "Running",   value: ocrQueueSummary.running,         color: "text-amber-600 dark:text-amber-300" },
+                    { label: "Retry",     value: ocrQueueSummary.retry_scheduled, color: "text-orange-600 dark:text-orange-300" },
+                    { label: "Completed", value: ocrQueueSummary.completed,       color: "text-green-600 dark:text-green-300" },
+                    { label: "Failed",    value: ocrQueueSummary.failed,          color: "text-red-600 dark:text-red-300" },
                     { label: "Cancelled", value: ocrQueueSummary.cancelled,       color: "text-muted-foreground" },
                   ].map(({ label, value, color }) => (
                     <div key={label} className="flex flex-col">
@@ -1373,12 +1373,12 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
           </div>
 
           {p13ValidationResult && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs space-y-1">
-              <p className="font-semibold text-amber-800">Validation Result</p>
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs space-y-1 dark:border-amber-800 dark:bg-amber-950">
+              <p className="font-semibold text-amber-800 dark:text-amber-200">Validation Result</p>
               {p13ValidationResult.error
-                ? <p className="text-red-600">{p13ValidationResult.error}</p>
+                ? <p className="text-red-600 dark:text-red-300">{p13ValidationResult.error}</p>
                 : (
-                  <div className="flex flex-wrap gap-3 text-amber-700">
+                  <div className="flex flex-wrap gap-3 text-amber-700 dark:text-amber-200">
                     <span>Created: <strong>{p13ValidationResult.findingsCreated}</strong></span>
                     <span>Skipped: <strong>{p13ValidationResult.findingsSkipped}</strong></span>
                     <span>Queue items: <strong>{p13ValidationResult.queueItemIds.length}</strong></span>
@@ -1392,12 +1392,12 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
           )}
 
           {p13MatchingResult && (
-            <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-xs space-y-1">
-              <p className="font-semibold text-sky-800">Entity Matching Result</p>
+            <div className="rounded-md border border-sky-200 bg-sky-50 p-3 text-xs space-y-1 dark:border-sky-800 dark:bg-sky-950">
+              <p className="font-semibold text-sky-800 dark:text-sky-200">Entity Matching Result</p>
               {p13MatchingResult.error
-                ? <p className="text-red-600">{p13MatchingResult.error}</p>
+                ? <p className="text-red-600 dark:text-red-300">{p13MatchingResult.error}</p>
                 : (
-                  <div className="flex flex-wrap gap-3 text-sky-700">
+                  <div className="flex flex-wrap gap-3 text-sky-700 dark:text-sky-200">
                     <span>Created: <strong>{p13MatchingResult.candidatesCreated}</strong></span>
                     <span>Skipped: <strong>{p13MatchingResult.candidatesSkipped}</strong></span>
                     <span>Queue items: <strong>{p13MatchingResult.queueItemIds.length}</strong></span>
@@ -1457,7 +1457,7 @@ function BackfillResultPanel({
         <div>
           <button
             type="button"
-            className="flex items-center gap-1 text-amber-600 font-medium"
+            className="flex items-center gap-1 text-amber-600 font-medium dark:text-amber-300"
             onClick={() => setExpanded((v) => !v)}
           >
             {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
@@ -1519,7 +1519,7 @@ function BulkResultPanel({
         <div>
           <button
             type="button"
-            className="flex items-center gap-1 text-amber-600 font-medium"
+            className="flex items-center gap-1 text-amber-600 font-medium dark:text-amber-300"
             onClick={() => setExpanded((v) => !v)}
           >
             {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}

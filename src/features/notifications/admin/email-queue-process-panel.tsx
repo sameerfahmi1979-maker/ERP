@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useLayoutEffect, useRef } from "react";
 import { toast } from "sonner";
 import { Send, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,17 +9,24 @@ import { processEmailQueue, queueEmail } from "@/server/actions/notifications/em
 interface EmailQueueProcessPanelProps {
   pendingCount: number;
   onRefresh: () => void;
+  canQueue?: boolean;
 }
 
-export function EmailQueueProcessPanel({ pendingCount, onRefresh }: EmailQueueProcessPanelProps) {
+export function EmailQueueProcessPanel({ pendingCount, onRefresh, canQueue = false }: EmailQueueProcessPanelProps) {
+  const owner = useRef(false), flight = useRef(false);
+  useLayoutEffect(() => {owner.current = true; return () => {owner.current = false;};}, []);
   const [loading, startTransition] = useTransition();
   const [dryRun, setDryRun] = useState(false);
   const [testEmail, setTestEmail] = useState("");
   const [queueing, setQueueing] = useState(false);
 
   const handleProcess = () => {
+    if (!owner.current || flight.current || pendingCount <= 0) return;
+    flight.current = true;
     startTransition(async () => {
+      try {
       const result = await processEmailQueue({ dryRun, limit: 20 });
+      if (!owner.current) return;
       if (result.success && result.data) {
         const { processed, sent, failed, skipped } = result.data;
         if (dryRun) {
@@ -31,12 +38,17 @@ export function EmailQueueProcessPanel({ pendingCount, onRefresh }: EmailQueuePr
       } else {
         toast.error(result.error ?? "Processing failed");
       }
+      } catch {if (owner.current) toast.error("Queue processing could not be confirmed. Refresh before retrying.");}
+      finally {flight.current = false;}
     });
   };
 
   const handleQueueTest = async () => {
+    if (!owner.current || flight.current || !canQueue) return;
     if (!testEmail) { toast.error("Enter a test recipient email"); return; }
+    flight.current = true;
     setQueueing(true);
+    try {
     const result = await queueEmail({
       source_module: "SYSTEM",
       to_emails: [testEmail],
@@ -47,13 +59,15 @@ export function EmailQueueProcessPanel({ pendingCount, onRefresh }: EmailQueuePr
       priority: "high",
       max_attempts: 3,
     });
-    setQueueing(false);
+    if (!owner.current) return;
     if (result.success) {
       toast.success(`Queued test email (ID: ${result.data?.id}) — click Process Queue to send`);
       onRefresh();
     } else {
       toast.error(result.error ?? "Failed to queue");
     }
+    } catch {if (owner.current) toast.error("Queue creation could not be confirmed. Refresh before retrying.");}
+    finally {flight.current = false; if (owner.current) setQueueing(false);}
   };
 
   return (
@@ -87,7 +101,7 @@ export function EmailQueueProcessPanel({ pendingCount, onRefresh }: EmailQueuePr
         </div>
       </div>
 
-      <div className="border-t pt-3">
+      {canQueue && <div className="border-t pt-3">
         <p className="text-xs font-medium text-muted-foreground mb-2">Queue a Test Email</p>
         <div className="flex gap-2">
           <input
@@ -102,7 +116,7 @@ export function EmailQueueProcessPanel({ pendingCount, onRefresh }: EmailQueuePr
             Queue Test
           </Button>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

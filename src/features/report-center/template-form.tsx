@@ -13,9 +13,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import type { ReportBrandingProfile, ReportTemplate, ReportTemplateType } from "@/lib/report-center/types";
-import { createReportTemplate, updateReportTemplate } from "@/server/actions/reports/templates";
+import { createReportTemplate, updateReportTemplate, getReportTemplate } from "@/server/actions/reports/templates";
+import { createWorkspaceSaveAttempt, type WorkspaceSaveContract } from "@/lib/workspace/save-contract";
+import { useReadCacheOwner } from "@/components/layout/read-cache-boundary";
+import { templateConfigurationReceipt } from "@/lib/report-center/template-save-receipt";
 import { FileText } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef, useLayoutEffect } from "react";
 import { toast } from "sonner";
 
 interface Props {
@@ -23,13 +26,14 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   template: ReportTemplate | null;
   profiles: ReportBrandingProfile[];
+  canSignGlobal?: boolean;
   onSaved: (template: ReportTemplate, isNew: boolean) => void;
 }
 
 const defaultForm = {
   template_code: "",
   template_name: "",
-  template_type: "report",
+  template_type: "report" as ReportTemplateType,
   branding_profile_id: null as number | null,
   default_orientation: "portrait" as "portrait" | "landscape",
   page_size: "a4" as "a4" | "letter" | "legal",
@@ -84,7 +88,7 @@ export function TemplateForm(props: Props) {
   return props.open ? <TemplateFormSession key={props.template?.id ?? "new"} {...props} /> : null;
 }
 
-function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }: Props) {
+function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved,canSignGlobal=false }: Props) {
   const [form, setForm] = useState(() => template ? {
         template_code: template.template_code,
         template_name: template.template_name,
@@ -107,57 +111,63 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
         is_active: template.is_active,
       } : defaultForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadedRevision]=useState(template?.workspace_revision==null?null:String(template.workspace_revision));
+  const [initial]=useState(()=>JSON.stringify(form));
+  const [saveError,setSaveError]=useState('');
+  const [committedId,setCommittedId]=useState<number|null>(null);
+  const committed=useRef<{id:number;changed:boolean}|null>(null);
+  const flight=useRef(false);
+  const attempt=useRef(createWorkspaceSaveAttempt());
+  const pending=useRef<{input:Parameters<typeof createReportTemplate>[0]|Parameters<typeof updateReportTemplate>[0];contract:WorkspaceSaveContract;fingerprint:string;hadUnknown:boolean}|null>(null);
+  const owner=useReadCacheOwner(),activation=useRef<{live:boolean}|null>(null);
+  useLayoutEffect(()=>{const token={live:true};activation.current=token;return()=>{token.live=false;};},[owner]);
   const isEditing = !!template;
+  const selectedProfile=profiles.find(p=>p.id===form.branding_profile_id);
+  const canSign=form.branding_profile_id===null?canSignGlobal:selectedProfile?.can_sign===true&&selectedProfile.is_active&&!selectedProfile.deleted_at;
 
   const handleSubmit = async () => {
+    const token=activation.current,current=()=>!!token?.live&&activation.current===token&&owner?.isLive()!==false;
+    if(flight.current||!current())return;
     if (!form.template_name.trim()) { toast.error("Template name is required"); return; }
     if (!isEditing && !form.template_code.trim()) { toast.error("Template code is required"); return; }
 
-    setIsSubmitting(true);
+    flight.current=true;setIsSubmitting(true);setSaveError('');
     try {
-      let result;
-      if (isEditing && template) {
-        result = await updateReportTemplate({ id: template.id, ...form, watermark_text: form.watermark_text || null });
-      } else {
-        result = await createReportTemplate({ ...form, watermark_text: form.watermark_text || null });
+      if(!committed.current){
+        const {template_code,...fields}=form;
+        const payload={...fields,template_name:form.template_name.trim(),watermark_text:form.watermark_text?.trim()||null};
+        const input=template?{id:template.id,...payload}:{template_code:template_code.trim(),...payload};
+        const fingerprint=JSON.stringify(form);
+        if(pending.current&&pending.current.fingerprint!==fingerprint)throw Error('A previous save is unconfirmed. Restore its submitted values and retry.');
+        pending.current??={input:structuredClone(input),contract:attempt.current.begin(input,loadedRevision),fingerprint,hadUnknown:false};
+        const request=pending.current;
+        let result:Awaited<ReturnType<typeof createReportTemplate>>;
+        try{result=template?await updateReportTemplate(request.input as Parameters<typeof updateReportTemplate>[0],request.contract):await createReportTemplate(request.input as Parameters<typeof createReportTemplate>[0],request.contract);}catch{request.hadUnknown=true;throw Error('Save unconfirmed. Retry the unchanged entries.');}
+        if(!current())return;
+        if(!result||typeof result.success!=='boolean'){request.hadUnknown=true;setSaveError('Save response incomplete. Retry the unchanged entries.');return;}
+        if(!result.success){const earlier=request.hadUnknown;request.hadUnknown ||= result.uncertain===true;if(!request.hadUnknown){attempt.current.resolved();pending.current=null;}setSaveError(earlier?'The earlier save is still unconfirmed. Retry the unchanged entries.':result.error??'Save unconfirmed. Retry the unchanged entries.');return;}
+        const receipt=templateConfigurationReceipt.safeParse(result.data);
+        if(!receipt.success||(template&&receipt.data.id!==template.id)){request.hadUnknown=true;setSaveError('Save response incomplete. Retry the unchanged entries.');return;}
+        committed.current={id:receipt.data.id,changed:receipt.data.changed};setCommittedId(receipt.data.id);attempt.current.resolved();pending.current=null;
       }
-
-      if (!result.success) { toast.error(result.error ?? "Save failed"); return; }
-
-      toast.success(isEditing ? "Template updated" : "Template created");
-
-      const saved: ReportTemplate = {
-        ...(template ?? ({} as ReportTemplate)),
-        ...form,
-        template_type: form.template_type as ReportTemplateType,
-        id: isEditing ? template!.id : (result.data?.id ?? 0),
-        watermark_text: form.watermark_text || null,
-        branding_profile_id: form.branding_profile_id ?? null,
-        header_layout_json: template?.header_layout_json ?? {},
-        footer_layout_json: template?.footer_layout_json ?? {},
-        body_layout_json: template?.body_layout_json ?? {},
-        style_json: template?.style_json ?? {},
-        body_html_en: template?.body_html_en ?? null,
-        body_html_ar: template?.body_html_ar ?? null,
-        custom_css: template?.custom_css ?? null,
-        requires_stamp_permission: template?.requires_stamp_permission ?? false,
-        version_no: template?.version_no ?? 1,
-        created_at: template?.created_at ?? new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        created_by: template?.created_by ?? null,
-        updated_by: null,
-        deleted_at: null,
-        deleted_by: null,
-      };
-      onSaved(saved, !isEditing);
+      const refreshed=await getReportTemplate(committed.current.id);
+      if(!current())return;
+      if(!refreshed.success||!refreshed.data||refreshed.data.id!==committed.current.id){setSaveError('Saved, but the current template could not be loaded. Reload saved template; it will not create another record.');return;}
+      let displayFailed=false;
+      try{toast.success(!committed.current.changed?'No changes to save':isEditing?'Template updated':'Template created');}catch{displayFailed=true;}
+      if(current())try{onSaved(refreshed.data,!isEditing);}catch{displayFailed=true;}
+      if(current()&&displayFailed)setSaveError('Saved, but the display could not be refreshed. Reload saved template.');
+    }catch(e){
+      if(!current())return;
+      setSaveError(committed.current?'Saved, but the display could not be refreshed. Reload saved template.':e instanceof Error&&e.message.startsWith('A previous save is unconfirmed')?e.message:'Save unconfirmed. Retry the unchanged entries.');
     } finally {
-      setIsSubmitting(false);
+      if(current()){flight.current=false;setIsSubmitting(false);}
     }
   };
 
-  const profileOptions = profiles.map((p) => ({
+  const profileOptions = profiles.filter(p=>(p.is_active&&p.can_manage)||p.id===form.branding_profile_id).map((p) => ({
     value: p.id,
-    label: `${p.profile_name} (${p.profile_type})`,
+    label: `${p.profile_name} (${p.profile_type})${!p.is_active?' — inactive':''}`,
   }));
 
   return (
@@ -170,9 +180,12 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
       mode={isEditing ? "edit" : "add"}
       size="lg"
       isSubmitting={isSubmitting}
+      isDirty={!committedId&&JSON.stringify(form)!==initial}
+      submitLabel={committedId?'Reload saved template':undefined}
       onSubmit={handleSubmit}
     >
-      <div className="grid grid-cols-12 gap-4">
+      {saveError&&<div role="alert" className="mb-4 text-destructive">{saveError}</div>}
+      <fieldset disabled={Boolean(committedId)} className="grid grid-cols-12 gap-4">
         {/* ── Basic Info ─────────────────────────────────────────────────── */}
         <div className="col-span-12">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
@@ -182,11 +195,11 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
         </div>
 
         {!isEditing && (
-          <div className="col-span-4">
+          <div className="col-span-12 sm:col-span-4">
             <Label className="text-xs font-medium">
               Code <span className="text-destructive">*</span>
             </Label>
-            <Input aria-label="Code" required
+            <Input aria-label="Code" required minLength={2} maxLength={100} pattern="[A-Z0-9_]+"
               className="mt-1 uppercase h-9 text-sm"
               placeholder="COMPANY_1_REPORT"
               value={form.template_code}
@@ -195,11 +208,11 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
           </div>
         )}
 
-        <div className={`col-span-${isEditing ? "8" : "8"}`}>
+        <div className="col-span-12 sm:col-span-8">
           <Label className="text-xs font-medium">
             Name <span className="text-destructive">*</span>
           </Label>
-          <Input aria-label="Name" required
+          <Input aria-label="Name" required minLength={2} maxLength={200} pattern=".*\S.*"
             className="mt-1 h-9 text-sm"
             placeholder="Company Default Report"
             value={form.template_name}
@@ -207,9 +220,9 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
           />
         </div>
 
-        {isEditing && <div className="col-span-4" />}
+        {isEditing && <div className="hidden sm:block sm:col-span-4" />}
 
-        <div className="col-span-6">
+        <div className="col-span-12 sm:col-span-6">
           <Label className="text-xs font-medium">Branding Profile</Label>
           <div className="mt-1">
             <ERPCombobox
@@ -221,12 +234,12 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
           </div>
         </div>
 
-        <div className="col-span-6">
+        <div className="col-span-12 sm:col-span-6">
           <Label className="text-xs font-medium">Template Type</Label>
           <div className="mt-1">
             <ERPCombobox
               value={form.template_type}
-              onValueChange={(v) => setForm((f) => ({ ...f, template_type: String(v) }))}
+              onValueChange={(v) => setForm((f) => ({ ...f, template_type: String(v) as ReportTemplateType }))}
               options={typeOptions}
               placeholder="Select type..."
             />
@@ -241,7 +254,7 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
           <div className="h-px bg-border mb-4" />
         </div>
 
-        <div className="col-span-3">
+        <div className="col-span-12 sm:col-span-6 lg:col-span-3">
           <Label className="text-xs font-medium">Orientation</Label>
           <div className="mt-1">
             <ERPCombobox
@@ -253,7 +266,7 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
           </div>
         </div>
 
-        <div className="col-span-3">
+        <div className="col-span-12 sm:col-span-6 lg:col-span-3">
           <Label className="text-xs font-medium">Page Size</Label>
           <div className="mt-1">
             <ERPCombobox
@@ -265,7 +278,7 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
           </div>
         </div>
 
-        <div className="col-span-3">
+        <div className="col-span-12 sm:col-span-6 lg:col-span-3">
           <Label className="text-xs font-medium">Language Mode</Label>
           <div className="mt-1">
             <ERPCombobox
@@ -277,9 +290,9 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
           </div>
         </div>
 
-        <div className="col-span-3">
+        <div className="col-span-12 sm:col-span-6 lg:col-span-3">
           <Label className="text-xs font-medium">Font Family</Label>
-          <Input aria-label="Font Family"
+          <Input aria-label="Font Family" required minLength={1} maxLength={100}
             className="mt-1 h-9 text-sm"
             value={form.font_family}
             onChange={(e) => setForm((f) => ({ ...f, font_family: e.target.value }))}
@@ -295,8 +308,9 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
         </div>
 
         {displayOptions.map(([key, label]) => (
-          <div key={key} className="col-span-3 flex items-center gap-2">
+          <div key={key} className="col-span-12 sm:col-span-6 lg:col-span-3 flex items-center gap-2">
             <Switch
+              disabled={(key==='show_stamp'||key==='show_signatory')&&!canSign}
               checked={!!form[key]}
               onCheckedChange={(v) => setForm((f) => ({ ...f, [key]: v }))}
               id={key}
@@ -304,11 +318,12 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
             <Label htmlFor={key} className="text-sm cursor-pointer">{label}</Label>
           </div>
         ))}
+        {!canSign&&<p className="col-span-12 text-xs text-muted-foreground">Stamp and signature changes require signing permission for the selected branding company.</p>}
 
         {form.show_watermark && (
-          <div className="col-span-6">
+          <div className="col-span-12 sm:col-span-6">
             <Label className="text-xs font-medium">Watermark Text</Label>
-            <Input aria-label="Watermark Text"
+            <Input aria-label="Watermark Text" maxLength={100}
               className="mt-1 h-9 text-sm"
               placeholder="CONFIDENTIAL"
               value={form.watermark_text ?? ""}
@@ -325,7 +340,7 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
           <div className="h-px bg-border mb-4" />
         </div>
 
-        <div className="col-span-3 flex items-center gap-2">
+        <div className="col-span-12 sm:col-span-6 lg:col-span-3 flex items-center gap-2">
           <Switch
             checked={form.is_active}
             onCheckedChange={(v) => setForm((f) => ({ ...f, is_active: v }))}
@@ -334,7 +349,7 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
           <Label htmlFor="tpl_is_active" className="text-sm cursor-pointer">Active</Label>
         </div>
 
-        <div className="col-span-3 flex items-center gap-2">
+        <div className="col-span-12 sm:col-span-6 lg:col-span-3 flex items-center gap-2">
           <Switch
             checked={form.is_default}
             onCheckedChange={(v) => setForm((f) => ({ ...f, is_default: v }))}
@@ -342,7 +357,7 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved }
           />
           <Label htmlFor="tpl_is_default" className="text-sm cursor-pointer">Default template</Label>
         </div>
-      </div>
+      </fieldset>
     </ERPChildDialogForm>
   );
 }

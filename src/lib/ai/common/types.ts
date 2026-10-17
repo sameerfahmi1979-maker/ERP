@@ -180,6 +180,8 @@ export interface ErpAiCurrentRecordSnapshot {
   entityId: number;
   /** Map of fieldName → current value (null if empty). Sanitized — no sensitive values. */
   fields: Record<string, string | null>;
+  /** Server-captured child identities; never taken from model output or prompts. */
+  reviewedTargets?: Record<string, { id: number; revision: string }>;
 }
 
 // ── Document Evidence Snippet ─────────────────────────────────────────────────

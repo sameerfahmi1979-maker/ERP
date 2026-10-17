@@ -27,6 +27,7 @@ export const createCurrencySchema = z.object({
 
   currency_name_en: z
     .string()
+    .trim()
     .min(2, "English name is required (minimum 2 characters)")
     .max(255, "English name must not exceed 255 characters"),
 
@@ -45,13 +46,14 @@ export const createCurrencySchema = z.object({
   decimal_places: z.number().int().min(0).max(4).default(2),
 
   is_base_currency: z.boolean().default(false),
+  is_active: z.boolean().default(true),
 
   description_en: z.string().max(1000).nullable().optional(),
   description_ar: z.string().max(1000).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
 
-  sort_order: z.number().int().min(0).default(0),
-});
+  sort_order: z.number().int().min(0).max(2147483647).default(0),
+}).strict();
 
 export type CreateCurrencyInput = z.infer<typeof createCurrencySchema>;
 
@@ -66,6 +68,7 @@ export const updateCurrencySchema = z.object({
 
   currency_name_en: z
     .string()
+    .trim()
     .min(2, "English name is required (minimum 2 characters)")
     .max(255, "English name must not exceed 255 characters")
     .optional(),
@@ -91,8 +94,8 @@ export const updateCurrencySchema = z.object({
   notes: z.string().max(2000).nullable().optional(),
 
   is_active: z.boolean().optional(),
-  sort_order: z.number().int().min(0).optional(),
-});
+  sort_order: z.number().int().min(0).max(2147483647).optional(),
+}).strict();
 
 export type UpdateCurrencyInput = z.infer<typeof updateCurrencySchema>;
 
@@ -431,6 +434,7 @@ export const createCostCenterSchema = z.object({
 
   cost_center_name_en: z
     .string()
+    .trim()
     .min(2, "English name is required (minimum 2 characters)")
     .max(255, "English name must not exceed 255 characters"),
 
@@ -446,16 +450,17 @@ export const createCostCenterSchema = z.object({
     .nullable()
     .optional(),
 
-  parent_cost_center_id: z.number().int().positive().nullable().optional(),
-  owner_company_id: z.number().int().positive().nullable().optional(),
-  branch_id: z.number().int().positive().nullable().optional(),
+  parent_cost_center_id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+  owner_company_id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+  branch_id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
 
   description_en: z.string().max(1000).nullable().optional(),
   description_ar: z.string().max(1000).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
 
-  sort_order: z.number().int().min(0).default(0),
-});
+  is_active: z.boolean().optional(),
+  sort_order: z.number().int().min(0).max(2147483647).default(0),
+}).strict();
 
 export type CreateCostCenterInput = z.infer<typeof createCostCenterSchema>;
 
@@ -464,12 +469,13 @@ export type CreateCostCenterInput = z.infer<typeof createCostCenterSchema>;
 // ============================================================================
 
 export const updateCostCenterSchema = z.object({
-  id: z.number().int().positive(),
+  id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
 
   // cost_center_code is NOT updatable (immutable)
 
   cost_center_name_en: z
     .string()
+    .trim()
     .min(2, "English name is required (minimum 2 characters)")
     .max(255, "English name must not exceed 255 characters")
     .optional(),
@@ -486,17 +492,17 @@ export const updateCostCenterSchema = z.object({
     .nullable()
     .optional(),
 
-  parent_cost_center_id: z.number().int().positive().nullable().optional(),
-  owner_company_id: z.number().int().positive().nullable().optional(),
-  branch_id: z.number().int().positive().nullable().optional(),
+  parent_cost_center_id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+  owner_company_id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+  branch_id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
 
   description_en: z.string().max(1000).nullable().optional(),
   description_ar: z.string().max(1000).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
 
   is_active: z.boolean().optional(),
-  sort_order: z.number().int().min(0).optional(),
-});
+  sort_order: z.number().int().min(0).max(2147483647).optional(),
+}).strict();
 
 export type UpdateCostCenterInput = z.infer<typeof updateCostCenterSchema>;
 
@@ -514,6 +520,7 @@ export const createProfitCenterSchema = z.object({
 
   profit_center_name_en: z
     .string()
+    .trim()
     .min(2, "English name is required (minimum 2 characters)")
     .max(255, "English name must not exceed 255 characters"),
 
@@ -529,16 +536,17 @@ export const createProfitCenterSchema = z.object({
     .nullable()
     .optional(),
 
-  parent_profit_center_id: z.number().int().positive().nullable().optional(),
-  owner_company_id: z.number().int().positive().nullable().optional(),
-  branch_id: z.number().int().positive().nullable().optional(),
+  parent_profit_center_id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+  owner_company_id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+  branch_id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
 
   description_en: z.string().max(1000).nullable().optional(),
   description_ar: z.string().max(1000).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
 
-  sort_order: z.number().int().min(0).default(0),
-});
+  is_active: z.boolean().optional(),
+  sort_order: z.number().int().min(0).max(2147483647).default(0),
+}).strict();
 
 export type CreateProfitCenterInput = z.infer<typeof createProfitCenterSchema>;
 
@@ -547,12 +555,13 @@ export type CreateProfitCenterInput = z.infer<typeof createProfitCenterSchema>;
 // ============================================================================
 
 export const updateProfitCenterSchema = z.object({
-  id: z.number().int().positive(),
+  id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
 
   // profit_center_code is NOT updatable (immutable)
 
   profit_center_name_en: z
     .string()
+    .trim()
     .min(2, "English name is required (minimum 2 characters)")
     .max(255, "English name must not exceed 255 characters")
     .optional(),
@@ -569,17 +578,17 @@ export const updateProfitCenterSchema = z.object({
     .nullable()
     .optional(),
 
-  parent_profit_center_id: z.number().int().positive().nullable().optional(),
-  owner_company_id: z.number().int().positive().nullable().optional(),
-  branch_id: z.number().int().positive().nullable().optional(),
+  parent_profit_center_id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+  owner_company_id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+  branch_id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
 
   description_en: z.string().max(1000).nullable().optional(),
   description_ar: z.string().max(1000).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
 
   is_active: z.boolean().optional(),
-  sort_order: z.number().int().min(0).optional(),
-});
+  sort_order: z.number().int().min(0).max(2147483647).optional(),
+}).strict();
 
 export type UpdateProfitCenterInput = z.infer<typeof updateProfitCenterSchema>;
 

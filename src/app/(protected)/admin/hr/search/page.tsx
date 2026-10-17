@@ -52,7 +52,7 @@ export default async function HrSearchPage() {
           { label: "HR Search" },
         ]}
       />
-      <HrSearchPageClient permissions={permissions} />
+      <HrSearchPageClient authContext={ctx} permissions={permissions} />
     </div>
   );
 }

@@ -145,6 +145,7 @@ export function ERPDataTable<TData>({
   exportConfig,  // Changed from exportSlot
   userProfileId = "default",
   serverPaged = false,
+  serverRead,
   resultsLabel = "Results",
 }: ERPDataTableProps<TData>) {
   // ERP GLOBAL UI.4E.1: route-scoped v2 key prevents cross-screen state leakage.
@@ -164,6 +165,10 @@ export function ERPDataTable<TData>({
   const [columnOrder, setColumnOrder] = usePersistentUiState<string[]>(key ? key+":order" : undefined, []);
   const [columnFilters, setColumnFilters] = usePersistentUiState<ColumnFiltersState>(key ? key+":filters" : undefined, []);
   const [mounted, setMounted] = useState(false);
+  const remote = serverPaged || !!serverRead;
+  const unavailable = !!serverRead && (serverRead.totalCount === null || !Number.isSafeInteger(serverRead.totalCount) || serverRead.totalCount < 0);
+  const activeSearch = serverRead?.globalFilter ?? globalFilter;
+  const activeFilters = serverRead?.columnFilters ?? columnFilters;
 
   useEffect(()=>{setMounted(true);},[]);
 
@@ -215,32 +220,34 @@ export function ERPDataTable<TData>({
 
   // Initialize table
   const table = useReactTable({
-    data,
+    data: unavailable ? [] : data,
     columns: enhancedColumns,
-    manualFiltering: serverPaged,
-    manualPagination: serverPaged,
+    manualFiltering: remote,
+    manualPagination: remote,
+    manualSorting: !!serverRead,
+    rowCount: unavailable ? undefined : serverRead?.totalCount ?? undefined,
     state: {
-      sorting,
+      sorting: serverRead?.sorting ?? sorting,
       columnSizing,
       columnVisibility: { ...columnVisibility, ...Object.fromEntries(enhancedColumns.filter(column => column.enableHiding === false).map(column => [column.id ?? ("accessorKey" in column ? String(column.accessorKey) : ""), true])) },
       rowSelection,
-      globalFilter,
-      pagination,
+      globalFilter: activeSearch,
+      pagination: serverRead?.pagination ?? pagination,
       columnOrder,
-      columnFilters,
+      columnFilters: activeFilters,
     },
-    onPaginationChange:setPagination,
+    onPaginationChange:serverRead?.onPaginationChange ?? setPagination,
     onColumnOrderChange: setColumnOrder,
-    onColumnFiltersChange: update => { setRowSelection({}); setColumnFilters(update); },
+    onColumnFiltersChange: update => { setRowSelection({}); (serverRead?.onColumnFiltersChange ?? setColumnFilters)(update); },
     getRowId: (row, index) => row && typeof row === "object" && "id" in row ? String(row.id) : String(index),
-    onSortingChange: setSorting,
+    onSortingChange: update => { (serverRead?.onSortingChange ?? setSorting)(update); if (serverRead) serverRead.onPaginationChange(previous => ({ ...previous, pageIndex: 0 })); },
     onColumnSizingChange: setColumnSizing,
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
-    onGlobalFilterChange: update => { setRowSelection({}); setGlobalFilter(update); },
+    onGlobalFilterChange: update => { setRowSelection({}); (serverRead?.onGlobalFilterChange ?? setGlobalFilter)(update); },
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: serverPaged ? undefined : getPaginationRowModel(),
+    getPaginationRowModel: remote ? undefined : getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     enableSorting,
     enableColumnResizing,
@@ -255,20 +262,20 @@ export function ERPDataTable<TData>({
     },
   });
 
-  const filterDefinitions: ListFilter[] = serverPaged ? [] : table.getAllLeafColumns().filter(column => column.accessorFn && column.getCanFilter()).flatMap(column => {
+  const filterDefinitions: ListFilter[] = serverRead?.filters ?? (serverPaged ? [] : table.getAllLeafColumns().filter(column => column.accessorFn && column.getCanFilter()).flatMap(column => {
     const sample = table.getCoreRowModel().flatRows.map(row => row.getValue(column.id)).find(value => value != null);
     if (typeof sample === "object") return []; // A nested object needs an explicit, permitted scalar accessor.
     const type = column.columnDef.meta?.filter?.type ?? (typeof sample === "boolean" ? "select" : typeof sample === "number" ? "number" : "text");
     const label = typeof column.columnDef.header === "string" ? column.columnDef.header : column.id.replaceAll("_", " ");
     return [{ id: column.id, label, type, options: column.columnDef.meta?.filter?.options ?? (typeof sample === "boolean" ? [{ value:"true", label:column.id === "is_active" ? "Active" : "Yes" }, { value:"false", label:column.id === "is_active" ? "Inactive" : "No" }] : undefined) }];
-  });
+  }));
   const filteredCount = table.getFilteredRowModel().rows.length;
   useEffect(() => {
-    if (!serverPaged) setPagination(previous => {
+    if (!remote) setPagination(previous => {
       const pageIndex = Math.min(previous.pageIndex, Math.max(0, Math.ceil(filteredCount / previous.pageSize) - 1));
       return pageIndex === previous.pageIndex ? previous : { ...previous, pageIndex };
     });
-  }, [filteredCount, serverPaged, setPagination]);
+  }, [filteredCount, remote, setPagination]);
   const selectedRowCount = table.getFilteredSelectedRowModel().rows.length;
 
   // Prepare export data and columns from table state
@@ -287,9 +294,13 @@ export function ERPDataTable<TData>({
       exportData.mode === "filtered" ? `${exportData.count} filtered record${exportData.count > 1 ? "s" : ""}` :
       `all ${exportData.count} record${exportData.count > 1 ? "s" : ""}`;
     
-    const scope = serverPaged ? `${modeText} from the current loaded page only` : modeText;
+    const scope = serverRead && exportData.mode !== "selected"
+      ? unavailable ? "Matching total is not yet available"
+        : serverRead.loadExportData ? `all ${serverRead.totalCount} matching authorized records`
+          : "Complete export is unavailable"
+      : remote ? `${modeText} from the current loaded page only` : modeText;
     return baseSubtitle ? `${baseSubtitle} (${scope})` : scope;
-  }, [exportConfig, exportData, serverPaged]);
+  }, [exportConfig, exportData, remote, serverRead, unavailable]);
 
   return (
     <div className="algt-data-table flex flex-col" aria-busy={isLoading || undefined}>
@@ -297,14 +308,14 @@ export function ERPDataTable<TData>({
       {/* Toolbar */}
       <div className="flex flex-col gap-3 p-4 border-b border-border/40">
         <div className="flex items-center justify-between flex-wrap gap-3">
-          {enableGlobalFilter && !serverPaged && (
+          {enableGlobalFilter && (!serverPaged || !!serverRead) && (
             <div className="relative flex-1 max-w-sm">
               <input
                 type="text"
                 aria-label={searchPlaceholder}
                 placeholder={searchPlaceholder}
-                value={globalFilter}
-                onChange={(e) => { setGlobalFilter(e.target.value); table.setPageIndex(0); }}
+                value={activeSearch}
+                onChange={(e) => { table.setGlobalFilter(e.target.value); table.setPageIndex(0); }}
                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
@@ -318,11 +329,12 @@ export function ERPDataTable<TData>({
                 title={exportConfig.title}
                 filename={exportConfig.filename}
                 data={exportData.data}
+                loadData={serverRead && exportData.mode !== "selected" ? serverRead.loadExportData : undefined}
                 columns={exportColumns}
                 subtitle={exportSubtitle}
                 generatedBy={exportConfig.generatedBy}
                 orientation={exportConfig.orientation}
-                disabled={exportData.count === 0}
+                disabled={exportData.count === 0 || (!!serverRead && (unavailable || isLoading || (exportData.mode !== "selected" && !serverRead.loadExportData)))}
               />
             )}
           </div>
@@ -345,9 +357,9 @@ export function ERPDataTable<TData>({
       </div>
 
       {filterDefinitions.length > 0 && <div className="flex flex-wrap gap-2 p-4">
-        <EditFilters definitions={filterDefinitions} values={Object.fromEntries(columnFilters.map(filter => [filter.id, String(filter.value)]))}
-          scopeLabel="Filters match the permitted rows loaded into this list. Text contains; numbers, dates and choices match exactly." onApply={values => { table.setColumnFilters(Object.entries(values).filter(([,value])=>value).map(([id,value])=>({id,value}))); table.setPageIndex(0); }} />
-        {(globalFilter || columnFilters.length > 0) && <button type="button" className="text-sm text-primary underline" onClick={() => { table.setGlobalFilter(""); table.setColumnFilters([]); table.setPageIndex(0); }}>Clear search and filters</button>}
+        <EditFilters definitions={filterDefinitions} values={Object.fromEntries(activeFilters.map(filter => [filter.id, String(filter.value)]))}
+          scopeLabel={serverRead ? "Filters query the complete permitted result before paging. Text contains; numbers, dates and choices match exactly." : "Filters match the permitted rows loaded into this list. Text contains; numbers, dates and choices match exactly."} onApply={values => { table.setColumnFilters(Object.entries(values).filter(([,value])=>value).map(([id,value])=>({id,value}))); table.setPageIndex(0); }} />
+        {(activeSearch || activeFilters.length > 0) && <button type="button" className="text-sm text-primary underline" onClick={() => { table.setGlobalFilter(""); table.setColumnFilters([]); table.setPageIndex(0); }}>Clear search and filters</button>}
       </div>}
       {/* Table */}
       <div role="region" aria-label={`${resultsLabel} — scrollable table`} tabIndex={0} className="overflow-x-auto">
@@ -432,7 +444,7 @@ export function ERPDataTable<TData>({
                   colSpan={enhancedColumns.length}
                   className="h-32 text-center text-sm text-muted-foreground"
                 >
-                  {globalFilter || columnFilters.length > 0 ? "No records match your search and filters. Clear them to see the available records." : emptyMessage}
+                  {unavailable ? "Records could not yet be verified. Check the read status or retry." : isLoading ? "Loading records…" : activeSearch || activeFilters.length > 0 ? "No records match your search and filters. Clear them to see the available records." : emptyMessage}
                 </TableCell>
               </TableRow>
             )}
@@ -441,10 +453,10 @@ export function ERPDataTable<TData>({
       </div>
 
       {/* Pagination */}
-      {!serverPaged && <div className="flex items-center justify-between px-4 py-3 border-t border-border/40 flex-wrap gap-3">
+      {(!serverPaged || !!serverRead) && <div className="flex items-center justify-between px-4 py-3 border-t border-border/40 flex-wrap gap-3">
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span>
-            Showing {table.getRowModel().rows.length} of {filteredCount} matching records ({data.length} loaded)
+            {unavailable ? "Matching total is not yet available" : `Showing ${table.getRowModel().rows.length} of ${serverRead?.totalCount ?? filteredCount} matching records (${unavailable ? 0 : data.length} loaded)`}
           </span>
           {selectedRowCount > 0 && (
             <span className="text-primary font-medium">
@@ -460,6 +472,7 @@ export function ERPDataTable<TData>({
             <select
               aria-label="Rows per page"
               value={table.getState().pagination.pageSize}
+              disabled={!!serverRead && (unavailable || isLoading)}
               onChange={(e) => table.setPageSize(Number(e.target.value))}
               className="h-8 w-16 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
             >
@@ -475,17 +488,17 @@ export function ERPDataTable<TData>({
           <div className="flex items-center gap-1">
             <button type="button"
               onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
+              disabled={!table.getCanPreviousPage() || (!!serverRead && (unavailable || isLoading))}
               className="h-8 px-3 text-xs rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Previous
             </button>
             <span className="mx-2 text-xs text-muted-foreground">
-              Page {table.getState().pagination.pageIndex + 1} of {Math.max(1, table.getPageCount())}
+              {unavailable ? "Page total unavailable" : `Page ${table.getState().pagination.pageIndex + 1} of ${Math.max(1, table.getPageCount())}`}
             </span>
             <button type="button"
               onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
+              disabled={!table.getCanNextPage() || (!!serverRead && (unavailable || isLoading))}
               className="h-8 px-3 text-xs rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Next

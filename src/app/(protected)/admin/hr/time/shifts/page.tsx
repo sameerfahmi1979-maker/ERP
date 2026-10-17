@@ -1,8 +1,9 @@
 import { LoadError } from "@/components/erp/load-error";
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { listGlobalShiftAssignments } from "@/server/actions/hr/time";
+import { readHrTime } from "@/server/reads/hr-time";
 import { HrShiftsPageClient } from "@/features/hr/time/shifts/hr-shifts-page-client";
+import { hrTimeReadIdentity } from "@/lib/reads/hr-time-schema";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar } from "lucide-react";
 
@@ -19,10 +20,9 @@ export default async function GlobalShiftsPage() {
     redirect("/admin/hr/time");
   }
 
-  const result = await listGlobalShiftAssignments({ page: 1, page_size: 50 });
-  if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/time/shifts" />;
-  const rows = result.success && result.data ? result.data.data : [];
-  const count = result.success && result.data ? result.data.count : 0;
+  const result = await readHrTime({kind: "shifts"}, authContext);
+  if (!result.success || result.data?.kind !== "shifts") return <LoadError title="HR records" retryHref="/admin/hr/time/shifts" />;
+  const rows = result.data.rows, count = result.data.totalCount;
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -43,6 +43,8 @@ export default async function GlobalShiftsPage() {
             initialRows={rows}
             initialCount={count}
             authContext={authContext}
+            initialReadIdentity={hrTimeReadIdentity(authContext)}
+            initialUpdatedAt={result.updatedAt}
           />
         </CardContent>
       </Card>

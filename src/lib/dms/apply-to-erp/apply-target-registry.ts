@@ -149,7 +149,7 @@ export const APPLY_TARGET_REGISTRY: Record<string, ApplyTargetConfig> = {
         valueType:   "text",
         permission:  "master_data.parties.manage_licenses",
         replaceable: true,
-        maxLength:   200,
+        maxLength:   100,
       },
       {
         column:      "license_name",
@@ -207,7 +207,7 @@ export const APPLY_TARGET_REGISTRY: Record<string, ApplyTargetConfig> = {
         valueType:   "text",
         permission:  "master_data.parties.manage_tax",
         replaceable: true,
-        maxLength:   100,
+        maxLength:   15,
       },
       {
         column:      "effective_from",

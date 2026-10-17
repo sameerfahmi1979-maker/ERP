@@ -10,7 +10,11 @@ import { exportToPrint } from "@/lib/export/print";
 import { injectDraftWatermark } from "@/lib/output/draft-watermark";
 import { buildLetterExecutiveLedgerDocument } from "@/lib/output/letter-document-builder";
 import { runReportAction } from "@/server/actions/reports/runner";
-import { listReportTemplatesForSelection, renderVisualTemplateForLetterPreview, resolveTemplatePreview } from "@/server/actions/reports/templates";
+import { renderVisualTemplateForLetterPreview, resolveTemplatePreview } from "@/server/actions/reports/templates";
+import type { AuthContext } from "@/lib/rbac/check";
+import { hasPermission } from "@/lib/rbac/scope";
+import { reportTemplateSelectionIdentity } from "@/lib/reads/report-template-selection-schema";
+import { useReportTemplateSelection } from "@/hooks/use-report-template-selection";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -23,9 +27,10 @@ import {
   Table2,
   X,
 } from "lucide-react";
-import { useCallback, useId, useState } from "react";
+import { useCallback, useId, useLayoutEffect, useRef, useState } from "react";
 
 interface LetterPreviewDialogProps {
+  authContext: AuthContext;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   reportCode: string;
@@ -91,11 +96,14 @@ function buildExecutiveLedgerDoc(
 }
 
 export function LetterPreviewDialog(props: LetterPreviewDialogProps) {
-  return props.open ? <LetterPreviewSession key={`${props.reportCode}:${props.employeeId}:${props.templateId ?? "auto"}`} {...props} /> : null;
+  if (!props.open) return null;
+  if (!hasPermission(props.authContext,"reports.view") && !hasPermission(props.authContext,"reports.run")) return <p role="alert">Your access to this letter could not be verified.</p>;
+  return <LetterPreviewSession key={JSON.stringify([reportTemplateSelectionIdentity(props.authContext),props.reportCode,props.employeeId,props.templateId??null])} {...props} />;
 }
 
 function LetterPreviewSession({
   open,
+  authContext,
   onOpenChange,
   reportCode,
   reportLabel,
@@ -125,9 +133,11 @@ function LetterPreviewSession({
   const data = reportQuery.data?.data;
   const error = reportQuery.error?.message;
   const selectedTemplateId = templateChoice ?? reportQuery.data?.resolvedTemplateId ?? null;
+  const templates = useReportTemplateSelection(authContext,{issuableOnly:true,selectedId:selectedTemplateId,enabled:formalView,generation:previewSession});
+  const verifiedTemplate = templates.ready && !!templates.selected?.selectable;
   const brandingQuery = useQuery({
     queryKey: ["letter-preview-branding", previewSession, reportCode, selectedTemplateId],
-    enabled: !!selectedTemplateId,
+    enabled: !!selectedTemplateId && (!formalView || verifiedTemplate),
     queryFn: async () => {
       const result = await resolveTemplatePreview({ templateId: selectedTemplateId!, reportCode });
       if (!result.success) throw new Error(result.error ?? "Could not load branding");
@@ -137,21 +147,11 @@ function LetterPreviewSession({
   });
   const selectedBranding = brandingQuery.data;
   const isPending = reportQuery.isPending || brandingQuery.isFetching;
-  const templatesQuery = useQuery({
-    queryKey: ["letter-issuable-templates", previewSession],
-    enabled: formalView,
-    queryFn: async () => {
-      const result = await listReportTemplatesForSelection({ issuableOnly: true });
-      if (!result.success) throw new Error(result.error ?? "Failed to load templates.");
-      return result.data ?? [];
-    },
-    retry: false, gcTime: 0, refetchOnWindowFocus: false,
-  });
-  const availableTemplates = templatesQuery.data ?? [];
-  const loadingTemplates = formalView && templatesQuery.isFetching;
+  const availableTemplates = [...templates.rows,...(templates.selected&&!templates.rows.some(t=>t.id===templates.selected!.id)?[templates.selected]:[])];
+  const loadingTemplates = formalView && templates.busy;
   const visualQuery = useQuery({
     queryKey: ["letter-visual-preview", previewSession, selectedTemplateId, employeeId],
-    enabled: formalView && !!selectedTemplateId,
+    enabled: formalView && !!selectedTemplateId && verifiedTemplate,
     queryFn: async () => {
       const result = await renderVisualTemplateForLetterPreview({ templateId: selectedTemplateId!, employeeId });
       if (!result.ok) throw new Error("Could not render the selected template.");
@@ -161,8 +161,11 @@ function LetterPreviewSession({
   });
   const visualHtml = formalView ? visualQuery.data : null;
   const isLoadingVisual = formalView && visualQuery.isFetching;
-  const templateLoadError = templatesQuery.error?.message ?? brandingQuery.error?.message ?? visualQuery.error?.message;
-  const outputNotReady = !data || isPending || (formalView && (isLoadingVisual || !!templateLoadError || !!visualQuery.error));
+  const templateLoadError = templates.denied ? "Template access could not be verified." : templates.invalid ? "Invalid template search." : templates.error ? "Template choices could not be loaded." : brandingQuery.error?.message ?? visualQuery.error?.message;
+  const outputNotReady = !data || isPending || (formalView && (!verifiedTemplate || isLoadingVisual || !!templateLoadError));
+  const live=useRef(false), canOutput=useRef(false), frames=useRef(new Set<HTMLIFrameElement>());
+  useLayoutEffect(()=>{const ownedFrames=frames.current;live.current=true;return()=>{live.current=false;canOutput.current=false;for(const frame of ownedFrames)frame.remove();ownedFrames.clear();};},[]);
+  useLayoutEffect(()=>{canOutput.current=!outputNotReady;});
 
   // Computed values — derived from state; safe when open=false because data=null
   const row = data?.rows?.[0] ?? null;
@@ -179,13 +182,14 @@ function LetterPreviewSession({
   /** Open the template picker; if templates failed to load, retry the fetch */
   /** Retry template load if it previously failed */
   const retryTemplateLoad = () => {
-    void templatesQuery.refetch();
+    templates.retry();
     if (selectedTemplateId) void brandingQuery.refetch();
     if (formalView && selectedTemplateId) void visualQuery.refetch();
   };
 
   /** Print the given HTML in a hidden iframe — avoids opening a new browser tab */
   const printInHiddenIframe = useCallback((html: string) => {
+    if(!live.current || !canOutput.current)return;
     const iframe = document.createElement("iframe");
     Object.assign(iframe.style, {
       position: "fixed",
@@ -197,6 +201,7 @@ function LetterPreviewSession({
       visibility: "hidden",
     });
     document.body.appendChild(iframe);
+    frames.current.add(iframe);
     const doc = iframe.contentDocument ?? iframe.contentWindow?.document;
     if (!doc) { document.body.removeChild(iframe); return; }
     doc.open();
@@ -204,11 +209,12 @@ function LetterPreviewSession({
     doc.close();
     // Wait for images and fonts to load before triggering print
     const triggerPrint = () => {
+      if(!live.current || !canOutput.current){iframe.remove();frames.current.delete(iframe);return;}
       iframe.contentWindow?.focus();
       iframe.contentWindow?.print();
       // Remove the iframe after a delay so the print dialog has time to open
       setTimeout(() => {
-        try { document.body.removeChild(iframe); } catch { /* already removed */ }
+        iframe.remove();frames.current.delete(iframe);
       }, 3000);
     };
     // Use load event; if it doesn't fire within 1.5s, print anyway
@@ -218,6 +224,7 @@ function LetterPreviewSession({
   }, []);
 
   const handlePDF = async () => {
+    if(!live.current || !canOutput.current)return;
     // Formal view: render the visual/EL HTML in a hidden iframe and trigger
     // print-to-PDF. Quick Print output is ALWAYS watermarked as a draft —
     // officially issued PDFs come only from the output coordinator.
@@ -241,6 +248,7 @@ function LetterPreviewSession({
 
 
   const handlePrint = useCallback(() => {
+    if(!live.current || !canOutput.current)return;
     if (formalView && visualHtml) {
       printInHiddenIframe(injectDraftWatermark(visualHtml));
       return;
@@ -331,7 +339,8 @@ function LetterPreviewSession({
                 Official issuance (with QR) is NOT done here — it goes through
                 the global output coordinator via the Letters & Forms area. */}
             {formalView && !isPending && !error && row && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <input aria-label="Search letter templates" placeholder="Search templates…" className="h-8 border rounded px-2 bg-background text-foreground text-xs" value={templates.search} onChange={e=>templates.setSearch(e.target.value)} disabled={templates.denied}/>
                 {loadingTemplates ? (
                   <div className="inline-flex items-center gap-1 h-8 px-2 text-xs text-muted-foreground">
                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -347,22 +356,30 @@ function LetterPreviewSession({
                   </button>
                 ) : availableTemplates.length > 0 ? (
                   <select
+                    aria-label="Letter template"
                     className="h-8 text-xs rounded-md border border-input bg-background px-2 pr-6 focus:outline-none focus:ring-1 focus:ring-ring text-foreground"
                     value={selectedTemplateId ?? ""}
                     onChange={(e) => {
                       const id = Number(e.target.value);
-                      if (!id) return;
+                      if (!id || !templates.ready || !availableTemplates.some(t=>t.id===id&&t.selectable)) return;
                       setSelectedTemplateId(id);
                     }}
                   >
                     {!selectedTemplateId && <option value="">Select template…</option>}
                     {availableTemplates.map((tpl) => (
-                      <option key={tpl.id} value={tpl.id}>
-                        {tpl.template_name}
+                      <option key={tpl.id} value={tpl.id} disabled={!tpl.selectable}>
+                        {tpl.template_name}{!tpl.selectable?" (unavailable)":""}
                       </option>
                     ))}
                   </select>
                 ) : null}
+                {templates.ready&&templates.totalCount===0&&<span role="status">No matching templates.</span>}
+                {templates.selectionUnavailable&&<span role="status">Previous template unavailable. Choose another.</span>}
+                {templates.totalCount!==null&&<>
+                  <Button variant="outline" size="sm" disabled={!templates.ready||templates.page<=1} onClick={()=>templates.move(templates.page-1)}>Previous templates</Button>
+                  <span className="text-xs">{templates.totalCount} templates · Page {templates.page}</span>
+                  <Button variant="outline" size="sm" disabled={!templates.ready||templates.page*templates.pageSize>=templates.totalCount} onClick={()=>templates.move(templates.page+1)}>Next templates</Button>
+                </>}
               </div>
             )}
             <button
@@ -415,7 +432,7 @@ function LetterPreviewSession({
           )}
 
           {/* Formal view — Executive Ledger preview */}
-          {!isPending && !error && elDoc && formalView && (
+          {!isPending && !error && elDoc && formalView && verifiedTemplate && !templateLoadError && (
             <div className="flex flex-col h-full overflow-hidden">
               <div className="px-4 py-1.5 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900 text-[11px] text-amber-700 dark:text-amber-400 shrink-0">
                 Preview only — printed copies are watermarked as drafts. Use{" "}

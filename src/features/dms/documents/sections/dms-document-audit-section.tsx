@@ -1,9 +1,11 @@
 "use client";
+import {DmsLoadError} from "@/features/dms/dms-load-error";
+import {readDmsSection} from "@/features/dms/documents/section-read";
 
-import { useQuery } from "@tanstack/react-query";
+import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
 import { format, parseISO } from "date-fns";
 import { Loader2, Activity } from "lucide-react";
-import { getDmsDocumentEvents } from "@/server/actions/dms/document-events";
+
 import { queryKeys } from "@/lib/query/query-keys";
 
 const EVENT_LABELS: Record<string, string> = {
@@ -37,12 +39,13 @@ interface DmsDocumentAuditSectionProps {
 }
 
 export function DmsDocumentAuditSection({ documentId }: DmsDocumentAuditSectionProps) {
-  const { data: events = [], isLoading } = useQuery({
+  const { data: events = [], isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: queryKeys.dms.documentEvents(documentId ?? 0),
-    queryFn: async () => {
+    queryFn: async ({signal}) => {
       if (!documentId) return [];
-      const r = await getDmsDocumentEvents(documentId);
-      return r.data ?? [];
+      const r = await readDmsSection("getDmsDocumentEvents", [documentId], signal);
+      if(!r.success || !r.data) throw new Error("Document section unavailable");
+      return r.data;
     },
     enabled: !!documentId,
     staleTime: 30 * 1000,
@@ -56,6 +59,7 @@ export function DmsDocumentAuditSection({ documentId }: DmsDocumentAuditSectionP
     );
   }
 
+  if (isError) return <DmsLoadError subject="audit events" pending={isFetching} retry={()=>refetch()} />;
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 py-4 text-muted-foreground text-sm">

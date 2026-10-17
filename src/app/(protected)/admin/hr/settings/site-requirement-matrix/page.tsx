@@ -1,45 +1,5 @@
-import { LoadError } from "@/components/erp/load-error";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { redirect } from "next/navigation";
-import { listHrSiteRequirementMatrix } from "@/server/actions/hr/settings";
-import { ERPPageHeader } from "@/components/erp/page-header";
-import { ERPEmptyState } from "@/components/erp/empty-state";
-import { Badge } from "@/components/ui/badge";
-import { Map } from "lucide-react";
+import {HrRuleSettingsRoute} from '@/features/hr/settings/hr-rule-settings-route';
 
-export default async function HrSiteRequirementMatrixPage() {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.settings.view") && !hasPermission(ctx, "hr.settings.manage") && !hasPermission(ctx, "hr.admin")) redirect("/admin/hr/settings");
-  const result = await listHrSiteRequirementMatrix({ page_size: 100 });
-  if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/settings/site-requirement-matrix" />;
-  const rows = result.data?.data ?? [];
-
-  return (
-    <div className="p-6 space-y-4">
-      <ERPPageHeader
-        title="Site Requirement Matrix"
-        description="Defines access card and training requirements per work site"
-        breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: "HR Settings", href: "/admin/hr/settings" }, { label: "Site Requirement Matrix" }]}
-      />
-      {rows.length === 0 ? (
-        <ERPEmptyState icon={Map} title="No site requirement mappings" description="Mappings define which access cards and training are required at each work site." />
-      ) : (
-        <div className="rounded-md border overflow-hidden">
-          <div className="divide-y">
-            {rows.map((row) => (
-              <div key={row.id} className="flex items-center justify-between px-4 py-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {row.work_site_id && <span className="text-sm">Site #{row.work_site_id}</span>}
-                  {row.access_card_type_id && <Badge variant="secondary" className="text-[10px]">Access Card #{row.access_card_type_id}</Badge>}
-                  {row.training_type_id && <Badge variant="secondary" className="text-[10px]">Training #{row.training_type_id}</Badge>}
-                  {!row.is_active && <Badge variant="outline" className="text-[10px]">Inactive</Badge>}
-                  <Badge variant={row.is_required ? "destructive" : "outline"} className="text-[10px]">{row.is_required ? "Required" : "Optional"}</Badge>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+export default async function HrSiteRequirementMatrixPage(){
+ return HrRuleSettingsRoute({entity:'hr_site_requirement_matrix'});
 }

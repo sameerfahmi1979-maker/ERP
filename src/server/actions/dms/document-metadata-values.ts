@@ -1,5 +1,6 @@
 "use server";
 
+import { readAllPages } from "@/server/reads/all-pages";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
@@ -53,7 +54,7 @@ export async function getMetadataDefinitionsForType(
 ): Promise<ActionResult<DmsMetadataDefinitionRow[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
+    if (!ctx.isAccountActive || ctx.profile?.must_change_password || (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin"))) {
       return { success: false, error: "Permission denied" };
     }
 
@@ -68,15 +69,14 @@ export async function getMetadataDefinitionsForType(
       if (documentError || !document || document.document_type_id !== documentTypeId) return { success: false, error: "Document unavailable" };
       reader = createAdminClient();
     }
-    const { data, error } = await reader
+    const data = await readAllPages(async(from,to)=>await reader
       .from("dms_metadata_definitions")
-      .select(DMS_METADATA_DEFINITION_SELECT)
+      .select(DMS_METADATA_DEFINITION_SELECT,{count:"exact"})
       .eq("document_type_id", documentTypeId)
       .eq("is_active", true)
       .is("deleted_at", null)
-      .order("sort_order");
+      .order("sort_order").order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
 
-    if (error) return { success: false, error: error.message };
 
     const mapped = (data ?? []).map((row) =>
       mapMetadataDefinitionRow(row as Record<string, unknown>)
@@ -97,22 +97,21 @@ export async function getDmsDocumentMetadataValues(
 ): Promise<ActionResult<DmsMetadataValueRow[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
+    if (!ctx.isAccountActive || ctx.profile?.must_change_password || (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin"))) {
       return { success: false, error: "Permission denied" };
     }
 
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const data = await readAllPages(async(from,to)=>await supabase
       .from("dms_document_metadata_values")
       .select(`
         id, document_id, definition_id, value_text, value_number, value_date, value_datetime, value_boolean, value_json,
         definition:dms_metadata_definitions(${DMS_METADATA_DEFINITION_SELECT})
-      `)
+      `,{count:"exact"})
       .eq("document_id", documentId)
       .is("deleted_at", null)
-      .order("definition_id");
+      .order("definition_id").order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
 
-    if (error) return { success: false, error: error.message };
 
     const rows = (data ?? []).map((row) => {
       const defRaw = (row as { definition: Record<string, unknown> | Record<string, unknown>[] | null }).definition;

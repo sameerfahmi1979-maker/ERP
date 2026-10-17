@@ -1,10 +1,14 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
-import { logAudit } from "@/server/actions/audit";
+import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/check";
 import { z } from "zod";
+import type {WorkspaceSaveContract} from "@/lib/workspace/save-contract";
+import {isHrLookupTable} from "@/lib/hr/settings-save-contract";
+import {isHrSpecializedTable,hrSpecializedSchemas} from "@/lib/hr/specialized-settings-contract";
+import {saveHrLookup} from "@/server/hr-lookup-save";
+import { readAllPages } from "@/server/reads/all-pages";
+import { literalContains } from "@/lib/reads/search";
 
 // ============================================================================
 // Shared result type
@@ -14,6 +18,7 @@ export type ActionResult<T = unknown> = {
   success: boolean;
   data?: T;
   error?: string;
+  uncertain?: boolean;
 };
 
 // ============================================================================
@@ -22,6 +27,7 @@ export type ActionResult<T = unknown> = {
 
 export type HrSettingsRow = {
   id: number;
+  workspace_revision?: number | string;
   code: string;
   name_en: string;
   name_ar: string | null;
@@ -92,6 +98,7 @@ export type HrPayrollGroupRow = HrSettingsRow & {
 
 export type HrMohreEstablishmentRow = {
   id: number;
+  workspace_revision?: number | string;
   owner_company_id: number;
   establishment_number: string;
   establishment_name: string;
@@ -113,6 +120,7 @@ export type HrProProcessTypeRow = HrSettingsRow & {
 
 export type HrReadinessRuleRow = {
   id: number;
+  workspace_revision?: number | string;
   rule_code: string;
   rule_name_en: string;
   rule_name_ar: string | null;
@@ -136,6 +144,7 @@ export type HrReadinessRuleRow = {
 
 export type HrApprovalWorkflowRow = {
   id: number;
+  workspace_revision?: number | string;
   workflow_code: string;
   workflow_name_en: string;
   workflow_name_ar: string | null;
@@ -173,16 +182,16 @@ function canView(ctx: AuthCtx): boolean {
 }
 
 function canManage(ctx: AuthCtx): boolean {
-  return hasPermission(ctx, "hr.settings.manage") || hasPermission(ctx, "hr.admin");
+  return hasGlobalPermission(ctx, "hr.settings.manage") || hasGlobalPermission(ctx, "hr.admin");
 }
-
-const HR_PATH = "/admin/hr/settings";
 
 // ============================================================================
 // List params
 // ============================================================================
 
 export type HrSettingsListParams = {
+  /** Explicit complete catalogue; never combined with a paged request. */
+  complete?: boolean;
   search?: string;
   is_active?: boolean;
   page?: number;
@@ -200,7 +209,7 @@ const lookup = z.object({
   description: z.string().max(1000).optional().nullable(),
   is_active: z.boolean().default(true),
   sort_order: z.number().int().default(0),
-});
+}).strict();
 
 const gradeS = lookup.extend({ grade_level: z.number().int().min(1).optional().nullable() });
 
@@ -258,14 +267,7 @@ const payrollGroupS = lookup.extend({
   wps_applicable_default: z.boolean().default(true),
 });
 
-const mohreS = z.object({
-  owner_company_id: z.number().int().positive(),
-  establishment_number: z.string().min(1).max(100),
-  establishment_name: z.string().min(1).max(200),
-  emirate_id: z.number().int().positive().optional().nullable(),
-  status: z.enum(["active", "inactive"]).default("active"),
-  notes: z.string().max(2000).optional().nullable(),
-});
+const mohreS = hrSpecializedSchemas.hr_mohre_establishments;
 
 const proProcessS = lookup.extend({
   default_due_days: z.number().int().min(1).optional().nullable(),
@@ -273,37 +275,8 @@ const proProcessS = lookup.extend({
   requires_dms_document: z.boolean().default(false),
 });
 
-const readinessS = z.object({
-  rule_code: z.string().min(1).max(100),
-  rule_name_en: z.string().min(1).max(200),
-  rule_name_ar: z.string().max(200).optional().nullable(),
-  readiness_dimension: z.enum(["legal","medical","training","cicpa","adnoc","offshore","driver","insurance","general"]),
-  requirement_type: z.enum(["identity_document","training","access_card","medical_record","insurance","custom"]),
-  required_document_type_id: z.number().int().positive().optional().nullable(),
-  required_training_type_id: z.number().int().positive().optional().nullable(),
-  required_access_card_type_id: z.number().int().positive().optional().nullable(),
-  required_medical_record_type_id: z.number().int().positive().optional().nullable(),
-  applies_to_category_id: z.number().int().positive().optional().nullable(),
-  applies_to_designation_id: z.number().int().positive().optional().nullable(),
-  applies_to_work_site_id: z.number().int().positive().optional().nullable(),
-  is_critical: z.boolean().default(true),
-  expiry_buffer_days: z.number().int().min(1).max(365).default(60),
-  is_active: z.boolean().default(true),
-  sort_order: z.number().int().default(0),
-});
-
-const approvalS = z.object({
-  workflow_code: z.string().min(1).max(100),
-  workflow_name_en: z.string().min(1).max(200),
-  workflow_name_ar: z.string().max(200).optional().nullable(),
-  workflow_type: z.enum(["leave","payroll_change","pro_process","eos","recruitment","general"]),
-  approval_step: z.number().int().min(1).default(1),
-  approval_role_id: z.number().int().positive().optional().nullable(),
-  is_required: z.boolean().default(true),
-  sla_hours: z.number().int().min(1).optional().nullable(),
-  escalation_role_id: z.number().int().positive().optional().nullable(),
-  is_active: z.boolean().default(true),
-});
+const readinessS = hrSpecializedSchemas.hr_readiness_rule_templates;
+const approvalS = hrSpecializedSchemas.hr_approval_workflows;
 
 // ============================================================================
 // Generic helpers
@@ -315,6 +288,10 @@ async function hrl<T>(
   joinSelect?: string
 ): Promise<ActionResult<{ data: T[]; total: number }>> {
   try {
+    if ((params.complete !== undefined && typeof params.complete !== "boolean") ||
+        (params.complete && (params.page !== undefined || params.page_size !== undefined))) {
+      return { success: false, error: "Choose a complete list or a page, not both." };
+    }
     const ctx = await getAuthContext();
     if (!canView(ctx)) return { success: false, error: "Permission denied" };
     const supabase = await createClient();
@@ -324,46 +301,38 @@ async function hrl<T>(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sb = supabase as any;
     const sel = joinSelect ? `*, ${joinSelect}` : "*";
-    let q = sb.from(table).select(sel).is("deleted_at", null).order("sort_order", { ascending: true }).order("name_en", { ascending: true }).range(from, to);
-    if (params.search) q = q.ilike("name_en", `%${params.search}%`);
-    if (params.is_active !== undefined) q = q.eq("is_active", params.is_active);
+    const search = params.search ? ["code", "name_en", "name_ar"].map(column => `${column}.ilike.${literalContains(params.search!)}`).join(",") : null;
+    const pageQuery = (start: number, end: number) => {
+      let query = sb.from(table).select(sel, { count: "exact" }).retry(false).is("deleted_at", null)
+        .order("sort_order", { ascending: true }).order("name_en", { ascending: true }).order("id", { ascending: true }).range(start, end);
+      if (search) query = query.or(search);
+      if (params.is_active !== undefined) query = query.eq("is_active", params.is_active);
+      return query;
+    };
+    if (params.complete) {
+      const rows = await readAllPages<T & { id: number }>(async (start, end) => pageQuery(start, end), { identity: row => row.id });
+      return { success: true, data: { data: rows, total: rows.length } };
+    }
+    const q = pageQuery(from, to);
     let cq = sb.from(table).select("id", { count: "exact", head: true }).is("deleted_at", null);
-    if (params.search) cq = cq.ilike("name_en", `%${params.search}%`);
+    if (search) cq = cq.or(search);
     if (params.is_active !== undefined) cq = cq.eq("is_active", params.is_active);
     const [{ data, error }, { count, error: ce }] = await Promise.all([q, cq]);
-    if (error || ce) return { success: false, error: (error ?? ce)?.message };
+    if (error || ce) return { success: false, error: "HR records could not be completely loaded. Please retry." };
     return { success: true, data: { data: (data ?? []) as T[], total: count ?? 0 } };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
+  } catch {
+    return { success: false, error: "HR records could not be completely loaded. Please retry." };
   }
 }
 
-async function hrc(table: string, values: Record<string, unknown>, codeRef: string, ctx: AuthCtx): Promise<ActionResult<{ id: number }>> {
-  try {
-    const supabase = await createClient();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any).from(table).insert({ ...values, created_by: ctx.profile?.id, updated_by: ctx.profile?.id }).select("id").single();
-    if (error) return { success: false, error: error.message };
-    await logAudit({ module_code: "HR", entity_name: table, entity_id: data.id, entity_reference: codeRef, action: "create", new_values: values });
-    revalidatePath(HR_PATH);
-    return { success: true, data: { id: data.id } };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
-  }
+async function hrc(table: string, values: Record<string, unknown>, _codeRef: string, _ctx: AuthCtx, contract?: WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
+  if (isHrLookupTable(table)||isHrSpecializedTable(table)) return saveHrLookup(table, null, values, contract);
+  return {success:false,error:"Invalid HR configuration record."};
 }
 
-async function hru(table: string, id: number, values: Record<string, unknown>, ctx: AuthCtx): Promise<ActionResult> {
-  try {
-    const supabase = await createClient();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase as any).from(table).update({ ...values, updated_by: ctx.profile?.id, updated_at: new Date().toISOString() }).eq("id", id).is("deleted_at", null);
-    if (error) return { success: false, error: error.message };
-    await logAudit({ module_code: "HR", entity_name: table, entity_id: id, entity_reference: String(id), action: "update", new_values: values });
-    revalidatePath(HR_PATH);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
-  }
+async function hru(table: string, id: number, values: Record<string, unknown>, _ctx: AuthCtx, contract?: WorkspaceSaveContract): Promise<ActionResult> {
+  if (isHrLookupTable(table)||isHrSpecializedTable(table)) return saveHrLookup(table, id, values, contract);
+  return {success:false,error:"Invalid HR configuration record."};
 }
 
 // ============================================================================
@@ -373,17 +342,17 @@ async function hru(table: string, id: number, values: Record<string, unknown>, c
 export async function listHrEmployeeCategories(p?: HrSettingsListParams) {
   return hrl<HrSettingsRow>("hr_employee_categories", p);
 }
-export async function createHrEmployeeCategory(input: z.infer<typeof lookup>): Promise<ActionResult<{ id: number }>> {
+export async function createHrEmployeeCategory(input: z.infer<typeof lookup>, contract?: WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
   const parsed = lookup.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hrc("hr_employee_categories", parsed.data, parsed.data.code, ctx);
+  return hrc("hr_employee_categories", parsed.data, parsed.data.code, ctx, contract);
 }
-export async function updateHrEmployeeCategory(id: number, input: Partial<z.infer<typeof lookup>>): Promise<ActionResult> {
+export async function updateHrEmployeeCategory(id: number, input: Partial<z.infer<typeof lookup>>, contract?: WorkspaceSaveContract): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hru("hr_employee_categories", id, input as Record<string, unknown>, ctx);
+  return hru("hr_employee_categories", id, input as Record<string, unknown>, ctx, contract);
 }
 
 // ============================================================================
@@ -393,17 +362,17 @@ export async function updateHrEmployeeCategory(id: number, input: Partial<z.infe
 export async function listHrEmploymentTypes(p?: HrSettingsListParams) {
   return hrl<HrSettingsRow>("hr_employment_types", p);
 }
-export async function createHrEmploymentType(input: z.infer<typeof lookup>): Promise<ActionResult<{ id: number }>> {
+export async function createHrEmploymentType(input: z.infer<typeof lookup>, contract?: WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
   const parsed = lookup.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hrc("hr_employment_types", parsed.data, parsed.data.code, ctx);
+  return hrc("hr_employment_types", parsed.data, parsed.data.code, ctx, contract);
 }
-export async function updateHrEmploymentType(id: number, input: Partial<z.infer<typeof lookup>>): Promise<ActionResult> {
+export async function updateHrEmploymentType(id: number, input: Partial<z.infer<typeof lookup>>, contract?: WorkspaceSaveContract): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hru("hr_employment_types", id, input as Record<string, unknown>, ctx);
+  return hru("hr_employment_types", id, input as Record<string, unknown>, ctx, contract);
 }
 
 // ============================================================================
@@ -413,17 +382,17 @@ export async function updateHrEmploymentType(id: number, input: Partial<z.infer<
 export async function listHrGrades(p?: HrSettingsListParams) {
   return hrl<HrGradeRow>("hr_grades", p);
 }
-export async function createHrGrade(input: z.infer<typeof gradeS>): Promise<ActionResult<{ id: number }>> {
+export async function createHrGrade(input: z.infer<typeof gradeS>, contract?: WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
   const parsed = gradeS.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hrc("hr_grades", parsed.data, parsed.data.code, ctx);
+  return hrc("hr_grades", parsed.data, parsed.data.code, ctx, contract);
 }
-export async function updateHrGrade(id: number, input: Partial<z.infer<typeof gradeS>>): Promise<ActionResult> {
+export async function updateHrGrade(id: number, input: Partial<z.infer<typeof gradeS>>, contract?: WorkspaceSaveContract): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hru("hr_grades", id, input as Record<string, unknown>, ctx);
+  return hru("hr_grades", id, input as Record<string, unknown>, ctx, contract);
 }
 
 // ============================================================================
@@ -433,17 +402,17 @@ export async function updateHrGrade(id: number, input: Partial<z.infer<typeof gr
 export async function listHrIdentityDocumentTypes(p?: HrSettingsListParams) {
   return hrl<HrIdentityDocTypeRow>("hr_identity_document_types", p);
 }
-export async function createHrIdentityDocumentType(input: z.infer<typeof idDocS>): Promise<ActionResult<{ id: number }>> {
+export async function createHrIdentityDocumentType(input: z.infer<typeof idDocS>, contract?: WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
   const parsed = idDocS.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hrc("hr_identity_document_types", parsed.data, parsed.data.code, ctx);
+  return hrc("hr_identity_document_types", parsed.data, parsed.data.code, ctx, contract);
 }
-export async function updateHrIdentityDocumentType(id: number, input: Partial<z.infer<typeof idDocS>>): Promise<ActionResult> {
+export async function updateHrIdentityDocumentType(id: number, input: Partial<z.infer<typeof idDocS>>, contract?: WorkspaceSaveContract): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hru("hr_identity_document_types", id, input as Record<string, unknown>, ctx);
+  return hru("hr_identity_document_types", id, input as Record<string, unknown>, ctx, contract);
 }
 
 // ============================================================================
@@ -453,17 +422,17 @@ export async function updateHrIdentityDocumentType(id: number, input: Partial<z.
 export async function listHrAccessCardTypes(p?: HrSettingsListParams) {
   return hrl<HrAccessCardTypeRow>("hr_access_card_types", p);
 }
-export async function createHrAccessCardType(input: z.infer<typeof accessCardS>): Promise<ActionResult<{ id: number }>> {
+export async function createHrAccessCardType(input: z.infer<typeof accessCardS>, contract?: WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
   const parsed = accessCardS.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hrc("hr_access_card_types", parsed.data, parsed.data.code, ctx);
+  return hrc("hr_access_card_types", parsed.data, parsed.data.code, ctx, contract);
 }
-export async function updateHrAccessCardType(id: number, input: Partial<z.infer<typeof accessCardS>>): Promise<ActionResult> {
+export async function updateHrAccessCardType(id: number, input: Partial<z.infer<typeof accessCardS>>, contract?: WorkspaceSaveContract): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hru("hr_access_card_types", id, input as Record<string, unknown>, ctx);
+  return hru("hr_access_card_types", id, input as Record<string, unknown>, ctx, contract);
 }
 
 // ============================================================================
@@ -473,17 +442,17 @@ export async function updateHrAccessCardType(id: number, input: Partial<z.infer<
 export async function listHrTrainingCategories(p?: HrSettingsListParams) {
   return hrl<HrSettingsRow>("hr_training_categories", p);
 }
-export async function createHrTrainingCategory(input: z.infer<typeof lookup>): Promise<ActionResult<{ id: number }>> {
+export async function createHrTrainingCategory(input: z.infer<typeof lookup>, contract?: WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
   const parsed = lookup.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hrc("hr_training_categories", parsed.data, parsed.data.code, ctx);
+  return hrc("hr_training_categories", parsed.data, parsed.data.code, ctx, contract);
 }
-export async function updateHrTrainingCategory(id: number, input: Partial<z.infer<typeof lookup>>): Promise<ActionResult> {
+export async function updateHrTrainingCategory(id: number, input: Partial<z.infer<typeof lookup>>, contract?: WorkspaceSaveContract): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hru("hr_training_categories", id, input as Record<string, unknown>, ctx);
+  return hru("hr_training_categories", id, input as Record<string, unknown>, ctx, contract);
 }
 
 // ============================================================================
@@ -493,17 +462,17 @@ export async function updateHrTrainingCategory(id: number, input: Partial<z.infe
 export async function listHrTrainingTypes(p?: HrSettingsListParams) {
   return hrl<HrTrainingTypeRow>("hr_training_types", p, "training_category:hr_training_categories(id,name_en)");
 }
-export async function createHrTrainingType(input: z.infer<typeof trainingTypeS>): Promise<ActionResult<{ id: number }>> {
+export async function createHrTrainingType(input: z.infer<typeof trainingTypeS>, contract?: WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
   const parsed = trainingTypeS.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hrc("hr_training_types", parsed.data, parsed.data.code, ctx);
+  return hrc("hr_training_types", parsed.data, parsed.data.code, ctx, contract);
 }
-export async function updateHrTrainingType(id: number, input: Partial<z.infer<typeof trainingTypeS>>): Promise<ActionResult> {
+export async function updateHrTrainingType(id: number, input: Partial<z.infer<typeof trainingTypeS>>, contract?: WorkspaceSaveContract): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hru("hr_training_types", id, input as Record<string, unknown>, ctx);
+  return hru("hr_training_types", id, input as Record<string, unknown>, ctx, contract);
 }
 
 // ============================================================================
@@ -513,17 +482,17 @@ export async function updateHrTrainingType(id: number, input: Partial<z.infer<ty
 export async function listHrMedicalRecordTypes(p?: HrSettingsListParams) {
   return hrl<HrMedicalRecordTypeRow>("hr_medical_record_types", p);
 }
-export async function createHrMedicalRecordType(input: z.infer<typeof medicalS>): Promise<ActionResult<{ id: number }>> {
+export async function createHrMedicalRecordType(input: z.infer<typeof medicalS>, contract?: WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
   const parsed = medicalS.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hrc("hr_medical_record_types", parsed.data, parsed.data.code, ctx);
+  return hrc("hr_medical_record_types", parsed.data, parsed.data.code, ctx, contract);
 }
-export async function updateHrMedicalRecordType(id: number, input: Partial<z.infer<typeof medicalS>>): Promise<ActionResult> {
+export async function updateHrMedicalRecordType(id: number, input: Partial<z.infer<typeof medicalS>>, contract?: WorkspaceSaveContract): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hru("hr_medical_record_types", id, input as Record<string, unknown>, ctx);
+  return hru("hr_medical_record_types", id, input as Record<string, unknown>, ctx, contract);
 }
 
 // ============================================================================
@@ -533,17 +502,17 @@ export async function updateHrMedicalRecordType(id: number, input: Partial<z.inf
 export async function listHrLeaveTypes(p?: HrSettingsListParams) {
   return hrl<HrLeaveTypeRow>("hr_leave_types", p);
 }
-export async function createHrLeaveType(input: z.infer<typeof leaveS>): Promise<ActionResult<{ id: number }>> {
+export async function createHrLeaveType(input: z.infer<typeof leaveS>, contract?: WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
   const parsed = leaveS.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hrc("hr_leave_types", parsed.data, parsed.data.code, ctx);
+  return hrc("hr_leave_types", parsed.data, parsed.data.code, ctx, contract);
 }
-export async function updateHrLeaveType(id: number, input: Partial<z.infer<typeof leaveS>>): Promise<ActionResult> {
+export async function updateHrLeaveType(id: number, input: Partial<z.infer<typeof leaveS>>, contract?: WorkspaceSaveContract): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hru("hr_leave_types", id, input as Record<string, unknown>, ctx);
+  return hru("hr_leave_types", id, input as Record<string, unknown>, ctx, contract);
 }
 
 // ============================================================================
@@ -553,17 +522,17 @@ export async function updateHrLeaveType(id: number, input: Partial<z.infer<typeo
 export async function listHrRelationshipTypes(p?: HrSettingsListParams) {
   return hrl<HrSettingsRow>("hr_relationship_types", p);
 }
-export async function createHrRelationshipType(input: z.infer<typeof lookup>): Promise<ActionResult<{ id: number }>> {
+export async function createHrRelationshipType(input: z.infer<typeof lookup>, contract?: WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
   const parsed = lookup.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hrc("hr_relationship_types", parsed.data, parsed.data.code, ctx);
+  return hrc("hr_relationship_types", parsed.data, parsed.data.code, ctx, contract);
 }
-export async function updateHrRelationshipType(id: number, input: Partial<z.infer<typeof lookup>>): Promise<ActionResult> {
+export async function updateHrRelationshipType(id: number, input: Partial<z.infer<typeof lookup>>, contract?: WorkspaceSaveContract): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hru("hr_relationship_types", id, input as Record<string, unknown>, ctx);
+  return hru("hr_relationship_types", id, input as Record<string, unknown>, ctx, contract);
 }
 
 // ============================================================================
@@ -573,17 +542,17 @@ export async function updateHrRelationshipType(id: number, input: Partial<z.infe
 export async function listHrSalaryComponentTypes(p?: HrSettingsListParams) {
   return hrl<HrSalaryComponentTypeRow>("hr_salary_component_types", p);
 }
-export async function createHrSalaryComponentType(input: z.infer<typeof salaryCompS>): Promise<ActionResult<{ id: number }>> {
+export async function createHrSalaryComponentType(input: z.infer<typeof salaryCompS>, contract?: WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
   const parsed = salaryCompS.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hrc("hr_salary_component_types", parsed.data, parsed.data.code, ctx);
+  return hrc("hr_salary_component_types", parsed.data, parsed.data.code, ctx, contract);
 }
-export async function updateHrSalaryComponentType(id: number, input: Partial<z.infer<typeof salaryCompS>>): Promise<ActionResult> {
+export async function updateHrSalaryComponentType(id: number, input: Partial<z.infer<typeof salaryCompS>>, contract?: WorkspaceSaveContract): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hru("hr_salary_component_types", id, input as Record<string, unknown>, ctx);
+  return hru("hr_salary_component_types", id, input as Record<string, unknown>, ctx, contract);
 }
 
 // ============================================================================
@@ -593,17 +562,17 @@ export async function updateHrSalaryComponentType(id: number, input: Partial<z.i
 export async function listHrPayrollGroups(p?: HrSettingsListParams) {
   return hrl<HrPayrollGroupRow>("hr_payroll_groups", p);
 }
-export async function createHrPayrollGroup(input: z.infer<typeof payrollGroupS>): Promise<ActionResult<{ id: number }>> {
+export async function createHrPayrollGroup(input: z.infer<typeof payrollGroupS>, contract?: WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
   const parsed = payrollGroupS.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hrc("hr_payroll_groups", parsed.data, parsed.data.code, ctx);
+  return hrc("hr_payroll_groups", parsed.data, parsed.data.code, ctx, contract);
 }
-export async function updateHrPayrollGroup(id: number, input: Partial<z.infer<typeof payrollGroupS>>): Promise<ActionResult> {
+export async function updateHrPayrollGroup(id: number, input: Partial<z.infer<typeof payrollGroupS>>, contract?: WorkspaceSaveContract): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hru("hr_payroll_groups", id, input as Record<string, unknown>, ctx);
+  return hru("hr_payroll_groups", id, input as Record<string, unknown>, ctx, contract);
 }
 
 // ============================================================================
@@ -611,6 +580,7 @@ export async function updateHrPayrollGroup(id: number, input: Partial<z.infer<ty
 // ============================================================================
 
 export async function listHrMohreEstablishments(params?: {
+  complete?: boolean;
   owner_company_id?: number;
   status?: string;
   search?: string;
@@ -618,6 +588,10 @@ export async function listHrMohreEstablishments(params?: {
   page_size?: number;
 }): Promise<ActionResult<{ data: HrMohreEstablishmentRow[]; total: number }>> {
   try {
+    if ((params?.complete !== undefined && typeof params.complete !== "boolean") ||
+        (params?.complete && (params.page !== undefined || params.page_size !== undefined))) {
+      return { success: false, error: "Choose a complete list or a page, not both." };
+    }
     const ctx = await getAuthContext();
     if (!canView(ctx)) return { success: false, error: "Permission denied" };
     const supabase = await createClient();
@@ -626,34 +600,43 @@ export async function listHrMohreEstablishments(params?: {
     const ps = params?.page_size ?? 50;
     const from = ((params?.page ?? 1) - 1) * ps;
     const to = from + ps - 1;
-    let q = sb.from("hr_mohre_establishments")
-      .select("*, owner_company:owner_companies(id,legal_name_en), emirate:emirates(id,name_en)")
-      .is("deleted_at", null).order("establishment_name").range(from, to);
-    if (params?.owner_company_id) q = q.eq("owner_company_id", params.owner_company_id);
-    if (params?.status) q = q.eq("status", params.status);
-    if (params?.search) q = q.ilike("establishment_name", `%${params.search}%`);
+    const search = params?.search ? ["establishment_number", "establishment_name"].map(column => `${column}.ilike.${literalContains(params.search!)}`).join(",") : null;
+    const pageQuery = (start: number, end: number) => {
+      let query = sb.from("hr_mohre_establishments")
+        .select("*, owner_company:owner_companies(id,legal_name_en), emirate:emirates(id,name_en)", { count: "exact" }).retry(false)
+        .is("deleted_at", null).order("establishment_name").order("id").range(start, end);
+      if (params?.owner_company_id) query = query.eq("owner_company_id", params.owner_company_id);
+      if (params?.status) query = query.eq("status", params.status);
+      if (search) query = query.or(search);
+      return query;
+    };
+    if (params?.complete) {
+      const rows = await readAllPages<HrMohreEstablishmentRow>(async (start, end) => pageQuery(start, end), { identity: row => row.id });
+      return { success: true, data: { data: rows, total: rows.length } };
+    }
+    const q = pageQuery(from, to);
     let cq = sb.from("hr_mohre_establishments").select("id", { count: "exact", head: true }).is("deleted_at", null);
     if (params?.owner_company_id) cq = cq.eq("owner_company_id", params.owner_company_id);
     if (params?.status) cq = cq.eq("status", params.status);
-    if (params?.search) cq = cq.ilike("establishment_name", `%${params.search}%`);
+    if (search) cq = cq.or(search);
     const [{ data, error }, { count, error: ce }] = await Promise.all([q, cq]);
-    if (error || ce) return { success: false, error: (error ?? ce)?.message };
+    if (error || ce) return { success: false, error: "HR records could not be completely loaded. Please retry." };
     return { success: true, data: { data: (data ?? []) as HrMohreEstablishmentRow[], total: count ?? 0 } };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
+  } catch {
+    return { success: false, error: "HR records could not be completely loaded. Please retry." };
   }
 }
-export async function createHrMohreEstablishment(input: z.infer<typeof mohreS>): Promise<ActionResult<{ id: number }>> {
+export async function createHrMohreEstablishment(input: z.infer<typeof mohreS>, contract?:WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
   const parsed = mohreS.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hrc("hr_mohre_establishments", parsed.data, parsed.data.establishment_number, ctx);
+  return hrc("hr_mohre_establishments", parsed.data, parsed.data.establishment_number, ctx,contract);
 }
-export async function updateHrMohreEstablishment(id: number, input: Partial<z.infer<typeof mohreS>>): Promise<ActionResult> {
+export async function updateHrMohreEstablishment(id: number, input: Partial<z.infer<typeof mohreS>>, contract?:WorkspaceSaveContract): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hru("hr_mohre_establishments", id, input as Record<string, unknown>, ctx);
+  return hru("hr_mohre_establishments", id, input as Record<string, unknown>, ctx,contract);
 }
 
 // ============================================================================
@@ -663,17 +646,17 @@ export async function updateHrMohreEstablishment(id: number, input: Partial<z.in
 export async function listHrProProcessTypes(p?: HrSettingsListParams) {
   return hrl<HrProProcessTypeRow>("hr_pro_process_types", p);
 }
-export async function createHrProProcessType(input: z.infer<typeof proProcessS>): Promise<ActionResult<{ id: number }>> {
+export async function createHrProProcessType(input: z.infer<typeof proProcessS>, contract?: WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
   const parsed = proProcessS.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hrc("hr_pro_process_types", parsed.data, parsed.data.code, ctx);
+  return hrc("hr_pro_process_types", parsed.data, parsed.data.code, ctx, contract);
 }
-export async function updateHrProProcessType(id: number, input: Partial<z.infer<typeof proProcessS>>): Promise<ActionResult> {
+export async function updateHrProProcessType(id: number, input: Partial<z.infer<typeof proProcessS>>, contract?: WorkspaceSaveContract): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hru("hr_pro_process_types", id, input as Record<string, unknown>, ctx);
+  return hru("hr_pro_process_types", id, input as Record<string, unknown>, ctx, contract);
 }
 
 // ============================================================================
@@ -690,7 +673,7 @@ export async function listHrReadinessRuleTemplates(params?: HrSettingsListParams
     const ps = params?.page_size ?? 50;
     const from = ((params?.page ?? 1) - 1) * ps;
     const to = from + ps - 1;
-    let q = sb.from("hr_readiness_rule_templates").select("*").is("deleted_at", null).order("sort_order").order("rule_name_en").range(from, to);
+    let q = sb.from("hr_readiness_rule_templates").select("*,required_document:hr_identity_document_types(id,name_en),required_training:hr_training_types(id,name_en),required_access_card:hr_access_card_types(id,name_en),required_medical:hr_medical_record_types(id,name_en),category:hr_employee_categories(id,name_en),designation:designations(id,designation_name_en,owner_company:owner_companies(legal_name_en)),work_site:work_sites(id,site_name,owner_company:owner_companies(legal_name_en))").is("deleted_at", null).order("sort_order").order("rule_name_en").order("id").range(from, to);
     if (params?.search) q = q.ilike("rule_name_en", `%${params.search}%`);
     if (params?.is_active !== undefined) q = q.eq("is_active", params.is_active);
     let cq = sb.from("hr_readiness_rule_templates").select("id", { count: "exact", head: true }).is("deleted_at", null);
@@ -703,17 +686,17 @@ export async function listHrReadinessRuleTemplates(params?: HrSettingsListParams
     return { success: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
-export async function createHrReadinessRuleTemplate(input: z.infer<typeof readinessS>): Promise<ActionResult<{ id: number }>> {
+export async function createHrReadinessRuleTemplate(input: z.infer<typeof readinessS>, contract?:WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
   const parsed = readinessS.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hrc("hr_readiness_rule_templates", parsed.data, parsed.data.rule_code, ctx);
+  return hrc("hr_readiness_rule_templates", parsed.data, parsed.data.rule_code, ctx,contract);
 }
-export async function updateHrReadinessRuleTemplate(id: number, input: Partial<z.infer<typeof readinessS>>): Promise<ActionResult> {
+export async function updateHrReadinessRuleTemplate(id: number, input: Partial<z.infer<typeof readinessS>>, contract?:WorkspaceSaveContract): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hru("hr_readiness_rule_templates", id, input as Record<string, unknown>, ctx);
+  return hru("hr_readiness_rule_templates", id, input as Record<string, unknown>, ctx,contract);
 }
 
 // ============================================================================
@@ -722,6 +705,7 @@ export async function updateHrReadinessRuleTemplate(id: number, input: Partial<z
 
 export type HrRoleReqMatrixRow = {
   id: number;
+  workspace_revision?: number | string;
   employee_category_id: number | null;
   designation_id: number | null;
   readiness_rule_template_id: number;
@@ -744,7 +728,7 @@ export async function listHrRoleRequirementMatrix(params?: { is_active?: boolean
     const from = ((params?.page ?? 1) - 1) * ps;
     const to = from + ps - 1;
     let q = sb.from("hr_role_requirement_matrix")
-      .select("*, employee_category:hr_employee_categories(id,name_en,code), readiness_rule:hr_readiness_rule_templates(id,rule_name_en,rule_code)")
+      .select("*, employee_category:hr_employee_categories(id,name_en,code), readiness_rule:hr_readiness_rule_templates(id,rule_name_en,rule_code),designation:designations(id,designation_name_en,owner_company:owner_companies(legal_name_en))")
       .is("deleted_at", null).order("id", { ascending: false }).range(from, to);
     if (params?.is_active !== undefined) q = q.eq("is_active", params.is_active);
     let cq = sb.from("hr_role_requirement_matrix").select("id", { count: "exact", head: true }).is("deleted_at", null);
@@ -756,11 +740,12 @@ export async function listHrRoleRequirementMatrix(params?: { is_active?: boolean
     return { success: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
-export async function createHrRoleRequirementMatrix(input: { employee_category_id?: number | null; designation_id?: number | null; readiness_rule_template_id: number; is_required?: boolean; notes?: string | null }): Promise<ActionResult<{ id: number }>> {
+export async function createHrRoleRequirementMatrix(input: z.infer<typeof hrSpecializedSchemas.hr_role_requirement_matrix>, contract?:WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hrc("hr_role_requirement_matrix", input as Record<string, unknown>, String(input.readiness_rule_template_id), ctx);
+  return hrc("hr_role_requirement_matrix", input as Record<string, unknown>, String(input.readiness_rule_template_id), ctx,contract);
 }
+export async function updateHrRoleRequirementMatrix(id:number,input:Partial<z.infer<typeof hrSpecializedSchemas.hr_role_requirement_matrix>>,contract?:WorkspaceSaveContract):Promise<ActionResult>{return saveHrLookup('hr_role_requirement_matrix',id,input,contract);}
 
 // ============================================================================
 // 17. Site Requirement Matrix
@@ -768,6 +753,7 @@ export async function createHrRoleRequirementMatrix(input: { employee_category_i
 
 export type HrSiteReqMatrixRow = {
   id: number;
+  workspace_revision?: number | string;
   work_site_id: number | null;
   access_card_type_id: number | null;
   training_type_id: number | null;
@@ -792,7 +778,7 @@ export async function listHrSiteRequirementMatrix(params?: { work_site_id?: numb
     const from = ((params?.page ?? 1) - 1) * ps;
     const to = from + ps - 1;
     let q = sb.from("hr_site_requirement_matrix")
-      .select("*, work_site:work_sites(id,site_name), access_card_type:hr_access_card_types(id,name_en,code)")
+      .select("*, work_site:work_sites(id,site_name,owner_company:owner_companies(legal_name_en)), access_card_type:hr_access_card_types(id,name_en,code),training_type:hr_training_types(id,name_en),medical_record_type:hr_medical_record_types(id,name_en),readiness_rule:hr_readiness_rule_templates(id,rule_name_en)")
       .is("deleted_at", null).order("id", { ascending: false }).range(from, to);
     if (params?.work_site_id) q = q.eq("work_site_id", params.work_site_id);
     if (params?.is_active !== undefined) q = q.eq("is_active", params.is_active);
@@ -806,11 +792,12 @@ export async function listHrSiteRequirementMatrix(params?: { work_site_id?: numb
     return { success: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
-export async function createHrSiteRequirementMatrix(input: { work_site_id?: number | null; access_card_type_id?: number | null; training_type_id?: number | null; medical_record_type_id?: number | null; readiness_rule_template_id?: number | null; is_required?: boolean; notes?: string | null }): Promise<ActionResult<{ id: number }>> {
+export async function createHrSiteRequirementMatrix(input: z.infer<typeof hrSpecializedSchemas.hr_site_requirement_matrix>, contract?:WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hrc("hr_site_requirement_matrix", input as Record<string, unknown>, String(input.work_site_id ?? ""), ctx);
+  return hrc("hr_site_requirement_matrix", input as Record<string, unknown>, String(input.work_site_id ?? ""), ctx,contract);
 }
+export async function updateHrSiteRequirementMatrix(id:number,input:Partial<z.infer<typeof hrSpecializedSchemas.hr_site_requirement_matrix>>,contract?:WorkspaceSaveContract):Promise<ActionResult>{return saveHrLookup('hr_site_requirement_matrix',id,input,contract);}
 
 // ============================================================================
 // 18. Approval Workflows
@@ -827,8 +814,8 @@ export async function listHrApprovalWorkflows(params?: { workflow_type?: string;
     const from = ((params?.page ?? 1) - 1) * ps;
     const to = from + ps - 1;
     let q = sb.from("hr_approval_workflows")
-      .select("*, approval_role:approval_roles!hr_approval_workflows_approval_role_id_fkey(id,role_name)")
-      .is("deleted_at", null).order("workflow_code").order("approval_step").range(from, to);
+      .select("*, approval_role:approval_roles!hr_approval_workflows_approval_role_id_fkey(id,role_name,owner_company:owner_companies(legal_name_en)),escalation_role:approval_roles!hr_approval_workflows_escalation_role_id_fkey(id,role_name,owner_company:owner_companies(legal_name_en))")
+      .is("deleted_at", null).order("workflow_code").order("approval_step").order("id").range(from, to);
     if (params?.workflow_type) q = q.eq("workflow_type", params.workflow_type);
     if (params?.is_active !== undefined) q = q.eq("is_active", params.is_active);
     let cq = sb.from("hr_approval_workflows").select("id", { count: "exact", head: true }).is("deleted_at", null);
@@ -841,51 +828,34 @@ export async function listHrApprovalWorkflows(params?: { workflow_type?: string;
     return { success: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
-export async function createHrApprovalWorkflow(input: z.infer<typeof approvalS>): Promise<ActionResult<{ id: number }>> {
+export async function createHrApprovalWorkflow(input: z.infer<typeof approvalS>, contract?:WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
   const parsed = approvalS.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hrc("hr_approval_workflows", parsed.data, parsed.data.workflow_code, ctx);
+  return hrc("hr_approval_workflows", parsed.data, parsed.data.workflow_code, ctx,contract);
 }
-export async function updateHrApprovalWorkflow(id: number, input: Partial<z.infer<typeof approvalS>>): Promise<ActionResult> {
+export async function updateHrApprovalWorkflow(id: number, input: Partial<z.infer<typeof approvalS>>, contract?:WorkspaceSaveContract): Promise<ActionResult> {
   const ctx = await getAuthContext();
   if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-  return hru("hr_approval_workflows", id, input as Record<string, unknown>, ctx);
+  return hru("hr_approval_workflows", id, input as Record<string, unknown>, ctx,contract);
 }
 
 // ============================================================================
 // Generic activate/archive
 // ============================================================================
 
-export async function archiveHrSettingsRow(table: string, id: number, entityRef?: string): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-    const supabase = await createClient();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase as any).from(table).update({ deleted_at: new Date().toISOString(), is_active: false, deleted_by: ctx.profile?.id, updated_by: ctx.profile?.id }).eq("id", id);
-    if (error) return { success: false, error: error.message };
-    await logAudit({ module_code: "HR", entity_name: table, entity_id: id, entity_reference: entityRef ?? String(id), action: "archive" });
-    revalidatePath(HR_PATH);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
-  }
+export async function archiveHrSettingsRow(table: string, id: number, _entityRef?: string, contract?: WorkspaceSaveContract): Promise<ActionResult> {
+  if (isHrLookupTable(table)||isHrSpecializedTable(table)) return saveHrLookup(table, id, {}, contract, "archive");
+  return {success:false,error:"Invalid HR configuration record."};
+}
+export async function restoreHrSettingsRow(table:string,id:number,contract?:WorkspaceSaveContract):Promise<ActionResult>{
+ if(isHrLookupTable(table)||isHrSpecializedTable(table))return saveHrLookup(table,id,{},contract,'restore');
+ return {success:false,error:'Invalid HR configuration record.'};
 }
 
-export async function toggleHrSettingsRowActive(table: string, id: number, is_active: boolean): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-    const supabase = await createClient();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase as any).from(table).update({ is_active, updated_by: ctx.profile?.id, updated_at: new Date().toISOString() }).eq("id", id);
-    if (error) return { success: false, error: error.message };
-    await logAudit({ module_code: "HR", entity_name: table, entity_id: id, entity_reference: String(id), action: is_active ? "activate" : "deactivate" });
-    revalidatePath(HR_PATH);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
-  }
+export async function toggleHrSettingsRowActive(table: string, id: number, is_active: boolean, contract?: WorkspaceSaveContract): Promise<ActionResult> {
+  if(typeof is_active!=="boolean")return {success:false,error:"Invalid HR configuration record."};
+  if (isHrLookupTable(table)||isHrSpecializedTable(table)) return saveHrLookup(table, id, table==='hr_mohre_establishments'?{status:is_active?'active':'inactive'}:{is_active}, contract);
+  return {success:false,error:"Invalid HR configuration record."};
 }

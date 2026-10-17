@@ -8,6 +8,8 @@ import { DmsDocumentFilesSection } from '@/features/dms/documents/sections/dms-d
 import { DmsDocumentVersionsSection } from '@/features/dms/documents/sections/dms-document-versions-section';
 import type { ReactNode } from 'react';
 const mocks=vi.hoisted(()=>({files:vi.fn(),preview:vi.fn(),versions:vi.fn(),remove:vi.fn(),ocr:vi.fn()}));
+// Component acceptance keeps the same read outcomes; transport itself is tested in P04.
+vi.mock('@/features/dms/documents/section-read',()=>({readDmsSection:(kind:string,args:unknown[])=>{const readers={getDmsDocumentFiles:mocks.files,getDmsDocumentVersions:mocks.versions};const read=readers[kind as keyof typeof readers];if(!read)throw Error('Unexpected reader '+kind);return read(...args);}}));
 vi.mock('@/server/actions/dms/document-files',()=>({getDmsDocumentFiles:mocks.files,getDmsDocumentFileSignedUrl:mocks.preview,adminDeleteDmsDocumentFile:mocks.remove,getDmsDocumentVersions:mocks.versions,setDmsDocumentCurrentVersion:vi.fn(),unlinkDmsDocumentVersion:vi.fn()}));
 vi.mock('@/server/actions/dms/ocr',()=>({triggerDmsOcrForFile:mocks.ocr}));
 vi.mock('@/features/dms/documents/sections/dms-link-version-dialog',()=>({DmsLinkVersionDialog:()=>null}));

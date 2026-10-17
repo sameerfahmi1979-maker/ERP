@@ -16,13 +16,12 @@ import type { HrDmsDocumentSelection } from "@/lib/hr/document-to-record/types";
 import { classificationLabel } from "@/lib/hr/document-to-record/document-classifier";
 import { getDmsDocumentsForEmployeeCreate } from "@/server/actions/hr/document-to-employee";
 import { aggregateEmployeeDraftFromDmsDocuments } from "@/server/actions/hr/document-to-employee";
-import type { HrDocumentToEmployeeReviewPayload } from "@/lib/hr/document-to-record/types";
-import type { DuplicateCheckResult } from "@/lib/hr/document-to-record/duplicate-checks";
+import type { DocumentEmployeeReview } from '@/lib/hr/numbered-document-employee-contract';
 
 type Props = {
   selectedIds: number[];
   onToggle: (doc: HrDmsDocumentSelection) => void;
-  onNext: (payload: HrDocumentToEmployeeReviewPayload & { duplicates: DuplicateCheckResult[] }) => void;
+  onNext: (payload: DocumentEmployeeReview) => void;
 };
 
 function isExpired(dateStr: string | null): boolean {

@@ -25,23 +25,23 @@ export function filterLoadedRows<T>(rows: T[], fields: LoadedListField[], filter
 }
 
 /** UI-only filtering of supplied authorized rows. No second cache or durable record storage. */
-export function useLoadedListView<T>(key: string, rows: T[], fields: LoadedListField[]) {
+export function useLoadedListView<T>(key: string, rows: T[], fields: LoadedListField[], options: {serverFiltered?:boolean;totalCount?:number} = {}) {
   const [filters,setFilters] = usePersistentUiState<FilterValues>(`dms-list:${key}:filters`,{});
   const [search,setSearch] = usePersistentUiState<string>(`dms-list:${key}:search`,"");
   const defaults: ListColumn[] = fields.map(field => ({ id:field.id,label:field.label,width:field.width ?? 160,visible:true,required:field.required }));
   const columnState = useListColumns(`dms:${key}:v1`,defaults);
-  const filtered = useMemo(()=>filterLoadedRows(rows,fields,filters,search),[rows,fields,filters,search]);
-  return { ...columnState,defaults,fields,filters,setFilters,search,setSearch,rows:filtered,loadedCount:rows.length };
+  const filtered = useMemo(()=>options.serverFiltered?rows:filterLoadedRows(rows,fields,filters,search),[rows,fields,filters,search,options.serverFiltered]);
+  return { ...columnState,defaults,fields,filters,setFilters,search,setSearch,rows:filtered,loadedCount:rows.length,serverFiltered:options.serverFiltered,totalCount:options.totalCount };
 }
 
 export function LoadedListTools<T>({ view, search = false }: { view: ReturnType<typeof useLoadedListView<T>>; search?: boolean }) {
   return <div className="min-w-0 space-y-2 mb-3">
     <div className="flex flex-wrap items-center gap-2">
-      {search && <Input aria-label="Search loaded records" placeholder="Search loaded records…" value={view.search} onChange={e=>view.setSearch(e.target.value)} className="w-full sm:max-w-xs" />}
+      {search && <Input aria-label={view.serverFiltered ? "Search permitted records" : "Search loaded records"} placeholder={view.serverFiltered ? "Search permitted records…" : "Search loaded records…"} value={view.search} onChange={e=>view.setSearch(e.target.value)} className="w-full sm:max-w-xs" />}
       <EditColumns columns={view.columns} defaults={view.defaults} onApply={view.setColumns} />
       <EditFilters definitions={view.fields.filter(field=>field.path).map(field=>({id:field.id,label:field.label,type:field.type??"text",options:field.options}))}
-        values={view.filters} onApply={view.setFilters} scopeLabel="Filters apply to the records loaded in this view, together with any page criteria or search." />
+        values={view.filters} onApply={view.setFilters} scopeLabel={view.serverFiltered?"Filters query the complete permitted result, together with the page criteria and search.":"Filters apply to the records loaded in this view, together with any page criteria or search."} />
     </div>
-    <p className="text-xs text-muted-foreground">{view.rows.length} of {view.loadedCount} loaded records match these filters. This is not a complete system-wide count.</p>
+    <p className="text-xs text-muted-foreground">{view.serverFiltered?`${view.rows.length} records on this page; ${view.totalCount??"unknown"} permitted records match.`:`${view.rows.length} of ${view.loadedCount} loaded records match these filters. This is not a complete system-wide count.`}</p>
   </div>;
 }

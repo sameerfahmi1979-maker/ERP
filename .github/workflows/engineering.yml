@@ -8,17 +8,245 @@ permissions:
 concurrency:
   group: engineering-${{ github.ref }}
   cancel-in-progress: true
+# Exact reviewed head, not the mutable branch name or GitHub's synthetic merge ref.
+# Every executable gate checks out this same identity. No production credentials.
+env:
+  EXPECTED_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:16421
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: synthetic-ci-public-key
+  NEXT_PUBLIC_SITE_URL: http://127.0.0.1:16401
 jobs:
-  verify:
+  core-tests:
+    needs: security
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      # Build placeholders only; never connect CI to the production database.
-      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:16421
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: synthetic-ci-public-key
-      NEXT_PUBLIC_SITE_URL: http://127.0.0.1:16401
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.2'
+          cache: npm
+      - run: npm install --global npm@10.9.8
+      - run: npm ci
+      - run: npm test
+
+  remediation-tests:
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.2'
+          cache: npm
+      - run: npm install --global npm@10.9.8
+      - run: npm ci
+      - run: npm run test:remediation
+
+  f06-tests:
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # 267 offline files at composition checkpoint; same config, disjoint Vitest
+    # file shards. No change to local exclusions, aliases, setup or test semantics.
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        shard: ['1/3', '2/3', '3/3']
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.2'
+          cache: npm
+      - run: npm install --global npm@10.9.8
+      - run: npm ci
+      - name: F06 offline guard and regression suite
+        run: node node_modules/vitest/vitest.mjs run --config tests/remediation/f06/vitest.config.mts --shard ${{ matrix.shard }}
+
+  performance-phases:
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - phase: p01
+            shard: '1/1'
+            typecheck: true
+          - phase: p02
+            shard: '1/1'
+            typecheck: true
+          - phase: p03
+            shard: '1/1'
+            typecheck: true
+          # P04 has 138 files and takes over 18 minutes locally. Bound each
+          # shard independently; typecheck its unchanged project exactly once.
+          - phase: p04
+            shard: '1/3'
+            typecheck: true
+          - phase: p04
+            shard: '2/3'
+            typecheck: false
+          - phase: p04
+            shard: '3/3'
+            typecheck: false
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.2'
+          cache: npm
+      - run: npm install --global npm@10.9.8
+      - run: npm ci
+      - name: Phase regression suite with original setup and environment
+        run: node node_modules/vitest/vitest.mjs run --config tests/performance/${{ matrix.phase }}.config.mts --shard ${{ matrix.shard }}
+      - name: Typecheck phase tests including opt-in laboratory harness
+        if: matrix.typecheck
+        run: node node_modules/typescript/bin/tsc --project tests/performance/${{ matrix.phase }}.tsconfig.json --noEmit
+
+  performance-compatibility:
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The broad suite defaults to jsdom + browser storage + Fluent aliases,
+    # while the phase suites use node + offline setup. Their overlap is NOT
+    # equivalent evidence: preserve both configurations, shard only within each.
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        shard: ['1/3', '2/3', '3/3']
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.2'
+          cache: npm
+      - run: npm install --global npm@10.9.8
+      - run: npm ci
+      - name: Allocate fresh synthetic tracing evidence for this shard
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$(mktemp -d "$RUNNER_TEMP/perf-p01-overhead.XXXXXX")"
+          echo "PERF_P01_OVERHEAD_OUTPUT=$evidence_dir/measurement.json" >> "$GITHUB_ENV"
+      - name: Shared read and F06 performance contract regressions
+        run: node node_modules/vitest/vitest.mjs run --config tests/performance/unit.config.mts --shard ${{ matrix.shard }}
+      - name: Retain synthetic tracing measurements when present in this shard
+        if: always() && env.PERF_P01_OVERHEAD_OUTPUT != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: performance-tracing-${{ strategy.job-index }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.PERF_P01_OVERHEAD_OUTPUT }}
+            ${{ env.PERF_P01_OVERHEAD_OUTPUT }}.events.jsonl
+          # Vitest assigns the overhead file to exactly one of the three
+          # shards. Its test fails if either fresh output cannot be written.
+          if-no-files-found: ignore
+
+  integration-tests:
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          # The offline manifest verifies immutable F06/PERF donor Git blobs.
+          # Retain their history without replacing the exact candidate checkout.
+          fetch-depth: 0
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.2'
+          cache: npm
+      - run: npm install --global npm@10.9.8
+      - run: npm ci
+      - name: F00-F06 composed selector and shared integration regressions
+        run: node node_modules/vitest/vitest.mjs run --config tests/integration/f00-f06/vitest.config.mts
+      - name: Composed migration, fixture identity and schema receipt guards (offline only)
+        run: >-
+          node --test
+          tests/integration/f00-f06/schema/migration-contract.test.cjs
+          tests/integration/f00-f06/schema/native-fixture.test.cjs
+          tests/integration/f00-f06/schema/schema-receipt.test.cjs
+          tests/integration/f00-f06/schema/schema-rejection-witnesses.test.cjs
+          tests/integration/f00-f06/schema/document-lineage.test.cjs
+          tests/integration/f00-f06/schema/reconciled-receipt.test.cjs
+          tests/integration/f00-f06/schema/branding-acl.test.cjs
+          tests/integration/f00-f06/schema/template-set.test.cjs
+      - name: Employee, DMS and report display-authority contracts (offline only)
+        run: >-
+          node --test
+          tests/integration/f00-f06/employee-affordance.test.mjs
+          tests/integration/f00-f06/dms-affordance.test.mjs
+          tests/integration/f00-f06/report-permission-regression.test.mjs
+
+  build-types:
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.2'
+          cache: npm
+      - run: npm install --global npm@10.9.8
+      - run: npm ci
+      - run: npm run typecheck:e2e
+      # Static types above do not execute a browser runner. Owner browser/device
+      # acceptance is deferred; no Playwright invocation is authorized here.
+      - run: npm run build
+      - run: npm run typecheck
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22.23.2'
@@ -26,18 +254,34 @@ jobs:
       - run: npm install --global npm@10.9.8
       - run: npm ci
       - run: npm run security:secrets
-      - run: npm test
-      - run: npm run test:remediation
-      - run: npm run typecheck:e2e
-      - run: npm run test:e2e -- --list
-      - run: npm run build
-      - run: npm run typecheck
-      - run: npm audit --audit-level=high
+      - run: npm run security:vendor
+      - name: F06 image-check semantic guards (no Docker execution)
+        run: node --test tests/remediation/f06/linux-image-check.test.mjs
+      - name: Full dependency audit and verified local remediation
+        run: node --test tests/remediation/f06/dependency-gate.test.cjs
+      - name: Integrated vendor archive, lock, source and installed-consumer guards
+        run: node --test tests/remediation/f06/vendor-integration.test.cjs
+      - name: Verify installed dependencies and retain full raw audit
+        run: npm run security:dependencies
+      - name: Retain raw dependency audit and remediation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dependency-security-evidence
+          path: .security-evidence/
+          if-no-files-found: error
+          include-hidden-files: true
+
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22.23.2'
@@ -51,31 +295,76 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.2'
+      - name: Pull exact pinned Linux base for provenance verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull --platform linux/amd64 node:22.23.2-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9
       - name: Build pinned production image with synthetic public configuration
-        run: >-
-          docker build --tag algt-f02-ci
-          --build-arg NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:16421
-          --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=synthetic-ci-public-key
-          --build-arg NEXT_PUBLIC_SITE_URL=http://127.0.0.1:16401 .
-      - name: Verify pinned runtime and no root execution
+        shell: bash
         run: |
-          test "$(docker run --rm algt-f02-ci node --version)" = "v22.23.2"
-          test "$(docker run --rm algt-f02-ci npm --version)" = "10.9.8"
-          test "$(docker run --rm algt-f02-ci id -u)" = "1000"
-      - name: Verify boot and anonymous HTTP boundaries
-        run: |
-          docker run --detach --name algt-f02-ci --publish 127.0.0.1:16401:3000 \
-            --env NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:16421 \
-            --env NEXT_PUBLIC_SUPABASE_ANON_KEY=synthetic-ci-public-key \
-            --env NEXT_PUBLIC_SITE_URL=http://127.0.0.1:16401 algt-f02-ci
-          curl --retry 12 --retry-all-errors --retry-delay 2 --max-time 10 --fail --silent --show-error \
-            --output /tmp/algt-f02-login.html http://127.0.0.1:16401/login
-          grep -qi 'sign in' /tmp/algt-f02-login.html
-          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:16401/dashboard)" = "307"
-          curl --silent --head http://127.0.0.1:16401/dashboard | grep -qi 'location:.*login'
-      - name: Show synthetic container diagnostics on failure
-        if: failure()
-        run: docker logs --tail 100 algt-f02-ci || true
-      - name: Remove only the CI test container
+          set -euo pipefail
+          docker build --tag algt-f02-ci --progress plain \
+            --label org.opencontainers.image.revision=${{ github.event.pull_request.head.sha || github.sha }} \
+            --label algt.f06.ci-owner="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:16421 \
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=synthetic-ci-public-key \
+            --build-arg NEXT_PUBLIC_SITE_URL=http://127.0.0.1:16401 . \
+            2>&1 | tee "$RUNNER_TEMP/f06-production-build.log"
+      - name: Verify same immutable image native paths, provenance, trust and non-root boot
+        env:
+          F06_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          ALGT_F06_CI_IMAGE_CHECK: '1'
+        run: node tooling/testing/f06-linux-image-check.mjs
+      - name: Retain exact candidate image evidence, including failure and cleanup references
         if: always()
-        run: docker rm --force algt-f02-ci || true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: f06-linux-image-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .f06-linux-image-evidence/
+            ${{ runner.temp }}/f06-production-build.log
+          include-hidden-files: true
+          if-no-files-found: error
+
+  # Preserve the stable required-check name. The aggregate always executes and
+  # fails closed for a failed, cancelled, skipped or missing constituent result.
+  # No successful subset of a matrix can turn the complete candidate green.
+  verify:
+    if: always()
+    needs:
+      - core-tests
+      - remediation-tests
+      - f06-tests
+      - performance-phases
+      - performance-compatibility
+      - integration-tests
+      - build-types
+      - security
+      - lint
+      - production-image
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every exact-candidate gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test '${{ needs.core-tests.result }}' = success
+          test '${{ needs.remediation-tests.result }}' = success
+          test '${{ needs.f06-tests.result }}' = success
+          test '${{ needs.performance-phases.result }}' = success
+          test '${{ needs.performance-compatibility.result }}' = success
+          test '${{ needs.integration-tests.result }}' = success
+          test '${{ needs.build-types.result }}' = success
+          test '${{ needs.security.result }}' = success
+          test '${{ needs.lint.result }}' = success
+          test '${{ needs.production-image.result }}' = success

@@ -1,6 +1,8 @@
+import {randomUUID} from 'node:crypto';
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission, type AuthContext } from "@/lib/rbac/check";
+import { getAuthContext, type AuthContext } from "@/lib/rbac/check";
+import {canReadFinanceReferences} from '@/lib/master-data/finance-reference-contract';
 import { getPaymentTerms } from "@/features/master-data/finance-basics/actions";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { PaymentTermsTable } from "@/features/master-data/finance-basics/components/payment-terms-table";
@@ -22,13 +24,13 @@ async function PaymentTermsContent({ authContext }: { authContext: AuthContext }
     );
   }
 
-  return <PaymentTermsTable paymentTerms={result.data} authContext={authContext} />;
+  return <PaymentTermsTable paymentTerms={result.data} authContext={authContext} readGeneration={randomUUID()} />;
 }
 
 export default async function PaymentTermsPage() {
   const ctx = await getAuthContext();
 
-  if (!hasPermission(ctx, "master_data.finance_basics.view")) {
+  if (!canReadFinanceReferences(ctx)) {
     redirect("/access-denied");
   }
 

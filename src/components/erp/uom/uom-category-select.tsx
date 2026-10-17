@@ -6,6 +6,7 @@
  */
 
 import { ERPCombobox } from "@/components/erp/combobox";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { useUomCategoriesQuery } from "@/hooks/lookups";
 
 interface UomCategorySelectProps {
@@ -20,6 +21,7 @@ interface UomCategorySelectProps {
   allowClear?: boolean;
   className?: string;
   name?: string;
+  ariaLabel?: string;
   error?: string;
 }
 
@@ -35,39 +37,45 @@ export function UomCategorySelect({
   allowClear = false,
   className,
   name,
+  ariaLabel = "Category",
   error,
 }: UomCategorySelectProps) {
-  const { options, isLoading, error: fetchError } = useUomCategoriesQuery({ includeInactive });
+  const choiceRead = useUomCategoriesQuery({ includeInactive, selectedId: value ?? null });
+  const { options, isLoading, error: fetchError } = choiceRead;
 
   const handleValueChange = (newValue: string | number | null) => {
-    if (!onValueChange) return;
+    if (!onValueChange || disabled || !!fetchError) return;
     if (newValue === null) {
       onValueChange(null);
       return;
     }
     const numValue = typeof newValue === "number" ? newValue : Number(newValue);
-    onValueChange(!isNaN(numValue) ? numValue : null);
+    // A retained historical label is display context, not permission to select it.
+    if (!Number.isFinite(numValue) || !options.some(option => String(option.value) === String(numValue) && !option.disabled)) return;
+    onValueChange(numValue);
   };
 
   return (
-    <ERPCombobox
+    <QueryReadBoundary queries={[{isError: !!fetchError, refetch: choiceRead.refetch}]}><ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
-      options={options}
-      placeholder={placeholder}
+      options={options.map(option => ({...option, disabled: option.disabled || disabled || !!fetchError}))}
+      placeholder={value != null && !options.some(option => String(option.value) === String(value))
+        ? (isLoading ? "Loading saved selection…" : "Saved selection unavailable; value retained") : placeholder}
       searchPlaceholder="Search categories..."
       showCode={showCode}
       language={language}
-      disabled={disabled}
+      disabled={disabled || !!fetchError}
       readOnly={false}
       required={required}
-      loading={isLoading}
+      loading={isLoading && value == null}
       error={fetchError ?? error}
       allowClear={allowClear}
       emptyText="No categories found"
       noResultsText="No results found"
       className={className}
       name={name}
-    />
+      ariaLabel={ariaLabel}
+    /></QueryReadBoundary>
   );
 }

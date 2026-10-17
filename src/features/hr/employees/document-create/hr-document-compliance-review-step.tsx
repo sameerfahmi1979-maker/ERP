@@ -50,7 +50,7 @@ function SuggestionCard({
 }: {
   suggestion: HrComplianceRecordSuggestion;
   onToggle: () => void;
-  onFieldChange: (fieldName: string, value: string) => void;
+  onFieldChange: (fieldName: string, value: string | boolean | null) => void;
 }) {
   const confidenceColor =
     suggestion.confidence >= 0.8
@@ -142,6 +142,14 @@ function SuggestionCard({
               onChange={(v) => onFieldChange(f, v)}
             />
           ))}
+          {suggestion.kind==='medical_insurance'&&(['employee_covered','dependent_coverage_included'] as const).map(field=><label key={field} className="text-xs font-medium">
+            {field==='employee_covered'?'Employee covered':'Dependent coverage included'}
+            <select aria-label={field==='employee_covered'?'Employee covered':'Dependent coverage included'} className="mt-1 block h-7 w-full rounded border bg-background text-xs"
+              value={typeof suggestion.fields[field]==='boolean'?String(suggestion.fields[field]):''}
+              onChange={event=>onFieldChange(field,event.target.value===''?null:event.target.value==='true')}>
+              <option value="">Choose from reviewed evidence</option><option value="true">Yes</option><option value="false">No</option>
+            </select>
+          </label>)}
         </div>
       )}
     </div>
@@ -162,7 +170,7 @@ export function HrDocumentComplianceReviewStep({
     );
   };
 
-  const fieldChange = (tempId: string, fieldName: string, value: string) => {
+  const fieldChange = (tempId: string, fieldName: string, value: string | boolean | null) => {
     onChange(
       suggestions.map((s) =>
         s.tempId === tempId

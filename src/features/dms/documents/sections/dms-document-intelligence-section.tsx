@@ -1,5 +1,6 @@
 "use client";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import {readDmsSection} from "@/features/dms/documents/section-read";
+import { QueryReadBoundary } from "@/features/dms/documents/section-read-boundary";
 
 /**
  * DMS 12.3 — DmsDocumentIntelligenceSection
@@ -14,24 +15,16 @@ import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
  *  - Combined "Evaluate Document Intelligence" button
  */
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
 import { useState } from "react";
 import { toast } from "sonner";
 import { RefreshCw, ShieldAlert, CheckCircle2, AlertTriangle, AlertCircle, Info, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { queryKeys } from "@/lib/query/query-keys";
-import {
-  getDmsDocumentCompletenessStatus,
-  evaluateDmsDocumentCompleteness,
-  type DocumentCompletenessRow,
-} from "@/server/actions/dms/ai-completeness";
-import {
-  getDmsDocumentRiskStatus,
-  evaluateDmsDocumentRisk,
-  type DocumentRiskRow,
-  type RiskLevel,
-} from "@/server/actions/dms/ai-risk";
+import { evaluateDmsDocumentCompleteness, type DocumentCompletenessRow } from "@/server/actions/dms/ai-completeness";
+import { evaluateDmsDocumentRisk, type DocumentRiskRow, type RiskLevel } from "@/server/actions/dms/ai-risk";
 import { evaluateDmsDocumentIntelligence } from "@/server/actions/dms/ai-intelligence";
 import { format, parseISO } from "date-fns";
 
@@ -91,8 +84,8 @@ export function DmsDocumentIntelligenceSection({
 
   const uiRead1 = useQuery<DocumentCompletenessRow | null>({
     queryKey: queryKeys.dms.documentIntelligence(documentId, "completeness"),
-    queryFn: async () => {
-      const r = await getDmsDocumentCompletenessStatus(documentId);
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getDmsDocumentCompletenessStatus", [documentId], signal);
       if (!r.success) throw new Error(r.error ?? "Failed to load completeness");
       return r.data ?? null;
     },
@@ -107,8 +100,8 @@ export function DmsDocumentIntelligenceSection({
 
   const uiRead2 = useQuery<DocumentRiskRow | null>({
     queryKey: queryKeys.dms.documentIntelligence(documentId, "risk"),
-    queryFn: async () => {
-      const r = await getDmsDocumentRiskStatus(documentId);
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getDmsDocumentRiskStatus", [documentId], signal);
       if (!r.success) throw new Error(r.error ?? "Failed to load risk");
       return r.data ?? null;
     },

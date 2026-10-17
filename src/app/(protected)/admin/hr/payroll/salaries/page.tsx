@@ -1,26 +1,14 @@
-import { LoadError } from "@/components/erp/load-error";
-﻿import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { listGlobalSalaryProfiles } from "@/server/actions/hr/payroll";
-import { HrSalariesPageClient } from "@/features/hr/payroll/salaries/hr-salaries-page-client";
-
+import {getAuthContext} from "@/lib/rbac/check";
+import {canReadPayrollInquiry, payrollInquiryIdentity} from "@/lib/reads/hr-payroll-inquiries-schema";
+import {readPayrollInquiry} from "@/server/reads/hr-payroll-inquiries";
+import {HrSalariesPageClient} from "@/features/hr/payroll/salaries/hr-salaries-page-client";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-export default async function HrSalariesPage() {
-  const authContext = await getAuthContext();
-  const canView =
-    hasPermission(authContext, "hr.payroll.view") ||
-    authContext.roleCodes?.includes("system_admin");
-
-  if (!canView) redirect("/access-denied");
-
-  const result = await listGlobalSalaryProfiles({ page: 1, page_size: 50 })
-  if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/payroll/salaries" />;;
-  const initialData = result.success && result.data
-    ? result.data
-    : { data: [], count: 0 };
-
-  return <HrSalariesPageClient initialData={initialData} />;
+export default async function PayrollInquiryPage() {
+  const ctx = await getAuthContext();
+  if (!canReadPayrollInquiry(ctx, "salary")) redirect("/access-denied");
+  const result = await readPayrollInquiry({kind: "salary"}, ctx);
+  if (result.error === "Permission denied") redirect("/access-denied");
+  return <HrSalariesPageClient authContext={ctx} initialPage={result.data} initialUpdatedAt={result.updatedAt} initialReadIdentity={payrollInquiryIdentity(ctx)} initialReadError={!result.success} />;
 }
-
+import {redirect} from "next/navigation";

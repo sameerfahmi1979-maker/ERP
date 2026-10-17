@@ -42,6 +42,9 @@ export type PartyApplyTargetKind = "party_licenses" | "party_tax_registrations";
 
 /** Safe (read-only) row returned by getPartyApplyTargetRows for license rows. */
 export type PartyLicenseRow = {
+  workspace_revision: string;
+  license_activity_text?: string | null;
+  remarks?: string | null;
   id:           number;
   party_id:     number;
   license_code: string | null;
@@ -54,6 +57,8 @@ export type PartyLicenseRow = {
 
 /** Safe (read-only) row returned by getPartyApplyTargetRows for tax rows. */
 export type PartyTaxRow = {
+  workspace_revision: string;
+  remarks?: string | null;
   id:                      number;
   party_id:                number;
   tax_registration_code:   string | null;
@@ -138,6 +143,9 @@ export type ApplyErrorCode =
 // ── Apply item proposal (read-only, pre-confirmation) ─────────────────────────
 
 export type ApplyItemProposal = {
+  /** Full reviewed write value; display summaries are never write payloads. */
+  proposedValue?: string;
+  reviewedRevision?: string;
   sourceType:          ApplySourceType;
   sourceId:            number | null;
   sourceFieldCode:     string | null;
@@ -156,6 +164,8 @@ export type ApplyItemProposal = {
 // ── Create apply run input ────────────────────────────────────────────────────
 
 export type CreateApplyRunInput = {
+  /** Stable across retries of the same reviewed operation. */
+  requestId?: string;
   sourceType:          ApplySourceType;
   sourceId:            number | null;
   documentId:          number;
@@ -270,6 +280,7 @@ export type ConflictDetectionResult =
 
 export type ActionResult<T = unknown> = {
   success: boolean;
+  uncertain?: boolean;
   data?: T;
   error?: string;
   errorCode?: ApplyErrorCode;

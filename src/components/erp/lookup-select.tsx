@@ -14,7 +14,8 @@ import type { LookupSelectProps } from "@/features/master-data/lookups/types";
 import { ERPCombobox } from "@/components/erp/combobox";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
 import { Badge } from "@/components/ui/badge";
-import type { LookupValue } from "@/features/master-data/lookups/types";
+import type { LookupChoice as LookupValue } from "@/lib/reads/lookup-contract";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 export function LookupSelect({
   categoryCode,
@@ -32,16 +33,20 @@ export function LookupSelect({
   valueField = "id",
   className,
   name,
+  ariaLabel,
   error,
 }: LookupSelectProps) {
   const {
     data: values,
     isLoading: loading,
     error: fetchError,
+    refetch,
   } = useLookupValuesQuery(categoryCode, {
     parentValueCode,
     includeInactive,
     enabled: !!categoryCode,
+    selected: value ?? null,
+    valueField,
   });
 
   // Map lookup values to ERPComboboxOption[]
@@ -53,9 +58,13 @@ export function LookupSelect({
     colorHex: item.color_hex,
     badge: item.badge_variant,
     raw: item,
+    disabled: disabled || !!fetchError || (item.is_active === false && !includeInactive),
   }));
 
   const handleValueChange = (newValue: string | number | null) => {
+    // An already-open popup is portaled outside the failure boundary's inert
+    // subtree. Guard its callbacks as well as disabling its option actions.
+    if (disabled || fetchError) return;
     if (newValue === null) {
       onValueChange?.(null);
       return;
@@ -112,19 +121,8 @@ export function LookupSelect({
     );
   };
 
-  if (fetchError) {
-    return (
-      <div className={className}>
-        <div className="flex items-center justify-center h-10 px-3 border border-destructive rounded-md bg-destructive/10">
-          <span className="text-sm text-destructive">{fetchError}</span>
-        </div>
-        {error && <p className="text-sm text-destructive mt-1">{error}</p>}
-      </div>
-    );
-  }
-
   return (
-    <ERPCombobox
+    <QueryReadBoundary queries={[{isError:!!fetchError,refetch}]}><ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
       options={options}
@@ -132,7 +130,7 @@ export function LookupSelect({
       searchPlaceholder="Search..."
       showCode={showCode}
       language={language}
-      disabled={disabled}
+      disabled={disabled || !!fetchError}
       readOnly={false}
       required={required}
       loading={loading}
@@ -142,7 +140,8 @@ export function LookupSelect({
       noResultsText="No results found"
       className={className}
       name={name}
+      ariaLabel={ariaLabel}
       renderOption={renderOption}
-    />
+    /></QueryReadBoundary>
   );
 }

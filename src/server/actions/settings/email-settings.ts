@@ -1,8 +1,14 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext } from "@/lib/rbac/check";
+import { hasGlobalPermission } from "@/lib/rbac/scope";
+import { recordProviderHealth } from "@/server/provider-health";
+import { saveProviderMutation, saveProviderFlagMutation } from "@/server/provider-save";
+import type { WorkspaceSaveContract } from "@/lib/workspace/save-contract";
+import type { WorkspaceSaveResult } from "@/server/workspace-save";
+import { workspaceValidationFailure } from "@/lib/workspace/field-errors";
+import { emailProviderCreateSchema as createProviderSchema, emailProviderUpdateSchema as updateProviderSchema } from "@/lib/settings/provider-configuration";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
@@ -12,9 +18,14 @@ import type {
   EmailSendLogRow,
 } from "@/lib/email/providers/types";
 import { MicrosoftGraphEmailProvider } from "@/lib/email/providers/microsoft-graph-provider";
-import { storeEmailProviderSecretInVault } from "@/lib/email/vault";
+import { saveOrCheckEmailCredential } from "@/server/provider-secret";
 
 const REVALIDATE_PATH = "/admin/settings/email";
+
+function refreshProviderSettings() {
+  try { revalidatePath(REVALIDATE_PATH); }
+  catch { /* Cache invalidation cannot undo an already confirmed result. */ }
+}
 
 export type ActionResult<T = undefined> = T extends undefined
   ? { success: boolean; error?: string }
@@ -23,29 +34,21 @@ export type ActionResult<T = undefined> = T extends undefined
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function canView(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
-  return hasPermission(ctx, "settings.email.view") || hasPermission(ctx, "settings.email.manage");
+  return ["settings.email.view","settings.email.manage","settings.email.test","settings.email.secrets.manage"].some(code=>hasGlobalPermission(ctx,code));
 }
 
 function canManage(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
-  return hasPermission(ctx, "settings.email.manage");
+  return hasGlobalPermission(ctx, "settings.email.manage");
 }
 
 function canTest(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
-  return hasPermission(ctx, "settings.email.test") || hasPermission(ctx, "settings.email.manage");
-}
-
-function canManageSecrets(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
-  return hasPermission(ctx, "settings.email.secrets.manage") || hasPermission(ctx, "settings.email.manage");
-}
-
-function maskSecret(secret: string): string {
-  if (secret.length <= 4) return "****";
-  return "****" + secret.slice(-4);
+  return hasGlobalPermission(ctx, "settings.email.test") || hasGlobalPermission(ctx, "settings.email.manage");
 }
 
 function rowToConfig(row: Record<string, unknown>): EmailProviderConfig {
   return {
     id: row.id as number,
+    workspaceRevision: String(row.workspace_revision),
     providerCode: row.provider_code as string,
     providerType: row.provider_type as EmailProviderConfig["providerType"],
     providerName: row.provider_name as string,
@@ -78,44 +81,10 @@ function rowToConfig(row: Record<string, unknown>): EmailProviderConfig {
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
-const providerTypeValues = [
-  "microsoft_graph", "smtp", "sendgrid", "mailgun",
-  "aws_ses", "local_dev", "custom",
-] as const;
-
-const authModeValues = ["client_credentials", "certificate", "delegated_future"] as const;
-const sendModeValues = ["graph_send_mail", "smtp_future"] as const;
-
-const createProviderSchema = z.object({
-  provider_code: z.string().min(1).max(100).regex(/^[A-Z0-9_]+$/, "Use uppercase letters, numbers, underscores"),
-  provider_type: z.enum(providerTypeValues),
-  provider_name: z.string().min(1).max(200),
-  is_default: z.boolean().default(false),
-  is_enabled: z.boolean().default(false),
-  tenant_id: z.string().max(200).nullable().optional(),
-  client_id: z.string().max(200).nullable().optional(),
-  authority_url: z.string().max(500).nullable().optional(),
-  graph_base_url: z.string().max(500).nullable().optional(),
-  sender_email: z.string().email().nullable().optional(),
-  sender_display_name: z.string().max(200).nullable().optional(),
-  reply_to_email: z.string().email().nullable().optional(),
-  auth_mode: z.enum(authModeValues).default("client_credentials"),
-  send_mode: z.enum(sendModeValues).default("graph_send_mail"),
-  default_recipient_for_tests: z.string().email().nullable().optional(),
-  throttle_per_minute: z.number().int().positive().nullable().optional(),
-  daily_send_limit: z.number().int().positive().nullable().optional(),
-  config_json: z.record(z.string(), z.unknown()).nullable().optional(),
-  notes: z.string().max(2000).nullable().optional(),
-});
-
-const updateProviderSchema = createProviderSchema.partial().omit({ provider_code: true });
-
 const saveSecretSchema = z.object({
   id: z.number().int().positive(),
   /** The actual secret value — stored encrypted in Supabase Vault, never in plain DB column */
   secret_value: z.string().min(1).max(500),
-  /** Optional env var fallback name — used only if Vault is unavailable */
-  secret_ref: z.string().max(200).optional(),
 });
 
 const testSendSchema = z.object({
@@ -140,10 +109,10 @@ export async function getEmailProviderConfigs(): Promise<ActionResult<EmailProvi
       .order("is_default", { ascending: false })
       .order("provider_name", { ascending: true });
 
-    if (error) return { success: false, error: error.message };
+    if (error) return { success: false, error: "Email provider configurations could not be loaded. Try loading settings again." };
     return { success: true, data: (data ?? []).map((r) => rowToConfig(r as Record<string, unknown>)) };
-  } catch (e) {
-    return { success: false, error: String(e) };
+  } catch {
+    return { success: false, error: "Email provider configurations could not be loaded. Try loading settings again." };
   }
 }
 
@@ -165,8 +134,8 @@ export async function getEmailProviderConfig(id: number): Promise<ActionResult<E
 
     if (error || !data) return { success: false, error: "Provider not found" };
     return { success: true, data: rowToConfig(data as Record<string, unknown>) };
-  } catch (e) {
-    return { success: false, error: String(e) };
+  } catch {
+    return { success: false, error: "Provider operation could not be confirmed. Review the current settings before retrying." };
   }
 }
 
@@ -174,211 +143,61 @@ export async function getEmailProviderConfig(id: number): Promise<ActionResult<E
 
 export type CreateEmailProviderInput = z.infer<typeof createProviderSchema>;
 
-export async function createEmailProviderConfig(
-  input: CreateEmailProviderInput
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-
-    const parsed = createProviderSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const now = new Date().toISOString();
-    const { data, error } = await supabase
-      .from("erp_email_provider_configs")
-      .insert({ ...parsed.data, created_by: ctx.profile.id, updated_by: ctx.profile.id, created_at: now, updated_at: now })
-      .select("id")
-      .single();
-
-    if (error) return { success: false, error: error.message };
-
-    const row = data as Record<string, unknown>;
-    await logAudit({
-      module_code: "SETTINGS",
-      entity_name: "erp_email_provider_configs",
-      entity_id: row.id as number,
-      entity_reference: parsed.data.provider_code,
-      action: "create",
-      new_values: { provider_type: parsed.data.provider_type, is_enabled: parsed.data.is_enabled },
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true, data: { id: row.id as number } };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+export async function createEmailProviderConfig(input: z.input<typeof createProviderSchema>, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const ctx = await getAuthContext();
+  if (!hasGlobalPermission(ctx, "settings.email.manage")) return {success:false,error:"Global provider management permission is required."};
+  const parsed = createProviderSchema.safeParse(input);
+  if (!parsed.success) return workspaceValidationFailure(parsed.error.issues);
+  const result = await saveProviderMutation("email", null, "save", parsed.data, contract);
+  if (result.success) refreshProviderSettings();
+  return result;
 }
-
 // ── updateEmailProviderConfig ─────────────────────────────────────────────────
 
 export type UpdateEmailProviderInput = z.infer<typeof updateProviderSchema>;
 
-export async function updateEmailProviderConfig(
-  id: number,
-  input: UpdateEmailProviderInput
-): Promise<ActionResult> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-
-    const parsed = updateProviderSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const now = new Date().toISOString();
-    const { error } = await supabase
-      .from("erp_email_provider_configs")
-      .update({ ...parsed.data, updated_by: ctx.profile.id, updated_at: now })
-      .eq("id", id)
-      .is("deleted_at", null);
-
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "SETTINGS",
-      entity_name: "erp_email_provider_configs",
-      entity_id: id,
-      entity_reference: String(id),
-      action: "update",
-      new_values: parsed.data,
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+export async function updateEmailProviderConfig(id: number, input: z.input<typeof updateProviderSchema>, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const ctx = await getAuthContext();
+  if (!hasGlobalPermission(ctx, "settings.email.manage")) return {success:false,error:"Global provider management permission is required."};
+  const parsed = updateProviderSchema.safeParse(input);
+  if (!parsed.success) return workspaceValidationFailure(parsed.error.issues);
+  const fields = parsed.data;
+  const result = await saveProviderMutation("email", id, "save", fields, contract);
+  if (result.success) refreshProviderSettings();
+  return result;
 }
-
 // ── deleteEmailProviderConfig (soft delete) ───────────────────────────────────
 
-export async function deleteEmailProviderConfig(id: number): Promise<ActionResult> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-
-    const now = new Date().toISOString();
-    const { error } = await supabase
-      .from("erp_email_provider_configs")
-      .update({ deleted_at: now, is_enabled: false, updated_by: ctx.profile.id, updated_at: now })
-      .eq("id", id);
-
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "SETTINGS",
-      entity_name: "erp_email_provider_configs",
-      entity_id: id,
-      entity_reference: String(id),
-      action: "delete",
-      new_values: { deleted_at: now },
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+export async function deleteEmailProviderConfig(id: number, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const ctx = await getAuthContext();
+  if (!hasGlobalPermission(ctx, "settings.email.manage")) return {success:false,error:"Global provider management permission is required."};
+  const result = await saveProviderMutation("email", id, "archive", {}, contract);
+  if (result.success) refreshProviderSettings();
+  return result;
 }
-
 // ── setDefaultEmailProviderConfig ─────────────────────────────────────────────
 
-export async function setDefaultEmailProviderConfig(id: number): Promise<ActionResult> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-
-    const now = new Date().toISOString();
-    // Remove default from all
-    await supabase
-      .from("erp_email_provider_configs")
-      .update({ is_default: false, updated_by: ctx.profile.id, updated_at: now })
-      .neq("id", id)
-      .is("deleted_at", null);
-
-    // Set new default
-    await supabase
-      .from("erp_email_provider_configs")
-      .update({ is_default: true, updated_by: ctx.profile.id, updated_at: now })
-      .eq("id", id);
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+export async function setDefaultEmailProviderConfig(id: number, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const ctx = await getAuthContext();
+  if (!hasGlobalPermission(ctx, "settings.email.manage")) return {success:false,error:"Global provider management permission is required."};
+  const result = await saveProviderMutation("email", id, "default", {}, contract);
+  if (result.success) refreshProviderSettings();
+  return result;
 }
-
 // ── saveEmailProviderSecret ───────────────────────────────────────────────────
 
-export async function saveEmailProviderSecret(
-  input: z.infer<typeof saveSecretSchema>
-): Promise<ActionResult> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canManageSecrets(ctx)) return { success: false, error: "Permission denied" };
+export async function saveEmailProviderSecret(input: z.infer<typeof saveSecretSchema>, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const parsed=saveSecretSchema.strict().safeParse(input);
+  if (!parsed.success) return {success:false,error:"Enter a valid provider and client secret."};
+  const result=await saveOrCheckEmailCredential(parsed.data.id,parsed.data.secret_value,contract);
+  if(result.success)refreshProviderSettings();
+  return result;
+}
 
-    const parsed = saveSecretSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const { id, secret_value } = parsed.data;
-
-    // Fetch current provider to get existing secret_ref for vault update-in-place
-    const { data: currentRow, error: fetchErr } = await supabase
-      .from("erp_email_provider_configs")
-      .select("secret_ref")
-      .eq("id", id)
-      .single();
-
-    if (fetchErr) return { success: false, error: fetchErr.message };
-
-    const currentSecretRef = (currentRow as Record<string, unknown>)?.secret_ref as string | null;
-    const maskedPreview = maskSecret(secret_value);
-
-    // Store encrypted in Supabase Vault — returns "vault:<uuid>"
-    // The actual secret value is NEVER written to any DB column.
-    const newSecretRef = await storeEmailProviderSecretInVault(id, currentSecretRef, secret_value);
-
-    const now = new Date().toISOString();
-    // Narrow service write after canManageSecrets; a secrets-only administrator
-    // must not receive general configuration UPDATE authority through RLS.
-    const { data: saved, error } = await createAdminClient()
-      .from("erp_email_provider_configs")
-      .update({
-        secret_ref: newSecretRef,
-        masked_secret_preview: maskedPreview,
-        updated_by: ctx.profile.id,
-        updated_at: now,
-      })
-      .eq("id", id).is("deleted_at", null).select("id");
-
-    if (error || saved?.length !== 1) return { success: false, error: "Secret storage completed but provider reference was not confirmed. Administrator reconciliation is required before retrying." };
-
-    await logAudit({
-      module_code: "SETTINGS",
-      entity_name: "erp_email_provider_configs",
-      entity_id: id,
-      entity_reference: String(id),
-      action: "update",
-      // Log only masked preview — never log the actual secret or vault UUID
-      new_values: { vault_stored: true, masked_secret_preview: maskedPreview },
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+export async function checkEmailProviderSecretSave(id: number, contract: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const result=await saveOrCheckEmailCredential(id,null,contract);
+  if(result.success)refreshProviderSettings();
+  return result;
 }
 
 // ── testEmailProviderConnection ───────────────────────────────────────────────
@@ -412,48 +231,16 @@ export async function testEmailProviderConnection(
       testResult = { ok: false, status: "failed" as const, message: `Provider type "${config.providerType}" test not yet implemented.` };
     }
 
-    const now = new Date().toISOString();
-    // Update last test result
-    await createAdminClient()
-      .from("erp_email_provider_configs")
-      .update({
-        last_test_status: testResult.status,
-        last_test_at: now,
-        last_test_message: testResult.message,
-        updated_at: now,
-      })
-      .eq("id", id);
-
-    // Log to send logs
-    await supabase.from("erp_email_send_logs").insert({
-      provider_config_id: id,
-      feature_area: "settings_test",
-      operation_type: "test_connection",
-      status: testResult.status === "success" ? "sent" : "failed",
-      duration_ms: testResult.durationMs ?? null,
-      last_error: testResult.ok ? null : testResult.message,
-      metadata_json: { provider_code: config.providerCode },
-      created_by: ctx.profile.id,
-      created_at: now,
-    });
-
-    await logAudit({
-      module_code: "SETTINGS",
-      entity_name: "erp_email_provider_configs",
-      entity_id: id,
-      entity_reference: config.providerCode,
-      action: testResult.ok ? "test_success" : "test_failed",
-      new_values: { status: testResult.status, message: testResult.message.slice(0, 500) },
-    });
-
-    revalidatePath(REVALIDATE_PATH);
+    const recorded = await recordProviderHealth("email",id,row.workspace_revision,ctx.profile.id,testResult.ok,testResult.durationMs);
+    if (!recorded.success) return recorded;
+    refreshProviderSettings();
     return {
-      success: testResult.ok,
-      data: { status: testResult.status, message: testResult.message, durationMs: testResult.durationMs },
-      error: testResult.ok ? undefined : testResult.message,
+      success: recorded.data.ok,
+      data: {status:recorded.data.ok?"success":"failed",message:recorded.data.message,durationMs:recorded.data.durationMs ?? undefined},
+      error: recorded.data.ok?undefined:recorded.data.message,
     };
-  } catch (e) {
-    return { success: false, error: String(e) };
+  } catch {
+    return { success: false, error: "Provider operation could not be confirmed. Review the current settings before retrying." };
   }
 }
 
@@ -531,14 +318,14 @@ export async function sendTestEmail(
       new_values: { to: parsed.data.to_email, status: sendResult.status, message: sendResult.message.slice(0, 300) },
     });
 
-    revalidatePath(REVALIDATE_PATH);
+    refreshProviderSettings();
     return {
       success: sendResult.ok,
       data: { status: sendResult.status, message: sendResult.message, durationMs: sendResult.durationMs },
       error: sendResult.ok ? undefined : sendResult.message,
     };
-  } catch (e) {
-    return { success: false, error: String(e) };
+  } catch {
+    return { success: false, error: "Provider operation could not be confirmed. Review the current settings before retrying." };
   }
 }
 
@@ -549,7 +336,7 @@ export async function getEmailSendLogs(limit = 100): Promise<ActionResult<EmailS
     const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!hasPermission(ctx, "settings.email.logs.view") && !canManage(ctx)) {
+    if (!hasGlobalPermission(ctx, "settings.email.logs.view") && !canManage(ctx)) {
       return { success: false, error: "Permission denied" };
     }
 
@@ -564,7 +351,7 @@ export async function getEmailSendLogs(limit = 100): Promise<ActionResult<EmailS
       .order("created_at", { ascending: false })
       .limit(limit);
 
-    if (error) return { success: false, error: error.message };
+    if (error) return { success: false, error: "Email send logs could not be loaded. Try loading settings again." };
 
     const rows: EmailSendLogRow[] = (data ?? []).map((r) => {
       const row = r as Record<string, unknown>;
@@ -589,8 +376,8 @@ export async function getEmailSendLogs(limit = 100): Promise<ActionResult<EmailS
     });
 
     return { success: true, data: rows };
-  } catch (e) {
-    return { success: false, error: String(e) };
+  } catch {
+    return { success: false, error: "Email send logs could not be loaded. Try loading settings again." };
   }
 }
 
@@ -601,19 +388,20 @@ export async function getEmailFeatureFlags(): Promise<ActionResult<EmailFeatureF
     const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canView(ctx)) return { success: false, error: "Permission denied" };
+    if (!["settings.email.view","settings.email.manage","settings.email.feature_flags.manage"].some(code=>hasGlobalPermission(ctx,code))) return { success: false, error: "Permission denied" };
 
     const { data, error } = await supabase
       .from("erp_email_feature_flags")
-      .select("id, feature_code, feature_name, is_enabled, requires_approval, notes, updated_at")
+      .select("id, feature_code, feature_name, is_enabled, requires_approval, notes, updated_at, workspace_revision")
       .order("feature_code", { ascending: true });
 
-    if (error) return { success: false, error: error.message };
+    if (error) return { success: false, error: "Email feature flags could not be loaded. Try loading settings again." };
 
     const flags: EmailFeatureFlag[] = (data ?? []).map((r) => {
       const row = r as Record<string, unknown>;
       return {
         id: row.id as number,
+        workspaceRevision: String(row.workspace_revision),
         featureCode: row.feature_code as string,
         featureName: row.feature_name as string,
         isEnabled: row.is_enabled as boolean,
@@ -624,8 +412,8 @@ export async function getEmailFeatureFlags(): Promise<ActionResult<EmailFeatureF
     });
 
     return { success: true, data: flags };
-  } catch (e) {
-    return { success: false, error: String(e) };
+  } catch {
+    return { success: false, error: "Email feature flags could not be loaded. Try loading settings again." };
   }
 }
 
@@ -633,36 +421,16 @@ export async function getEmailFeatureFlags(): Promise<ActionResult<EmailFeatureF
 
 export async function updateEmailFeatureFlag(
   featureCode: string,
-  updates: { is_enabled?: boolean; notes?: string }
-): Promise<ActionResult> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!hasPermission(ctx, "settings.email.feature_flags.manage") && !canManage(ctx)) {
-      return { success: false, error: "Permission denied" };
-    }
-
-    const now = new Date().toISOString();
-    const { error } = await supabase
-      .from("erp_email_feature_flags")
-      .update({ ...updates, updated_at: now })
-      .eq("feature_code", featureCode);
-
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "SETTINGS",
-      entity_name: "erp_email_feature_flags",
-      entity_id: 0,
-      entity_reference: featureCode,
-      action: "update",
-      new_values: updates,
-    });
-
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+  updates: { is_enabled?: boolean; notes?: string },
+  contract?: WorkspaceSaveContract
+): Promise<WorkspaceSaveResult> {
+  const ctx = await getAuthContext();
+  if (!hasGlobalPermission(ctx, "settings.email.manage") && !hasGlobalPermission(ctx, "settings.email.feature_flags.manage"))
+    return {success:false,error:"Global feature administration permission is required."};
+  const schema = z.object({is_enabled:z.boolean().optional(),notes:z.string().max(2000).optional()}).strict();
+  const parsed = schema.safeParse(updates);
+  if (!parsed.success) return workspaceValidationFailure(parsed.error.issues);
+  const result = await saveProviderFlagMutation("email",featureCode,parsed.data,contract);
+  if (result.success) refreshProviderSettings();
+  return result;
 }

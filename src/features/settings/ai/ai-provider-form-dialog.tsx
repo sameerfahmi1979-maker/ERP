@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { createWorkspaceSaveAttempt, type WorkspaceSaveContract } from "@/lib/workspace/save-contract";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -17,6 +20,9 @@ import {
   saveAiProviderSecretReference,
 } from "@/server/actions/settings/ai-settings";
 import { ENV_VAR_SUGGESTIONS } from "./ai-provider-secret-dialog";
+import { aiProviderCreateSchema } from "@/lib/settings/provider-configuration";
+import { FormErrorSummary, useInlineFieldFeedback } from "@/components/workspace/form-feedback";
+import type { WorkspaceFieldIssue } from "@/lib/workspace/form-validation";
 import { getAiSecretReferenceSuggestion } from "@/lib/settings/ai-secret-policy";
 
 interface AiProviderFormDialogProps {
@@ -85,6 +91,17 @@ function ProviderFormSession({
   canManageSecrets = false,
 }: AiProviderFormDialogProps) {
   const [createdId, setCreatedId] = useState<number | null>(null);
+  const [revision, setRevision] = useState(config?.workspaceRevision ?? null);
+  const attempt = useRef(createWorkspaceSaveAttempt());
+  const pending = useRef<{id: number | null; payload: Parameters<typeof createAiProviderConfig>[0]; contract: WorkspaceSaveContract; fingerprint: string; hadUnknown: boolean} | null>(null);
+  const flight = useRef(false);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const confirmedRef = useRef(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [displayError, setDisplayError] = useState(false);
+  const router = useRouter();
+  const display = (effect: () => void) => { try { effect(); } catch { if (alive.current) setDisplayError(true); } };
   const [saveError, setSaveError] = useState<string | null>(null);
   const [uncertain, setUncertain] = useState(false);
   const isEdit = !!config || createdId !== null;
@@ -104,7 +121,8 @@ function ProviderFormSession({
     notes: config?.notes ?? "",
   });
 
-  const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
+  const [policyIssues, setPolicyIssues] = useState<WorkspaceFieldIssue[]>([]);
+  useInlineFieldFeedback(policyIssues);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // API key (optional) — persisted to the server env file, never to the DB
@@ -117,22 +135,16 @@ function ProviderFormSession({
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
-    if (errors[key]) setErrors((prev) => ({ ...prev, [key]: undefined }));
+    setPolicyIssues([]);
   };
 
-  const validate = (): boolean => {
+  const validate = (retainedConfiguration?: Parameters<typeof createAiProviderConfig>[0]): boolean => {
     const errs: Partial<Record<keyof FormState, string>> = {};
-    if (!form.config_code.trim()) errs.config_code = "Required";
-    if (!/^[A-Z0-9_]+$/.test(form.config_code)) errs.config_code = "Use uppercase letters, numbers and underscores only";
-    if (!form.provider_name.trim()) errs.provider_name = "Required";
-    const threshold = parseFloat(form.confidence_threshold);
-    if (isNaN(threshold) || threshold < 0 || threshold > 1) {
-      errs.confidence_threshold = "Must be between 0 and 1";
-    }
-    if (form.api_endpoint && !form.api_endpoint.match(/^https?:\/\/.+/)) {
-      errs.api_endpoint = "Must be a valid URL (https://...)";
-    }
-    setErrors(errs);
+    const parsed = aiProviderCreateSchema.safeParse(retainedConfiguration ?? {...form,is_active:config?.isActive??true,api_endpoint:form.api_endpoint||null,api_version:form.api_version||null,confidence_threshold:form.confidence_threshold.trim()?Number(form.confidence_threshold):NaN});
+    if(!parsed.success)for(const issue of parsed.error.issues)errs[issue.path[0] as keyof FormState]=issue.message;
+    const issues:WorkspaceFieldIssue[]=Object.entries(errs).map(([key,message])=>({label:document.querySelector(`label[for="${key}"]`)?.textContent?.replace('*','').trim()||key.replaceAll('_',' '),message:message!,control:document.getElementById(key),section:null}));
+    setPolicyIssues(issues);
+    issues[0]?.control?.focus();
 
     let secretOk = true;
     if (secretValue.trim() && !secretRef.trim()) {
@@ -146,10 +158,17 @@ function ProviderFormSession({
   };
 
   const handleSubmit = async () => {
-    if (uncertain || isSubmitting) return;
-    if (!validate()) return;
+    if (flight.current || isSubmitting || confirmedRef.current) return;
+    const fingerprint = JSON.stringify(form);
+    if (pending.current && pending.current.fingerprint !== fingerprint) {
+      setSaveError("Restore the submitted entries before retrying the original unconfirmed save.");
+      return;
+    }
+    if (!validate(pending.current?.payload)) return;
+    flight.current = true;
     setIsSubmitting(true);
     setSaveError(null);
+    let dispatched: typeof pending.current = null;
     try {
       const payload = {
         config_code: form.config_code,
@@ -161,74 +180,104 @@ function ProviderFormSession({
         purpose: form.purpose,
         is_default: form.is_default,
         is_enabled: form.is_enabled,
-        is_active: true,
+        is_active: config?.isActive ?? true,
         requires_human_review: form.requires_human_review,
-        confidence_threshold: parseFloat(form.confidence_threshold),
+        confidence_threshold: Number(form.confidence_threshold),
         notes: form.notes || null,
       };
 
       let result;
-      let configId: number | undefined = config?.id ?? createdId ?? undefined;
+      const request = pending.current ?? {id: config?.id ?? createdId ?? null, payload: {...payload}, contract: attempt.current.begin(payload, revision), fingerprint, hadUnknown: false};
+      pending.current = request;
+      dispatched = request;
+      let configId: number | undefined = request.id ?? undefined;
       if (configId !== undefined) {
-        result = await updateAiProviderConfig({ ...payload, id: configId });
+        result = await updateAiProviderConfig({ ...request.payload, id: configId }, request.contract);
       } else {
-        const createResult = await createAiProviderConfig(payload);
+        const createResult = await createAiProviderConfig(request.payload, request.contract);
         result = createResult;
+        if (!alive.current) return;
         if (createResult.success) { configId = createResult.data?.id; if (configId !== undefined) setCreatedId(configId); }
       }
 
-      if (!result.success) {
-        setSaveError("The provider was not saved. Check the values and your permissions, then try again.");
+      if (!alive.current) return;
+      if (!result.success && (result.uncertain || request.hadUnknown)) {
+        request.hadUnknown = true;
+        setUncertain(true);
+        setSaveError("Save unconfirmed. Restore the submitted entries and retry to recover the same operation, or reopen the current record to reconcile it.");
         return;
       }
+      if (pending.current === request) { pending.current = null; attempt.current.resolved(); }
+      setUncertain(false);
+      if (!result.success) {
+        setSaveError(result.error ?? "The provider save was not confirmed. Your entries are retained.");
+        return;
+      }
+      if (result.data) setRevision(result.data.revision);
+      // Configuration confirmation is terminal, independently of the optional key stage.
+      confirmedRef.current = true;
+      setConfirmed(true);
 
       // If an API key was entered, persist it to the server env and apply it
       if (canManageSecrets && secretValue.trim() && configId != null) {
-        const secretResult = await saveAiProviderSecret({
-          id: configId,
-          secret_value: secretValue,
-          secret_ref: secretRef.trim(),
-        });
-        if (!secretResult.success) {
-          setSaveError("Provider saved, but the API key was not saved. Retry updates this same provider; managed deployments may require administrator-controlled secret rotation.");
+        // Never keep a submitted key for automatic replay, including a generic false result.
+        setSecretValue("");
+        setShowKey(false);
+        let keyConfirmed = false;
+        try {
+          const secretResult = await saveAiProviderSecret({id: configId, secret_value: secretValue, secret_ref: secretRef.trim()});
+          keyConfirmed = secretResult.success;
+        } catch { /* A key write may already have happened; do not claim rollback. */ }
+        if (!alive.current) return;
+        if (!keyConfirmed) {
+          setSaveError("Provider saved, but the key update could not be confirmed. Check the provider and deployment secret status before starting a new key change. Refreshing settings does not retry the key.");
           return;
         }
-        setSecretValue("");
-        toast.success("Provider and key saved for this server. Multi-server deployments require coordinated secret rotation.");
+        display(() => toast.success("Provider and key saved for this server. Multi-server deployments require coordinated secret rotation."));
       } else if (canManageSecrets && configId != null && secretRef.trim() && secretRef.trim() !== config?.secretRef) {
-        const referenceResult = await saveAiProviderSecretReference({ id: configId, secret_ref: secretRef.trim() });
-        if (!referenceResult.success) {
-          setSaveError(`Provider saved. ${referenceResult.error ?? "The existing deployment key could not be linked."}`);
+        let referenceConfirmed = false;
+        try {
+          referenceConfirmed = (await saveAiProviderSecretReference({ id: configId, secret_ref: secretRef.trim() })).success;
+        } catch { /* Reference change may have committed; never repeat the confirmed configuration save. */ }
+        if (!alive.current) return;
+        if (!referenceConfirmed) {
+          setSaveError("Provider saved, but the existing deployment key link could not be confirmed. Refresh settings and check the reference before making another change.");
           return;
         }
       }
 
-      onSaved();
+      display(onSaved);
     } catch {
-      setUncertain(true);
-      setSaveError("The save could not be confirmed. Close this dialog and refresh the provider list before retrying to avoid a duplicate.");
+      if (dispatched) dispatched.hadUnknown = true;
+      if (alive.current) {
+        setUncertain(true);
+        setSaveError("Save unconfirmed. Restore the submitted entries and retry to recover the same operation, or reopen the current record to reconcile it.");
+      }
     } finally {
-      setIsSubmitting(false);
+      flight.current = false;
+      if (alive.current) setIsSubmitting(false);
     }
   };
 
   return (
     <ERPChildDialogForm
       open={open}
-      onOpenChange={(o) => !o && onClose()}
+      onOpenChange={(o) => { if (!o) display(onClose); }}
       title={isEdit ? "Edit AI Provider" : "Add AI Provider"}
       subtitle="Configure the provider. Secret changes require separate permission and deployment support."
       icon={<Brain className="h-5 w-5 text-violet-500" />}
       mode={isEdit ? "edit" : "add"}
       size="md"
       isSubmitting={isSubmitting}
-      submitDisabled={uncertain}
-      onCancel={onClose}
+      submitDisabled={confirmed}
+      isDirty={confirmed ? false : undefined}
       onSubmit={handleSubmit}
-      submitLabel={isEdit ? "Save Changes" : "Add Provider"}
+      submitLabel={uncertain ? "Retry unchanged save" : isEdit ? "Save Changes" : "Add Provider"}
     >
+      <FormErrorSummary issues={policyIssues} onReveal={issue=>issue.control?.focus()} />
       {saveError && <div role="alert" className="rounded-sm border border-destructive p-3 text-sm text-destructive">{saveError}</div>}
-      <div className="grid gap-4 py-2">
+      {confirmed && <div role="status" className="space-y-2"><p>Provider save confirmed. Reopen the current record before making another change.</p>{displayError && <p>The display could not finish updating. Confirmed saves remain confirmed.</p>}<Button type="button" variant="outline" onClick={() => display(() => router.refresh())}>Refresh settings only</Button></div>}
+      <fieldset disabled={confirmed} className="grid gap-4 py-2">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="config_code">
@@ -244,7 +293,6 @@ function ProviderFormSession({
               className="font-mono uppercase"
               disabled={isEdit}
             />
-            {errors.config_code && <p className="text-xs text-destructive">{errors.config_code}</p>}
             <p className="text-xs text-muted-foreground">Unique identifier. Uppercase only.</p>
           </div>
 
@@ -283,9 +331,6 @@ function ProviderFormSession({
               onChange={(e) => set("provider_name", e.target.value)}
               placeholder="e.g. OpenAI GPT"
             />
-            {errors.provider_name && (
-              <p className="text-xs text-destructive">{errors.provider_name}</p>
-            )}
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -306,6 +351,7 @@ function ProviderFormSession({
             <Label htmlFor="model_id">Model ID</Label>
             <Input
               id="model_id"
+              maxLength={200}
               value={form.model_id}
               onChange={(e) => set("model_id", e.target.value)}
               placeholder="e.g. gpt-4o"
@@ -317,6 +363,8 @@ function ProviderFormSession({
             <Label htmlFor="api_version">API Version</Label>
             <Input
               id="api_version"
+              pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}(-preview)?"
+              maxLength={18}
               value={form.api_version}
               onChange={(e) => set("api_version", e.target.value)}
               placeholder="e.g. 2024-02-01 (Azure)"
@@ -329,15 +377,13 @@ function ProviderFormSession({
           <Input
             id="api_endpoint"
             type="url"
+            maxLength={500}
             value={form.api_endpoint}
             onChange={(e) => set("api_endpoint", e.target.value)}
             placeholder="https://... (required for Azure/local providers)"
           />
-          {errors.api_endpoint && (
-            <p className="text-xs text-destructive">{errors.api_endpoint}</p>
-          )}
           <p className="text-xs text-muted-foreground">
-            Required for Azure, Ollama, or custom providers. Leave blank for OpenAI default.
+            Use your Azure resource root, the standard OpenAI endpoint, or HTTP localhost for Ollama. Unsupported adapters must stay disabled. Blank uses the default for OpenAI or Ollama.
           </p>
         </div>
 
@@ -425,9 +471,6 @@ function ProviderFormSession({
               ({(parseFloat(form.confidence_threshold || "0") * 100).toFixed(0)}%)
             </span>
           </div>
-          {errors.confidence_threshold && (
-            <p className="text-xs text-destructive">{errors.confidence_threshold}</p>
-          )}
           <p className="text-xs text-muted-foreground">
             Minimum confidence score (0–1) before results are accepted without human review.
           </p>
@@ -468,13 +511,14 @@ function ProviderFormSession({
           <Label htmlFor="notes">Notes</Label>
           <Textarea
             id="notes"
+            maxLength={1000}
             value={form.notes}
             onChange={(e) => set("notes", e.target.value)}
             rows={2}
             placeholder="Optional notes about this provider configuration..."
           />
         </div>
-      </div>
+      </fieldset>
     </ERPChildDialogForm>
   );
 }

@@ -68,6 +68,8 @@ export function useWorkspace() {
     activeTab,
     /** True when localStorage restore has completed */
     isHydrated: state.isHydrated,
+    /** Allows the switcher to suspend its focus trap while the close guard is shown. */
+    closeConfirmationOpen: ctx.closeConfirmationOpen,
     /** Open or switch to a workspace tab */
     openTab,
     /**

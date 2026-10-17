@@ -459,6 +459,9 @@ export function reviewVisualLayoutZone(
   const findings: SecurityFinding[] = [];
 
   if (!zoneRaw || typeof zoneRaw !== "object") return findings;
+  // Database defaults use {} for an unset zone. It contains no layout/content
+  // to execute or render; legacy HTML is independently scanned by the caller.
+  if (!Array.isArray(zoneRaw) && Object.keys(zoneRaw).length === 0) return findings;
 
   // Size check (JSON stringify to get approximate size)
   const jsonStr = JSON.stringify(zoneRaw);
@@ -476,11 +479,6 @@ export function reviewVisualLayoutZone(
   // Validate with Zod schema
   const parsed = ReportDesignerLayoutJsonSchema.safeParse(zoneRaw);
   if (!parsed.success) {
-    // If empty layout (empty content array), pass silently
-    const maybeContent = (zoneRaw as Record<string, unknown>).content;
-    if (Array.isArray(maybeContent) && maybeContent.length === 0) {
-      return findings;
-    }
     findings.push(
       blocking(
         makeField(zoneName),

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import './setup';
+import {useState} from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -12,6 +13,8 @@ import { DmsStandardFileNameBulkRenamePanel } from '@/features/dms/admin/dms-sta
 import type { ReactNode } from 'react';
 import type { DmsUploadBatchRow, DmsBatchDraftRow } from '@/server/actions/dms/batch-intake';
 const mocks=vi.hoisted(()=>({defs:vi.fn(),values:vi.fn(),save:vi.fn(),discard:vi.fn(),bulk:vi.fn(),rerun:vi.fn(),next:vi.fn(),orch:vi.fn(),refresh:vi.fn(),open:vi.fn(),preview:vi.fn(),clean:vi.fn(),mark:vi.fn(),rename:vi.fn()}));
+// Component acceptance keeps the same read outcomes; transport itself is tested in P04.
+vi.mock('@/features/dms/documents/section-read',()=>({readDmsSection:(kind:string,args:unknown[])=>{const readers={getMetadataDefinitionsForType:mocks.defs,getDmsDocumentMetadataValues:mocks.values};const read=readers[kind as keyof typeof readers];if(!read)throw Error('Unexpected reader '+kind);return read(...args);}}));
 vi.mock('@/server/actions/dms/document-metadata-values',()=>({getMetadataDefinitionsForType:mocks.defs,getDmsDocumentMetadataValues:mocks.values,saveDmsDocumentMetadataValues:mocks.save}));
 vi.mock('@/server/actions/dms/batch-intake',()=>({discardDraftIntake:mocks.discard,discardDraftIntakeBulk:mocks.bulk,rerunBatchDraftAi:mocks.rerun,getNextPendingDraftInBatch:mocks.next}));
 vi.mock('@/server/actions/dms/orchestration',()=>({runDmsBatchOrchestration:mocks.orch}));
@@ -19,7 +22,7 @@ vi.mock('@/server/actions/dms/session-cleanup',()=>({getDmsCleanupPreview:mocks.
 vi.mock('@/server/actions/dms/standard-file-name',()=>({bulkRenameDocumentsToStandardFileNames:mocks.rename}));
 vi.mock('@/hooks/use-workspace',()=>({useWorkspace:()=>({openTab:mocks.open})}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:mocks.refresh})}));
-function Wrap({children}:{children:ReactNode}){return <FluentProvider theme={webLightTheme}><QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><WorkspaceUiMemoryProvider>{children}</WorkspaceUiMemoryProvider></QueryClientProvider></FluentProvider>;}
+function Wrap({children}:{children:ReactNode}){const [client]=useState(()=>new QueryClient({defaultOptions:{queries:{retry:false}}}));return <FluentProvider theme={webLightTheme}><QueryClientProvider client={client}><WorkspaceUiMemoryProvider>{children}</WorkspaceUiMemoryProvider></QueryClientProvider></FluentProvider>;}
 const defs=[{id:1,field_label_en:'Reference',field_type:'text',is_required:true},{id:2,field_label_en:'Structured details',field_type:'json',is_required:false}];
 beforeEach(()=>{vi.resetAllMocks();mocks.defs.mockResolvedValue({success:true,data:defs});mocks.values.mockResolvedValue({success:true,data:[]});mocks.save.mockResolvedValue({success:true});});
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
@@ -34,8 +37,8 @@ it('read-only metadata has no edit affordance',async()=>{render(<Wrap><DmsDocume
 it('metadata document identity change does not expose the previous draft',async()=>{const view=metadata();await edit();fireEvent.change(screen.getByLabelText('Reference',{selector:'input'}),{target:{value:'Private draft A'}});view.rerender(<Wrap><DmsDocumentMetadataSection documentId={101} documentTypeId={2} isViewing={false}/></Wrap>);await edit();expect((screen.getByLabelText('Reference',{selector:'input'}) as HTMLInputElement).value).toBe('');});
 const batch={id:12,batch_code:'SYNTHETIC',status:'processing',total_files:1,processed_files:1} as DmsUploadBatchRow;
 const draft={sessionId:1,sessionCode:'SYN-1',originalFilename:'Synthetic first.pdf',intakeStatus:'failed',documentStatus:null} as DmsBatchDraftRow;
-function batchView(){return render(<Wrap><DmsBatchReviewQueueClient batch={batch} initialDrafts={[draft]}/></Wrap>);}
-it('batch refreshed props replace the original rows',()=>{const view=batchView();view.rerender(<Wrap><DmsBatchReviewQueueClient batch={batch} initialDrafts={[{...draft,originalFilename:'Synthetic refreshed.pdf'}]}/></Wrap>);expect(screen.queryByText('Synthetic first.pdf')).toBeNull();expect(screen.getAllByText('Synthetic refreshed.pdf').length).toBeGreaterThan(0);});
+function batchView(){return render(<Wrap><DmsBatchReviewQueueClient batch={batch} initialDrafts={[draft]} initialUpdatedAt={Date.now()}/></Wrap>);}
+it('batch refreshed props replace the original rows',async()=>{const view=batchView();view.rerender(<Wrap><DmsBatchReviewQueueClient batch={batch} initialDrafts={[{...draft,originalFilename:'Synthetic refreshed.pdf'}]} initialUpdatedAt={Date.now()}/></Wrap>);await waitFor(()=>expect(screen.queryAllByText('Synthetic first.pdf')).toHaveLength(0));expect(screen.getAllByText('Synthetic refreshed.pdf').length).toBeGreaterThan(0);});
 it('batch search narrows loaded records and required identity columns remain available',()=>{batchView();expect(screen.getByRole('button',{name:'Edit columns'})).toBeTruthy();fireEvent.change(screen.getByLabelText('Search loaded records'),{target:{value:'none'}});expect(screen.getByText('No loaded drafts match your filters.')).toBeTruthy();});
 it('batch discard refusal makes no call; response loss is announced and allows retry',async()=>{const confirm=vi.spyOn(window,'confirm').mockReturnValueOnce(false).mockReturnValue(true);mocks.discard.mockRejectedValue(new Error('private'));batchView();fireEvent.click(screen.getByRole('button',{name:'Discard this draft'}));expect(mocks.discard).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:'Discard this draft'}));await screen.findByRole('alert');expect(confirm).toHaveBeenCalledTimes(2);expect(screen.queryByText('private')).toBeNull();await waitFor(()=>expect(screen.getByRole('button',{name:'Discard this draft'}).hasAttribute('disabled')).toBe(false));});
 it('cleanup failure clears a stale preview and disables execution',async()=>{mocks.preview.mockResolvedValueOnce({success:true,data:{candidates:[{id:1,session_code:'SYN-1',original_filename:'Synthetic.pdf',status:'expired',file_size_bytes:20,uploaded_at:'2026-09-30T00:00:00Z'}],scanned:1}}).mockRejectedValueOnce(new Error('private'));render(<Wrap><DmsUploadCleanupPanel isAdmin/></Wrap>);fireEvent.click(screen.getByRole('button',{name:/Temp File Cleanup/}));expect(screen.getByRole('button',{name:'Run Cleanup'}).hasAttribute('disabled')).toBe(true);fireEvent.click(screen.getByRole('button',{name:'Preview Cleanup Candidates'}));await screen.findByText('Synthetic.pdf');fireEvent.click(screen.getByRole('button',{name:'Preview Cleanup Candidates'}));await screen.findByRole('alert');expect(screen.queryByText('Synthetic.pdf')).toBeNull();expect(screen.getByRole('button',{name:'Run Cleanup'}).hasAttribute('disabled')).toBe(true);});

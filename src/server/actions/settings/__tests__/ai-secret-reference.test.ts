@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ allowed: true, provider: { id: 8, provider_type: "openai", updated_at: "2026-10-17T00:00:00Z" } as Record<string, unknown> | null,
   updated: [{ id: 8 }] as { id: number }[], writes: vi.fn(), audit: vi.fn(), writer: vi.fn() }));
-vi.mock("@/lib/rbac/check", () => ({ getAuthContext: async () => ({ profile: { id: 1 } }), hasPermission: () => state.allowed }));
+vi.mock("@/lib/rbac/check", () => ({ getAuthContext: async () => ({ profile: { id: 1, must_change_password: false }, isAccountActive: true, globalPermissionCodes: state.allowed ? ["settings.ai.secrets.manage"] : [], roleAssignments: [] }) }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/ai/providers/factory", () => ({ getAiProvider: vi.fn() }));
@@ -41,4 +41,11 @@ it("does not silently ignore a different replacement key", async () => {
   state.writer.mockResolvedValueOnce({ success: false, error: "Server-file secret updates are disabled." });
   expect((await saveAiProviderSecret({ id: 8, secret_ref: "OPENAI_API_KEY", secret_value: "a-different-synthetic-key" })).success).toBe(false);
   expect(state.writes).not.toHaveBeenCalled();
+});
+it("keeps a confirmed reference change confirmed when audit and cache effects throw", async () => {
+  state.audit.mockRejectedValueOnce(Error("SYNTHETIC_PRIVATE_DETAIL"));
+  const { revalidatePath } = await import("next/cache");
+  vi.mocked(revalidatePath).mockImplementationOnce(() => { throw Error("SYNTHETIC_PRIVATE_DETAIL"); });
+  expect(await saveAiProviderSecretReference({ id: 8, secret_ref: "OPENAI_API_KEY" })).toEqual({ success: true });
+  expect(state.writes).toHaveBeenCalledOnce();
 });

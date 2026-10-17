@@ -1,26 +1,14 @@
-import { LoadError } from "@/components/erp/load-error";
-﻿import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { listWpsReadiness } from "@/server/actions/hr/payroll";
-import { HrWpsPageClient } from "@/features/hr/payroll/wps/hr-wps-page-client";
-
+import {getAuthContext} from "@/lib/rbac/check";
+import {canReadPayrollInquiry, payrollInquiryIdentity} from "@/lib/reads/hr-payroll-inquiries-schema";
+import {readPayrollInquiry} from "@/server/reads/hr-payroll-inquiries";
+import {HrWpsPageClient} from "@/features/hr/payroll/wps/hr-wps-page-client";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-export default async function HrWpsReadinessPage() {
-  const authContext = await getAuthContext();
-  const canView =
-    hasPermission(authContext, "hr.payroll.view") ||
-    authContext.roleCodes?.includes("system_admin");
-
-  if (!canView) redirect("/access-denied");
-
-  const result = await listWpsReadiness({ page: 1, page_size: 50 })
-  if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/payroll/wps" />;;
-  const initialData = result.success && result.data
-    ? result.data
-    : { data: [], count: 0 };
-
-  return <HrWpsPageClient initialData={initialData} />;
+export default async function PayrollInquiryPage() {
+  const ctx = await getAuthContext();
+  if (!canReadPayrollInquiry(ctx, "wps")) redirect("/access-denied");
+  const result = await readPayrollInquiry({kind: "wps"}, ctx);
+  if (result.error === "Permission denied") redirect("/access-denied");
+  return <HrWpsPageClient authContext={ctx} initialPage={result.data} initialUpdatedAt={result.updatedAt} initialReadIdentity={payrollInquiryIdentity(ctx)} initialReadError={!result.success} />;
 }
-
+import {redirect} from "next/navigation";

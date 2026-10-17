@@ -13,36 +13,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import type { AuthContext } from "@/lib/rbac/check";
 import type { ColumnDef } from "@tanstack/react-table";
-import {
-  ArrowRight,
-  Eye,
-  Lock,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  Power,
-  Shield,
-  Trash2,
-  Unlock,
-} from "lucide-react";
+import {Plus,Shield,ArrowRight} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { toast } from "sonner";
-import {
-  deleteUomConversion,
-  toggleUomConversionLock,
-  toggleUomConversionStatus,
-} from "../actions";
+import {UomActionsCell,useUomLifecycle,UomLifecycleNotice} from "./uom-lifecycle";
+import {hasGlobalPermission} from "@/lib/rbac/scope";
 import type { UomConversionWithUnits } from "../types";
 
 type ConversionsTableProps = {
@@ -53,65 +30,17 @@ type ConversionsTableProps = {
 
 const BASE = "/admin/master-data/uom/conversions";
 
-export function ConversionsTable({ conversions, authContext, onRefresh }: ConversionsTableProps) {
-  const router = useRouter();
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<UomConversionWithUnits | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  const handleRefresh = () => {
-    if (onRefresh) onRefresh();
-    else router.refresh();
-  };
-
-  const handleAdd = () => router.push(`${BASE}/record/new`);
-  const handleView = (item: UomConversionWithUnits) => router.push(`${BASE}/record/${item.id}`);
-  const handleEdit = (item: UomConversionWithUnits) => router.push(`${BASE}/record/${item.id}?mode=edit`);
-
-  const handleToggleActive = async (item: UomConversionWithUnits) => {
-    const result = await toggleUomConversionStatus({ id: item.id, is_active: !item.is_active });
-    if (result.success) {
-      toast.success(`Conversion ${item.is_active ? "deactivated" : "activated"} successfully`);
-      handleRefresh();
-    } else {
-      toast.error(result.error ?? "Failed to toggle conversion status");
-    }
-  };
-
-  const handleToggleLock = async (item: UomConversionWithUnits) => {
-    const result = await toggleUomConversionLock(item.id, !item.is_locked);
-    if (result.success) {
-      toast.success(`Conversion ${item.is_locked ? "unlocked" : "locked"} successfully`);
-      handleRefresh();
-    } else {
-      toast.error(result.error ?? "Failed to toggle conversion lock");
-    }
-  };
-
-  const handleDeleteClick = (item: UomConversionWithUnits) => {
-    setItemToDelete(item);
-    setDeleteDialogOpen(true);
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!itemToDelete) return;
-    setIsDeleting(true);
-    const result = await deleteUomConversion(itemToDelete.id);
-    setIsDeleting(false);
-    setDeleteDialogOpen(false);
-
-    if (result.success) {
-      toast.success("Conversion deleted successfully");
-      setItemToDelete(null);
-      handleRefresh();
-    } else {
-      toast.error(result.error ?? "Failed to delete conversion");
-    }
-  };
-
-  const canManage = authContext.permissionCodes?.includes("master_data.uom.manage") ?? false;
-  const isSystemAdmin = authContext.roleCodes?.includes("system_admin") ?? false;
-
+export function ConversionsTable(props:ConversionsTableProps){
+ return <ConversionsTableSession key={props.authContext.profile?.id??'none'} {...props}/>;
+}
+function ConversionsTableSession({conversions,authContext,onRefresh}:ConversionsTableProps){
+ const router=useRouter();
+ const [deleteDialogOpen,setDeleteDialogOpen]=useState(false),[itemToDelete,setItemToDelete]=useState<UomConversionWithUnits|null>(null);
+ const lifecycle=useUomLifecycle('uom_conversions',()=>{setDeleteDialogOpen(false);setItemToDelete(null);if(onRefresh)onRefresh();else router.refresh();});
+ const isDeleting=lifecycle.busy,canManage=hasGlobalPermission(authContext,'master_data.uom.manage');
+ const handleAdd=()=>router.push(`${BASE}/record/new`);
+ const handleView=(item:UomConversionWithUnits)=>router.push(`${BASE}/record/${item.id}`);
+ const handleEdit=(item:UomConversionWithUnits)=>router.push(`${BASE}/record/${item.id}?mode=edit`);
   const columns: ColumnDef<UomConversionWithUnits>[] = [
     {
       accessorKey: "from_unit",
@@ -176,75 +105,18 @@ export function ConversionsTable({ conversions, authContext, onRefresh }: Conver
     },
     {
       id: "actions",
-      header: () => <div className="text-right">Actions</div>,
-      cell: ({ row }) => {
-        const item = row.original;
-        const canModify = canManage && (!item.is_locked || isSystemAdmin);
-
-        return (
-          <div className="flex justify-end">
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="h-8 w-8" />}>
-                <MoreHorizontal className="h-4 w-4" />
-                <span className="sr-only">Actions</span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuGroup>
-                  <DropdownMenuItem onClick={() => handleView(item)}>
-                    <Eye className="mr-2 h-4 w-4" />
-                    View
-                  </DropdownMenuItem>
-                  {canModify && (
-                    <DropdownMenuItem onClick={() => handleEdit(item)}>
-                      <Pencil className="mr-2 h-4 w-4" />
-                      Edit
-                    </DropdownMenuItem>
-                  )}
-                </DropdownMenuGroup>
-                {canModify && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => handleToggleActive(item)}>
-                      <Power className="mr-2 h-4 w-4" />
-                      {item.is_active ? "Deactivate" : "Activate"}
-                    </DropdownMenuItem>
-                  </>
-                )}
-                {isSystemAdmin && (
-                  <>
-                    <DropdownMenuItem onClick={() => handleToggleLock(item)}>
-                      {item.is_locked ? (
-                        <>
-                          <Unlock className="mr-2 h-4 w-4" />
-                          Unlock
-                        </>
-                      ) : (
-                        <>
-                          <Lock className="mr-2 h-4 w-4" />
-                          Lock
-                        </>
-                      )}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => handleDeleteClick(item)}
-                      className="text-destructive"
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Delete
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        );
-      },
+      header: "Actions",
+      cell:({row})=><UomActionsCell row={row.original} authContext={authContext} disabled={lifecycle.busy||lifecycle.unconfirmed||lifecycle.refreshError}
+       onView={()=>handleView(row.original)} onEdit={()=>handleEdit(row.original)}
+       onToggleActive={()=>void lifecycle.change(row.original,'active')} onToggleLock={()=>void lifecycle.change(row.original,'lock')}
+       onDelete={()=>{setItemToDelete(row.original);setDeleteDialogOpen(true);}}/>,
+      meta:{exportable:false},
     },
   ];
 
   return (
     <>
+      {!deleteDialogOpen&&<UomLifecycleNotice state={lifecycle}/>}
       <ERPDataTable<UomConversionWithUnits>
         tableId="uom_conversions_table"
         columns={columns}
@@ -252,7 +124,7 @@ export function ConversionsTable({ conversions, authContext, onRefresh }: Conver
         searchPlaceholder="Search conversions..."
         toolbarSlot={
           canManage ? (
-            <Button onClick={handleAdd} size="sm">
+            <Button disabled={lifecycle.busy||lifecycle.unconfirmed||lifecycle.refreshError} onClick={handleAdd} size="sm">
               <Plus className="mr-2 h-4 w-4" />
               Add Conversion
             </Button>
@@ -263,19 +135,20 @@ export function ConversionsTable({ conversions, authContext, onRefresh }: Conver
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete UOM Conversion</AlertDialogTitle>
+            <AlertDialogTitle>Retire UOM Conversion</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this conversion? This action cannot be undone.
+              Are you sure you want to retire this conversion? The record, references and audit history will be retained. Active dependencies must be resolved first.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <UomLifecycleNotice state={lifecycle}/>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting||lifecycle.unconfirmed}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDeleteConfirm}
-              disabled={isDeleting}
+              onClick={e=>{e.preventDefault();if(itemToDelete)void lifecycle.change(itemToDelete,'retire');}}
+              disabled={isDeleting||lifecycle.unconfirmed}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {isDeleting ? "Deleting..." : "Delete"}
+              {isDeleting ? "Retiring..." : "Retire; keep history"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

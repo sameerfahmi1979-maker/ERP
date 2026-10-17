@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PaymentTerm } from "@/features/master-data/finance-basics/types";
 import type { AuthContext } from "@/lib/rbac/check";
@@ -9,44 +8,21 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { FinanceBasicsActionsCell } from "./currencies-table";
-import {
-  togglePaymentTermStatus,
-  deletePaymentTerm,
-  togglePaymentTermLock,
-} from "@/features/master-data/finance-basics/actions";
-import { toast } from "sonner";
+import {FinanceReferenceRowActions} from './finance-reference-row-actions';
+import {financeReferencePermissions} from '@/lib/master-data/finance-reference-contract';
 import { format } from "date-fns";
 
 type PaymentTermsTableProps = {
   paymentTerms: PaymentTerm[];
   authContext: AuthContext;
   onRefresh?: () => void;
+  readGeneration?: string;
 };
 
 const BASE = "/admin/master-data/finance-basics/payment-terms";
 
-export function PaymentTermsTable({ paymentTerms, authContext, onRefresh }: PaymentTermsTableProps) {
+export function PaymentTermsTable({ paymentTerms, authContext, onRefresh, readGeneration }: PaymentTermsTableProps) {
   const router = useRouter();
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<PaymentTerm | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  const handleRefresh = () => {
-    if (onRefresh) onRefresh();
-    else router.refresh();
-  };
-
   const handleAdd = () => router.push(`${BASE}/record/new`);
   const handleView = (item: PaymentTerm) => router.push(`${BASE}/record/${item.id}`);
   const handleEdit = (item: PaymentTerm) => router.push(`${BASE}/record/${item.id}?mode=edit`);
@@ -103,31 +79,9 @@ export function PaymentTermsTable({ paymentTerms, authContext, onRefresh }: Paym
       meta: { exportable: true, exportHeader: "Updated At", exportValue: (row) => row.updated_at },
     },
     {
-      id: "actions",
-      header: "Actions",
-      cell: ({ row }) => {
-        const item = row.original;
-        return (
-          <FinanceBasicsActionsCell
-            item={item}
-            authContext={authContext}
-            onView={() => handleView(item)}
-            onEdit={() => handleEdit(item)}
-            onToggleActive={async () => {
-              const result = await togglePaymentTermStatus({ id: item.id, is_active: !item.is_active });
-              if (result.success) { toast.success(`Payment term ${item.is_active ? "deactivated" : "activated"}`); handleRefresh(); }
-              else toast.error(result.error ?? "Failed to toggle status");
-            }}
-            onToggleLock={async () => {
-              const result = await togglePaymentTermLock(item.id, !item.is_locked);
-              if (result.success) { toast.success(`Payment term ${item.is_locked ? "unlocked" : "locked"}`); handleRefresh(); }
-              else toast.error(result.error ?? "Failed to toggle lock");
-            }}
-            onDelete={() => { setItemToDelete(item); setDeleteDialogOpen(true); }}
-          />
-        );
-      },
-      meta: { exportable: false },
+      id: "actions",header:"Actions",
+      cell:({row})=><FinanceReferenceRowActions entity="payment_terms" row={row.original} authContext={authContext} onView={()=>handleView(row.original)} onEdit={()=>handleEdit(row.original)} onRefresh={onRefresh} readGeneration={readGeneration}/>,
+      meta:{exportable:false},
     },
   ];
 
@@ -151,46 +105,14 @@ export function PaymentTermsTable({ paymentTerms, authContext, onRefresh }: Paym
           filename: "payment-terms-master-data",
           orientation: "landscape",
         }}
-        toolbarSlot={
+        toolbarSlot={financeReferencePermissions(authContext).manage ?
           <Button onClick={handleAdd} size="sm" className="gap-2">
             <Plus className="h-4 w-4" />
             Add Payment Term
-          </Button>
+          </Button> : null
         }
       />
 
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Payment Term</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to permanently delete{" "}
-              <strong>{itemToDelete?.term_name_en}</strong> ({itemToDelete?.term_code})?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={async () => {
-                if (!itemToDelete) return;
-                setIsDeleting(true);
-                const result = await deletePaymentTerm(itemToDelete.id);
-                setIsDeleting(false);
-                if (result.success) {
-                  toast.success("Payment term deleted");
-                  setDeleteDialogOpen(false);
-                  setItemToDelete(null);
-                  handleRefresh();
-                } else toast.error(result.error ?? "Failed to delete");
-              }}
-              disabled={isDeleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isDeleting ? "Deleting..." : "Delete Permanently"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+</>
   );
 }

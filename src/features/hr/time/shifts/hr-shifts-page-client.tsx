@@ -1,97 +1,17 @@
 "use client";
-import { RecordCollection } from "@/components/erp/table/record-collection";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
-
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { queryKeys } from "@/lib/query/query-keys";
-import type { AuthContext } from "@/lib/rbac/check";
-import { listGlobalShiftAssignments, type ShiftAssignmentRow } from "@/server/actions/hr/time";
-import { useQuery } from "@tanstack/react-query";
-import { format } from "date-fns";
-import { ExternalLink } from "lucide-react";
+import {Badge} from "@/components/ui/badge";
+import {Button} from "@/components/ui/button";
+import type {AuthContext} from "@/lib/rbac/check";
+import type {HrTimeShiftRow} from "@/lib/reads/hr-time-schema";
+import {HrTimeReadList} from "../hr-time-read-list";
+import {ExternalLink} from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
-
-type Props = {
-  initialRows: ShiftAssignmentRow[];
-  initialCount: number;
-  authContext: AuthContext;
-};
-
-function fmtDate(d: string | null | undefined): string {
-  if (!d) return "—";
-  try { return format(new Date(d), "dd MMM yyyy"); } catch { return d; }
-}
-
-export function HrShiftsPageClient({ initialRows, initialCount, authContext: _authContext }: Props) {
-  const [page, setPage] = useState(1);
-  const pageSize = 50;
-
-  const params = { page, page_size: pageSize };
-
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.time.globalShiftAssignments(params),
-    queryFn: async () => {
-      const r = await listGlobalShiftAssignments(params);
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data : { data: initialRows, count: initialCount };
-    },
-    initialData: { data: initialRows, count: initialCount },
-    staleTime: 30_000,
-  });
-  const { data, isLoading } = uiRead1;
-
-  const rows = data?.data ?? [];
-  const totalCount = data?.count ?? 0;
-  const totalPages = Math.ceil(totalCount / pageSize);
-
-  return (
-    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-4">
-      <p className="text-xs text-muted-foreground">{totalCount} assignments</p>
-
-      {isLoading ? (
-        <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-      ) : rows.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground text-sm">No shift assignments found.</div>
-      ) : (
-        <div className="border rounded-md divide-y">
-          <div className="px-4 py-2 grid grid-cols-12 text-xs font-medium text-muted-foreground bg-muted/30">
-            <span className="col-span-2">Employee</span>
-            <span className="col-span-3">Shift</span>
-            <span className="col-span-3">Calendar</span>
-            <span className="col-span-2">Effective From</span>
-            <span className="col-span-1">OT</span>
-            <span className="col-span-1 text-right">Link</span>
-          </div>
-          <RecordCollection id="hr.hr-shifts-page-client.HrShiftsPageClient.rows" rows={rows} fields={[{"id":"work_shift_shift_name","path":"work_shift.shift_name","label":"Shift Name"},{"id":"effective_from","path":"effective_from","label":"Effective From"},{"id":"effective_to","path":"effective_to","label":"Effective To"}]} renderRecord={(row) => (
-            <div key={row.id} className="px-4 py-2.5 grid grid-cols-12 items-center text-sm gap-2">
-              <span className="col-span-2 text-xs text-muted-foreground">EMP-{row.employee_id}</span>
-              <span className="col-span-3 font-medium">{row.work_shift?.shift_name ?? "—"}</span>
-              <span className="col-span-3 text-xs text-muted-foreground">{row.work_calendar?.calendar_name ?? "—"}</span>
-              <span className="col-span-2 text-xs">{fmtDate(row.effective_from)}</span>
-              <span className="col-span-1">
-                {row.overtime_eligible ? <Badge variant="secondary" className="text-xs">OT</Badge> : null}
-              </span>
-              <div className="col-span-1 flex justify-end">
-                <Link href={`/admin/hr/employees/record/${row.employee_id}?section=time`}>
-                  <Button aria-label="Open record" size="sm" variant="ghost" className="h-7 px-2">
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          )} />
-        </div>
-      )}
-
-      {totalPages > 1 && (
-        <div className="flex gap-2 justify-end">
-          <Button size="sm" variant="outline" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Prev</Button>
-          <span className="text-sm text-muted-foreground self-center">Page {page} / {totalPages}</span>
-          <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Next</Button>
-        </div>
-      )}
-    </div></QueryReadBoundary>
-  );
+import {formatTimeInquiryDate} from "@/lib/hr/time/date-utils";
+type Props = {initialRows: HrTimeShiftRow[]; initialCount: number; authContext: AuthContext; initialReadIdentity?: string; initialUpdatedAt?: number};
+export function HrShiftsPageClient({initialRows, initialCount, authContext, initialReadIdentity, initialUpdatedAt}: Props) {
+  return <HrTimeReadList kind="shifts" authContext={authContext} initialPage={{kind: "shifts", rows: initialRows, totalCount: initialCount, page: 1, pageSize: 25}} initialReadIdentity={initialReadIdentity} initialUpdatedAt={initialUpdatedAt} renderRecord={row => {
+    if (!("effective_from" in row)) return null;
+    return <div className="flex flex-wrap items-center gap-2 text-sm"><span className="text-xs text-muted-foreground">EMP-{row.employee_id}</span><span>{row.work_shift?.shift_name ?? "—"}</span><span>{row.work_calendar?.calendar_name ?? "—"}</span><span>{formatTimeInquiryDate(row.effective_from)}</span>{row.overtime_eligible && <Badge variant="secondary">OT</Badge>}
+      <Link href={`/admin/hr/employees/record/${row.employee_id}?section=time`}><Button aria-label="Open record" size="sm" variant="ghost"><ExternalLink className="h-3.5 w-3.5" /></Button></Link></div>;
+  }} />;
 }

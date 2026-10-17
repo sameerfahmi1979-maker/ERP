@@ -4,7 +4,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import type { DmsOcrFileStatus } from "@/server/actions/dms/ocr";
 import { OcrStatusReadError } from "@/lib/dms/ocr/status-read-error";
 const state=vi.hoisted(()=>({queries:[] as Record<string,unknown>[]}));
-vi.mock("@tanstack/react-query",()=>({useQuery:()=>state.queries.shift()??{isError:false,data:null},useQueryClient:()=>({})}));
+vi.mock("@tanstack/react-query",()=>({useQuery:()=>state.queries.shift()??{isError:false,data:null},useQueryClient:()=>({getDefaultOptions:()=>({queries:{retry:false}})})}));
 vi.mock("@/components/erp/table/erp-data-table",()=>({ERPDataTable:()=>null}));
 vi.mock("@/components/erp/table/loaded-list-view",()=>({loadedListValue:()=>""}));
 vi.mock("@/components/ui/button",()=>({Button:({children,disabled}:{children?:ReactNode;disabled?:boolean})=>createElement("button",{disabled},children)}));

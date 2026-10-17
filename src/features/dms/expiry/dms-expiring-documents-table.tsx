@@ -3,11 +3,10 @@ import { LoadedListTools, useLoadedListView, type LoadedListField } from "@/comp
 import { ConfiguredRow } from "@/components/erp/table/list-controls";
 
 import { useState, useTransition, useEffect, useRef } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 
-// Stable reference so the `onRowsLoaded` useEffect doesn't fire on every render
-// while the query is loading (avoids infinite setState loop from new [] each render)
+// Stable empty page during verification; never expose a previous page's rows.
 const EMPTY_DOCS: DmsExpiringDocumentRow[] = [];
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,10 +15,9 @@ import { ExternalLink, RefreshCw, Plus, EyeOff, Eye } from "lucide-react";
 import { SortColHeader } from "@/components/erp/table/sort-col-header";
 import { TablePagination } from "@/components/erp/table/table-pagination";
 import { TableSearchInput } from "@/components/erp/table/table-search-input";
-import { useSortPaginate } from "@/hooks/use-sort-paginate";
-import { queryKeys } from "@/lib/query/query-keys";
+import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
+import { canonicalReadParams, useServerPage } from "@/hooks/use-server-page";
 import {
-  getDmsExpiringDocuments,
   generateDmsExpiryRemindersForDocument,
   setDmsExpiryTrackingOverride,
   type ExpiringDocumentsFilter,
@@ -28,32 +26,36 @@ import {
 import { DmsExpiryStatusBadge } from "./dms-expiry-status-badge";
 import { invalidateDmsExpiry } from "@/lib/query/invalidation";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import { ReadError } from "@/lib/reads/client";
+import { DmsExpiryOutputs } from "./dms-expiry-outputs";
+import type { ExpiryCriteria } from "@/server/reads/dms-expiry-page";
+import { DmsStartRenewalDialog } from "@/features/dms/renewals/dms-start-renewal-dialog";
 
 interface DmsExpiringDocumentsTableProps {
   view: "expired" | "expiring" | "missing_expiry" | "ignored";
   onStartRenewal?: (doc: DmsExpiringDocumentRow) => void;
   /** Advanced filter params from the filter bar (optional) */
   advancedFilter?: Omit<ExpiringDocumentsFilter, "view" | "limit">;
-  /** Called whenever the full (pre-pagination) row set changes — used for export */
-  onRowsLoaded?: (rows: DmsExpiringDocumentRow[]) => void;
   canManage?: boolean;
+  canRenew?: boolean;
 }
 
 // ── Ignore reason dialog ───────────────────────────────────────────────────────
 
 interface IgnoreDialogProps {
   doc: DmsExpiringDocumentRow | null;
+  suspended?: boolean;
   onClose: () => void;
   onConfirm: (reason: string) => void;
   isSubmitting: boolean;
 }
 
-function IgnoreDialog({ doc, onClose, onConfirm, isSubmitting }: IgnoreDialogProps) {
+function IgnoreDialog({ doc, onClose, onConfirm, isSubmitting, suspended }: IgnoreDialogProps) {
   const [reason, setReason] = useState("");
   if (!doc) return null;
   return (
     <ERPChildDialogForm
-      open={!!doc}
+      open={!!doc && !suspended}
       onOpenChange={(v) => { if (!v) { setReason(""); onClose(); } }}
       title="Ignore Expiry Tracking"
       subtitle={doc.title}
@@ -61,6 +63,7 @@ function IgnoreDialog({ doc, onClose, onConfirm, isSubmitting }: IgnoreDialogPro
       mode="edit"
       size="sm"
       isSubmitting={isSubmitting}
+      isDirty={reason.length > 0}
       onSubmit={() => onConfirm(reason)}
       submitLabel="Ignore"
       cancelLabel="Cancel"
@@ -128,44 +131,46 @@ const LIST_FIELDS: LoadedListField[] = [
     "width": 160
   }
 ];
-export function DmsExpiringDocumentsTable({ view, onStartRenewal, advancedFilter, onRowsLoaded, canManage = false }: DmsExpiringDocumentsTableProps) {
+export function DmsExpiringDocumentsTable({ view, onStartRenewal, advancedFilter, canManage = false, canRenew = false }: DmsExpiringDocumentsTableProps) {
   const queryClient = useQueryClient();
   const [generatingId, setGeneratingId] = useState<number | null>(null);
-  const [ignoreTarget, setIgnoreTarget] = useState<DmsExpiringDocumentRow | null>(null);
+  const [ignoreTarget, setIgnoreTarget] = useState<{doc: DmsExpiringDocumentRow; owner: string} | null>(null);
   const [isIgnoring, startIgnoreTransition] = useTransition();
   const flight = useRef(false);
+  const [renewTarget, setRenewTarget] = useState<{doc:DmsExpiringDocumentRow;owner:string}|null>(null);
 
-  const filterKey: ExpiringDocumentsFilter = { view, ...(advancedFilter ?? {}) };
-
-  const { data: queryData, isLoading, isError, refetch } = useQuery({
-    queryKey: queryKeys.dms.expiringDocuments(filterKey as Record<string, unknown>),
-    queryFn: async () => {
-      const result = await getDmsExpiringDocuments(filterKey);
-      if (!result.success) throw new Error(result.error);
-      return result.data ?? [];
-    },
-    staleTime: 60_000,
-  });
-  const docs = queryData ?? EMPTY_DOCS;
-
-  // Expose full row set to parent (for export / email)
-  useEffect(() => {
-    onRowsLoaded?.(isError || isLoading ? EMPTY_DOCS : docs);
-  }, [docs, onRowsLoaded, isError, isLoading]);
-
-  const listView = useLoadedListView("DmsExpiringDocumentsTable", docs, LIST_FIELDS.filter(field => field.id === "expiry_date" ? view !== "missing_expiry" && view !== "ignored" : field.id === "expiry_override_reason" ? view === "ignored" : true));
-  const table = useSortPaginate(listView.rows, {
-    defaultSortKey: view === "missing_expiry" || view === "ignored" ? "title" : "expiry_date",
-    defaultSortDir: "asc",
-    defaultPageSize: 25,
-    getSearchText: (d) => [d.document_no, d.title, d.document_type ?? "", d.category ?? "", d.status].join(" "),
-    comparators: {
-      days_remaining: (a, b) => (a.days_remaining ?? 99999) - (b.days_remaining ?? 99999),
-    },
-  });
+  const viewState = useLoadedListView<DmsExpiringDocumentRow>("DmsExpiringDocumentsTable", EMPTY_DOCS, LIST_FIELDS.filter(field => field.id === "expiry_date" ? view !== "missing_expiry" && view !== "ignored" : field.id === "expiry_override_reason" ? view === "ignored" : true), {serverFiltered:true});
+  const [page, setPage] = usePersistentUiState(`dms:expiry:${view}:page`, 1);
+  const [pageSize, setPageSize] = usePersistentUiState(`dms:expiry:${view}:size`, 25);
+  const [sortKey, setSortKey] = usePersistentUiState<NonNullable<ExpiryCriteria["sortKey"]>>(`dms:expiry:${view}:sort`, view === "missing_expiry" || view === "ignored" ? "title" : "expiry_date");
+  const [sortDir, setSortDir] = usePersistentUiState<"asc" | "desc">(`dms:expiry:${view}:direction`, "asc");
+  const columnFilters = Object.fromEntries(viewState.fields.filter(field => field.path && viewState.filters[field.id]).map(field => [field.id, viewState.filters[field.id]]));
+  const criteria: ExpiryCriteria = { ...advancedFilter, view, search: viewState.search.trim(), columnFilters, sortKey, sortDir };
+  const criteriaKey = canonicalReadParams(criteria);
+  const [appliedCriteria, setAppliedCriteria] = usePersistentUiState(`dms:expiry:${view}:criteria`, criteriaKey);
+  const effectivePage = criteriaKey === appliedCriteria ? page : 1;
+  useEffect(() => { if (criteriaKey !== appliedCriteria) { setAppliedCriteria(criteriaKey); setPage(1); } }, [criteriaKey, appliedCriteria, setAppliedCriteria, setPage]);
+  const read = useServerPage<DmsExpiringDocumentRow>({resource:"dms-expiry-page",keyPrefix:["dms","expiry","documents","page"],
+    params:{...criteria,page:effectivePage,pageSize},seedParams:{},seed:{rows:[],totalCount:0,page:1,pageSize:25},updatedAt:0});
+  const {isError, refetch} = read;
+  const isLoading = read.isBusy || read.isPending;
+  const docs = isError || isLoading ? EMPTY_DOCS : read.data?.rows ?? EMPTY_DOCS;
+  const total = isError || isLoading ? undefined : read.data?.totalCount;
+  const totalPages = Math.max(1, Math.ceil((total ?? 0) / pageSize));
+  useEffect(() => { if (total !== undefined && effectivePage > totalPages) {
+    void queryClient.invalidateQueries({queryKey:["dms","expiry","documents","page"],refetchType:"none"}); setPage(totalPages);
+  } }, [total,effectivePage,totalPages,queryClient,setPage]);
+  const listView = {...viewState,rows:docs,loadedCount:docs.length,totalCount:total};
+  const table = {rows:docs,total:total ?? 0,page:effectivePage,totalPages,pageSize,sortKey,sortDir,query:viewState.search,setQuery:viewState.setSearch,
+    setPage:(value:number)=>setPage(Math.max(1,Math.min(value,totalPages))),setPageSize:(value:number)=>{setPageSize(value);setPage(1);},
+    toggleSort:(key:string)=>{if(key===sortKey)setSortDir(v=>v==="asc"?"desc":"asc");else {setSortKey(key as NonNullable<ExpiryCriteria["sortKey"]>);setSortDir("asc");}setPage(1);}};
+  const owner = canonicalReadParams({...criteria,page:effectivePage,pageSize});
+  const denied = read.error instanceof ReadError && [401,403].includes(read.error.status);
+  if (ignoreTarget && (ignoreTarget.owner !== owner || !canManage || denied || (!isError && !isLoading && !docs.some(d=>d.id===ignoreTarget.doc.id)))) setIgnoreTarget(null);
+  if (renewTarget && (renewTarget.owner !== owner || !canRenew || denied || (!isError && !isLoading && !docs.some(d=>d.id===renewTarget.doc.id)))) setRenewTarget(null);
 
   const handleGenerateReminders = async (docId: number) => {
-    if (!canManage || isError || flight.current) return;
+    if (!canManage || isError || isLoading || flight.current || !docs.some(d=>d.id===docId)) return;
     flight.current = true;
     setGeneratingId(docId);
     try {
@@ -183,10 +188,10 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal, advancedFilter
   };
 
   const handleIgnoreConfirm = (reason: string) => {
-    if (!ignoreTarget || !canManage || isError || flight.current) return;
+    if (!ignoreTarget || !canManage || isError || isLoading || flight.current) return;
     flight.current = true;
-    const docId = ignoreTarget.id;
-    const docTitle = ignoreTarget.title;
+    const docId = ignoreTarget.doc.id;
+    const docTitle = ignoreTarget.doc.title;
     startIgnoreTransition(async () => {
       try {
       const result = await setDmsExpiryTrackingOverride({ documentId: docId, override: "ignored", reason: reason || undefined });
@@ -203,7 +208,7 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal, advancedFilter
   };
 
   const handleUnignore = (doc: DmsExpiringDocumentRow) => {
-    if (!canManage || isError || flight.current) return;
+    if (!canManage || isError || isLoading || flight.current || !docs.some(d=>d.id===doc.id)) return;
     flight.current = true;
     startIgnoreTransition(async () => {
       try {
@@ -226,32 +231,20 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal, advancedFilter
     ignored: "No documents with expiry tracking ignored",
   };
 
-  if (isError) return <div role="alert">Expiring documents could not be loaded. <Button onClick={() => void refetch()}>Retry documents</Button></div>;
-  if (isLoading) {
-    return <div className="py-8 text-center text-sm text-muted-foreground">Loading…</div>;
-  }
-
-  if (docs.length === 0 && !isLoading) {
-    return (
-      <div className="py-8 text-center text-sm text-muted-foreground">
-        {emptyMessages[view]}
-      </div>
-    );
-  }
-
   const showExpiryColumn = view !== "missing_expiry" && view !== "ignored";
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-sm text-muted-foreground">
-          {table.total !== docs.length
-            ? `${table.total} of ${docs.length} documents`
-            : `${docs.length} document${docs.length !== 1 ? "s" : ""}`}
+          {isError ? "Document count unavailable" : isLoading ? "Loading document count…" : `${total} document${total !== 1 ? "s" : ""}`}
         </p>
         <TableSearchInput value={table.query} onChange={table.setQuery} placeholder="Search documents…" className="w-52" />
       </div>
-      <div className="rounded-md border border-border overflow-auto"><LoadedListTools view={listView} search />
+      <DmsExpiryOutputs key={`${criteriaKey}:${denied ? "denied" : "permitted"}`} criteria={criteria} ready={!isLoading && !isError} total={total} />
+      {isError && <div role="alert">Expiring documents could not be loaded. <Button onClick={() => void refetch()}>Retry documents</Button></div>}
+      {isLoading && <div role="status" className="py-8 text-center text-sm text-muted-foreground">Loading…</div>}
+      <div className="rounded-md border border-border overflow-auto"><LoadedListTools view={listView} />
         <div role="region" aria-label="DmsExpiringDocumentsTable results" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{minWidth:listView.visible.reduce((sum,c)=>sum+c.width,0)}}><colgroup>{listView.visible.map(c=><col key={c.id} style={{width:c.width}} />)}</colgroup>
           <thead>
             <ConfiguredRow columns={listView.columns} className="bg-muted/20 border-b border-border">
@@ -268,10 +261,10 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal, advancedFilter
             </ConfiguredRow>
           </thead>
           <tbody className="divide-y divide-border/50">
-            {table.rows.length === 0 && (
+            {!isLoading && !isError && table.rows.length === 0 && (
               <tr>
                 <td colSpan={listView.visible.length} className="px-3 py-8 text-center text-sm text-muted-foreground">
-                  {table.query ? "No documents match your search" : "No documents found"}
+                  {table.query || listView.rows.length !== docs.length ? "No documents match your search" : emptyMessages[view]}
                 </td>
               </tr>
             )}
@@ -336,13 +329,13 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal, advancedFilter
                       Reminders
                     </Button>
                   )}
-                  {onStartRenewal && view !== "missing_expiry" && view !== "ignored" && doc.status !== "superseded" && (
+                  {(onStartRenewal || canRenew) && view !== "missing_expiry" && view !== "ignored" && doc.status !== "superseded" && (
                     doc.is_renewable ? (
                       <Button
                         type="button"
                         size="sm"
                         className="h-7 text-xs gap-1"
-                        onClick={() => onStartRenewal(doc)}
+                        onClick={() => onStartRenewal ? onStartRenewal(doc) : setRenewTarget({doc,owner})}
                       >
                         <Plus className="h-3 w-3" />
                         Renew
@@ -362,7 +355,7 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal, advancedFilter
                       className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
                       title="Ignore expiry — removes this document from expiry dashboards"
                       disabled={generatingId !== null || isIgnoring}
-                      onClick={() => setIgnoreTarget(doc)}
+                      onClick={() => setIgnoreTarget({doc,owner})}
                     >
                       <EyeOff className="h-3 w-3" />
                       Ignore
@@ -398,11 +391,15 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal, advancedFilter
       </div>
 
       <IgnoreDialog
-        doc={ignoreTarget}
+        key={ignoreTarget?.doc.id ?? "none"}
+        doc={ignoreTarget?.doc ?? null}
+        suspended={isError || isLoading || !canManage}
         onClose={() => setIgnoreTarget(null)}
         onConfirm={handleIgnoreConfirm}
         isSubmitting={isIgnoring}
       />
+      {renewTarget && <DmsStartRenewalDialog open={!isLoading && !isError} onOpenChange={open=>{if(!open)setRenewTarget(null);}}
+        documentId={renewTarget.doc.id} documentNo={renewTarget.doc.document_no} documentTitle={renewTarget.doc.title} onSuccess={()=>setRenewTarget(null)} />}
     </div>
   );
 }

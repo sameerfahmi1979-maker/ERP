@@ -6,7 +6,8 @@ import type { DmsOcrJobRow } from "@/server/actions/dms/ocr";
 vi.mock("@/components/ui/button", () => ({ Button: (props: Record<string, unknown>) => createElement("button", props) }));
 vi.mock("@/features/dms/ocr/dms-ocr-status-badge", () => ({ DmsOcrStatusBadge: ({ status }: { status: string }) => createElement("span", null, status) }));
 import { RecentOcrJobsList } from "../recent-ocr-jobs-list";
-const base: DmsOcrJobRow = { id: 1137, document_id: 745, file_id: 733, job_type: "ocr", provider: "vision", model: "gpt-6.1-sol",
+// Deliberately synthetic identifiers; never a live OCR/document fixture.
+const base: DmsOcrJobRow = { id: 990137, document_id: 990745, file_id: 990733, job_type: "ocr", provider: "vision", model: "gpt-6.1-sol",
   status: "completed", started_at: "2026-10-17T08:51:13Z", completed_at: "2026-10-17T08:51:42Z", duration_ms: 28900,
   error_message: null, retry_count: 0, created_at: "2026-10-17T08:51:13Z" };
 function render(jobs = [base], canRetry = true, retrying = false) {
@@ -14,13 +15,13 @@ function render(jobs = [base], canRetry = true, retrying = false) {
 }
 it("renders only the compact list, with accessible column labels and no table toolbar or pagination", () => {
   const html = render();
-  for (const value of ["#1137", "GPT Vision", "28.9s", "Recent OCR jobs", 'scope="col"']) expect(html).toContain(value);
+  for (const value of ["#990137", "GPT Vision", "28.9s", "Recent OCR jobs", 'scope="col"']) expect(html).toContain(value);
   for (const value of ["Search loaded", "Edit filters", "Edit columns", "Rows per page", "Previous", "Next", ">Actions<"]) expect(html).not.toContain(value);
   expect(html).toContain('caption class="sr-only"');
 });
 it("shows retry only for a permitted failed job and disables it during retry", () => {
   const failed = { ...base, status: "failed" };
-  expect(render([failed])).toContain("Retry OCR job #1137");
+  expect(render([failed])).toContain("Retry OCR job #990137");
   expect(render([failed], false)).not.toContain("Retry OCR job");
   expect(render([failed], true, true)).toContain('disabled=""');
 });

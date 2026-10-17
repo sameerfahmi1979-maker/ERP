@@ -1,0 +1,28 @@
+import {beforeEach,it,expect,vi} from 'vitest';
+const m=vi.hoisted(()=>({auth:vi.fn(),client:vi.fn(),from:vi.fn(),maybeSingle:vi.fn(),result:{data:[] as unknown,error:null as null|{code?:string;message:string}}}));
+vi.mock('@/lib/rbac/check',()=>({getAuthContext:m.auth,hasPermission:()=>false}));
+vi.mock('@/lib/supabase/server',()=>({createClient:m.client}));
+vi.mock('@/server/lookup-save',()=>({saveLookupMutation:vi.fn()}));
+vi.mock('@/lib/logger',()=>({logger:{error:vi.fn()}}));
+import {listLookupCategories,listLookupValues,getLookupCategoryById,getLookupValueById} from '@/server/actions/master-data/lookups';
+const ctx={profile:{id:1,must_change_password:false},isAccountActive:true,roleAssignments:[],globalPermissionCodes:['master_data.lookups.view']};
+beforeEach(()=>{
+ vi.clearAllMocks();m.auth.mockResolvedValue(ctx);m.result={data:[],error:null};
+ const q:Record<string,unknown>={then:(resolve:(v:typeof m.result)=>unknown)=>Promise.resolve(m.result).then(resolve)};
+ for(const method of ['select','eq','or','is','order'])q[method]=vi.fn(()=>q);
+ m.maybeSingle.mockImplementation(()=>Promise.resolve(m.result));q.maybeSingle=m.maybeSingle;
+ m.from.mockReturnValue(q);m.client.mockResolvedValue({from:m.from});
+});
+const lists=[['categories',()=>listLookupCategories()],['values',()=>listLookupValues()]] as const;
+const details=[['category',getLookupCategoryById],['value',getLookupValueById]] as const;
+it.each(lists)('empty %s is a genuine successful empty list',async(_name,run)=>expect(await run()).toMatchObject({success:true,data:[]}));
+it.each(lists)('%s read failure is sanitized and never fabricated as empty success',async(_name,run)=>{m.result={data:null,error:{code:'08006',message:'PRIVATE_SQL_CONTEXT'}};const result=await run();expect(result).toMatchObject({success:false,kind:'failed'});expect(result).not.toHaveProperty('data');expect(JSON.stringify(result)).not.toContain('PRIVATE_SQL_CONTEXT');});
+it.each(lists)('%s malformed null list response is a failed read, not an empty list',async(_name,run)=>{m.result={data:null,error:null};expect(await run()).toMatchObject({success:false,kind:'failed'});});
+it.each(details)('%s no-row read uses maybeSingle and explicit not_found',async(_name,run)=>{m.result={data:null,error:null};expect(await run(9)).toMatchObject({success:false,kind:'not_found'});expect(m.maybeSingle).toHaveBeenCalledOnce();});
+it.each(details)('%s database failure is not a missing-record claim',async(_name,run)=>{m.result={data:null,error:{code:'08006',message:'PRIVATE_DETAIL'}};const result=await run(9);expect(result).toMatchObject({success:false,kind:'failed'});expect(JSON.stringify(result)).not.toContain('PRIVATE_DETAIL');});
+it.each(details)('%s valid row is returned unchanged',async(_name,run)=>{const row={id:9,workspace_revision:1,value_code:'QA'};m.result={data:row,error:null};expect(await run(9)).toEqual({success:true,data:row});});
+it.each([...lists.map(([name,run])=>[name,run] as const),...details.map(([name,run])=>[name,()=>run(9)] as const)])('%s missing global catalogue authority is forbidden before client creation',async(_name,run)=>{m.auth.mockResolvedValue({...ctx,globalPermissionCodes:[],permissionCodes:['master_data.lookups.manage']});expect(await run()).toMatchObject({success:false,kind:'forbidden'});expect(m.client).not.toHaveBeenCalled();});
+it.each(details)('%s rejects invalid ID without database access',async(_name,run)=>{for(const id of [0,-1,1.5,Number.NaN,Number.MAX_SAFE_INTEGER+1])expect(await run(id)).toMatchObject({success:false,kind:'not_found'});expect(m.client).not.toHaveBeenCalled();});
+it.each([...lists.map(([name,run])=>[name,run] as const),...details.map(([name,run])=>[name,()=>run(9)] as const)])('%s explicit database authorization loss is forbidden and sanitized',async(_name,run)=>{m.result={data:null,error:{code:'42501',message:'PRIVATE_PERMISSION'}};const result=await run();expect(result).toMatchObject({success:false,kind:'forbidden'});expect(JSON.stringify(result)).not.toContain('PRIVATE_PERMISSION');});
+it('global lock-only users can read the catalogue without fabricated view links',async()=>{m.auth.mockResolvedValue({...ctx,globalPermissionCodes:['master_data.lookups.lock']});expect(await listLookupCategories()).toMatchObject({success:true,data:[]});});
+it('an unexpected client failure is a sanitized failed read',async()=>{m.client.mockRejectedValueOnce(Error('PRIVATE_TRANSPORT'));const result=await getLookupValueById(9);expect(result).toMatchObject({success:false,kind:'failed'});expect(JSON.stringify(result)).not.toContain('PRIVATE_TRANSPORT');});

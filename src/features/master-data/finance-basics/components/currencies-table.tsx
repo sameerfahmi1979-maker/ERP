@@ -1,9 +1,16 @@
 "use client";
+import {isFinanceSystemAdmin} from '@/lib/master-data/finance-reference-contract';
 
-import { useState } from "react";
+
+import { useState, useRef, useLayoutEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { Currency } from "@/features/master-data/finance-basics/types";
 import type { AuthContext } from "@/lib/rbac/check";
+import {hasGlobalPermission} from "@/lib/rbac/scope";
+import {createWorkspaceSaveAttempt} from "@/lib/workspace/save-contract";
+import {currencySaveReceiptSchema} from "@/lib/master-data/currency-save-receipt";
+import {useQueryClient} from "@tanstack/react-query";
+import {invalidateCurrencies} from "@/lib/query/invalidation";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
@@ -55,38 +62,99 @@ const BASE = "/admin/master-data/finance-basics/currencies";
 
 export function CurrenciesTable({ currencies, authContext, onRefresh }: CurrenciesTableProps) {
   const router = useRouter();
+  const queryClient=useQueryClient();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<Currency | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [busy,setBusy]=useState(false);
+  type Item=Pick<Currency,'id'|'is_active'|'is_locked'|'workspace_revision'>;
+  type Action='active'|'lock'|'retire';
+  type Pending={item:Item;action:Action;desired:boolean;contract:ReturnType<ReturnType<typeof createWorkspaceSaveAttempt>['begin']>;hadUnknown:boolean};
+  const pending=useRef<Pending|null>(null);
+  const principal=authContext.profile?.id??null;
+  const [scope]=useState(()=>({principal,queryClient}));
+  const retired=useRef(false),activation=useRef<{active:boolean}|null>(null);
+  const flight=useRef<{lease:{active:boolean};target:Pending}|null>(null);
+  const [actionError,setActionError]=useState<string|null>(null);
+  const [unconfirmed,setUnconfirmed]=useState(false);
+  const [refreshError,setRefreshError]=useState(false);
+  const permissions={manage:hasGlobalPermission(authContext,'master_data.finance_basics.manage'),lock:hasGlobalPermission(authContext,'master_data.lookups.lock'),overrideLocked:isFinanceSystemAdmin(authContext),retire:isFinanceSystemAdmin(authContext)};
 
-  const handleRefresh = () => {
-    if (onRefresh) onRefresh();
-    else router.refresh();
+  const allowed=useRef(permissions);
+  useLayoutEffect(()=>{allowed.current=permissions;});
+  useLayoutEffect(()=>{
+    if(principal!==scope.principal||queryClient!==scope.queryClient)retired.current=true;
+    const lease={active:!retired.current};activation.current=lease;
+    return ()=>{
+      lease.active=false;
+      if(flight.current?.lease===lease){flight.current.target.hadUnknown=true;flight.current=null;}
+    };
+  },[principal,queryClient,scope]);
+  const refreshDisplay=(current:()=>boolean,initialFailure=false)=>{
+    if(!current())return;
+    let failed=initialFailure;
+    try{invalidateCurrencies(queryClient);}catch{failed=true;}
+    if(!current())return;
+    try{if(onRefresh)onRefresh();else router.refresh();}catch{failed=true;}
+    if(current())setRefreshError(failed);
+  };
+  const handleRefresh=()=>{
+    const lease=activation.current;
+    // Explicit recovery is read-only; it never re-enters changeCurrency.
+    refreshDisplay(()=>!!lease?.active&&!retired.current&&activation.current===lease);
   };
 
   const handleAdd = () => router.push(`${BASE}/record/new`);
   const handleView = (item: Currency) => router.push(`${BASE}/record/${item.id}`);
   const handleEdit = (item: Currency) => router.push(`${BASE}/record/${item.id}?mode=edit`);
 
-  const handleToggleActive = async (item: Currency) => {
-    const result = await toggleCurrencyStatus({ id: item.id, is_active: !item.is_active });
-    if (result.success) {
-      toast.success(`Currency ${item.is_active ? "deactivated" : "activated"} successfully`);
-      handleRefresh();
-    } else {
-      toast.error(result.error ?? "Failed to toggle currency status");
+  const changeCurrency = async (item:Item,action:Action):Promise<boolean> => {
+    const lease=activation.current,authority=allowed.current;
+    if(!lease?.active||retired.current||flight.current)return false;
+    if(action==='lock'?!authority.lock:action==='retire'?!authority.retire:!authority.manage)return false;
+    if(action==='active'&&item.is_locked&&!authority.overrideLocked)return false;
+    const desired=action==='lock'?!item.is_locked:action==='retire'?false:!item.is_active;
+    if(pending.current&&(pending.current.item.id!==item.id||pending.current.action!==action||pending.current.desired!==desired))return false;
+    if(!pending.current){
+      const snapshot={id:item.id,is_active:item.is_active,is_locked:item.is_locked,workspace_revision:item.workspace_revision};
+      const data=action==='lock'?{is_locked:desired}:{is_active:desired};
+      try{
+        const contract={...createWorkspaceSaveAttempt().begin(data,item.workspace_revision==null?null:String(item.workspace_revision))};
+        pending.current={item:snapshot,action,desired,contract,hadUnknown:false};
+      }catch{setActionError('The currency change could not be prepared. Reopen this list before continuing.');return false;}
+    }
+    const target=pending.current,dispatch={lease,target};flight.current=dispatch;
+    const current=()=>lease.active&&!retired.current&&activation.current===lease&&flight.current===dispatch;
+    setBusy(true);setActionError(null);if(target.action==='retire')setIsDeleting(true);
+    try{
+      const contract={...target.contract};
+      const result=target.action==='lock'?await toggleCurrencyLock(target.item.id,target.desired,contract):target.action==='retire'?await deleteCurrency(target.item.id,contract):await toggleCurrencyStatus({id:target.item.id,is_active:target.desired},contract);
+      if(!current())return false;
+      const receipt=currencySaveReceiptSchema.safeParse(result.data);
+      if(result.success&&(!receipt.success||receipt.data.id!==target.item.id)){
+        target.hadUnknown=true;setUnconfirmed(true);setActionError('Currency change unconfirmed. Retry the same action to recover its complete result.');return false;
+      }
+      if(!result.success){
+        target.hadUnknown ||= result.uncertain===true;
+        if(!target.hadUnknown)pending.current=null;
+        setUnconfirmed(target.hadUnknown);setActionError(target.hadUnknown?'Currency change unconfirmed. Retry the same action to recover its result.':result.error??'The currency change was not saved.');return false;
+      }
+      // Receipt acknowledgement is terminal before notification, dialog or refresh.
+      pending.current=null;setUnconfirmed(false);
+      let failed=false;
+      try{toast.success(result.data?.changed===false?'No changes to save':target.action==='retire'?'Currency retired; history retained':target.action==='lock'?(target.desired?'Currency locked':'Currency unlocked'):(target.desired?'Currency activated':'Currency deactivated'));}catch{failed=true;}
+      if(!current())return true;
+      setDeleteDialogOpen(false);setItemToDelete(null);
+      refreshDisplay(current,failed);
+      return true;
+    }catch{
+      if(current()){target.hadUnknown=true;setUnconfirmed(true);setActionError('Currency change unconfirmed. Retry the same action to recover its result.');}return false;
+    }finally{
+      if(current()){flight.current=null;setBusy(false);setIsDeleting(false);}
     }
   };
-
-  const handleToggleLock = async (item: Currency) => {
-    const result = await toggleCurrencyLock(item.id, !item.is_locked);
-    if (result.success) {
-      toast.success(`Currency ${item.is_locked ? "unlocked" : "locked"} successfully`);
-      handleRefresh();
-    } else {
-      toast.error(result.error ?? "Failed to toggle currency lock");
-    }
-  };
+  const handleToggleActive=(item:Currency)=>changeCurrency(item,'active');
+  const handleToggleLock=(item:Currency)=>changeCurrency(item,'lock');
 
   const handleDeleteClick = (item: Currency) => {
     setItemToDelete(item);
@@ -94,18 +162,9 @@ export function CurrenciesTable({ currencies, authContext, onRefresh }: Currenci
   };
 
   const handleDeleteConfirm = async () => {
-    if (!itemToDelete) return;
-    setIsDeleting(true);
-    const result = await deleteCurrency(itemToDelete.id);
-    setIsDeleting(false);
-    if (result.success) {
-      toast.success("Currency deleted successfully");
-      setDeleteDialogOpen(false);
-      setItemToDelete(null);
-      handleRefresh();
-    } else {
-      toast.error(result.error ?? "Failed to delete currency");
-    }
+    const target=pending.current?.action==='retire'?pending.current.item:itemToDelete;
+    if (!target) return;
+    await changeCurrency(target,'retire');
   };
 
   const columns: ColumnDef<Currency>[] = [
@@ -172,6 +231,9 @@ export function CurrenciesTable({ currencies, authContext, onRefresh }: Currenci
         <FinanceBasicsActionsCell
           item={row.original}
           authContext={authContext}
+          permissions={permissions}
+          deleteLabel="Retire"
+          disabled={busy||unconfirmed||refreshError}
           onView={() => handleView(row.original)}
           onEdit={() => handleEdit(row.original)}
           onToggleActive={() => handleToggleActive(row.original)}
@@ -185,6 +247,8 @@ export function CurrenciesTable({ currencies, authContext, onRefresh }: Currenci
 
   return (
     <>
+      {actionError&&<div role="alert" className="mb-3 rounded border border-destructive p-3 text-sm"><p>{actionError}</p>{unconfirmed&&<Button type="button" disabled={busy} variant="outline" onClick={()=>{const p=pending.current;if(p)void changeCurrency(p.item,p.action);}}>Retry same currency change</Button>}</div>}
+      {refreshError&&<div role="alert" className="mb-3 rounded border border-destructive p-3 text-sm"><p>The currency change was saved, but the display could not refresh. Refresh the list before making another change.</p><Button type="button" variant="outline" onClick={handleRefresh}>Refresh currency list</Button></div>}
       <ERPDataTable<Currency>
         tableId="currencies_table"
         columns={columns}
@@ -204,31 +268,32 @@ export function CurrenciesTable({ currencies, authContext, onRefresh }: Currenci
           orientation: "landscape",
         }}
         toolbarSlot={
-          <Button onClick={handleAdd} size="sm" className="gap-2">
+          permissions.manage ? <Button onClick={handleAdd} disabled={busy||unconfirmed||refreshError} size="sm" className="gap-2">
             <Plus className="h-4 w-4" />
             Add Currency
-          </Button>
+          </Button> : null
         }
       />
 
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <AlertDialog open={deleteDialogOpen} onOpenChange={open=>{if(!busy&&!unconfirmed)setDeleteDialogOpen(open);}}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Currency</AlertDialogTitle>
+            <AlertDialogTitle>Retire currency</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to permanently delete{" "}
+              Deactivate{" "}
               <strong>{itemToDelete?.currency_name_en}</strong> ({itemToDelete?.currency_code})?
-              This action cannot be undone.
+              Existing records and history will be retained. An authorized administrator can activate it again.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {actionError&&<p role="alert" className="text-sm text-destructive">{actionError}</p>}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={busy||unconfirmed}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDeleteConfirm}
-              disabled={isDeleting}
+              onClick={e=>{e.preventDefault();void handleDeleteConfirm();}}
+              disabled={busy}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {isDeleting ? "Deleting..." : "Delete Permanently"}
+              {isDeleting ? "Retiring..." : unconfirmed ? "Retry same retirement" : "Retire currency"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -238,6 +303,9 @@ export function CurrenciesTable({ currencies, authContext, onRefresh }: Currenci
 }
 
 type ActionsCellProps<T extends { is_system: boolean; is_locked: boolean; is_active: boolean }> = {
+  permissions?:{manage:boolean;lock:boolean;overrideLocked:boolean;retire:boolean};
+  deleteLabel?:string;
+  disabled?:boolean;
   item: T;
   authContext: AuthContext;
   onView: () => void;
@@ -255,14 +323,17 @@ export function FinanceBasicsActionsCell<T extends { is_system: boolean; is_lock
   onToggleActive,
   onToggleLock,
   onDelete,
+  permissions,
+  deleteLabel="Delete Permanently",
+  disabled=false,
 }: ActionsCellProps<T>) {
-  const isSystemAdmin = authContext.roleCodes.includes("system_admin");
-  const hasManagePermission = authContext.permissionCodes.includes("master_data.finance_basics.manage");
-  const hasLockPermission = authContext.permissionCodes.includes("master_data.lookups.lock");
+  const isSystemAdmin = permissions?.overrideLocked??isFinanceSystemAdmin(authContext);
+  const hasManagePermission = permissions?.manage??hasGlobalPermission(authContext,'master_data.finance_basics.manage');
+  const hasLockPermission = permissions?.lock??hasGlobalPermission(authContext,'master_data.lookups.lock');
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="h-8 w-8" />}>
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Record actions" disabled={disabled} />}>
         <MoreHorizontal className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
@@ -278,14 +349,14 @@ export function FinanceBasicsActionsCell<T extends { is_system: boolean; is_lock
             </DropdownMenuItem>
           )}
         </DropdownMenuGroup>
-        {hasManagePermission && (
+        {(hasManagePermission || hasLockPermission) && (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem onClick={onToggleActive} disabled={item.is_locked && !isSystemAdmin}>
+              {hasManagePermission&&<DropdownMenuItem onClick={onToggleActive} disabled={item.is_locked && !isSystemAdmin}>
                 <Power className="h-4 w-4 mr-2" />
                 {item.is_active ? "Deactivate" : "Activate"}
-              </DropdownMenuItem>
+              </DropdownMenuItem>}
               {(isSystemAdmin || hasLockPermission) && (
                 <DropdownMenuItem onClick={onToggleLock}>
                   {item.is_locked ? (
@@ -304,13 +375,13 @@ export function FinanceBasicsActionsCell<T extends { is_system: boolean; is_lock
             </DropdownMenuGroup>
           </>
         )}
-        {isSystemAdmin && (
+        {(permissions?.retire??isSystemAdmin) && (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
               <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive">
                 <Trash2 className="h-4 w-4 mr-2" />
-                Delete Permanently
+                {deleteLabel}
               </DropdownMenuItem>
             </DropdownMenuGroup>
           </>

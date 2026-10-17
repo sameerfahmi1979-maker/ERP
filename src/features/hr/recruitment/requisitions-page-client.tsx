@@ -1,7 +1,5 @@
 "use client";
 import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
-import { RecordCollection } from "@/components/erp/table/record-collection";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { ERPCombobox } from "@/components/erp/combobox";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
@@ -9,18 +7,20 @@ import { RequiredLabel } from "@/components/erp/required-label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { queryKeys } from "@/lib/query/query-keys";
-import type { AuthContext } from "@/lib/rbac/check";
-import type { JobRequisitionRow } from "@/server/actions/hr/recruitment";
-import { archiveJobRequisition, createJobRequisition, listJobRequisitions, updateJobRequisition } from "@/server/actions/hr/recruitment";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type {RecruitmentRequisitionDetail} from "@/lib/reads/hr-recruitment-inquiries-schema";
+import {useRecruitmentInquiry, useRecruitmentInquiryIdentity, type RecruitmentInquiryProps} from "@/hooks/use-hr-recruitment-inquiry";
+import {RecruitmentInquiryTable} from "./recruitment-inquiry-table";
+import { archiveJobRequisition, updateJobRequisition } from "@/server/actions/hr/recruitment";
+import { useQueryClient } from "@tanstack/react-query";
+import {canCreateRecruitmentDestination,requisitionCreationSchema} from '@/lib/hr/numbered-recruitment-contract';
+import {useNumberedRecruitmentSession} from './use-numbered-recruitment-session';
 import { Briefcase, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState} from "react";
 import { toast } from "sonner";
 
-type Props = { authContext: AuthContext };
+type Props = RecruitmentInquiryProps;
 
 const STATUS_OPTIONS = [
   { value: "draft", label: "Draft" },
@@ -76,33 +76,46 @@ const EMPTY_FORM: ReqForm = {
   notes: "",
 };
 
-export function RequisitionsPageClient({ authContext }: Props) {
+export function RequisitionsPageClient(props: Props) {
+  const identity = useRecruitmentInquiryIdentity("requisitions", props.authContext);
+  return <RequisitionsSession key={identity} {...props} identity={identity} />;
+}
+function RequisitionsSession(props: Props & {identity: string}) {
+  const read = useRecruitmentInquiry("requisitions", props, props.identity);
+  // Keep the read owner mounted so denial stays latched, but retire every
+  // private editor value and action with its child when this session is denied.
+  // A transient read failure does not unmount the child or discard its draft.
+  if (read.denied) return <p role="alert">Recruitment records are unavailable for this session. Sign in again or refresh after permitted access is restored.</p>;
+  return <PermittedRequisitionsSession {...props} read={read} />;
+}
+function PermittedRequisitionsSession(props: Props & {identity: string; read: ReturnType<typeof useRecruitmentInquiry<"requisitions">>}) {
+  const {authContext, read} = props;
   const queryClient = useQueryClient();
   const canManage = authContext.permissionCodes.includes("hr.recruitment.manage") || authContext.roleCodes.includes("system_admin");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<JobRequisitionRow | null>(null);
+  const [editing, setEditing] = useState<RecruitmentRequisitionDetail | null>(null);
   const [form, setForm] = useState<ReqForm>(EMPTY_FORM);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.recruitment.requisitions({ search, status: statusFilter }),
-    queryFn: () => listJobRequisitions({ search: search || undefined, status: statusFilter ?? undefined, pageSize: 100 }),
-    staleTime: 30_000,
-  });
-  const { data: res, isLoading } = uiRead1;
-  const rows = Array.isArray(res?.data?.rows) ? res.data.rows : [];
+  const creation=useNumberedRecruitmentSession('requisition',authContext.profile?.id);
+  const canCreate=canCreateRecruitmentDestination(authContext,null,null);
 
   const set = (key: keyof ReqForm, value: string) => setForm((p) => ({ ...p, [key]: value }));
 
   function openAdd() {
+    if (read.denied || (!creation.pending && (read.busy || read.isError || read.invalid))) return;
     setEditing(null);
-    setForm(EMPTY_FORM);
+    const pending=creation.pending;
+    if(pending?.kind==='requisition'){
+      const value=pending.payload;
+      setForm({requisition_title:value.requisition_title,vacancies_count:String(value.vacancies_count),requisition_status:value.requisition_status,priority:value.priority,target_start_date:value.target_start_date??'',job_description:value.job_description??'',requirements:value.requirements??'',notes:value.notes??''});
+    }else{if(!creation.startNew())return;setForm(EMPTY_FORM);}
     setDialogOpen(true);
   }
 
-  function openEdit(req: JobRequisitionRow) {
+  async function openEdit(id: number) {
+    if (creation.pending || creation.saving) return;
+    const req = await read.loadRequisition(id);
+    if (!req) return;
     setEditing(req);
     setForm({
       requisition_title: req.requisition_title,
@@ -117,7 +130,19 @@ export function RequisitionsPageClient({ authContext }: Props) {
     setDialogOpen(true);
   }
 
-  function handleSave() {
+  async function handleSave() {
+    if (read.denied || ((!creation.pending || editing) && (read.busy || read.isError || read.invalid || editing && !read.data.some(row => row.id === editing.id)))) return;
+    if(!editing){
+      const parsed=requisitionCreationSchema.safeParse({requisition_title:form.requisition_title,vacancies_count:Number(form.vacancies_count),requisition_status:form.requisition_status,priority:form.priority,target_start_date:form.target_start_date||null,job_description:form.job_description||null,requirements:form.requirements||null,notes:form.notes||null});
+      if(!creation.pending&&!parsed.success){toast.error(parsed.error.issues[0]?.message??'Check requisition values.');return;}
+      const value=creation.pending?.kind==='requisition'?creation.pending.payload:parsed.success?parsed.data:null;
+      if(!value)return;
+      const receipt=await creation.submit(value,null);
+      if(!receipt||!creation.isCurrent())return;
+      toast.success('Requisition created');setDialogOpen(false);
+      try{await queryClient.invalidateQueries({queryKey:queryKeys.recruitment.requisitions()});}catch{toast.message('Saved. Refresh the list to see the requisition.');}
+      return;
+    }
     startTransition(async () => {
       const payload = {
         requisition_title: form.requisition_title,
@@ -130,9 +155,7 @@ export function RequisitionsPageClient({ authContext }: Props) {
         notes: form.notes || null,
       };
 
-      const res = editing
-        ? await updateJobRequisition(editing.id, payload)
-        : await createJobRequisition(payload);
+      const res = await updateJobRequisition(editing.id, payload);
 
       if (res.success) {
         toast.success(editing ? "Requisition updated" : "Requisition created");
@@ -145,6 +168,7 @@ export function RequisitionsPageClient({ authContext }: Props) {
   }
 
   function handleArchive(id: number) {
+    if (read.denied || read.busy || read.isError || read.invalid || !read.data.some(row => row.id === id)) return;
     startTransition(async () => {
       const res = await archiveJobRequisition(id);
       if (res.success) {
@@ -157,79 +181,49 @@ export function RequisitionsPageClient({ authContext }: Props) {
   }
 
   return (
-    <QueryReadBoundary queries={[uiRead1]}><div className="p-6 max-w-6xl mx-auto space-y-4">
+    <div className="p-6 max-w-6xl mx-auto space-y-4">
       <div className="flex flex-wrap gap-2 items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Job Requisitions</h1>
-          <p className="text-sm text-muted-foreground">{res?.data?.totalCount ?? 0} total</p>
         </div>
         {canManage && (
-          <Button size="sm" onClick={openAdd}>
-            <Plus className="h-4 w-4 mr-1" /> New Requisition
+          <Button size="sm" onClick={openAdd} disabled={creation.saving||creation.blocked||(!canCreate&&!creation.pending)}>
+            <Plus className="h-4 w-4 mr-1" /> {creation.pending?'Recover Requisition':'New Requisition'}
           </Button>
         )}
       </div>
+      {!canCreate&&canManage&&!creation.pending&&<p className="text-sm text-amber-700">Creating an unscoped requisition requires global recruitment management and numbering generation.</p>}
+      {creation.error&&!dialogOpen&&<p role="alert" className="text-sm text-destructive">{creation.error}</p>}
 
-      {/* Filters */}
-      <div className="flex gap-2 flex-wrap">
-        <Input aria-label="Search requisitions" placeholder="Search requisitions..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
-        <ERPCombobox ariaLabel="Filter by status"
-          value={statusFilter}
-          onValueChange={(v) => setStatusFilter(v ? String(v) : null)}
-          options={[{ value: "", label: "All Statuses" }, ...STATUS_OPTIONS]}
-          placeholder="Filter by status"
-        />
-      </div>
-
-      {isLoading ? (
-        <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 rounded" />)}</div>
-      ) : rows.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground text-sm">
-          <Briefcase className="h-10 w-10 mx-auto mb-2 opacity-40" />
-          No requisitions found.
-        </div>
-      ) : (
-        <div className="border rounded-lg divide-y">
-          <RecordCollection id="hr.requisitions-page-client.RequisitionsPageClient.rows" rows={rows} fields={[{"id":"requisition_title","path":"requisition_title","label":"Requisition Title"},{"id":"requisition_status","path":"requisition_status","label":"Requisition Status"}]} renderRecord={(row) => (
-            <div key={row.id} className="flex items-center gap-3 p-4">
-              <Briefcase className="h-4 w-4 text-slate-400 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {row.requisition_code && <span className="text-xs font-mono text-muted-foreground">{row.requisition_code}</span>}
-                  <span className="text-sm font-medium">{row.requisition_title}</span>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[row.requisition_status]}`}>{row.requisition_status.replace(/_/g, " ")}</span>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${PRIORITY_COLORS[row.priority]}`}>{row.priority}</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {row.vacancies_count} {row.vacancies_count === 1 ? "vacancy" : "vacancies"}
-                  {row.department && ` · ${row.department.department_name_en}`}
-                  {row.designation && ` · ${row.designation.designation_name_en}`}
-                  {row.target_start_date && ` · Target: ${row.target_start_date}`}
-                </p>
-              </div>
-              {canManage && (
-                <div className="flex gap-1">
-                  <Button aria-label="Edit record" size="sm" variant="ghost" onClick={() => openEdit(row)}><Pencil className="h-4 w-4" /></Button>
-                  <Button aria-label="Archive record" size="sm" variant="ghost" onClick={() => handleArchive(row.id)} disabled={isPending}><Trash2 className="h-4 w-4 text-red-500" /></Button>
-                </div>
-              )}
-            </div>
-          )} />
-        </div>
-      )}
+      <RecruitmentInquiryTable kind="requisitions" identity={props.identity} read={read} columns={[
+        {id: "requisition_code", header: "Code", accessorKey: "requisition_code", enableHiding: false, size: 150},
+        {id: "requisition_title", header: "Requisition", accessorKey: "requisition_title", enableHiding: false, size: 240},
+        {id: "requisition_status", header: "Status", accessorKey: "requisition_status", size: 150, cell: ({row}) => <span className={STATUS_COLORS[row.original.requisition_status]}>{row.original.requisition_status.replaceAll("_", " ")}</span>},
+        {id: "priority", header: "Priority", accessorKey: "priority", size: 130, cell: ({row}) => <span className={PRIORITY_COLORS[row.original.priority]}>{row.original.priority}</span>},
+        {id: "vacancies_count", header: "Vacancies", accessorKey: "vacancies_count", enableSorting: false, size: 100},
+        {id: "department", header: "Department", accessorFn: row => row.department?.department_name_en ?? "—", enableSorting: false, size: 200},
+        {id: "designation", header: "Designation", accessorFn: row => row.designation?.designation_name_en ?? "—", enableSorting: false, size: 200},
+        {id: "target_start_date", header: "Target start", accessorFn: row => row.target_start_date ?? "—", size: 150},
+        {id: "actions", header: "Actions", enableSorting: false, cell: ({row}) => canManage && <div className="flex gap-1">
+          <Button aria-label="Edit record" size="sm" variant="ghost" onClick={() => void openEdit(row.original.id)} disabled={read.detailPending || isPending || creation.saving || !!creation.pending}><Pencil className="h-4 w-4" /></Button>
+          <Button aria-label="Archive record" size="sm" variant="ghost" onClick={() => handleArchive(row.original.id)} disabled={isPending}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+        </div>},
+      ]} />
 
       <ERPChildDialogForm
-        open={dialogOpen}
+        open={dialogOpen && ((!editing && !!creation.pending) || (!read.busy && !read.isError && !read.invalid && (!editing || read.data.some(row => row.id === editing.id))))}
         onOpenChange={setDialogOpen}
         title={editing ? "Edit Requisition" : "New Job Requisition"}
         subtitle="Create or edit a hiring request"
         icon={<Briefcase className="h-5 w-5" />}
         mode={editing ? "edit" : "add"}
         size="lg"
-        isSubmitting={isPending}
+        isSubmitting={isPending||creation.saving}
         onSubmit={handleSave}
+        submitLabel={!editing&&creation.pending?'Retry Original Request':undefined}
       >
-        <div className="grid grid-cols-12 gap-4">
+        {!editing&&creation.error&&<p role="alert" className="text-sm text-destructive">{creation.error}</p>}
+        <fieldset disabled={!editing&&(creation.saving||!!creation.pending||creation.blocked)} className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <RequiredLabel required>Requisition Title</RequiredLabel>
             <Input aria-label="Requisition Title" required value={form.requisition_title} onChange={(e) => set("requisition_title", e.target.value)} placeholder="e.g. Senior Software Engineer" />
@@ -262,8 +256,8 @@ export function RequisitionsPageClient({ authContext }: Props) {
             <Label>Notes</Label>
             <Textarea aria-label="Notes" value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={2} placeholder="Internal notes..." />
           </div>
-        </div>
+        </fieldset>
       </ERPChildDialogForm>
-    </div></QueryReadBoundary>
+    </div>
   );
 }

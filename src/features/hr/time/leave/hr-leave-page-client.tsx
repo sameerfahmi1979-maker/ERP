@@ -1,207 +1,62 @@
 "use client";
-import { useReasonDialog } from "@/hooks/use-reason-dialog";
-import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
-import { RecordCollection } from "@/components/erp/table/record-collection";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
-
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
-import { getLeaveApprovalStatusBadge } from "@/lib/hr/time/status";
-import { invalidateHrGlobalLeaveRequests } from "@/lib/query/invalidation";
-import { queryKeys } from "@/lib/query/query-keys";
-import type { AuthContext } from "@/lib/rbac/check";
-import {
-  approveLeaveRequest,
-  listLeaveRequests,
-  rejectLeaveRequest,
-  type LeaveRequestRow,
-} from "@/server/actions/hr/time";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { format } from "date-fns";
-import { CheckCircle, ExternalLink, XCircle } from "lucide-react";
+import {useCallback, useEffect, useRef, useState} from "react";
+import {useQueryClient} from "@tanstack/react-query";
+import {useReasonDialog} from "@/hooks/use-reason-dialog";
+import {useGuardedTransition as useTransition} from "@/hooks/use-guarded-transition";
+import {useRealtimeSync} from "@/hooks/realtime/use-realtime-sync";
+import {invalidateHrGlobalLeaveRequests} from "@/lib/query/invalidation";
+import {hasPermission} from "@/lib/rbac/scope";
+import type {AuthContext} from "@/lib/rbac/check";
+import type {HrTimeLeaveRow} from "@/lib/reads/hr-time-schema";
+import {useHrTimeInquiryIdentity} from "@/hooks/use-hr-time-read";
+import {HrTimeReadList, type HrTimeReadAdmission} from "../hr-time-read-list";
+import {approveLeaveRequest, rejectLeaveRequest} from "@/server/actions/hr/time";
+import {getLeaveApprovalStatusBadge} from "@/lib/hr/time/status";
+import {Badge} from "@/components/ui/badge";
+import {Button} from "@/components/ui/button";
+import {CheckCircle, XCircle, ExternalLink} from "lucide-react";
 import Link from "next/link";
-import { useState} from "react";
-import { toast } from "sonner";
-
-type Props = {
-  initialRows: LeaveRequestRow[];
-  initialCount: number;
-  authContext: AuthContext;
-};
-
-function checkPerm(ctx: AuthContext, code: string): boolean {
-  return (
-    ctx.permissionCodes.includes(code) ||
-    ctx.roleCodes.includes("system_admin") ||
-    ctx.roleCodes.includes("group_admin")
-  );
+import {toast} from "sonner";
+import {formatTimeInquiryDate} from "@/lib/hr/time/date-utils";
+type Props = {initialRows: HrTimeLeaveRow[]; initialCount: number; authContext: AuthContext; initialReadIdentity?: string; initialUpdatedAt?: number};
+export function HrLeavePageClient(props: Props) {
+  const identity = useHrTimeInquiryIdentity("leave", props.authContext);
+  // Retire pending reasons and guarded mutation state together with the account.
+  // The outer identity hook also cancels/removes the retired read cache.
+  return <LeaveSession key={identity} {...props} />;
 }
-
-function fmtDate(d: string | null | undefined): string {
-  if (!d) return "—";
-  try { return format(new Date(d), "dd MMM yyyy"); } catch { return d; }
-}
-
-export function HrLeavePageClient({ initialRows, initialCount, authContext }: Props) {
-  const { askReason, reasonDialog } = useReasonDialog();
-  const qc = useQueryClient();
-  const [isPending, startTransition] = useTransition();
-  const [statusFilter, setStatusFilter] = useState("pending");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [page, setPage] = useState(1);
-  const pageSize = 50;
-
-  const canManage = checkPerm(authContext, "hr.leave.manage");
-
-  const params = {
-    page,
-    page_size: pageSize,
-    ...(statusFilter ? { approval_status: statusFilter } : {}),
-    ...(dateFrom ? { date_from: dateFrom } : {}),
-    ...(dateTo ? { date_to: dateTo } : {}),
-  };
-
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.time.globalLeaveRequests(params),
-    queryFn: async () => {
-      const r = await listLeaveRequests(params);
-      if (!r.success) throw new Error(r.error ?? "Failed to load leave requests");
-      return r.data ?? { data: [], count: 0 };
-    },
-    refetchOnMount: "always",
-  });
-  const { data, isLoading, isError, error } = uiRead1;
-
-  // ERP REALTIME.1C — live leave requests list sync.
-  useRealtimeSync({
-    table: "employee_leave_requests",
-    event: "*",
-    debounceMs: 400,
-    onEvent: () => {
-      invalidateHrGlobalLeaveRequests(qc);
-    },
-  });
-
+function LeaveSession({initialRows, initialCount, authContext, initialReadIdentity, initialUpdatedAt}: Props) {
+  const admission = useRef<HrTimeReadAdmission>({ready: false, criteria: "", ids: []});
+  const target = useRef<{id: number; criteria: string} | null>(null);
+  const [reasonReady, setReasonReady] = useState(true);
+  const {askReason, reasonDialog, cancelReason} = useReasonDialog(reasonReady), qc = useQueryClient(), [isPending, startTransition] = useTransition(), mounted = useRef(true);
+  const onReadAdmission = useCallback((next: HrTimeReadAdmission) => {
+    admission.current = next;
+    if (target.current && (target.current.criteria !== next.criteria || next.ready && !next.ids.includes(target.current.id))) {target.current = null; cancelReason();}
+    setReasonReady(!target.current ? false : next.ready && next.ids.includes(target.current.id));
+  }, [cancelReason]);
+  useEffect(() => {mounted.current = true; return () => {mounted.current = false;};}, []);
+  const canManage = hasPermission(authContext, "hr.leave.manage");
+  useRealtimeSync({table: "employee_leave_requests", event: "*", debounceMs: 400, onEvent: () => invalidateHrGlobalLeaveRequests(qc)});
   function handleApprove(id: number) {
-    startTransition(async () => {
-      const r = await approveLeaveRequest(id);
-      if (r.success) {
-        toast.success("Leave approved");
-        qc.invalidateQueries({ queryKey: ["hr", "time", "global-leave-requests"] });
-      } else toast.error(r.error ?? "Failed to approve");
-    });
+    startTransition(async () => {const r = await approveLeaveRequest(id); if (!mounted.current) return;
+      if (r.success) {toast.success("Leave approved"); void qc.invalidateQueries({queryKey: ["hr", "time", "global-leave-requests"]});} else toast.error(r.error ?? "Failed to approve");});
   }
-
   async function handleReject(id: number) {
+    if (!admission.current.ready || !admission.current.ids.includes(id)) return;
+    const selected = {id, criteria: admission.current.criteria};
+    target.current = selected; setReasonReady(true);
     const reason = await askReason("Reject leave request", false);
-    if (reason === null) return;
-    startTransition(async () => {
-      const r = await rejectLeaveRequest(id, reason || undefined);
-      if (r.success) {
-        toast.success("Leave rejected");
-        qc.invalidateQueries({ queryKey: ["hr", "time", "global-leave-requests"] });
-      } else toast.error(r.error ?? "Failed to reject");
-    });
+    if (reason === null || !mounted.current || target.current !== selected || !admission.current.ready || !admission.current.ids.includes(id)) return;
+    target.current = null;
+    startTransition(async () => {const r = await rejectLeaveRequest(id, reason || undefined); if (!mounted.current) return;
+      if (r.success) {toast.success("Leave rejected"); void qc.invalidateQueries({queryKey: ["hr", "time", "global-leave-requests"]});} else toast.error(r.error ?? "Failed to reject");});
   }
-
-  const rows = data?.data ?? [];
-  const totalCount = data?.count ?? 0;
-  const totalPages = Math.ceil(totalCount / pageSize);
-
-  return (
-    <QueryReadBoundary queries={[uiRead1]}><div className="space-y-4">{reasonDialog}
-      {/* Filters */}
-      <div className="flex gap-3 flex-wrap">
-        <select
-          value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-          className="border rounded-md px-3 py-2 text-sm bg-background"
-        >
-          <option value="">All Statuses</option>
-          <option value="pending">Pending</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-        <Input aria-label="From" type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} className="w-40" placeholder="From" />
-        <Input aria-label="To" type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} className="w-40" placeholder="To" />
-        {(statusFilter || dateFrom || dateTo) && (
-          <Button variant="ghost" size="sm" onClick={() => { setStatusFilter(""); setDateFrom(""); setDateTo(""); setPage(1); }}>
-            Clear
-          </Button>
-        )}
-      </div>
-
-      <p className="text-xs text-muted-foreground">{totalCount} requests</p>
-
-      {isLoading ? (
-        <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-      ) : isError ? (
-        <div className="text-center py-16 text-destructive text-sm">
-          {error instanceof Error ? error.message : "Failed to load leave requests"}
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground text-sm">No leave requests found.</div>
-      ) : (
-        <div className="border rounded-md divide-y">
-          <div className="px-4 py-2 grid grid-cols-12 text-xs font-medium text-muted-foreground bg-muted/30">
-            <span className="col-span-2">Employee</span>
-            <span className="col-span-2">Leave Type</span>
-            <span className="col-span-2">Start</span>
-            <span className="col-span-2">End</span>
-            <span className="col-span-1">Days</span>
-            <span className="col-span-2">Status</span>
-            <span className="col-span-1 text-right">Actions</span>
-          </div>
-          <RecordCollection id="hr.hr-leave-page-client.HrLeavePageClient.rows" rows={rows} fields={[{"id":"employee_full_name_en","path":"employee.full_name_en","label":"Full Name En"},{"id":"start_date","path":"start_date","label":"Start Date"},{"id":"end_date","path":"end_date","label":"End Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
-            const badge = getLeaveApprovalStatusBadge(row.approval_status);
-            return (
-              <div key={row.id} className="px-4 py-2.5 grid grid-cols-12 items-center text-sm gap-2">
-                <div className="col-span-2 min-w-0">
-                  <p className="text-xs font-medium truncate">{row.employee?.full_name_en ?? "—"}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{row.employee?.employee_code ?? `EMP-${row.employee_id}`}</p>
-                </div>
-                <span className="col-span-2 text-xs">{row.leave_type?.name_en ?? "—"}</span>
-                <span className="col-span-2 text-xs">{fmtDate(row.start_date)}</span>
-                <span className="col-span-2 text-xs">{fmtDate(row.end_date)}</span>
-                <span className="col-span-1 text-xs">{row.total_days ?? "—"}</span>
-                <span className="col-span-2">
-                  <Badge variant={badge.variant} className="text-xs">{badge.label}</Badge>
-                </span>
-                <div className="col-span-1 flex justify-end gap-1">
-                  {canManage && row.approval_status === "pending" && (
-                    <>
-                      <Button aria-label="Approve" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => handleApprove(row.id)} disabled={isPending} title="Approve">
-                        <CheckCircle className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button aria-label="Reject" size="sm" variant="ghost" className="h-7 px-2 text-xs text-destructive" onClick={() => handleReject(row.id)} disabled={isPending} title="Reject">
-                        <XCircle className="h-3.5 w-3.5" />
-                      </Button>
-                    </>
-                  )}
-                  <Link href={`/admin/hr/employees/record/${row.employee_id}?section=time`}>
-                    <Button aria-label="Open record" size="sm" variant="ghost" className="h-7 px-2">
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            );
-          }} />
-        </div>
-      )}
-
-      {totalPages > 1 && (
-        <div className="flex gap-2 justify-end">
-          <Button size="sm" variant="outline" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Prev</Button>
-          <span className="text-sm text-muted-foreground self-center">Page {page} / {totalPages}</span>
-          <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Next</Button>
-        </div>
-      )}
-    </div></QueryReadBoundary>
-  );
+  return <>{reasonDialog}<HrTimeReadList kind="leave" onReadAdmission={onReadAdmission} authContext={authContext} initialPage={{kind: "leave", rows: initialRows, totalCount: initialCount, page: 1, pageSize: 25}} initialUpdatedAt={initialUpdatedAt} initialReadIdentity={initialReadIdentity} renderRecord={row => {
+    if (!("start_date" in row)) return null;
+    const badge = getLeaveApprovalStatusBadge(row.approval_status);
+    return <div className="flex flex-wrap items-center gap-2 text-sm"><div><p>{row.employee?.full_name_en ?? "—"}</p><p className="text-xs text-muted-foreground">{row.employee?.employee_code ?? `EMP-${row.employee_id}`}</p></div><span>{row.leave_type?.name_en ?? "—"}</span><span>{formatTimeInquiryDate(row.start_date)} — {formatTimeInquiryDate(row.end_date)}</span><span>{row.total_days ?? "—"} days</span><Badge variant={badge.variant}>{badge.label}</Badge>
+      {canManage && row.approval_status === "pending" && <><Button aria-label="Approve" title="Approve" size="sm" variant="ghost" disabled={isPending} onClick={() => handleApprove(row.id)}><CheckCircle className="h-3.5 w-3.5" /></Button><Button aria-label="Reject" title="Reject" size="sm" variant="ghost" className="text-destructive" disabled={isPending} onClick={() => handleReject(row.id)}><XCircle className="h-3.5 w-3.5" /></Button></>}
+      <Link href={`/admin/hr/employees/record/${row.employee_id}?section=time`}><Button aria-label="Open record" size="sm" variant="ghost"><ExternalLink className="h-3.5 w-3.5" /></Button></Link></div>;
+  }} /></>;
 }

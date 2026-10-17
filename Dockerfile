@@ -6,6 +6,8 @@ RUN test "$(node --version)" = "v22.23.2" && test "$(npm --version)" = "10.9.8"
 
 FROM base AS build
 COPY package.json package-lock.json ./
+COPY vendor/braces-3.0.3-algt-integrated-2.tgz ./vendor/braces-3.0.3-algt-integrated-2.tgz
+COPY vendor/sprintf-js-1.0.3-algt.1.tgz ./vendor/sprintf-js-1.0.3-algt.1.tgz
 RUN npm ci --no-fund
 COPY src ./src
 COPY public ./public

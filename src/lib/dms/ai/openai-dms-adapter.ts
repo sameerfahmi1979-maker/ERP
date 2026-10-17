@@ -1,4 +1,5 @@
 import { resolveAiProviderSecret } from "@/lib/settings/resolve-ai-secret";
+import { aiEndpoint, providerApiVersion, ProviderConfigurationError, safeProviderFailure } from "@/lib/settings/provider-endpoints";
 /**
  * DMS.10 — OpenAI DMS Adapter
  *
@@ -43,24 +44,37 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
     this.modelId = config.modelId ?? "gpt-4.1";
   }
 
+  private destination(operation: "chat/completions" | "embeddings", model: string) {
+    if (!this.config.isActive || !this.config.isEnabled || !["openai", "azure_openai"].includes(this.config.providerType))
+      throw new ProviderConfigurationError("The AI provider is inactive, disabled or unsupported.");
+    const base = aiEndpoint(this.config.providerType, this.config.apiEndpoint);
+    if (this.config.providerType === "azure_openai") {
+      if (!this.config.modelId || !model || model.length > 200) throw new ProviderConfigurationError("An explicit Azure deployment must be configured.");
+      return `${base}/openai/deployments/${encodeURIComponent(model)}/${operation}?api-version=${providerApiVersion(this.config.apiVersion, "2024-10-21")}`;
+    }
+    return `${base}/${operation}`;
+  }
+
   isConfigured(): boolean {
-    if (!this.config.isEnabled || !this.config.isActive) return false;
-    const secretRef = this.config.secretRef;
-    if (!secretRef) return false;
-    return !!resolveAiProviderSecret(this.config);
+    try {
+      this.destination("chat/completions", this.modelId ?? "");
+      return !!resolveAiProviderSecret(this.config);
+    } catch { return false; }
+  }
+
+  private async request(operation: "chat/completions" | "embeddings", model: string, body: unknown, timeout: number): Promise<Response> {
+    const url = this.destination(operation, model);
+    const key = resolveAiProviderSecret(this.config);
+    if (!key) throw new ProviderConfigurationError("The protected AI credential is unavailable.");
+    const headers: Record<string, string> = {"Content-Type": "application/json"};
+    if (this.config.providerType === "azure_openai") headers["api-key"] = key;
+    else headers.Authorization = `Bearer ${key}`;
+    try {
+      return await fetch(url, {method: "POST", headers, body: JSON.stringify(body), redirect: "error", signal: AbortSignal.timeout(timeout)});
+    } catch (error) { throw new Error(safeProviderFailure(error)); }
   }
 
   async analyze(input: DmsAiInput): Promise<DmsAiOutput> {
-    const secretRef = this.config.secretRef;
-    if (!secretRef) throw new Error("No API key reference configured in AI Settings.");
-
-    const apiKey = resolveAiProviderSecret(this.config);
-    if (!apiKey) {
-      throw new Error(
-        `API key environment variable '${secretRef}' is not set. Configure it in your deployment environment.`
-      );
-    }
-
     const { systemPrompt, userContent, hasImages } = buildCombinedPrompt(
       input.ocrText,
       input.typeCandidates,
@@ -71,10 +85,8 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
       input.classificationPackets
     );
 
-    const baseUrl =
-      this.config.apiEndpoint?.replace(/\/$/, "") ?? "https://api.openai.com/v1";
-    // OpenAI model IDs are case-sensitive — always lowercase (e.g. gpt-4.1, not GPT-4.1)
-    const model = (this.modelId ?? "gpt-4.1").toLowerCase();
+    // Preserve the configured model/deployment identifier exactly.
+    const model = this.modelId ?? "gpt-4.1";
 
     // Use multimodal content array when images are present;
     // fall back to plain string for text-only (wider model compatibility).
@@ -98,21 +110,11 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
       requestBody.response_format = { type: "json_object" };
     }
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        ...(this.config.apiVersion ? { "api-version": this.config.apiVersion } : {}),
-      },
-      body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(COMPLETION_TIMEOUT_MS),
-    });
+    const response = await this.request("chat/completions", model, requestBody, COMPLETION_TIMEOUT_MS);
 
     if (!response.ok) {
-      const body = await response.text();
       throw new Error(
-        `OpenAI API error ${response.status}: ${body.substring(0, 300)}`
+        `AI provider request failed (HTTP ${response.status}). External error details are withheld.`
       );
     }
 
@@ -137,20 +139,8 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
   }
 
   async summarize(systemPrompt: string, userMessage: string): Promise<DmsSummaryOutput> {
-    const secretRef = this.config.secretRef;
-    if (!secretRef) throw new Error("No API key reference configured in AI Settings.");
-
-    const apiKey = resolveAiProviderSecret(this.config);
-    if (!apiKey) {
-      throw new Error(
-        `API key environment variable '${secretRef}' is not set. Configure it in your deployment environment.`
-      );
-    }
-
-    const baseUrl =
-      this.config.apiEndpoint?.replace(/\/$/, "") ?? "https://api.openai.com/v1";
-    // OpenAI model IDs are case-sensitive — always lowercase (e.g. gpt-4.1, not GPT-4.1)
-    const model = (this.modelId ?? "gpt-4.1").toLowerCase();
+    // Preserve the configured model/deployment identifier exactly.
+    const model = this.modelId ?? "gpt-4.1";
 
     const requestBody = {
       model,
@@ -161,20 +151,10 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
       ...dmsCompletionParameters(model, SUMMARY_MAX_TOKENS, 0.2),
     };
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        ...(this.config.apiVersion ? { "api-version": this.config.apiVersion } : {}),
-      },
-      body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(SUMMARY_TIMEOUT_MS),
-    });
+    const response = await this.request("chat/completions", model, requestBody, SUMMARY_TIMEOUT_MS);
 
     if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`OpenAI API error ${response.status}: ${body.substring(0, 300)}`);
+      throw new Error(`AI provider request failed (HTTP ${response.status}). External error details are withheld.`);
     }
 
     const data = (await response.json()) as {
@@ -199,20 +179,8 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
     userMessage: string,
     opts?: { maxTokens?: number; temperature?: number }
   ): Promise<DmsStructuredCompletionOutput> {
-    const secretRef = this.config.secretRef;
-    if (!secretRef) throw new Error("No API key reference configured in AI Settings.");
-
-    const apiKey = resolveAiProviderSecret(this.config);
-    if (!apiKey) {
-      throw new Error(
-        `API key environment variable '${secretRef}' is not set. Configure it in your deployment environment.`
-      );
-    }
-
-    const baseUrl =
-      this.config.apiEndpoint?.replace(/\/$/, "") ?? "https://api.openai.com/v1";
-    // OpenAI model IDs are case-sensitive — always lowercase (e.g. gpt-4.1, not GPT-4.1)
-    const model = (this.modelId ?? "gpt-4.1").toLowerCase();
+    // Preserve the configured model/deployment identifier exactly.
+    const model = this.modelId ?? "gpt-4.1";
 
     const requestBody = {
       model,
@@ -224,20 +192,10 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
       response_format: { type: "json_object" },
     };
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        ...(this.config.apiVersion ? { "api-version": this.config.apiVersion } : {}),
-      },
-      body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(STRUCTURED_TIMEOUT_MS),
-    });
+    const response = await this.request("chat/completions", model, requestBody, STRUCTURED_TIMEOUT_MS);
 
     if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`OpenAI API error ${response.status}: ${body.substring(0, 300)}`);
+      throw new Error(`AI provider request failed (HTTP ${response.status}). External error details are withheld.`);
     }
 
     const data = (await response.json()) as {
@@ -261,35 +219,13 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
     input: string,
     options?: { model?: string }
   ): Promise<DmsEmbeddingOutput> {
-    const secretRef = this.config.secretRef;
-    if (!secretRef) throw new Error("No API key reference configured in AI Settings.");
-
-    const apiKey = resolveAiProviderSecret(this.config);
-    if (!apiKey) {
-      throw new Error(
-        `API key environment variable '${secretRef}' is not set. Configure it in your deployment environment.`
-      );
-    }
-
-    const baseUrl =
-      this.config.apiEndpoint?.replace(/\/$/, "") ?? "https://api.openai.com/v1";
     // Never use a chat model for embeddings — default to a real embedding model.
     const model = options?.model ?? EMBEDDING_MODEL_DEFAULT;
 
-    const response = await fetch(`${baseUrl}/embeddings`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        ...(this.config.apiVersion ? { "api-version": this.config.apiVersion } : {}),
-      },
-      body: JSON.stringify({ model, input }),
-      signal: AbortSignal.timeout(EMBEDDING_TIMEOUT_MS),
-    });
+    const response = await this.request("embeddings", model, { model, input }, EMBEDDING_TIMEOUT_MS);
 
     if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`OpenAI API error ${response.status}: ${body.substring(0, 300)}`);
+      throw new Error(`AI provider request failed (HTTP ${response.status}). External error details are withheld.`);
     }
 
     const data = (await response.json()) as {

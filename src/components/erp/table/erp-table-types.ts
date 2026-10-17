@@ -4,7 +4,8 @@
  * Phase 002E.2B - Table-State-Aware Export
  */
 
-import type { ColumnDef, ColumnSizingState, SortingState, Table, VisibilityState } from "@tanstack/react-table";
+import type { ColumnDef, ColumnFiltersState, ColumnSizingState, OnChangeFn, PaginationState, SortingState, Table, VisibilityState } from "@tanstack/react-table";
+import type { ListFilter } from "./list-controls";
 
 /**
  * TanStack Table Column Metadata Extension
@@ -42,6 +43,26 @@ export interface ERPTableExportConfig {
   generatedBy?: string;
   /** Page orientation */
   orientation?: "portrait" | "landscape";
+}
+
+/** Client-owned read state. Callbacks are supplied by the adopting client,
+ * never serialized directly from a Server Component. Native authorization and
+ * complete export validation remain the adopting service's responsibility. */
+export interface ERPTableServerRead<TData> {
+  pagination: PaginationState;
+  sorting: SortingState;
+  globalFilter: string;
+  columnFilters: ColumnFiltersState;
+  /** null means unavailable/unverified, not a successful zero-row result. */
+  totalCount: number | null;
+  onPaginationChange: OnChangeFn<PaginationState>;
+  onSortingChange: OnChangeFn<SortingState>;
+  onGlobalFilterChange: OnChangeFn<string>;
+  onColumnFiltersChange: OnChangeFn<ColumnFiltersState>;
+  /** Explicit definitions do not infer filter types from one loaded page. */
+  filters: ListFilter[];
+  /** Collect all matching authorized rows, or reject partial/drifted reads. */
+  loadExportData?: () => Promise<TData[]>;
 }
 
 /**
@@ -83,6 +104,8 @@ export interface ERPTableConfig<TData> {
   isLoading?: boolean;
   /** Server-paginated lists supply their own filters/paging; never imply client filters cover all records. */
   serverPaged?: boolean;
+  /** Optional complete-result controls; does not alter legacy serverPaged callers. */
+  serverRead?: ERPTableServerRead<TData>;
   /** Name of the contained results region. */
   resultsLabel?: string;
   /** Unique table ID for preferences */

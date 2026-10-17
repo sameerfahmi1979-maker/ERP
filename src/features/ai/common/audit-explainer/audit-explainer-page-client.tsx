@@ -172,7 +172,7 @@ export function AuditExplainerPageClient({ initialTimeline, canUseAi, isEnabled 
       ) : (
         <AuditTimelineCard
           items={timeline}
-          title="Audit Events"
+            title="Recent Audit Events — up to 50 shown"
           canUseAi={canUseAi && isEnabled}
         />
       )}

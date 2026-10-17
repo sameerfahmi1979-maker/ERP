@@ -136,9 +136,9 @@ export function HrAiLetterPanel({ employeeId, canUse, canViewPayroll = false, ca
 
       {result && !isLoading && (
         <div className="space-y-3">
-          <Alert variant="default" className="bg-amber-50 border-amber-200 py-2">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
-            <AlertDescription className="text-xs text-amber-700">
+          <Alert variant="default" className="bg-amber-50 border-amber-200 py-2 dark:bg-amber-950 dark:border-amber-800">
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-300" />
+            <AlertDescription className="text-xs text-amber-700 dark:text-amber-200">
               This is an AI draft for review only. It is NOT official until reviewed, edited, and issued through the proper HR process.
             </AlertDescription>
           </Alert>

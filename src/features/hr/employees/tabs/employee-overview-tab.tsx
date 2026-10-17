@@ -1,10 +1,11 @@
 "use client";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import {createContext, useContext, type ReactNode} from "react";
+import {Button} from "@/components/ui/button";
+import type {AuthContext} from "@/lib/rbac/check";
+import {useEmployeeOverview} from "@/hooks/use-employee-overview";
+import {type EmployeeOverviewSection, type EmployeeOverviewData} from "@/lib/reads/employee-overview-schema";
 
-import { useQuery } from "@tanstack/react-query";
 import type { EmployeeListRow } from "@/server/actions/hr/employees";
-import { getEmployeeComplianceSummary } from "@/server/actions/hr/compliance";
-import { getEmployeeTimeSummary } from "@/server/actions/hr/time";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,27 +17,17 @@ import {
   MapPin, AlertOctagon, Package, HardHat, Home, ShieldCheck,
   Globe, Zap, TrendingUp, AlertTriangle, CheckSquare, UserMinus,
 } from "lucide-react";
-import { queryKeys } from "@/lib/query/query-keys";
 import { formatHours } from "@/lib/hr/time/date-utils";
-import { getEmployeePayrollSummary } from "@/server/actions/hr/payroll";
 import {
   getWpsReadinessLabel,
   getWpsReadinessBadgeVariant,
 } from "@/lib/hr/payroll/wps-readiness";
-import { getEmployeeOperationsSummary } from "@/server/actions/hr/operations";
 import { getReadinessStatusBadge } from "@/lib/hr/operations/status";
-import { getEmployeeHrActionsSummary } from "@/server/actions/hr/actions";
-import { getEmployeeRecruitmentLink } from "@/server/actions/hr/recruitment";
 import Link from "next/link";
 
 type Props = {
   employee: EmployeeListRow;
-  canViewCompliance?: boolean;
-  canViewTime?: boolean;
-  canViewPayroll?: boolean;
-  canViewOperations?: boolean;
-  canViewHrActions?: boolean;
-  canViewRecruitment?: boolean;
+  authContext: AuthContext;
 };
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
@@ -80,10 +71,42 @@ function PlaceholderCard({ title, phase }: { title: string; phase: string }) {
   );
 }
 
-export function EmployeeOverviewTab({ employee, canViewCompliance, canViewTime, canViewPayroll, canViewOperations, canViewHrActions, canViewRecruitment }: Props) {
+
+const OverviewContext = createContext<ReturnType<typeof useEmployeeOverview> | null>(null);
+const sectionTitles = {compliance: "Compliance Overview", time: "Time Summary", payroll: "Payroll & WPS Summary", operations: "Operations & Readiness", actions: "HR Actions Summary", recruitment: "Recruitment Origin"} as const;
+function useOverviewRead<K extends EmployeeOverviewSection>(section: K) {
+  const overview = useContext(OverviewContext);
+  if (!overview) throw Error("Overview context missing");
+  const result = overview.data?.sections[section];
+  return {data: (result?.status === "ready" ? result.data : undefined) as EmployeeOverviewData<K> | undefined,
+    isLoading: overview.pending || overview.refreshing || overview.retrying === section && result?.status !== "ready", status: result?.status};
+}
+function OverviewSectionBoundary({section, children}: {section: EmployeeOverviewSection; children: ReactNode}) {
+  const overview = useContext(OverviewContext);
+  if (!overview) throw Error("Overview context missing");
+  const result = overview.data?.sections[section], restricted = overview.denied || result?.status === "restricted";
+  const failed = overview.query.isError || result?.status === "failed";
+  if (restricted || failed) return <Card><CardHeader className="pb-3"><CardTitle className="text-sm font-semibold">{sectionTitles[section]}</CardTitle></CardHeader><CardContent>
+    {restricted ? <p className="text-sm text-muted-foreground">This information is restricted for this employee.</p> : <div role="alert" className="text-sm">
+      <p>This summary could not be loaded. It is not an empty result.</p>
+      <Button type="button" variant="outline" className="mt-2" disabled={overview.retrying !== null || overview.refreshing}
+        onClick={() => {if (overview.query.isError) void overview.query.refetch(); else void overview.retrySection(section);}}>
+        {overview.retrying === section || overview.refreshing ? "Retrying…" : "Retry " + sectionTitles[section]}
+      </Button>
+    </div>}
+  </CardContent></Card>;
+  return children;
+}
+export function EmployeeOverviewTab(props: Props) {
+  return <EmployeeOverviewContent {...props} />;
+}
+
+function EmployeeOverviewContent({employee, authContext}: Props) {
+  const overview = useEmployeeOverview(authContext, employee.id);
   return (
-    <div className="space-y-6 p-6">
+    <OverviewContext.Provider value={overview}><div className="space-y-6 p-6">
       {/* Employee Identity */}
+      {overview.data && <>
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-sm font-semibold">
@@ -187,49 +210,42 @@ export function EmployeeOverviewTab({ employee, canViewCompliance, canViewTime, 
       </Card>
 
       {/* Compliance Summary (HR.3) */}
-      <ComplianceSummarySection employeeId={employee.id} canView={canViewCompliance ?? false} />
+      </>}
+      <ComplianceSummarySection />
 
       {/* Time Summary (HR.4) */}
-      <TimeSummarySection employeeId={employee.id} canView={canViewTime ?? false} />
+      <TimeSummarySection />
 
       {/* Payroll Summary (HR.5) */}
-      <PayrollSummarySection employeeId={employee.id} canView={canViewPayroll ?? false} />
+      <PayrollSummarySection />
 
       {/* Operations Summary (HR.6) */}
-      <OperationsSummarySection employeeId={employee.id} canView={canViewOperations ?? false} />
+      <OperationsSummarySection />
 
       {/* HR Actions Summary (HR.7) */}
-      <HrActionsSummarySection employeeId={employee.id} canView={canViewHrActions ?? false} />
+      <HrActionsSummarySection />
 
       {/* Recruitment Link (HR.8) */}
-      <RecruitmentLinkSection employeeId={employee.id} canView={canViewRecruitment ?? false} />
+      <RecruitmentLinkSection />
 
       {/* Future Phase Placeholders */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <PlaceholderCard title="AI Review" phase="HR.12" />
       </div>
-    </div>
+    </div></OverviewContext.Provider>
   );
 }
 
 // ── Recruitment Link Component (HR.8) ────────────────────────────────────────
 
-function RecruitmentLinkSection({ employeeId, canView }: { employeeId: number; canView: boolean }) {
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.recruitment.employeeRecruitmentLink(employeeId),
-    enabled: canView,
-    queryFn: () => getEmployeeRecruitmentLink(employeeId),
-    staleTime: 60_000,
-  });
+function RecruitmentLinkSection() {
+  const uiRead1 = useOverviewRead("recruitment");
   const { data: linkRes, isLoading } = uiRead1;
 
-  if (!canView) return null;
-
-  const link = linkRes?.data;
-  if (!isLoading && !link) return null;
+  const link = linkRes;
 
   return (
-    <QueryReadBoundary queries={[uiRead1]}><Card>
+    <OverviewSectionBoundary section="recruitment"><Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
           <Users className="h-4 w-4" />
@@ -260,24 +276,21 @@ function RecruitmentLinkSection({ employeeId, canView }: { employeeId: number; c
               <span className="font-medium">{new Date(link.converted_at).toLocaleDateString()}</span>
             </div>
           </div>
-        ) : null}
+        ) : <p className="text-sm text-muted-foreground">No recruitment origin recorded.</p>}
       </CardContent>
-    </Card></QueryReadBoundary>
+    </Card></OverviewSectionBoundary>
   );
 }
 
 // ── HR Actions Summary Component (HR.7) ──────────────────────────────────────
 
-function HrActionsSummarySection({ employeeId, canView }: { employeeId: number; canView: boolean }) {
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.actions.summary(employeeId),
-    enabled: canView,
-    queryFn: () => getEmployeeHrActionsSummary(employeeId),
-  });
+function HrActionsSummarySection() {
+  const uiRead1 = useOverviewRead("actions");
+  const canView = uiRead1.status !== "restricted";
   const { data: summary, isLoading } = uiRead1;
 
   return (
-    <QueryReadBoundary queries={[uiRead1]}><Card>
+    <OverviewSectionBoundary section="actions"><Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-semibold flex items-center gap-2">
           <Zap className="h-4 w-4 text-muted-foreground" />
@@ -315,14 +328,14 @@ function HrActionsSummarySection({ employeeId, canView }: { employeeId: number; 
                 <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">Performance Reviews</span>
               </div>
-              <p className="text-xl font-bold">{summary?.performance_reviews ?? 0}</p>
+              <p className="text-xl font-bold">{summary?.performance_reviews ?? "Restricted"}</p>
             </div>
             <div className="flex flex-col gap-1 p-3 rounded-lg border bg-card">
               <div className="flex items-center gap-1.5">
                 <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">Open Disciplinary</span>
               </div>
-              <p className={`text-xl font-bold ${(summary?.open_disciplinary ?? 0) > 0 ? "text-destructive" : ""}`}>{summary?.open_disciplinary ?? 0}</p>
+              <p className={`text-xl font-bold ${(summary?.open_disciplinary ?? 0) > 0 ? "text-destructive" : ""}`}>{summary?.open_disciplinary ?? "Restricted"}</p>
             </div>
             <div className="flex flex-col gap-1 p-3 rounded-lg border bg-card">
               <div className="flex items-center gap-1.5">
@@ -343,27 +356,18 @@ function HrActionsSummarySection({ employeeId, canView }: { employeeId: number; 
           </div>
         )}
       </CardContent>
-    </Card></QueryReadBoundary>
+    </Card></OverviewSectionBoundary>
   );
 }
 
 // ── Compliance Summary Component ──────────────────────────────────────────────
 
-function ComplianceSummarySection({ employeeId, canView }: { employeeId: number; canView: boolean }) {
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.compliance.summary(employeeId),
-    enabled: canView,
-    queryFn: async () => {
-      const r = await getEmployeeComplianceSummary(employeeId);
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? null : null;
-    },
-  });
+function ComplianceSummarySection() {
+  const uiRead1 = useOverviewRead("compliance");
   const { data: summary, isLoading } = uiRead1;
 
-  if (!canView) return null;
-
   return (
-    <QueryReadBoundary queries={[uiRead1]}><Card>
+    <OverviewSectionBoundary section="compliance"><Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           <Shield className="h-4 w-4" />
@@ -385,14 +389,14 @@ function ComplianceSummarySection({ employeeId, canView }: { employeeId: number;
               expiringSoon={summary.identityDocuments.expiringSoon}
               expired={summary.identityDocuments.expired}
             />
-            <ComplianceMiniCard
+            {summary.medicalInsurances ? <ComplianceMiniCard
               icon={Heart}
               label="Medical Insurance"
               total={summary.medicalInsurances.total}
               active={summary.medicalInsurances.active}
               expiringSoon={summary.medicalInsurances.expiringSoon}
               expired={summary.medicalInsurances.expired}
-            />
+            /> : <div className="p-3 rounded-lg border text-sm">Medical Insurance<p className="text-muted-foreground">Restricted</p></div>}
             <ComplianceMiniCard
               icon={Users}
               label="Dependents"
@@ -438,7 +442,7 @@ function ComplianceSummarySection({ employeeId, canView }: { employeeId: number;
           </div>
         )}
       </CardContent>
-    </Card></QueryReadBoundary>
+    </Card></OverviewSectionBoundary>
   );
 }
 
@@ -477,38 +481,13 @@ function ComplianceMiniCard({
 
 // ── Payroll Summary Component (HR.5) ──────────────────────────────────────────
 
-function PayrollSummarySection({ employeeId, canView }: { employeeId: number; canView: boolean }) {
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.payroll.summary(employeeId),
-    enabled: canView,
-    queryFn: async () => {
-      const r = await getEmployeePayrollSummary(employeeId);
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? null : null;
-    },
-  });
+function PayrollSummarySection() {
+  const uiRead1 = useOverviewRead("payroll");
   const { data: summary, isLoading } = uiRead1;
 
-  if (!canView) {
-    return (
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-            <DollarSign className="h-4 w-4" />
-            Payroll & WPS Summary
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Lock className="h-4 w-4" />
-            Payroll information is restricted.
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
 
   return (
-    <QueryReadBoundary queries={[uiRead1]}><Card>
+    <OverviewSectionBoundary section="payroll"><Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           <DollarSign className="h-4 w-4" />
@@ -545,7 +524,7 @@ function PayrollSummarySection({ employeeId, canView }: { employeeId: number; ca
                 <Landmark className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">WPS Status</span>
               </div>
-              <p className="text-sm font-bold capitalize">{summary.wpsStatus ?? "—"}</p>
+              <p className="text-sm font-bold capitalize">{summary.bankingRestricted ? "Restricted" : summary.wpsStatus ?? "—"}</p>
             </div>
             <div className="flex flex-col gap-1 p-3 rounded-lg border bg-card">
               <div className="flex items-center gap-1.5">
@@ -557,7 +536,7 @@ function PayrollSummarySection({ employeeId, canView }: { employeeId: number; ca
                   {getWpsReadinessLabel(summary.wpsReadiness.status)}
                 </Badge>
               ) : (
-                <p className="text-sm font-bold text-muted-foreground">—</p>
+                <p className="text-sm font-bold text-muted-foreground">{summary.bankingRestricted ? "Restricted" : "—"}</p>
               )}
             </div>
             <div className="flex flex-col gap-1 p-3 rounded-lg border bg-card">
@@ -572,27 +551,18 @@ function PayrollSummarySection({ employeeId, canView }: { employeeId: number; ca
           </div>
         )}
       </CardContent>
-    </Card></QueryReadBoundary>
+    </Card></OverviewSectionBoundary>
   );
 }
 
 // ── Time Summary Component (HR.4) ─────────────────────────────────────────────
 
-function TimeSummarySection({ employeeId, canView }: { employeeId: number; canView: boolean }) {
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.time.summary(employeeId),
-    enabled: canView,
-    queryFn: async () => {
-      const r = await getEmployeeTimeSummary(employeeId);
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? null : null;
-    },
-  });
+function TimeSummarySection() {
+  const uiRead1 = useOverviewRead("time");
   const { data: summary, isLoading } = uiRead1;
 
-  if (!canView) return null;
-
   return (
-    <QueryReadBoundary queries={[uiRead1]}><Card>
+    <OverviewSectionBoundary section="time"><Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           <Clock className="h-4 w-4" />
@@ -631,7 +601,7 @@ function TimeSummarySection({ employeeId, canView }: { employeeId: number; canVi
                 <Plane className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">Pending Leave</span>
               </div>
-              <p className="text-xl font-bold">{summary.pendingLeaveCount}</p>
+              <p className="text-xl font-bold">{summary.pendingLeaveCount ?? "Restricted"}</p>
               <p className="text-xs text-muted-foreground">request(s)</p>
             </div>
             <div className="flex flex-col gap-1 p-3 rounded-lg border bg-card">
@@ -639,7 +609,7 @@ function TimeSummarySection({ employeeId, canView }: { employeeId: number; canVi
                 <Plane className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">Leave Balances</span>
               </div>
-              <p className="text-xl font-bold">{summary.leaveBalances.length}</p>
+              <p className="text-xl font-bold">{summary.leaveBalanceCount ?? "Restricted"}</p>
               <p className="text-xs text-muted-foreground">type(s) configured</p>
             </div>
             <div className="flex flex-col gap-1 p-3 rounded-lg border bg-card">
@@ -653,27 +623,21 @@ function TimeSummarySection({ employeeId, canView }: { employeeId: number; canVi
           </div>
         )}
       </CardContent>
-    </Card></QueryReadBoundary>
+    </Card></OverviewSectionBoundary>
   );
 }
 
 // ── Operations Summary Component (HR.6) ──────────────────────────────────────
 
-function OperationsSummarySection({ employeeId, canView }: { employeeId: number; canView: boolean }) {
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.operations.summary(employeeId),
-    queryFn: () => getEmployeeOperationsSummary(employeeId),
-    enabled: canView,
-  });
+function OperationsSummarySection() {
+  const uiRead1 = useOverviewRead("operations");
+  const canView = uiRead1.status !== "restricted";
   const { data, isLoading } = uiRead1;
 
-  const summary = data?.success ? data.data : null;
+  const summary = data ?? null;
 
-  const readinessRecords = (summary?.siteReadinessRecords ?? []) as Record<string, unknown>[];
-  const overallReadiness =
-    readinessRecords.length > 0
-      ? readinessRecords[0]?.readiness_status ?? "not_ready"
-      : "needs_review";
+  const readinessCount = summary?.readinessCount ?? 0;
+  const overallReadiness = readinessCount > 0 ? summary?.latestReadinessStatus ?? "not_ready" : "needs_review";
   const readinessBadge = getReadinessStatusBadge(overallReadiness as string);
 
   const currentAssignment = summary?.currentAssignment as Record<string, unknown> | null;
@@ -686,7 +650,7 @@ function OperationsSummarySection({ employeeId, canView }: { employeeId: number;
   const accommodationLabel = activeAccommodation?.accommodation_location as string | null ?? null;
 
   return (
-    <QueryReadBoundary queries={[uiRead1]}><Card>
+    <OverviewSectionBoundary section="operations"><Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           <MapPin className="h-4 w-4" />
@@ -724,7 +688,7 @@ function OperationsSummarySection({ employeeId, canView }: { employeeId: number;
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">
-                {readinessRecords.length > 0 ? `${readinessRecords.length} site(s) tracked` : "No readiness calculated"}
+                {readinessCount > 0 ? `${readinessCount} site(s) tracked` : "No readiness calculated"}
               </p>
             </div>
             <div className="flex flex-col gap-1 p-3 rounded-lg border bg-card">
@@ -766,6 +730,6 @@ function OperationsSummarySection({ employeeId, canView }: { employeeId: number;
           </div>
         )}
       </CardContent>
-    </Card></QueryReadBoundary>
+    </Card></OverviewSectionBoundary>
   );
 }

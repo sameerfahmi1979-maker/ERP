@@ -154,7 +154,7 @@ export interface ResolveEmployeeBindingValuesResult {
 /**
  * Resolve safe employee binding values from a live DB record.
  * Only resolves fields present in ERP_BINDING_REGISTRY.
- * Requires an authenticated Supabase client (admin or RLS-bypassed).
+ * Requires the caller's authenticated Supabase client so live RLS still applies.
  *
  * Does NOT query payroll, bank details, passport, EID, visa, or medical tables.
  */
@@ -277,19 +277,25 @@ export async function resolveOwnerCompanyBindingValues(
   ownerCompanyId: number,
   db: SupabaseClient
 ): Promise<ResolveCompanyBindingValuesResult> {
+  if (!Number.isSafeInteger(ownerCompanyId) || ownerCompanyId < 1) throw new Error("Invalid company");
   const warnings: string[] = [];
 
   // Primary source: default branding profile for this company
-  const { data: profile } = await db
-    .from("erp_report_branding_profiles")
+  const { data: profile, error: profileError } = await db
+    .from("erp_report_branding_profiles_safe")
     .select(
       "legal_name_en, legal_name_ar, address_block_en, trn, trade_license_no, phone, email, website"
     )
     .eq("owner_company_id", ownerCompanyId)
     .eq("is_default_for_company", true)
     .eq("is_active", true)
+    .is("deleted_at", null)
     .limit(1)
     .maybeSingle();
+
+  // A failed governed read is not proof that no default exists. Do not borrow
+  // a broader organization client or silently render empty issuer details.
+  if (profileError) throw new Error("Company branding could not be loaded");
 
   if (profile) {
     return {
@@ -317,22 +323,7 @@ export async function resolveOwnerCompanyBindingValues(
     .single();
 
   if (error || !co) {
-    warnings.push(
-      `company bindings: owner company (id=${ownerCompanyId}) not found — using empty values`
-    );
-    return {
-      values: {
-        "company.legal_name_en": "",
-        "company.legal_name_ar": "",
-        "company.address_block_en": "",
-        "company.trn": "",
-        "company.trade_license_no": "",
-        "company.phone": "",
-        "company.email": "",
-        "company.website": "",
-      },
-      warnings,
-    };
+    throw new Error("Company details are unavailable or not authorized");
   }
 
   const c = co as {

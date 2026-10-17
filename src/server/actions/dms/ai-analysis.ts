@@ -27,6 +27,7 @@ import { isDmsAiReviewEnabled, upsertDmsReviewQueueItem } from "@/lib/dms/review
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { readAllPages } from "@/server/reads/all-pages";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
@@ -195,7 +196,7 @@ export async function getDmsAiExtractionResults(
     const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canViewAi(ctx)) return { success: false, error: "Permission denied" };
+    if (!ctx.isAccountActive || ctx.profile.must_change_password || !canViewAi(ctx)) return { success: false, error: "Permission denied" };
 
     await logAudit({
       module_code: "DMS",
@@ -206,7 +207,7 @@ export async function getDmsAiExtractionResults(
       new_values: { event: "ai_result_viewed", document_id: documentId },
     });
 
-    const { data, error } = await supabase
+    const data=await readAllPages(async(from,to)=>await supabase
       .from("dms_ai_extraction_results")
       .select(`id, job_id, document_id, file_id, result_type, ai_status,
                suggested_document_type_id, classification_confidence, classification_score,
@@ -214,12 +215,11 @@ export async function getDmsAiExtractionResults(
                suggested_links_json, expiry_date_suggestion, suggested_title,
                suggested_description, review_action, reviewed_by, reviewed_at,
                raw_response_json, created_at,
-               suggested_type:dms_document_types!suggested_document_type_id(type_code, name_en)`)
+               suggested_type:dms_document_types!suggested_document_type_id(type_code, name_en)`,{count:"exact"})
       .eq("document_id", documentId)
       .order("created_at", { ascending: false })
-      .limit(10);
+      .order("id", {ascending:false}).range(from,to),{identity:row=>row.id,maxRows:10000});
 
-    if (error) return { success: false, error: error.message };
     return { success: true, data: (data ?? []) as unknown as DmsAiResultRow[] };
   } catch (e) {
     return { success: false, error: String(e) };
@@ -1428,7 +1428,7 @@ export async function getDmsAiMetadataApplyHistory(
     const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canViewAi(ctx)) return { success: false, error: "Permission denied" };
+    if (!ctx.isAccountActive || ctx.profile.must_change_password || !canViewAi(ctx)) return { success: false, error: "Permission denied" };
 
     // Confidentiality gate
     const { data: doc } = await supabase
@@ -1449,36 +1449,32 @@ export async function getDmsAiMetadataApplyHistory(
     // Load runs with items (using admin client so history is readable regardless of row-level state)
     const adminClient = await createAdminClient();
 
-    const { data: rawRuns, error: runsErr } = await adminClient
+    const rawRuns = await readAllPages(async(from,to)=>await adminClient
       .from("dms_ai_metadata_apply_runs")
       .select(`
         id, document_id, ai_result_id, applied_by,
         apply_status, selected_count, applied_count, skipped_count,
         replace_confirmed, low_confidence_confirmed,
         created_at, completed_at,
-        applied_by_profile:user_profiles!applied_by(full_name_en)
-      `)
+        applied_by_profile:user_profiles!applied_by(full_name_en:full_name)
+      `,{count:"exact"})
       .eq("document_id", documentId)
       .order("created_at", { ascending: false })
-      .limit(20);
+      .order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
 
-    if (runsErr) return { success: false, error: runsErr.message };
     if (!rawRuns || rawRuns.length === 0) return { success: true, data: [] };
 
     const runs = rawRuns as unknown as Array<Record<string, unknown>>;
     const runIds = runs.map((r) => r["id"] as number);
 
-    const { data: rawItems } = await adminClient
-      .from("dms_ai_metadata_apply_items")
-      .select(
-        "id, apply_run_id, document_id, definition_id, field_code, " +
-        "old_value_summary, new_value_summary, confidence_score, confidence_label, " +
-        "apply_mode, item_status, skip_reason, created_at"
-      )
-      .in("apply_run_id", runIds)
-      .order("created_at", { ascending: true });
-
-    const items = (rawItems ?? []) as unknown as Array<Record<string, unknown>>;
+    const items: Record<string,unknown>[]=[];
+    for(let offset=0;offset<runIds.length;offset+=100){
+      const part=await readAllPages(async(from,to)=>await adminClient.from("dms_ai_metadata_apply_items")
+        .select("id, apply_run_id, document_id, definition_id, field_code, old_value_summary, new_value_summary, confidence_score, confidence_label, apply_mode, item_status, skip_reason, created_at",{count:"exact"})
+        .eq("document_id",documentId).in("apply_run_id",runIds.slice(offset,offset+100))
+        .order("created_at").order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
+      items.push(...part);
+    }
 
     const itemsByRunId = new Map<number, DmsAiMetadataApplyHistoryItem[]>();
     for (const item of items) {

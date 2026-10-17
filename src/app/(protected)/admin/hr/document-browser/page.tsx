@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { getHrDocBrowserEmployees } from "@/server/actions/hr/doc-browser";
+import { readHrDocumentBrowser } from "@/server/reads/hr-document-browser";
+import { hrBrowserEmployeesPage, hrDocumentBrowserIdentity } from "@/lib/reads/hr-document-browser-schema";
 import { HrDocBrowserPageClient } from "@/features/hr/document-browser/hr-doc-browser-page-client";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { LoadError } from "@/components/erp/load-error";
@@ -18,20 +19,19 @@ export default async function HrDocumentBrowserPage() {
   const authContext = await getAuthContext();
 
   const canHr =
-    hasPermission(authContext, "hr.employees.view") ||
-    authContext.roleCodes?.includes("system_admin");
+    hasPermission(authContext, "hr.employees.view");
   const canDms =
     hasPermission(authContext, "dms.documents.view") ||
-    hasPermission(authContext, "dms.admin") ||
-    authContext.roleCodes?.includes("system_admin");
+    hasPermission(authContext, "dms.admin");
 
   if (!canHr || !canDms) {
     redirect("/access-denied");
   }
 
-  const result = await getHrDocBrowserEmployees();
+  const result = await readHrDocumentBrowser({operation: "employees"}, authContext);
   if (!result.success) return <LoadError title="Employee document browser" retryHref="/admin/hr/document-browser" />;
-  const employees = result.success && result.data ? result.data : [];
+  const initial = hrBrowserEmployeesPage.safeParse(result.data);
+  if (!initial.success) return <LoadError title="Employee document browser" retryHref="/admin/hr/document-browser" />;
 
   return (
     <div className="p-6 space-y-4">
@@ -41,7 +41,7 @@ export default async function HrDocumentBrowserPage() {
         breadcrumbs={[{ label: "HR", href: "/admin/hr" }, { label: "Document Browser" }]}
       />
 
-      <HrDocBrowserPageClient employees={employees} />
+      <HrDocBrowserPageClient authContext={authContext} initialRead={{identity: hrDocumentBrowserIdentity(authContext), data: initial.data}} />
     </div>
   );
 }

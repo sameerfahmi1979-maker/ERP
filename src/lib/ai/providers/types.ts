@@ -37,6 +37,7 @@ export type AiTestStatus = "not_tested" | "success" | "failed";
 
 export interface AiProviderConfig {
   id: number;
+  workspaceRevision?: string;
   configCode: string;
   providerType: AiProviderType;
   providerName: string;
@@ -76,6 +77,7 @@ export interface AiProviderInterface {
 
 export interface AiFeatureFlag {
   id: number;
+  workspaceRevision?: string;
   featureCode: string;
   featureName: string;
   description?: string | null;

@@ -1,4 +1,5 @@
 "use server";
+import {readAllPages} from "@/server/reads/all-pages";
 
 /**
  * DMS 12.4 — AI Tag Suggestions Server Actions
@@ -346,16 +347,15 @@ export async function getDmsTagSuggestions(
 
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const data = await readAllPages(async(from,to)=>await supabase
       .from("dms_ai_tag_suggestions")
-      .select("id, document_id, tag_id, suggested_tag_name, confidence, reason, status, created_at, reviewed_at")
+      .select("id, document_id, tag_id, suggested_tag_name, confidence, reason, status, created_at, reviewed_at",{count:"exact"})
       .eq("document_id", documentId)
       .in("status", ["pending", "accepted", "rejected"])
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
-      .limit(20);
+      .order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
 
-    if (error) return { success: false, error: "Failed to load tag suggestions." };
 
     const rows: DmsTagSuggestionRow[] = (data ?? []).map((r) => ({
       id: (r as { id: number }).id,

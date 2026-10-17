@@ -31,7 +31,7 @@ type Props = {
 const FORM_ID = "work-site-workspace-form";
 const SITE_TYPES = ['office','yard','workshop','camp','warehouse','project_site','client_site','weighbridge','fuel_point','storage_area','other'];
 
-export function WorkSiteWorkspaceForm({ site, mode, companies = [] }: Props) {
+export function WorkSiteWorkspaceForm({ site, mode, companies = [], authContext }: Props) {
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const sections = [
@@ -273,7 +273,7 @@ export function WorkSiteWorkspaceForm({ site, mode, companies = [] }: Props) {
         {!site?.id ? (
           <p className="text-sm text-muted-foreground">Save the work site first to manage documents.</p>
         ) : (
-          <DmsEntityDocumentsTab entityType="site" entityId={site.id} entityLabel="Work Site" canUpload={!disabled} canLinkExisting={!disabled} canUnlink={!disabled} showComplianceCards />
+          <DmsEntityDocumentsTab authContext={authContext} entityType="site" entityId={site.id} entityLabel="Work Site" canUpload={!disabled} canLinkExisting={!disabled} canUnlink={!disabled} showComplianceCards />
         )}
       </ERPRecordSectionPanel>
     </ERPRecordWorkspaceForm>

@@ -1,157 +1,39 @@
 "use client";
-
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { invalidateDmsNotifications, invalidateEmailQueue } from "@/lib/query/invalidation";
-import {
-  bridgeDueDmsNotificationsToGlobal,
-  processDmsExpiryEmailQueue,
-} from "@/server/actions/dms/dms-email-bridge";
-import { generateDmsExpiryNotifications } from "@/server/actions/dms/notifications";
-import { useQueryClient } from "@tanstack/react-query";
-import { GitMerge, Send, Zap } from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
-import { DmsNotificationsTable } from "./dms-notifications-table";
-
-interface DmsNotificationsPageClientProps {
-  isAdmin: boolean;
-  canBridge: boolean;
-}
-
-export function DmsNotificationsPageClient({
-  isAdmin,
-  canBridge,
-}: DmsNotificationsPageClientProps) {
-  const queryClient = useQueryClient();
-  const [generating, setGenerating] = useState(false);
-  const [bridging, setBridging] = useState(false);
-  const [processing, setProcessing] = useState(false);
-
-  const handleGenerate = async () => {
-    setGenerating(true);
-    try {
-      const result = await generateDmsExpiryNotifications({ limit: 100 });
-      if (result.success) {
-        toast.success(`${result.data?.created} notifications created, ${result.data?.skipped} skipped`);
-        invalidateDmsNotifications(queryClient);
-      } else {
-        toast.error(result.error ?? "Failed to generate");
-      }
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const handleBridge = async () => {
-    setBridging(true);
-    try {
-      const result = await bridgeDueDmsNotificationsToGlobal({ limit: 50, dryRun: false });
-      if (result.success && result.data) {
-        const { bridged, alreadyDone, failed } = result.data;
-        toast.success(`Bridge complete: ${bridged} bridged, ${alreadyDone} already done, ${failed} failed`);
-        invalidateDmsNotifications(queryClient);
-        invalidateEmailQueue(queryClient);
-      } else {
-        toast.error(result.error ?? "Bridge failed");
-      }
-    } finally {
-      setBridging(false);
-    }
-  };
-
-  const handleProcess = async () => {
-    setProcessing(true);
-    try {
-      const result = await processDmsExpiryEmailQueue({ limit: 20, dryRun: false });
-      if (result.success && result.data) {
-        const { processed, sent, failed } = result.data;
-        toast.success(`Processed ${processed}: ${sent} sent, ${failed} failed`);
-        invalidateDmsNotifications(queryClient);
-        invalidateEmailQueue(queryClient);
-      } else {
-        toast.error(result.error ?? "Processing failed");
-      }
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">DMS Notifications</h1>
-
-        </div>
-        {(isAdmin || canBridge) && (
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              disabled={generating}
-              onClick={handleGenerate}
-            >
-              <Zap className={`h-4 w-4 ${generating ? "animate-spin" : ""}`} />
-              Generate Due
-            </Button>
-            {canBridge && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5"
-                  disabled={bridging}
-                  onClick={handleBridge}
-                >
-                  <GitMerge className={`h-4 w-4 ${bridging ? "animate-spin" : ""}`} />
-                  Bridge to Global
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5"
-                  disabled={processing}
-                  onClick={handleProcess}
-                >
-                  <Send className={`h-4 w-4 ${processing ? "animate-spin" : ""}`} />
-                  Send Emails
-                </Button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-
-      <Tabs defaultValue="my">
-        <TabsList>
-          <TabsTrigger value="my">My Notifications</TabsTrigger>
-          {isAdmin && <TabsTrigger value="all">All Notifications</TabsTrigger>}
-          <TabsTrigger value="unread">Unread</TabsTrigger>
-          {canBridge && <TabsTrigger value="not_bridged">Not Bridged</TabsTrigger>}
-        </TabsList>
-
-        <TabsContent value="my" className="mt-4">
-          <DmsNotificationsTable filter={{ myOnly: true }} showBridgeStatus={canBridge} />
-        </TabsContent>
-
-        {isAdmin && (
-          <TabsContent value="all" className="mt-4">
-            <DmsNotificationsTable filter={{}} showBridgeStatus={canBridge} />
-          </TabsContent>
-        )}
-
-        <TabsContent value="unread" className="mt-4">
-          <DmsNotificationsTable filter={{ myOnly: true, unreadOnly: true }} showBridgeStatus={canBridge} />
-        </TabsContent>
-
-        {canBridge && (
-          <TabsContent value="not_bridged" className="mt-4">
-            <DmsNotificationsTable filter={{ bridgeStatus: "not_bridged" }} showBridgeStatus={true} />
-          </TabsContent>
-        )}
-      </Tabs>
-    </div>
-  );
+import {useLayoutEffect,useRef,useState} from "react";
+import {Button} from "@/components/ui/button";
+import {Tabs,TabsList,TabsTrigger} from "@/components/ui/tabs";
+import {useQueryClient} from "@tanstack/react-query";
+import {toast} from "sonner";
+import type {AuthContext} from "@/lib/rbac/check";
+import {hasPermission} from "@/lib/rbac/scope";
+import {dmsNotificationIdentity} from "@/lib/reads/dms-notifications-schema";
+import {invalidateDmsNotifications,invalidateEmailQueue} from "@/lib/query/invalidation";
+import {bridgeDueDmsNotificationsToGlobal,processDmsExpiryEmailQueue} from "@/server/actions/dms/dms-email-bridge";
+import {generateDmsExpiryNotifications} from "@/server/actions/dms/notifications";
+import {DmsNotificationsTable} from "./dms-notifications-table";
+type Props={authContext:AuthContext};
+export function DmsNotificationsPageClient(props:Props){return <DmsNotificationView key={dmsNotificationIdentity(props.authContext)} {...props}/>;}
+function DmsNotificationView({authContext}:Props){
+ const qc=useQueryClient(),[tab,setTab]=useState<"my"|"all"|"unread"|"not_bridged">("my"),[busy,setBusy]=useState(false),owner=useRef(false),flight=useRef(false);
+ useLayoutEffect(()=>{owner.current=true;return()=>{owner.current=false;};},[]);
+ const isAdmin=hasPermission(authContext,"dms.admin")||hasPermission(authContext,"dms.notifications.manage");
+ const canBridge=hasPermission(authContext,"dms.admin")||hasPermission(authContext,"dms.notifications.manage")&&hasPermission(authContext,"notifications.email_queue.manage");
+ const allowed=["dms.notifications.view","dms.notifications.manage","dms.admin"].some(c=>hasPermission(authContext,c));
+ async function perform(kind:"generate"|"bridge"|"process"){
+  if(!owner.current||flight.current||!allowed||!(kind==="generate"?isAdmin:canBridge))return;
+  flight.current=true;setBusy(true);
+  try{const r=await(kind==="generate"?generateDmsExpiryNotifications({limit:100}):kind==="bridge"?bridgeDueDmsNotificationsToGlobal({limit:50,dryRun:false}):processDmsExpiryEmailQueue({limit:20,dryRun:false}));
+   if(!owner.current)return;if(r.success){toast.success("Operation confirmed. Refreshing notification and delivery status.");invalidateDmsNotifications(qc);invalidateEmailQueue(qc);}else toast.error(r.error??"Operation could not be confirmed.");
+  }catch{if(owner.current)toast.error("Operation could not be confirmed. Refresh before retrying.");}
+  finally{flight.current=false;if(owner.current)setBusy(false);}
+ }
+ if(!allowed)return <p role="alert">Document notification access could not be verified.</p>;
+ return <div className="space-y-4"><div className="flex flex-wrap justify-between gap-3"><h1 className="text-xl font-semibold">DMS Notifications</h1><div className="flex gap-2">
+ {isAdmin&&<Button variant="outline" disabled={busy} onClick={()=>void perform("generate")}>Generate Due</Button>}
+ {canBridge&&<><Button variant="outline" disabled={busy} onClick={()=>void perform("bridge")}>Bridge to Global</Button><Button variant="outline" disabled={busy} onClick={()=>void perform("process")}>Send Emails</Button></>}</div></div>
+ <p className="text-sm text-muted-foreground">Search and filters apply to all permitted notifications. Document labels and links remain subject to document access. Delivery status does not confirm inbox receipt.</p>
+ <Tabs value={tab} onValueChange={v=>{if(v==="my"||v==="unread"||v==="all"&&isAdmin||v==="not_bridged"&&canBridge)setTab(v as typeof tab);}}><TabsList>
+ <TabsTrigger value="my">My Notifications</TabsTrigger>{isAdmin&&<TabsTrigger value="all">All Notifications</TabsTrigger>}<TabsTrigger value="unread">Unread</TabsTrigger>{canBridge&&<TabsTrigger value="not_bridged">Not Bridged</TabsTrigger>}
+ </TabsList></Tabs>
+ <DmsNotificationsTable authContext={authContext} tab={tab} showBridgeStatus={canBridge}/></div>;
 }

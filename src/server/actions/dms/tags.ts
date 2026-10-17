@@ -1,4 +1,5 @@
 "use server";
+import {readAllPages} from "@/server/reads/all-pages";
 
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
@@ -51,27 +52,22 @@ function revalidateDmsTagPaths() {
 
 export async function getDmsTags(): Promise<ActionResult<DmsTagRow[]>> {
   try {
+    const ctx=await getAuthContext();
+    if(!ctx.profile||!ctx.isAccountActive||ctx.profile.must_change_password||(!hasPermission(ctx,"dms.documents.view")&&!hasPermission(ctx,"dms.admin")))return {success:false,error:"Permission denied"};
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const data=await readAllPages(async(from,to)=>await supabase
       .from("dms_tags")
-      .select("*")
+      .select("*",{count:"exact"})
       .is("deleted_at", null)
-      .order("tag_name", { ascending: true });
-    if (error) return { success: false, error: error.message };
+      .order("tag_name", { ascending: true }).order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
 
     // Get document counts per tag
     const tagIds = (data ?? []).map((t) => t.id);
     const docCounts: Record<number, number> = {};
-    if (tagIds.length > 0) {
-      const { data: countData } = await supabase
-        .from("dms_document_tags")
-        .select("tag_id")
-        .in("tag_id", tagIds);
-      if (countData) {
-        countData.forEach((r) => {
-          docCounts[r.tag_id] = (docCounts[r.tag_id] ?? 0) + 1;
-        });
-      }
+    for(let offset=0;offset<tagIds.length;offset+=100){
+      const countData=await readAllPages(async(from,to)=>await supabase.from("dms_document_tags")
+        .select("document_id,tag_id",{count:"exact"}).in("tag_id",tagIds.slice(offset,offset+100)).order("document_id").order("tag_id").range(from,to),{identity:row=>row.document_id+":"+row.tag_id,maxRows:10000});
+      for(const row of countData)docCounts[row.tag_id]=(docCounts[row.tag_id]??0)+1;
     }
 
     const rows = (data ?? []).map((t) => ({ ...t, document_count: docCounts[t.id] ?? 0 })) as DmsTagRow[];

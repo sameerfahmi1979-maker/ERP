@@ -1,17 +1,12 @@
 ﻿"use client";
-import { ERPDataTable } from "@/components/erp/table/erp-data-table";
-import type { ColumnDef } from "@tanstack/react-table";
-import type { OwnerCompanySignatoryRow } from "@/server/actions/common-master-data/owner-company-signatories";
 
 import { CurrencySelect } from "@/components/erp/finance-basics/currency-select";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { AreaZoneSelect } from "@/components/erp/geography/area-zone-select";
 import { CitySelect } from "@/components/erp/geography/city-select";
 import { CountrySelect } from "@/components/erp/geography/country-select";
 import { EmirateSelect } from "@/components/erp/geography/emirate-select";
 import { RequiredLabel } from "@/components/erp/required-label";
 
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,17 +24,24 @@ import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-for
 import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
 import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
+import { administrationSaveReceiptSchema, useAdministrationSaveSession } from "@/hooks/use-administration-save-session";
+import { reportWorkspaceFieldErrors, workspaceValidationFailure } from "@/lib/workspace/field-errors";
+import { useRouter } from "next/navigation";
 import { queryKeys } from "@/lib/query/query-keys";
+import { invalidateOrganizations } from "@/lib/query/invalidation";
+import { savedSelection } from "@/lib/master-data/saved-selection";
 import type { AuthContext } from "@/lib/rbac/check";
+import {hasGlobalPermission, hasPermissionInScope} from "@/lib/rbac/scope";
 import { createClient } from "@/lib/supabase/client";
-import { createCompanySignatory, listCompanySignatories, softDeleteCompanySignatory, updateCompanySignatory } from "@/server/actions/common-master-data/owner-company-signatories";
 import { createOrganization, updateOrganization } from "@/server/actions/organizations";
+import {createOrganizationSchema, updateOrganizationSchema, type CreateOrganizationInput, type UpdateOrganizationInput} from './organization-schema';
 import type { OwnerCompany } from "@/types/domain";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Brain, Briefcase, Building2, FileCode2, Files, MapPin, Palette, Pencil, PlusCircle, ScrollText, ShieldCheck, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Brain, Briefcase, Building2, FileCode2, Files, MapPin, Palette, Pencil, ScrollText, ShieldCheck } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { OrganizationBrandingSection } from "./organization-branding-section";
+import { CompanySignatoriesSection } from "./company-signatories-section";
 
 type OrganizationWorkspaceFormProps = {
   organization?: OwnerCompany | null;
@@ -47,11 +49,26 @@ type OrganizationWorkspaceFormProps = {
   authContext: AuthContext;
 };
 
-export function OrganizationWorkspaceForm({ organization, mode, authContext }: OrganizationWorkspaceFormProps) {
+export function OrganizationWorkspaceForm(props: OrganizationWorkspaceFormProps) {
+  return <OrganizationWorkspaceFormFields key={`${props.authContext.profile?.id ?? "none"}:${props.organization?.id ?? "new"}:${props.mode}`} {...props} />;
+}
+
+function OrganizationWorkspaceFormFields({ organization, mode, authContext }: OrganizationWorkspaceFormProps) {
   const FORM_ID = "organization-workspace-form";
-  const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
+  const navigation = useWorkspace();
+  const { closeTab, activeTab, markDirty } = navigation;
+  const router = useRouter();
+  const session = useAdministrationSaveSession<CreateOrganizationInput | UpdateOrganizationInput>(FORM_ID, organization?.id ?? null, organization?.workspace_revision, (payload, id) => {
+    const parsed = id === null ? createOrganizationSchema.safeParse(payload) : updateOrganizationSchema.safeParse(payload);
+    return parsed.success && (id === null || ('id' in parsed.data && parsed.data.id === id));
+  });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [localOutcome, setLocalOutcome] = useState<"confirmed" | "rejected" | "blocked" | null>(null);
+  const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
+  const terminal = useRef(false);
+  const dispatchLease = useRef<{ active: boolean } | null>(null);
+  useLayoutEffect(() => () => { if (dispatchLease.current) dispatchLease.current.active = false; }, []);
   const sections = [
     { id: "basic", label: "Basic Info", icon: Building2 },
     { id: "address", label: "Address & Contact", icon: MapPin },
@@ -65,22 +82,23 @@ export function OrganizationWorkspaceForm({ organization, mode, authContext }: O
     { id: "ai_review", label: "AI Review & Update", icon: Brain },
   ];
   const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "basic", sections.map(section => section.id));
-  // Signatories dialog state
-  const [signatoryDialog, setSignatoryDialog] = useState<{ open: boolean; editing: Record<string, unknown> | null }>({ open: false, editing: null });
-  const [sigSaving, setSigSaving] = useState(false);
-  const signatoryForm = useRef<HTMLFormElement>(null);
-  const signatoryFlight = useRef(false);
+  const [signatoryOpen, setSignatoryOpen] = useState(false);
   const queryClient = useQueryClient();
 
-  const isEditing = mode === "edit";
-  const isViewing = mode === "view";
-  const canManageReportBranding = authContext.permissionCodes.includes("reports.manage");
+  const isEditing = session.savedId !== null;
+  const canManage = organization
+    ? hasPermissionInScope(authContext, "organizations.manage", organization.id)
+    : hasGlobalPermission(authContext, "organizations.manage");
+  const isViewing = mode === "view" || !canManage;
+  const readOnly = useRef(isViewing);
+  useLayoutEffect(() => { readOnly.current = isViewing; }, [isViewing]);
+  const canManageReportBranding = !!organization && hasPermissionInScope(authContext,"reports.manage",organization.id) && hasPermissionInScope(authContext,"organizations.manage",organization.id);
 
   const { isDirty, resetDirty } = useFormDirty({ formId: FORM_ID, enabled: !isViewing });
 
   useEffect(() => {
-    if (activeTab?.id) markDirty(activeTab.id, isDirty);
-  }, [isDirty, activeTab?.id, markDirty]);
+    if (activeTab?.id) markDirty(activeTab.id, localOutcome !== "confirmed" && (isDirty || session.uncertain));
+  }, [isDirty, session.uncertain, localOutcome, activeTab?.id, markDirty]);
 
   // ── Draft preservation (UI.4E.2) ──────────────────────────────────────────
   const { getDraftDefault, getDraftNullableId, getDraftBoolean, hasDraftField, syncDraft, writeDraftField: writeField, clearDraft } = useWorkspaceFormDraft({
@@ -143,175 +161,203 @@ export function OrganizationWorkspaceForm({ organization, mode, authContext }: O
   };
 
 
-  const companyId = organization?.id ?? 0;
-  const { data: signatories, refetch: refetchSignatories, error: signatoryError } = useQuery({
-    queryKey: queryKeys.commonMd.companySignatories(companyId),
-    queryFn: async () => {
-      if (!companyId) return [];
-      const res = await listCompanySignatories(companyId);
-      if (!res.success) throw new Error("Signatories could not be loaded.");
-      return res.data ?? [];
-    },
-    enabled: !!companyId && activeSection === "signatories",
-  });
+  const companyId = session.savedId ?? 0;
 
-  const handleSaveSignatory = async (formData: FormData) => {
-    if (signatoryFlight.current) return;
-    signatoryFlight.current = true;
-    setSigSaving(true);
-    try {
-      const full_name = formData.get("full_name") as string;
-      const designation = (formData.get("designation") as string) || null;
-      const signature_scope = (formData.get("signature_scope") as string) || null;
-      const is_primary = formData.get("is_primary") === "on";
-      const is_active = formData.get("is_active") === "on";
-      const effective_from = (formData.get("effective_from") as string) || null;
-      const effective_to = (formData.get("effective_to") as string) || null;
-      const notes = (formData.get("notes") as string) || null;
-      if (!full_name.trim()) { toast.error("Full name is required"); return; }
-      if (effective_from && effective_to && effective_to < effective_from) { toast.error("Effective To must not be before Effective From"); return; }
-      if (signatoryDialog.editing) {
-        const res = await updateCompanySignatory({ id: Number(signatoryDialog.editing.id), company_id: companyId, full_name, designation, signature_scope, is_primary, is_active, effective_from, effective_to, notes });
-        if (!res.success) { toast.error(res.error ?? "Failed to update signatory"); return; }
-        toast.success("Signatory updated");
-      } else {
-        const res = await createCompanySignatory({ company_id: companyId, full_name, designation, signature_scope, is_primary, is_active, effective_from, effective_to, notes });
-        if (!res.success) { toast.error(res.error ?? "Failed to add signatory"); return; }
-        toast.success("Signatory added");
-      }
-      setSignatoryDialog({ open: false, editing: null });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.commonMd.companySignatories(companyId) });
-    } catch {
-      toast.error("The signatory save could not be confirmed. Your entries are still here; check the record before retrying.");
-    } finally {
-      signatoryFlight.current = false;
-      setSigSaving(false);
-    }
+  const handleRequestClose = () => {
+    if (saving.current || (session.uncertain && !session.recoveryError && localOutcome !== "confirmed")) return;
+    closeTab(activeTab?.id ?? "");
   };
 
-  const handleDeleteSignatory = async (id: number) => {
-    if (!confirm("Remove this signatory?")) return;
-    const res = await softDeleteCompanySignatory(id, companyId);
-    if (!res.success) { toast.error(res.error ?? "Failed to remove"); return; }
-    toast.success("Signatory removed");
-    void queryClient.invalidateQueries({ queryKey: queryKeys.commonMd.companySignatories(companyId) });
-  };
-
-  const handleRequestClose = () => closeTab(activeTab?.id ?? "");
-
-  const handleSave = async (): Promise<boolean> => {
-    if (isViewing || saving.current || currencyLoading) return false;
+  const handleSave = async (closeAfter = false): Promise<boolean> => {
+    if (isViewing || terminal.current || saving.current || (currencyLoading && !session.uncertain)) return false;
     saving.current = true;
+    const lease = { active: true };
+    dispatchLease.current = lease;
+    const isCurrent = () => lease.active && session.isCurrent();
     setIsSubmitting(true);
-    try {
     const form = document.getElementById(FORM_ID) as HTMLFormElement;
-    const formData = new FormData(form);
-    const supabase = createClient();
-    let currencyCode = organization?.default_currency ?? "AED";
-    if (currencyId) {
-      const { data: currency, error } = await supabase.from("currencies").select("currency_code").eq("id", currencyId).eq("is_active", true).single();
-      if (error || !currency) { toast.error("Could not verify the selected currency. Your draft is retained; please retry."); return false; }
-      currencyCode = currency.currency_code;
-    } else if (currencyEdited.current || !organization?.default_currency) {
-      toast.error("Please select a currency"); return false;
+    let dispatched = false;
+    let confirmed = false;
+    let rejected = false;
+    try {
+      let pending = session.getPending();
+      const recovering = pending !== null;
+      if (!pending) {
+        syncDraft();
+        const formData = new FormData(form);
+        const supabase = createClient();
+        let currencyCode = organization?.default_currency ?? "AED";
+        if (currencyId) {
+          const { data: currency, error } = await supabase.from("currencies").select("currency_code").eq("id", currencyId).eq("is_active", true).single();
+          if (!isCurrent() || readOnly.current) return false;
+          if (error || !currency) { toast.error("Could not verify the selected currency. Your draft is retained; please retry."); return false; }
+          currencyCode = currency.currency_code;
+        } else if (currencyEdited.current || !organization?.default_currency) {
+          toast.error("Please select a currency"); return false;
+        }
+        const geographyText = async (table: "countries" | "emirates" | "cities" | "areas_zones", field: string, id: number | null, fallback?: string | null) => {
+          if (!id) return geographyEdited.current.has(field) ? null : fallback ?? null;
+          const { data: place, error } = await supabase.from(table).select("name_en").eq("id", id).single();
+          if (error || !place) throw new Error("Selected geography could not be verified");
+          return place.name_en;
+        };
+        const [countryName, emirateName, cityName, areaName] = await Promise.all([
+          geographyText("countries", "country_id", countryId, organization?.country),
+          geographyText("emirates", "emirate_id", emirateId, organization?.emirate),
+          geographyText("cities", "city_id", cityId, organization?.city),
+          geographyText("areas_zones", "area_zone_id", areaZoneId, organization?.area),
+        ]);
+        const data = {
+          legal_name_en: formData.get("legal_name_en") as string,
+          legal_name_ar: (formData.get("legal_name_ar") as string) || null,
+          short_name: (formData.get("short_name") as string) || null,
+          ...(isEditing ? {} : { company_code: formData.get("company_code") as string }),
+          legal_form: (formData.get("legal_form") as string) || null,
+          country: countryName,
+          status: (formData.get("status") as "active" | "inactive" | "suspended") || "active",
+          default_currency: currencyCode,
+          country_id: countryId,
+          emirate_id: emirateId,
+          city_id: cityId,
+          area_zone_id: areaZoneId,
+          emirate: emirateName,
+          city: cityName,
+          area: areaName,
+          address_line_1: (formData.get("address_line_1") as string) || null,
+          address_line_2: (formData.get("address_line_2") as string) || null,
+          po_box: (formData.get("po_box") as string) || null,
+          makani_number: (formData.get("makani_number") as string) || null,
+          primary_email: (formData.get("primary_email") as string) || null,
+          primary_phone: (formData.get("primary_phone") as string) || null,
+          website: (formData.get("website") as string) || null,
+          trade_license_no: (formData.get("trade_license_no") as string) || null,
+          trade_license_issue_date: (formData.get("trade_license_issue_date") as string) || null,
+          trade_license_expiry_date: (formData.get("trade_license_expiry_date") as string) || null,
+          licensing_authority: (formData.get("licensing_authority") as string) || null,
+          chamber_membership_no: (formData.get("chamber_membership_no") as string) || null,
+          chamber_membership_expiry_date: (formData.get("chamber_membership_expiry_date") as string) || null,
+          trn: (formData.get("trn") as string) || null,
+          vat_registered: formData.get("vat_registered") === "on",
+          corporate_tax_no: (formData.get("corporate_tax_no") as string) || null,
+          corporate_tax_registered: formData.get("corporate_tax_registered") === "on",
+          icv_certificate_no: (formData.get("icv_certificate_no") as string) || null,
+          icv_score: formData.get("icv_score") ? Number(formData.get("icv_score")) : null,
+          icv_issue_date: (formData.get("icv_issue_date") as string) || null,
+          icv_expiry_date: (formData.get("icv_expiry_date") as string) || null,
+          adnoc_supplier_no: (formData.get("adnoc_supplier_no") as string) || null,
+          logo_url: (formData.get("logo_url") as string) || null,
+          notes: (formData.get("notes") as string) || null,
+          trade_name: (formData.get("trade_name") as string) || null,
+          main_activity: (formData.get("main_activity") as string) || null,
+          established_date: (formData.get("established_date") as string) || null,
+          compliance_status: formData.get("compliance_status") || "compliant",
+          office_address_line_1: (formData.get("office_address_line_1") as string) || null,
+          office_address_line_2: (formData.get("office_address_line_2") as string) || null,
+          office_emirate_id: officeEmirateId,
+          office_city_id: officeCityId,
+        };
+        if (!isCurrent() || readOnly.current) return false;
+        const parsed = isEditing
+          ? updateOrganizationSchema.safeParse({ ...data, id: session.savedId })
+          : createOrganizationSchema.safeParse({ ...data, company_code: formData.get("company_code") as string });
+        if (!parsed.success) {
+          const failure = workspaceValidationFailure(parsed.error.issues);
+          reportWorkspaceFieldErrors(form, failure.fieldErrors);
+          toast.error(failure.error);
+          return false;
+        }
+        pending = session.prepare(parsed.data);
+      }
+      if (!isCurrent() || readOnly.current) return false;
+      const wasNew = pending.id === null;
+      dispatched = true;
+      const result = wasNew
+        ? await createOrganization(pending.payload as CreateOrganizationInput, pending.contract)
+        : await updateOrganization(pending.payload as UpdateOrganizationInput, pending.contract);
+      if (!isCurrent()) return false;
+      if (!result.success) {
+        // A later rejection cannot settle an earlier unconfirmed dispatch.
+        // Preserve a first-known outcome before any fallible local witness read.
+        rejected = !recovering && !result.uncertain;
+        session.getPending();
+        if (recovering || result.uncertain) {
+          session.setUncertain(true);
+          setRecoveryNotice("The earlier save is still unconfirmed. Retry the same submitted change to recover its result.");
+          try { toast.error("The save is still unconfirmed. Retry the same submitted change to recover its result."); } catch { /* Keep the original request available. */ }
+          return false;
+        }
+        session.rejected();
+        reportWorkspaceFieldErrors(form, result.fieldErrors);
+        toast.error(result.error ?? "Organization save could not be confirmed. Retry the same save.");
+        return false;
+      }
+      const receipt = administrationSaveReceiptSchema.parse(result.data);
+      if (pending.id !== null && receipt.id !== pending.id) throw new Error("Save response does not match the record.");
+      // This server result is confirmed before any local acknowledgement/display work.
+      confirmed = true;
+      session.accept(receipt);
+      setRecoveryNotice(null);
+      clearDraft(); resetDirty();
+      toast.success(receipt.changed === false ? "No changes to save" : wasNew ? "Organization created" : "Organization updated");
+      if (result.warning) toast.warning(result.warning);
+      invalidateOrganizations(queryClient);
+      const route = `/admin/organizations/record/${receipt.id}?mode=edit`;
+      if (activeTab?.id) {
+        markDirty(activeTab.id, false);
+        navigation.updateTabRoute(activeTab.id, route, receipt.id, "edit");
+        navigation.renameTab(activeTab.id, pending.payload.legal_name_en ?? organization?.legal_name_en ?? "Organization", organization?.company_code ?? (pending.payload as CreateOrganizationInput).company_code);
+        if (closeAfter) closeTab(activeTab.id, { force: true });
+        else if (wasNew && navigation.isTabActive(activeTab.id)) router.replace(route);
+      } else if (wasNew) router.replace(route);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.commonMd.companySignatories(receipt.id) });
+      router.refresh();
+      return true;
+    } catch {
+      if (!isCurrent()) return false;
+      if (confirmed || rejected) {
+        terminal.current = true;
+        session.setUncertain(false);
+        setLocalOutcome(confirmed ? "confirmed" : "rejected");
+        setRecoveryNotice(confirmed
+          ? "Organization saved, but its local confirmation or display could not finish. Close and reopen the record before continuing."
+          : "Organization change was rejected, but local recovery could not finish. Your draft is retained. Close and reopen the record before continuing.");
+        return confirmed;
+      }
+      if (dispatched) session.setUncertain(true);
+      if (session.recoveryError) { terminal.current = true; setLocalOutcome("blocked"); }
+      const message = dispatched ? "Organization save is unconfirmed. Retry the same save to recover its result." : "Organization could not be prepared for saving. Your draft is retained; check its fields and current revision.";
+      setRecoveryNotice(session.recoveryError ?? message);
+      try { toast.error(message); } catch { /* The retained result remains authoritative. */ }
+      return false;
     }
-    const geographyText = async (table: "countries" | "emirates" | "cities" | "areas_zones", field: string, id: number | null, fallback?: string | null) => {
-      if (!id) return geographyEdited.current.has(field) ? null : fallback ?? null;
-      const { data: place, error } = await supabase.from(table).select("name_en").eq("id", id).single();
-      if (error || !place) throw new Error("Selected geography could not be verified");
-      return place.name_en;
-    };
-    const [countryName, emirateName, cityName, areaName] = await Promise.all([
-      geographyText("countries", "country_id", countryId, organization?.country),
-      geographyText("emirates", "emirate_id", emirateId, organization?.emirate),
-      geographyText("cities", "city_id", cityId, organization?.city),
-      geographyText("areas_zones", "area_zone_id", areaZoneId, organization?.area),
-    ]);
-    const data = {
-      legal_name_en: formData.get("legal_name_en") as string,
-      legal_name_ar: (formData.get("legal_name_ar") as string) || null,
-      short_name: (formData.get("short_name") as string) || null,
-      ...(isEditing ? {} : { company_code: formData.get("company_code") as string }),
-      legal_form: (formData.get("legal_form") as string) || null,
-      country: countryName,
-      status: (formData.get("status") as "active" | "inactive" | "suspended") || "active",
-      default_currency: currencyCode,
-      country_id: countryId,
-      emirate_id: emirateId,
-      city_id: cityId,
-      area_zone_id: areaZoneId,
-      emirate: emirateName,
-      city: cityName,
-      area: areaName,
-      address_line_1: (formData.get("address_line_1") as string) || null,
-      address_line_2: (formData.get("address_line_2") as string) || null,
-      po_box: (formData.get("po_box") as string) || null,
-      makani_number: (formData.get("makani_number") as string) || null,
-      primary_email: (formData.get("primary_email") as string) || null,
-      primary_phone: (formData.get("primary_phone") as string) || null,
-      website: (formData.get("website") as string) || null,
-      trade_license_no: (formData.get("trade_license_no") as string) || null,
-      trade_license_issue_date: (formData.get("trade_license_issue_date") as string) || null,
-      trade_license_expiry_date: (formData.get("trade_license_expiry_date") as string) || null,
-      licensing_authority: (formData.get("licensing_authority") as string) || null,
-      chamber_membership_no: (formData.get("chamber_membership_no") as string) || null,
-      chamber_membership_expiry_date: (formData.get("chamber_membership_expiry_date") as string) || null,
-      trn: (formData.get("trn") as string) || null,
-      vat_registered: formData.get("vat_registered") === "on",
-      corporate_tax_no: (formData.get("corporate_tax_no") as string) || null,
-      corporate_tax_registered: formData.get("corporate_tax_registered") === "on",
-      icv_certificate_no: (formData.get("icv_certificate_no") as string) || null,
-      icv_score: formData.get("icv_score") ? Number(formData.get("icv_score")) : null,
-      icv_issue_date: (formData.get("icv_issue_date") as string) || null,
-      icv_expiry_date: (formData.get("icv_expiry_date") as string) || null,
-      adnoc_supplier_no: (formData.get("adnoc_supplier_no") as string) || null,
-      logo_url: (formData.get("logo_url") as string) || null,
-      notes: (formData.get("notes") as string) || null,
-      trade_name: (formData.get("trade_name") as string) || null,
-      main_activity: (formData.get("main_activity") as string) || null,
-      established_date: (formData.get("established_date") as string) || null,
-      compliance_status: (formData.get("compliance_status") as string) || "compliant",
-      office_address_line_1: (formData.get("office_address_line_1") as string) || null,
-      office_address_line_2: (formData.get("office_address_line_2") as string) || null,
-      office_emirate_id: officeEmirateId,
-      office_city_id: officeCityId,
-    };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = isEditing && organization ? await updateOrganization({ ...data, id: organization.id } as any) : await createOrganization({ ...data, company_code: formData.get("company_code") as string });
-      if (result.success) { toast.success(isEditing ? "Organization updated" : "Organization created"); clearDraft(); resetDirty(); if (activeTab?.id) markDirty(activeTab.id, false); return true; }
-      else { toast.error(result.error ?? "Failed to save organization"); return false; }
-    } catch { toast.error("An unexpected error occurred"); return false; }
-    finally { setIsSubmitting(false); saving.current = false; }
+    finally { if (isCurrent()) setIsSubmitting(false); saving.current = false; }
   };
 
   const handleSaveAndClose = async () => {
-    const success = await handleSave();
-    if (success) forceCloseActiveTab();
+    await handleSave(true);
   };
 
-  const disabled = isViewing;
+  const disabled = isViewing || isSubmitting || session.uncertain || localOutcome !== null;
 
-  const signatoryColumns: ColumnDef<OwnerCompanySignatoryRow>[] = [
-{accessorKey:"full_name",header:"Signatory"},{accessorKey:"designation",header:"Designation"},{accessorKey:"signature_scope",header:"Signature scope"},{accessorKey:"is_primary",header:"Primary"},{accessorKey:"is_active",header:"Active"},
-{id:"actions",header:"Actions",enableHiding:false,enableSorting:false,cell:({row})=>disabled?null:<div className="flex"><Button type="button" aria-label="Edit signatory" variant="ghost" onClick={()=>setSignatoryDialog({open:true,editing:row.original as unknown as Record<string,unknown>})}><Pencil className="h-4 w-4"/></Button><Button type="button" aria-label="Remove signatory" variant="ghost" onClick={()=>handleDeleteSignatory(row.original.id)}><Trash2 className="h-4 w-4"/></Button></div>}];
 
   return (
     <ERPRecordWorkspaceForm
-      mode={mode}
+      mode={isViewing ? "view" : isEditing ? "edit" : "add"}
       title={isViewing ? "View Organization" : isEditing ? "Edit Organization" : "New Organization"}
       subtitle={organization ? `${organization.legal_name_en} (${organization.company_code})` : "Register a new legal corporate company"}
       recordCode={organization?.company_code}
       sections={sections}
       activeSection={activeSection}
       onSectionChange={setActiveSection}
-      isDirty={isDirty}
-      onSave={isViewing ? undefined : handleSave}
-      onSaveAndClose={isViewing ? undefined : handleSaveAndClose}
+      isDirty={localOutcome !== "confirmed" && (isDirty || session.uncertain)}
+      onSave={isViewing || localOutcome !== null ? undefined : () => handleSave()}
+      onSaveAndClose={isViewing || localOutcome !== null ? undefined : handleSaveAndClose}
       onRequestClose={handleRequestClose}
       isSubmitting={isSubmitting}
-      isChildDialogOpen={signatoryDialog.open}
+      isChildDialogOpen={signatoryOpen}
     >
       <form id={FORM_ID} onSubmit={(e) => { e.preventDefault(); handleSaveAndClose(); }} onInput={syncDraft} onChange={syncDraft}>
+        {(recoveryNotice || session.uncertain) && <p role="status" className="mb-4 text-sm text-muted-foreground">{recoveryNotice ?? session.recoveryError ?? "The last save is unconfirmed. Click Save again to recover the same submitted change."}</p>}
         {companyId > 0 ? (
           <>
             <DuplicateCandidateAlert entityType="company" entityId={companyId} />
@@ -365,22 +411,22 @@ export function OrganizationWorkspaceForm({ organization, mode, authContext }: O
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-6 space-y-1.5">
               <Label className="text-muted-foreground text-xs">Country</Label>
-              <CountrySelect value={countryId} onValueChange={handleCountryChange} placeholder="Select Country" disabled={disabled} />
+              <CountrySelect value={countryId} savedSelection={savedSelection(organization?.country_id, organization?.country || `Country #${organization?.country_id}`)} onValueChange={handleCountryChange} placeholder="Select Country" disabled={disabled} />
               {organization?.country && !countryId && <p className="text-[9px] text-amber-600">Legacy Country: {organization.country}</p>}
             </div>
             <div className="col-span-6 space-y-1.5">
               <Label className="text-muted-foreground text-xs">Region / Emirate</Label>
-              <EmirateSelect value={emirateId} onValueChange={handleEmirateChange} countryId={countryId} placeholder="Select Region / Emirate" disabled={disabled || !countryId} />
+              <EmirateSelect value={emirateId} savedSelection={savedSelection(organization?.emirate_id, organization?.emirate || `Emirate #${organization?.emirate_id}`)} onValueChange={handleEmirateChange} countryId={countryId} placeholder="Select Region / Emirate" disabled={disabled || !countryId} />
               {organization?.emirate && !emirateId && <p className="text-[9px] text-amber-600">Legacy: {organization.emirate}</p>}
             </div>
             <div className="col-span-6 space-y-1.5">
               <Label className="text-muted-foreground text-xs">City</Label>
-              <CitySelect value={cityId} onValueChange={handleCityChange} emirateId={emirateId} placeholder="Select City" disabled={disabled || !emirateId} />
+              <CitySelect value={cityId} savedSelection={savedSelection(organization?.city_id, organization?.city || `City #${organization?.city_id}`)} onValueChange={handleCityChange} emirateId={emirateId} placeholder="Select City" disabled={disabled || !emirateId} />
               {organization?.city && !cityId && <p className="text-[9px] text-amber-600">Legacy: {organization.city}</p>}
             </div>
             <div className="col-span-6 space-y-1.5">
               <Label className="text-muted-foreground text-xs">Area / Zone</Label>
-                  <AreaZoneSelect value={areaZoneId} onValueChange={(v) => { setAreaZoneId(v); writeDraftField("area_zone_id", v ?? ""); }} cityId={cityId} placeholder="Select Area / Zone" disabled={disabled || !cityId} />
+                  <AreaZoneSelect value={areaZoneId} savedSelection={savedSelection(organization?.area_zone_id, organization?.area || `Area / Zone #${organization?.area_zone_id}`)} onValueChange={(v) => { setAreaZoneId(v); writeDraftField("area_zone_id", v ?? ""); }} cityId={cityId} placeholder="Select Area / Zone" disabled={disabled || !cityId} />
               {organization?.area && !areaZoneId && <p className="text-[9px] text-amber-600">Legacy: {organization.area}</p>}
             </div>
             <div className="col-span-12 space-y-1.5">
@@ -512,11 +558,11 @@ export function OrganizationWorkspaceForm({ organization, mode, authContext }: O
             </div>
             <div className="col-span-6 space-y-1.5">
               <Label className="text-muted-foreground text-xs">Office Emirate</Label>
-              <EmirateSelect value={officeEmirateId} onValueChange={(v) => { setOfficeEmirateId(v); setOfficeCityId(null); writeDraftField("office_emirate_id", v); writeDraftField("office_city_id", null); }} placeholder="Select Emirate" disabled={disabled} />
+              <EmirateSelect value={officeEmirateId} savedSelection={savedSelection(organization?.office_emirate_id, `Emirate #${organization?.office_emirate_id}`)} onValueChange={(v) => { setOfficeEmirateId(v); setOfficeCityId(null); writeDraftField("office_emirate_id", v); writeDraftField("office_city_id", null); }} placeholder="Select Emirate" disabled={disabled} />
             </div>
             <div className="col-span-6 space-y-1.5">
               <Label className="text-muted-foreground text-xs">Office City</Label>
-              <CitySelect value={officeCityId} onValueChange={(v) => { setOfficeCityId(v); writeDraftField("office_city_id", v ?? ""); }} emirateId={officeEmirateId} placeholder="Select City" disabled={disabled || !officeEmirateId} />
+              <CitySelect value={officeCityId} savedSelection={savedSelection(organization?.office_city_id, `City #${organization?.office_city_id}`)} onValueChange={(v) => { setOfficeCityId(v); writeDraftField("office_city_id", v ?? ""); }} emirateId={officeEmirateId} placeholder="Select City" disabled={disabled || !officeEmirateId} />
             </div>
             <div className="col-span-12 space-y-1.5">
               <Label htmlFor="office_address_line_1" className="text-muted-foreground text-xs">Office Address Line 1</Label>
@@ -553,62 +599,9 @@ export function OrganizationWorkspaceForm({ organization, mode, authContext }: O
 
       {/* Signatories � child records, managed independently of main form */}
       <ERPRecordSectionPanel id="signatories" activeId={activeSection} title="Authorized Signatories">
-        {!companyId ? (
-          <p className="text-sm text-muted-foreground">Save the organization first to manage signatories.</p>
-        ) : (
-          <div className="space-y-3">
-            {!disabled && (
-              <div className="flex justify-end">
-                <Button size="sm" variant="outline" onClick={() => setSignatoryDialog({ open: true, editing: null })}>
-                  <PlusCircle className="h-4 w-4 mr-1" /> Add Signatory
-                </Button>
-              </div>
-            )}
-            {signatoryError ? <div role="alert"><p>Signatories could not be loaded.</p><Button type="button" onClick={()=>void refetchSignatories()}>Try again</Button></div> : <ERPDataTable tableId={`company.signatories:${companyId}`} resultsLabel="Signatories" data={signatories ?? []} columns={signatoryColumns} enableRowSelection={false}/>}
-          </div>
-        )}
-        {signatoryDialog.open && (
-          <ERPChildDialogForm open onOpenChange={open => { if (!open) setSignatoryDialog({ open: false, editing: null }); }}
-            title={signatoryDialog.editing ? "Edit Signatory" : "Add Signatory"} mode={signatoryDialog.editing ? "edit" : "add"}
-            isSubmitting={sigSaving} onSubmit={async () => { if (signatoryForm.current) await handleSaveSignatory(new FormData(signatoryForm.current)); }}>
-          <form ref={signatoryForm} onSubmit={async (e) => { e.preventDefault(); e.stopPropagation(); await handleSaveSignatory(new FormData(e.currentTarget)); }} className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="sig_full_name" className="text-xs">Full Name *</Label>
-                <Input id="sig_full_name" name="full_name" defaultValue={(signatoryDialog.editing?.full_name as string) ?? ""} required />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="sig_designation" className="text-xs">Designation</Label>
-                <Input id="sig_designation" name="designation" defaultValue={(signatoryDialog.editing?.designation as string) ?? ""} />
-              </div>
-              <div className="col-span-2 space-y-1">
-                <Label htmlFor="sig_scope" className="text-xs">Signature Scope</Label>
-                <Input id="sig_scope" name="signature_scope" defaultValue={(signatoryDialog.editing?.signature_scope as string) ?? ""} placeholder="e.g., Financial documents up to AED 500K" />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="sig_from" className="text-xs">Effective From</Label>
-                <Input type="date" id="sig_from" name="effective_from" defaultValue={(signatoryDialog.editing?.effective_from as string) ?? ""} />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="sig_to" className="text-xs">Effective To</Label>
-                <Input type="date" id="sig_to" name="effective_to" defaultValue={(signatoryDialog.editing?.effective_to as string) ?? ""} />
-              </div>
-              <div className="flex items-center gap-2 pt-2">
-                <Checkbox id="sig_primary" name="is_primary" defaultChecked={(signatoryDialog.editing?.is_primary as boolean) ?? false} />
-                <Label htmlFor="sig_primary" className="text-xs cursor-pointer">Primary Signatory</Label>
-              </div>
-              <div className="flex items-center gap-2 pt-2">
-                <Checkbox id="sig_active" name="is_active" defaultChecked={(signatoryDialog.editing?.is_active as boolean) ?? true} />
-                <Label htmlFor="sig_active" className="text-xs cursor-pointer">Active</Label>
-              </div>
-              <div className="col-span-2 space-y-1">
-                <Label htmlFor="sig_notes" className="text-xs">Notes</Label>
-                <Textarea id="sig_notes" name="notes" defaultValue={(signatoryDialog.editing?.notes as string) ?? ""} />
-              </div>
-            </div>
-          </form>
-          </ERPChildDialogForm>
-        )}
+        {!companyId ? <p className="text-sm text-muted-foreground">Save the organization first to manage signatories.</p> :
+          <CompanySignatoriesSection companyId={companyId} authContext={authContext} enabled={activeSection === "signatories"}
+            readOnly={mode === "view" || isSubmitting || session.uncertain} onChildOpen={setSignatoryOpen} />}
       </ERPRecordSectionPanel>
 
       {/* DMS Documents tab � entityType: company */}
@@ -617,6 +610,7 @@ export function OrganizationWorkspaceForm({ organization, mode, authContext }: O
           <p className="text-sm text-muted-foreground">Save the organization first to manage documents.</p>
         ) : (
           <DmsEntityDocumentsTab
+            authContext={authContext}
             entityType="company"
             entityId={companyId}
             entityLabel="Organization"

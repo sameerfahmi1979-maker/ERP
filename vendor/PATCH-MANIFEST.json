@@ -1,0 +1,17 @@
+{
+  "approvalDate": "2026-10-06",
+  "upstreamFiles": {
+    "sprintf-js/src/sprintf.js": "9904b0d448280bfdfcb0329bdac995883033597727404f9c058d051d9174b7c7",
+    "sprintf-js/LICENSE": "a4cdda44b5adea4731d53dcae78fb5124f8fd853e994f01e25d8c33a7daf818b"
+  },
+  "patchedFiles": {
+    "vendor/sprintf-js/LICENSE": "a4cdda44b5adea4731d53dcae78fb5124f8fd853e994f01e25d8c33a7daf818b",
+    "vendor/sprintf-js/package.json": "1e55377edb77685c5efa5aea6537ef5883ed044b7e4e41d11c7eb9fe4096853e",
+    "vendor/sprintf-js/src/sprintf.js": "62475672e50545adb731e8812616ffb9fb9d1db5133089da5d8475fac313b54c"
+  },
+  "bracesDisposition": {
+    "status": "Superseded by integrated F06 depth/cycle and PERF node-budget artifact; no security test cases removed.",
+    "provenance": "vendor/braces/PROVENANCE.json",
+    "artifact": "vendor/braces-artifact.json"
+  }
+}

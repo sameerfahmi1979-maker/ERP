@@ -1,0 +1,15 @@
+import {expect,it} from 'vitest';import type {AuthContext} from '@/lib/rbac/check';import {inboxCandidateFilter} from '@/server/reads/dms-inbox-candidates';
+type Assignment=NonNullable<AuthContext['roleAssignments']>[number];
+const assignment=(ownerCompanyId:number|null,branchId:number|null,permissionCodes=['dms.documents.review_ai'],roleCode='synthetic'):Assignment=>({roleId:9,roleCode,ownerCompanyId,branchId,permissionCodes});
+const ctx=(roleAssignments:Assignment[]|undefined)=>({profile:{id:7,must_change_password:false},isAccountActive:true,roleAssignments,roleCodes:[],permissionCodes:[]} as unknown as AuthContext);
+it('retains own uploads and ALL linked documents, even if the original upload scope differs',()=>{expect(inboxCandidateFilter(ctx([]))).toBe('uploaded_by.eq.7,document_id.not.is.null');});
+it('preserves company/branch tuples without combining different role scopes',()=>{expect(inboxCandidateFilter(ctx([assignment(1,2),assignment(3,4)]))).toBe('uploaded_by.eq.7,document_id.not.is.null,and(owning_company_id.eq.1,owning_branch_id.eq.2),and(owning_company_id.eq.3,owning_branch_id.eq.4)');});
+it('company-wide review remains company-wide, not limited to the profile branch',()=>{expect(inboxCandidateFilter(ctx([assignment(3,null)]))).toContain('owning_company_id.eq.3');});
+it('global numbering and unrelated roles never widen the review candidate scope',()=>{expect(inboxCandidateFilter(ctx([assignment(null,null,['numbering.rules.generate']),assignment(2,null,['dms.documents.upload']),assignment(1,null)]))).toBe('uploaded_by.eq.7,document_id.not.is.null,owning_company_id.eq.1');});
+it.each(['dms.documents.review_ai','dms.admin'])('a real global %s assignment skips optional filtering',code=>{expect(inboxCandidateFilter(ctx([assignment(null,null,[code])]))).toBeNull();});
+it.each(['system_admin','group_admin'])('a valid global %s skips optional filtering',role=>{expect(inboxCandidateFilter(ctx([assignment(null,null,[],role)]))).toBeNull();});
+it('a scoped system role is not interpreted as global',()=>{expect(inboxCandidateFilter(ctx([assignment(1,null,['dms.documents.review_ai'],'system_admin')]))).toBe('uploaded_by.eq.7,document_id.not.is.null,owning_company_id.eq.1');});
+it('missing assignment evidence uses the ordinary RLS path, not a guessed restrictive scope',()=>{expect(inboxCandidateFilter(ctx(undefined))).toBeNull();});
+it.each([assignment(null,2),assignment(0,null),assignment(2,-1)])('invalid scope evidence falls back without truncating',a=>{expect(inboxCandidateFilter(ctx([a]))).toBeNull();});
+it('deduplicates repeated scopes without changing authorization',()=>{expect(inboxCandidateFilter(ctx([assignment(1,null),assignment(1,null)]))).toBe('uploaded_by.eq.7,document_id.not.is.null,owning_company_id.eq.1');});
+it('too many scopes fall back rather than generate a partial or overlong filter',()=>{expect(inboxCandidateFilter(ctx(Array.from({length:40},(_,i)=>assignment(i+1,null))))).toBeNull();});

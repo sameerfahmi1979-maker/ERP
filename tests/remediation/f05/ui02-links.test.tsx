@@ -7,6 +7,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WorkspaceUiMemoryProvider } from '@/hooks/use-persistent-ui-state';
 import { DmsDocumentLinksSection } from '@/features/dms/documents/sections/dms-document-links-section';
 const mocks=vi.hoisted(()=>({list:vi.fn(),add:vi.fn(),entities:vi.fn()}));
+// Component acceptance keeps the same read outcomes; transport itself is tested in P04.
+vi.mock('@/features/dms/documents/section-read',()=>({readDmsSection:(kind:string,args:unknown[])=>{const readers={getDmsDocumentLinks:mocks.list};const read=readers[kind as keyof typeof readers];if(!read)throw Error('Unexpected reader '+kind);return read(...args);}}));
+vi.mock('@/lib/reads/client',async importOriginal=>({...await importOriginal<typeof import('@/lib/reads/client')>(),readJson:(_resource:string,p:{entityType:string;search:string})=>mocks.entities(p.entityType,p.search)}));
 vi.mock('@/server/actions/dms/document-links',()=>({getDmsDocumentLinks:mocks.list,addDmsDocumentLink:mocks.add,updateDmsDocumentLink:vi.fn(),removeDmsDocumentLink:vi.fn(),searchDmsLinkEntityOptions:mocks.entities}));
 vi.mock('@/server/actions/dms/ai-links',()=>({getDmsLinkSuggestions:async()=>({success:true,data:[]}),suggestDmsDocumentLinks:vi.fn(),applyDmsLinkSuggestions:vi.fn(),rejectDmsLinkSuggestions:vi.fn()}));
 beforeEach(()=>{vi.resetAllMocks();mocks.list.mockResolvedValue({success:true,data:[]});mocks.entities.mockResolvedValue({success:true,data:[]});});afterEach(cleanup);

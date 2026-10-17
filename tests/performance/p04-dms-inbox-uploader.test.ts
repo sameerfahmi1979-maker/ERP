@@ -1,0 +1,18 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const s=vi.hoisted(()=>({allowed:true,rows:[] as Record<string,unknown>[],names:[] as Record<string,unknown>[],nameError:false,calls:[] as {table:string;op:string;args:unknown[]}[]}));
+vi.mock('@/lib/rbac/check',()=>({getAuthContext:async()=>({profile:{id:7,must_change_password:false},isAccountActive:true}),hasPermission:()=>s.allowed}));
+vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({from:(table:string)=>{const q=new Proxy({}, {get:(_,op)=>op==='then'?(resolve:(r:unknown)=>unknown)=>Promise.resolve(table==='user_profiles'?{data:s.names,error:s.nameError?{message:'PRIVATE PROFILE FAILURE'}:null}:{data:s.rows,count:s.rows.length,error:null,status:200}).then(resolve):(...args:unknown[])=>{s.calls.push({table,op:String(op),args});return q;}});return q;}})}));
+import {readDmsInboxPage} from '@/server/reads/dms-inbox';
+const row=(id:number,uploaded_by:number|null)=>({id,session_code:'SYN-'+id,status:'uploaded',original_filename:'Synthetic.pdf',uploaded_by});
+beforeEach(()=>Object.assign(s,{allowed:true,rows:[row(1,7),row(2,8),row(3,7)],names:[{id:7,full_name:'Visible synthetic uploader'}],nameError:false,calls:[]}));
+it('counts/pages uploads without embedding uploader permission joins, then reads only unique visible-page IDs',async()=>{const r=await readDmsInboxPage({});expect(r.success).toBe(true);expect(r.data?.totalCount).toBe(3);expect(r.data?.rows.map(r=>r.id)).toEqual([1,2,3]);expect(r.data?.rows.map(r=>r.uploader)).toEqual([{full_name:'Visible synthetic uploader'},null,{full_name:'Visible synthetic uploader'}]);const select=s.calls.find(c=>c.table==='dms_upload_sessions'&&c.op==='select');expect(select?.args[0]).not.toContain('uploader:user_profiles');expect(select?.args[1]).toEqual({count:'exact'});expect(s.calls).toContainEqual({table:'user_profiles',op:'in',args:['id',[7,8]]});expect(s.calls.filter(c=>c.table==='user_profiles'&&c.op==='select')).toHaveLength(1);});
+it('empty or null uploader pages do not read profiles',async()=>{for(const rows of [[],[row(1,null)]]){s.calls=[];s.rows=rows;const r=await readDmsInboxPage({});expect(r.success).toBe(true);expect(s.calls.some(c=>c.table==='user_profiles')).toBe(false);}});
+it('a hidden uploader is null, never an admin fallback',async()=>{s.names=[];expect((await readDmsInboxPage({})).data?.rows.every(r=>r.uploader===null)).toBe(true);expect(s.calls.every(c=>['dms_upload_sessions','user_profiles'].includes(c.table))).toBe(true);});
+it('profile read failure fails the whole page without leaking backend details',async()=>{s.nameError=true;const r=await readDmsInboxPage({});expect(r.success).toBe(false);expect(r.data).toBeUndefined();expect(JSON.stringify(r)).not.toContain('PRIVATE');});
+it.each([
+ {kind:'unrequested',names:[{id:99,full_name:'Unrequested'}]},
+ {kind:'duplicate',names:[{id:7,full_name:'First'},{id:7,full_name:'Duplicate'}]},
+ {kind:'malformed',names:[{id:7,full_name:{secret:'invalid'}}]},
+])('$kind profile rows fail closed',async({names})=>{s.names=names;const r=await readDmsInboxPage({});expect(r.success).toBe(false);expect(r.data).toBeUndefined();expect(s.calls.filter(c=>c.table==='user_profiles'&&c.op==='select')).toHaveLength(1);});
+it('invalid uploader identity is rejected before profile query',async()=>{s.rows=[row(1,-1)];expect((await readDmsInboxPage({})).success).toBe(false);expect(s.calls.some(c=>c.table==='user_profiles')).toBe(false);});
+it('permissions are checked before either query',async()=>{s.allowed=false;expect((await readDmsInboxPage({})).success).toBe(false);expect(s.calls).toHaveLength(0);});

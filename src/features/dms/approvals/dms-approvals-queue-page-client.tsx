@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, ClipboardCheck, ExternalLink, RefreshCw, Undo2, XCircle } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useState } from "react";
 import { ConfiguredRow, EditColumns, EditFilters, useListColumns, type ListColumn } from "@/components/erp/table/list-controls";
 import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
 
@@ -16,11 +16,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { DmsApprovalActionDialog, type ApprovalDialogMode } from "./dms-approval-action-dialog";
 import { DmsApprovalStatusBadge } from "./dms-approval-status-badge";
 
-import { queryKeys } from "@/lib/query/query-keys";
-import {
-  listPendingDocumentApprovalsForCurrentUser,
-  type ApprovalQueueRow,
-} from "@/server/actions/dms/document-approvals";
+import { invalidateDmsApprovalOutcome } from "@/lib/query/invalidation";
+import type { ApprovalQueueRow } from "@/server/actions/dms/document-approvals";
+import type { AuthContext } from "@/lib/rbac/check";
+import { dmsApprovalReadIdentity } from "@/lib/reads/dms-approvals-schema";
+import { useDmsApprovalQueue } from "@/hooks/use-dms-approvals";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -111,18 +111,15 @@ const COLUMNS: ListColumn[] = [
 interface Props {
   canAct: boolean;
   isAdmin: boolean;
+  authContext: AuthContext;
 }
 
-export function DmsApprovalsQueuePageClient({ isAdmin }: Props) {
+export function DmsApprovalsQueuePageClient(props: Props) {
+  return <DmsApprovalsQueueSession key={dmsApprovalReadIdentity(props.authContext)} {...props} />;
+}
+function DmsApprovalsQueueSession({ authContext }: Props) {
   const qc = useQueryClient();
-  const [isPending, startTransition] = useTransition();
-
-  const [rows, setRows] = useState<ApprovalQueueRow[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loaded, setLoaded] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const listColumns = useListColumns("dms:approval-queue:v1", COLUMNS);
-  const request = useRef(0);
 
   const [filters, setFilters] = usePersistentUiState<Filters>("dms:approval-queue:criteria", {
     status: "pending_approval",
@@ -131,57 +128,27 @@ export function DmsApprovalsQueuePageClient({ isAdmin }: Props) {
     sortDir: "desc",
     page: 1,
   });
+  const read = useDmsApprovalQueue(authContext, {status: filters.status, search: filters.search, sortBy: filters.sortBy,
+    sortDirection: filters.sortDir, page: filters.page, pageSize: PAGE_SIZE});
+  const rows = read.data?.rows ?? [], total = read.data?.totalCount ?? null, isPending = read.busy;
+  const loadError = read.invalid ? "Check the search and page criteria before retrying."
+    : read.denied ? "Approval information is not available for your current access."
+    : read.error ? "Could not load the approval queue. This is not an empty result. Check your access and connection, then retry." : null;
+  const loaded = read.ready || !!loadError;
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<ApprovalDialogMode>("approve");
   const [dialogRow, setDialogRow] = useState<ApprovalQueueRow | null>(null);
-
-  // ── Fetch ─────────────────────────────────────────────────────────────────
-
-  const fetchQueue = useCallback((f: Filters) => {
-    const generation = ++request.current;
-    startTransition(async () => {
-      setLoadError(null);
-      try {
-      const result = await listPendingDocumentApprovalsForCurrentUser({
-        status: f.status,
-        search: f.search.trim() || undefined,
-        sortBy: f.sortBy,
-        sortDirection: f.sortDir,
-        page: f.page,
-        pageSize: PAGE_SIZE,
-      });
-      if (generation !== request.current) return;
-      if (result.success && result.data) {
-        setRows(result.data.rows);
-        setTotal(result.data.total);
-        setLoaded(true);
-      } else {
-        setLoadError("Could not load the approval queue. This is not an empty result. Check your access and connection, then retry.");
-        setLoaded(true);
-      }
-      } catch {
-        if (generation === request.current) {
-          setLoadError("Could not load the approval queue. Check your connection, then retry.");
-          setLoaded(true);
-        }
-      }
-    });
-  }, []);
-
-  // Initial fetch on mount
-  useEffect(() => {
-    fetchQueue(filters);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const currentDialogRow = dialogRow && rows.find(row => row.documentId === dialogRow.documentId);
+  const canConfirm = read.ready && !!currentDialogRow && currentDialogRow.currentApprovalId === dialogRow?.currentApprovalId
+    && (dialogMode === "withdraw" ? currentDialogRow.canWithdraw : (dialogMode === "approve" || dialogMode === "reject") && currentDialogRow.canAct);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   const applyFilters = (next: Partial<Filters>) => {
     const updated = { ...filters, ...next, page: 1 };
     setFilters(updated);
-    fetchQueue(updated);
   };
 
   const handleSort = (field: SortBy) => {
@@ -192,34 +159,28 @@ export function DmsApprovalsQueuePageClient({ isAdmin }: Props) {
   const handlePageChange = (p: number) => {
     const updated = { ...filters, page: p };
     setFilters(updated);
-    fetchQueue(updated);
   };
 
   const handleRefresh = () => {
-    fetchQueue(filters);
-    qc.invalidateQueries({ queryKey: queryKeys.dms.approvalsQueue() });
+    read.retry();
   };
 
   const openDialog = (row: ApprovalQueueRow, mode: ApprovalDialogMode) => {
+    if (!read.isCurrent()) return;
     setDialogRow(row);
     setDialogMode(mode);
     setDialogOpen(true);
   };
 
   const handleActionSuccess = () => {
-    fetchQueue(filters);
-    qc.invalidateQueries({ queryKey: queryKeys.dms.approvalsQueue() });
-    qc.invalidateQueries({ queryKey: ["dms", "approvals", "queue"] });
-    qc.invalidateQueries({ queryKey: ["notifications"] });
     if (dialogRow) {
-      qc.invalidateQueries({ queryKey: queryKeys.dms.approvalState(dialogRow.documentId) });
-      qc.invalidateQueries({ queryKey: queryKeys.dms.approvalHistory(dialogRow.documentId) });
+      invalidateDmsApprovalOutcome(qc, dialogRow.documentId);
     }
   };
 
   // ── Pagination ────────────────────────────────────────────────────────────
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil((total ?? 0) / PAGE_SIZE));
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -251,13 +212,13 @@ export function DmsApprovalsQueuePageClient({ isAdmin }: Props) {
         <div className="flex flex-wrap items-center gap-3">
           <Input
             aria-label="Search approval queue"
-            placeholder="Search by document no, title, or submitter…"
+            placeholder="Search by document no or title…"
             value={filters.search}
             onChange={(e) => applyFilters({ search: e.target.value })}
             className="max-w-sm h-8 text-sm"
           />
           <div className="ml-auto flex items-center gap-2">
-            {total > 0 && (
+            {total !== null && total > 0 && (
               <span className="text-xs text-muted-foreground">
                 {total} record{total !== 1 ? "s" : ""}
               </span>
@@ -266,7 +227,7 @@ export function DmsApprovalsQueuePageClient({ isAdmin }: Props) {
               variant="outline"
               size="sm"
               onClick={handleRefresh}
-              disabled={isPending}
+              disabled={isPending || read.invalid || read.denied}
               className="h-8 gap-1.5"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isPending ? "animate-spin" : ""}`} />
@@ -301,7 +262,7 @@ export function DmsApprovalsQueuePageClient({ isAdmin }: Props) {
           ) : loadError ? (
             <div className="p-8 text-center space-y-3">
               <p role="alert" className="text-sm text-destructive">{loadError}</p>
-              <Button variant="outline" size="sm" onClick={handleRefresh}>
+              <Button variant="outline" size="sm" onClick={handleRefresh} disabled={read.invalid || read.denied}>
                 Retry
               </Button>
             </div>
@@ -487,7 +448,7 @@ export function DmsApprovalsQueuePageClient({ isAdmin }: Props) {
         </div>
 
         {/* ── Pagination ───────────────────────────────────────────────────── */}
-        {loaded && !loadError && total > PAGE_SIZE && (
+        {read.ready && !loadError && total !== null && total > PAGE_SIZE && (
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>
               Page {filters.page} of {totalPages} &nbsp;·&nbsp; {total} total
@@ -517,8 +478,14 @@ export function DmsApprovalsQueuePageClient({ isAdmin }: Props) {
       </div>
 
       {/* ── Action dialog ─────────────────────────────────────────────────── */}
-      {dialogRow && (
+      {dialogRow && !read.denied && (
         <DmsApprovalActionDialog
+          authContext={authContext}
+          canConfirm={canConfirm}
+          isActionCurrent={read.isCurrent}
+          onRefreshStatus={read.retry}
+          statusRefreshing={read.busy}
+          statusRefreshDisabled={read.denied || read.invalid}
           open={dialogOpen}
           onOpenChange={(open) => {
             setDialogOpen(open);

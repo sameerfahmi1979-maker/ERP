@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { getDmsUploadSessions } from "@/server/actions/dms/upload-sessions";
-import { getDmsDocuments, getDmsNewDocumentDefaults } from "@/server/actions/dms/documents";
+
+import { getDmsNewDocumentDefaults } from "@/server/actions/dms/documents";
 import { isDmsBatchIntakeEnabled } from "@/server/actions/dms/batch-intake";
 import { isDmsAiAutoStartEnabled } from "@/server/actions/dms/ai-intake";
 import { DmsUploadInboxPageClient } from "@/features/dms/upload/dms-upload-inbox-page-client";
@@ -37,16 +37,12 @@ export default async function DmsInboxPage({
       ? { entityType: rawEntityType, entityId: rawEntityId }
       : null;
 
-  const [sessionsResult, documentsResult, defaultsResult, batchEnabled, autoStartEnabled] = await Promise.all([
-    getDmsUploadSessions({ include_completed: false }),
-    getDmsDocuments(),
+  const [defaultsResult, batchEnabled, autoStartEnabled] = await Promise.all([
     getDmsNewDocumentDefaults(),
     isDmsBatchIntakeEnabled(),
     isDmsAiAutoStartEnabled(),
   ]);
 
-  const sessions = sessionsResult.data ?? [];
-  const documents = documentsResult.data ?? [];
   const documentTypes = (defaultsResult.data?.documentTypes ?? []) as DmsDocumentTypeOption[];
 
   return (
@@ -57,9 +53,9 @@ export default async function DmsInboxPage({
         breadcrumbs={[{ label: "DMS", href: "/dms" }, { label: "Upload Inbox" }]}
       />
 
-      {!sessionsResult.success || !documentsResult.success || !defaultsResult.success ? <DmsLoadError /> : <DmsUploadInboxPageClient
-        initialSessions={sessions}
-        documents={documents}
+      {!defaultsResult.success ? <DmsLoadError /> : <DmsUploadInboxPageClient
+        initialSessions={[]}
+        documents={[]}
         documentTypes={documentTypes}
         entityContext={entityContext}
         isAdmin={hasPermission(authContext, "dms.admin")}

@@ -152,9 +152,11 @@ export async function extractFileContent(
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (
-        b: Buffer
+        b: Uint8Array
       ) => Promise<{ text: string }>;
-      const parsed = await pdfParse(buffer);
+      // Legacy PDF.js clones Buffer subclasses into pooled backing stores and
+      // can lose their byte offset. Give it an owning, plain byte array instead.
+      const parsed = await pdfParse(new Uint8Array(buffer));
       text = (parsed.text ?? "").trim();
     } catch { /* fall through to image conversion */ }
 

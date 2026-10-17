@@ -14,9 +14,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { ERPCombobox } from "@/components/erp/combobox";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
+import { withSavedSelection, type SavedSelection } from "@/lib/master-data/saved-selection";
 import { getPartySelectOptions } from "@/server/actions/master-data/parties";
 
 export type PartySelectProps = {
+  savedSelection?: SavedSelection;
   value: number | null;
   onValueChange: (value: number | null) => void;
   typeCode?: string | null;
@@ -34,6 +36,7 @@ export type PartySelectProps = {
 
 export function PartySelect({
   value,
+  savedSelection,
   onValueChange,
   typeCode,
   typeCodes,
@@ -49,7 +52,7 @@ export function PartySelect({
 }: PartySelectProps) {
   const queryKey = ["party_select_options", typeCode ?? null, typeCodes ?? null, excludePartyId ?? null, includeInactive];
 
-  const { data: options, isLoading } = useQuery({
+  const { data: options, isLoading, error: readError } = useQuery({
     queryKey,
     queryFn: async () => {
       const result = await getPartySelectOptions({
@@ -58,7 +61,7 @@ export function PartySelect({
         excludePartyId: excludePartyId ?? null,
         includeInactive,
       });
-      if (!result.success) return [];
+      if (!result.success || !result.data) throw new Error("Party choices could not be loaded.");
       return (result.data ?? []).map((p): ERPComboboxOption => ({
         value: p.id,
         label: `${p.display_name}`,
@@ -79,16 +82,16 @@ export function PartySelect({
     <ERPCombobox
       value={value}
       onValueChange={handleChange}
-      options={options ?? []}
+      options={withSavedSelection(readError ? [] : options ?? [], value, savedSelection)}
       placeholder={placeholder}
       searchPlaceholder="Search parties..."
       loading={isLoading}
-      disabled={disabled}
+      disabled={disabled || !!readError}
       required={required}
       allowClear={allowClear}
       showCode={showCode}
       className={className}
-      error={error}
+      error={readError ? "Party choices could not be loaded. Your saved selection is retained." : error}
       maxVisibleOptions={50}
     />
   );

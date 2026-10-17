@@ -1,18 +1,21 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
-import { logAudit, createAuditDiff } from "@/server/actions/audit";
+import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/check";
+import {saveFinanceReferenceRecord} from '@/server/finance-reference-save';
+import {canReadFinanceReferences} from '@/lib/master-data/finance-reference-contract';
+import {saveCurrencyRecord} from "@/server/currency-save";
+import {saveFinanceCenterRecord} from "@/server/finance-center-save";
+import {attachFinanceReferenceLabels} from "@/server/finance-reference-labels";
+import {readAllPages} from "@/server/reads/all-pages";
+import {literalContains} from "@/lib/reads/search";
+import {z} from "zod";
+import type {WorkspaceSaveContract} from "@/lib/workspace/save-contract";
+import type {WorkspaceSaveResult} from "@/server/workspace-save";
+import {workspaceValidationFailure} from "@/lib/workspace/field-errors";
 import {
   createCurrencySchema,
   updateCurrencySchema,
-  createPaymentTermSchema,
-  updatePaymentTermSchema,
-  createTaxTypeSchema,
-  updateTaxTypeSchema,
-  createBankSchema,
-  updateBankSchema,
   createCostCenterSchema,
   updateCostCenterSchema,
   createProfitCenterSchema,
@@ -54,218 +57,38 @@ export type ActionResult<T = unknown> = {
   error?: string;
 };
 
-const FINANCE_BASICS_PATHS = [
-  "/admin/master-data/finance-basics/currencies",
-  "/admin/master-data/finance-basics/payment-terms",
-  "/admin/master-data/finance-basics/tax-types",
-  "/admin/master-data/finance-basics/banks",
-  "/admin/master-data/finance-basics/cost-centers",
-  "/admin/master-data/finance-basics/profit-centers",
-] as const;
-
-function revalidateFinanceBasicsPages() {
-  FINANCE_BASICS_PATHS.forEach((path) => revalidatePath(path));
-}
-
-function formatValidationErrors(
-  issues: ReadonlyArray<{ path: PropertyKey[]; message: string }>,
-): string {
-  return issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ");
-}
-
-function isSystemAdmin(roleCodes: string[] | undefined): boolean {
-  return roleCodes?.includes("system_admin") ?? false;
-}
-
-function lockedRecordError<T>(): ActionResult<T> {
-  return { success: false, error: "This record is locked and cannot be modified" };
-}
-
-function managePermissionError<T>(): ActionResult<T> {
-  return { success: false, error: "You do not have permission to manage finance basics master data" };
-}
-
 function viewPermissionError<T>(): ActionResult<T> {
   return { success: false, error: "You do not have permission to view finance basics data" };
 }
 
-function nullifyEmpty(value: string | null | undefined): string | null | undefined {
-  if (value === "") return null;
-  return value;
+function splitReferenceInput(input:unknown){
+ if(!input||typeof input!=='object'||Array.isArray(input))return null;
+ const {id,...data}=input as Record<string,unknown>;
+ return typeof id==='number'&&Number.isSafeInteger(id)&&id>0?{id,data}:null;
 }
 
 // ============================================================================
 // CURRENCIES
 // ============================================================================
 
-export async function createCurrency(
-  input: CreateCurrencyInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = createCurrencySchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const dataToInsert = {
-      ...validated,
-      currency_name_ar: validated.currency_name_ar || null,
-      symbol: validated.symbol || null,
-      description_en: validated.description_en || null,
-      description_ar: validated.description_ar || null,
-      notes: validated.notes || null,
-      created_by: ctx.profile?.id ?? null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { data, error } = await supabase
-      .from("currencies")
-      .insert(dataToInsert)
-      .select("id, currency_code")
-      .single();
-
-    if (error) {
-      console.error("createCurrency error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "currencies",
-      entity_id: data.id,
-      entity_reference: data.currency_code,
-      action: "create",
-      new_values: validated,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true, data: { id: data.id } };
-  } catch (error) {
-    console.error("createCurrency exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function createCurrency(input: CreateCurrencyInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const parsed=createCurrencySchema.safeParse(input);
+  if(!parsed.success)return workspaceValidationFailure(parsed.error.issues);
+  return saveCurrencyRecord("save",null,parsed.data,contract);
 }
 
-export async function updateCurrency(
-  input: UpdateCurrencyInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = updateCurrencySchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const { id, ...updates } = validated;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const { data: oldData } = await supabase.from("currencies").select("*").eq("id", id).single();
-    if (!oldData) {
-      return { success: false, error: "Currency not found" };
-    }
-
-    if (oldData.is_locked && !isSystemAdmin(ctx.roleCodes)) {
-      return lockedRecordError();
-    }
-
-    const dataToUpdate = {
-      ...updates,
-      currency_name_ar: nullifyEmpty(updates.currency_name_ar),
-      symbol: nullifyEmpty(updates.symbol),
-      description_en: nullifyEmpty(updates.description_en),
-      description_ar: nullifyEmpty(updates.description_ar),
-      notes: nullifyEmpty(updates.notes),
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase.from("currencies").update(dataToUpdate).eq("id", id);
-    if (error) {
-      console.error("updateCurrency error", error);
-      return { success: false, error: error.message };
-    }
-
-    const { old_values, new_values } = createAuditDiff(oldData, { ...oldData, ...dataToUpdate });
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "currencies",
-      entity_id: id,
-      entity_reference: oldData.currency_code,
-      action: "update",
-      old_values,
-      new_values,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true, data: { id } };
-  } catch (error) {
-    console.error("updateCurrency exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function updateCurrency(input: UpdateCurrencyInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const parsed=updateCurrencySchema.safeParse(input);
+  if(!parsed.success)return workspaceValidationFailure(parsed.error.issues);
+  const {id,...data}=parsed.data;
+  return saveCurrencyRecord("save",id,data,contract);
 }
 
-export async function toggleCurrencyStatus(
-  input: ToggleFinanceBasicsStatusInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = toggleFinanceBasicsStatusSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const { id, is_active, deactivation_reason } = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const { data: oldData } = await supabase.from("currencies").select("*").eq("id", id).single();
-    if (!oldData) {
-      return { success: false, error: "Currency not found" };
-    }
-
-    const dataToUpdate = {
-      is_active,
-      deactivated_at: is_active ? null : new Date().toISOString(),
-      deactivated_by: is_active ? null : ctx.profile?.id ?? null,
-      deactivation_reason: is_active ? null : deactivation_reason || null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase.from("currencies").update(dataToUpdate).eq("id", id);
-    if (error) {
-      console.error("toggleCurrencyStatus error", error);
-      return { success: false, error: error.message };
-    }
-
-    const { old_values, new_values } = createAuditDiff(oldData, { ...oldData, ...dataToUpdate });
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "currencies",
-      entity_id: id,
-      entity_reference: oldData.currency_code,
-      action: is_active ? "activate" : "deactivate",
-      old_values,
-      new_values,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true, data: { id } };
-  } catch (error) {
-    console.error("toggleCurrencyStatus exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function toggleCurrencyStatus(input: ToggleFinanceBasicsStatusInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const parsed=toggleFinanceBasicsStatusSchema.strict().safeParse(input);
+  if(!parsed.success)return workspaceValidationFailure(parsed.error.issues);
+  const {id,...data}=parsed.data;
+  return saveCurrencyRecord("active",id,data,contract);
 }
 
 export async function getCurrencies(
@@ -273,7 +96,7 @@ export async function getCurrencies(
 ): Promise<ActionResult<Currency[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.view")) {
+    if (!hasPermission(ctx, "master_data.finance_basics.view")&&!hasGlobalPermission(ctx,"master_data.finance_basics.manage")&&!hasGlobalPermission(ctx,"master_data.lookups.lock")) {
       return viewPermissionError();
     }
 
@@ -316,121 +139,36 @@ export async function getCurrencies(
 }
 
 export async function getCurrencyById(id: number): Promise<ActionResult<Currency>> {
+  if(!Number.isSafeInteger(id)||id<1)return {success:false,error:"Currency not found"};
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.view")) {
+    if (!hasPermission(ctx, "master_data.finance_basics.view")&&!hasGlobalPermission(ctx,"master_data.finance_basics.manage")&&!hasGlobalPermission(ctx,"master_data.lookups.lock")) {
       return viewPermissionError();
     }
 
     const supabase = await createClient();
-    const { data, error } = await supabase.from("currencies").select("*").eq("id", id).single();
+    const { data, error } = await supabase.from("currencies").select("*").eq("id", id).maybeSingle();
     if (error) {
-      console.error("getCurrencyById error", error);
-      return { success: false, error: error.message };
+      return { success: false, error: "Currency could not be loaded. Try again." };
     }
     if (!data) {
       return { success: false, error: "Currency not found" };
     }
 
     return { success: true, data };
-  } catch (error) {
-    console.error("getCurrencyById exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  } catch {
+    return { success: false, error: "Currency could not be loaded. Try again." };
   }
 }
 
-export async function deleteCurrency(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!isSystemAdmin(ctx.roleCodes)) {
-      return { success: false, error: "Only system administrators can delete finance basics records. Use deactivate instead." };
-    }
-
-    const supabase = await createClient();
-    const { data: oldData } = await supabase.from("currencies").select("*").eq("id", id).single();
-    if (!oldData) {
-      return { success: false, error: "Currency not found" };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "currencies",
-      entity_id: id,
-      entity_reference: oldData.currency_code,
-      action: "delete",
-      old_values: oldData,
-    });
-
-    const { error } = await supabase.from("currencies").delete().eq("id", id);
-    if (error) {
-      console.error("deleteCurrency error", error);
-      return {
-        success: false,
-        error: error.message.includes("foreign key")
-          ? "Cannot delete currency with related records. Deactivate instead."
-          : error.message,
-      };
-    }
-
-    revalidateFinanceBasicsPages();
-    return { success: true };
-  } catch (error) {
-    console.error("deleteCurrency exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+/** Compatibility entry point: retire in place, never erase currency history or references. */
+export async function deleteCurrency(id: number, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  return saveCurrencyRecord("retire",id,{is_active:false},contract);
 }
 
-export async function toggleCurrencyLock(
-  id: number,
-  is_locked: boolean,
-): Promise<ActionResult<void>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!isSystemAdmin(ctx.roleCodes) && !hasPermission(ctx, "master_data.lookups.lock")) {
-      return { success: false, error: "Lock permission required" };
-    }
-    if (!ctx.profile?.id) {
-      return { success: false, error: "User profile not found" };
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("currencies")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (fetchError || !existing) {
-      return { success: false, error: "Currency not found" };
-    }
-
-    const { error: updateError } = await supabase
-      .from("currencies")
-      .update({ is_locked, updated_by: ctx.profile.id })
-      .eq("id", id);
-
-    if (updateError) {
-      return { success: false, error: updateError.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "currencies",
-      entity_id: id,
-      entity_reference: existing.currency_code,
-      action: is_locked ? "currency.lock" : "currency.unlock",
-      old_values: { is_locked: existing.is_locked },
-      new_values: { is_locked },
-      owner_company_id: ctx.profile.owner_company_id,
-      branch_id: ctx.profile.branch_id,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true };
-  } catch (error) {
-    console.error("toggleCurrencyLock exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function toggleCurrencyLock(id: number, is_locked: boolean, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  if(typeof is_locked!=="boolean")return {success:false,error:"Choose a valid currency lock state."};
+  return saveCurrencyRecord("lock",id,{is_locked},contract);
 }
 
 export async function getActiveCurrenciesForSelect(): Promise<ActionResult<FinanceBasicsSelectOption[]>> {
@@ -468,174 +206,20 @@ export async function getActiveCurrenciesForSelect(): Promise<ActionResult<Finan
 // PAYMENT TERMS
 // ============================================================================
 
-export async function createPaymentTerm(
-  input: CreatePaymentTermInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = createPaymentTermSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const dataToInsert = {
-      ...validated,
-      term_name_ar: validated.term_name_ar || null,
-      calculation_notes: validated.calculation_notes || null,
-      description_en: validated.description_en || null,
-      description_ar: validated.description_ar || null,
-      notes: validated.notes || null,
-      created_by: ctx.profile?.id ?? null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { data, error } = await supabase
-      .from("payment_terms")
-      .insert(dataToInsert)
-      .select("id, term_code")
-      .single();
-
-    if (error) {
-      console.error("createPaymentTerm error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "payment_terms",
-      entity_id: data.id,
-      entity_reference: data.term_code,
-      action: "create",
-      new_values: validated,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true, data: { id: data.id } };
-  } catch (error) {
-    console.error("createPaymentTerm exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function createPaymentTerm(input: CreatePaymentTermInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+ return saveFinanceReferenceRecord("payment_terms","save",null,input,contract);
 }
 
-export async function updatePaymentTerm(
-  input: UpdatePaymentTermInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = updatePaymentTermSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const { id, ...updates } = validated;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const { data: oldData } = await supabase.from("payment_terms").select("*").eq("id", id).single();
-    if (!oldData) {
-      return { success: false, error: "Payment term not found" };
-    }
-
-    if (oldData.is_locked && !isSystemAdmin(ctx.roleCodes)) {
-      return lockedRecordError();
-    }
-
-    const dataToUpdate = {
-      ...updates,
-      term_name_ar: nullifyEmpty(updates.term_name_ar),
-      calculation_notes: nullifyEmpty(updates.calculation_notes),
-      description_en: nullifyEmpty(updates.description_en),
-      description_ar: nullifyEmpty(updates.description_ar),
-      notes: nullifyEmpty(updates.notes),
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase.from("payment_terms").update(dataToUpdate).eq("id", id);
-    if (error) {
-      console.error("updatePaymentTerm error", error);
-      return { success: false, error: error.message };
-    }
-
-    const { old_values, new_values } = createAuditDiff(oldData, { ...oldData, ...dataToUpdate });
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "payment_terms",
-      entity_id: id,
-      entity_reference: oldData.term_code,
-      action: "update",
-      old_values,
-      new_values,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true, data: { id } };
-  } catch (error) {
-    console.error("updatePaymentTerm exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function updatePaymentTerm(input: UpdatePaymentTermInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+ const split=splitReferenceInput(input);if(!split)return {success:false,error:"A valid finance record ID and object payload are required."};
+ const {id,data}=split;
+ return saveFinanceReferenceRecord("payment_terms","save",id,data,contract);
 }
 
-export async function togglePaymentTermStatus(
-  input: ToggleFinanceBasicsStatusInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = toggleFinanceBasicsStatusSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const { id, is_active, deactivation_reason } = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const { data: oldData } = await supabase.from("payment_terms").select("*").eq("id", id).single();
-    if (!oldData) {
-      return { success: false, error: "Payment term not found" };
-    }
-
-    const dataToUpdate = {
-      is_active,
-      deactivated_at: is_active ? null : new Date().toISOString(),
-      deactivated_by: is_active ? null : ctx.profile?.id ?? null,
-      deactivation_reason: is_active ? null : deactivation_reason || null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase.from("payment_terms").update(dataToUpdate).eq("id", id);
-    if (error) {
-      console.error("togglePaymentTermStatus error", error);
-      return { success: false, error: error.message };
-    }
-
-    const { old_values, new_values } = createAuditDiff(oldData, { ...oldData, ...dataToUpdate });
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "payment_terms",
-      entity_id: id,
-      entity_reference: oldData.term_code,
-      action: is_active ? "activate" : "deactivate",
-      old_values,
-      new_values,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true, data: { id } };
-  } catch (error) {
-    console.error("togglePaymentTermStatus exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function togglePaymentTermStatus(input: ToggleFinanceBasicsStatusInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+ const split=splitReferenceInput(input);if(!split)return {success:false,error:"A valid finance record ID and object payload are required."};
+ const {id,data}=split;
+ return saveFinanceReferenceRecord("payment_terms","active",id,data,contract);
 }
 
 export async function getPaymentTerms(
@@ -643,7 +227,7 @@ export async function getPaymentTerms(
 ): Promise<ActionResult<PaymentTerm[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.view")) {
+    if (!canReadFinanceReferences(ctx)) {
       return viewPermissionError();
     }
 
@@ -682,122 +266,38 @@ export async function getPaymentTerms(
   }
 }
 
-export async function getPaymentTermById(id: number): Promise<ActionResult<PaymentTerm>> {
+export async function getPaymentTermById(id: number): Promise<ActionResult<PaymentTerm | null>> {
+  if(!Number.isSafeInteger(id)||id<1)return {success:false,error:"Invalid finance record ID"};
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.view")) {
+    if (!canReadFinanceReferences(ctx)) {
       return viewPermissionError();
     }
 
     const supabase = await createClient();
-    const { data, error } = await supabase.from("payment_terms").select("*").eq("id", id).single();
+    const { data, error } = await supabase.from("payment_terms").select("*").eq("id", id).maybeSingle();
     if (error) {
       console.error("getPaymentTermById error", error);
-      return { success: false, error: error.message };
+      return { success: false, error: "The finance record could not be loaded. Try again." };
     }
     if (!data) {
-      return { success: false, error: "Payment term not found" };
+      return { success: true, data: null };
     }
 
     return { success: true, data };
   } catch (error) {
     console.error("getPaymentTermById exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: "The finance record could not be loaded. Try again." };
   }
 }
 
-export async function deletePaymentTerm(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!isSystemAdmin(ctx.roleCodes)) {
-      return { success: false, error: "Only system administrators can delete finance basics records. Use deactivate instead." };
-    }
-
-    const supabase = await createClient();
-    const { data: oldData } = await supabase.from("payment_terms").select("*").eq("id", id).single();
-    if (!oldData) {
-      return { success: false, error: "Payment term not found" };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "payment_terms",
-      entity_id: id,
-      entity_reference: oldData.term_code,
-      action: "delete",
-      old_values: oldData,
-    });
-
-    const { error } = await supabase.from("payment_terms").delete().eq("id", id);
-    if (error) {
-      console.error("deletePaymentTerm error", error);
-      return {
-        success: false,
-        error: error.message.includes("foreign key")
-          ? "Cannot delete payment term with related records. Deactivate instead."
-          : error.message,
-      };
-    }
-
-    revalidateFinanceBasicsPages();
-    return { success: true };
-  } catch (error) {
-    console.error("deletePaymentTerm exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+/** Historical export name; this now RETIRES in place and never hard-deletes. */
+export async function deletePaymentTerm(id: number, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+ return saveFinanceReferenceRecord("payment_terms","retire",id,{is_active:false},contract);
 }
 
-export async function togglePaymentTermLock(
-  id: number,
-  is_locked: boolean,
-): Promise<ActionResult<void>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!isSystemAdmin(ctx.roleCodes) && !hasPermission(ctx, "master_data.lookups.lock")) {
-      return { success: false, error: "Lock permission required" };
-    }
-    if (!ctx.profile?.id) {
-      return { success: false, error: "User profile not found" };
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("payment_terms")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (fetchError || !existing) {
-      return { success: false, error: "Payment term not found" };
-    }
-
-    const { error: updateError } = await supabase
-      .from("payment_terms")
-      .update({ is_locked, updated_by: ctx.profile.id })
-      .eq("id", id);
-
-    if (updateError) {
-      return { success: false, error: updateError.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "payment_terms",
-      entity_id: id,
-      entity_reference: existing.term_code,
-      action: is_locked ? "payment_term.lock" : "payment_term.unlock",
-      old_values: { is_locked: existing.is_locked },
-      new_values: { is_locked },
-      owner_company_id: ctx.profile.owner_company_id,
-      branch_id: ctx.profile.branch_id,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true };
-  } catch (error) {
-    console.error("togglePaymentTermLock exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function togglePaymentTermLock(id: number, is_locked: boolean, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+ return saveFinanceReferenceRecord("payment_terms","lock",id,{is_locked},contract);
 }
 
 export async function getActivePaymentTermsForSelect(): Promise<ActionResult<FinanceBasicsSelectOption[]>> {
@@ -835,174 +335,20 @@ export async function getActivePaymentTermsForSelect(): Promise<ActionResult<Fin
 // TAX TYPES
 // ============================================================================
 
-export async function createTaxType(
-  input: CreateTaxTypeInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = createTaxTypeSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const dataToInsert = {
-      ...validated,
-      tax_name_ar: validated.tax_name_ar || null,
-      effective_to: validated.effective_to || null,
-      description_en: validated.description_en || null,
-      description_ar: validated.description_ar || null,
-      notes: validated.notes || null,
-      created_by: ctx.profile?.id ?? null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { data, error } = await supabase
-      .from("tax_types")
-      .insert(dataToInsert)
-      .select("id, tax_code")
-      .single();
-
-    if (error) {
-      console.error("createTaxType error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "tax_types",
-      entity_id: data.id,
-      entity_reference: data.tax_code,
-      action: "create",
-      new_values: validated,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true, data: { id: data.id } };
-  } catch (error) {
-    console.error("createTaxType exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function createTaxType(input: CreateTaxTypeInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+ return saveFinanceReferenceRecord("tax_types","save",null,input,contract);
 }
 
-export async function updateTaxType(
-  input: UpdateTaxTypeInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = updateTaxTypeSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const { id, ...updates } = validated;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const { data: oldData } = await supabase.from("tax_types").select("*").eq("id", id).single();
-    if (!oldData) {
-      return { success: false, error: "Tax type not found" };
-    }
-
-    if (oldData.is_locked && !isSystemAdmin(ctx.roleCodes)) {
-      return lockedRecordError();
-    }
-
-    const dataToUpdate = {
-      ...updates,
-      tax_name_ar: nullifyEmpty(updates.tax_name_ar),
-      effective_to: nullifyEmpty(updates.effective_to),
-      description_en: nullifyEmpty(updates.description_en),
-      description_ar: nullifyEmpty(updates.description_ar),
-      notes: nullifyEmpty(updates.notes),
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase.from("tax_types").update(dataToUpdate).eq("id", id);
-    if (error) {
-      console.error("updateTaxType error", error);
-      return { success: false, error: error.message };
-    }
-
-    const { old_values, new_values } = createAuditDiff(oldData, { ...oldData, ...dataToUpdate });
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "tax_types",
-      entity_id: id,
-      entity_reference: oldData.tax_code,
-      action: "update",
-      old_values,
-      new_values,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true, data: { id } };
-  } catch (error) {
-    console.error("updateTaxType exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function updateTaxType(input: UpdateTaxTypeInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+ const split=splitReferenceInput(input);if(!split)return {success:false,error:"A valid finance record ID and object payload are required."};
+ const {id,data}=split;
+ return saveFinanceReferenceRecord("tax_types","save",id,data,contract);
 }
 
-export async function toggleTaxTypeStatus(
-  input: ToggleFinanceBasicsStatusInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = toggleFinanceBasicsStatusSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const { id, is_active, deactivation_reason } = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const { data: oldData } = await supabase.from("tax_types").select("*").eq("id", id).single();
-    if (!oldData) {
-      return { success: false, error: "Tax type not found" };
-    }
-
-    const dataToUpdate = {
-      is_active,
-      deactivated_at: is_active ? null : new Date().toISOString(),
-      deactivated_by: is_active ? null : ctx.profile?.id ?? null,
-      deactivation_reason: is_active ? null : deactivation_reason || null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase.from("tax_types").update(dataToUpdate).eq("id", id);
-    if (error) {
-      console.error("toggleTaxTypeStatus error", error);
-      return { success: false, error: error.message };
-    }
-
-    const { old_values, new_values } = createAuditDiff(oldData, { ...oldData, ...dataToUpdate });
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "tax_types",
-      entity_id: id,
-      entity_reference: oldData.tax_code,
-      action: is_active ? "activate" : "deactivate",
-      old_values,
-      new_values,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true, data: { id } };
-  } catch (error) {
-    console.error("toggleTaxTypeStatus exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function toggleTaxTypeStatus(input: ToggleFinanceBasicsStatusInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+ const split=splitReferenceInput(input);if(!split)return {success:false,error:"A valid finance record ID and object payload are required."};
+ const {id,data}=split;
+ return saveFinanceReferenceRecord("tax_types","active",id,data,contract);
 }
 
 export async function getTaxTypes(
@@ -1010,7 +356,7 @@ export async function getTaxTypes(
 ): Promise<ActionResult<TaxType[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.view")) {
+    if (!canReadFinanceReferences(ctx)) {
       return viewPermissionError();
     }
 
@@ -1058,122 +404,38 @@ export async function getTaxTypes(
   }
 }
 
-export async function getTaxTypeById(id: number): Promise<ActionResult<TaxType>> {
+export async function getTaxTypeById(id: number): Promise<ActionResult<TaxType | null>> {
+  if(!Number.isSafeInteger(id)||id<1)return {success:false,error:"Invalid finance record ID"};
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.view")) {
+    if (!canReadFinanceReferences(ctx)) {
       return viewPermissionError();
     }
 
     const supabase = await createClient();
-    const { data, error } = await supabase.from("tax_types").select("*").eq("id", id).single();
+    const { data, error } = await supabase.from("tax_types").select("*").eq("id", id).maybeSingle();
     if (error) {
       console.error("getTaxTypeById error", error);
-      return { success: false, error: error.message };
+      return { success: false, error: "The finance record could not be loaded. Try again." };
     }
     if (!data) {
-      return { success: false, error: "Tax type not found" };
+      return { success: true, data: null };
     }
 
     return { success: true, data };
   } catch (error) {
     console.error("getTaxTypeById exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: "The finance record could not be loaded. Try again." };
   }
 }
 
-export async function deleteTaxType(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!isSystemAdmin(ctx.roleCodes)) {
-      return { success: false, error: "Only system administrators can delete finance basics records. Use deactivate instead." };
-    }
-
-    const supabase = await createClient();
-    const { data: oldData } = await supabase.from("tax_types").select("*").eq("id", id).single();
-    if (!oldData) {
-      return { success: false, error: "Tax type not found" };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "tax_types",
-      entity_id: id,
-      entity_reference: oldData.tax_code,
-      action: "delete",
-      old_values: oldData,
-    });
-
-    const { error } = await supabase.from("tax_types").delete().eq("id", id);
-    if (error) {
-      console.error("deleteTaxType error", error);
-      return {
-        success: false,
-        error: error.message.includes("foreign key")
-          ? "Cannot delete tax type with related records. Deactivate instead."
-          : error.message,
-      };
-    }
-
-    revalidateFinanceBasicsPages();
-    return { success: true };
-  } catch (error) {
-    console.error("deleteTaxType exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+/** Historical export name; this now RETIRES in place and never hard-deletes. */
+export async function deleteTaxType(id: number, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+ return saveFinanceReferenceRecord("tax_types","retire",id,{is_active:false},contract);
 }
 
-export async function toggleTaxTypeLock(
-  id: number,
-  is_locked: boolean,
-): Promise<ActionResult<void>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!isSystemAdmin(ctx.roleCodes) && !hasPermission(ctx, "master_data.lookups.lock")) {
-      return { success: false, error: "Lock permission required" };
-    }
-    if (!ctx.profile?.id) {
-      return { success: false, error: "User profile not found" };
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("tax_types")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (fetchError || !existing) {
-      return { success: false, error: "Tax type not found" };
-    }
-
-    const { error: updateError } = await supabase
-      .from("tax_types")
-      .update({ is_locked, updated_by: ctx.profile.id })
-      .eq("id", id);
-
-    if (updateError) {
-      return { success: false, error: updateError.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "tax_types",
-      entity_id: id,
-      entity_reference: existing.tax_code,
-      action: is_locked ? "tax_type.lock" : "tax_type.unlock",
-      old_values: { is_locked: existing.is_locked },
-      new_values: { is_locked },
-      owner_company_id: ctx.profile.owner_company_id,
-      branch_id: ctx.profile.branch_id,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true };
-  } catch (error) {
-    console.error("toggleTaxTypeLock exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function toggleTaxTypeLock(id: number, is_locked: boolean, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+ return saveFinanceReferenceRecord("tax_types","lock",id,{is_locked},contract);
 }
 
 export async function getActiveTaxTypesForSelect(): Promise<ActionResult<FinanceBasicsSelectOption[]>> {
@@ -1211,185 +473,20 @@ export async function getActiveTaxTypesForSelect(): Promise<ActionResult<Finance
 // BANKS
 // ============================================================================
 
-export async function createBank(
-  input: CreateBankInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = createBankSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const dataToInsert = {
-      ...validated,
-      bank_name_ar: validated.bank_name_ar || null,
-      short_name: validated.short_name || null,
-      country_id: validated.country_id ?? null,
-      bank_type_code: validated.bank_type_code || null,
-      swift_code: validated.swift_code || null,
-      website_url: validated.website_url || null,
-      contact_phone: validated.contact_phone || null,
-      contact_email: validated.contact_email || null,
-      description_en: validated.description_en || null,
-      description_ar: validated.description_ar || null,
-      notes: validated.notes || null,
-      created_by: ctx.profile?.id ?? null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { data, error } = await supabase
-      .from("banks")
-      .insert(dataToInsert)
-      .select("id, bank_code")
-      .single();
-
-    if (error) {
-      console.error("createBank error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "banks",
-      entity_id: data.id,
-      entity_reference: data.bank_code,
-      action: "create",
-      new_values: validated,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true, data: { id: data.id } };
-  } catch (error) {
-    console.error("createBank exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function createBank(input: CreateBankInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+ return saveFinanceReferenceRecord("banks","save",null,input,contract);
 }
 
-export async function updateBank(
-  input: UpdateBankInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = updateBankSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const { id, ...updates } = validated;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const { data: oldData } = await supabase.from("banks").select("*").eq("id", id).single();
-    if (!oldData) {
-      return { success: false, error: "Bank not found" };
-    }
-
-    if (oldData.is_locked && !isSystemAdmin(ctx.roleCodes)) {
-      return lockedRecordError();
-    }
-
-    const dataToUpdate = {
-      ...updates,
-      bank_name_ar: nullifyEmpty(updates.bank_name_ar),
-      short_name: nullifyEmpty(updates.short_name),
-      bank_type_code: nullifyEmpty(updates.bank_type_code),
-      swift_code: nullifyEmpty(updates.swift_code),
-      website_url: nullifyEmpty(updates.website_url),
-      contact_phone: nullifyEmpty(updates.contact_phone),
-      contact_email: nullifyEmpty(updates.contact_email),
-      description_en: nullifyEmpty(updates.description_en),
-      description_ar: nullifyEmpty(updates.description_ar),
-      notes: nullifyEmpty(updates.notes),
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase.from("banks").update(dataToUpdate).eq("id", id);
-    if (error) {
-      console.error("updateBank error", error);
-      return { success: false, error: error.message };
-    }
-
-    const { old_values, new_values } = createAuditDiff(oldData, { ...oldData, ...dataToUpdate });
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "banks",
-      entity_id: id,
-      entity_reference: oldData.bank_code,
-      action: "update",
-      old_values,
-      new_values,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true, data: { id } };
-  } catch (error) {
-    console.error("updateBank exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function updateBank(input: UpdateBankInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+ const split=splitReferenceInput(input);if(!split)return {success:false,error:"A valid finance record ID and object payload are required."};
+ const {id,data}=split;
+ return saveFinanceReferenceRecord("banks","save",id,data,contract);
 }
 
-export async function toggleBankStatus(
-  input: ToggleFinanceBasicsStatusInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = toggleFinanceBasicsStatusSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const { id, is_active, deactivation_reason } = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const { data: oldData } = await supabase.from("banks").select("*").eq("id", id).single();
-    if (!oldData) {
-      return { success: false, error: "Bank not found" };
-    }
-
-    const dataToUpdate = {
-      is_active,
-      deactivated_at: is_active ? null : new Date().toISOString(),
-      deactivated_by: is_active ? null : ctx.profile?.id ?? null,
-      deactivation_reason: is_active ? null : deactivation_reason || null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase.from("banks").update(dataToUpdate).eq("id", id);
-    if (error) {
-      console.error("toggleBankStatus error", error);
-      return { success: false, error: error.message };
-    }
-
-    const { old_values, new_values } = createAuditDiff(oldData, { ...oldData, ...dataToUpdate });
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "banks",
-      entity_id: id,
-      entity_reference: oldData.bank_code,
-      action: is_active ? "activate" : "deactivate",
-      old_values,
-      new_values,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true, data: { id } };
-  } catch (error) {
-    console.error("toggleBankStatus exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function toggleBankStatus(input: ToggleFinanceBasicsStatusInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+ const split=splitReferenceInput(input);if(!split)return {success:false,error:"A valid finance record ID and object payload are required."};
+ const {id,data}=split;
+ return saveFinanceReferenceRecord("banks","active",id,data,contract);
 }
 
 export async function getBanks(
@@ -1397,7 +494,7 @@ export async function getBanks(
 ): Promise<ActionResult<BankWithCountry[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.view")) {
+    if (!canReadFinanceReferences(ctx)) {
       return viewPermissionError();
     }
 
@@ -1442,10 +539,11 @@ export async function getBanks(
   }
 }
 
-export async function getBankById(id: number): Promise<ActionResult<BankWithCountry>> {
+export async function getBankById(id: number): Promise<ActionResult<BankWithCountry | null>> {
+  if(!Number.isSafeInteger(id)||id<1)return {success:false,error:"Invalid finance record ID"};
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.view")) {
+    if (!canReadFinanceReferences(ctx)) {
       return viewPermissionError();
     }
 
@@ -1454,115 +552,30 @@ export async function getBankById(id: number): Promise<ActionResult<BankWithCoun
       .from("banks")
       .select("*, country:countries(country_code, name_en, name_ar)")
       .eq("id", id)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error("getBankById error", error);
-      return { success: false, error: error.message };
+      return { success: false, error: "The finance record could not be loaded. Try again." };
     }
     if (!data) {
-      return { success: false, error: "Bank not found" };
+      return { success: true, data: null };
     }
 
     return { success: true, data };
   } catch (error) {
     console.error("getBankById exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: "The finance record could not be loaded. Try again." };
   }
 }
 
-export async function deleteBank(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!isSystemAdmin(ctx.roleCodes)) {
-      return { success: false, error: "Only system administrators can delete finance basics records. Use deactivate instead." };
-    }
-
-    const supabase = await createClient();
-    const { data: oldData } = await supabase.from("banks").select("*").eq("id", id).single();
-    if (!oldData) {
-      return { success: false, error: "Bank not found" };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "banks",
-      entity_id: id,
-      entity_reference: oldData.bank_code,
-      action: "delete",
-      old_values: oldData,
-    });
-
-    const { error } = await supabase.from("banks").delete().eq("id", id);
-    if (error) {
-      console.error("deleteBank error", error);
-      return {
-        success: false,
-        error: error.message.includes("foreign key")
-          ? "Cannot delete bank with related records. Deactivate instead."
-          : error.message,
-      };
-    }
-
-    revalidateFinanceBasicsPages();
-    return { success: true };
-  } catch (error) {
-    console.error("deleteBank exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+/** Historical export name; this now RETIRES in place and never hard-deletes. */
+export async function deleteBank(id: number, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+ return saveFinanceReferenceRecord("banks","retire",id,{is_active:false},contract);
 }
 
-export async function toggleBankLock(
-  id: number,
-  is_locked: boolean,
-): Promise<ActionResult<void>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!isSystemAdmin(ctx.roleCodes) && !hasPermission(ctx, "master_data.lookups.lock")) {
-      return { success: false, error: "Lock permission required" };
-    }
-    if (!ctx.profile?.id) {
-      return { success: false, error: "User profile not found" };
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("banks")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (fetchError || !existing) {
-      return { success: false, error: "Bank not found" };
-    }
-
-    const { error: updateError } = await supabase
-      .from("banks")
-      .update({ is_locked, updated_by: ctx.profile.id })
-      .eq("id", id);
-
-    if (updateError) {
-      return { success: false, error: updateError.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "banks",
-      entity_id: id,
-      entity_reference: existing.bank_code,
-      action: is_locked ? "bank.lock" : "bank.unlock",
-      old_values: { is_locked: existing.is_locked },
-      new_values: { is_locked },
-      owner_company_id: ctx.profile.owner_company_id,
-      branch_id: ctx.profile.branch_id,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true };
-  } catch (error) {
-    console.error("toggleBankLock exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function toggleBankLock(id: number, is_locked: boolean, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+ return saveFinanceReferenceRecord("banks","lock",id,{is_locked},contract);
 }
 
 export async function getActiveBanksForSelect(
@@ -1612,189 +625,26 @@ export async function getActiveBanksForSelect(
 // ============================================================================
 
 const COST_CENTER_RELATIONS_SELECT =
-  "*, parent:cost_centers!parent_cost_center_id(cost_center_code, cost_center_name_en, cost_center_name_ar), owner_company:owner_companies(company_code, legal_name_en), branch:branches(branch_code, branch_name_en, branch_name_ar)";
+  "*, parent:cost_centers!parent_cost_center_id(cost_center_code, cost_center_name_en, cost_center_name_ar), owner_company:owner_companies(company_code, legal_name_en), branch:branches!cost_centers_branch_id_fkey(branch_code, branch_name_en, branch_name_ar)";
 
-export async function createCostCenter(
-  input: CreateCostCenterInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = createCostCenterSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const dataToInsert = {
-      ...validated,
-      cost_center_name_ar: validated.cost_center_name_ar || null,
-      cost_center_type_code: validated.cost_center_type_code || null,
-      parent_cost_center_id: validated.parent_cost_center_id ?? null,
-      owner_company_id: validated.owner_company_id ?? null,
-      branch_id: validated.branch_id ?? null,
-      description_en: validated.description_en || null,
-      description_ar: validated.description_ar || null,
-      notes: validated.notes || null,
-      created_by: ctx.profile?.id ?? null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { data, error } = await supabase
-      .from("cost_centers")
-      .insert(dataToInsert)
-      .select("id, cost_center_code")
-      .single();
-
-    if (error) {
-      console.error("createCostCenter error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "cost_centers",
-      entity_id: data.id,
-      entity_reference: data.cost_center_code,
-      action: "create",
-      new_values: validated,
-      owner_company_id: validated.owner_company_id ?? undefined,
-      branch_id: validated.branch_id ?? undefined,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true, data: { id: data.id } };
-  } catch (error) {
-    console.error("createCostCenter exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function createCostCenter(input: CreateCostCenterInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const parsed=createCostCenterSchema.safeParse(input);
+  if(!parsed.success)return workspaceValidationFailure(parsed.error.issues);
+  return saveFinanceCenterRecord("cost_centers","save",null,parsed.data,contract);
 }
 
-export async function updateCostCenter(
-  input: UpdateCostCenterInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = updateCostCenterSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const { id, ...updates } = validated;
-    if (updates.parent_cost_center_id === id) {
-      return { success: false, error: "Cost center cannot be its own parent" };
-    }
-
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const { data: oldData } = await supabase.from("cost_centers").select("*").eq("id", id).single();
-    if (!oldData) {
-      return { success: false, error: "Cost center not found" };
-    }
-
-    if (oldData.is_locked && !isSystemAdmin(ctx.roleCodes)) {
-      return lockedRecordError();
-    }
-
-    const dataToUpdate = {
-      ...updates,
-      cost_center_name_ar: nullifyEmpty(updates.cost_center_name_ar),
-      cost_center_type_code: nullifyEmpty(updates.cost_center_type_code),
-      description_en: nullifyEmpty(updates.description_en),
-      description_ar: nullifyEmpty(updates.description_ar),
-      notes: nullifyEmpty(updates.notes),
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase.from("cost_centers").update(dataToUpdate).eq("id", id);
-    if (error) {
-      console.error("updateCostCenter error", error);
-      return { success: false, error: error.message };
-    }
-
-    const { old_values, new_values } = createAuditDiff(oldData, { ...oldData, ...dataToUpdate });
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "cost_centers",
-      entity_id: id,
-      entity_reference: oldData.cost_center_code,
-      action: "update",
-      old_values,
-      new_values,
-      owner_company_id: oldData.owner_company_id ?? undefined,
-      branch_id: oldData.branch_id ?? undefined,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true, data: { id } };
-  } catch (error) {
-    console.error("updateCostCenter exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function updateCostCenter(input: UpdateCostCenterInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const parsed=updateCostCenterSchema.safeParse(input);
+  if(!parsed.success)return workspaceValidationFailure(parsed.error.issues);
+  const {id,...data}=parsed.data;
+  return saveFinanceCenterRecord("cost_centers","save",id,data,contract);
 }
 
-export async function toggleCostCenterStatus(
-  input: ToggleFinanceBasicsStatusInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = toggleFinanceBasicsStatusSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const { id, is_active, deactivation_reason } = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const { data: oldData } = await supabase.from("cost_centers").select("*").eq("id", id).single();
-    if (!oldData) {
-      return { success: false, error: "Cost center not found" };
-    }
-
-    const dataToUpdate = {
-      is_active,
-      deactivated_at: is_active ? null : new Date().toISOString(),
-      deactivated_by: is_active ? null : ctx.profile?.id ?? null,
-      deactivation_reason: is_active ? null : deactivation_reason || null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase.from("cost_centers").update(dataToUpdate).eq("id", id);
-    if (error) {
-      console.error("toggleCostCenterStatus error", error);
-      return { success: false, error: error.message };
-    }
-
-    const { old_values, new_values } = createAuditDiff(oldData, { ...oldData, ...dataToUpdate });
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "cost_centers",
-      entity_id: id,
-      entity_reference: oldData.cost_center_code,
-      action: is_active ? "activate" : "deactivate",
-      old_values,
-      new_values,
-      owner_company_id: oldData.owner_company_id ?? undefined,
-      branch_id: oldData.branch_id ?? undefined,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true, data: { id } };
-  } catch (error) {
-    console.error("toggleCostCenterStatus exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function toggleCostCenterStatus(input: ToggleFinanceBasicsStatusInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const parsed=toggleFinanceBasicsStatusSchema.strict().safeParse(input);
+  if(!parsed.success)return workspaceValidationFailure(parsed.error.issues);
+  const {id,...data}=parsed.data;
+  return saveFinanceCenterRecord("cost_centers","active",id,data,contract);
 }
 
 export async function getCostCenters(
@@ -1802,54 +652,57 @@ export async function getCostCenters(
 ): Promise<ActionResult<CostCenterWithRelations[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.view")) {
+    if (!hasPermission(ctx, "master_data.finance_basics.view")&&!hasGlobalPermission(ctx,"master_data.finance_basics.manage")&&!hasGlobalPermission(ctx,"master_data.lookups.lock")) {
       return viewPermissionError();
     }
 
     const supabase = await createClient();
-    let query = supabase
-      .from("cost_centers")
-      .select(COST_CENTER_RELATIONS_SELECT)
-      .order("sort_order", { ascending: true })
-      .order("cost_center_name_en", { ascending: true });
+    const data = await readAllPages<CostCenterWithRelations>(async (from, to) => {
+      let query = supabase
+        .from("cost_centers")
+        .select(COST_CENTER_RELATIONS_SELECT, { count: "exact" })
+        .retry(false)
+        .order("sort_order", { ascending: true })
+        .order("cost_center_name_en", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to);
 
-    if (filters?.search) {
-      query = query.or(
-        `cost_center_code.ilike.%${filters.search}%,cost_center_name_en.ilike.%${filters.search}%,cost_center_name_ar.ilike.%${filters.search}%`,
-      );
-    }
-    if (filters?.owner_company_id) {
-      query = query.eq("owner_company_id", filters.owner_company_id);
-    }
-    if (filters?.branch_id) {
-      query = query.eq("branch_id", filters.branch_id);
-    }
-    if (filters?.parent_cost_center_id) {
-      query = query.eq("parent_cost_center_id", filters.parent_cost_center_id);
-    }
-    if (filters?.cost_center_type_code) {
-      query = query.eq("cost_center_type_code", filters.cost_center_type_code);
-    }
-    if (filters?.is_active !== undefined) {
-      query = query.eq("is_active", filters.is_active);
-    }
-    if (filters?.is_system !== undefined) {
-      query = query.eq("is_system", filters.is_system);
-    }
-    if (filters?.is_locked !== undefined) {
-      query = query.eq("is_locked", filters.is_locked);
-    }
+      if (filters?.search) {
+        const value = literalContains(filters.search);
+        query = query.or(
+          `cost_center_code.ilike.${value},cost_center_name_en.ilike.${value},cost_center_name_ar.ilike.${value}`,
+        );
+      }
+      if (filters?.owner_company_id) {
+        query = query.eq("owner_company_id", filters.owner_company_id);
+      }
+      if (filters?.branch_id) {
+        query = query.eq("branch_id", filters.branch_id);
+      }
+      if (filters?.parent_cost_center_id) {
+        query = query.eq("parent_cost_center_id", filters.parent_cost_center_id);
+      }
+      if (filters?.cost_center_type_code) {
+        query = query.eq("cost_center_type_code", filters.cost_center_type_code);
+      }
+      if (filters?.is_active !== undefined) {
+        query = query.eq("is_active", filters.is_active);
+      }
+      if (filters?.is_system !== undefined) {
+        query = query.eq("is_system", filters.is_system);
+      }
+      if (filters?.is_locked !== undefined) {
+        query = query.eq("is_locked", filters.is_locked);
+      }
 
-    const { data, error } = await query;
-    if (error) {
-      console.error("getCostCenters error", error);
-      return { success: false, error: error.message };
-    }
+      const { data, error, count } = await query;
+      return { data: data as CostCenterWithRelations[] | null, error, count };
+    }, { identity: row => row.id });
 
-    return { success: true, data: data || [] };
+    return { success: true, data: await attachFinanceReferenceLabels('cost_centers',data) };
   } catch (error) {
     console.error("getCostCenters exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: "Finance data could not be loaded. Retry without discarding your draft." };
   }
 }
 
@@ -1858,7 +711,7 @@ export async function getCostCenterById(
 ): Promise<ActionResult<CostCenterWithRelations>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.view")) {
+    if (!hasPermission(ctx, "master_data.finance_basics.view")&&!hasGlobalPermission(ctx,"master_data.finance_basics.manage")&&!hasGlobalPermission(ctx,"master_data.lookups.lock")) {
       return viewPermissionError();
     }
 
@@ -1867,117 +720,31 @@ export async function getCostCenterById(
       .from("cost_centers")
       .select(COST_CENTER_RELATIONS_SELECT)
       .eq("id", id)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error("getCostCenterById error", error);
-      return { success: false, error: error.message };
+      return { success: false, error: "Finance data could not be loaded. Retry without discarding your draft." };
     }
     if (!data) {
       return { success: false, error: "Cost center not found" };
     }
 
-    return { success: true, data };
+    return { success: true, data: (await attachFinanceReferenceLabels('cost_centers',[data]))[0] };
   } catch (error) {
     console.error("getCostCenterById exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: "Finance data could not be loaded. Retry without discarding your draft." };
   }
 }
 
-export async function deleteCostCenter(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!isSystemAdmin(ctx.roleCodes)) {
-      return { success: false, error: "Only system administrators can delete finance basics records. Use deactivate instead." };
-    }
-
-    const supabase = await createClient();
-    const { data: oldData } = await supabase.from("cost_centers").select("*").eq("id", id).single();
-    if (!oldData) {
-      return { success: false, error: "Cost center not found" };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "cost_centers",
-      entity_id: id,
-      entity_reference: oldData.cost_center_code,
-      action: "delete",
-      old_values: oldData,
-      owner_company_id: oldData.owner_company_id ?? undefined,
-      branch_id: oldData.branch_id ?? undefined,
-    });
-
-    const { error } = await supabase.from("cost_centers").delete().eq("id", id);
-    if (error) {
-      console.error("deleteCostCenter error", error);
-      return {
-        success: false,
-        error: error.message.includes("foreign key")
-          ? "Cannot delete cost center with related records (child centers, allocations, etc.). Deactivate instead."
-          : error.message,
-      };
-    }
-
-    revalidateFinanceBasicsPages();
-    return { success: true };
-  } catch (error) {
-    console.error("deleteCostCenter exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function deleteCostCenter(id: number, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  // Historical public name retained for callers: this is retirement, never deletion.
+  return saveFinanceCenterRecord("cost_centers","retire",id,{is_active:false},contract);
 }
 
-export async function toggleCostCenterLock(
-  id: number,
-  is_locked: boolean,
-): Promise<ActionResult<void>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!isSystemAdmin(ctx.roleCodes) && !hasPermission(ctx, "master_data.lookups.lock")) {
-      return { success: false, error: "Lock permission required" };
-    }
-    if (!ctx.profile?.id) {
-      return { success: false, error: "User profile not found" };
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("cost_centers")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (fetchError || !existing) {
-      return { success: false, error: "Cost center not found" };
-    }
-
-    const { error: updateError } = await supabase
-      .from("cost_centers")
-      .update({ is_locked, updated_by: ctx.profile.id })
-      .eq("id", id);
-
-    if (updateError) {
-      return { success: false, error: updateError.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "cost_centers",
-      entity_id: id,
-      entity_reference: existing.cost_center_code,
-      action: is_locked ? "cost_center.lock" : "cost_center.unlock",
-      old_values: { is_locked: existing.is_locked },
-      new_values: { is_locked },
-      owner_company_id: existing.owner_company_id ?? ctx.profile.owner_company_id,
-      branch_id: existing.branch_id ?? ctx.profile.branch_id,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true };
-  } catch (error) {
-    console.error("toggleCostCenterLock exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function toggleCostCenterLock(id: number, is_locked: boolean, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  if(!z.boolean().safeParse(is_locked).success)return {success:false,error:"Choose a valid lock state."};
+  return saveFinanceCenterRecord("cost_centers","lock",id,{is_locked},contract);
 }
 
 export async function getActiveCostCentersForSelect(
@@ -2027,189 +794,26 @@ export async function getActiveCostCentersForSelect(
 // ============================================================================
 
 const PROFIT_CENTER_RELATIONS_SELECT =
-  "*, parent:profit_centers!parent_profit_center_id(profit_center_code, profit_center_name_en, profit_center_name_ar), owner_company:owner_companies(company_code, legal_name_en), branch:branches(branch_code, branch_name_en, branch_name_ar)";
+  "*, parent:profit_centers!parent_profit_center_id(profit_center_code, profit_center_name_en, profit_center_name_ar), owner_company:owner_companies(company_code, legal_name_en), branch:branches!profit_centers_branch_id_fkey(branch_code, branch_name_en, branch_name_ar)";
 
-export async function createProfitCenter(
-  input: CreateProfitCenterInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = createProfitCenterSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const dataToInsert = {
-      ...validated,
-      profit_center_name_ar: validated.profit_center_name_ar || null,
-      profit_center_type_code: validated.profit_center_type_code || null,
-      parent_profit_center_id: validated.parent_profit_center_id ?? null,
-      owner_company_id: validated.owner_company_id ?? null,
-      branch_id: validated.branch_id ?? null,
-      description_en: validated.description_en || null,
-      description_ar: validated.description_ar || null,
-      notes: validated.notes || null,
-      created_by: ctx.profile?.id ?? null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { data, error } = await supabase
-      .from("profit_centers")
-      .insert(dataToInsert)
-      .select("id, profit_center_code")
-      .single();
-
-    if (error) {
-      console.error("createProfitCenter error", error);
-      return { success: false, error: error.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "profit_centers",
-      entity_id: data.id,
-      entity_reference: data.profit_center_code,
-      action: "create",
-      new_values: validated,
-      owner_company_id: validated.owner_company_id ?? undefined,
-      branch_id: validated.branch_id ?? undefined,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true, data: { id: data.id } };
-  } catch (error) {
-    console.error("createProfitCenter exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function createProfitCenter(input: CreateProfitCenterInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const parsed=createProfitCenterSchema.safeParse(input);
+  if(!parsed.success)return workspaceValidationFailure(parsed.error.issues);
+  return saveFinanceCenterRecord("profit_centers","save",null,parsed.data,contract);
 }
 
-export async function updateProfitCenter(
-  input: UpdateProfitCenterInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = updateProfitCenterSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const validated = result.data;
-    const { id, ...updates } = validated;
-    if (updates.parent_profit_center_id === id) {
-      return { success: false, error: "Profit center cannot be its own parent" };
-    }
-
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const { data: oldData } = await supabase.from("profit_centers").select("*").eq("id", id).single();
-    if (!oldData) {
-      return { success: false, error: "Profit center not found" };
-    }
-
-    if (oldData.is_locked && !isSystemAdmin(ctx.roleCodes)) {
-      return lockedRecordError();
-    }
-
-    const dataToUpdate = {
-      ...updates,
-      profit_center_name_ar: nullifyEmpty(updates.profit_center_name_ar),
-      profit_center_type_code: nullifyEmpty(updates.profit_center_type_code),
-      description_en: nullifyEmpty(updates.description_en),
-      description_ar: nullifyEmpty(updates.description_ar),
-      notes: nullifyEmpty(updates.notes),
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase.from("profit_centers").update(dataToUpdate).eq("id", id);
-    if (error) {
-      console.error("updateProfitCenter error", error);
-      return { success: false, error: error.message };
-    }
-
-    const { old_values, new_values } = createAuditDiff(oldData, { ...oldData, ...dataToUpdate });
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "profit_centers",
-      entity_id: id,
-      entity_reference: oldData.profit_center_code,
-      action: "update",
-      old_values,
-      new_values,
-      owner_company_id: oldData.owner_company_id ?? undefined,
-      branch_id: oldData.branch_id ?? undefined,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true, data: { id } };
-  } catch (error) {
-    console.error("updateProfitCenter exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function updateProfitCenter(input: UpdateProfitCenterInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const parsed=updateProfitCenterSchema.safeParse(input);
+  if(!parsed.success)return workspaceValidationFailure(parsed.error.issues);
+  const {id,...data}=parsed.data;
+  return saveFinanceCenterRecord("profit_centers","save",id,data,contract);
 }
 
-export async function toggleProfitCenterStatus(
-  input: ToggleFinanceBasicsStatusInput,
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const result = toggleFinanceBasicsStatusSchema.safeParse(input);
-    if (!result.success) {
-      return { success: false, error: formatValidationErrors(result.error.issues) };
-    }
-
-    const { id, is_active, deactivation_reason } = result.data;
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.manage")) {
-      return managePermissionError();
-    }
-
-    const supabase = await createClient();
-    const { data: oldData } = await supabase.from("profit_centers").select("*").eq("id", id).single();
-    if (!oldData) {
-      return { success: false, error: "Profit center not found" };
-    }
-
-    const dataToUpdate = {
-      is_active,
-      deactivated_at: is_active ? null : new Date().toISOString(),
-      deactivated_by: is_active ? null : ctx.profile?.id ?? null,
-      deactivation_reason: is_active ? null : deactivation_reason || null,
-      updated_by: ctx.profile?.id ?? null,
-    };
-
-    const { error } = await supabase.from("profit_centers").update(dataToUpdate).eq("id", id);
-    if (error) {
-      console.error("toggleProfitCenterStatus error", error);
-      return { success: false, error: error.message };
-    }
-
-    const { old_values, new_values } = createAuditDiff(oldData, { ...oldData, ...dataToUpdate });
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "profit_centers",
-      entity_id: id,
-      entity_reference: oldData.profit_center_code,
-      action: is_active ? "activate" : "deactivate",
-      old_values,
-      new_values,
-      owner_company_id: oldData.owner_company_id ?? undefined,
-      branch_id: oldData.branch_id ?? undefined,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true, data: { id } };
-  } catch (error) {
-    console.error("toggleProfitCenterStatus exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function toggleProfitCenterStatus(input: ToggleFinanceBasicsStatusInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const parsed=toggleFinanceBasicsStatusSchema.strict().safeParse(input);
+  if(!parsed.success)return workspaceValidationFailure(parsed.error.issues);
+  const {id,...data}=parsed.data;
+  return saveFinanceCenterRecord("profit_centers","active",id,data,contract);
 }
 
 export async function getProfitCenters(
@@ -2217,54 +821,57 @@ export async function getProfitCenters(
 ): Promise<ActionResult<ProfitCenterWithRelations[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.view")) {
+    if (!hasPermission(ctx, "master_data.finance_basics.view")&&!hasGlobalPermission(ctx,"master_data.finance_basics.manage")&&!hasGlobalPermission(ctx,"master_data.lookups.lock")) {
       return viewPermissionError();
     }
 
     const supabase = await createClient();
-    let query = supabase
-      .from("profit_centers")
-      .select(PROFIT_CENTER_RELATIONS_SELECT)
-      .order("sort_order", { ascending: true })
-      .order("profit_center_name_en", { ascending: true });
+    const data = await readAllPages<ProfitCenterWithRelations>(async (from, to) => {
+      let query = supabase
+        .from("profit_centers")
+        .select(PROFIT_CENTER_RELATIONS_SELECT, { count: "exact" })
+        .retry(false)
+        .order("sort_order", { ascending: true })
+        .order("profit_center_name_en", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to);
 
-    if (filters?.search) {
-      query = query.or(
-        `profit_center_code.ilike.%${filters.search}%,profit_center_name_en.ilike.%${filters.search}%,profit_center_name_ar.ilike.%${filters.search}%`,
-      );
-    }
-    if (filters?.owner_company_id) {
-      query = query.eq("owner_company_id", filters.owner_company_id);
-    }
-    if (filters?.branch_id) {
-      query = query.eq("branch_id", filters.branch_id);
-    }
-    if (filters?.parent_profit_center_id) {
-      query = query.eq("parent_profit_center_id", filters.parent_profit_center_id);
-    }
-    if (filters?.profit_center_type_code) {
-      query = query.eq("profit_center_type_code", filters.profit_center_type_code);
-    }
-    if (filters?.is_active !== undefined) {
-      query = query.eq("is_active", filters.is_active);
-    }
-    if (filters?.is_system !== undefined) {
-      query = query.eq("is_system", filters.is_system);
-    }
-    if (filters?.is_locked !== undefined) {
-      query = query.eq("is_locked", filters.is_locked);
-    }
+      if (filters?.search) {
+        const value = literalContains(filters.search);
+        query = query.or(
+          `profit_center_code.ilike.${value},profit_center_name_en.ilike.${value},profit_center_name_ar.ilike.${value}`,
+        );
+      }
+      if (filters?.owner_company_id) {
+        query = query.eq("owner_company_id", filters.owner_company_id);
+      }
+      if (filters?.branch_id) {
+        query = query.eq("branch_id", filters.branch_id);
+      }
+      if (filters?.parent_profit_center_id) {
+        query = query.eq("parent_profit_center_id", filters.parent_profit_center_id);
+      }
+      if (filters?.profit_center_type_code) {
+        query = query.eq("profit_center_type_code", filters.profit_center_type_code);
+      }
+      if (filters?.is_active !== undefined) {
+        query = query.eq("is_active", filters.is_active);
+      }
+      if (filters?.is_system !== undefined) {
+        query = query.eq("is_system", filters.is_system);
+      }
+      if (filters?.is_locked !== undefined) {
+        query = query.eq("is_locked", filters.is_locked);
+      }
 
-    const { data, error } = await query;
-    if (error) {
-      console.error("getProfitCenters error", error);
-      return { success: false, error: error.message };
-    }
+      const { data, error, count } = await query;
+      return { data: data as ProfitCenterWithRelations[] | null, error, count };
+    }, { identity: row => row.id });
 
-    return { success: true, data: data || [] };
+    return { success: true, data: await attachFinanceReferenceLabels('profit_centers',data) };
   } catch (error) {
     console.error("getProfitCenters exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: "Finance data could not be loaded. Retry without discarding your draft." };
   }
 }
 
@@ -2273,7 +880,7 @@ export async function getProfitCenterById(
 ): Promise<ActionResult<ProfitCenterWithRelations>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "master_data.finance_basics.view")) {
+    if (!hasPermission(ctx, "master_data.finance_basics.view")&&!hasGlobalPermission(ctx,"master_data.finance_basics.manage")&&!hasGlobalPermission(ctx,"master_data.lookups.lock")) {
       return viewPermissionError();
     }
 
@@ -2282,117 +889,31 @@ export async function getProfitCenterById(
       .from("profit_centers")
       .select(PROFIT_CENTER_RELATIONS_SELECT)
       .eq("id", id)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error("getProfitCenterById error", error);
-      return { success: false, error: error.message };
+      return { success: false, error: "Finance data could not be loaded. Retry without discarding your draft." };
     }
     if (!data) {
       return { success: false, error: "Profit center not found" };
     }
 
-    return { success: true, data };
+    return { success: true, data: (await attachFinanceReferenceLabels('profit_centers',[data]))[0] };
   } catch (error) {
     console.error("getProfitCenterById exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    return { success: false, error: "Finance data could not be loaded. Retry without discarding your draft." };
   }
 }
 
-export async function deleteProfitCenter(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!isSystemAdmin(ctx.roleCodes)) {
-      return { success: false, error: "Only system administrators can delete finance basics records. Use deactivate instead." };
-    }
-
-    const supabase = await createClient();
-    const { data: oldData } = await supabase.from("profit_centers").select("*").eq("id", id).single();
-    if (!oldData) {
-      return { success: false, error: "Profit center not found" };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "profit_centers",
-      entity_id: id,
-      entity_reference: oldData.profit_center_code,
-      action: "delete",
-      old_values: oldData,
-      owner_company_id: oldData.owner_company_id ?? undefined,
-      branch_id: oldData.branch_id ?? undefined,
-    });
-
-    const { error } = await supabase.from("profit_centers").delete().eq("id", id);
-    if (error) {
-      console.error("deleteProfitCenter error", error);
-      return {
-        success: false,
-        error: error.message.includes("foreign key")
-          ? "Cannot delete profit center with related records (child centers, allocations, etc.). Deactivate instead."
-          : error.message,
-      };
-    }
-
-    revalidateFinanceBasicsPages();
-    return { success: true };
-  } catch (error) {
-    console.error("deleteProfitCenter exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function deleteProfitCenter(id: number, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  // Historical public name retained for callers: this is retirement, never deletion.
+  return saveFinanceCenterRecord("profit_centers","retire",id,{is_active:false},contract);
 }
 
-export async function toggleProfitCenterLock(
-  id: number,
-  is_locked: boolean,
-): Promise<ActionResult<void>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!isSystemAdmin(ctx.roleCodes) && !hasPermission(ctx, "master_data.lookups.lock")) {
-      return { success: false, error: "Lock permission required" };
-    }
-    if (!ctx.profile?.id) {
-      return { success: false, error: "User profile not found" };
-    }
-
-    const supabase = await createClient();
-    const { data: existing, error: fetchError } = await supabase
-      .from("profit_centers")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (fetchError || !existing) {
-      return { success: false, error: "Profit center not found" };
-    }
-
-    const { error: updateError } = await supabase
-      .from("profit_centers")
-      .update({ is_locked, updated_by: ctx.profile.id })
-      .eq("id", id);
-
-    if (updateError) {
-      return { success: false, error: updateError.message };
-    }
-
-    await logAudit({
-      module_code: "master_data",
-      entity_name: "profit_centers",
-      entity_id: id,
-      entity_reference: existing.profit_center_code,
-      action: is_locked ? "profit_center.lock" : "profit_center.unlock",
-      old_values: { is_locked: existing.is_locked },
-      new_values: { is_locked },
-      owner_company_id: existing.owner_company_id ?? ctx.profile.owner_company_id,
-      branch_id: existing.branch_id ?? ctx.profile.branch_id,
-    });
-
-    revalidateFinanceBasicsPages();
-    return { success: true };
-  } catch (error) {
-    console.error("toggleProfitCenterLock exception", error);
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
-  }
+export async function toggleProfitCenterLock(id: number, is_locked: boolean, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  if(!z.boolean().safeParse(is_locked).success)return {success:false,error:"Choose a valid lock state."};
+  return saveFinanceCenterRecord("profit_centers","lock",id,{is_locked},contract);
 }
 
 export async function getActiveProfitCentersForSelect(

@@ -3,6 +3,8 @@
  * Simple, auditable helpers for leave/attendance/overtime calculations.
  */
 
+import { format } from "date-fns";
+
 /**
  * Calculate working days between two dates (inclusive, calendar days).
  * For HR.4, this is a simple calendar day count.
@@ -42,8 +44,14 @@ export function formatMinutes(value: number | null | undefined): string {
 }
 
 /**
- * Get current calendar year.
+ * Format a date for the time inquiry tables.
  */
+export function formatTimeInquiryDate(value: string | null | undefined): string {
+  if (!value) return "—";
+  try { return format(new Date(value), "dd MMM yyyy"); } catch { return value; }
+}
+
+/** Get current calendar year. */
 export function getCurrentLeaveYear(): number {
   return new Date().getFullYear();
 }

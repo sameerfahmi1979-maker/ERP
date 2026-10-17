@@ -8,10 +8,13 @@
 
 import type { CitySelectProps } from "@/features/master-data/geography/types";
 import { ERPCombobox } from "@/components/erp/combobox";
+import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { useCitiesQuery } from "@/hooks/lookups";
+import { withSavedSelection } from "@/lib/master-data/saved-selection";
 
 export function CitySelect({
   value,
+  savedSelection,
   onValueChange,
   emirateId,
   placeholder = "Select city...",
@@ -25,49 +28,39 @@ export function CitySelect({
   name,
   error,
 }: CitySelectProps) {
+  const choiceRead = useCitiesQuery({ emirateId, includeInactive, selectedId: value ?? null });
   const {
     options,
     isLoading: loading,
     error: fetchError,
-  } = useCitiesQuery({ emirateId, includeInactive });
+  } = choiceRead;
 
   const handleValueChange = (newValue: string | number | null) => {
-    if (!onValueChange) return;
+    if (!onValueChange || disabled || !!fetchError) return;
     if (newValue === null) { onValueChange(null); return; }
     const numValue = typeof newValue === "number" ? newValue : Number(newValue);
     onValueChange(!isNaN(numValue) ? numValue : null);
   };
 
-  if (fetchError) {
-    return (
-      <div className={className}>
-        <div className="flex items-center justify-center h-10 px-3 border border-destructive rounded-md bg-destructive/10">
-          <span className="text-sm text-destructive">{fetchError}</span>
-        </div>
-        {error && <p className="text-sm text-destructive mt-1">{error}</p>}
-      </div>
-    );
-  }
-
   return (
-    <ERPCombobox
+    <QueryReadBoundary queries={[choiceRead]}><ERPCombobox
       value={value ?? null}
       onValueChange={handleValueChange}
-      options={options}
+      options={(withSavedSelection(fetchError ? [] : options, value, savedSelection)).map(option => ({...option, disabled: option.disabled || disabled || !!fetchError}))}
       placeholder={placeholder}
       searchPlaceholder="Search cities..."
       showCode={showCode}
       language={language}
-      disabled={disabled}
+      disabled={disabled || !!fetchError}
       readOnly={false}
       required={required}
-      loading={loading}
-      error={error}
+      loading={(loading) && value == null}
+      error={fetchError ? "Cities could not be loaded. Your saved selection is retained." : error}
       allowClear={allowClear}
       emptyText="No cities available"
       noResultsText="No results found"
       className={className}
       name={name}
-    />
+    /></QueryReadBoundary>
   );
 }

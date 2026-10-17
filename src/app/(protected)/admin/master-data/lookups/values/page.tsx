@@ -1,6 +1,8 @@
+import {randomUUID} from 'node:crypto';
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext } from "@/lib/rbac/check";
+import {lookupCapabilities} from '@/features/master-data/lookups/permissions';
 import { listLookupValues, listLookupCategories } from "@/server/actions/master-data/lookups";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { ValuesTable } from "@/features/master-data/lookups/components/values-table";
@@ -10,11 +12,12 @@ export const metadata = {
   description: "Manage lookup values for dropdowns",
 };
 
-async function ValuesContent() {
+async function ValuesContent({canManage,canLock}:{canManage:boolean;canLock:boolean}) {
   const [valuesResult, categoriesResult] = await Promise.all([
     listLookupValues(),
     listLookupCategories(),
   ]);
+  if ((!valuesResult.success && valuesResult.kind === "forbidden") || (!categoriesResult.success && categoriesResult.kind === "forbidden")) return <div role="alert" className="p-6">Access denied. Global lookup catalogue access is required.</div>;
   
   if (!valuesResult.success || !valuesResult.data) {
     return (
@@ -34,13 +37,13 @@ async function ValuesContent() {
     );
   }
 
-  return <ValuesTable values={valuesResult.data} categories={categoriesResult.data} />;
+  return <ValuesTable values={valuesResult.data} categories={categoriesResult.data} canManage={canManage} canLock={canLock} readGeneration={randomUUID()} />;
 }
 
 export default async function LookupValuesPage() {
   const ctx = await getAuthContext();
   
-  if (!hasPermission(ctx, "master_data.lookups.view")) {
+  if (!lookupCapabilities(ctx).read) {
     redirect("/access-denied");
   }
 
@@ -61,7 +64,7 @@ export default async function LookupValuesPage() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       }>
-        <ValuesContent />
+        <ValuesContent canManage={lookupCapabilities(ctx).manage} canLock={lookupCapabilities(ctx).lock} />
       </Suspense>
     </div>
   );

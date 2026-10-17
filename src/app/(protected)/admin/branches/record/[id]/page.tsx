@@ -1,8 +1,8 @@
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasPermissionInScope } from "@/lib/rbac/check";
 import { redirect, notFound } from "next/navigation";
 import { BranchWorkspaceForm } from "@/features/branches/branch-workspace-form";
 import { getBranchById } from "@/server/actions/branches";
-import { listOrganizations } from "@/server/queries/organizations";
+import { readBranchCompanyChoices } from "@/server/queries/branch-company-choices";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -18,16 +18,18 @@ export default async function BranchRecordPage({ params, searchParams }: Props) 
     redirect("/admin/branches");
   }
 
-  const numericId = parseInt(id);
-  if (isNaN(numericId)) notFound();
+  const numericId = Number(id);
+  if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(numericId)) notFound();
 
-  const [branchResult, companies] = await Promise.all([
-    getBranchById(numericId),
-    listOrganizations(),
-  ]);
-
-  if (!branchResult.success || !branchResult.data) notFound();
-  const mode = modeParam === "edit" && hasPermission(authContext, "branches.edit") ? "edit" : "view";
+  const branchResult = await getBranchById(numericId);
+  if (!branchResult.success) {
+    if (branchResult.errorCode === "not_found" || branchResult.errorCode === "invalid") notFound();
+    if (branchResult.errorCode === "denied") redirect("/admin/branches");
+    throw new Error("The branch could not be loaded. Try again.");
+  }
+  if (!branchResult.data) throw new Error("The branch could not be loaded. Try again.");
+  const companies = await readBranchCompanyChoices(numericId);
+  const mode = modeParam === "edit" && hasPermissionInScope(authContext, "branches.manage", branchResult.data.owner_company_id, branchResult.data.id) ? "edit" : "view";
 
   return <BranchWorkspaceForm branch={branchResult.data} mode={mode} authContext={authContext} companies={companies} />;
 }

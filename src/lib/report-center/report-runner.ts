@@ -196,12 +196,17 @@ export async function runReport(
   }
 
   // ── 3. Branding resolution ────────────────────────────────────────────────
-  const brandingResult = await resolveReportBranding({
-    templateId: request.templateId,
-    ownerCompanyIds: request.ownerCompanyIds ?? [],
-    registryEntry,
-    isLetterType: registryEntry.is_letter_type,
-  });
+  let brandingResult: Awaited<ReturnType<typeof resolveReportBranding>>;
+  try {
+    brandingResult = await resolveReportBranding({
+      templateId: request.templateId,
+      ownerCompanyIds: request.ownerCompanyIds ?? [],
+      registryEntry,
+      isLetterType: registryEntry.is_letter_type,
+    }, actor);
+  } catch {
+    return { success: false, error: "Report branding is unavailable or not authorized. Reload and try again." };
+  }
 
   if (brandingResult.requiresManualTemplateSelection) {
     return {

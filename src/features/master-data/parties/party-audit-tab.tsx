@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Lock, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { getPartyAuditLogs } from "@/server/actions/master-data/parties";
@@ -13,15 +14,15 @@ type Props = {
 };
 
 const ACTION_COLORS: Record<string, string> = {
-  create: "bg-green-100 text-green-800",
-  update: "bg-blue-100 text-blue-800",
-  delete: "bg-red-100 text-red-800",
-  deactivate: "bg-orange-100 text-orange-800",
-  reactivate: "bg-teal-100 text-teal-800",
+  create: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200",
+  update: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200",
+  delete: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200",
+  deactivate: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-200",
+  reactivate: "bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-200",
 };
 
 export function PartyAuditTab({ partyId, canViewAudit }: Props) {
-  const { data: result, isLoading } = useQuery({
+  const { data: result, isLoading, isError, refetch } = useQuery({
     queryKey: ["party_audit_logs", partyId],
     queryFn: () => getPartyAuditLogs(partyId),
     enabled: canViewAudit && !!partyId,
@@ -39,10 +40,11 @@ export function PartyAuditTab({ partyId, canViewAudit }: Props) {
 
   if (isLoading) return <div className="flex items-center justify-center h-32 text-muted-foreground">Loading audit log…</div>;
 
-  if (!result?.success) {
+  if (isError || !result?.success) {
     return (
-      <div className="text-destructive p-4 text-sm">
-        {result?.error ?? "Failed to load audit logs"}
+      <div role="alert" className="text-destructive p-4 text-sm space-y-2">
+        <p>Audit logs could not be loaded. Retry loading.</p>
+        <Button type="button" variant="outline" onClick={() => void refetch()}>Retry loading</Button>
       </div>
     );
   }
@@ -68,7 +70,7 @@ export function PartyAuditTab({ partyId, canViewAudit }: Props) {
         {logs.map((log) => (
           <div key={log.id} className="border rounded-md px-4 py-3 flex items-start gap-4">
             <div className="flex-shrink-0 pt-0.5">
-              <Badge className={`text-xs capitalize ${ACTION_COLORS[log.action] ?? "bg-gray-100 text-gray-800"}`}>
+              <Badge className={`text-xs capitalize ${ACTION_COLORS[log.action] ?? "bg-muted text-foreground"}`}>
                 {log.action}
               </Badge>
             </div>

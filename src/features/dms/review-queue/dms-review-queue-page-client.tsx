@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useCallback, useTransition, useRef } from "react";
+import { useState, useCallback, useTransition, useRef, useEffect } from "react";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { DmsLoadError } from "@/features/dms/dms-load-error";
 import type { ReviewQueueItem, ReviewQueueCounts, ReviewQueueFilters } from "@/server/actions/dms/review-queue";
-import { getDmsReviewQueueItems, getDmsReviewQueueCounts, getDmsReviewQueueItem } from "@/server/actions/dms/review-queue";
+import {readJson} from "@/lib/reads/client";
 import { DmsReviewQueueDashboardCards } from "./dms-review-queue-dashboard-cards";
 import { DmsReviewQueueFilters } from "./dms-review-queue-filters";
 import { DmsReviewQueueTable } from "./dms-review-queue-table";
@@ -51,28 +51,34 @@ export function DmsReviewQueuePageClient({
   const listSequence = useRef(0);
   const detailSequence = useRef(0);
   const returnFocus = useRef<HTMLElement | null>(null);
+  const listAbort=useRef<AbortController|null>(null),detailAbort=useRef<AbortController|null>(null);
+  useEffect(()=>()=>{++listSequence.current;++detailSequence.current;listAbort.current?.abort();detailAbort.current?.abort();},[]);
 
   const refresh = useCallback((nextFilters?: ReviewQueueFilters, nextPage?: number) => {
     const f = nextFilters ?? filters;
     const p = nextPage ?? page;
     const sequence = ++listSequence.current;
+    listAbort.current?.abort();const controller=new AbortController();listAbort.current=controller;
 
     startTransition(async () => {
       setLoadFailed(false);
       try {
-      const [itemsResult, countsResult] = await Promise.all([
-        getDmsReviewQueueItems({ ...f, page: p, pageSize }),
-        getDmsReviewQueueCounts(),
+      const [itemsOutcome, countsOutcome] = await Promise.allSettled([
+        readJson<{success:true;data:{items:ReviewQueueItem[];total:number}}>("dms-review",{kind:"list",filters:{...f,page:p,pageSize}},controller.signal),
+        readJson<{success:true;data:ReviewQueueCounts}>("dms-review",{kind:"counts"},controller.signal),
       ]);
       if (sequence !== listSequence.current) return;
-      if (itemsResult.success && itemsResult.data) {
-        setItems(itemsResult.data.items);
-        setTotal(itemsResult.data.total);
+      const itemsResult=itemsOutcome.status==="fulfilled"?itemsOutcome.value:null;
+      const countsResult=countsOutcome.status==="fulfilled"?countsOutcome.value:null;
+      if (itemsResult?.success && itemsResult.data) {
+        const last=Math.max(1,Math.ceil(itemsResult.data.total/pageSize));
+        if(p>last){const tail=await readJson<{success:true;data:{items:ReviewQueueItem[];total:number}}>("dms-review",{kind:"list",filters:{...f,page:last,pageSize}},controller.signal);if(sequence!==listSequence.current)return;setPage(last);setItems(tail.data.items);setTotal(tail.data.total);}
+        else {setItems(itemsResult.data.items);setTotal(itemsResult.data.total);}
       } else { setLoadFailed(true); }
-      if (countsResult.success && countsResult.data) {
+      if (countsResult?.success && countsResult.data) {
         setCounts(countsResult.data);
       }
-      setCountsFailed(!countsResult.success || !countsResult.data);
+      setCountsFailed(!countsResult?.success || !countsResult.data);
       } catch { if (sequence === listSequence.current) { setLoadFailed(true); setCountsFailed(true); } }
     });
   }, [filters, page, pageSize]);
@@ -90,9 +96,10 @@ export function DmsReviewQueuePageClient({
 
   const loadDetail = useCallback(async (id: number) => {
     const sequence = ++detailSequence.current;
+    detailAbort.current?.abort();const controller=new AbortController();detailAbort.current=controller;
     setDetailPending(true); setDetailFailed(false);
     try {
-      const result = await getDmsReviewQueueItem(id);
+      const result = await readJson<{success:true;data:ReviewQueueItem}>("dms-review",{kind:"detail",id},controller.signal);
       if (sequence !== detailSequence.current) return;
       if (result.success && result.data) setSelectedItem(result.data);
       else setDetailFailed(true);
@@ -103,7 +110,7 @@ export function DmsReviewQueuePageClient({
   const closeDrawer = () => {
     if (drawerBusy) return;
     if (drawerDirty && !window.confirm("Discard the unsaved review entries?")) return;
-    ++detailSequence.current;
+    ++detailSequence.current;detailAbort.current?.abort();
     setDrawerOpen(false); setSelectedItem(null); setDrawerDirty(false);
   };
 
@@ -134,7 +141,7 @@ export function DmsReviewQueuePageClient({
   return (
     <div className="space-y-4">
       {/* Dashboard cards */}
-      {countsFailed ? <p role="status" className="text-sm text-muted-foreground">Review summary is unavailable. Refresh to retry; unavailable counts are not zero.</p> : <DmsReviewQueueDashboardCards counts={counts} />}
+      {isPending ? <p role="status">Refreshing review summary…</p> : countsFailed ? <p role="status" className="text-sm text-muted-foreground">Review summary is unavailable. Refresh to retry; unavailable counts are not zero.</p> : <DmsReviewQueueDashboardCards counts={counts} />}
 
       {/* Filters */}
       <DmsReviewQueueFilters
@@ -146,7 +153,7 @@ export function DmsReviewQueuePageClient({
       {/* Toolbar */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {loadFailed ? "Review results unavailable" : `${total} item${total !== 1 ? "s" : ""} found`}
+          {isPending ? "Loading review results…" : loadFailed ? "Review results unavailable" : `${total} item${total !== 1 ? "s" : ""} found`}
           {Object.keys(filters).length > 0 ? " (filtered)" : ""}
         </p>
         <Button
@@ -162,14 +169,14 @@ export function DmsReviewQueuePageClient({
 
       {/* Table */}
       {loadFailed ? <DmsLoadError subject="review items" retry={() => refresh()} pending={isPending} /> : <DmsReviewQueueTable
-        items={items}
+        items={isPending ? [] : items}
         isLoading={isPending}
         onViewItem={handleViewItem}
         canManage={canManage}
       />}
 
       {/* Pagination */}
-      {!loadFailed && totalPages > 1 && (
+      {!isPending && !loadFailed && totalPages > 1 && (
         <div className="flex items-center justify-between border-t border-border pt-3">
           <p className="text-xs text-muted-foreground">
             Page {page} of {totalPages}
@@ -202,13 +209,14 @@ export function DmsReviewQueuePageClient({
         <SheetContent showCloseButton={false} finalFocus={returnFocus} className="data-[side=right]:w-full data-[side=right]:sm:max-w-xl gap-0" onChangeCapture={() => setDrawerDirty(true)}>
           <SheetTitle className="sr-only">Review item {selectedItem?.id}</SheetTitle>
           <SheetDescription className="sr-only">Review the source and choose an authorized action.</SheetDescription>
+          {(detailPending||detailFailed)&&<Button aria-label="Close review item" onClick={closeDrawer}>Close</Button>}
           {detailPending && <p role="status" className="p-3">Loading review details…</p>}
           {detailFailed && selectedItem && <DmsLoadError subject="review details" retry={() => loadDetail(selectedItem.id)} pending={detailPending} />}
-          {selectedItem && <div className="flex min-h-0 flex-1 flex-col">
+          {selectedItem && <div hidden={detailPending || detailFailed || loadFailed || isPending} className="flex min-h-0 flex-1 flex-col">
             <DmsReviewQueueItemDrawer
               key={selectedItem.id}
               item={selectedItem}
-              canManage={canManage && !detailFailed && !detailPending}
+              canManage={canManage && !loadFailed && !isPending && !detailFailed && !detailPending}
               onClose={closeDrawer}
               onBusyChange={setDrawerBusy}
               onMutated={handleMutated}

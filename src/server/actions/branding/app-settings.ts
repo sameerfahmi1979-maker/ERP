@@ -7,8 +7,11 @@
 
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { logAudit } from "@/server/actions/audit";
+import { getAuthContext } from "@/lib/rbac/check";
+import { canViewAppBranding,canManageAppBranding } from "@/lib/branding/asset-permissions";
+import { saveBrandingMutation } from "@/server/branding-save";
+import type { WorkspaceSaveContract } from "@/lib/workspace/save-contract";
+import type { WorkspaceSaveResult } from "@/server/workspace-save";
 import {
   DEFAULT_APP_BRANDING_SETTINGS_CODE,
   type AppBrandingSettings,
@@ -16,20 +19,9 @@ import {
 
 type ActionResult<T = unknown> = { success: boolean; data?: T; error?: string };
 
-function canViewAppBranding(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
-  return (
-    hasPermission(ctx, "branding.app.view") ||
-    hasPermission(ctx, "reports.manage")
-  );
-}
-
-function canManageAppBranding(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
-  return hasPermission(ctx, "branding.app.manage");
-}
-
 const updateAppBrandingSettingsSchema = z.object({
   id: z.number().int().positive(),
-  app_name: z.string().min(1).max(200).optional(),
+  app_name: z.string().trim().min(1).max(200).optional(),
   app_short_name: z.string().max(50).nullable().optional(),
   tagline: z.string().max(300).nullable().optional(),
   support_email: z.string().email().nullable().optional().or(z.literal("").transform(() => null)),
@@ -53,7 +45,7 @@ const updateAppBrandingSettingsSchema = z.object({
   login_title: z.string().max(200).nullable().optional(),
   login_subtitle: z.string().max(300).nullable().optional(),
   is_active: z.boolean().optional(),
-});
+}).strict();
 
 export async function getActiveAppBrandingSettings(): Promise<
   ActionResult<AppBrandingSettings>
@@ -74,12 +66,12 @@ export async function getActiveAppBrandingSettings(): Promise<
       .is("deleted_at", null)
       .maybeSingle();
 
-    if (error) return { success: false, error: error.message };
+    if (error) return { success: false, error: "App branding settings could not be loaded. Retry before making changes." };
     if (!data) return { success: false, error: "Active app branding settings not found" };
 
     return { success: true, data: data as AppBrandingSettings };
-  } catch (err) {
-    return { success: false, error: String(err) };
+  } catch {
+    return { success: false, error: "App branding settings could not be loaded." };
   }
 }
 
@@ -100,16 +92,17 @@ export async function listAppBrandingSettings(): Promise<
       .is("deleted_at", null)
       .order("id", { ascending: true });
 
-    if (error) return { success: false, error: error.message };
+    if (error) return { success: false, error: "App branding settings could not be loaded. Retry before making changes." };
     return { success: true, data: (data ?? []) as AppBrandingSettings[] };
-  } catch (err) {
-    return { success: false, error: String(err) };
+  } catch {
+    return { success: false, error: "App branding settings could not be loaded." };
   }
 }
 
 export async function updateAppBrandingSettings(
-  input: z.infer<typeof updateAppBrandingSettingsSchema>
-): Promise<ActionResult<AppBrandingSettings>> {
+  input: z.infer<typeof updateAppBrandingSettingsSchema>,
+  contract?: WorkspaceSaveContract
+): Promise<WorkspaceSaveResult> {
   try {
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
@@ -123,43 +116,8 @@ export async function updateAppBrandingSettings(
     }
 
     const { id, ...updates } = parsed.data;
-    const supabase = await createClient();
-
-    const { data: existing, error: fetchError } = await supabase
-      .from("erp_app_branding_settings")
-      .select("*")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .maybeSingle();
-
-    if (fetchError) return { success: false, error: fetchError.message };
-    if (!existing) return { success: false, error: "App branding settings not found" };
-
-    const { data, error } = await supabase
-      .from("erp_app_branding_settings")
-      .update({
-        ...updates,
-        updated_at: new Date().toISOString(),
-        updated_by: ctx.profile.id,
-      })
-      .eq("id", id)
-      .select("*")
-      .single();
-
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "BRANDING",
-      entity_name: "erp_app_branding_settings",
-      entity_id: id,
-      entity_reference: existing.settings_code as string,
-      action: "update",
-      old_values: existing as Record<string, unknown>,
-      new_values: data as Record<string, unknown>,
-    });
-
-    return { success: true, data: data as AppBrandingSettings };
-  } catch (err) {
-    return { success: false, error: String(err) };
+    return await saveBrandingMutation("app", id, updates, contract);
+  } catch {
+    return { success: false, uncertain: true, error: "Save unconfirmed. Retry the unchanged entries." };
   }
 }

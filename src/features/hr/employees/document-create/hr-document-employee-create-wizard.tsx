@@ -1,14 +1,16 @@
 "use client";
-import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
 
 import { useState, useCallback} from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { FileText } from "lucide-react";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
-import type { HrDmsDocumentSelection, HrDocumentToEmployeeReviewPayload, HrComplianceRecordSuggestion, HrDocumentConflict } from "@/lib/hr/document-to-record/types";
+import type { HrDmsDocumentSelection, HrComplianceRecordSuggestion, HrDocumentConflict } from "@/lib/hr/document-to-record/types";
 import type { DuplicateCheckResult } from "@/lib/hr/document-to-record/duplicate-checks";
-import { createEmployeeFromDmsDocuments } from "@/server/actions/hr/document-to-employee";
+import type {AuthContext} from '@/lib/rbac/check';
+import {canSaveDocumentEmployee,documentEmployeeInputSchema,type DocumentEmployeeReview,type DocumentEmployeeReceipt} from '@/lib/hr/numbered-document-employee-contract';
+import {useDocumentEmployeeSession} from './use-document-employee-session';
+import {Button} from '@/components/ui/button';
 import type { ComplianceChildInput } from "@/lib/hr/document-to-record/types";
 import { HrDocumentPickerStep } from "./hr-document-picker-step";
 import { HrDocumentEmployeeReviewStep } from "./hr-document-employee-review-step";
@@ -28,6 +30,7 @@ const STEP_LABELS: Record<Step, string> = {
 const STEPS: Step[] = ["pick", "employee-review", "compliance-review", "confirm"];
 
 type Props = {
+  authContext: AuthContext;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onChildOpen?: (open: boolean) => void;
@@ -52,18 +55,20 @@ const EMPTY_FORM: EmployeeFormState = {
   emergency_contact_mobile: "",
 };
 
-export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen }: Props) {
+export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen, authContext }: Props) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("pick");
   const [selectedDocIds, setSelectedDocIds] = useState<number[]>([]);
   const [selectedDocs, setSelectedDocs] = useState<HrDmsDocumentSelection[]>([]);
-  const [reviewPayload, setReviewPayload] = useState<(HrDocumentToEmployeeReviewPayload & { duplicates: DuplicateCheckResult[] }) | null>(null);
+  const [reviewPayload, setReviewPayload] = useState<DocumentEmployeeReview | null>(null);
   const [form, setFormState] = useState<EmployeeFormState>(EMPTY_FORM);
   const [conflicts, setConflicts] = useState<HrDocumentConflict[]>([]);
   const [complianceSuggestions, setComplianceSuggestions] = useState<HrComplianceRecordSuggestion[]>([]);
   const [duplicates, setDuplicates] = useState<DuplicateCheckResult[]>([]);
   const [identityDocDuplicates, setIdentityDocDuplicates] = useState<DuplicateCheckResult[]>([]);
-  const [isSubmitting, startSubmit] = useTransition();
+  const session=useDocumentEmployeeSession(authContext.profile?.id);
+  const isSubmitting=session.saving;
+  const admitted=canSaveDocumentEmployee(authContext,form.owner_company_id,form.branch_id,complianceSuggestions.filter(s=>s.included).map(s=>s.kind));
 
   const setForm = useCallback((patch: Partial<EmployeeFormState>) => {
     setFormState((prev) => ({ ...prev, ...patch }));
@@ -97,7 +102,7 @@ export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen
   }, []);
 
   const handleAggregated = useCallback(
-    (payload: HrDocumentToEmployeeReviewPayload & { duplicates: DuplicateCheckResult[] }) => {
+    (payload: DocumentEmployeeReview) => {
       setReviewPayload(payload);
       // Pre-populate form from draft suggestions
       const d = payload.employeeDraft;
@@ -120,7 +125,9 @@ export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen
         emergency_contact_mobile: "",
       });
       setConflicts(d.conflicts ?? []);
-      setComplianceSuggestions(payload.complianceSuggestions);
+      // The shared HR.14B mapper supplies historical medical defaults. HR.14A
+      // requires the reviewer to choose these facts explicitly for this save.
+      setComplianceSuggestions(payload.complianceSuggestions.map(s=>s.kind==='medical_insurance'?{...s,fields:{...s.fields,employee_covered:null,dependent_coverage_included:null}}:s));
       setDuplicates(payload.duplicates);
       setIdentityDocDuplicates(payload.identityDocDuplicates ?? []);
       setStep("employee-review");
@@ -143,14 +150,22 @@ export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen
     []
   );
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = async () => {
+    const finish=(receipt:DocumentEmployeeReceipt)=>{
+      if(!session.isCurrent())return;
+      for(const warning of receipt.warnings)toast.warning(warning);
+      toast.success(`Employee ${receipt.employeeCode} saved. ${receipt.complianceRecordsCreated} compliance records and ${receipt.documentsLinked} document links saved.`);
+      handleOpenChange(false);
+      try{router.push(`/admin/hr/employees/record/${receipt.employeeId}`);}catch{toast.warning('Saved. Open the employee list to view the new record.');}
+    };
+    if(session.pending){const receipt=await session.submit(session.pending.payload,session.pending.contract.reviewedSources);if(receipt)finish(receipt);return;}
     if (!reviewPayload) return;
+    if(!admitted){toast.error('Employee, compliance, document, and numbering access is required for the selected destination.');return;}
     if (!form.gender || !(form.gender === "male" || form.gender === "female")) {
       toast.error("Gender is required");
       return;
     }
 
-    startSubmit(async () => {
       const includedRecords: ComplianceChildInput[] = complianceSuggestions
         .filter((s) => s.included)
         .map((s) => {
@@ -194,8 +209,8 @@ export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen
               network_class: (s.fields.network_class as string) ?? null,
               issue_date: (s.fields.issue_date as string) ?? null,
               expiry_date: (s.fields.expiry_date as string) ?? "",
-              employee_covered: true,
-              dependent_coverage_included: false,
+              employee_covered: s.fields.employee_covered as boolean,
+              dependent_coverage_included: s.fields.dependent_coverage_included as boolean,
               status: "active" as const,
               verification_status: "unverified" as const,
               renewal_status: "pending" as const,
@@ -220,14 +235,9 @@ export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen
               dms_document_id: s.sourceDocumentId,
             };
           }
-        })
-        .filter((r) => {
-          if (r.kind === "identity_document" && (!r.document_type_id || !r.document_number)) return false;
-          if (r.kind === "medical_insurance" && (!r.insurance_provider || !r.policy_number || !r.expiry_date)) return false;
-          return true;
         });
 
-      const result = await createEmployeeFromDmsDocuments({
+      const parsed = documentEmployeeInputSchema.safeParse({
         selectedDocumentIds: selectedDocIds,
         full_name_en: form.full_name_en,
         full_name_ar: form.full_name_ar || null,
@@ -253,37 +263,19 @@ export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen
         totalDocumentsSelected: selectedDocIds.length,
       });
 
-      if (!result.success) {
-        toast.error(result.error ?? "Failed to create employee");
+      if (!parsed.success) {
+        toast.error(`Check every included record: ${parsed.error.issues[0]?.message ?? 'Invalid input'}`);
         return;
       }
-
-      const { employeeId, employeeCode, complianceRecordsCreated, documentsLinked, warnings } = result.data!;
-
-      if (warnings?.length) {
-        for (const w of warnings) toast.warning(w);
-      }
-
-      toast.success(
-        `Employee ${employeeCode} created. ${complianceRecordsCreated} compliance record${complianceRecordsCreated !== 1 ? "s" : ""} created. ${documentsLinked} document${documentsLinked !== 1 ? "s" : ""} linked.`
-      );
-
-      handleOpenChange(false);
-      router.push(`/admin/hr/employees/record/${employeeId}`);
-    });
-  }, [
-    reviewPayload,
-    form,
-    complianceSuggestions,
-    selectedDocIds,
-    conflicts,
-    handleOpenChange,
-    router,
-  ]);
+      const receipt=await session.submit(parsed.data,reviewPayload.reviewedSources);
+      if(receipt)finish(receipt);
+  };
 
   const currentStepIndex = STEPS.indexOf(step);
 
   return (
+    <>
+    {!open&&(session.pending||session.receipt)&&<Button variant="outline" onClick={()=>handleOpenChange(true)}>Recover document employee request</Button>}
     <ERPChildDialogForm
       open={open}
       onOpenChange={handleOpenChange}
@@ -293,9 +285,11 @@ export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen
       mode="add"
       size="xl"
       isSubmitting={isSubmitting}
-      submitLabel={step === "confirm" ? "Save Employee" : undefined}
-      onSubmit={step === "confirm" ? handleSubmit : undefined}
+      submitLabel={!session.pending&&!session.receipt&&step === "confirm" ? "Save Employee" : undefined}
+      onSubmit={!session.pending&&!session.receipt&&step === "confirm"&&admitted ? handleSubmit : undefined}
     >
+      {session.error&&<p role="alert" className="text-sm text-destructive">{session.error}</p>}
+      {session.receipt?<div className="space-y-3"><p>Saved employee {session.receipt.employeeCode}.</p><Button onClick={()=>router.push(`/admin/hr/employees/record/${session.receipt!.employeeId}`)}>Open saved employee</Button><Button variant="outline" disabled={session.blocked} onClick={()=>session.startNew()}>Create another employee</Button></div>:session.pending?<div className="space-y-3"><p>The original request for {session.pending.payload.full_name_en} is retained. Retry it unchanged to confirm its result.</p><Button disabled={isSubmitting||session.blocked} onClick={handleSubmit}>{isSubmitting?'Confirming…':'Retry original request'}</Button></div>:<fieldset disabled={session.blocked||isSubmitting} className="min-w-0">
       {/* Step indicator */}
       <div className="mb-5 flex items-center gap-0">
         {STEPS.map((s, i) => (
@@ -360,15 +354,20 @@ export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen
       )}
 
       {step === "confirm" && reviewPayload && (
+        <>
+        {!admitted&&<p role="alert" className="text-sm text-destructive">Employee, compliance, document, and numbering access is required for this destination.</p>}
         <HrDocumentCreateSummaryStep
           form={form}
           selectedDocuments={selectedDocs}
           complianceSuggestions={complianceSuggestions}
-          isSubmitting={isSubmitting}
+          isSubmitting={isSubmitting||!admitted}
           onBack={() => setStep("compliance-review")}
           onSubmit={handleSubmit}
         />
+        </>
       )}
+      </fieldset>}
     </ERPChildDialogForm>
+    </>
   );
 }

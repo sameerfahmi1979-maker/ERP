@@ -9,8 +9,10 @@
  */
 
 import { DraftRestoredNotice } from "@/components/workspace/draft-restored-notice";
+import {useQueryClient} from "@tanstack/react-query";
+import {invalidateDmsDocumentRecord, invalidateDmsEntityDocuments} from "@/lib/query/invalidation";
 import type { ERPRecordSection } from "@/components/workspace/erp-record-section-nav";
-import { ERPRecordSectionPanel, ERPRecordWorkspaceForm } from "@/components/workspace/erp-record-workspace-form";
+import { ERPRecordSectionPanel as BaseSectionPanel, ERPRecordWorkspaceForm } from "@/components/workspace/erp-record-workspace-form";
 import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
 import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
 import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
@@ -40,8 +42,12 @@ import {
   Tag,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type ComponentProps } from "react";
 import { toast } from "sonner";
+import {DmsSectionActivity} from "./section-activity";
+function ERPRecordSectionPanel(props:ComponentProps<typeof BaseSectionPanel>){
+ return <BaseSectionPanel {...props}><DmsSectionActivity value={props.id===props.activeId}>{props.children}</DmsSectionActivity></BaseSectionPanel>;
+}
 import { DmsDocumentAiSection } from "./sections/dms-document-ai-section";
 import { DmsDocumentAiSummarySection } from "./sections/dms-document-ai-summary-section";
 import { DmsDocumentApprovalsSection } from "./sections/dms-document-approvals-section";
@@ -60,6 +66,7 @@ import { DmsDocumentSemanticSection } from "./sections/dms-document-semantic-sec
 import { DmsDocumentTagsSection } from "./sections/dms-document-tags-section";
 import { DmsDocumentUnderstandingSection } from "./sections/dms-document-understanding-section";
 import { DmsDocumentVersionsSection } from "./sections/dms-document-versions-section";
+import { useDmsCreationSession } from "./use-dms-creation-session";
 
 interface DocumentType {
   id: number;
@@ -94,7 +101,7 @@ export type DmsDocumentRecordFormProps = {
 export function DmsDocumentRecordForm(props: DmsDocumentRecordFormProps) {
   return (
     <DmsDocumentRecordFormInner
-      key={`${props.mode}-${props.doc?.id ?? "new"}`}
+      key={`${props.authContext.profile?.id ?? "unknown"}-${props.mode}-${props.doc?.id ?? "new"}-${props.entityContext?.entityType ?? ""}-${props.entityContext?.entityId ?? ""}`}
       {...props}
     />
   );
@@ -109,9 +116,12 @@ function DmsDocumentRecordFormInner({
   entityContext,
 }: DmsDocumentRecordFormProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { closeTab, activeTab, renameTab, updateTabRoute, markDirty } = useWorkspace();
+  const creation = useDmsCreationSession(activeTab?.id, authContext.profile?.id);
+  const submitFlight = useRef(false);
 
-  const [currentMode, setCurrentMode] = useState<"add" | "edit" | "view">(mode);
+  const [currentMode, setCurrentMode] = useState<"add" | "edit" | "view">(() => mode === "add" && creation.receipt ? "view" : mode);
   const isViewing = currentMode === "view";
   // UI capabilities mirror the server action; the file endpoint still checks row scope/confidentiality.
   const canPreviewFiles = hasPermission(authContext, "dms.documents.preview") || hasPermission(authContext, "dms.admin");
@@ -136,7 +146,7 @@ function DmsDocumentRecordFormInner({
   );
 
   // ── Created record tracking ───────────────────────────────────────────────────
-  const [createdDocId, setCreatedDocId] = useState<number | null>(null);
+  const [createdDocId, setCreatedDocId] = useState<number | null>(creation.receipt?.id ?? null);
   const effectiveDocId = doc?.id ?? createdDocId;
 
   // ── Dirty tracking ────────────────────────────────────────────────────────────
@@ -151,27 +161,27 @@ function DmsDocumentRecordFormInner({
 
   // ── Controlled fields ────────────────────────────────────────────────────────
   const [documentTypeId, setDocumentTypeId] = useState<number | null>(() => {
-    return getDraftNullableId("document_type_id", doc?.document_type_id);
+    return creation.pending?.payload.document_type_id ?? getDraftNullableId("document_type_id", doc?.document_type_id);
   });
   const [categoryId, setCategoryId] = useState<number | null>(() => {
-    return getDraftNullableId("category_id", doc?.category_id);
+    return creation.pending?.payload.category_id ?? getDraftNullableId("category_id", doc?.category_id);
   });
   const [status, setStatus] = useState<string>(() => {
     const d = getDraftDefault("status", "");
-    return d || doc?.status || "draft";
+    return creation.pending?.payload.status ?? (d || doc?.status || "draft");
   });
   const [confidentialityLevel, setConfidentialityLevel] = useState<string>(() => {
     const d = getDraftDefault("confidentiality_level", "");
-    return d || doc?.confidentiality_level || "internal";
+    return creation.pending?.payload.confidentiality_level ?? (d || doc?.confidentiality_level || "internal");
   });
   const [owningCompanyId, setOwningCompanyId] = useState<number | null>(() => {
-    return getDraftNullableId("owning_company_id", doc?.owning_company_id);
+    return creation.pending ? creation.pending.payload.owning_company_id ?? null : getDraftNullableId("owning_company_id", doc?.owning_company_id);
   });
   const [owningBranchId, setOwningBranchId] = useState<number | null>(() => {
-    return getDraftNullableId("owning_branch_id", doc?.owning_branch_id);
+    return creation.pending ? creation.pending.payload.owning_branch_id ?? null : getDraftNullableId("owning_branch_id", doc?.owning_branch_id);
   });
   const [partyId, setPartyId] = useState<number | null>(() => {
-    return getDraftNullableId("party_id", doc?.party_id);
+    return creation.pending ? creation.pending.payload.party_id ?? null : getDraftNullableId("party_id", doc?.party_id);
   });
 
   // ── Child dialog blocking ─────────────────────────────────────────────────────
@@ -211,7 +221,7 @@ function DmsDocumentRecordFormInner({
 
   // ── Core save logic ───────────────────────────────────────────────────────────
   const performSave = async (): Promise<boolean> => {
-    if (isViewing) return false;
+    if (isViewing || !creation.isCurrent()) return false;
 
     const form = document.getElementById("dms-doc-workspace-form") as HTMLFormElement | null;
     if (!form) return false;
@@ -227,7 +237,7 @@ function DmsDocumentRecordFormInner({
       return false;
     }
 
-    const payload = {
+    const payload = creation.pending?.payload ?? {
       title: (fd.get("title") as string) || "",
       description: (fd.get("description") as string) || null,
       document_type_id: documentTypeId,
@@ -246,16 +256,21 @@ function DmsDocumentRecordFormInner({
       return false;
     }
 
+    let committed = false;
     try {
       let result;
       if (currentMode === "edit" && (doc || createdDocId)) {
         const id = doc?.id ?? createdDocId!;
         result = await updateDmsDocument({ id, ...payload });
       } else {
-        result = await createDmsDocument(payload);
+        result = await creation.create(payload, createDmsDocument);
       }
+      if (!creation.isCurrent()) return false;
 
       if (result.success) {
+        committed = true;
+        const savedId = currentMode === "edit" ? doc?.id ?? createdDocId : result.data && "id" in result.data ? Number(result.data.id) : null;
+        if (savedId) invalidateDmsDocumentRecord(queryClient, savedId);
         toast.success(`Document ${currentMode === "edit" ? "updated" : "created"} successfully`);
         clearDraft();
         resetDirty();
@@ -264,15 +279,23 @@ function DmsDocumentRecordFormInner({
           const newId = (result.data as { id: number; document_no: string }).id;
           const docNo = (result.data as { id: number; document_no: string }).document_no;
 
-          // Auto-link to entity context if provided (generic — any module)
-          if (entityContext) {
-            await linkDmsDocumentToEntity(newId, entityContext.entityType, entityContext.entityId, {
-              is_primary: true,
-            });
-          }
-
+          // Preserve the committed identity before any optional post-create work.
           setCreatedDocId(newId);
           setCurrentMode("edit");
+          if (entityContext) {
+            try {
+              const link = await linkDmsDocumentToEntity(newId, entityContext.entityType, entityContext.entityId, { is_primary: true });
+              if (!creation.isCurrent()) return false;
+              if (link.success) {
+                invalidateDmsDocumentRecord(queryClient, newId);
+                invalidateDmsEntityDocuments(queryClient, entityContext.entityType, entityContext.entityId);
+              }
+              if (!link.success) toast.warning("Document created, but the entity link could not be added. Add it from Links; do not create another document.");
+            } catch {
+              if (!creation.isCurrent()) return false;
+              toast.warning("Document created, but the entity link was not confirmed. Check Links before adding it again.");
+            }
+          }
 
           if (activeTab?.id) {
             renameTab(activeTab.id, `Document — ${docNo}`, docNo);
@@ -287,6 +310,11 @@ function DmsDocumentRecordFormInner({
         return false;
       }
     } catch (err) {
+      if (!creation.isCurrent()) return false;
+      if (committed) {
+        toast.warning("Document saved. Reopen it from the list if navigation or refresh is unavailable.");
+        return true;
+      }
       console.error("performSave error", err);
       toast.error("Unexpected error saving document");
       return false;
@@ -294,17 +322,22 @@ function DmsDocumentRecordFormInner({
   };
 
   const handleSave = async () => {
+    if (submitFlight.current || !creation.isCurrent()) return;
+    submitFlight.current = true;
     setIsSubmitting(true);
     setActiveSubmitAction("save");
-    await performSave();
-    setIsSubmitting(false);
-    setActiveSubmitAction(null);
+    try { await performSave(); }
+    finally { submitFlight.current = false; if (creation.isCurrent()) { setIsSubmitting(false); setActiveSubmitAction(null); } }
   };
 
   const handleSaveAndClose = async () => {
+    if (submitFlight.current || !creation.isCurrent()) return;
+    submitFlight.current = true;
     setIsSubmitting(true);
     setActiveSubmitAction("saveAndClose");
     const success = await performSave();
+    submitFlight.current = false;
+    if (!creation.isCurrent()) return;
     setIsSubmitting(false);
     setActiveSubmitAction(null);
     if (success) {
@@ -334,8 +367,13 @@ function DmsDocumentRecordFormInner({
       className="h-full"
       // WS.3: syncDraft captures all named inputs (title, description, dates,
       // hidden combobox inputs) into the in-memory draft on every edit.
-      onInput={syncDraft}
-      onChange={() => {
+      onInput={(event) => {
+        if ((event.target as Element).closest("form") === event.currentTarget) syncDraft();
+      }}
+      onChange={(event) => {
+        // React portal events bubble through this parent even when a child
+        // dialog owns the input. They must not create a document draft.
+        if ((event.target as Element).closest("form") !== event.currentTarget) return;
         markDirty(activeTab?.id ?? "", true);
         syncDraft();
       }}
@@ -344,8 +382,9 @@ function DmsDocumentRecordFormInner({
         isDirty={isDirty}
         mode={currentMode === "add" ? "add" : currentMode === "view" ? "view" : "edit"}
         title={doc?.title ?? "New Document"}
-        subtitle={doc?.document_no ?? "Document not yet saved"}
-        recordCode={doc?.document_no}
+        subtitle={doc?.document_no ?? creation.receipt?.document_no ?? "Document not yet saved"}
+        recordCode={doc?.document_no ?? creation.receipt?.document_no}
+        headerActions={!doc && creation.receipt ? <button type="button" className="text-sm underline" onClick={() => router.replace(`/dms/documents/record/${creation.receipt!.id}?mode=edit`)}>Open saved document</button> : undefined}
         statusLabel={headerStatusLabel.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase())}
         statusVariant={headerStatusVariant}
         typeBadges={selectedDocType ? [selectedDocType.name_en] : undefined}
@@ -371,12 +410,14 @@ function DmsDocumentRecordFormInner({
       >
         {/* ── Overview ── */}
         <ERPRecordSectionPanel id="overview" activeId={activeSection}>
+          {creation.recoveryError && <p role="alert" className="mb-3 text-sm text-destructive">{creation.recoveryError}</p>}
+          {currentMode === "add" && creation.uncertain && !isSubmitting && <p role="alert" className="mb-3 text-sm">Creation is unconfirmed. Save again to retry the original submitted values; do not create another document.</p>}
           {/* WS.3: visible signal that unsaved values from a previous visit were restored */}
           <DraftRestoredNotice visible={!isViewing && restoredFromDraft} className="mb-3" />
           <DmsDocumentOverviewSection
             doc={doc ?? null}
-            isViewing={isViewing}
-            getDraftDefault={getDraftDefault}
+            isViewing={isViewing || (currentMode === "add" && (isSubmitting || creation.uncertain || !!creation.recoveryError))}
+            getDraftDefault={(field, fallback) => creation.pending && field in creation.pending.payload ? String(creation.pending.payload[field as keyof typeof creation.pending.payload] ?? "") : getDraftDefault(field, fallback)}
             documentTypes={documentTypes}
             categories={categories}
             documentTypeId={documentTypeId}
@@ -652,7 +693,7 @@ function DmsDocumentRecordFormInner({
 
         {/* ── Approvals ── */}
         <ERPRecordSectionPanel id="approvals" activeId={activeSection} lazyMount>
-          <DmsDocumentApprovalsSection documentId={effectiveDocId} />
+          <DmsDocumentApprovalsSection documentId={effectiveDocId} authContext={authContext} />
         </ERPRecordSectionPanel>
 
         {/* ── Comments ── */}

@@ -16,7 +16,10 @@ const m=vi.hoisted(()=>({history:vi.fn(),links:vi.fn(),cancel:vi.fn(),reminders:
 vi.mock('next/navigation',()=>({usePathname:()=>'/synthetic'}));
 vi.mock('@/components/erp/export/erp-export-menu',()=>({ERPExportMenu:()=>null}));
 vi.mock('@/server/actions/reports/template-governance',()=>({getTemplateGovernanceHistory:m.history,approveTemplate:vi.fn(),archiveTemplate:vi.fn(),createTemplateDraftVersion:vi.fn(),publishTemplate:vi.fn(),rejectTemplate:vi.fn(),runTemplateSecurityReviewAction:vi.fn(),submitTemplateForReview:vi.fn()}));
+// F06 reads the authoritative row after a governance receipt; keep that boundary doubled.
+vi.mock('@/server/actions/reports/templates',()=>({getReportTemplate:vi.fn()}));
 vi.mock('@/server/actions/reports/public-verification',()=>({listOutputPublicLinks:m.links,cancelOutputPublicLink:m.cancel}));
+vi.mock('@/features/dms/documents/section-read',()=>({readDmsSection:(_kind:string,args:unknown[])=>m.reminders(...args)}));
 vi.mock('@/server/actions/dms/expiry-reminders',()=>({getDmsExpiryReminders:m.reminders,dismissDmsExpiryReminder:m.dismiss,markDmsExpiryReminderHandled:m.handled}));
 vi.mock('@/server/actions/settings/email-settings',()=>({deleteEmailProviderConfig:vi.fn(),setDefaultEmailProviderConfig:vi.fn(),testEmailProviderConnection:vi.fn(),updateEmailProviderConfig:vi.fn(),saveEmailProviderSecret:vi.fn(),sendTestEmail:vi.fn()}));
 function Wrap({children}:{children:ReactNode}){return <FluentProvider theme={webLightTheme}><QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><WorkspaceUiMemoryProvider>{children}</WorkspaceUiMemoryProvider></QueryClientProvider></FluentProvider>;}

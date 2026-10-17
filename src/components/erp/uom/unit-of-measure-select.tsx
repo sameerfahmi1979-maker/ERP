@@ -53,6 +53,7 @@ export function UnitOfMeasureSelect({
   const { data, options: baseOptions, isLoading, isFetching, error: fetchError, refetch } = useUnitsOfMeasureQuery({
     categoryId: categoryId ?? null,
     includeInactive,
+    selectedId: value ?? null,
   });
 
   // When showSymbol is true, rebuild options with symbol appended to label
@@ -62,19 +63,22 @@ export function UnitOfMeasureSelect({
       const name =
         language === "ar" && unit.unit_name_ar ? unit.unit_name_ar : unit.unit_name_en;
       const label = unit.symbol ? `${name} (${unit.symbol})` : name;
+      // Choice eligibility belongs to the authorized hook, not the lean row.
+      const authority = baseOptions.find(option => String(option.value) === String(unit.id));
       return {
         value: unit.id,
         label,
         labelAr: unit.unit_name_ar,
         code: unit.unit_code,
         description: unit.symbol,
+        disabled: !authority || authority.disabled === true,
         raw: unit,
       };
     });
   }, [data, baseOptions, showSymbol, language]);
 
   const handleValueChange = (newValue: string | number | null) => {
-    if (!onValueChange) return;
+    if (!onValueChange || disabled || !!fetchError) return;
     if (newValue === null) {
       onValueChange(null);
       return;
@@ -94,15 +98,15 @@ export function UnitOfMeasureSelect({
       ariaLabel={ariaLabel}
       value={value ?? null}
       onValueChange={handleValueChange}
-      options={options}
+      options={options.map(option => ({ ...option, disabled: option.disabled || disabled || !!fetchError }))}
       placeholder={placeholder}
       searchPlaceholder="Search units..."
       showCode={showCode}
       language={language}
-      disabled={disabled}
+      disabled={disabled || !!fetchError}
       readOnly={false}
       required={required}
-      loading={isLoading}
+      loading={isLoading && value == null}
       error={fetchError ? "Units could not be loaded. Retry before saving." : error}
       allowClear={allowClear}
       emptyText={effectiveEmptyText}

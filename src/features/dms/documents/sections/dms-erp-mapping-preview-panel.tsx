@@ -1,7 +1,8 @@
 "use client";
+import {readDmsSection} from "@/features/dms/documents/section-read";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import { loadedListValue } from "@/components/erp/table/loaded-list-view";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import { QueryReadBoundary } from "@/features/dms/documents/section-read-boundary";
 
 /**
  * ERP DMS AI Phase 8 — ERP Mapping Preview Panel
@@ -16,7 +17,7 @@ import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
  */
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
 import {
   Network,
   ChevronDown,
@@ -32,7 +33,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { getDmsErpMappingPreview, type DmsErpMappingPreviewRow } from "@/server/actions/dms/erp-mappings";
+import { type DmsErpMappingPreviewRow } from "@/server/actions/dms/erp-mappings";
 import { queryKeys } from "@/lib/query/query-keys";
 
 // ── Diff status display config ─────────────────────────────────────────────────
@@ -127,8 +128,8 @@ export function ErpMappingPreviewPanel({ documentId }: ErpMappingPreviewPanelPro
 
   const uiRead1 = useQuery({
     queryKey: queryKeys.dms.erpMappingPreview(documentId),
-    queryFn: async () => {
-      const r = await getDmsErpMappingPreview(documentId);
+    queryFn: async ({signal}) => {
+      const r = await readDmsSection("getDmsErpMappingPreview", [documentId], signal);
       if (!r.success) throw new Error(r.error);
       return r.data ?? [];
     },

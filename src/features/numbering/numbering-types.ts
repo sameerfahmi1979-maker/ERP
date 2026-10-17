@@ -1,4 +1,5 @@
 import { z } from "zod";
+import {numberingTemplateError, numberingResetError} from '@/lib/numbering/format';
 
 // ============================================================================
 // DATABASE TYPES
@@ -6,6 +7,7 @@ import { z } from "zod";
 
 export type NumberingRule = {
   id: number;
+  workspace_revision?: number;
   rule_code: string;
   rule_name: string;
   description: string | null;
@@ -88,16 +90,19 @@ export type GeneratedReference = {
 // VALIDATION SCHEMAS
 // ============================================================================
 
-// Supported format tokens (no company/branch/city/year/month)
-const SUPPORTED_TOKENS = ["{DOC}", "{SEQ}", "{SEQ3}", "{SEQ4}", "{SEQ5}", "{SEQ6}", "{SEQ12}"];
-
-// Unsupported tokens
-const UNSUPPORTED_TOKENS = [
-  "{COMPANY}",
-  "{BRANCH}",
-  "{CITY}",
-  "{LOCATION}",
-];
+const templateSchema = z.string().superRefine((value,ctx)=>{
+  const error=numberingTemplateError(value);
+  if(error) ctx.addIssue({code:'custom',message:error});
+});
+const effectiveDate = z.union([z.iso.date(),z.iso.datetime({offset:true})]).optional().nullable();
+function validateRuleRelations(value:{effective_from?:string|null;effective_to?:string|null;format_template?:string;reset_policy?:string},ctx:z.RefinementCtx){
+  if(value.effective_from && value.effective_to && Date.parse(value.effective_to)<Date.parse(value.effective_from))
+    ctx.addIssue({code:'custom',path:['effective_to'],message:'Effective to must not precede effective from.'});
+  if(value.format_template && value.reset_policy){
+    const error=numberingResetError(value.format_template,value.reset_policy);
+    if(error)ctx.addIssue({code:'custom',path:['format_template'],message:error});
+  }
+}
 
 export const createNumberingRuleSchema = z.object({
   rule_code: z
@@ -105,12 +110,12 @@ export const createNumberingRuleSchema = z.object({
     .min(1, "Rule code is required")
     .max(100, "Rule code must be 100 characters or less")
     .regex(/^[A-Z0-9_]+$/, "Rule code must be uppercase alphanumeric with underscores"),
-  rule_name: z.string().min(1, "Rule name is required").max(200),
+  rule_name: z.string().trim().min(1, "Rule name is required").max(200),
   description: z.string().max(500).optional().nullable(),
   module_code: z.string().min(1, "Module code is required").max(50),
-  module_name: z.string().min(1, "Module name is required").max(200),
+  module_name: z.string().trim().min(1, "Module name is required").max(200),
   document_type_code: z.string().min(1, "Document type code is required").max(100),
-  document_type_name: z.string().min(1, "Document type name is required").max(200),
+  document_type_name: z.string().trim().min(1, "Document type name is required").max(200),
   document_prefix: z
     .string()
     .min(1, "Document prefix is required")
@@ -118,36 +123,24 @@ export const createNumberingRuleSchema = z.object({
     .regex(/^[A-Z0-9_]+$/, "Document prefix must be uppercase alphanumeric")
     .transform((val) => val.toUpperCase()),
   separator: z.string().max(5).default("-"),
-  format_template: z
-    .string()
-    .min(1, "Format template is required")
-    .max(100)
-    .refine((val) => val.includes("{DOC}"), "Format template must include {DOC} token")
-    .refine(
-      (val) => SUPPORTED_TOKENS.some((token) => val.includes(token) && token !== "{DOC}"),
-      "Format template must include at least one sequence token (e.g., {SEQ4})"
-    )
-    .refine(
-      (val) => !UNSUPPORTED_TOKENS.some((token) => val.includes(token)),
-      `Format template cannot include unsupported tokens: ${UNSUPPORTED_TOKENS.join(", ")}`
-    ),
+  format_template: templateSchema,
   sequence_length: z.number().int().min(1).max(12).default(4),
-  padding_character: z.string().length(1).default("0"),
-  starting_sequence_number: z.number().int().min(1).default(1),
+  padding_character: z.string().regex(/^[A-Za-z0-9]$/, 'Use one letter or digit for padding.').default("0"),
+  starting_sequence_number: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER-1).default(1),
   reset_policy: z.enum(["never", "yearly", "monthly"]).default("never"),
   reserve_on_draft: z.boolean().default(false),
   reserve_on_submit: z.boolean().default(true),
   allow_manual_override: z.boolean().default(false),
   manual_override_requires_permission: z.boolean().default(true),
   allow_gaps: z.boolean().default(true),
-  cancelled_number_policy: z.enum(["never_reuse", "allow_reuse"]).default("never_reuse"),
+  cancelled_number_policy: z.enum(["never_reuse", "allow_reuse"]).refine(v=>v==='never_reuse','Issued numbers must never be reused.').default("never_reuse"),
   duplicate_prevention_scope: z.string().max(100).default("document_type"),
   is_active: z.boolean().default(true),
   is_locked: z.boolean().default(false),
-  effective_from: z.string().optional().nullable(),
-  effective_to: z.string().optional().nullable(),
+  effective_from: effectiveDate,
+  effective_to: effectiveDate,
   notes: z.string().max(1000).optional().nullable(),
-});
+}).superRefine(validateRuleRelations);
 
 export const updateNumberingRuleSchema = z.object({
   id: z.number().int().positive(),
@@ -157,12 +150,12 @@ export const updateNumberingRuleSchema = z.object({
     .max(100)
     .regex(/^[A-Z0-9_]+$/, "Rule code must be uppercase alphanumeric")
     .optional(),
-  rule_name: z.string().min(1).max(200).optional(),
+  rule_name: z.string().trim().min(1).max(200).optional(),
   description: z.string().max(500).optional().nullable(),
   module_code: z.string().min(1).max(50).optional(),
-  module_name: z.string().min(1).max(200).optional(),
+  module_name: z.string().trim().min(1).max(200).optional(),
   document_type_code: z.string().min(1).max(100).optional(),
-  document_type_name: z.string().min(1).max(200).optional(),
+  document_type_name: z.string().trim().min(1).max(200).optional(),
   document_prefix: z
     .string()
     .min(1)
@@ -171,31 +164,24 @@ export const updateNumberingRuleSchema = z.object({
     .transform((val) => val.toUpperCase())
     .optional(),
   separator: z.string().max(5).optional(),
-  format_template: z
-    .string()
-    .min(1)
-    .max(100)
-    .refine((val) => val.includes("{DOC}"))
-    .refine((val) => SUPPORTED_TOKENS.some((token) => val.includes(token) && token !== "{DOC}"))
-    .refine((val) => !UNSUPPORTED_TOKENS.some((token) => val.includes(token)))
-    .optional(),
+  format_template: templateSchema.optional(),
   sequence_length: z.number().int().min(1).max(12).optional(),
-  padding_character: z.string().length(1).optional(),
-  starting_sequence_number: z.number().int().min(1).optional(),
+  padding_character: z.string().regex(/^[A-Za-z0-9]$/).optional(),
+  starting_sequence_number: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER-1).optional(),
   reset_policy: z.enum(["never", "yearly", "monthly"]).optional(),
   reserve_on_draft: z.boolean().optional(),
   reserve_on_submit: z.boolean().optional(),
   allow_manual_override: z.boolean().optional(),
   manual_override_requires_permission: z.boolean().optional(),
   allow_gaps: z.boolean().optional(),
-  cancelled_number_policy: z.enum(["never_reuse", "allow_reuse"]).optional(),
+  cancelled_number_policy: z.enum(["never_reuse", "allow_reuse"]).refine(v=>v==='never_reuse','Issued numbers must never be reused.').optional(),
   duplicate_prevention_scope: z.string().max(100).optional(),
   is_active: z.boolean().optional(),
   is_locked: z.boolean().optional(),
-  effective_from: z.string().optional().nullable(),
-  effective_to: z.string().optional().nullable(),
+  effective_from: effectiveDate,
+  effective_to: effectiveDate,
   notes: z.string().max(1000).optional().nullable(),
-});
+}).superRefine(validateRuleRelations);
 
 export type CreateNumberingRuleInput = z.infer<typeof createNumberingRuleSchema>;
 export type UpdateNumberingRuleInput = z.infer<typeof updateNumberingRuleSchema>;
@@ -205,6 +191,7 @@ export type UpdateNumberingRuleInput = z.infer<typeof updateNumberingRuleSchema>
 // ============================================================================
 
 export type PreviewReferenceInput = {
+  ruleId?: number;
   ruleCode?: string;
   documentTypeCode?: string;
   nextSequenceNumber?: number;
@@ -219,6 +206,9 @@ export type PreviewReferenceResult = {
 };
 
 export type GenerateReferenceInput = {
+  /** Required for replay-safe callers; legacy party consumers await F06-T01 adoption. */
+  operationId?: string;
+  ruleId?: number;
   ruleCode?: string;
   documentTypeCode?: string;
   targetTableName?: string;
@@ -227,6 +217,8 @@ export type GenerateReferenceInput = {
 };
 
 export type GenerateReferenceResult = {
+  id?: number;
+  replayed?: boolean;
   generatedReferenceNumber: string;
   generatedSequenceNumber: number;
   numberingRuleId: number;

@@ -1,0 +1,69 @@
+// @vitest-environment node
+// Actual Fluent controls/F04 child-form shell; reference reads and saves doubled.
+import '../f05/setup';
+import {afterAll} from 'vitest';
+import {act} from '@testing-library/react';
+import {saveHrLookup} from '@/server/hr-lookup-save';
+const recoveryDom=await vi.hoisted(async()=>{
+ const {builtinEnvironments}=await import('vitest/runtime');
+ return await builtinEnvironments.jsdom.setup(globalThis,{jsdom:{url:'http://localhost:3000'}});
+});
+// Radix schedules unmount autofocus on a zero-delay timer; drain it before restoring DOM globals.
+afterAll(async()=>{await act(async()=>{await new Promise<void>(resolve=>setTimeout(resolve,0));});recoveryDom.teardown(globalThis);});
+const recovery=vi.hoisted(()=>({rpc:vi.fn()}));
+vi.mock('@/lib/rbac/check',async()=>({...await import('@/lib/rbac/scope'),getAuthContext:async()=>({profile:{id:1},isAccountActive:true,roleCodes:[],permissionCodes:[],globalPermissionCodes:['hr.settings.manage'],roleAssignments:[]})}));
+vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({rpc:recovery.rpc})}));
+vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
+vi.mock('@/server/actions/hr/settings',()=>({archiveHrSettingsRow:vi.fn()}));
+vi.mock('@/server/actions/common-master-data/archive',()=>({listArchivedMasters:vi.fn(),restoreArchivedMaster:vi.fn()}));
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {FluentProvider,webLightTheme} from '@fluentui/react-components';
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
+import {WorkspaceUiMemoryProvider} from '@/hooks/use-persistent-ui-state';
+import {HrMohreEstablishmentsPage} from '@/features/hr/settings/hr-mohre-establishments-page';
+const m=vi.hoisted(()=>({create:vi.fn(),update:vi.fn(),refresh:vi.fn(),success:vi.fn(),lookupError:null as string|null}));
+vi.mock('next/navigation',()=>({usePathname:()=>'/admin/hr/settings/mohre-establishments',useRouter:()=>({refresh:m.refresh})}));
+vi.mock('@/hooks/lookups/use-org-queries',()=>({useOwnerCompaniesQuery:()=>({options:[{value:1,label:'Synthetic company',raw:{legal_name_en:'Synthetic company'}}],error:m.lookupError,refetch:vi.fn()})}));
+vi.mock('@/hooks/lookups/use-geography-queries',()=>({useEmiratesQuery:()=>({options:[]})}));
+vi.mock('@/components/erp/export/erp-export-menu',()=>({ERPExportMenu:()=>null}));
+vi.mock('sonner',()=>({toast:{success:m.success,error:vi.fn()}}));
+const row={id:24,workspace_revision:3,owner_company_id:1,establishment_number:'F06_MOHRE',establishment_name:'Original establishment',emirate_id:null,status:'inactive',notes:'Retained notes',created_at:'2026-01-01',updated_at:'2026-01-01',deleted_at:null,owner_company:{id:1,legal_name_en:'Synthetic company'}};
+function view(props:Partial<React.ComponentProps<typeof HrMohreEstablishmentsPage>>={}){return render(<FluentProvider theme={webLightTheme}><QueryClientProvider client={new QueryClient()}><WorkspaceUiMemoryProvider><HrMohreEstablishmentsPage initialData={[row]} canManage onCreate={m.create} onUpdate={m.update} {...props}/></WorkspaceUiMemoryProvider></QueryClientProvider></FluentProvider>);}
+beforeEach(()=>{vi.resetAllMocks();m.lookupError=null;m.update.mockResolvedValue({success:true,data:{id:24,entity:'hr_mohre_establishments',revision:'4',changed:true,replayed:false}});});
+afterEach(cleanup);
+const edit=()=>fireEvent.click(screen.getByRole('button',{name:'Edit record'}));
+it('missing company and establishment number both receive linked validation',async()=>{view();fireEvent.click(screen.getByRole('button',{name:'Add Establishment'}));fireEvent.click(screen.getByRole('button',{name:'Add'}));expect(await screen.findByRole('button',{name:'Company: This field is required.'})).toBeTruthy();expect(screen.getByRole('button',{name:'MOHRE Establishment Number: This field is required.'})).toBeTruthy();expect(m.create).not.toHaveBeenCalled();});
+it('preserves historical name and notes; edit sends revision and omits identity',async()=>{
+ view();edit();expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).value).toBe('Retained notes');
+ fireEvent.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(m.update).toHaveBeenCalledOnce());
+ expect(m.update.mock.calls[0][1]).toMatchObject({establishment_name:'Original establishment',status:'inactive',notes:'Retained notes'});
+ expect(m.update.mock.calls[0][1]).not.toHaveProperty('owner_company_id');expect(m.update.mock.calls[0][1]).not.toHaveProperty('establishment_number');expect(m.update.mock.calls[0][2]).toMatchObject({revision:'3',operationId:expect.any(String)});
+});
+it('immutable identifiers cannot be edited',()=>{view();edit();expect((screen.getByLabelText('MOHRE Establishment Number') as HTMLInputElement).disabled).toBe(true);expect(screen.getByRole('combobox',{name:'Company'}).hasAttribute('disabled')).toBe(true);});
+it('missing revision does not send a write',async()=>{view({initialData:[{...row,workspace_revision:undefined}]});edit();fireEvent.click(screen.getByRole('button',{name:'Save'}));expect(await screen.findByText(/revision is unavailable/)).toBeTruthy();expect(m.update).not.toHaveBeenCalled();});
+it('uncertain save freezes edits and retries identical data/request',async()=>{
+ m.update.mockRejectedValueOnce(Error('Synthetic response loss'));view();edit();fireEvent.change(screen.getByLabelText('Notes'),{target:{value:'Changed notes'}});fireEvent.click(screen.getByRole('button',{name:'Save'}));
+ expect(await screen.findByText(/Save unconfirmed/)).toBeTruthy();expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).matches(':disabled')).toBe(true);
+ const first=m.update.mock.calls[0];fireEvent.click(screen.getByRole('button',{name:'Retry same save'}));await waitFor(()=>expect(m.update).toHaveBeenCalledTimes(2));expect(m.update.mock.calls[1]).toEqual(first);await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
+});
+it('wrong receipt identity is not success',async()=>{m.update.mockResolvedValue({success:true,data:{id:99,entity:'hr_mohre_establishments',revision:'4',changed:true,replayed:false}});view();edit();fireEvent.click(screen.getByRole('button',{name:'Save'}));expect(await screen.findByText(/response incomplete/)).toBeTruthy();expect(m.success).not.toHaveBeenCalled();});
+it('explicit server rejection retains entries without leaking raw errors',async()=>{m.update.mockResolvedValue({success:false,error:'PRIVATE SQL secret'});view();edit();fireEvent.click(screen.getByRole('button',{name:'Save'}));expect(await screen.findByText(/not saved/)).toBeTruthy();expect(screen.queryByText(/PRIVATE SQL/)).toBeNull();expect(screen.getByRole('dialog')).toBeTruthy();});
+it('no-op is reported honestly',async()=>{m.update.mockResolvedValue({success:true,data:{id:24,entity:'hr_mohre_establishments',revision:'3',changed:false,replayed:false}});view();edit();fireEvent.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(m.success).toHaveBeenCalledWith('No changes to save'));});
+it('read-only actor gets explanation and no mutation controls',()=>{view({canManage:false});expect(screen.queryByRole('button',{name:'Edit record'})).toBeNull();expect(screen.getByText(/Read-only/)).toBeTruthy();});
+it('lookup failure is not an empty list or a writable form',()=>{m.lookupError='PRIVATE transport detail';view();edit();expect(screen.getByText(/Reference choices could not load/)).toBeTruthy();expect(screen.queryByText(/PRIVATE/)).toBeNull();expect((screen.getByRole('button',{name:'Save'}) as HTMLButtonElement).disabled).toBe(true);expect(m.update).not.toHaveBeenCalled();});
+it('account switch discards the previous account dialog, including uncertain attempts',async()=>{
+ const client=new QueryClient();const tree=(principalId:number)=><FluentProvider theme={webLightTheme}><QueryClientProvider client={client}><WorkspaceUiMemoryProvider><HrMohreEstablishmentsPage principalId={principalId} initialData={[row]} canManage onCreate={m.create} onUpdate={m.update}/></WorkspaceUiMemoryProvider></QueryClientProvider></FluentProvider>;
+ m.update.mockResolvedValueOnce({success:false,uncertain:true});
+ const rendered=render(tree(1));edit();fireEvent.change(screen.getByLabelText('Notes'),{target:{value:'Private old-account draft'}});fireEvent.click(screen.getByRole('button',{name:'Save'}));await screen.findByText(/Save unconfirmed/);rendered.rerender(tree(2));expect(screen.queryByRole('dialog')).toBeNull();edit();expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).value).toBe('Retained notes');expect(screen.queryByRole('button',{name:'Retry same save'})).toBeNull();
+});
+it('missing optional reference label preserves the saved selection on unrelated edit',async()=>{view({initialData:[{...row,emirate_id:123,emirate:{id:123,name_en:'Existing synthetic emirate'}}]});edit();expect(screen.getByRole('combobox',{name:'Emirate (Optional)'}).textContent).toContain('Existing synthetic emirate');fireEvent.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(m.update).toHaveBeenCalledOnce());expect(m.update.mock.calls[0][1]).toHaveProperty('emirate_id',123);});
+it.each(['40003','08007'])('MOHRE real helper retains unknown through known denial %s',async code=>{
+ recovery.rpc.mockReset().mockResolvedValueOnce({error:{code,message:'PRIVATE_RECOVERY'}}).mockResolvedValueOnce({error:{code:'42501',message:'PRIVATE_RECOVERY'}}).mockResolvedValueOnce({data:{id:24,entity:'hr_mohre_establishments',revision:'4',changed:true,replayed:true}});m.update.mockImplementation((id,data,contract)=>saveHrLookup('hr_mohre_establishments',id,data,contract));view();edit();fireEvent.click(screen.getByRole('button',{name:'Save'}));await screen.findByRole('button',{name:'Retry same save'});const first=recovery.rpc.mock.calls[0];
+ fireEvent.click(screen.getByRole('button',{name:'Retry same save'}));await waitFor(()=>expect(recovery.rpc).toHaveBeenCalledTimes(2));await waitFor(()=>expect(screen.getByRole('button',{name:'Retry same save'}).matches(':disabled')).toBe(false));expect(screen.getByRole('button',{name:'Cancel'}).matches(':disabled')).toBe(true);expect(document.body.textContent).not.toMatch(/PRIVATE_RECOVERY|not saved|no longer have permission/);
+ fireEvent.click(screen.getByRole('button',{name:'Retry same save'}));await waitFor(()=>expect(m.success).toHaveBeenCalledOnce());expect(recovery.rpc.mock.calls).toEqual([first,first,first]);expect(first[0]).toBe('save_hr_lookup');expect(first[1]).toMatchObject({p_table:'hr_mohre_establishments',p_id:24,p_revision:'3',p_action:'save',p_data:{establishment_name:'Original establishment',notes:'Retained notes',status:'inactive',emirate_id:null}});expect(first[1].p_data).not.toHaveProperty('owner_company_id');expect(first[1].p_data).not.toHaveProperty('establishment_number');
+});
+it('confirmed MOHRE refresh survives a notification failure',async()=>{m.success.mockImplementation(()=>{throw Error('PRIVATE_EFFECT');});view();edit();fireEvent.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(m.refresh).toHaveBeenCalledOnce());expect(screen.queryByRole('dialog')).toBeNull();expect(document.body.textContent).not.toMatch(/Save unconfirmed|PRIVATE_EFFECT/);expect(m.update).toHaveBeenCalledOnce();});
+it('disposed pending MOHRE suppresses completion effects',async()=>{let resolve!:(v:unknown)=>void;m.update.mockImplementation(()=>new Promise(r=>{resolve=r;}));const v=view();edit();fireEvent.click(screen.getByRole('button',{name:'Save'}));v.unmount();await act(async()=>resolve({success:true,data:{id:24,entity:'hr_mohre_establishments',revision:'4',changed:true,replayed:false}}));expect(m.success).not.toHaveBeenCalled();expect(m.refresh).not.toHaveBeenCalled();});
+it('MOHRE create retains normalized full payload and null revision through known retry',async()=>{recovery.rpc.mockReset().mockResolvedValueOnce({error:{code:'08007'}}).mockResolvedValueOnce({error:{code:'40P01'}}).mockResolvedValueOnce({data:{id:25,entity:'hr_mohre_establishments',revision:'1',changed:true,replayed:true}});m.create.mockImplementation((data,contract)=>saveHrLookup('hr_mohre_establishments',null,data,contract));view();fireEvent.click(screen.getByRole('button',{name:'Add Establishment'}));fireEvent.click(screen.getByRole('combobox',{name:'Company'}));fireEvent.click(await screen.findByRole('option',{name:/Synthetic company/}));fireEvent.change(screen.getByLabelText('MOHRE Establishment Number'),{target:{value:'F06_NEW'}});fireEvent.click(screen.getByRole('button',{name:'Add'}));await screen.findByRole('button',{name:'Retry same save'});const first=recovery.rpc.mock.calls[0];for(const count of [2,3]){fireEvent.click(screen.getByRole('button',{name:'Retry same save'}));await waitFor(()=>expect(recovery.rpc).toHaveBeenCalledTimes(count));if(count===2)await waitFor(()=>expect(screen.getByRole('button',{name:'Retry same save'}).matches(':disabled')).toBe(false));}await waitFor(()=>expect(m.success).toHaveBeenCalledOnce());expect(recovery.rpc.mock.calls).toEqual([first,first,first]);expect(first[1]).toMatchObject({p_id:null,p_revision:null,p_data:{owner_company_id:1,establishment_name:'Synthetic company',establishment_number:'F06_NEW',status:'active',emirate_id:null,notes:null}});});
+it('first-known MOHRE rejection releases identity for correction',async()=>{m.update.mockResolvedValueOnce({success:false,error:'The change was rejected.'});view();edit();fireEvent.click(screen.getByRole('button',{name:'Save'}));await screen.findByText('The change was rejected.');const first=m.update.mock.calls[0][2];fireEvent.change(screen.getByLabelText('Notes'),{target:{value:'Correction'}});fireEvent.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(m.update).toHaveBeenCalledTimes(2));expect(m.update.mock.calls[1][2].operationId).not.toBe(first.operationId);});

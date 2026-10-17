@@ -1,43 +1,20 @@
 "use client";
-
-import { useRefreshableRows } from "@/hooks/use-refreshable-rows";
-import { ScrollText, RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { DeliveryLogsTable } from "./delivery-logs-table";
-import type { DeliveryLogRow } from "@/server/actions/notifications/delivery-logs";
-import { getNotificationDeliveryLogs } from "@/server/actions/notifications/delivery-logs";
-
-interface DeliveryLogsPageClientProps {
-  initialLogs: DeliveryLogRow[];
-  initialError?: boolean;
-}
-const loadLogs=()=>getNotificationDeliveryLogs({limit:200});
-
-export function DeliveryLogsPageClient({ initialLogs, initialError = false }: DeliveryLogsPageClientProps) {
-  const {rows:logs,failed,loading,refresh}=useRefreshableRows(initialLogs,initialError,loadLogs);
-
-  const sentCount = logs.filter((l) => l.status === "sent").length;
-  const failedCount = logs.filter((l) => l.status === "failed").length;
-
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap gap-3 items-center justify-between">
-        <div className="flex items-center gap-3">
-          <ScrollText className="h-6 w-6 text-primary" />
-          <div>
-            <h1 className="text-xl font-semibold">Delivery Logs</h1>
-            <p className="text-sm text-muted-foreground">
-              Recent delivery history — {logs.length} loaded (up to 200), {sentCount} recorded as sent, {failedCount} failed. A sent log does not confirm inbox receipt.
-            </p>
-          </div>
-        </div>
-        <Button variant="ghost" size="icon" onClick={refresh} disabled={loading} title="Refresh" aria-label="Refresh delivery logs">
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-        </Button>
-      </div>
-
-      {failed ? <p role="alert">Delivery logs could not be refreshed. Use Refresh to retry; previous records may be outdated.</p> : null}
-      <DeliveryLogsTable logs={logs} />
-    </div>
-  );
+import {Button} from "@/components/ui/button";
+import {useCountedTableRead} from "@/hooks/use-counted-table-read";
+import {notificationDeliveryCriteriaSchema,notificationDeliveryPageSchema,notificationDeliveryIdentity,type NotificationDeliveryReadPage} from "@/lib/reads/notification-delivery-schema";
+import type {AuthContext} from "@/lib/rbac/check";
+import {hasPermission} from "@/lib/rbac/scope";
+import {DeliveryLogsTable} from "./delivery-logs-table";
+type Props={authContext:AuthContext;initialPage?:NotificationDeliveryReadPage;initialIdentity?:string;initialUpdatedAt?:number};
+export function DeliveryLogsPageClient(props:Props){const identity=notificationDeliveryIdentity(props.authContext);return <DeliveryView key={identity} {...props} identity={identity}/>;}
+function DeliveryView(props:Props&{identity:string}){
+ const allowed=["notifications.logs.view","notifications.admin"].some(c=>hasPermission(props.authContext,c));
+ const read=useCountedTableRead({resource:"notification-deliveries",prefix:["notifications","delivery-logs"],identity:props.identity,allowed,seed:props.initialPage,seedIdentity:props.initialIdentity,seedUpdatedAt:props.initialUpdatedAt,defaultSort:[{id:"createdAt",desc:true}],
+ parseCriteria:i=>{const p=notificationDeliveryCriteriaSchema.safeParse(i);return p.success?p.data:null;},parsePage:i=>notificationDeliveryPageSchema.parse(i),
+ filters:[{id:"status",label:"Status",type:"text"},{id:"deliveryChannel",label:"Channel",type:"select",options:[{value:"email",label:"Email"},{value:"in_app",label:"In-App"}]}]});
+ if(read.denied)return <p role="alert">Delivery log access could not be verified.</p>;
+ return <div className="space-y-4"><div className="flex justify-between gap-3"><h1 className="text-xl font-semibold">Delivery Logs</h1><Button variant="outline" onClick={read.refresh}>Refresh delivery logs</Button></div>
+ <p className="text-sm text-muted-foreground">Search and filters cover all permitted delivery metadata. Recorded sent is not inbox confirmation. Raw provider messages and errors are excluded from this list.</p>
+ {read.failed&&<p role="alert">Delivery logs could not be verified. Refresh to retry.</p>}
+ <DeliveryLogsTable logs={read.rows} serverRead={read.serverRead} loading={read.busy||read.failed}/></div>;
 }

@@ -14,9 +14,13 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ReportBrandingAssetsSection } from "@/features/branding/report-branding-assets-section";
 import type { ReportBrandingProfile } from "@/lib/report-center/types";
-import { createBrandingProfile, updateBrandingProfile } from "@/server/actions/reports/templates";
+import { createBrandingProfile, updateBrandingProfile, getBrandingProfile, getBrandingEditorChoices } from "@/server/actions/reports/templates";
+import { createWorkspaceSaveAttempt, type WorkspaceSaveContract } from "@/lib/workspace/save-contract";
+import { useReadCacheOwner } from "@/components/layout/read-cache-boundary";
+import { z } from "zod";
+import { Button } from "@/components/ui/button";
 import { Palette } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { toast } from "sonner";
 
 interface Props {
@@ -31,6 +35,7 @@ const defaultForm = {
   profile_code: "",
   profile_name: "",
   profile_type: "company" as "company" | "group" | "neutral" | "custom",
+  owner_company_id: "",
   watermark_text: "",
   theme_primary_color: "#1e293b",
   theme_secondary_color: "#64748b",
@@ -58,6 +63,7 @@ const defaultForm = {
   is_neutral_profile: false,
   is_active: true,
 };
+const profileReceipt=z.object({id:z.number().int().positive(),revision:z.string().regex(/^[1-9]\d*$/),changed:z.boolean(),replayed:z.boolean()});
 
 const profileTypeOptions = [
   { value: "company", label: "Company" },
@@ -81,6 +87,7 @@ function BrandingProfileFormSession({
         profile_code: profile.profile_code,
         profile_name: profile.profile_name,
         profile_type: profile.profile_type as typeof defaultForm.profile_type,
+        owner_company_id: profile.owner_company_id?.toString() ?? "",
         watermark_text: profile.watermark_text ?? "",
         theme_primary_color: profile.theme_primary_color,
         theme_secondary_color: profile.theme_secondary_color,
@@ -109,74 +116,93 @@ function BrandingProfileFormSession({
         is_active: profile.is_active,
       } : defaultForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [assetPending, setAssetPending] = useState(false);
+  const attempt = useRef(createWorkspaceSaveAttempt());
+  const [loadedRevision, setLoadedRevision] = useState(profile?.workspace_revision == null ? null : String(profile.workspace_revision));
+  const flight = useRef(false);
+  const [saveError, setSaveError] = useState("");
+  const [committedId, setCommittedId] = useState<number | null>(null);
+  const committedChanged = useRef(true);
+  const committed=useRef<number|null>(null);
+  const pending=useRef<{input:Parameters<typeof createBrandingProfile>[0]|Parameters<typeof updateBrandingProfile>[0];contract:WorkspaceSaveContract;fingerprint:string;hadUnknown:boolean}|null>(null);
+  const owner=useReadCacheOwner(),activation=useRef<{live:boolean}|null>(null);
+  useLayoutEffect(()=>{const token={live:true};activation.current=token;return()=>{token.live=false;};},[owner]);
+  const [initial] = useState(() => JSON.stringify(form));
+  const dirty = !committedId && JSON.stringify(form) !== initial;
+  type Choices = NonNullable<Awaited<ReturnType<typeof getBrandingEditorChoices>>["data"]>;
+  const [choices, setChoices] = useState<Choices | null>(null);
+  const [choiceError, setChoiceError] = useState("");
+  const [choiceRefresh, setChoiceRefresh] = useState(0);
+  useEffect(() => {
+    let current = true;
+    void getBrandingEditorChoices().then(result => {
+      if (!current) return;
+      if (result.success && result.data) { setChoices(result.data); setChoiceError(""); }
+      else setChoiceError(result.error ?? "Issuing companies could not be loaded.");
+    }).catch(() => { if (current) setChoiceError("Issuing companies could not be loaded."); });
+    return () => { current = false; };
+  }, [choiceRefresh]);
   const isEditing = !!profile;
+  const canSign = profile ? profile.can_sign === true : form.owner_company_id
+    ? choices?.companies.find(company => String(company.id) === form.owner_company_id)?.can_sign === true
+    : choices?.canSignGlobal === true;
 
   const handleSubmit = async () => {
+    const token=activation.current,current=()=>!!token?.live&&activation.current===token&&owner?.isLive()!==false;
+    if (!current() || flight.current || assetPending || !choices || choiceError || profile&&profile.can_manage!==true) return;
     if (!form.profile_name.trim()) { toast.error("Profile name is required"); return; }
     if (!isEditing && !form.profile_code.trim()) { toast.error("Profile code is required"); return; }
 
-    setIsSubmitting(true);
+    flight.current = true;
+    setIsSubmitting(true); setSaveError("");
     try {
-      let result;
-      const payload = {
-        ...form,
-        watermark_text: form.watermark_text || null,
-        email: form.email || null,
-      };
-
-      if (isEditing && profile) {
-        result = await updateBrandingProfile({ id: profile.id, ...payload } as Parameters<typeof updateBrandingProfile>[0]);
-      } else {
-        result = await createBrandingProfile(payload as Parameters<typeof createBrandingProfile>[0]);
+      let savedId = committed.current;
+      if (!savedId) {
+        const {profile_code, signatory_name, signatory_title_en, signatory_title_ar, ...fields} = form;
+        const payload = {
+          ...fields,
+          profile_name: form.profile_name.trim(),
+          owner_company_id: form.owner_company_id ? Number(form.owner_company_id) : null,
+          is_group_profile: form.profile_type === "group",
+          is_neutral_profile: form.profile_type === "neutral",
+          watermark_text: form.watermark_text.trim() || null,
+          email: form.email.trim() || null,
+          ...(canSign ? {signatory_name, signatory_title_en, signatory_title_ar} : {}),
+        };
+        const input = profile ? {id:profile.id,...payload} : {profile_code:profile_code.trim(),...payload};
+        const fingerprint=JSON.stringify(form);
+        if(pending.current&&pending.current.fingerprint!==fingerprint)throw Error('A previous save is unconfirmed. Restore its submitted values and retry.');
+        pending.current??={input:structuredClone(input),contract:attempt.current.begin(input,loadedRevision),fingerprint,hadUnknown:false};
+        const request=pending.current;
+        let result:Awaited<ReturnType<typeof createBrandingProfile>>;
+        try{result=profile?await updateBrandingProfile(request.input as Parameters<typeof updateBrandingProfile>[0],request.contract):await createBrandingProfile(request.input as Parameters<typeof createBrandingProfile>[0],request.contract);}catch{request.hadUnknown=true;throw Error('Save unconfirmed.');}
+        if(!current())return;
+        if(!result||typeof result.success!=='boolean'){request.hadUnknown=true;setSaveError('Save response incomplete. Retry the unchanged entries.');return;}
+        if(!result.success){const earlier=request.hadUnknown;request.hadUnknown ||= result.uncertain===true;if(!request.hadUnknown){attempt.current.resolved();pending.current=null;}setSaveError(earlier?'The earlier save is still unconfirmed. Retry the unchanged entries.':result.error??'Save unconfirmed. Retry the unchanged entries.');return;}
+        const receipt=profileReceipt.safeParse(result.data);
+        if(!receipt.success||(profile&&receipt.data.id!==profile.id)){request.hadUnknown=true;setSaveError('Save response incomplete. Retry the unchanged entries.');return;}
+        savedId=receipt.data.id;committed.current=savedId;committedChanged.current=receipt.data.changed;setCommittedId(savedId);attempt.current.resolved();pending.current=null;
       }
-
-      if (!result.success) { toast.error(result.error ?? "Save failed"); return; }
-
-      toast.success(isEditing ? "Branding profile updated" : "Branding profile created");
-
-      const saved: ReportBrandingProfile = {
-        ...(profile ?? ({} as ReportBrandingProfile)),
-        ...form,
-        id: isEditing ? profile!.id : (result.data?.id ?? 0),
-        logo_url: profile?.logo_url ?? null,
-        small_logo_url: profile?.small_logo_url ?? null,
-        stamp_url: profile?.stamp_url ?? null,
-        signature_url: profile?.signature_url ?? null,
-        watermark_url: null,
-        watermark_text: form.watermark_text || null,
-        email: form.email || null,
-        website: form.website || null,
-        po_box: form.po_box || null,
-        phone: form.phone || null,
-        address_block_en: form.address_block_en || null,
-        address_block_ar: form.address_block_ar || null,
-        legal_name_en: form.legal_name_en || null,
-        legal_name_ar: form.legal_name_ar || null,
-        trade_name_en: form.trade_name_en || null,
-        trade_name_ar: form.trade_name_ar || null,
-        trn: form.trn || null,
-        trade_license_no: form.trade_license_no || null,
-        footer_text_en: form.footer_text_en || null,
-        footer_text_ar: form.footer_text_ar || null,
-        signatory_name: form.signatory_name || null,
-        signatory_title_en: form.signatory_title_en || null,
-        signatory_title_ar: form.signatory_title_ar || null,
-        owner_company_id: profile?.owner_company_id ?? null,
-        created_at: profile?.created_at ?? new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        created_by: profile?.created_by ?? null,
-        updated_by: null,
-        deleted_at: null,
-        deleted_by: null,
-      };
-      onSaved(saved, !isEditing);
+      // Read the authoritative row, never manufacture a profile from form data.
+      const refreshed = await getBrandingProfile(savedId);
+      if(!current())return;
+      if (!refreshed.success || !refreshed.data || refreshed.data.id!==savedId) {setSaveError("Saved, but the current profile could not be loaded. Retry Reload saved profile; it will not create another record.");return;}
+      let displayFailed=false;
+      try{toast.success(!committedChanged.current ? "No changes to save" : isEditing ? "Branding profile updated" : "Branding profile created");}catch{displayFailed=true;}
+      if(current())try{onSaved(refreshed.data, !isEditing);}catch{displayFailed=true;}
+      if(current()&&displayFailed)setSaveError('Saved, but the display could not be refreshed. Reload saved profile.');
+    } catch {
+      if(current())setSaveError(committed.current?'Saved, but the current profile could not be loaded or displayed. Reload saved profile.':"Save or reload unconfirmed. Retry the unchanged entries, or reopen the current record to reconcile it.");
     } finally {
-      setIsSubmitting(false);
+      if(current()){flight.current = false;setIsSubmitting(false);}
     }
   };
 
   const tf = (key: keyof typeof defaultForm) => ({
     value: String(form[key] ?? ""),
+    name: key,
+    disabled: assetPending,
+    maxLength: key === "watermark_text" ? 100 : key === "email" ? 254 : key === "phone" || key === "po_box" || key === "trn" ? 50 : key === "trade_license_no" ? 100 : key.startsWith("address_") || key.startsWith("footer_") ? 500 : key.startsWith("legal_") || key.startsWith("trade_") ? 300 : 200,
     onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm((f) => ({ ...f, [key]: e.target.value })),
   });
@@ -184,12 +210,13 @@ function BrandingProfileFormSession({
   const colorField = (key: keyof typeof defaultForm) => (
     <div className="flex items-center gap-2 mt-1">
       <input
-        type="color"
+        type="color" disabled={assetPending} aria-label={`${key.replaceAll("_", " ")} picker`}
         value={String(form[key])}
         onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
         className="h-9 w-10 rounded border cursor-pointer shrink-0 p-0.5"
       />
       <Input
+        aria-label={key.replaceAll("_", " ")} name={key} required pattern="#[0-9a-fA-F]{6}" disabled={assetPending}
         value={String(form[key])}
         onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
         className="h-9 text-sm font-mono"
@@ -208,9 +235,16 @@ function BrandingProfileFormSession({
       mode={isEditing ? "edit" : "add"}
       size="xl"
       isSubmitting={isSubmitting}
+      submitDisabled={assetPending || !choices || !!choiceError || !!profile && profile.can_manage !== true}
+      closeDisabled={assetPending}
+      submitLabel={committedId ? "Reload saved profile" : undefined}
+      isDirty={dirty}
       onSubmit={handleSubmit}
     >
-      <div className="grid grid-cols-12 gap-4">
+      {saveError && <p role="alert" className="text-destructive">{saveError}</p>}
+      {assetPending && <p role="status">Finish or retry the current asset operation before editing or closing this profile.</p>}
+      {choiceError ? <div role="alert">{choiceError} <Button type="button" variant="outline" onClick={() => setChoiceRefresh(value => value + 1)}>Retry company choices</Button></div> : !choices ? <p role="status">Loading authorized issuing companies…</p> : null}
+      <fieldset disabled={!!committedId} className="grid grid-cols-12 gap-4">
         {/* ── Basic Info ─────────────────────────────────────────────────── */}
         <div className="col-span-12">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Basic Info</p>
@@ -222,10 +256,11 @@ function BrandingProfileFormSession({
             <Label className="text-xs font-medium">
               Code <span className="text-destructive">*</span>
             </Label>
-            <Input aria-label="Code" required
+            <Input aria-label="Code" required pattern="[A-Z0-9_]{2,100}"
               className="mt-1 h-9 text-sm uppercase"
               placeholder="COMPANY_1_DEFAULT"
               {...tf("profile_code")}
+              maxLength={100}
               onChange={(e) => setForm((f) => ({ ...f, profile_code: e.target.value.toUpperCase() }))}
             />
           </div>
@@ -235,19 +270,34 @@ function BrandingProfileFormSession({
           <Label className="text-xs font-medium">
             Profile Name <span className="text-destructive">*</span>
           </Label>
-          <Input aria-label="Profile Name" required className="mt-1 h-9 text-sm" placeholder="Company Default" {...tf("profile_name")} />
+          <Input aria-label="Profile Name" required minLength={2} pattern={".*\\S.*"} className="mt-1 h-9 text-sm" placeholder="Company Default" {...tf("profile_name")} />
         </div>
 
         <div className="col-span-4">
           <Label className="text-xs font-medium">Profile Type</Label>
           <div className="mt-1">
             <ERPCombobox
+              aria-label="Profile Type"
               value={form.profile_type}
-              onValueChange={(v) => setForm((f) => ({ ...f, profile_type: String(v) as typeof defaultForm.profile_type }))}
-              options={profileTypeOptions}
+              onValueChange={(v) => setForm((f) => ({ ...f, profile_type: String(v) as typeof defaultForm.profile_type, owner_company_id: v === "group" || v === "neutral" ? "" : f.owner_company_id, is_default_for_company: v === "group" || v === "neutral" ? false : f.is_default_for_company }))}
+              options={profileTypeOptions.filter(option => choices?.canCreateGlobal || option.value === "company" || option.value === "custom" || option.value === form.profile_type)}
+              disabled={isEditing || assetPending}
               placeholder="Select type..."
             />
           </div>
+        </div>
+
+        <div className="col-span-8">
+          <Label htmlFor="bp_company" className="text-xs font-medium">Issuing Company</Label>
+          <select id="bp_company" name="owner_company_id" required={form.profile_type === "company" || !choices?.canCreateGlobal}
+            disabled={assetPending || isEditing || form.profile_type === "group" || form.profile_type === "neutral"}
+            className="mt-1 w-full rounded-sm border border-input bg-background p-2 text-sm"
+            value={form.owner_company_id} onChange={event => setForm(f => ({...f,owner_company_id:event.target.value}))}>
+            <option value="">{form.profile_type === "group" || form.profile_type === "neutral" ? "Global branding — no issuing company" : "Choose an authorized issuing company"}</option>
+            {choices?.companies.map(company => <option key={company.id} value={company.id}>{company.company_code} — {company.legal_name_en}</option>)}
+            {isEditing && form.owner_company_id && !choices?.companies.some(company => String(company.id) === form.owner_company_id) && <option value={form.owner_company_id}>Assigned company {form.owner_company_id} — unavailable for new selection</option>}
+          </select>
+          <p className="text-xs text-muted-foreground">Ownership is fixed after creation. Group and neutral profiles require global authority.</p>
         </div>
 
         <div className="col-span-6">
@@ -318,7 +368,13 @@ function BrandingProfileFormSession({
             <ReportBrandingAssetsSection
               brandingProfileId={profile.id}
               ownerCompanyId={profile.owner_company_id}
-              canUpload={canUpload}
+              canUpload={canUpload && profile.can_upload_assets === true}
+              disabled={!profile.is_active || dirty || isSubmitting || !!committedId}
+              disabledReason={!profile.is_active ? "Reactivate and save this profile before changing its images." : "Save or cancel the profile changes before changing its images."}
+              canSign={profile.can_sign === true}
+              parentRevision={loadedRevision ?? undefined}
+              onChanged={receipt => setLoadedRevision(receipt.parent_revision)}
+              onPendingChange={setAssetPending}
             />
           ) : (
             <p className="text-xs text-muted-foreground rounded-md border border-dashed border-border/80 bg-muted/20 px-3 py-4">
@@ -361,11 +417,11 @@ function BrandingProfileFormSession({
         </div>
         <div className="col-span-4">
           <Label className="text-xs font-medium">Signatory Name</Label>
-          <Input aria-label="Signatory Name" className="mt-1 h-9 text-sm" {...tf("signatory_name")} />
+          <Input aria-label="Signatory Name" className="mt-1 h-9 text-sm" {...tf("signatory_name")} disabled={!canSign || assetPending} />
         </div>
         <div className="col-span-4">
           <Label className="text-xs font-medium">Signatory Title (EN)</Label>
-          <Input aria-label="Signatory Title (EN)" className="mt-1 h-9 text-sm" {...tf("signatory_title_en")} />
+          <Input aria-label="Signatory Title (EN)" className="mt-1 h-9 text-sm" {...tf("signatory_title_en")} disabled={!canSign || assetPending} />
         </div>
         <div className="col-span-4">
           <Label className="text-xs font-medium">Watermark Text</Label>
@@ -379,22 +435,22 @@ function BrandingProfileFormSession({
         </div>
 
         <div className="col-span-3 flex items-center gap-2">
-          <Switch checked={form.is_active} onCheckedChange={(v) => setForm((f) => ({ ...f, is_active: v }))} id="bp_is_active" />
+          <Switch disabled={assetPending} checked={form.is_active} onCheckedChange={(v) => setForm((f) => ({ ...f, is_active: v }))} id="bp_is_active" />
           <Label htmlFor="bp_is_active" className="text-sm cursor-pointer">Active</Label>
         </div>
         <div className="col-span-3 flex items-center gap-2">
-          <Switch checked={form.is_default_for_company} onCheckedChange={(v) => setForm((f) => ({ ...f, is_default_for_company: v }))} id="bp_is_default" />
+          <Switch disabled={assetPending || !form.owner_company_id} checked={form.is_default_for_company} onCheckedChange={(v) => setForm((f) => ({ ...f, is_default_for_company: v }))} id="bp_is_default" />
           <Label htmlFor="bp_is_default" className="text-sm cursor-pointer">Default for company</Label>
         </div>
         <div className="col-span-3 flex items-center gap-2">
-          <Switch checked={form.is_group_profile} onCheckedChange={(v) => setForm((f) => ({ ...f, is_group_profile: v }))} id="bp_is_group" />
+          <Switch checked={form.profile_type === "group"} disabled id="bp_is_group" />
           <Label htmlFor="bp_is_group" className="text-sm cursor-pointer">Group profile</Label>
         </div>
         <div className="col-span-3 flex items-center gap-2">
-          <Switch checked={form.is_neutral_profile} onCheckedChange={(v) => setForm((f) => ({ ...f, is_neutral_profile: v }))} id="bp_is_neutral" />
+          <Switch checked={form.profile_type === "neutral"} disabled id="bp_is_neutral" />
           <Label htmlFor="bp_is_neutral" className="text-sm cursor-pointer">Neutral profile</Label>
         </div>
-      </div>
+      </fieldset>
     </ERPChildDialogForm>
   );
 }

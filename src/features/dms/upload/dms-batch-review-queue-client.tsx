@@ -1,8 +1,11 @@
 "use client";
+import {useQuery,useQueryClient} from "@tanstack/react-query";
+import {readJson,retryAuthorizedRead} from "@/lib/reads/client";
+import {DmsLoadError} from "@/features/dms/dms-load-error";
 import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
 import { ConfiguredRow } from "@/components/erp/table/list-controls";
 
-import { useState, useTransition, useCallback, useRef } from "react";
+import { useState, useTransition, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useWorkspace } from "@/hooks/use-workspace";
@@ -41,14 +44,15 @@ import { Sparkles } from "lucide-react";
 interface Props {
   batch: DmsUploadBatchRow;
   initialDrafts: DmsBatchDraftRow[];
+  initialUpdatedAt?: number;
 }
 
 const BATCH_STATUS_STYLES: Record<string, string> = {
-  processing: "bg-blue-100 text-blue-700 border-blue-200",
-  ready_for_review: "bg-amber-100 text-amber-700 border-amber-200",
-  partially_approved: "bg-violet-100 text-violet-700 border-violet-200",
-  completed: "bg-green-100 text-green-700 border-green-200",
-  cancelled: "bg-gray-100 text-gray-600 border-gray-200",
+  processing: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800",
+  ready_for_review: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
+  partially_approved: "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-950 dark:text-violet-200 dark:border-violet-800",
+  completed: "bg-green-100 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-200 dark:border-green-800",
+  cancelled: "bg-muted text-muted-foreground border-border",
 };
 
 function StatCard({ label, value, tone }: { label: string; value: number; tone?: string }) {
@@ -121,11 +125,26 @@ function SortableTh({
 
 const BATCH_FIELDS: DmsListField[] = [{"id":"selection","label":"Selection","required":true,"width":48},{"id":"index","label":"Row","width":48},{"id":"title","label":"File / AI title","path":"searchTitle","required":true,"width":260},{"id":"docNo","label":"Document number","path":"documentNo","width":160},{"id":"type","label":"Type","path":"documentTypeName","width":160},{"id":"confidence","label":"Confidence","path":"confidenceLabel","width":140},{"id":"status","label":"Status","path":"searchStatus","width":160},{"id":"actions","label":"Actions","required":true,"width":180}];
 
-export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
+export function DmsBatchReviewQueueClient(props:Props){return <BatchReviewSession key={props.batch.id} {...props} />;}
+function BatchReviewSession({ batch, initialDrafts, initialUpdatedAt=0 }: Props) {
   const router = useRouter();
   const { openTab } = useWorkspace();
   const batchReviewRoute = `/dms/inbox/batch/${batch.batch_code}`;
-  const drafts = initialDrafts;
+  const qc=useQueryClient();
+  const read=useQuery({queryKey:["dms","batch-drafts",batch.id],queryFn:async({signal})=>{
+   const r=await readJson<{success:true;data:DmsBatchDraftRow[]}>("dms-batch-drafts",{batchId:batch.id},signal);return r.data;
+  },initialData:()=>initialUpdatedAt>0&&qc.getQueryState(["dms","batch-drafts",batch.id])===undefined?initialDrafts:undefined,initialDataUpdatedAt:initialUpdatedAt,staleTime:15000,retry:retryAuthorizedRead});
+  const seed=useRef(initialDrafts);
+  useEffect(()=>{if(seed.current===initialDrafts)return;seed.current=initialDrafts;
+   const key=["dms","batch-drafts",batch.id],state=qc.getQueryState(key);
+   if(initialUpdatedAt<=0||state?.status==="error"||(state?.data===undefined&&(state?.errorUpdateCount??0)>0)||(state?.dataUpdatedAt??0)>=initialUpdatedAt)return;
+   const verify=state?.isInvalidated||state?.fetchStatus==="fetching";
+   if(verify)void qc.cancelQueries({queryKey:key,exact:true});
+   qc.setQueryData(key,initialDrafts,{updatedAt:initialUpdatedAt});
+   if(verify)void qc.invalidateQueries({queryKey:key,exact:true,refetchType:"active"});
+  },[initialDrafts,initialUpdatedAt,batch.id,qc]);
+  const ready=read.isSuccess&&!read.isFetching;
+  const drafts=ready?read.data:[];
   const listView = useDmsListView(`batch-review:${batch.id}`, drafts.map(d => ({ ...d, searchTitle: `${d.aiTitle ?? ""} ${d.originalFilename}`, searchStatus: draftStatusSortLabel(d) })), BATCH_FIELDS);
   const [isPending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -135,7 +154,7 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
 
   // ── Sorting (click column header) ──────────────────────────────────────
   const draftsTable = useSortPaginate(listView.rows, {
-    defaultPageSize: 1000,
+    defaultPageSize: 25,
     comparators: {
       title: (a, b) => (a.aiTitle ?? a.originalFilename).localeCompare(b.aiTitle ?? b.originalFilename),
       docNo: (a, b) => (a.documentNo ?? "").localeCompare(b.documentNo ?? ""),
@@ -168,11 +187,11 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
   const [isOrchRunning, setIsOrchRunning] = useState(false);
 
   const refresh = useCallback(() => {
-    startTransition(() => router.refresh());
-  }, [router]);
+    startTransition(async () => {await qc.invalidateQueries({queryKey:["dms","batch-drafts",batch.id]});router.refresh();});
+  }, [router,qc,batch.id]);
 
   const handleRunBatchOrchestration = useCallback(async () => {
-    if (flight.current) return;
+    if (!ready || flight.current) return;
     flight.current = true; setFailure(null);
     setIsOrchRunning(true);
     try {
@@ -195,7 +214,7 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
       setIsOrchRunning(false);
       flight.current = false;
     }
-  }, [batch.batch_code, refresh]);
+  }, [batch.batch_code, refresh, ready]);
 
   const toggleOne = useCallback((sessionId: number, checked: boolean) => {
     setSelected((prev) => {
@@ -312,18 +331,21 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
     });
   }, [router]);
 
+  if(read.isError)return <DmsLoadError subject="batch drafts" pending={read.isFetching} retry={()=>read.refetch()} />;
+  if(!ready)return <p role="status">Loading batch drafts…</p>;
   return (
     <div className="space-y-5">
       {failure && <p role="alert" className="rounded-sm border border-destructive p-3 text-sm text-destructive">{failure}</p>}
+      <div className="flex items-center gap-2"><Button variant="outline" disabled={draftsTable.page<=1} onClick={()=>draftsTable.setPage(draftsTable.page-1)}>Previous</Button><span>Page {draftsTable.page} of {draftsTable.totalPages}</span><Button variant="outline" disabled={draftsTable.page>=draftsTable.totalPages} onClick={()=>draftsTable.setPage(draftsTable.page+1)}>Next</Button></div>
       {/* Header / counts */}
       <div className="rounded-xl border bg-card p-4 space-y-3">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
-            <Layers className="h-4 w-4 text-violet-600" />
+            <Layers className="h-4 w-4 text-violet-600 dark:text-violet-300" />
             <span className="font-mono text-sm font-semibold">{batch.batch_code}</span>
             <Badge
               variant="outline"
-              className={cn("text-[10px] border", BATCH_STATUS_STYLES[batch.status] ?? "bg-slate-100 text-slate-700 border-slate-200")}
+              className={cn("text-[10px] border", BATCH_STATUS_STYLES[batch.status] ?? "bg-muted text-foreground border-border")}
             >
               {batch.status.replace(/_/g, " ")}
             </Badge>
@@ -335,7 +357,7 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
               variant="outline"
               onClick={handleRunBatchOrchestration}
               disabled={isOrchRunning || isPending}
-              className="border-violet-200 text-violet-700 hover:bg-violet-50 gap-1.5"
+              className="border-violet-200 text-violet-700 hover:bg-violet-50 gap-1.5 dark:border-violet-800 dark:text-violet-200 dark:hover:bg-violet-950"
               title="Run full AI pipeline (summary, intelligence, embedding, tags, links) on all pending drafts. One-by-one approval is still required."
             >
               {isOrchRunning
@@ -375,14 +397,14 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
           <StatCard label="Total" value={batch.total_files} />
           <StatCard label="Processed" value={batch.processed_files} />
-          <StatCard label="Pending Review" value={pending} tone="text-amber-600" />
-          <StatCard label="Approved" value={approved} tone="text-green-600" />
+          <StatCard label="Pending Review" value={pending} tone="text-amber-600 dark:text-amber-300" />
+          <StatCard label="Approved" value={approved} tone="text-green-600 dark:text-green-300" />
           <StatCard label="Failed" value={failed} tone="text-destructive" />
           <StatCard label="Discarded" value={discarded} tone="text-muted-foreground" />
         </div>
 
         <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20 px-3 py-2">
-          <AlertTriangle className="h-3.5 w-3.5 text-amber-600 mt-0.5 shrink-0" />
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-600 mt-0.5 shrink-0 dark:text-amber-300" />
           <p className="text-[11px] text-amber-700 dark:text-amber-400">
             One-by-one approval only. Open each draft with <strong>Review &amp; Approve</strong>, verify the AI-filled
             fields, then click <strong>Approve &amp; Save</strong> inside the review screen. There is no bulk approval.
@@ -477,7 +499,7 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                         </p>
                       </div>
                       {d.isDuplicate && (
-                        <Badge variant="outline" className="text-[9px] border-orange-300 text-orange-700 bg-orange-50 shrink-0">
+                        <Badge variant="outline" className="text-[9px] border-orange-300 text-orange-700 bg-orange-50 shrink-0 dark:border-orange-800 dark:text-orange-200 dark:bg-orange-950">
                           Dup
                         </Badge>
                       )}
@@ -494,9 +516,9 @@ export function DmsBatchReviewQueueClient({ batch, initialDrafts }: Props) {
                   </td>
                   <td data-column="status" className="px-3 py-2">
                     {isFailed ? (
-                      <Badge variant="outline" className="text-[10px] border-red-200 text-red-700 bg-red-50">Failed</Badge>
+                      <Badge variant="outline" className="text-[10px] border-red-200 text-red-700 bg-red-50 dark:border-red-800 dark:text-red-200 dark:bg-red-950">Failed</Badge>
                     ) : isDiscarded ? (
-                      <Badge variant="outline" className="text-[10px] border-gray-200 text-gray-600 bg-gray-50">Discarded</Badge>
+                      <Badge variant="outline" className="text-[10px] border-border text-muted-foreground bg-muted">Discarded</Badge>
                     ) : d.documentStatus ? (
                       <DmsDocumentStatusBadge status={d.documentStatus} />
                     ) : (

@@ -2,9 +2,7 @@
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import type { ColumnDef } from "@tanstack/react-table";
 
-import { useState, useEffect, useRef } from "react";
-import { FormErrorSummary, useInlineFieldFeedback } from "@/components/workspace/form-feedback";
-import { collectWorkspaceFieldIssues, type WorkspaceFieldIssue } from "@/lib/workspace/form-validation";
+import { useState, useEffect } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,32 +10,36 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Edit, Trash2, Receipt, ExternalLink } from "lucide-react";
+import { Plus, Edit, Receipt, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
+import {PartyChildLifecycleControl,usePartyChildLifecycle} from './party-child-lifecycle-control';
+import {PartyChildSaveDialog,type SavePartyChild} from './party-child-save-dialog';
+import type {CreatePartyTaxInput} from './party-schemas';
+
 import { ERPCombobox } from "@/components/erp/combobox";
 import { RequiredLabel } from "@/components/erp/required-label";
-import { CurrencySelect, PaymentTermSelect, TaxTypeSelect } from "@/components/erp/finance-basics";
+import { TaxTypeSelect } from "@/components/erp/finance-basics";
+import { PartyFinanceProfileEditor } from "./party-finance-profile-editor";
 import { usePartyTaxRegistrationsQuery } from "./hooks/use-party-child-queries";
 import { invalidatePartyTaxRegistrations } from "@/lib/query/invalidation";
 import {
   createPartyTaxRegistration,
   updatePartyTaxRegistration,
-  deletePartyTaxRegistration,
 } from "@/server/actions/master-data/party-tax-registrations";
 import {
   getPartyTaxStatuses,
-  getPaymentMethods,
 } from "@/server/actions/master-data/parties";
-import { getPartyFinanceProfile, upsertPartyFinanceProfile } from "@/server/actions/master-data/party-finance-profiles";
 import type { PartyTaxRegistration } from "./party-types";
+import type {AuthContext} from '@/lib/rbac/check';
+import {hasGlobalPermission} from '@/lib/rbac/scope';
 
 type PartyTaxFinanceTabProps = {
   partyId: number;
   disabled?: boolean;
+  authContext?: AuthContext;
   onChildOpen?: (open: boolean) => void;
+  onInlineTaskOpen?: (open: boolean) => void;
 };
 
 const emptyTaxForm = {
@@ -54,35 +56,25 @@ const emptyTaxForm = {
   remarks: "",
 };
 
-export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxFinanceTabProps) {
+export function PartyTaxFinanceTab({ partyId, disabled:parentDisabled, authContext, onChildOpen, onInlineTaskOpen }: PartyTaxFinanceTabProps) {
+  const disabled=parentDisabled || !authContext || !hasGlobalPermission(authContext,'master_data.parties.manage_tax') || !hasGlobalPermission(authContext,'master_data.parties.view');
   const queryClient = useQueryClient();
   const { items: taxRegs, isLoading: taxLoading, error: taxError, refetch: refetchTax } = usePartyTaxRegistrationsQuery(partyId);
 
-  // Finance profile state
-  const [financeProfile, setFinanceProfile] = useState({
-    default_currency_id: null as number | null,
-    default_payment_term_id: null as number | null,
-    default_payment_method_id: null as number | null,
-    credit_limit: "" as string,
-    credit_currency_id: null as number | null,
-    finance_hold: false,
-    finance_hold_reason: "",
-    finance_remarks: "",
-  });
-  const [financeLoaded, setFinanceLoaded] = useState(false);
-  const [isSavingFinance, setIsSavingFinance] = useState(false);
-  const financeRoot = useRef<HTMLDivElement>(null);
-  const financeFlight = useRef(false);
-  const [financeError, setFinanceError] = useState<string | null>(null);
-  const [financeIssues, setFinanceIssues] = useState<WorkspaceFieldIssue[]>([]);
-  useInlineFieldFeedback(financeIssues);
-
   // Tax dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const setDialogOpen = (open: boolean) => { setIsDialogOpen(open); onChildOpen?.(open); };
+  const [taxLifecycleOpen, setTaxLifecycleOpen] = useState(false);
+  const lifecycle=usePartyChildLifecycle({entity:'party_tax_registrations',onSaved:()=>{invalidatePartyTaxRegistrations(queryClient,partyId);},onOpenChange:setTaxLifecycleOpen});
+  const lifecycleOpen=lifecycle.isOpen;
+  const setDialogOpen = (open: boolean) => { setIsDialogOpen(open); };
+  // Tax tasks use the portal/inert channel; inline finance has a separate guard.
+  // Neither source clears the other's guard or the parent record's dirty state.
+  useEffect(() => { onChildOpen?.(isDialogOpen || taxLifecycleOpen); }, [isDialogOpen, taxLifecycleOpen, onChildOpen]);
+  useEffect(() => () => onChildOpen?.(false), [onChildOpen]);
   const [editingTax, setEditingTax] = useState<PartyTaxRegistration | null>(null);
   const [taxForm, setTaxForm] = useState({ ...emptyTaxForm });
   const [isSubmittingTax, setIsSubmittingTax] = useState(false);
+
 
   const { data: taxStatuses } = useQuery({
     queryKey: ["party_tax_statuses"],
@@ -90,74 +82,15 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: paymentMethods } = useQuery({
-    queryKey: ["payment_methods"],
-    queryFn: async () => (await getPaymentMethods()).data ?? [],
-    staleTime: 5 * 60 * 1000,
-  });
-
-  // Load finance profile
-  useEffect(() => {
-    if (!partyId) return;
-    let cancelled = false;
-    getPartyFinanceProfile(partyId).then((result) => {
-      if (cancelled) return;
-      if (!result.success) { setFinanceError("Finance details could not be loaded. Reload this record before making changes."); return; }
-      if (result.success && result.data) {
-        const p = result.data;
-        setFinanceProfile({
-          default_currency_id: p.default_currency_id,
-          default_payment_term_id: p.default_payment_term_id,
-          default_payment_method_id: p.default_payment_method_id,
-          credit_limit: p.credit_limit ? String(p.credit_limit) : "",
-          credit_currency_id: p.credit_currency_id,
-          finance_hold: p.finance_hold,
-          finance_hold_reason: p.finance_hold_reason ?? "",
-          finance_remarks: p.finance_remarks ?? "",
-        });
-      }
-      setFinanceLoaded(true);
-    }).catch(() => { if (!cancelled) setFinanceError("Finance details could not be loaded. Reload this record before making changes."); });
-    return () => { cancelled = true; };
-  }, [partyId]);
-
-  const handleSaveFinance = async () => {
-    if (disabled || !financeLoaded || financeFlight.current) return;
-    const issues = financeRoot.current ? collectWorkspaceFieldIssues(financeRoot.current) : [];
-    setFinanceIssues(issues);
-    if (issues.length) { issues[0].control?.focus(); return; }
-    financeFlight.current = true;
-    setFinanceError(null);
-    setIsSavingFinance(true);
-    try {
-      const result = await upsertPartyFinanceProfile({
-        party_id: partyId,
-        default_currency_id: financeProfile.default_currency_id,
-        default_payment_term_id: financeProfile.default_payment_term_id,
-        default_payment_method_id: financeProfile.default_payment_method_id,
-        credit_limit: financeProfile.credit_limit ? parseFloat(financeProfile.credit_limit) : null,
-        credit_currency_id: financeProfile.credit_currency_id,
-        finance_hold: financeProfile.finance_hold,
-        finance_hold_reason: financeProfile.finance_hold_reason || null,
-        finance_remarks: financeProfile.finance_remarks || null,
-      });
-      if (result.success) toast.success("Finance profile saved");
-      else setFinanceError("The finance profile was not saved. Your entries are still here.");
-    } catch {
-      setFinanceError("The save could not be confirmed. Your entries are still here. Check this record before retrying.");
-    } finally {
-      financeFlight.current = false;
-      setIsSavingFinance(false);
-    }
-  };
-
   const openAddTax = () => {
+    if(lifecycleOpen)return;
     setEditingTax(null);
     setTaxForm({ ...emptyTaxForm });
     setDialogOpen(true);
   };
 
   const openEditTax = (item: PartyTaxRegistration) => {
+    if(lifecycleOpen)return;
     setEditingTax(item);
     setTaxForm({
       tax_type_id: item.tax_type_id,
@@ -175,18 +108,8 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
     setDialogOpen(true);
   };
 
-  const handleDeleteTax = async (id: number) => {
-    if (!confirm("Delete this tax registration?")) return;
-    const result = await deletePartyTaxRegistration(id);
-    if (result.success) {
-      toast.success("Tax registration deleted");
-      invalidatePartyTaxRegistrations(queryClient, partyId);
-    } else {
-      toast.error(result.error ?? "Failed to delete");
-    }
-  };
 
-  const handleSubmitTax = async () => {
+  const handleSubmitTax = async (save:SavePartyChild<CreatePartyTaxInput>) => {
     if (!taxForm.tax_type_id || !taxForm.tax_registration_number || !taxForm.tax_status_id) {
       toast.error("Fill in required fields");
       return;
@@ -207,12 +130,10 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
         is_active: taxForm.is_active,
         remarks: taxForm.remarks || null,
       };
-      const result = editingTax
-        ? await updatePartyTaxRegistration({ id: editingTax.id, ...payload })
-        : await createPartyTaxRegistration(payload);
+      const result = await save(payload);
 
       if (result.success) {
-        toast.success(`Tax registration ${editingTax ? "updated" : "added"}`);
+        toast.success(result.data?.changed === false ? "No changes to save" : `Tax registration ${editingTax ? "updated" : "added"}`);
         setDialogOpen(false);
         invalidatePartyTaxRegistrations(queryClient, partyId);
       } else {
@@ -224,6 +145,7 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
   };
 
   const taxColumns: ColumnDef<PartyTaxRegistration>[] = [
+    {id:'archive_state',header:'Archive status',accessorFn:row=>row.archived_at?'Archived':'Current'},
 { id:"registration",header:"Tax registration",size:320,accessorFn:tax=>[tax.tax_registration_code,tax.tax_registration_number,tax.tax_type_name,tax.tax_status_name].filter(Boolean).join(" "),cell:({row})=>{const tax=row.original;return (<div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-xs text-muted-foreground">{tax.tax_registration_code}</span>
@@ -254,12 +176,10 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
                   )}
                   {!disabled && (
                     <>
-                      <Button type="button" variant="ghost" size="icon" aria-label="Edit registration" className="h-7 w-7" onClick={() => openEditTax(tax)}>
+                      <Button type="button" variant="ghost" size="icon" aria-label="Edit registration" className="h-7 w-7" disabled={Boolean(tax.archived_at)} onClick={() => openEditTax(tax)}>
                         <Edit className="h-3.5 w-3.5" />
                       </Button>
-                      <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" aria-label="Delete registration" onClick={() => handleDeleteTax(tax.id)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      <PartyChildLifecycleControl record={tax} onOpen={()=>lifecycle.open(tax,tax.tax_registration_code)}/>
                     </>
                   )}
                 </div>);}}];
@@ -282,70 +202,15 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
       </div>
 
       {/* Finance Profile */}
-      <div>
-        <h3 className="text-sm font-semibold mb-3">Finance Profile</h3>
-        {financeError && <p role="alert" className="text-sm text-destructive">{financeError}</p>}
-        {!financeLoaded && !financeError ? (
-          <Skeleton className="h-40 w-full" />
-        ) : financeLoaded ? (
-          <div ref={financeRoot} aria-busy={isSavingFinance} onChangeCapture={() => { if (financeIssues.length && financeRoot.current) setFinanceIssues(collectWorkspaceFieldIssues(financeRoot.current)); }}>
-          <FormErrorSummary issues={financeIssues} onReveal={issue => issue.control?.focus()} />
-          <fieldset disabled={isSavingFinance} className="grid grid-cols-12 gap-4 min-w-0">
-            <div className="col-span-6">
-              <Label>Default Currency</Label>
-              <CurrencySelect ariaLabel="Default Currency" value={financeProfile.default_currency_id} onValueChange={(v) => setFinanceProfile((f) => ({ ...f, default_currency_id: v }))} disabled={disabled} />
-            </div>
-            <div className="col-span-6">
-              <Label>Default Payment Term</Label>
-              <PaymentTermSelect ariaLabel="Default Payment Term" value={financeProfile.default_payment_term_id} onValueChange={(v) => setFinanceProfile((f) => ({ ...f, default_payment_term_id: v }))} disabled={disabled} />
-            </div>
-            <div className="col-span-6">
-              <Label>Default Payment Method</Label>
-              <ERPCombobox ariaLabel="Default Payment Method"
-                value={financeProfile.default_payment_method_id}
-                onValueChange={(v) => setFinanceProfile((f) => ({ ...f, default_payment_method_id: v !== null ? Number(v) : null }))}
-                options={(paymentMethods ?? []).map((m) => ({ value: m.id, label: m.name_en }))}
-                placeholder="Select payment method..."
-                disabled={disabled}
-                allowClear
-              />
-            </div>
-            <div className="col-span-3">
-              <Label>Credit Limit</Label>
-              <Input aria-label="Credit Limit" type="number" step="0.01" min="0" value={financeProfile.credit_limit} onChange={(e) => setFinanceProfile((f) => ({ ...f, credit_limit: e.target.value }))} disabled={disabled} />
-            </div>
-            <div className="col-span-3">
-              <Label>Credit Currency</Label>
-              <CurrencySelect ariaLabel="Credit Currency" value={financeProfile.credit_currency_id} onValueChange={(v) => setFinanceProfile((f) => ({ ...f, credit_currency_id: v }))} disabled={disabled} />
-            </div>
-            <div className="col-span-6 flex items-end gap-3 pb-1">
-              <Label>Finance Hold</Label>
-              <Switch aria-label="Finance Hold" checked={financeProfile.finance_hold} onCheckedChange={(c) => setFinanceProfile((f) => ({ ...f, finance_hold: c }))} disabled={disabled} />
-              <span className="text-sm text-muted-foreground">{financeProfile.finance_hold ? "Yes" : "No"}</span>
-            </div>
-            {financeProfile.finance_hold && (
-              <div className="col-span-6">
-                <Label>Finance Hold Reason</Label>
-                <Input aria-label="Finance Hold Reason" value={financeProfile.finance_hold_reason} onChange={(e) => setFinanceProfile((f) => ({ ...f, finance_hold_reason: e.target.value }))} disabled={disabled} required />
-              </div>
-            )}
-            <div className="col-span-12">
-              <Label>Finance Remarks</Label>
-              <Textarea aria-label="Finance Remarks" value={financeProfile.finance_remarks} onChange={(e) => setFinanceProfile((f) => ({ ...f, finance_remarks: e.target.value }))} rows={2} disabled={disabled} />
-            </div>
-            {!disabled && (
-              <div className="col-span-12 flex justify-end">
-                <Button type="button" size="sm" onClick={handleSaveFinance} disabled={isSavingFinance}>
-                  {isSavingFinance ? "Saving..." : "Save Finance Profile"}
-                </Button>
-              </div>
-            )}
-          </fieldset></div>
-        ) : null}
-      </div>
+      <PartyFinanceProfileEditor partyId={partyId} authContext={authContext} disabled={parentDisabled} onBusyChange={onInlineTaskOpen} />
 
       {/* Tax Dialog */}
-      <ERPChildDialogForm
+      {isDialogOpen && <PartyChildSaveDialog
+        key={editingTax?.id ?? 'new'}
+        formId={`party-tax-finance-tab:${partyId}`}
+        record={editingTax}
+        createAction={createPartyTaxRegistration}
+        updateAction={updatePartyTaxRegistration}
         open={isDialogOpen}
         onOpenChange={setDialogOpen}
         title={editingTax ? "Edit Tax Registration" : "Add Tax Registration"}
@@ -403,7 +268,8 @@ export function PartyTaxFinanceTab({ partyId, disabled, onChildOpen }: PartyTaxF
             <Textarea aria-label="Remarks" value={taxForm.remarks} onChange={(e) => setTaxForm((f) => ({ ...f, remarks: e.target.value }))} rows={2} />
           </div>
         </div>
-      </ERPChildDialogForm>
+      </PartyChildSaveDialog>}
+      {lifecycle.dialog}
     </div>
   );
 }

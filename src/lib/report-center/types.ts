@@ -112,6 +112,7 @@ export type ReportProfileType = "company" | "group" | "neutral" | "custom";
 
 export interface ReportBrandingProfile {
   id: number;
+  workspace_revision?: number | string;
   profile_code: string;
   profile_name: string;
   profile_type: ReportProfileType;
@@ -158,10 +159,17 @@ export interface ReportBrandingProfile {
   has_stamp?: boolean;
   has_signature?: boolean;
   has_small_logo?: boolean;
+  /** Current actor capabilities, not grants to business records. */
+  can_sign?: boolean;
+  can_manage?: boolean;
+  can_approve?: boolean;
+  can_publish?: boolean;
+  can_upload_assets?: boolean;
 }
 
 export interface ReportTemplate {
   id: number;
+  workspace_revision?: number | string;
   template_code: string;
   template_name: string;
   template_type: ReportTemplateType;

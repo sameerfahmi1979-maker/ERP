@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { getDmsBrowserDocumentTypes } from "@/server/actions/dms/browser";
 import { DmsBrowserPageClient } from "@/features/dms/browser/dms-browser-page-client";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +14,6 @@ export default async function DmsBrowserPage() {
     redirect("/access-denied");
   }
 
-  const docTypes = await getDmsBrowserDocumentTypes();
-
   return (
     <div className="flex flex-col gap-4 p-6">
       <div>
@@ -26,7 +23,7 @@ export default async function DmsBrowserPage() {
         </p>
       </div>
 
-      <DmsBrowserPageClient docTypes={docTypes} />
+      <DmsBrowserPageClient authContext={ctx} />
     </div>
   );
 }

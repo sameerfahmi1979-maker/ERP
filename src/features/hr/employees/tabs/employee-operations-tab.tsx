@@ -1,4 +1,5 @@
 "use client";
+import {hasHrReadCapability} from "@/lib/reads/hr-read-identity";
 import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
@@ -16,8 +17,8 @@ import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
  *   7. Accommodation
  */
 
-import { useState, useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   MapPin, Briefcase, ShieldCheck, AlertOctagon, Package, HardHat, Home,
@@ -26,42 +27,33 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ERPCombobox } from "@/components/erp/combobox";
-import { queryKeys } from "@/lib/query/query-keys";
 import { getBlockStatusBadge, getAssignmentStatusBadge, getReadinessStatusBadge } from "@/lib/hr/operations/status";
 import type { BlockStatus, AssignmentStatus } from "@/lib/hr/operations/status";
 import {
-  listEmployeeAssignments,
   createEmployeeAssignment,
   updateEmployeeAssignment,
   archiveEmployeeAssignment,
-  listEmployeeRoleRequirements,
   createEmployeeRoleRequirement,
   updateEmployeeRoleRequirement,
   archiveEmployeeRoleRequirement,
   waiveEmployeeRoleRequirement,
   recalculateEmployeeRoleRequirements,
-  listEmployeeSiteReadiness,
   recalculateEmployeeSiteReadiness,
-  listEmployeeOperationalBlocks,
   createEmployeeOperationalBlock,
   releaseEmployeeOperationalBlock,
-  listEmployeeAssets,
   createEmployeeAsset,
   updateEmployeeAsset,
   returnEmployeeAsset,
   archiveEmployeeAsset,
-  listEmployeePpeIssues,
   createEmployeePpeIssue,
   updateEmployeePpeIssue,
   returnEmployeePpeIssue,
   archiveEmployeePpeIssue,
-  listEmployeeAccommodationRecords,
   createEmployeeAccommodationRecord,
   updateEmployeeAccommodationRecord,
   endEmployeeAccommodationRecord,
@@ -70,12 +62,17 @@ import {
 import {
   invalidateHrEmployeeAssignments,
   invalidateHrEmployeeReadiness,
+  invalidateHrEmployeeRoleRequirements,
   invalidateHrEmployeeBlocks,
   invalidateHrEmployeeAssets,
   invalidateHrEmployeePpe,
   invalidateHrEmployeeAccommodation,
 } from "@/lib/query/invalidation";
 import type { AuthContext } from "@/lib/rbac/check";
+import { hasPermission } from "@/lib/rbac/scope";
+import { hrOperationsReadIdentity } from "@/lib/reads/hr-operations-schema";
+import { HR_OPERATION_RECORD_CONFIG, type HrOperationRecordKind } from "@/lib/reads/hr-operation-records-schema";
+import { useHrOperationRecords } from "@/hooks/use-hr-operation-records";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -86,11 +83,7 @@ type Props = {
 };
 
 function checkPerm(ctx: AuthContext, code: string): boolean {
-  return (
-    ctx.permissionCodes?.includes(code) ||
-    ctx.roleCodes?.includes("system_admin") ||
-    false
-  );
+  return hasPermission(ctx, code);
 }
 
 // ─── Section Wrapper ────────────────────────────────────────────────────────
@@ -122,8 +115,38 @@ function Section({
 
 // ─── Main Tab ──────────────────────────────────────────────────────────────
 
-export function EmployeeOperationsTab({ employeeId, authContext, onChildOpen }: Props) {
-  const canView = checkPerm(authContext, "hr.assignments.view");
+const OperationsReadIdentity = createContext<{identity: string; onDenied?: () => void}>({identity: ""});
+const operationalRecordKinds = new Set(["assignments", "site-readiness", "role-requirements", "blocks", "assets", "ppe", "accommodation"]);
+
+/** Keep existing invalidation prefixes, while giving every section its live
+ * principal/scope lifetime. No action, permission or mutation retry changes. */
+function useOperationalRecordQuery(kind: HrOperationRecordKind, employeeId: number) {
+  const {identity, onDenied} = useContext(OperationsReadIdentity);
+  return useHrOperationRecords(kind, employeeId, identity, onDenied);
+}
+
+export function EmployeeOperationsTab(props: Props) {
+  const { onChildOpen } = props;
+  const identity = hrOperationsReadIdentity(props.authContext), qc = useQueryClient(), previous = useRef(identity);
+  const [deniedIdentity, setDeniedIdentity] = useState<string | null>(null), denied = deniedIdentity === identity;
+  const onDenied = useCallback(() => setDeniedIdentity(identity), [identity]);
+  useEffect(() => {
+    if (previous.current === identity && !denied) return;
+    const retired = previous.current;
+    const predicate = (query: { queryKey: readonly unknown[] }) => query.queryKey[0] === "hr" && query.queryKey[1] === "operations"
+      && operationalRecordKinds.has(String(query.queryKey[2])) && typeof query.queryKey[3] === "number" && query.queryKey.at(-1) === retired;
+    void qc.cancelQueries({ predicate });
+    qc.removeQueries({ predicate });
+    previous.current = identity;
+    onChildOpen?.(false);
+  }, [identity, denied, qc, onChildOpen]);
+  return <OperationsReadIdentity.Provider value={{identity, onDenied}}>
+    <EmployeeOperationsTabContent key={`${props.employeeId}:${identity}:${denied}`} {...props} denied={denied} />
+  </OperationsReadIdentity.Provider>;
+}
+
+function EmployeeOperationsTabContent({ employeeId, authContext, onChildOpen, denied }: Props & {denied?: boolean}) {
+  const canView = !denied && hasHrReadCapability(authContext, "hr.assignments.view");
   const canManage = checkPerm(authContext, "hr.assignments.manage");
 
   if (!canView) {
@@ -174,11 +197,8 @@ function AssignmentsSection({
     [onChildOpen]
   );
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.operations.assignments(employeeId),
-    queryFn: () => listEmployeeAssignments(employeeId),
-  });
-  const { data, isLoading } = uiRead1;
+  const uiRead1 = useOperationalRecordQuery("assignments", employeeId);
+  const { data } = uiRead1;
 
   const assignments = data?.success ? (data.data as Record<string, unknown>[]) : [];
 
@@ -188,14 +208,17 @@ function AssignmentsSection({
     setIsOpen(true);
   }
 
-  function openEdit(row: Record<string, unknown>) {
-    setEditing(row);
-    setForm({ ...row });
+  async function openEdit(row: Record<string, unknown>) {
+    const complete = await uiRead1.loadDetail(row.id as number);
+    if (!complete) return;
+    setEditing(complete);
+    setForm({ ...complete });
     setIsOpen(true);
   }
 
   function handleSubmit() {
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const action = editing
         ? updateEmployeeAssignment(editing.id as number, form)
         : createEmployeeAssignment(employeeId, form);
@@ -217,13 +240,8 @@ function AssignmentsSection({
         </Button>
       ) : undefined}
     >
-      {isLoading ? (
-        <Skeleton className="h-20 w-full" />
-      ) : assignments.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4 text-center">No assignment records</p>
-      ) : (
         <div className="divide-y">
-          <RecordCollection id="hr.employee-operations-tab.AssignmentsSection.assignments" rows={assignments} fields={[{"id":"assignment_status","path":"assignment_status","label":"Assignment Status"},{"id":"effective_from","path":"effective_from","label":"Effective From"},{"id":"effective_to","path":"effective_to","label":"Effective To"}]} renderRecord={(a) => {
+          <RecordCollection {...uiRead1.collection} id="hr.employee-operations-tab.AssignmentsSection.assignments" rows={assignments} fields={HR_OPERATION_RECORD_CONFIG.assignments.fields.map(f => ({...f, path: f.id === "site_name" ? "work_sites.name_en" : f.id === "department_name" ? "departments.name_en" : f.id === "designation_name" ? "designations.name_en" : f.id}))} renderRecord={(a) => {
             const badge = getAssignmentStatusBadge(a.assignment_status as AssignmentStatus);
             const dept = (a.departments as Record<string, unknown> | null)?.name_en;
             const desg = (a.designations as Record<string, unknown> | null)?.name_en;
@@ -247,6 +265,7 @@ function AssignmentsSection({
                     </Button>
                     <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
                       startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
                         const r = await archiveEmployeeAssignment(a.id as number);
                         if (!r.success) { toast.error(r.error); return; }
                         toast.success("Archived");
@@ -261,7 +280,6 @@ function AssignmentsSection({
             );
           }} />
         </div>
-      )}
 
       <ERPChildDialogForm
         open={isOpen}
@@ -271,6 +289,7 @@ function AssignmentsSection({
         icon={<MapPin className="h-5 w-5" />}
         mode={editing ? "edit" : "add"}
         isSubmitting={isPending}
+        submitDisabled={!canManage || !uiRead1.ready}
         onSubmit={handleSubmit}
       >
         <div className="grid grid-cols-12 gap-4">
@@ -331,17 +350,15 @@ function SiteReadinessSection({
     [onChildOpen]
   );
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.operations.siteReadiness(employeeId),
-    queryFn: () => listEmployeeSiteReadiness(employeeId),
-  });
-  const { data, isLoading } = uiRead1;
+  const uiRead1 = useOperationalRecordQuery("readiness", employeeId);
+  const { data } = uiRead1;
 
   const records = data?.success ? (data.data as Record<string, unknown>[]) : [];
 
   function handleRecalculate() {
     if (!siteId) { toast.error("Enter a work site ID to recalculate"); return; }
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const result = await recalculateEmployeeSiteReadiness(employeeId, Number(siteId));
       if (!result.success) { toast.error(result.error); return; }
       toast.success(`Readiness recalculated: ${result.data.status}`);
@@ -360,13 +377,8 @@ function SiteReadinessSection({
         </Button>
       ) : undefined}
     >
-      {isLoading ? (
-        <Skeleton className="h-20 w-full" />
-      ) : records.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4 text-center">No site readiness calculated yet</p>
-      ) : (
         <div className="divide-y">
-          <RecordCollection id="hr.employee-operations-tab.SiteReadinessSection.records" rows={records} fields={[{"id":"readiness_status","path":"readiness_status","label":"Readiness Status"},{"id":"checked_at","path":"checked_at","label":"Checked At"}]} renderRecord={(r) => {
+          <RecordCollection {...uiRead1.collection} id="hr.employee-operations-tab.SiteReadinessSection.records" rows={records} fields={HR_OPERATION_RECORD_CONFIG.readiness.fields.map(f => ({...f, path: f.id === "site_name" ? "work_sites.name_en" : f.id}))} renderRecord={(r) => {
             const badge = getReadinessStatusBadge(r.readiness_status as string);
             const site = (r.work_sites as Record<string, unknown> | null)?.name_en;
             return (
@@ -382,7 +394,6 @@ function SiteReadinessSection({
             );
           }} />
         </div>
-      )}
 
       <ERPChildDialogForm
         open={isOpen}
@@ -392,6 +403,7 @@ function SiteReadinessSection({
         icon={<ShieldCheck className="h-5 w-5" />}
         mode="add"
         isSubmitting={isPending}
+        submitDisabled={!canManage || !uiRead1.ready}
         onSubmit={handleRecalculate}
         submitLabel="Calculate"
         size="sm"
@@ -449,11 +461,8 @@ function RoleRequirementsSection({
     [onChildOpen]
   );
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.operations.roleRequirements(employeeId),
-    queryFn: () => listEmployeeRoleRequirements(employeeId),
-  });
-  const { data, isLoading } = uiRead1;
+  const uiRead1 = useOperationalRecordQuery("requirements", employeeId);
+  const { data } = uiRead1;
 
   const reqs = data?.success ? (data.data as Record<string, unknown>[]) : [];
 
@@ -463,21 +472,24 @@ function RoleRequirementsSection({
     setIsOpen(true);
   }
 
-  function openEdit(row: Record<string, unknown>) {
-    setEditing(row);
-    setForm({ ...row });
+  async function openEdit(row: Record<string, unknown>) {
+    const complete = await uiRead1.loadDetail(row.id as number);
+    if (!complete) return;
+    setEditing(complete);
+    setForm({ ...complete });
     setIsOpen(true);
   }
 
   function handleSubmit() {
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const action = editing
         ? updateEmployeeRoleRequirement(editing.id as number, form)
         : createEmployeeRoleRequirement(employeeId, form);
       const result = await action;
       if (!result.success) { toast.error(result.error); return; }
       toast.success(editing ? "Requirement updated" : "Requirement created");
-      invalidateHrEmployeeReadiness(qc, employeeId);
+      invalidateHrEmployeeRoleRequirements(qc, employeeId);
       setIsOpen(false);
     });
   }
@@ -491,10 +503,11 @@ function RoleRequirementsSection({
   function handleWaiver() {
     if (!waiverTarget) return;
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const result = await waiveEmployeeRoleRequirement(waiverTarget, waiverReason);
       if (!result.success) { toast.error(result.error); return; }
       toast.success("Requirement waived");
-      invalidateHrEmployeeReadiness(qc, employeeId);
+      invalidateHrEmployeeRoleRequirements(qc, employeeId);
       setWaiverOpen(false);
     });
   }
@@ -516,10 +529,11 @@ function RoleRequirementsSection({
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => {
             startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
               const r = await recalculateEmployeeRoleRequirements(employeeId);
               if (!r.success) { toast.error(r.error); return; }
               toast.success("Requirements recalculated");
-              invalidateHrEmployeeReadiness(qc, employeeId);
+              invalidateHrEmployeeRoleRequirements(qc, employeeId);
             });
           }}>
             <RefreshCw className="h-3.5 w-3.5 mr-1" />Recalculate
@@ -530,13 +544,8 @@ function RoleRequirementsSection({
         </div>
       ) : undefined}
     >
-      {isLoading ? (
-        <Skeleton className="h-20 w-full" />
-      ) : reqs.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4 text-center">No role requirements tracked</p>
-      ) : (
         <div className="divide-y">
-          <RecordCollection id="hr.employee-operations-tab.RoleRequirementsSection.reqs" rows={reqs} fields={[{"id":"requirement_type","path":"requirement_type","label":"Requirement Type"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(r) => (
+          <RecordCollection {...uiRead1.collection} id="hr.employee-operations-tab.RoleRequirementsSection.reqs" rows={reqs} fields={HR_OPERATION_RECORD_CONFIG.requirements.fields.map(f => ({...f}))} renderRecord={(r) => (
             <div key={r.id as number} className="flex items-start justify-between py-3 px-1">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -556,10 +565,11 @@ function RoleRequirementsSection({
                   )}
                   <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
                     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
                       const res = await archiveEmployeeRoleRequirement(r.id as number);
                       if (!res.success) { toast.error(res.error); return; }
                       toast.success("Requirement archived");
-                      invalidateHrEmployeeReadiness(qc, employeeId);
+                      invalidateHrEmployeeRoleRequirements(qc, employeeId);
                     });
                   }}><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
@@ -567,7 +577,6 @@ function RoleRequirementsSection({
             </div>
           )} />
         </div>
-      )}
 
       <ERPChildDialogForm
         open={isOpen}
@@ -576,6 +585,7 @@ function RoleRequirementsSection({
         icon={<Briefcase className="h-5 w-5" />}
         mode={editing ? "edit" : "add"}
         isSubmitting={isPending}
+        submitDisabled={!canManage || !uiRead1.ready}
         onSubmit={handleSubmit}
       >
         <div className="grid grid-cols-12 gap-4">
@@ -626,6 +636,7 @@ function RoleRequirementsSection({
         mode="add"
         submitLabel="Waive"
         isSubmitting={isPending}
+        submitDisabled={!canManage || !uiRead1.ready}
         onSubmit={handleWaiver}
         size="sm"
       >
@@ -674,16 +685,14 @@ function OperationalBlocksSection({
     [onChildOpen]
   );
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.operations.blocks(employeeId),
-    queryFn: () => listEmployeeOperationalBlocks(employeeId),
-  });
-  const { data, isLoading } = uiRead1;
+  const uiRead1 = useOperationalRecordQuery("blocks", employeeId);
+  const { data } = uiRead1;
 
   const blocks = data?.success ? (data.data as Record<string, unknown>[]) : [];
 
   function handleSubmit() {
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const result = await createEmployeeOperationalBlock(employeeId, form);
       if (!result.success) { toast.error(result.error); return; }
       toast.success("Operational block created");
@@ -701,6 +710,7 @@ function OperationalBlocksSection({
   function handleRelease() {
     if (!releaseTarget) return;
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const result = await releaseEmployeeOperationalBlock(releaseTarget, releaseReason);
       if (!result.success) { toast.error(result.error); return; }
       toast.success("Block released");
@@ -719,13 +729,8 @@ function OperationalBlocksSection({
         </Button>
       ) : undefined}
     >
-      {isLoading ? (
-        <Skeleton className="h-20 w-full" />
-      ) : blocks.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4 text-center">No operational blocks</p>
-      ) : (
         <div className="divide-y">
-          <RecordCollection id="hr.employee-operations-tab.OperationalBlocksSection.blocks" rows={blocks} fields={[{"id":"block_type","path":"block_type","label":"Block Type"},{"id":"block_status","path":"block_status","label":"Block Status"}]} renderRecord={(b) => {
+          <RecordCollection {...uiRead1.collection} id="hr.employee-operations-tab.OperationalBlocksSection.blocks" rows={blocks} fields={HR_OPERATION_RECORD_CONFIG.blocks.fields.map(f => ({...f}))} renderRecord={(b) => {
             const badge = getBlockStatusBadge(b.block_status as BlockStatus);
             return (
               <div key={b.id as number} className="flex items-start justify-between py-3 px-1">
@@ -748,7 +753,6 @@ function OperationalBlocksSection({
             );
           }} />
         </div>
-      )}
 
       <ERPChildDialogForm
         open={isOpen}
@@ -758,6 +762,7 @@ function OperationalBlocksSection({
         icon={<AlertOctagon className="h-5 w-5" />}
         mode="add"
         isSubmitting={isPending}
+        submitDisabled={!canManage || !uiRead1.ready}
         onSubmit={handleSubmit}
       >
         <div className="grid grid-cols-12 gap-4">
@@ -798,6 +803,7 @@ function OperationalBlocksSection({
         mode="add"
         submitLabel="Release"
         isSubmitting={isPending}
+        submitDisabled={!canManage || !uiRead1.ready}
         onSubmit={handleRelease}
         size="sm"
       >
@@ -840,11 +846,8 @@ function AssetsSection({
   const setIsOpen = useCallback((open: boolean) => { setIsOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
   const setReturnOpen = useCallback((open: boolean) => { setReturnOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.operations.assets(employeeId),
-    queryFn: () => listEmployeeAssets(employeeId),
-  });
-  const { data, isLoading } = uiRead1;
+  const uiRead1 = useOperationalRecordQuery("assets", employeeId);
+  const { data } = uiRead1;
 
   const assets = data?.success ? (data.data as Record<string, unknown>[]) : [];
 
@@ -854,10 +857,11 @@ function AssetsSection({
     setIsOpen(true);
   }
 
-  function openEdit(row: Record<string, unknown>) { setEditing(row); setForm({ ...row }); setIsOpen(true); }
+  async function openEdit(row: Record<string, unknown>) { const complete = await uiRead1.loadDetail(row.id as number); if (!complete) return; setEditing(complete); setForm({ ...complete }); setIsOpen(true); }
 
   function handleSubmit() {
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const action = editing ? updateEmployeeAsset(editing.id as number, form) : createEmployeeAsset(employeeId, form);
       const result = await action;
       if (!result.success) { toast.error(result.error); return; }
@@ -870,6 +874,7 @@ function AssetsSection({
   function handleReturn() {
     if (!returnTarget) return;
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const result = await returnEmployeeAsset(returnTarget, { returned_date: returnDate });
       if (!result.success) { toast.error(result.error); return; }
       toast.success("Asset returned");
@@ -884,11 +889,8 @@ function AssetsSection({
       icon={<Package className="h-5 w-5 text-primary" />}
       action={canManage ? <Button size="sm" onClick={openAdd}><Plus className="h-3.5 w-3.5 mr-1" />Issue Asset</Button> : undefined}
     >
-      {isLoading ? <Skeleton className="h-20 w-full" /> : assets.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4 text-center">No assets issued</p>
-      ) : (
         <div className="divide-y">
-          <RecordCollection id="hr.employee-operations-tab.AssetsSection.assets" rows={assets} fields={[{"id":"asset_description","path":"asset_description","label":"Asset Description"},{"id":"issued_date","path":"issued_date","label":"Issued Date"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(a) => (
+          <RecordCollection {...uiRead1.collection} id="hr.employee-operations-tab.AssetsSection.assets" rows={assets} fields={HR_OPERATION_RECORD_CONFIG.assets.fields.map(f => ({...f}))} renderRecord={(a) => (
             <div key={a.id as number} className="flex items-start justify-between py-3 px-1">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -907,6 +909,7 @@ function AssetsSection({
                   ) : null}
                   <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
                     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
                       const r = await archiveEmployeeAsset(a.id as number);
                       if (!r.success) { toast.error(r.error); return; }
                       toast.success("Asset archived");
@@ -918,9 +921,9 @@ function AssetsSection({
             </div>
           )} />
         </div>
-      )}
 
-      <ERPChildDialogForm open={isOpen} onOpenChange={setIsOpen} title={editing ? "Edit Asset" : "Issue Asset"} icon={<Package className="h-5 w-5" />} mode={editing ? "edit" : "add"} isSubmitting={isPending} onSubmit={handleSubmit}>
+      <ERPChildDialogForm open={isOpen} onOpenChange={setIsOpen} title={editing ? "Edit Asset" : "Issue Asset"} icon={<Package className="h-5 w-5" />} mode={editing ? "edit" : "add"} isSubmitting={isPending}
+        submitDisabled={!canManage || !uiRead1.ready} onSubmit={handleSubmit}>
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
             <Label>Asset Type <span className="text-destructive">*</span></Label>
@@ -953,7 +956,8 @@ function AssetsSection({
         </div>
       </ERPChildDialogForm>
 
-      <ERPChildDialogForm open={returnOpen} onOpenChange={setReturnOpen} title="Return Asset" icon={<Package className="h-5 w-5" />} mode="edit" submitLabel="Confirm Return" isSubmitting={isPending} onSubmit={handleReturn} size="sm">
+      <ERPChildDialogForm open={returnOpen} onOpenChange={setReturnOpen} title="Return Asset" icon={<Package className="h-5 w-5" />} mode="edit" submitLabel="Confirm Return" isSubmitting={isPending}
+        submitDisabled={!canManage || !uiRead1.ready} onSubmit={handleReturn} size="sm">
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Return Date <span className="text-destructive">*</span></Label>
@@ -993,19 +997,17 @@ function PpeSection({
   const setIsOpen = useCallback((open: boolean) => { setIsOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
   const setReturnOpen = useCallback((open: boolean) => { setReturnOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.operations.ppe(employeeId),
-    queryFn: () => listEmployeePpeIssues(employeeId),
-  });
-  const { data, isLoading } = uiRead1;
+  const uiRead1 = useOperationalRecordQuery("ppe", employeeId);
+  const { data } = uiRead1;
 
   const ppe = data?.success ? (data.data as Record<string, unknown>[]) : [];
 
   function openAdd() { setEditing(null); setForm({ ppe_item: "", quantity: 1, issued_date: new Date().toISOString().slice(0, 10), status: "issued" }); setIsOpen(true); }
-  function openEdit(row: Record<string, unknown>) { setEditing(row); setForm({ ...row }); setIsOpen(true); }
+  async function openEdit(row: Record<string, unknown>) { const complete = await uiRead1.loadDetail(row.id as number); if (!complete) return; setEditing(complete); setForm({ ...complete }); setIsOpen(true); }
 
   function handleSubmit() {
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const action = editing ? updateEmployeePpeIssue(editing.id as number, form) : createEmployeePpeIssue(employeeId, form);
       const result = await action;
       if (!result.success) { toast.error(result.error); return; }
@@ -1018,6 +1020,7 @@ function PpeSection({
   function handleReturn() {
     if (!returnTarget) return;
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const result = await returnEmployeePpeIssue(returnTarget, { returned_date: returnDate });
       if (!result.success) { toast.error(result.error); return; }
       toast.success("PPE returned");
@@ -1032,11 +1035,8 @@ function PpeSection({
       icon={<HardHat className="h-5 w-5 text-primary" />}
       action={canManage ? <Button size="sm" onClick={openAdd}><Plus className="h-3.5 w-3.5 mr-1" />Issue PPE</Button> : undefined}
     >
-      {isLoading ? <Skeleton className="h-20 w-full" /> : ppe.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4 text-center">No PPE issued</p>
-      ) : (
         <div className="divide-y">
-          <RecordCollection id="hr.employee-operations-tab.PpeSection.ppe" rows={ppe} fields={[{"id":"ppe_item","path":"ppe_item","label":"Ppe Item"},{"id":"issued_date","path":"issued_date","label":"Issued Date"}]} renderRecord={(p) => (
+          <RecordCollection {...uiRead1.collection} id="hr.employee-operations-tab.PpeSection.ppe" rows={ppe} fields={HR_OPERATION_RECORD_CONFIG.ppe.fields.map(f => ({...f}))} renderRecord={(p) => (
             <div key={p.id as number} className="flex items-start justify-between py-3 px-1">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -1055,6 +1055,7 @@ function PpeSection({
                   ) : null}
                   <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
                     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
                       const r = await archiveEmployeePpeIssue(p.id as number);
                       if (!r.success) { toast.error(r.error); return; }
                       toast.success("PPE archived");
@@ -1066,9 +1067,9 @@ function PpeSection({
             </div>
           )} />
         </div>
-      )}
 
-      <ERPChildDialogForm open={isOpen} onOpenChange={setIsOpen} title={editing ? "Edit PPE" : "Issue PPE"} icon={<HardHat className="h-5 w-5" />} mode={editing ? "edit" : "add"} isSubmitting={isPending} onSubmit={handleSubmit}>
+      <ERPChildDialogForm open={isOpen} onOpenChange={setIsOpen} title={editing ? "Edit PPE" : "Issue PPE"} icon={<HardHat className="h-5 w-5" />} mode={editing ? "edit" : "add"} isSubmitting={isPending}
+        submitDisabled={!canManage || !uiRead1.ready} onSubmit={handleSubmit}>
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-8">
             <Label>PPE Item <span className="text-destructive">*</span></Label>
@@ -1097,7 +1098,8 @@ function PpeSection({
         </div>
       </ERPChildDialogForm>
 
-      <ERPChildDialogForm open={returnOpen} onOpenChange={setReturnOpen} title="Return PPE" icon={<HardHat className="h-5 w-5" />} mode="edit" submitLabel="Confirm Return" isSubmitting={isPending} onSubmit={handleReturn} size="sm">
+      <ERPChildDialogForm open={returnOpen} onOpenChange={setReturnOpen} title="Return PPE" icon={<HardHat className="h-5 w-5" />} mode="edit" submitLabel="Confirm Return" isSubmitting={isPending}
+        submitDisabled={!canManage || !uiRead1.ready} onSubmit={handleReturn} size="sm">
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>Return Date <span className="text-destructive">*</span></Label>
@@ -1136,19 +1138,17 @@ function AccommodationSection({
   const setIsOpen = useCallback((open: boolean) => { setIsOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
   const setEndOpen = useCallback((open: boolean) => { setEndOpenRaw(open); onChildOpen?.(open); }, [onChildOpen]);
 
-  const uiRead1 = useQuery({
-    queryKey: queryKeys.hr.operations.accommodation(employeeId),
-    queryFn: () => listEmployeeAccommodationRecords(employeeId),
-  });
-  const { data, isLoading } = uiRead1;
+  const uiRead1 = useOperationalRecordQuery("accommodation", employeeId);
+  const { data } = uiRead1;
 
   const records = data?.success ? (data.data as Record<string, unknown>[]) : [];
 
   function openAdd() { setEditing(null); setForm({ accommodation_type: "company_camp", assigned_from: new Date().toISOString().slice(0, 10), status: "active" }); setIsOpen(true); }
-  function openEdit(row: Record<string, unknown>) { setEditing(row); setForm({ ...row }); setIsOpen(true); }
+  async function openEdit(row: Record<string, unknown>) { const complete = await uiRead1.loadDetail(row.id as number); if (!complete) return; setEditing(complete); setForm({ ...complete }); setIsOpen(true); }
 
   function handleSubmit() {
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const action = editing
         ? updateEmployeeAccommodationRecord(editing.id as number, form)
         : createEmployeeAccommodationRecord(employeeId, form);
@@ -1163,6 +1163,7 @@ function AccommodationSection({
   function handleEnd() {
     if (!endTarget) return;
     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
       const result = await endEmployeeAccommodationRecord(endTarget, { assigned_to: endDate });
       if (!result.success) { toast.error(result.error); return; }
       toast.success("Accommodation ended");
@@ -1177,11 +1178,8 @@ function AccommodationSection({
       icon={<Home className="h-5 w-5 text-primary" />}
       action={canManage ? <Button size="sm" onClick={openAdd}><Plus className="h-3.5 w-3.5 mr-1" />Assign Accommodation</Button> : undefined}
     >
-      {isLoading ? <Skeleton className="h-20 w-full" /> : records.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4 text-center">No accommodation records</p>
-      ) : (
         <div className="divide-y">
-          <RecordCollection id="hr.employee-operations-tab.AccommodationSection.records" rows={records} fields={[{"id":"assigned_from","path":"assigned_from","label":"Assigned From"},{"id":"assigned_to","path":"assigned_to","label":"Assigned To"}]} renderRecord={(r) => (
+          <RecordCollection {...uiRead1.collection} id="hr.employee-operations-tab.AccommodationSection.records" rows={records} fields={HR_OPERATION_RECORD_CONFIG.accommodation.fields.map(f => ({...f}))} renderRecord={(r) => (
             <div key={r.id as number} className="flex items-start justify-between py-3 px-1">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -1202,6 +1200,7 @@ function AccommodationSection({
                   ) : null}
                   <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
                     startTransition(async () => {
+      if (!canManage || !uiRead1.canDispatch()) return;
                       const res = await archiveEmployeeAccommodationRecord(r.id as number);
                       if (!res.success) { toast.error(res.error); return; }
                       toast.success("Record archived");
@@ -1213,9 +1212,9 @@ function AccommodationSection({
             </div>
           )} />
         </div>
-      )}
 
-      <ERPChildDialogForm open={isOpen} onOpenChange={setIsOpen} title={editing ? "Edit Accommodation" : "Assign Accommodation"} icon={<Home className="h-5 w-5" />} mode={editing ? "edit" : "add"} isSubmitting={isPending} onSubmit={handleSubmit}>
+      <ERPChildDialogForm open={isOpen} onOpenChange={setIsOpen} title={editing ? "Edit Accommodation" : "Assign Accommodation"} icon={<Home className="h-5 w-5" />} mode={editing ? "edit" : "add"} isSubmitting={isPending}
+        submitDisabled={!canManage || !uiRead1.ready} onSubmit={handleSubmit}>
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6">
             <Label>Accommodation Type</Label>
@@ -1244,7 +1243,8 @@ function AccommodationSection({
         </div>
       </ERPChildDialogForm>
 
-      <ERPChildDialogForm open={endOpen} onOpenChange={setEndOpen} title="End Accommodation" icon={<Home className="h-5 w-5" />} mode="edit" submitLabel="Confirm End" isSubmitting={isPending} onSubmit={handleEnd} size="sm">
+      <ERPChildDialogForm open={endOpen} onOpenChange={setEndOpen} title="End Accommodation" icon={<Home className="h-5 w-5" />} mode="edit" submitLabel="Confirm End" isSubmitting={isPending}
+        submitDisabled={!canManage || !uiRead1.ready} onSubmit={handleEnd} size="sm">
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <Label>End Date <span className="text-destructive">*</span></Label>

@@ -49,7 +49,7 @@ describe("GPT-6.1 OCR requests", () => {
   it("rejects a stale Azure reference without calling OpenAI", async () => {
     const provider = new OpenAiDmsAdapter({ ...config, secretRef: "AZURE_DOCUMENT_INTELLIGENCE_KEY" });
     expect(provider.isConfigured()).toBe(false);
-    await expect(provider.summarize("x", "y")).rejects.toThrow("not set");
+    await expect(provider.summarize("x", "y")).rejects.toThrow("The protected AI credential is unavailable.");
     expect(fetchMock).not.toHaveBeenCalled();
   });
   it("keeps embeddings on their dedicated model", async () => {

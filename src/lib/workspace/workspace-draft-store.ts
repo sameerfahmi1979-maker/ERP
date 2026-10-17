@@ -106,6 +106,13 @@ export function createWorkspaceDraftStore(): WorkspaceDraftStoreApi {
       return d !== undefined && Object.keys(d).length > 0;
     },
     getViewState: key => view.get(key),
+    listViewStateKeysForTab(tabId, formPrefix) {
+      if (!tabId.trim() || !formPrefix.trim() || formPrefix.startsWith('draft:')) {
+        throw new Error('A tab and relative form namespace are required.');
+      }
+      const prefix = `draft:tab:${tabId}:${formPrefix}`;
+      return Array.from(view.keys()).filter(key => key.startsWith(prefix)).sort();
+    },
     setViewState: (key, value) => { view.set(key, value); },
   };
 }

@@ -2,10 +2,11 @@
 import {saveWorkspaceRecord, type WorkspaceSaveResult} from "@/server/workspace-save";
 import type {WorkspaceSaveContract} from "@/lib/workspace/save-contract";
 import { workspaceValidationFailure } from "@/lib/workspace/field-errors";
+import {saveNumberedRecruitment} from "@/server/numbered-recruitment-save";
+import {requisitionCreationSchema,candidateConversionInputSchema,requisitionCreationContractSchema,candidateConversionContractSchema,candidateConversionPreparationSchema,recruitmentId,canCreateRecruitmentDestination,type RequisitionCreationInput,type CandidateConversionInput,type RequisitionCreationReceipt,type CandidateConversionReceipt,type CandidateConversionPreparation,type RecruitmentMutationResult} from "@/lib/hr/numbered-recruitment-contract";
 
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission, hasPermissionInScope, hasGlobalPermission } from "@/lib/rbac/check";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
@@ -96,36 +97,6 @@ const recruitmentListParamsSchema = z.object({
   page: z.number().min(1).default(1),
   pageSize: z.number().min(1).max(200).default(50),
 });
-
-const jobRequisitionCreateSchema = z.object({
-  requisition_title: z.string().min(1, "Title is required"),
-  owner_company_id: z.number().optional().nullable(),
-  branch_id: z.number().optional().nullable(),
-  department_id: z.number().optional().nullable(),
-  designation_id: z.number().optional().nullable(),
-  work_site_id: z.number().optional().nullable(),
-  requested_by: z.number().optional().nullable(),
-  hiring_manager_id: z.number().optional().nullable(),
-  employment_type_id: z.number().optional().nullable(),
-  employee_category_id: z.number().optional().nullable(),
-  vacancies_count: z.number().min(1).default(1),
-  target_start_date: z.string().optional().nullable(),
-  requisition_status: z.enum(["draft", "open", "on_hold", "filled", "cancelled", "closed"]).default("draft"),
-  priority: z.enum(["low", "normal", "high", "urgent"]).default("normal"),
-  budgeted_salary_min: z.number().min(0).optional().nullable(),
-  budgeted_salary_max: z.number().min(0).optional().nullable(),
-  job_description: z.string().optional().nullable(),
-  requirements: z.string().optional().nullable(),
-  notes: z.string().optional().nullable(),
-}).refine(
-  (d) => {
-    if (d.budgeted_salary_min != null && d.budgeted_salary_max != null) {
-      return d.budgeted_salary_min <= d.budgeted_salary_max;
-    }
-    return true;
-  },
-  { message: "Min salary must not exceed max salary", path: ["budgeted_salary_min"] }
-);
 
 const jobRequisitionUpdateSchema = z.object({
   requisition_title: z.string().min(1).optional(),
@@ -271,24 +242,6 @@ const onboardingTaskCreateSchema = z.object({
 });
 
 const onboardingTaskUpdateSchema = onboardingTaskCreateSchema.partial();
-
-const candidateConversionSchema = z.object({
-  candidate_id: z.number(),
-  // Fields from offer/requisition or overridden by user
-  owner_company_id: z.number(),
-  branch_id: z.number().optional().nullable(),
-  department_id: z.number().optional().nullable(),
-  designation_id: z.number().optional().nullable(),
-  employment_type_id: z.number().optional().nullable(),
-  employee_category_id: z.number().optional().nullable(),
-  joining_date: z.string().min(1, "Joining date is required"),
-  employee_status: z.enum(["active", "probation", "suspended", "inactive", "terminated"]).default("active"),
-  reporting_manager_id: z.number().optional().nullable(),
-  primary_work_site_id: z.number().optional().nullable(),
-  conversion_notes: z.string().optional().nullable(),
-  offer_id: z.number().optional().nullable(),
-  requisition_id: z.number().optional().nullable(),
-});
 
 // ============================================================================
 // Row types
@@ -514,47 +467,21 @@ export async function getJobRequisition(id: number): Promise<ActionResult<JobReq
 }
 
 export async function createJobRequisition(
-  input: z.infer<typeof jobRequisitionCreateSchema>
-): Promise<ActionResult<{ id: number; requisition_code: string }>> {
+  input: RequisitionCreationInput, contract?: WorkspaceSaveContract
+): Promise<RecruitmentMutationResult<RequisitionCreationReceipt>> {
   try {
+    const parsed = requisitionCreationSchema.safeParse(input);
+    const identity = requisitionCreationContractSchema.safeParse(contract);
+    if (!parsed.success || !identity.success) return {success:false,error:'Check the requisition values and reopen the creation form if its request identity is missing.'};
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.recruitment.manage") && !ctx.roleCodes?.includes("system_admin")) {
-      return { success: false, error: "Permission denied" };
+    if (!canCreateRecruitmentDestination(ctx,parsed.data.owner_company_id,parsed.data.branch_id)) {
+      return { success: false, error: "Requires numbering generation and recruitment management in the selected scope." };
     }
-    const parsed = jobRequisitionCreateSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
-
-    const adminClient = createAdminClient();
-    const { data: numData, error: numError } = await adminClient.rpc("generate_next_reference_number", {
-      p_rule_code: "HR_JOB_REQUISITION",
-      p_document_type_code: null,
-      p_target_table_name: "hr_job_requisitions",
-      p_target_record_id: null,
-      p_generation_reason: "New job requisition",
-      p_generated_by: ctx.profile?.id ?? null,
-    });
-    if (numError || !numData || numData.length === 0) return { success: false, error: "Failed to generate requisition code" };
-    const requisitionCode: string = numData[0].generated_reference_number;
-
-    const supabase = await createClient();
-    const { data: rec, error: insertError } = await supabase
-      .from("hr_job_requisitions")
-      .insert({ ...parsed.data, requisition_code: requisitionCode, created_by: ctx.profile?.id ?? null, updated_by: ctx.profile?.id ?? null })
-      .select("id, requisition_code")
-      .single();
-    if (insertError || !rec) return { success: false, error: insertError?.message ?? "Insert failed" };
-
-    await recruitmentAuditLog({
-      action: "create", entity_name: "hr_job_requisitions", entity_id: rec.id,
-      entity_reference: requisitionCode, requisition_id: rec.id, requisition_code: requisitionCode,
-      extra: { title: parsed.data.requisition_title },
-    });
-    revalidatePath("/admin/hr/recruitment");
-    revalidatePath("/admin/hr/recruitment/requisitions");
-    return { success: true, data: { id: rec.id, requisition_code: requisitionCode } };
-  } catch (err) {
-    logger.error("createJobRequisition error", err);
-    return { success: false, error: "Failed to create job requisition" };
+    const result=await saveNumberedRecruitment('requisition',parsed.data,identity.data);
+    if(result.success)try{revalidatePath('/admin/hr/recruitment');revalidatePath('/admin/hr/recruitment/requisitions');}catch{/* The receipt already confirms the commit. */}
+    return result;
+  } catch {
+    return { success: false, error: "Unable to authorize requisition creation." };
   }
 }
 
@@ -1448,41 +1375,18 @@ export async function archiveOnboardingTask(id: number): Promise<ActionResult<vo
 // Candidate Conversion
 // ============================================================================
 
-export async function prepareCandidateEmployeeConversion(candidateId: number): Promise<ActionResult<{
-  candidate: CandidateRow;
-  latest_offer: OfferRow | null;
-  already_converted: boolean;
-}>> {
+export async function prepareCandidateEmployeeConversion(candidateId: number): Promise<ActionResult<CandidateConversionPreparation>> {
   try {
+    if(!recruitmentId.safeParse(candidateId).success)return {success:false,error:'Invalid candidate.'};
     const ctx = await getAuthContext();
     if (!hasPermission(ctx, "hr.recruitment.manage") && !ctx.roleCodes?.includes("system_admin")) {
       return { success: false, error: "Permission denied" };
     }
     const supabase = await createClient();
-    const { data: candidate, error: candError } = await supabase
-      .from("hr_candidates")
-      .select(`*,${CAND_JOINS}`)
-      .eq("id", candidateId)
-      .is("deleted_at", null)
-      .single();
-    if (candError || !candidate) return { success: false, error: "Candidate not found" };
-
-    const { data: existingLink } = await supabase.from("employee_recruitment_links").select("id").eq("candidate_id", candidateId).single();
-    if (existingLink) {
-      return { success: true, data: { candidate: candidate as unknown as CandidateRow, latest_offer: null, already_converted: true } };
-    }
-
-    const { data: latestOffer } = await supabase
-      .from("hr_offers")
-      .select(`*,${OFFER_JOINS}`)
-      .eq("candidate_id", candidateId)
-      .in("offer_status", ["accepted", "approved"])
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
-
-    return { success: true, data: { candidate: candidate as unknown as CandidateRow, latest_offer: latestOffer as unknown as OfferRow | null, already_converted: false } };
+    const {data,error}=await supabase.rpc('prepare_numbered_candidate_conversion',{p_candidate:candidateId});
+    const parsed=candidateConversionPreparationSchema.safeParse(data);
+    if(error||!parsed.success||parsed.data.candidate.id!==candidateId)return {success:false,error:'Unable to verify candidate conversion sources.'};
+    return {success:true,data:parsed.data};
   } catch (err) {
     logger.error("prepareCandidateEmployeeConversion error", err);
     return { success: false, error: "Failed to prepare conversion" };
@@ -1491,105 +1395,21 @@ export async function prepareCandidateEmployeeConversion(candidateId: number): P
 
 export async function convertCandidateToEmployee(
   candidateId: number,
-  input: Omit<z.infer<typeof candidateConversionSchema>, "candidate_id">
-): Promise<ActionResult<{ employee_id: number; employee_code: string }>> {
+  input: CandidateConversionInput, contract?: WorkspaceSaveContract
+): Promise<RecruitmentMutationResult<CandidateConversionReceipt>> {
   try {
+    const parsed=candidateConversionInputSchema.safeParse(input);
+    const identity=candidateConversionContractSchema.safeParse(contract);
+    if(!recruitmentId.safeParse(candidateId).success||!parsed.success||!identity.success)return {success:false,error:'Review all required employee values and reopen the candidate if its reviewed revision is missing.'};
     const ctx = await getAuthContext();
-    if ((!hasPermission(ctx, "hr.recruitment.manage") || !hasPermission(ctx, "hr.employees.create")) && !ctx.roleCodes?.includes("system_admin")) {
-      return { success: false, error: "Requires both hr.recruitment.manage and hr.employees.create permissions" };
+    if (!canCreateRecruitmentDestination(ctx,parsed.data.owner_company_id,parsed.data.branch_id,true)) {
+      return { success: false, error: "Requires numbering generation, scoped recruitment management, and employee creation, read, and management permissions." };
     }
-
-    const fullInput = { ...input, candidate_id: candidateId };
-    const parsed = candidateConversionSchema.safeParse(fullInput);
-    if (!parsed.success) return { success: false, error: parsed.error.issues.map((i) => i.message).join("; ") };
-
-    const supabase = await createClient();
-
-    const { data: existingLink } = await supabase.from("employee_recruitment_links").select("id").eq("candidate_id", candidateId).single();
-    if (existingLink) return { success: false, error: "Candidate has already been converted to an employee" };
-
-    const { data: candidate, error: candError } = await supabase
-      .from("hr_candidates")
-      .select("id, candidate_code, full_name_en, full_name_ar, gender, nationality_id, date_of_birth, mobile_number, email")
-      .eq("id", candidateId)
-      .is("deleted_at", null)
-      .single();
-    if (candError || !candidate) return { success: false, error: "Candidate not found" };
-
-    const adminClient = createAdminClient();
-    const { data: numData, error: numError } = await adminClient.rpc("generate_next_reference_number", {
-      p_rule_code: "HR_EMPLOYEE",
-      p_document_type_code: null,
-      p_target_table_name: "employees",
-      p_target_record_id: null,
-      p_generation_reason: "Employee created from candidate conversion",
-      p_generated_by: ctx.profile?.id ?? null,
-    });
-    if (numError || !numData || numData.length === 0) return { success: false, error: "Failed to generate employee code" };
-    const employeeCode: string = numData[0].generated_reference_number;
-
-    const { data: employee, error: insertError } = await supabase
-      .from("employees")
-      .insert({
-        employee_code: employeeCode,
-        full_name_en: candidate.full_name_en,
-        full_name_ar: candidate.full_name_ar ?? null,
-        gender: candidate.gender ?? "male",
-        nationality_id: candidate.nationality_id ?? null,
-        date_of_birth: candidate.date_of_birth ?? parsed.data.joining_date,
-        mobile_number: candidate.mobile_number ?? "",
-        personal_email: candidate.email ?? null,
-        owner_company_id: parsed.data.owner_company_id,
-        branch_id: parsed.data.branch_id ?? null,
-        department_id: parsed.data.department_id ?? null,
-        designation_id: parsed.data.designation_id ?? null,
-        employment_type_id: parsed.data.employment_type_id ?? null,
-        employee_category_id: parsed.data.employee_category_id ?? null,
-        joining_date: parsed.data.joining_date,
-        employee_status: parsed.data.employee_status,
-        reporting_manager_id: parsed.data.reporting_manager_id ?? null,
-        primary_work_site_id: parsed.data.primary_work_site_id ?? null,
-        created_by: ctx.profile?.id ?? null,
-        updated_by: ctx.profile?.id ?? null,
-      })
-      .select("id, employee_code")
-      .single();
-    if (insertError || !employee) return { success: false, error: insertError?.message ?? "Employee insert failed" };
-
-    await supabase.from("employee_status_events").insert({
-      employee_id: employee.id,
-      old_status: null,
-      new_status: parsed.data.employee_status,
-      reason: `Converted from candidate ${candidate.candidate_code}`,
-      effective_date: parsed.data.joining_date,
-      created_by: ctx.profile?.id ?? null,
-    });
-
-    await supabase.from("employee_recruitment_links").insert({
-      employee_id: employee.id,
-      candidate_id: candidateId,
-      requisition_id: parsed.data.requisition_id ?? null,
-      offer_id: parsed.data.offer_id ?? null,
-      converted_at: new Date().toISOString(),
-      converted_by: ctx.profile?.id ?? null,
-      conversion_notes: parsed.data.conversion_notes ?? null,
-      created_by: ctx.profile?.id ?? null,
-    });
-
-    await supabase.from("hr_candidates").update({ candidate_status: "hired", pipeline_stage: "hired", updated_by: ctx.profile?.id ?? null }).eq("id", candidateId).select("id").single();
-
-    await supabase.from("hr_onboarding_tasks").update({ employee_id: employee.id, updated_by: ctx.profile?.id ?? null }).eq("candidate_id", candidateId).is("deleted_at", null);
-
-    await recruitmentAuditLog({ action: "create", entity_name: "employee_recruitment_links", entity_id: employee.id, entity_reference: employeeCode, candidate_id: candidateId, candidate_code: candidate.candidate_code ?? undefined, candidate_name: candidate.full_name_en, employee_id: employee.id, employee_code: employeeCode, extra: { action_type: "candidate_converted_to_employee" } });
-    await logAudit({ module_code: "HR", entity_name: "employees", entity_id: employee.id, entity_reference: employeeCode, action: "create", new_values: { employee_code: employeeCode, source: "candidate_conversion", candidate_id: candidateId } });
-
-    revalidatePath("/admin/hr/employees");
-    revalidatePath("/admin/hr/recruitment/candidates");
-    revalidatePath(`/admin/hr/recruitment/candidates/record/${candidateId}`);
-    return { success: true, data: { employee_id: employee.id, employee_code: employeeCode } };
-  } catch (err) {
-    logger.error("convertCandidateToEmployee error", err);
-    return { success: false, error: "Failed to convert candidate to employee" };
+    const result=await saveNumberedRecruitment('conversion',parsed.data,identity.data,candidateId);
+    if(result.success)try{revalidatePath('/admin/hr/employees');revalidatePath('/admin/hr/recruitment/candidates');revalidatePath(`/admin/hr/recruitment/candidates/record/${candidateId}`);}catch{/* Committed history is not a cache failure. */}
+    return result;
+  } catch {
+    return { success: false, error: "Unable to authorize candidate conversion." };
   }
 }
 

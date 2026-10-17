@@ -18,7 +18,9 @@ import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
  */
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import {useHrLinkedDocuments} from "@/hooks/use-hr-linked-documents";
+import {useHrDocumentChoices,HrDocumentChoicePages,useHrDocumentChoiceOwner} from "@/hooks/use-hr-document-choices";
+import type {ComplianceMutationAdmission} from "./compliance-read-admission";
 import { FileText, Link2, Plus, Undo2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,11 +28,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { DmsAttachDocumentPicker } from "@/features/dms/entity-documents/dms-attach-document-picker";
 import {
-  getAvailableDmsDocumentsForLink,
   type AvailableDmsDocumentOption,
 } from "@/server/actions/dms/entity-documents";
 import {
-  listEmployeeDependentDocumentLinks,
   type DependentDocumentLinkRow,
 } from "@/server/actions/hr/compliance";
 
@@ -45,14 +45,22 @@ export const EMPTY_DEP_LINK_CHANGES: DependentDocLinkChanges = {
 };
 
 type DependentDocumentLinksSectionProps = {
+  employeeId:number;
+  admission:ComplianceMutationAdmission;
   /** null in Add mode (dependent not created yet) */
   dependentId: number | null;
   /** Reports the staged changes; parent applies them on Save */
   onChangesChange: (changes: DependentDocLinkChanges) => void;
 };
 
-export function DependentDocumentLinksSection({
+export function DependentDocumentLinksSection(props:DependentDocumentLinksSectionProps){
+ const owner=useHrDocumentChoiceOwner(props.employeeId,props.admission.generation);
+ return <DependentDocumentLinksSession key={owner+":"+props.dependentId} {...props}/>;
+}
+function DependentDocumentLinksSession({
   dependentId,
+  employeeId,
+  admission,
   onChangesChange,
 }: DependentDocumentLinksSectionProps) {
   const [stagedAdds, setStagedAdds] = useState<AvailableDmsDocumentOption[]>([]);
@@ -61,40 +69,24 @@ export function DependentDocumentLinksSection({
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
 
-  // Existing links (edit mode only)
-  const uiRead1 = useQuery({
-    queryKey: ["hr", "dependent-doc-links", dependentId],
-    queryFn: async () => {
-      const r = await listEmployeeDependentDocumentLinks(dependentId!);
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : [];
-    },
-    enabled: dependentId != null,
-  });
+  const uiRead1=useHrLinkedDocuments(employeeId,dependentId,dependentId!==null&&admission.ready,admission.generation);
   const { data: existingLinks = [], isLoading: linksLoading } = uiRead1;
 
   // Available documents for the picker (already-linked docs excluded server-side)
-  const uiRead2 = useQuery({
-    queryKey: ["hr", "dependent-doc-links-available", dependentId ?? 0, deferredSearch],
-    queryFn: async () => {
-      const r = await getAvailableDmsDocumentsForLink(
-        "employee_dependent",
-        dependentId ?? 0,
-        deferredSearch
-      );
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success ? r.data ?? [] : [];
-    },
-    enabled: pickerOpen,
-    staleTime: 15_000,
-  });
-  const { data: availableDocs = [], isLoading: availableLoading } = uiRead2;
+  const documentChoices=useHrDocumentChoices(employeeId,"library",deferredSearch,pickerOpen&&admission.ready,admission.generation,dependentId,"dependent");
+  const uiRead2={...documentChoices,data:documentChoices.data?.rows};
+  const availableDocs=useMemo(()=>uiRead2.data?.map(row=>({...row,document_no:row.document_no??""}))??[],[uiRead2.data]);
+  const availableLoading=uiRead2.isLoading;
 
+  const isCurrent=admission.isCurrent;
   // Report staged changes upward whenever they mutate
   useEffect(() => {
+    if(!isCurrent())return;
     onChangesChange({
       addDocumentIds: stagedAdds.map((d) => d.id),
       removeDocumentIds: [...stagedRemoveIds],
     });
-  }, [stagedAdds, stagedRemoveIds, onChangesChange]);
+  }, [stagedAdds, stagedRemoveIds, onChangesChange,isCurrent]);
 
   const stagedAddIds = useMemo(() => stagedAdds.map((d) => d.id), [stagedAdds]);
 
@@ -106,6 +98,7 @@ export function DependentDocumentLinksSection({
   }, [availableDocs, stagedAdds]);
 
   const togglePick = (documentId: number) => {
+    if(!admission.canDispatch()||!documentChoices.ready||!documentChoices.isCurrent())return;
     const doc = availableDocs.find((d) => d.id === documentId);
     setStagedAdds((prev) => {
       if (prev.some((d) => d.id === documentId)) {
@@ -116,6 +109,7 @@ export function DependentDocumentLinksSection({
   };
 
   const toggleRemoval = (documentId: number) => {
+    if(!admission.canDispatch()||!uiRead1.isSuccess||uiRead1.isError||uiRead1.isFetching)return;
     setStagedRemoveIds((prev) => {
       const next = new Set(prev);
       if (next.has(documentId)) next.delete(documentId);
@@ -206,6 +200,7 @@ export function DependentDocumentLinksSection({
               Done
             </Button>
           </div>
+          <HrDocumentChoicePages read={documentChoices} />
           <DmsAttachDocumentPicker
             search={search}
             onSearchChange={setSearch}

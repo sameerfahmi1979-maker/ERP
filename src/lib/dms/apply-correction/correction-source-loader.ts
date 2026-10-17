@@ -12,6 +12,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import {isPartyCorrectionTarget,loadPartyCorrectionSource} from '@/server/party-dms-correction';
 import {
   validateApplyTarget,
 } from "@/lib/dms/apply-to-erp/apply-target-registry";
@@ -81,6 +82,11 @@ export async function loadCorrectionSource(
         message: `Apply item ${applyItemId} has status '${item.status}'. Only 'applied' items can be corrected.`,
       },
     };
+  }
+
+  if(isPartyCorrectionTarget(item.target_table)){
+    const result=await loadPartyCorrectionSource(applyItemId);
+    return result.success&&result.data?{ok:true,data:result.data}:{ok:false,error:{success:false,error:result.errorCode==='permission_denied'?'permission_denied':'server_error',message:result.error??'Correction source unavailable.'}};
   }
 
   // ── 2. Load parent apply run ──────────────────────────────────────────────

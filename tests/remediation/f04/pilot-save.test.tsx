@@ -25,7 +25,22 @@ vi.mock("@/hooks/use-workspace", () => ({ useWorkspace: () => ({
   closeTab:mock.closeTab, markDirty:mock.markDirty, updateTabRoute:mock.updateTabRoute, isTabActive: (id:string) => id === mock.active,
 })}));
 vi.mock("sonner", () => ({ toast: {error:mock.error, success:vi.fn()} }));
-vi.mock("@tanstack/react-query", () => ({useQuery: () => ({data: undefined})}));
+// Controller regression tests stub successful read admission; P04 tests cover
+// the real hooks, failure/denial and cache-lifetime behavior independently.
+vi.mock('@tanstack/react-query', async importOriginal => {
+ const actual = await importOriginal<typeof import('@tanstack/react-query')>();
+ const client = new actual.QueryClient();
+ return {...actual, useQuery: () => ({data:undefined}), useQueryClient: () => client};
+});
+vi.mock('@/hooks/use-hr-candidate-record',()=>({
+ candidateRecordKey:(id:number,identity:string)=>['hr','recruitment','candidate',id,identity],
+ useHrCandidateRecord:(id:number|null)=>({identity:'f04-controller-fixture',owner:'f04-controller-fixture:'+id,
+  denied:false,verified:!!id,evidenceUpdatedAt:1,retire:()=>{},query:{isError:false,isFetching:false},
+  data:id?{candidate:{id,workspace_revision:1,full_name_en:'Saved',candidate_status:'new',requisition_id:null},
+   salaryAccess:{canView:false,canManage:false,canManageCandidate:true}}:undefined}),
+ useCandidateSalaryAccess:()=>({denied:false,query:{isError:false,isFetching:false},
+  data:{canView:false,canManage:false,canManageCandidate:true}}),
+}));
 vi.mock("@/server/actions/common-master-data/departments", () => ({createDepartment:mock.create, updateDepartment:mock.update}));
 vi.mock("@/server/actions/hr/employees", () => ({createEmployee:mock.create, updateEmployee:mock.update}));
 vi.mock("@/server/actions/hr/recruitment", () => ({createCandidate:mock.create, updateCandidate:mock.update, getRecruitmentSalaryAccess:vi.fn()}));
@@ -44,6 +59,7 @@ vi.mock("@/components/workspace/erp-record-workspace-form", () => ({
 }));
 vi.mock("@/components/ui/input", () => ({Input: (props:ComponentProps<"input">) => <input {...props}/>}));
 vi.mock("@/components/ui/textarea", () => ({Textarea: (props:ComponentProps<"textarea">) => <textarea {...props}/>}));
+vi.mock("@/components/erp/organizations/branch-select",()=>({BranchSelect:({value,onValueChange,disabled,name}:{value:number|null;onValueChange:(v:number|null)=>void;disabled:boolean;name:string})=><input aria-label="Branch" name={name} value={value??''} disabled={disabled} onChange={e=>onValueChange(e.target.value?Number(e.target.value):null)}/> }));
 vi.mock("@/components/ui/checkbox", () => ({
   Checkbox: ({checked, onCheckedChange, ...props}: ComponentProps<"input"> & {onCheckedChange:(checked:boolean)=>void}) =>
     <input {...props} type="checkbox" checked={checked} onChange={e => onCheckedChange(e.target.checked)}/>,
@@ -81,14 +97,14 @@ import { DepartmentWorkspaceForm } from "@/features/common-master-data/departmen
 import { CandidateWorkspaceForm } from "@/features/hr/recruitment/candidate-workspace-form";
 import { EmployeeWorkspaceForm } from "@/features/hr/employees/employee-workspace-form";
 
-const auth = {permissionCodes:["hr.recruitment.manage"], roleCodes:[]} as AuthContext;
+const auth = {profile:{id:1,auth_user_id:'f04-synthetic',must_change_password:false},accountStatus:'active',isAccountActive:true,permissionCodes:['hr.recruitment.manage'],roleCodes:[]} as AuthContext;
 beforeEach(() => {
   vi.clearAllMocks();
   mock.store = createWorkspaceDraftStore();
   mock.active = "owner";
   mock.shell = null;
-  mock.create.mockResolvedValue({success:true,data:{id:7001,revision:"1",replayed:false}});
-  mock.update.mockResolvedValue({success:true,data:{id:7001,revision:"1",replayed:false}});
+  mock.create.mockResolvedValue({success:true,data:{id:7001,revision:"1",replayed:false,changed:true,owner_company_id:1,branch_id:null}});
+  mock.update.mockImplementation(async(input)=>({success:true,data:{id:typeof input==='number'?input:input.id,revision:"1",replayed:false,changed:true,owner_company_id:1,branch_id:input.branch_id??null}}));
 });
 afterEach(cleanup);
 const save = async (close=false) => {await act(async()=>{await (close ? mock.shell?.onSaveAndClose?.() : mock.shell?.onSave?.());});};
@@ -96,7 +112,8 @@ const department = {id:11,workspace_revision:1,owner_company_id:1,department_cod
   branch_id:7,parent_department_id:8,cost_center_id:9,department_head_user_id:10} as DepartmentRow;
 function mountDepartment(mode:"add"|"edit"|"view"="add") {
   mock.pathname = "/admin/common-master-data/departments/record/" + (mode==="add" ? "new" : "11");
-  return render(<DepartmentWorkspaceForm mode={mode} department={mode==="add"?null:department} authContext={auth} companies={[{id:1,legal_name_en:"Test",company_code:"TEST"}]}/>);
+  const departmentAuth={...auth,profile:{id:1},isAccountActive:true,permissionCodes:['common_md.manage'],roleAssignments:[{roleCode:'test_manager',ownerCompanyId:1,branchId:null,permissionCodes:['common_md.manage']}]} as unknown as AuthContext;
+  return render(<DepartmentWorkspaceForm mode={mode} department={mode==="add"?null:department} authContext={departmentAuth} companies={[{id:1,legal_name_en:"Test",company_code:"TEST"}]}/>);
 }
 function fillDepartment() {
   fireEvent.change(screen.getByLabelText(/Organization/), {target:{value:"1"}});
@@ -104,8 +121,8 @@ function fillDepartment() {
   fireEvent.change(screen.getByLabelText(/Name \(English\)/), {target:{value:"Synthetic Department"}});
 }
 function delayed() {
-  let resolve!: (value:{success:boolean;data:{id:number;revision:string;replayed:boolean}})=>void;
-  const promise = new Promise<{success:boolean;data:{id:number;revision:string;replayed:boolean}}>(r=>{resolve=r;});
+  let resolve!: (value:{success:boolean;data:{id:number;revision:string;replayed:boolean;changed?:boolean;owner_company_id?:number;branch_id?:number|null}})=>void;
+  const promise = new Promise<{success:boolean;data:{id:number;revision:string;replayed:boolean;changed?:boolean;owner_company_id?:number;branch_id?:number|null}}>(r=>{resolve=r;});
   mock.create.mockReturnValueOnce(promise);
   return resolve;
 }
@@ -132,7 +149,7 @@ describe("Department pilot", () => {
     act(()=>{const callback=mock.shell?.onSaveAndClose; first=callback?.();void callback?.();});
     expect(mock.create).toHaveBeenCalledTimes(1);
     fireEvent.change(screen.getByLabelText(/Name \(English\)/),{target:{value:"Newer"}});
-    await act(async()=>{resolve({success:true,data:{id:7001,revision:"1",replayed:false}});await first;});
+    await act(async()=>{resolve({success:true,data:{id:7001,revision:"1",replayed:false,changed:true,owner_company_id:1,branch_id:null}});await first;});
     expect(mock.closeTab).not.toHaveBeenCalled();expect(mock.shell?.isDirty).toBe(true);
     expect(mock.store?.getDraft("draft:tab:owner:department-workspace-form")?.department_name_en).toBe("Newer");
   });

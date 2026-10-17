@@ -13,7 +13,7 @@ const database=vi.hoisted(()=>()=>({from:(table:string)=>{
 }}));
 vi.mock("@/lib/supabase/server",()=>({createClient:async()=>database()}));
 vi.mock("@/lib/supabase/admin",()=>({createAdminClient:()=>database()}));
-vi.mock("@/lib/rbac/check",()=>({getAuthContext:async()=>({profile:{id:1},isAccountActive:true,roleCodes:[]}),hasPermission:()=>s.allowed}));
+vi.mock("@/lib/rbac/check",()=>({getAuthContext:async()=>({profile:{id:1},isAccountActive:true,roleCodes:[]}),hasPermission:()=>s.allowed,hasGlobalPermission:()=>s.allowed,hasPermissionInScope:()=>s.allowed}));
 vi.mock("@/server/actions/audit",()=>({logAudit:vi.fn()}));
 vi.mock("next/cache",()=>({revalidatePath:()=>{throw Error("No mutation");}}));
 import {getDmsAiExtractionResults,getDmsAiMetadataApplyHistory} from "@/server/actions/dms/ai-analysis";

@@ -2,8 +2,6 @@
 import {readDmsSection} from "@/features/dms/documents/section-read";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { useGuardedTransition } from "@/hooks/use-guarded-transition";
-import { ERPDataTable } from "@/components/erp/table/erp-data-table";
-import { loadedListValue } from "@/components/erp/table/loaded-list-view";
 import { QueryReadBoundary } from "@/features/dms/documents/section-read-boundary";
 
 /**
@@ -16,6 +14,7 @@ import { QueryReadBoundary } from "@/features/dms/documents/section-read-boundar
 
 import { Button } from "@/components/ui/button";
 import { DmsBilingualText } from "./dms-bilingual-text";
+import { RecentOcrJobsList } from "./recent-ocr-jobs-list";
 import { describeOcrStatusReadError, OcrStatusReadError } from "@/lib/dms/ocr/status-read-error";
 import { DmsOcrStatusBadge } from "@/features/dms/ocr/dms-ocr-status-badge";
 import { invalidateDmsDocumentFiles, invalidateDmsOcr } from "@/lib/query/invalidation";
@@ -24,7 +23,7 @@ import { retryDmsOcrJob, triggerDmsOcrForDocument, type DmsOcrFileStatus } from 
 import { useQueryClient } from "@tanstack/react-query";
 import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
 import { format, parseISO } from "date-fns";
-import { AlertCircle, Check, Copy, Info, RefreshCw, RotateCcw, ScanText } from "lucide-react";
+import { AlertCircle, Check, Copy, Info, RefreshCw, ScanText } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
@@ -262,34 +261,8 @@ export function DmsDocumentOcrSection({
       )}
 
       {/* ── Recent OCR Jobs ── */}
-      {ocrJobs.length > 0 && (
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Recent OCR Jobs</p>
-          <div className="rounded-md border border-border overflow-hidden">
-            {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.documents.sections.dms-document-ocr-section" data={ocrJobs} columns={[{id:"id",header:"Job",accessorFn:job=>loadedListValue(job,"id"),meta:{filter:{type:"number"}},enableHiding:false,size:220,cell:({row:{original:job}})=>{
-return <>#{job.id}</>;}},{id:"provider",header:"Provider",accessorFn:job=>loadedListValue(job,"provider"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:job}})=>{
-return <>{formatOcrProvider(job.provider)}</>;}},{id:"status",header:"Status",accessorFn:job=>loadedListValue(job,"status"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:job}})=>{
-return <><DmsOcrStatusBadge status={job.status === "completed" ? "complete" : job.status} /></>;}},{id:"duration_ms",header:"Duration",accessorFn:job=>loadedListValue(job,"duration_ms"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:job}})=>{
-return <>{job.duration_ms ? `${(job.duration_ms / 1000).toFixed(1)}s` : "—"}</>;}},{id:"started_at",header:"Started",accessorFn:job=>loadedListValue(job,"started_at"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:job}})=>{
-return <>{job.started_at ? format(parseISO(job.started_at), "dd MMM HH:mm") : "—"}</>;}},{id:"error_message",header:"Error",accessorFn:job=>loadedListValue(job,"error_message"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:job}})=>{
-return <>{job.error_message ? (
-                        <span title={job.error_message}>{job.error_message.slice(0, 60)}</span>
-                      ) : "—"}</>;}},{id:"actions",header:"Actions",enableSorting:false,meta:{exportable:false},enableHiding:true,size:180,cell:({row:{original:job}})=>{
-return <>{canTrigger && job.status === "failed" && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 px-2 text-xs gap-1"
-                          onClick={() => handleRetry(job.id)}
-                          title="Retry this OCR job"
-                        >
-                          <RotateCcw className="h-3 w-3" />
-                          Retry
-                        </Button>
-                      )}</>;}}]} enableRowSelection={false} searchPlaceholder="Search loaded records…" initialPageSize={10} />
-          </div>
-        </div>
-      )}
+      <RecentOcrJobsList jobs={ocrJobs} canRetry={canTrigger} retrying={triggering}
+        onRetry={handleRetry} formatProvider={formatOcrProvider} />
 
       {/* ── Info note ── */}
       <div className="flex items-start gap-2 rounded-md border border-border/50 bg-muted/20 px-3 py-2">

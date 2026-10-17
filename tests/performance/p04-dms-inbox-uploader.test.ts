@@ -9,6 +9,10 @@ it('counts/pages uploads without embedding uploader permission joins, then reads
 it('empty or null uploader pages do not read profiles',async()=>{for(const rows of [[],[row(1,null)]]){s.calls=[];s.rows=rows;const r=await readDmsInboxPage({});expect(r.success).toBe(true);expect(s.calls.some(c=>c.table==='user_profiles')).toBe(false);}});
 it('a hidden uploader is null, never an admin fallback',async()=>{s.names=[];expect((await readDmsInboxPage({})).data?.rows.every(r=>r.uploader===null)).toBe(true);expect(s.calls.every(c=>['dms_upload_sessions','user_profiles'].includes(c.table))).toBe(true);});
 it('profile read failure fails the whole page without leaking backend details',async()=>{s.nameError=true;const r=await readDmsInboxPage({});expect(r.success).toBe(false);expect(r.data).toBeUndefined();expect(JSON.stringify(r)).not.toContain('PRIVATE');});
-it.each([[{id:99,full_name:'Unrequested'}],[{id:7,full_name:'First'},{id:7,full_name:'Duplicate'}],[{id:7,full_name:{secret:'invalid'}}]])('unrequested, duplicate or malformed profile rows fail closed',async names=>{s.names=names;const r=await readDmsInboxPage({});expect(r.success).toBe(false);expect(r.data).toBeUndefined();});
+it.each([
+ {kind:'unrequested',names:[{id:99,full_name:'Unrequested'}]},
+ {kind:'duplicate',names:[{id:7,full_name:'First'},{id:7,full_name:'Duplicate'}]},
+ {kind:'malformed',names:[{id:7,full_name:{secret:'invalid'}}]},
+])('$kind profile rows fail closed',async({names})=>{s.names=names;const r=await readDmsInboxPage({});expect(r.success).toBe(false);expect(r.data).toBeUndefined();expect(s.calls.filter(c=>c.table==='user_profiles'&&c.op==='select')).toHaveLength(1);});
 it('invalid uploader identity is rejected before profile query',async()=>{s.rows=[row(1,-1)];expect((await readDmsInboxPage({})).success).toBe(false);expect(s.calls.some(c=>c.table==='user_profiles')).toBe(false);});
 it('permissions are checked before either query',async()=>{s.allowed=false;expect((await readDmsInboxPage({})).success).toBe(false);expect(s.calls).toHaveLength(0);});

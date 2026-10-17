@@ -34,7 +34,7 @@ export default async function ReportRunRoutePage({ params, searchParams }: Props
 
   // Check that the user has at least one required permission
   const hasReportPermission = registryEntry.required_permissions.length === 0
-    || registryEntry.required_permissions.some((p) => ctx.permissionCodes.includes(p));
+    || registryEntry.required_permissions.some((p) => hasPermission(ctx, p));
 
   if (!hasReportPermission) {
     redirect("/admin/reports");

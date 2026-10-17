@@ -38,7 +38,7 @@ test('native execution uses readonly source/fixture mounts, no network and UID10
 const requiredJobs=['core-tests','remediation-tests','f06-tests','performance-phases','performance-compatibility','integration-tests','build-types','security','lint','production-image'];
 const candidateRef='${{ github.event.pull_request.head.sha || github.sha }}';
 const offlineSchemaFiles=['migration-contract.test.cjs','native-fixture.test.cjs','schema-receipt.test.cjs','schema-rejection-witnesses.test.cjs','document-lineage.test.cjs','reconciled-receipt.test.cjs','branding-acl.test.cjs','template-set.test.cjs'].map(file=>'tests/integration/f00-f06/schema/'+file);
-const offlineAffordanceFiles=['employee-affordance.test.mjs','dms-affordance.test.mjs'].map(file=>'tests/integration/f00-f06/'+file);
+const offlineAffordanceFiles=['employee-affordance.test.mjs','dms-affordance.test.mjs','report-permission-regression.test.mjs'].map(file=>'tests/integration/f00-f06/'+file);
 function validateEngineeringWorkflow(workflow){
  assert.equal(workflow.env.EXPECTED_CANDIDATE_SHA,candidateRef);
  assert.deepEqual(Object.keys(workflow.jobs).sort(),[...requiredJobs,'verify'].sort());
@@ -68,11 +68,11 @@ function validateEngineeringWorkflow(workflow){
  assert.equal(schemaSteps[0].if,undefined,'Offline schema gate must not skip');
  assert.equal(schemaSteps[0]['continue-on-error'],undefined,'Offline schema gate must remain blocking');
  assert.deepEqual(schemaSteps[0].run.trim().split(/\s+/),['node','--test',...offlineSchemaFiles],'All required exact offline schema suites must execute without filtering');
- const affordanceSteps=workflow.jobs['integration-tests'].steps.filter(step=>step.name==='Employee and DMS display-authority contracts (offline only)');
+ const affordanceSteps=workflow.jobs['integration-tests'].steps.filter(step=>step.name==='Employee, DMS and report display-authority contracts (offline only)');
  assert.equal(affordanceSteps.length,1,'Exactly one complete offline affordance gate');
  assert.equal(affordanceSteps[0].if,undefined,'Offline affordance gate must not skip');
  assert.equal(affordanceSteps[0]['continue-on-error'],undefined,'Offline affordance gate must remain blocking');
- assert.deepEqual(affordanceSteps[0].run.trim().split(/\s+/),['node','--test',...offlineAffordanceFiles],'Both exact affordance suites must execute without filtering');
+ assert.deepEqual(affordanceSteps[0].run.trim().split(/\s+/),['node','--test',...offlineAffordanceFiles],'All three exact affordance suites must execute without filtering');
  const aggregate=workflow.jobs.verify;
  assert.equal(aggregate.if,'always()');
  assert.deepEqual([...aggregate.needs].sort(),[...requiredJobs].sort());
@@ -133,7 +133,7 @@ test('offline schema gate rejects omitted, substituted, filtered or bypassed lin
 
 test('offline affordance gate rejects omitted, substituted, filtered, duplicated or bypassed suites',()=>{
  const baseline=yaml.load(fs.readFileSync('.github/workflows/engineering.yml','utf8'));
- const gateName='Employee and DMS display-authority contracts (offline only)';
+ const gateName='Employee, DMS and report display-authority contracts (offline only)';
  const gate=value=>value.jobs['integration-tests'].steps.find(step=>step.name===gateName);
  for(const file of offlineAffordanceFiles)for(const replacement of ['',offlineAffordanceFiles.find(other=>other!==file)]){
   const changed=structuredClone(baseline);gate(changed).run=gate(changed).run.replace(file,replacement);

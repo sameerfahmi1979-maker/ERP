@@ -10,7 +10,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext } from "@/lib/rbac/check";
+import { canUseApplication, getAuthContext, hasPermission } from "@/lib/rbac/check";
 import {
   resolveEffectivePolicy,
   type ClassPolicyRow,
@@ -91,7 +91,7 @@ export async function listEmployeeOutputCatalog(): Promise<
   ActionResult<EmployeeOutputCatalogItem[]>
 > {
   const ctx = await getAuthContext();
-  if (!ctx?.profile?.id) return { success: false, error: "Not authenticated." };
+  if (!ctx?.profile?.id || !canUseApplication(ctx)) return { success: false, error: "Not authenticated." };
 
   const db = createAdminClient();
 
@@ -127,7 +127,7 @@ export async function listEmployeeOutputCatalog(): Promise<
 
     const policy = resolveEffectivePolicy(row as unknown as RegistryPolicyOverrides, classDefault);
     const required = (row.required_permissions ?? []) as string[];
-    const missing = required.filter((p) => !ctx.permissionCodes.includes(p));
+    const missing = required.filter((p) => !hasPermission(ctx, p));
 
     const definition = getOfficialDocumentDefinition(row.report_code as string);
     const generatable = definition ? isGeneratable(definition) : true;
@@ -158,8 +158,8 @@ export async function listEmployeeOutputCatalog(): Promise<
         placeholder: f.placeholder,
         helpText: f.helpText,
       })),
-      canBrandingOverride: ctx.permissionCodes.includes("reports.branding.override"),
-      userCanSign: ctx.permissionCodes.includes("reports.sign"),
+      canBrandingOverride: hasPermission(ctx, "reports.branding.override"),
+      userCanSign: hasPermission(ctx, "reports.sign"),
     });
   }
 

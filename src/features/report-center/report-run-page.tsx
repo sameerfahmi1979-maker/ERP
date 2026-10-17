@@ -199,7 +199,7 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
     }
   };
 
-  const runReport = async () => {
+  const runReport = async (templateIdForRun = selectedTemplateId) => {
     if (!isCurrent() || ownerDenied || !criteria.canRunNow()) return;
     const sequence = ++runSequence.current;
     const latest = () => isCurrent() && runSequence.current === sequence;
@@ -218,9 +218,17 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
         reportCode: registryEntry.report_code,
         outputFormat: "screen",
         filters: cleanFilters,
-        templateId: selectedTemplateId,
+        templateId: templateIdForRun,
       });
       if (!latest()) return;
+
+      // Manual branding selection is a continuation, not a completed run.
+      // The server deliberately returns success:false until a template is chosen.
+      if (result.data?.requiresManualTemplateSelection === true) {
+        setViewField("pendingExportFormat", null);
+        setViewField("showTemplateDialog", true);
+        return;
+      }
 
       if (!result.success) {
         setViewField("error", result.error ?? "Failed to run report");
@@ -229,17 +237,11 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
 
       const runResult = result.data as ReportRunResult;
 
-      if (runResult.requiresManualTemplateSelection) {
-        setViewField("pendingExportFormat", null);
-        setViewField("showTemplateDialog", true);
-        return;
-      }
-
       setViewField("runResult", runResult);
       setVisibleColumns(previous => previous?.filter(column => runResult.data?.columns.includes(column)) ?? null);
 
       // Resolve branding for export/preview if the run produced a template
-      const templateId = runResult.resolvedTemplateId ?? selectedTemplateId;
+      const templateId = runResult.resolvedTemplateId ?? templateIdForRun;
       if (templateId) {
         resolveTemplatePreview({
           templateId,
@@ -337,7 +339,7 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
   };
 
   const handleTemplateSelected = (templateId: number) => {
-    if (!isCurrent() || ownerDenied) return;
+    if (!isCurrent() || ownerDenied || (!pendingExportFormat && !criteria.canRunNow())) return;
     setViewField("selectedTemplateId", templateId);
     setViewField("showTemplateDialog", false);
     // Pre-resolve branding for the manually selected template
@@ -355,7 +357,8 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
     if (pendingExportFormat) {
       handleExport(pendingExportFormat);
     } else {
-      runReport();
+      // React state is not updated synchronously; continue with the chosen ID.
+      runReport(templateId);
     }
   };
 
@@ -426,7 +429,7 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
           <ReportFilterPanel
             filters={filters}
             onFilterChange={handleFilterChange}
-            onRun={runReport}
+            onRun={() => { void runReport(); }}
             onReset={handleReset}
             isLoading={isRunning}
             fields={filterFields}

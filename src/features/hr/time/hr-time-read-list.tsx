@@ -60,7 +60,7 @@ function ReadSession({kind, authContext, initialPage, initialUpdatedAt = 0, init
     {!safe.success && <p role="alert">Review the dates, filters, search length and page criteria. Invalid criteria were not sent.</p>}
     {read.isError && <p role="alert">Time records could not be completely loaded. This is not an empty result. <Button type="button" variant="outline" onClick={refresh}>Retry loading records</Button></p>}
     <p className="text-xs text-muted-foreground">{totalCount === null ? "Records unavailable or loading" : `${totalCount} permitted records`}</p>
-    <ERPDataTable tableId={`hr-time:${kind}:${identity}`} userProfileId={authContext.profile?.id} columns={columns} data={rows} enableRowSelection={false} isLoading={read.isBusy} resultsLabel={`${kind} results`} searchPlaceholder="Search all permitted time records…" emptyMessage="No permitted time records match this view."
+    <ERPDataTable presentation="worklist" tableId={`hr-time:${kind}:${identity}`} userProfileId={authContext.profile?.id} columns={columns} data={rows} enableRowSelection={false} isLoading={read.isBusy} resultsLabel={`${kind} results`} searchPlaceholder="Search all permitted time records…" emptyMessage="No permitted time records match this view."
       serverRead={{pagination, sorting, globalFilter: search, columnFilters: filters, totalCount,
         onPaginationChange: update => setPagination(p => {const next = resolve(update, p); return next.pageSize === p.pageSize ? next : {...next, pageIndex: 0};}),
         onSortingChange: update => {setSorting(p => resolve(update, p).slice(0, 1)); setPagination(p => ({...p, pageIndex: 0}));},

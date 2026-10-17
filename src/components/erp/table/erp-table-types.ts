@@ -6,6 +6,7 @@
 
 import type { ColumnDef, ColumnFiltersState, ColumnSizingState, OnChangeFn, PaginationState, SortingState, Table, VisibilityState } from "@tanstack/react-table";
 import type { ListFilter } from "./list-controls";
+import type { ListPresentation } from "./embedded-list-navigation";
 
 /**
  * TanStack Table Column Metadata Extension
@@ -100,6 +101,8 @@ export interface ERPTablePreferences {
  * Table configuration
  */
 export interface ERPTableConfig<TData> {
+  /** Main lists retain full controls; record sections use compact fixed columns. */
+  presentation?: ListPresentation;
   /** A read in progress is visibly distinct from an empty collection. */
   isLoading?: boolean;
   /** Server-paginated lists supply their own filters/paging; never imply client filters cover all records. */

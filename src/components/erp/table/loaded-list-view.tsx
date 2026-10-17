@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { EditColumns, EditFilters, useListColumns, type ListColumn, type ListFilter, type FilterValues } from "@/components/erp/table/list-controls";
 import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
 import { Input } from "@/components/ui/input";
+import type { ListPresentation } from "./embedded-list-navigation";
 
 export type LoadedListField = { id: string; label: string; path?: string; width?: number; required?: boolean; type?: ListFilter["type"]; options?: ListFilter["options"] };
 export function loadedListValue(row: unknown, path: string): string {
@@ -25,16 +26,19 @@ export function filterLoadedRows<T>(rows: T[], fields: LoadedListField[], filter
 }
 
 /** UI-only filtering of supplied authorized rows. No second cache or durable record storage. */
-export function useLoadedListView<T>(key: string, rows: T[], fields: LoadedListField[], options: {serverFiltered?:boolean;totalCount?:number} = {}) {
+export function useLoadedListView<T>(key: string, rows: T[], fields: LoadedListField[], options: {serverFiltered?:boolean;totalCount?:number;presentation?:ListPresentation} = {}) {
+  const embedded = options.presentation === "embedded";
   const [filters,setFilters] = usePersistentUiState<FilterValues>(`dms-list:${key}:filters`,{});
   const [search,setSearch] = usePersistentUiState<string>(`dms-list:${key}:search`,"");
   const defaults: ListColumn[] = fields.map(field => ({ id:field.id,label:field.label,width:field.width ?? 160,visible:true,required:field.required }));
   const columnState = useListColumns(`dms:${key}:v1`,defaults);
-  const filtered = useMemo(()=>options.serverFiltered?rows:filterLoadedRows(rows,fields,filters,search),[rows,fields,filters,search,options.serverFiltered]);
-  return { ...columnState,defaults,fields,filters,setFilters,search,setSearch,rows:filtered,loadedCount:rows.length,serverFiltered:options.serverFiltered,totalCount:options.totalCount };
+  const filtered = useMemo(()=>embedded || options.serverFiltered?rows:filterLoadedRows(rows,fields,filters,search),[rows,fields,filters,search,options.serverFiltered,embedded]);
+  // Compact sections must not inherit now-invisible column/filter preferences.
+  return { ...columnState,...(embedded ? {columns:defaults,visible:defaults} : {}),embedded,defaults,fields,filters:embedded ? {} : filters,setFilters,search:embedded ? "" : search,setSearch,rows:filtered,loadedCount:rows.length,serverFiltered:options.serverFiltered,totalCount:options.totalCount };
 }
 
 export function LoadedListTools<T>({ view, search = false }: { view: ReturnType<typeof useLoadedListView<T>>; search?: boolean }) {
+  if (view.embedded) return null;
   return <div className="min-w-0 space-y-2 mb-3">
     <div className="flex flex-wrap items-center gap-2">
       {search && <Input aria-label={view.serverFiltered ? "Search permitted records" : "Search loaded records"} placeholder={view.serverFiltered ? "Search permitted records…" : "Search loaded records…"} value={view.search} onChange={e=>view.setSearch(e.target.value)} className="w-full sm:max-w-xs" />}

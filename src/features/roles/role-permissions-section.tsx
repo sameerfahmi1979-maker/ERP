@@ -167,7 +167,7 @@ export function RolePermissionsSection({ roleId, isSystemRole, canManage, isGlob
         <p>{saveError ?? "Role permissions could not be loaded. No changes have been applied."}</p>
         <Button type="button" variant="outline" disabled={toggling !== null} onClick={() => { setReviewing(false); void refetch(); }}>Reload permissions</Button>
       </div>}
-      {!error && <ERPDataTable tableId={`role.permissions:${roleId}`} resultsLabel="Role permissions" data={rows} columns={columns} enableRowSelection={false}/>}
+      {!error && <ERPDataTable presentation="embedded" tableId={`role.permissions:${roleId}`} resultsLabel="Role permissions" data={rows} columns={columns} enableRowSelection={false}/>}
     </div>
   );
 }

@@ -86,7 +86,7 @@ function ServicesSession({partyId,principalId,canEdit,parentInactive,onChildOpen
   {notice&&<p role="alert">{notice}</p>}
   {parentInactive&&<p className="text-sm text-muted-foreground">This party is inactive. Existing assignments can be removed; reactivate the party before adding a category.</p>}
   {categories.error&&canEdit&&<div role="alert"><p>Service categories could not be loaded.</p><Button type="button" onClick={()=>void categories.refetch()}>Retry category choices</Button></div>}
-  {isLoading?<p>Loading service assignments…</p>:error?<div role="alert"><p>Service assignments could not be loaded.</p><Button type="button" onClick={refetch}>Try again</Button></div>:<ERPDataTable tableId={`party.services:${partyId}`} resultsLabel="Service categories" data={assignments??[]} columns={columns} enableRowSelection={false}/>}
+  {isLoading?<p>Loading service assignments…</p>:error?<div role="alert"><p>Service assignments could not be loaded.</p><Button type="button" onClick={refetch}>Try again</Button></div>:<ERPDataTable presentation="embedded" tableId={`party.services:${partyId}`} resultsLabel="Service categories" data={assignments??[]} columns={columns} enableRowSelection={false}/>}
   {dialog&&<ServiceDialog key={dialog.sessionId} snapshot={dialog} canEdit={canEdit} parentInactive={parentInactive} categories={categories.data??[]} choicesUnavailable={!!categories.error||categories.isPending} persist={persist} close={close} saved={saved}/>}
  </div>;
 }

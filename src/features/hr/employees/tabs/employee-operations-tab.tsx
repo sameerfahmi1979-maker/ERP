@@ -241,7 +241,7 @@ function AssignmentsSection({
       ) : undefined}
     >
         <div className="divide-y">
-          <RecordCollection {...uiRead1.collection} id="hr.employee-operations-tab.AssignmentsSection.assignments" rows={assignments} fields={HR_OPERATION_RECORD_CONFIG.assignments.fields.map(f => ({...f, path: f.id === "site_name" ? "work_sites.name_en" : f.id === "department_name" ? "departments.name_en" : f.id === "designation_name" ? "designations.name_en" : f.id}))} renderRecord={(a) => {
+          <RecordCollection presentation="embedded" {...uiRead1.collection} id="hr.employee-operations-tab.AssignmentsSection.assignments" rows={assignments} fields={HR_OPERATION_RECORD_CONFIG.assignments.fields.map(f => ({...f, path: f.id === "site_name" ? "work_sites.name_en" : f.id === "department_name" ? "departments.name_en" : f.id === "designation_name" ? "designations.name_en" : f.id}))} renderRecord={(a) => {
             const badge = getAssignmentStatusBadge(a.assignment_status as AssignmentStatus);
             const dept = (a.departments as Record<string, unknown> | null)?.name_en;
             const desg = (a.designations as Record<string, unknown> | null)?.name_en;
@@ -378,7 +378,7 @@ function SiteReadinessSection({
       ) : undefined}
     >
         <div className="divide-y">
-          <RecordCollection {...uiRead1.collection} id="hr.employee-operations-tab.SiteReadinessSection.records" rows={records} fields={HR_OPERATION_RECORD_CONFIG.readiness.fields.map(f => ({...f, path: f.id === "site_name" ? "work_sites.name_en" : f.id}))} renderRecord={(r) => {
+          <RecordCollection presentation="embedded" {...uiRead1.collection} id="hr.employee-operations-tab.SiteReadinessSection.records" rows={records} fields={HR_OPERATION_RECORD_CONFIG.readiness.fields.map(f => ({...f, path: f.id === "site_name" ? "work_sites.name_en" : f.id}))} renderRecord={(r) => {
             const badge = getReadinessStatusBadge(r.readiness_status as string);
             const site = (r.work_sites as Record<string, unknown> | null)?.name_en;
             return (
@@ -545,7 +545,7 @@ function RoleRequirementsSection({
       ) : undefined}
     >
         <div className="divide-y">
-          <RecordCollection {...uiRead1.collection} id="hr.employee-operations-tab.RoleRequirementsSection.reqs" rows={reqs} fields={HR_OPERATION_RECORD_CONFIG.requirements.fields.map(f => ({...f}))} renderRecord={(r) => (
+          <RecordCollection presentation="embedded" {...uiRead1.collection} id="hr.employee-operations-tab.RoleRequirementsSection.reqs" rows={reqs} fields={HR_OPERATION_RECORD_CONFIG.requirements.fields.map(f => ({...f}))} renderRecord={(r) => (
             <div key={r.id as number} className="flex items-start justify-between py-3 px-1">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -730,7 +730,7 @@ function OperationalBlocksSection({
       ) : undefined}
     >
         <div className="divide-y">
-          <RecordCollection {...uiRead1.collection} id="hr.employee-operations-tab.OperationalBlocksSection.blocks" rows={blocks} fields={HR_OPERATION_RECORD_CONFIG.blocks.fields.map(f => ({...f}))} renderRecord={(b) => {
+          <RecordCollection presentation="embedded" {...uiRead1.collection} id="hr.employee-operations-tab.OperationalBlocksSection.blocks" rows={blocks} fields={HR_OPERATION_RECORD_CONFIG.blocks.fields.map(f => ({...f}))} renderRecord={(b) => {
             const badge = getBlockStatusBadge(b.block_status as BlockStatus);
             return (
               <div key={b.id as number} className="flex items-start justify-between py-3 px-1">
@@ -890,7 +890,7 @@ function AssetsSection({
       action={canManage ? <Button size="sm" onClick={openAdd}><Plus className="h-3.5 w-3.5 mr-1" />Issue Asset</Button> : undefined}
     >
         <div className="divide-y">
-          <RecordCollection {...uiRead1.collection} id="hr.employee-operations-tab.AssetsSection.assets" rows={assets} fields={HR_OPERATION_RECORD_CONFIG.assets.fields.map(f => ({...f}))} renderRecord={(a) => (
+          <RecordCollection presentation="embedded" {...uiRead1.collection} id="hr.employee-operations-tab.AssetsSection.assets" rows={assets} fields={HR_OPERATION_RECORD_CONFIG.assets.fields.map(f => ({...f}))} renderRecord={(a) => (
             <div key={a.id as number} className="flex items-start justify-between py-3 px-1">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -1036,7 +1036,7 @@ function PpeSection({
       action={canManage ? <Button size="sm" onClick={openAdd}><Plus className="h-3.5 w-3.5 mr-1" />Issue PPE</Button> : undefined}
     >
         <div className="divide-y">
-          <RecordCollection {...uiRead1.collection} id="hr.employee-operations-tab.PpeSection.ppe" rows={ppe} fields={HR_OPERATION_RECORD_CONFIG.ppe.fields.map(f => ({...f}))} renderRecord={(p) => (
+          <RecordCollection presentation="embedded" {...uiRead1.collection} id="hr.employee-operations-tab.PpeSection.ppe" rows={ppe} fields={HR_OPERATION_RECORD_CONFIG.ppe.fields.map(f => ({...f}))} renderRecord={(p) => (
             <div key={p.id as number} className="flex items-start justify-between py-3 px-1">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -1179,7 +1179,7 @@ function AccommodationSection({
       action={canManage ? <Button size="sm" onClick={openAdd}><Plus className="h-3.5 w-3.5 mr-1" />Assign Accommodation</Button> : undefined}
     >
         <div className="divide-y">
-          <RecordCollection {...uiRead1.collection} id="hr.employee-operations-tab.AccommodationSection.records" rows={records} fields={HR_OPERATION_RECORD_CONFIG.accommodation.fields.map(f => ({...f}))} renderRecord={(r) => (
+          <RecordCollection presentation="embedded" {...uiRead1.collection} id="hr.employee-operations-tab.AccommodationSection.records" rows={records} fields={HR_OPERATION_RECORD_CONFIG.accommodation.fields.map(f => ({...f}))} renderRecord={(r) => (
             <div key={r.id as number} className="flex items-start justify-between py-3 px-1">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">

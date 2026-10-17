@@ -276,7 +276,7 @@ export function DmsMetadataErpMappingsDialog({
           </div>
         ) : (
           <div className="rounded-md border overflow-hidden">
-            {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.admin.dms-metadata-erp-mappings-dialog" data={mappings} columns={[{id:"target_module",header:"Module",accessorFn:m=>loadedListValue(m,"target_module"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:m}})=>{
+            {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable presentation="embedded" tableId="special.dms.admin.dms-metadata-erp-mappings-dialog" data={mappings} columns={[{id:"target_module",header:"Module",accessorFn:m=>loadedListValue(m,"target_module"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:m}})=>{
 return <><Badge variant="outline" className="text-[10px] px-1.5 py-0 uppercase">
                         {m.target_module}
                       </Badge></>;}},{id:"target_table",header:"Target table",accessorFn:m=>loadedListValue(m,"target_table"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:m}})=>{

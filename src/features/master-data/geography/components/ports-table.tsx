@@ -204,7 +204,7 @@ function PortsTableSession({ ports, authContext, onRefresh }: PortsTableProps) {
   return (
     <>
       {!deleteDialogOpen&&<GeographyLifecycleNotice state={lifecycle}/>}
-      <ERPDataTable<PortWithRelations>
+      <ERPDataTable<PortWithRelations> presentation="worklist"
         tableId="ports_table"
         columns={columns}
         data={ports}

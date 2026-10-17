@@ -195,7 +195,7 @@ function MohreSession({ initialData, canManage, onCreate, onUpdate }: Props) {
           />
         ) : (
           <div className="divide-y">
-            <RecordCollection id="hr.hr-mohre-establishments-page.HrMohreEstablishmentsPage.rows" rows={rows} fields={[{"id":"establishment_name","path":"establishment_name","label":"Establishment Name"},{"id":"establishment_number","path":"establishment_number","label":"Establishment Number"}]} renderRecord={(row) => (
+            <RecordCollection presentation="worklist" id="hr.hr-mohre-establishments-page.HrMohreEstablishmentsPage.rows" rows={rows} fields={[{"id":"establishment_name","path":"establishment_name","label":"Establishment Name"},{"id":"establishment_number","path":"establishment_number","label":"Establishment Number"}]} renderRecord={(row) => (
               <div key={row.id} className="flex items-center justify-between px-4 py-3">
                 <div className="flex flex-col gap-0.5">
                   <div className="flex items-center gap-2">

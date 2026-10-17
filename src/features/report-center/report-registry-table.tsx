@@ -166,7 +166,7 @@ const columns: ColumnDef<ReportRegistryEntry>[] = [
 export function ReportRegistryTable({ entries }: Props) {
   return (
     <div className="rounded-md border border-border overflow-hidden">
-      <ERPDataTable
+      <ERPDataTable presentation="worklist"
         tableId="admin.reports.registry"
         columns={columns}
         data={entries}

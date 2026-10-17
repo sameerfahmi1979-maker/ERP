@@ -64,7 +64,7 @@ export function MasterArchivePanel({entity,calendarId,title,disabled=false,onRes
    {loading&&<p role="status">Loading archive…</p>}
    {error&&<p role="alert">{error}</p>}
    <Button type="button" variant="outline" size="sm" disabled={loading||saving||target!==null} onClick={()=>void load()}>Refresh archive</Button>
-   {rows!==null&&<ERPDataTable tableId={`f06.archive:${entity}:${calendarId??'all'}`} resultsLabel={title} data={rows} columns={columns} enableRowSelection={false} emptyMessage="No archived records are available in your management scope."/>}
+   {rows!==null&&<ERPDataTable presentation="embedded" tableId={`f06.archive:${entity}:${calendarId??'all'}`} resultsLabel={title} data={rows} columns={columns} enableRowSelection={false} emptyMessage="No archived records are available in your management scope."/>}
   </>}
   <AlertDialog open={target!==null} onOpenChange={value=>{if(!value&&!saving&&!uncertain)setTarget(null);}}><AlertDialogContent>
    <AlertDialogHeader><AlertDialogTitle>Restore archived record</AlertDialogTitle><AlertDialogDescription>Restore {target?.name} ({target?.code}) as inactive? Its identity and history will be preserved.{entity==='work_shifts'?' A shift requires a restored, active parent calendar.':''}</AlertDialogDescription></AlertDialogHeader>

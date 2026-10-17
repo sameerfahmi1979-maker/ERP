@@ -20,7 +20,7 @@ export function HrActionInquiryTable<K extends HrActionInquiryKind>({kind, ident
       <p className="text-xs text-muted-foreground">{read.serverRead.totalCount === null ? "Records unavailable or loading" : `${read.serverRead.totalCount} permitted records`}</p>
       <Button variant="outline" disabled={read.invalid || read.busy} onClick={() => void read.refetch()}>Refresh records</Button>
     </div>
-    <ERPDataTable tableId={`hr-actions:${kind}:${identity}`} userProfileId={identity} data={read.data}
+    <ERPDataTable presentation="worklist" tableId={`hr-actions:${kind}:${identity}`} userProfileId={identity} data={read.data}
       columns={columns.map(c => ({...c, enableSorting: c.enableSorting !== false && !!c.id && allowedSorts.has(c.id)}))}
       enableRowSelection={false} isLoading={read.busy} serverRead={read.serverRead}
       resultsLabel={`${kind} results`} searchPlaceholder="Search all permitted records…"

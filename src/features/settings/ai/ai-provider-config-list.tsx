@@ -171,7 +171,7 @@ export function AiProviderConfigList({ configs, onAdd, canManage=false, canManag
         {retireError && <p role="alert">{retireError}</p>}
       </AlgtDialog>
       <div className="grid gap-4">
-        {<RecordCollection id="special.ai-provider-config-list" rows={configs} fields={[{"id":"providerName","path":"providerName","label":"Provider"},{"id":"configCode","path":"configCode","label":"Code"},{"id":"providerType","path":"providerType","label":"Type"},{"id":"purpose","path":"purpose","label":"Purpose"}]} renderRecord={(config) => {
+        {<RecordCollection presentation="worklist" id="special.ai-provider-config-list" rows={configs} fields={[{"id":"providerName","path":"providerName","label":"Provider"},{"id":"configCode","path":"configCode","label":"Code"},{"id":"providerType","path":"providerType","label":"Type"},{"id":"purpose","path":"purpose","label":"Purpose"}]} renderRecord={(config) => {
           const liveResult = testResults[config.id];
           const isTestingThis = testingId === config.id;
 

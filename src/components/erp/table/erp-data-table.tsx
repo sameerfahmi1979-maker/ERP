@@ -47,9 +47,15 @@ import type { ERPTableConfig } from "./erp-table-types";
 import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
 import { EditFilters, type ListFilter } from "./list-controls";
 import { ERPColumnMenu } from "./erp-column-menu";
+import { EmbeddedListNavigation } from "./embedded-list-navigation";
 import { ERPExportMenu } from "../export/erp-export-menu";
 import type { ERPExportColumn } from "@/lib/export";
 import { cn } from "@/lib/utils";
+
+// TanStack memoizes by reference. Fresh empty state arrays can repeatedly reset
+// pagination after effects flush in a compact table.
+const EMPTY_FILTERS: ColumnFiltersState = [];
+const EMPTY_SORTING: SortingState = [];
 
 interface ERPDataTableProps<TData> extends ERPTableConfig<TData> {
   /** Current user profile ID for preferences */
@@ -127,6 +133,7 @@ function getExportColumns<TData>(table: TanStackTable<TData>): ERPExportColumn<T
 }
 
 export function ERPDataTable<TData>({
+  presentation = "worklist",
   tableId,
   columns,
   data,
@@ -148,11 +155,12 @@ export function ERPDataTable<TData>({
   serverRead,
   resultsLabel = "Results",
 }: ERPDataTableProps<TData>) {
+  const embedded = presentation === "embedded";
   // ERP GLOBAL UI.4E.1: route-scoped v2 key prevents cross-screen state leakage.
   // usePathname() is SSR-safe here since ERPDataTable is "use client".
   const currentPathname = usePathname();
   const [pathname] = useState(currentPathname);
-  const key = enablePreferences ? `table:${userProfileId}:${pathname}:${tableId}` : undefined;
+  const key = enablePreferences && !embedded ? `table:${userProfileId}:${pathname}:${tableId}` : undefined;
 
   // Table state — start with server-safe empty defaults; preferences applied post-mount
   const [sorting, setSorting] = usePersistentUiState<SortingState>(key ? key+":sorting" : undefined,[]);
@@ -167,8 +175,8 @@ export function ERPDataTable<TData>({
   const [mounted, setMounted] = useState(false);
   const remote = serverPaged || !!serverRead;
   const unavailable = !!serverRead && (serverRead.totalCount === null || !Number.isSafeInteger(serverRead.totalCount) || serverRead.totalCount < 0);
-  const activeSearch = serverRead?.globalFilter ?? globalFilter;
-  const activeFilters = serverRead?.columnFilters ?? columnFilters;
+  const activeSearch = serverRead?.globalFilter ?? (embedded ? "" : globalFilter);
+  const activeFilters = serverRead?.columnFilters ?? (embedded ? EMPTY_FILTERS : columnFilters);
 
   useEffect(()=>{setMounted(true);},[]);
 
@@ -227,7 +235,7 @@ export function ERPDataTable<TData>({
     manualSorting: !!serverRead,
     rowCount: unavailable ? undefined : serverRead?.totalCount ?? undefined,
     state: {
-      sorting: serverRead?.sorting ?? sorting,
+      sorting: serverRead?.sorting ?? (embedded ? EMPTY_SORTING : sorting),
       columnSizing,
       columnVisibility: { ...columnVisibility, ...Object.fromEntries(enhancedColumns.filter(column => column.enableHiding === false).map(column => [column.id ?? ("accessorKey" in column ? String(column.accessorKey) : ""), true])) },
       rowSelection,
@@ -249,8 +257,8 @@ export function ERPDataTable<TData>({
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: remote ? undefined : getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    enableSorting,
-    enableColumnResizing,
+    enableSorting: enableSorting && !embedded,
+    enableColumnResizing: enableColumnResizing && !embedded,
     columnResizeMode: "onChange",
     enableRowSelection,
     enableMultiRowSelection: true,
@@ -303,10 +311,10 @@ export function ERPDataTable<TData>({
   }, [exportConfig, exportData, remote, serverRead, unavailable]);
 
   return (
-    <div className="algt-data-table flex flex-col" aria-busy={isLoading || undefined}>
+    <div className="algt-data-table min-w-0 flex flex-col" data-list-presentation={presentation} aria-busy={isLoading || undefined}>
       {isLoading && <p role="status" className="p-3 text-sm text-muted-foreground">Loading records…</p>}
       {/* Toolbar */}
-      <div className="flex flex-col gap-3 p-4 border-b border-border/40">
+      {!embedded && <div className="flex flex-col gap-3 p-4 border-b border-border/40">
         <div className="flex items-center justify-between flex-wrap gap-3">
           {enableGlobalFilter && (!serverPaged || !!serverRead) && (
             <div className="relative flex-1 max-w-sm">
@@ -354,16 +362,16 @@ export function ERPDataTable<TData>({
             </button>
           </div>
         )}
-      </div>
+      </div>}
 
-      {filterDefinitions.length > 0 && <div className="flex flex-wrap gap-2 p-4">
+      {!embedded && filterDefinitions.length > 0 && <div className="flex flex-wrap gap-2 p-4">
         <EditFilters definitions={filterDefinitions} values={Object.fromEntries(activeFilters.map(filter => [filter.id, String(filter.value)]))}
           scopeLabel={serverRead ? "Filters query the complete permitted result before paging. Text contains; numbers, dates and choices match exactly." : "Filters match the permitted rows loaded into this list. Text contains; numbers, dates and choices match exactly."} onApply={values => { table.setColumnFilters(Object.entries(values).filter(([,value])=>value).map(([id,value])=>({id,value}))); table.setPageIndex(0); }} />
         {(activeSearch || activeFilters.length > 0) && <button type="button" className="text-sm text-primary underline" onClick={() => { table.setGlobalFilter(""); table.setColumnFilters([]); table.setPageIndex(0); }}>Clear search and filters</button>}
       </div>}
       {/* Table */}
       <div role="region" aria-label={`${resultsLabel} — scrollable table`} tabIndex={0} className="overflow-x-auto">
-        <Table style={{ tableLayout: "fixed", minWidth: "100%" }}>
+        <Table style={{ tableLayout: embedded ? "auto" : "fixed", minWidth: "100%" }}>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="hover:bg-transparent border-border/40">
@@ -371,11 +379,12 @@ export function ERPDataTable<TData>({
                   <TableHead
                     key={header.id}
                     style={{
-                      width: header.getSize(),
+                      width: embedded ? undefined : header.getSize(),
                       position: "relative",
                     }}
                     className={cn(
                       "h-10 text-xs font-semibold uppercase tracking-wider text-muted-foreground bg-muted/30 select-none overflow-hidden",
+                      embedded && "whitespace-normal break-words [overflow-wrap:anywhere]",
                       header.column.getCanSort() && "cursor-pointer hover:bg-muted/50"
                     )}
                     aria-sort={header.column.getIsSorted() === "asc" ? "ascending" : header.column.getIsSorted() === "desc" ? "descending" : "none"}
@@ -400,7 +409,7 @@ export function ERPDataTable<TData>({
                     </div>
 
                     {/* Resize handle */}
-                    {enableColumnResizing && header.column.getCanResize() && (
+                    {!embedded && enableColumnResizing && header.column.getCanResize() && (
                       <div
                         onMouseDown={header.getResizeHandler()}
                         onTouchStart={header.getResizeHandler()}
@@ -430,8 +439,8 @@ export function ERPDataTable<TData>({
                   {row.getVisibleCells().map((cell) => (
                     <TableCell
                       key={cell.id}
-                      style={{ width: cell.column.getSize() }}
-                      className="h-12 text-sm overflow-hidden"
+                      style={{ width: embedded ? undefined : cell.column.getSize() }}
+                      className={cn("h-12 text-sm", embedded ? "whitespace-normal break-words [overflow-wrap:anywhere]" : "overflow-hidden")}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
@@ -453,7 +462,10 @@ export function ERPDataTable<TData>({
       </div>
 
       {/* Pagination */}
-      {(!serverPaged || !!serverRead) && <div className="flex items-center justify-between px-4 py-3 border-t border-border/40 flex-wrap gap-3">
+      {embedded && (!serverPaged || !!serverRead) && <EmbeddedListNavigation label={resultsLabel} total={unavailable ? null : serverRead?.totalCount ?? filteredCount}
+        pagination={table.getState().pagination} busy={isLoading} onPaginationChange={serverRead?.onPaginationChange ?? setPagination}
+        hasCriteria={!!activeSearch || activeFilters.length > 0} onClearCriteria={() => { table.setGlobalFilter(""); table.setColumnFilters([]); table.setPageIndex(0); }} />}
+      {!embedded && (!serverPaged || !!serverRead) && <div className="flex items-center justify-between px-4 py-3 border-t border-border/40 flex-wrap gap-3">
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span>
             {unavailable ? "Matching total is not yet available" : `Showing ${table.getRowModel().rows.length} of ${serverRead?.totalCount ?? filteredCount} matching records (${unavailable ? 0 : data.length} loaded)`}

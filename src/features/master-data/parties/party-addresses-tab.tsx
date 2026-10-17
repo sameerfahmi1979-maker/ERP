@@ -207,7 +207,7 @@ export function PartyAddressesTab({ partyId, disabled, onChildOpen }: PartyAddre
       )}
 
       {loadError ? <div role="alert" className="rounded border p-4"><p>Address records could not be loaded.</p><Button type="button" variant="outline" onClick={refetch}>Try again</Button></div> :
-        <ERPDataTable tableId={`party.addresses:${partyId}`} resultsLabel="Address" data={addresses ?? []} columns={columns} enableRowSelection={false} />}
+        <ERPDataTable presentation="embedded" tableId={`party.addresses:${partyId}`} resultsLabel="Address" data={addresses ?? []} columns={columns} enableRowSelection={false} />}
 
       {isDialogOpen && <PartyAddressDialog
         key={`${partyId}:${editing?.id??'new'}`}

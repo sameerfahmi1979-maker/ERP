@@ -197,7 +197,7 @@ function CountriesTableSession({ countries, authContext, onRefresh }: CountriesT
   return (
     <>
       {!deleteDialogOpen&&<GeographyLifecycleNotice state={lifecycle}/>}
-      <ERPDataTable<Country>
+      <ERPDataTable<Country> presentation="worklist"
         tableId="countries_table"
         columns={columns}
         data={countries}

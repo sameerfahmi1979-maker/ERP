@@ -27,7 +27,7 @@ function AdminNotificationView(props: NotificationPageProps & {identity: string}
   return <div className="space-y-4"><div className="flex flex-wrap justify-between gap-2"><h1 className="text-xl font-semibold">Notification Center</h1><Button variant="outline" onClick={read.refresh}>Refresh</Button></div>
     <p className="text-sm text-muted-foreground">Search and filters apply to all notifications permitted by your current access. Channel flags describe the requested delivery methods, not proof of delivery.</p>
     {read.failed && <p role="alert">Notifications could not be verified. Use Refresh to retry.</p>}
-    <ERPDataTable tableId="notifications.admin" data={read.rows} columns={columns} serverRead={read.serverRead}
+    <ERPDataTable presentation="worklist" tableId="notifications.admin" data={read.rows} columns={columns} serverRead={read.serverRead}
       isLoading={read.busy} enableRowSelection={false} searchPlaceholder="Search notifications or recipient email…" emptyMessage="No notifications match this view."/>
   </div>;
 }

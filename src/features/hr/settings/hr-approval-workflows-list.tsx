@@ -14,6 +14,6 @@ const columns: ColumnDef<HrApprovalWorkflowRow>[] = [
   {accessorKey:"is_active",header:"Status",cell:({row})=>row.original.is_active?"Active":"Inactive"},
 ];
 export function HrApprovalWorkflowsList({rows}:{rows:HrApprovalWorkflowRow[]}){
- return <><ERPDataTable tableId="hr.approval-workflow-steps" data={rows} columns={columns} enableRowSelection={false} searchPlaceholder="Search loaded workflow steps…" emptyMessage="No workflow steps match this view."/>
+ return <><ERPDataTable presentation="worklist" tableId="hr.approval-workflow-steps" data={rows} columns={columns} enableRowSelection={false} searchPlaceholder="Search loaded workflow steps…" emptyMessage="No workflow steps match this view."/>
  <p className="text-xs text-muted-foreground">Read-only workflow configuration. Search, columns and filters apply to the first 100 permitted steps loaded here; editing business approval chains remains in the HR workflow phase.</p></>;
 }

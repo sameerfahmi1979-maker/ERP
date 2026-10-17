@@ -80,7 +80,7 @@ function RuleSession({entity,rows,canManage,onSave}:HrRuleSettingsProps){
    actions={canManage?<Button disabled={unavailable||open} onClick={()=>begin()}>Add {config.singular}</Button>:undefined}/>
   {!canManage&&<p className="text-sm text-muted-foreground">Read-only: global HR configuration permission is required to change these shared settings.</p>}
   {!open&&error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
-  <ERPDataTable tableId={`hr.f06.${entity}`} data={rows} columns={columns} enableRowSelection={false} searchPlaceholder="Search permitted configurations…" emptyMessage="No configurations match this view."/>
+  <ERPDataTable presentation="worklist" tableId={`hr.f06.${entity}`} data={rows} columns={columns} enableRowSelection={false} searchPlaceholder="Search permitted configurations…" emptyMessage="No configurations match this view."/>
   {canManage&&<HrSettingsLifecycle entity={entity} target={target} onTargetChange={setTarget} onBusyChange={setArchiveBusy} disabled={open||busy||uncertain} onChanged={()=>router.refresh()}/>}
   {canManage&&<ERPChildDialogForm open={open} onOpenChange={setOpen} title={`${editing?'Edit':'Add'} ${config.singular}`} mode={editing?'edit':'add'} size="lg" isSubmitting={busy} closeDisabled={uncertain} submitDisabled={!choices&&!uncertain} submitLabel={uncertain?'Retry same save':'Save'} onSubmit={submit}>
    {error&&<p role="alert" className="mb-4 rounded-sm border border-destructive p-3 text-sm text-destructive">{error}</p>}

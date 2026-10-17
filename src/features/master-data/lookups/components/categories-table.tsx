@@ -193,7 +193,7 @@ export function CategoriesTable({ categories, onRefresh, canManage, canLock, rea
 
   return (
     <>
-      <ERPDataTable<LookupCategoryWithStats>
+      <ERPDataTable<LookupCategoryWithStats> presentation="worklist"
         tableId="lookup_categories_table"
         columns={columns}
         data={categories}

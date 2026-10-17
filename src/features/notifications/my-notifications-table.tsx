@@ -416,7 +416,7 @@ export function MyNotificationsTable({ notifications, onRefresh, activeTab, disa
       {serverRead.totalCount !== null && !disabled ? <TablePagination page={serverRead.pagination.pageIndex + 1} pageSize={serverRead.pagination.pageSize} total={serverRead.totalCount} totalPages={Math.max(1, Math.ceil(serverRead.totalCount / serverRead.pagination.pageSize))}
         onPage={page => serverRead.onPaginationChange({...serverRead.pagination, pageIndex: page - 1})} onPageSize={pageSize => serverRead.onPaginationChange({pageIndex: 0, pageSize})}/> : <p>Page count unavailable</p>}</>}
   </div>;
-  if(view==="list")return <div className="space-y-3">{viewControls}<ERPDataTable tableId="notifications.my" data={notifications} columns={columns} serverRead={serverRead} isLoading={disabled} enableRowSelection={false} searchPlaceholder={serverRead ? "Search notifications…" : "Search loaded notifications…"} emptyMessage="No notifications match this view."/></div>;
+  if(view==="list")return <div className="space-y-3">{viewControls}<ERPDataTable presentation="worklist" tableId="notifications.my" data={notifications} columns={columns} serverRead={serverRead} isLoading={disabled} enableRowSelection={false} searchPlaceholder={serverRead ? "Search notifications…" : "Search loaded notifications…"} emptyMessage="No notifications match this view."/></div>;
   if (disabled) return <div className="space-y-3">{viewControls}<p>Notifications could not yet be verified. Check the read status or retry.</p></div>;
   if (notifications.length === 0) return <div className="space-y-3">{viewControls}<EmptyState tab={activeTab}/></div>;
 

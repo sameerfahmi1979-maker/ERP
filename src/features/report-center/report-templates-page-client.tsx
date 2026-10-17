@@ -514,7 +514,7 @@ export function ReportTemplatesPageClient({
             </div>
           ) : null}
           <div className="rounded-md border border-border overflow-hidden">
-            <ERPDataTable
+            <ERPDataTable presentation="worklist"
               tableId="admin.reports.branding-profiles"
               columns={profileColumns}
               data={profiles}
@@ -534,7 +534,7 @@ export function ReportTemplatesPageClient({
 
         <TabsContent value="templates">
           <div className="rounded-md border border-border overflow-hidden">
-            <ERPDataTable
+            <ERPDataTable presentation="worklist"
               tableId="admin.reports.templates"
               columns={templateColumns}
               data={templates}

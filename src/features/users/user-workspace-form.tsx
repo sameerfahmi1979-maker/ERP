@@ -520,7 +520,7 @@ export function UserWorkspaceForm({
           {mode !== "add" && (
             <ERPRecordSectionPanel id="roles" activeId={activeSection} title="Assigned Roles">
               <div className="space-y-3">
-                <ERPDataTable tableId={`user.roles:${user?.id}`} resultsLabel="Assigned roles" data={user?.roles ?? []} columns={assignedRoleColumns} enableRowSelection={false}/>
+                <ERPDataTable presentation="embedded" tableId={`user.roles:${user?.id}`} resultsLabel="Assigned roles" data={user?.roles ?? []} columns={assignedRoleColumns} enableRowSelection={false}/>
                 {!isViewing && user && (
                   <Button
                     type="button"

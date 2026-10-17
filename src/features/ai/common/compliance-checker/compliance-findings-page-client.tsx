@@ -294,7 +294,7 @@ export function ComplianceFindingsPageClient({
             ) : rows.length === 0 ? (
               <p className="p-4 text-sm text-muted-foreground">No findings match filters.</p>
             ) : (
-              <RecordCollection id="special.compliance-findings-page-client" rows={rows} fields={[{"id":"findingType","path":"findingType","label":"Finding type"},{"id":"entityType","path":"entityType","label":"Entity type"},{"id":"severity","path":"severity","label":"Severity"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(row) => (
+              <RecordCollection presentation="worklist" id="special.compliance-findings-page-client" rows={rows} fields={[{"id":"findingType","path":"findingType","label":"Finding type"},{"id":"entityType","path":"entityType","label":"Entity type"},{"id":"severity","path":"severity","label":"Severity"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(row) => (
                 <button
                   key={row.id}
                   type="button"

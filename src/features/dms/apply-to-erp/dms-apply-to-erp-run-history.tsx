@@ -98,7 +98,7 @@ function RunHistorySession({ documentId, className, correctionEnabled }: Props) 
       )}
 
       <div className="space-y-2">
-        {<RecordCollection id="special.dms-apply-to-erp-run-history" rows={runs} fields={[{"id":"id","path":"id","label":"Run"},{"id":"status","path":"status","label":"Status"},{"id":"createdAt","path":"createdAt","label":"Created"}]} renderRecord={(run) => (
+        {<RecordCollection presentation="embedded" id="special.dms-apply-to-erp-run-history" rows={runs} fields={[{"id":"id","path":"id","label":"Run"},{"id":"status","path":"status","label":"Status"},{"id":"createdAt","path":"createdAt","label":"Created"}]} renderRecord={(run) => (
           <div key={run.id} className="rounded-md border bg-card overflow-hidden">
             <button
               type="button"
@@ -142,7 +142,7 @@ function RunHistorySession({ documentId, className, correctionEnabled }: Props) 
                     </div>
                     {expandedRun.items.length > 0 && (
                       <div className="space-y-1">
-                        {<RecordCollection id={`special.apply-items.${run.id}`} rows={expandedRun.items} fields={[{id:"field",path:"targetDisplayLabel",label:"Field"},{id:"status",path:"status",label:"Status"}]} renderRecord={(item) => (
+                        {<RecordCollection presentation="embedded" id={`special.apply-items.${run.id}`} rows={expandedRun.items} fields={[{id:"field",path:"targetDisplayLabel",label:"Field"},{id:"status",path:"status",label:"Status"}]} renderRecord={(item) => (
                           <ApplyItemRow
                             key={item.id}
                             item={item}

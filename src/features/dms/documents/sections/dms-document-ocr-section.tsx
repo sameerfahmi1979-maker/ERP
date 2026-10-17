@@ -205,7 +205,7 @@ export function DmsDocumentOcrSection({
         </div>
       ) : (
         <div className="rounded-md border border-border overflow-hidden">
-          <RecordCollection id={`special.ocr-files.${documentId}`} rows={files}
+          <RecordCollection presentation="embedded" id={`special.ocr-files.${documentId}`} rows={files}
             fields={[{id:"file_name",path:"file_name",label:"File"},{id:"mime_type",path:"mime_type",label:"Type"},{id:"ocr_status",path:"ocr_status",label:"OCR status"},{id:"ocr_provider",path:"ocr_provider",label:"Provider"}]}
             renderRecord={file => <OcrFileRow file={file} canTrigger={canTrigger} canViewText={canViewText}
               documentId={documentId} onViewText={()=>handleViewText(file.file_id)} queryClient={queryClient}/>} />
@@ -328,7 +328,7 @@ function OcrFileRow({ file, canTrigger, canViewText, documentId, onViewText, que
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       <div className="px-3 py-2">
-        <p className="text-xs font-medium truncate max-w-[180px]">{file.file_name}</p>
+        <p className="text-sm font-medium break-words [overflow-wrap:anywhere]">{file.file_name}</p>
         {file.ocr_error_message && file.ocr_status === "failed" && (
           <p className="text-[10px] text-destructive mt-0.5 truncate max-w-[180px]" title={file.ocr_error_message}>
             {file.ocr_error_message.slice(0, 60)}
@@ -348,7 +348,7 @@ function OcrFileRow({ file, canTrigger, canViewText, documentId, onViewText, que
         {file.ocr_completed_at ? format(parseISO(file.ocr_completed_at), "dd MMM HH:mm") : "—"}
       </div>
       <div className="px-3 py-2">
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-2">
           {canViewText && file.ocr_status === "complete" && file.has_text && (
             <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={onViewText}>
               <ScanText className="h-3 w-3" />

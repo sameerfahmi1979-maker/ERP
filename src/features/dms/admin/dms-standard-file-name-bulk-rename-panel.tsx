@@ -22,11 +22,11 @@ export function DmsStandardFileNameBulkRenamePanel() {
   const [failure, setFailure] = useState<string | null>(null);
   const view = useDmsListView("bulk-rename-samples", (result?.data.samples ?? []).map(row=>({...row,
     resultLabel:row.qualityIssue ? "Skipped: quality check" : result?.dryRun ? "Would rename" : "Processed — see run totals",
-  })), FIELDS);
+  })), FIELDS, {presentation:"embedded"});
   const previewReady = result?.dryRun && result.limit === Number(limit) && result.data.updated > 0;
   return <section aria-labelledby={`${id}-heading`} className="rounded-sm border bg-card p-4 space-y-4">
     <h3 id={`${id}-heading`} className="text-base font-semibold">Standard file names</h3>
-    <p className="text-sm text-muted-foreground">Build file names from document type, owner, document number and expiry. Preview the proposed names before applying a batch. The operation rechecks records at execution time; filters below do not select which records will be renamed.</p>
+    <p className="text-sm text-muted-foreground">Build file names from document type, owner, document number and expiry. Preview the proposed names before applying a batch. The operation rechecks records at execution time; the sample below is not a selection of records to rename.</p>
     <ValidatedTaskForm className="space-y-3" onSubmit={async data => {
       const dryRun = data.get("operation") !== "rename";
       if (!dryRun && (!previewReady || !window.confirm(`Apply standard names to up to ${Number(limit)} eligible documents? This may affect existing file names. The preview is not a locked selection.`))) return;
@@ -50,8 +50,8 @@ export function DmsStandardFileNameBulkRenamePanel() {
       <p className="text-xs text-muted-foreground">The server returns a sample, not a complete per-file execution log. A proposed name below does not prove that an individual file was renamed.</p>
       <DmsListTools view={view} search />
       <div role="region" aria-label="File name samples" tabIndex={0} className="max-w-full overflow-auto rounded-sm border">
-        <table className="w-full text-sm" style={{minWidth:view.visible.reduce((sum,c)=>sum+c.width,0)}}>
-          <colgroup>{view.visible.map(c=><col key={c.id} style={{width:c.width}} />)}</colgroup>
+        <table className="w-full text-sm" style={{width: "100%", tableLayout: "auto"}}>
+          <colgroup>{view.visible.map(c=><col key={c.id} style={{width: undefined}} />)}</colgroup>
           <thead><tr>{view.visible.map(c=><th key={c.id} className="text-left px-3 py-2 bg-muted/30">{c.label}</th>)}</tr></thead>
           <tbody>{view.rows.map((row,i)=><ConfiguredRow columns={view.columns} key={`${row.documentId}:${i}`} className="border-t">
             <td data-column="document" className="p-3">#{row.documentId}</td>

@@ -127,7 +127,7 @@ function ProfitCentersTableSession({profitCenters,authContext,onRefresh}:ProfitC
   return (
     <>
       {!deleteDialogOpen&&<FinanceCenterLifecycleNotice state={lifecycle}/>}
-      <ERPDataTable<ProfitCenterWithRelations>
+      <ERPDataTable<ProfitCenterWithRelations> presentation="worklist"
         tableId="profit_centers_table"
         columns={columns}
         data={profitCenters}

@@ -217,7 +217,7 @@ export function PartyLicensesTab({ partyId, disabled, onChildOpen }: PartyLicens
       )}
 
       {loadError ? <div role="alert" className="rounded border p-4"><p>License records could not be loaded.</p><Button type="button" variant="outline" onClick={refetch}>Try again</Button></div> :
-        <ERPDataTable tableId={`party.licenses:${partyId}`} resultsLabel="License" data={licenses ?? []} columns={columns} enableRowSelection={false} />}
+        <ERPDataTable presentation="embedded" tableId={`party.licenses:${partyId}`} resultsLabel="License" data={licenses ?? []} columns={columns} enableRowSelection={false} />}
 
       {isDialogOpen && <PartyChildSaveDialog
         key={editing?.id ?? 'new'}

@@ -351,7 +351,7 @@ export function UsersTable({
       />
 
       {noRoleFilter && <p role="status" className="text-sm text-muted-foreground">No role filters the current page only: {displayData.length} of {data.length} users on this page. Use the page controls to check other results.</p>}
-      <ERPDataTable
+      <ERPDataTable presentation="worklist"
         tableId="admin.users"
         serverPaged
         resultsLabel="Users on this page"

@@ -47,7 +47,7 @@ function InquirySession(props: PayrollInquiryProps & {kind: PayrollInquiryKind; 
       {read.invalid && <p role="alert">Review the search, filters and page criteria. Invalid criteria were not sent.</p>}
       {read.isError && <p role="alert">Payroll records and matching total could not be completely loaded. <Button variant="outline" disabled={read.invalid || read.busy} onClick={read.refresh}>Retry loading records</Button></p>}
       <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm text-muted-foreground">{read.serverRead.totalCount === null ? "Matching total unavailable or loading" : `${read.serverRead.totalCount} matching permitted employees`}</p><Button variant="outline" disabled={read.invalid || read.busy} onClick={read.refresh}>Refresh records</Button></div>
-      <ERPDataTable tableId={cfg.tableId} userProfileId={identity} columns={columns(kind)} data={read.data} enableRowSelection={false} serverRead={read.serverRead} isLoading={read.busy} pageSizeOptions={[25, 50, 100]} resultsLabel={`${cfg.title} results`} searchPlaceholder="Search all permitted records…" emptyMessage={read.isError || read.invalid ? "Records unavailable. Review the message above." : "No permitted employees match this view."} />
+      <ERPDataTable presentation="worklist" tableId={cfg.tableId} userProfileId={identity} columns={columns(kind)} data={read.data} enableRowSelection={false} serverRead={read.serverRead} isLoading={read.busy} pageSizeOptions={[25, 50, 100]} resultsLabel={`${cfg.title} results`} searchPlaceholder="Search all permitted records…" emptyMessage={read.isError || read.invalid ? "Records unavailable. Review the message above." : "No permitted employees match this view."} />
     </>}
   </div>;
 }

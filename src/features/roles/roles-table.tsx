@@ -223,7 +223,7 @@ export function RolesTable({
   ];
   return (
     <>
-      <ERPDataTable tableId="admin.roles" resultsLabel="Roles" data={data} columns={columns}
+      <ERPDataTable presentation="worklist" tableId="admin.roles" resultsLabel="Roles" data={data} columns={columns}
         enableRowSelection={false} searchPlaceholder="Search roles by name, code or category…" />
 
       {/* Clone Dialog */}

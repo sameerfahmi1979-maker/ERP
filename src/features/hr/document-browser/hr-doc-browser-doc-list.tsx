@@ -62,7 +62,7 @@ export function HrDocBrowserDocList({
             No documents linked yet. Link documents from the {entity.type === "employee" ? "employee profile" : "dependent record"}.
           </p>
         ) : (
-          <RecordCollection id={`special.hr-doc-browser-doc-list-${entity.type}-${entity.id}`} rows={documents} serverRead={serverRead} isLoading={isLoading} fields={[{"id":"title","path":"title","label":"Document"},{"id":"typeNameEn","path":"typeNameEn","label":"Type"},{"id":"source","path":"source","label":"Source"}]} renderRecord={(doc, index) => {
+          <RecordCollection presentation="worklist" id={`special.hr-doc-browser-doc-list-${entity.type}-${entity.id}`} rows={documents} serverRead={serverRead} isLoading={isLoading} fields={[{"id":"title","path":"title","label":"Document"},{"id":"typeNameEn","path":"typeNameEn","label":"Type"},{"id":"source","path":"source","label":"Source"}]} renderRecord={(doc, index) => {
             const isSelected = selectedIndex === index;
             return (
               <button

@@ -204,7 +204,7 @@ export function AuditLogsTable({
   ];
 
   return (
-    <ERPDataTable
+    <ERPDataTable presentation="worklist"
       tableId="admin.audit_logs"
       columns={columns}
       data={data}

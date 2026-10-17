@@ -184,7 +184,7 @@ export function RoleAssignedUsersSection({ roleId, roleName, canManageUsers }: P
       </div>
 
       {error ? <div role="alert" className="rounded border p-4"><p>Assigned users could not be loaded. No assignments have been changed.</p><Button variant="outline" onClick={()=>void load()}>Try again</Button></div> :
-        <ERPDataTable tableId={`role-users:${roleId}`} resultsLabel="Assigned users" data={displayed} columns={columns}
+        <ERPDataTable presentation="embedded" tableId={`role-users:${roleId}`} resultsLabel="Assigned users" data={displayed} columns={columns}
           enableRowSelection={false} emptyMessage={`No matching assignments for ${roleName}.`} />}
 
 

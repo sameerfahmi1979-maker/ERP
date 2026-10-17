@@ -226,7 +226,7 @@ function HrSettingsLookupSession({
           <ERPEmptyState icon={Settings2} title={`No ${title.toLowerCase()} yet`} description={canManage ? "Click Add to create the first entry." : "No records found."} />
         ) : (
           <div className="divide-y">
-            <RecordCollection id="hr.hr-settings-lookup-page.HrSettingsLookupPage.rows" rows={rows} fields={[{"id":"code","path":"code","label":"Code"},{"id":"name_en","path":"name_en","label":"Name En"},{"id":"is_active","path":"is_active","label":"Is Active"}]} renderRecord={row => (
+            <RecordCollection presentation="worklist" id="hr.hr-settings-lookup-page.HrSettingsLookupPage.rows" rows={rows} fields={[{"id":"code","path":"code","label":"Code"},{"id":"name_en","path":"name_en","label":"Name En"},{"id":"is_active","path":"is_active","label":"Is Active"}]} renderRecord={row => (
               <div key={row.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">

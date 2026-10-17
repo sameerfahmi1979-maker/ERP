@@ -285,7 +285,7 @@ export function ReportSchedulesPage() {
       </div>
 
       <div className="rounded-md border border-border overflow-hidden">
-        <ERPDataTable
+        <ERPDataTable presentation="worklist"
           tableId="admin.reports.schedules"
           columns={columns}
           data={schedules}

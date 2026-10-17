@@ -326,7 +326,7 @@ export function PartyDmsDocumentsTab({
       )}
 
       {/* Documents list */}
-      {loadError ? <div role="alert"><p>Linked documents could not be loaded.</p><Button type="button" onClick={()=>void refetch()}>Try again</Button></div> : <ERPDataTable tableId={`party.dms:${partyId}`} resultsLabel="Linked documents" data={documents ?? []} columns={columns} enableRowSelection={false}/>}
+      {loadError ? <div role="alert"><p>Linked documents could not be loaded.</p><Button type="button" onClick={()=>void refetch()}>Try again</Button></div> : <ERPDataTable presentation="embedded" tableId={`party.dms:${partyId}`} resultsLabel="Linked documents" data={documents ?? []} columns={columns} enableRowSelection={false}/>}
 
       {/* Attach existing DMS document dialog */}
       <ERPChildDialogForm

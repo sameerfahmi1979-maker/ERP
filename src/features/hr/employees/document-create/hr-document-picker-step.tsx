@@ -127,7 +127,7 @@ export function HrDocumentPickerStep({ selectedIds, onToggle, onNext }: Props) {
             </p>
           </div>
         ) : (
-          <RecordCollection id="employee-document-create-picker" rows={docs} fields={[{"id":"title","label":"Title","path":"title"},{"id":"document_no","label":"Document number","path":"document_no"},{"id":"document_type_name","label":"Document type","path":"document_type_name"}]} renderRecord={(doc) => {
+          <RecordCollection presentation="embedded" id="employee-document-create-picker" rows={docs} fields={[{"id":"title","label":"Title","path":"title"},{"id":"document_no","label":"Document number","path":"document_no"},{"id":"document_type_name","label":"Document type","path":"document_type_name"}]} renderRecord={(doc) => {
             const isSelected = selectedIds.includes(doc.id);
             return (
               <button

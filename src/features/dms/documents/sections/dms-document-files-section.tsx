@@ -318,7 +318,7 @@ export function DmsDocumentFilesSection({
     staleTime: 30_000,
   });
 
-  const listView = useDmsListView("document-files", files, DMS_LIST_FIELDS);
+  const listView = useDmsListView("document-files", files, DMS_LIST_FIELDS, {presentation:"embedded"});
   const selectedFile = selectedFileId === undefined
     ? files.find((f) => isPreviewable(f.mime_type)) ?? files[0] ?? null
     : files.find((f) => f.id === selectedFileId) ?? null;
@@ -430,7 +430,7 @@ export function DmsDocumentFilesSection({
       {actionError && <p role="alert" className="rounded-sm border border-destructive/40 p-3 text-sm">{actionError}</p>}
       {/* ── File list table ── */}
       <><DmsListTools view={listView} search /><div className="rounded-md border border-border overflow-hidden">
-        <div role="region" aria-label="document-files table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
+        <div role="region" aria-label="document-files table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ width: "100%", tableLayout: "auto" }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: undefined }} />)}</colgroup>
           <thead>
             <ConfiguredRow columns={listView.columns} className="border-b border-border bg-muted/20">
               <th data-column="indicator" className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide w-6" />

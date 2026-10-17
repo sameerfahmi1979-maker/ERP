@@ -79,7 +79,7 @@ function CompanySignatoriesSession({ companyId, authContext, enabled, readOnly, 
         {!canEdit && <p className="text-sm text-muted-foreground">Signatories are read-only. Changes require global signatory read and management permission and an editable workspace.</p>}
         {query.isPending ? <p role="status">Loading signatories…</p> : query.isError ? <div role="alert"><p>Signatories could not be loaded. No complete register is available.</p><Button type="button" variant="outline" onClick={() => void query.refetch()}>Try again</Button></div>
           : <><div className="flex justify-end">{canEdit && <Button type="button" size="sm" variant="outline" disabled={!!editor || !!openingError} onClick={() => open(null, "save")}><PlusCircle className="h-4 w-4 mr-1" />Add Signatory</Button>}</div>
-            <ERPDataTable tableId={`company.signatories:${companyId}`} resultsLabel="Signatories" data={query.data ?? []} columns={columns} enableRowSelection={false} /></>}
+            <ERPDataTable presentation="embedded" tableId={`company.signatories:${companyId}`} resultsLabel="Signatories" data={query.data ?? []} columns={columns} enableRowSelection={false} /></>}
       </>}
     {openingError && <p role="alert">{openingError}</p>}
     {editor && <CompanySignatoryDialog key={editor.sessionId} snapshot={editor} canRead={canRead} canEdit={canEdit}

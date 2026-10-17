@@ -32,7 +32,7 @@ export function AiErrorBreakdown({ filters, refreshKey }: Props) {
 
   return (
     <QueryReadBoundary queries={[uiRead1]}><div className="overflow-x-auto rounded-lg border">
-      {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.ai-observability.sections.ai-error-breakdown" data={data} columns={[{id:"errorMessage",header:"Error summary",accessorFn:row=>loadedListValue(row,"errorMessage"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:row}})=>{
+      {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable presentation="embedded" tableId="special.dms.ai-observability.sections.ai-error-breakdown" data={data} columns={[{id:"errorMessage",header:"Error summary",accessorFn:row=>loadedListValue(row,"errorMessage"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:row}})=>{
 return <>{row.errorMessage}</>;}},{id:"featureArea",header:"Feature",accessorFn:row=>loadedListValue(row,"featureArea"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
 return <>{row.featureArea}</>;}},{id:"operationType",header:"Operation",accessorFn:row=>loadedListValue(row,"operationType"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
 return <>{row.operationType}</>;}},{id:"count",header:"Count",accessorFn:row=>loadedListValue(row,"count"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{

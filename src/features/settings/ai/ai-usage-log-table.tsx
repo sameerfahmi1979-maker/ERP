@@ -44,7 +44,7 @@ export function AiUsageLogTable({ logs }: AiUsageLogTableProps) {
     <Card>
       <CardContent className="p-0">
         <div className="overflow-x-auto">
-          {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.settings.ai.ai-usage-log-table" data={logs} columns={[{id:"createdAt",header:"Time",accessorFn:log=>loadedListValue(log,"createdAt"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:log}})=>{
+          {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable presentation="worklist" tableId="special.settings.ai.ai-usage-log-table" data={logs} columns={[{id:"createdAt",header:"Time",accessorFn:log=>loadedListValue(log,"createdAt"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:log}})=>{
 return <>{format(new Date(log.createdAt), "dd MMM HH:mm")}</>;}},{id:"providerName",header:"Provider",accessorFn:log=>loadedListValue(log,"providerName"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:log}})=>{
 return <>{log.providerName ?? <span className="text-muted-foreground">—</span>}</>;}},{id:"featureArea",header:"Area",accessorFn:log=>loadedListValue(log,"featureArea"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:log}})=>{
 return <><Badge variant="outline" className="text-xs font-normal">

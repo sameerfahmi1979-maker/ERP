@@ -5,6 +5,8 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { ERPDataTable } from "./erp-data-table";
 import { loadedListValue, type LoadedListField } from "./loaded-list-view";
 import type { ERPTableServerRead } from "./erp-table-types";
+import { EmbeddedRecordCollection } from "./embedded-record-collection";
+import type { ListPresentation } from "./embedded-list-navigation";
 
 const RecordRenderer = createContext<((row: unknown, index: number) => ReactNode) | null>(null);
 /** Stable cell type retains detail controls across the parent's loading updates.
@@ -16,10 +18,12 @@ function RecordDetailsCell({row}: {row: {original: unknown; index: number}}) {
 
 /** Explicit permitted scalar columns, plus the existing permission-aware record renderer.
  * Never discovers fields from an object or flattens confidential data for searching. */
-export function RecordCollection<T>({ id, rows, fields, renderRecord, serverRead, isLoading, message, userProfileId }: {
+export function RecordCollection<T>({ id, rows, fields, renderRecord, serverRead, isLoading, message, userProfileId, presentation = "embedded" }: {
   id: string; rows: T[]; fields: LoadedListField[]; renderRecord: (row: T, index: number) => ReactNode;
   serverRead?: ERPTableServerRead<T>; isLoading?: boolean; message?: string | null; userProfileId?: string;
+  presentation?: ListPresentation;
 }) {
+  if (presentation === "embedded") return <EmbeddedRecordCollection id={id} rows={rows} renderRecord={renderRecord} serverRead={serverRead} isLoading={isLoading} message={message} userProfileId={userProfileId} />;
   const columns: ColumnDef<T>[] = fields.map((field, index) => ({
     id: field.id, header: field.label, accessorFn: row => loadedListValue(row, field.path ?? field.id),
     size: field.width ?? 160, enableHiding: index !== 0, meta: { filter: { type: field.type === "multi-select" ? "text" : field.type ?? "text", options: field.options } },

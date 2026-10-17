@@ -11,5 +11,5 @@ const columns:ColumnDef<NotificationDeliveryReadRow>[]=[
  {accessorKey:"createdAt",header:"Created",size:190,cell:({row})=>new Date(row.original.createdAt).toLocaleString()},
 ];
 export function DeliveryLogsTable({logs,serverRead,loading}:{logs:NotificationDeliveryReadRow[];serverRead:ERPTableServerRead<NotificationDeliveryReadRow>;loading:boolean}){
- return <ERPDataTable tableId="notifications.delivery-logs" data={logs} columns={columns} serverRead={serverRead} isLoading={loading} enableRowSelection={false} searchPlaceholder="Search delivery metadata…" emptyMessage="No delivery logs match this view."/>;
+ return <ERPDataTable presentation="worklist" tableId="notifications.delivery-logs" data={logs} columns={columns} serverRead={serverRead} isLoading={loading} enableRowSelection={false} searchPlaceholder="Search delivery metadata…" emptyMessage="No delivery logs match this view."/>;
 }

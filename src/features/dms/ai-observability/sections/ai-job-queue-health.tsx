@@ -56,7 +56,7 @@ export function AiJobQueueHealth({ refreshKey }: Props) {
       </div>
       {data.recentJobs.length > 0 && (
         <div className="overflow-x-auto">
-          {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.ai-observability.sections.ai-job-queue-health" data={data.recentJobs.slice(0, 10)} columns={[{id:"id",header:"ID",accessorFn:j=>loadedListValue(j,"id"),meta:{filter:{type:"number"}},enableHiding:false,size:220,cell:({row:{original:j}})=>{
+          {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable presentation="embedded" tableId="special.dms.ai-observability.sections.ai-job-queue-health" data={data.recentJobs.slice(0, 10)} columns={[{id:"id",header:"ID",accessorFn:j=>loadedListValue(j,"id"),meta:{filter:{type:"number"}},enableHiding:false,size:220,cell:({row:{original:j}})=>{
 return <>{j.id}</>;}},{id:"jobType",header:"Type",accessorFn:j=>loadedListValue(j,"jobType"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:j}})=>{
 return <>{j.jobType}</>;}},{id:"jobStatus",header:"Status",accessorFn:j=>loadedListValue(j,"jobStatus"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:j}})=>{
 return <><Badge variant={STATUS_BADGE[j.jobStatus] ?? "outline"} className="text-xs">

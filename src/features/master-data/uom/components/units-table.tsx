@@ -118,7 +118,7 @@ function UnitsTableSession({units,authContext,onRefresh}:UnitsTableProps){
   return (
     <>
       {!deleteDialogOpen&&<UomLifecycleNotice state={lifecycle}/>}
-      <ERPDataTable<UnitOfMeasureWithCategory>
+      <ERPDataTable<UnitOfMeasureWithCategory> presentation="worklist"
         tableId="units_of_measure_table"
         columns={columns}
         data={units}

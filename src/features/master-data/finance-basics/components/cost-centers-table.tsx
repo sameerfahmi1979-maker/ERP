@@ -127,7 +127,7 @@ function CostCentersTableSession({costCenters,authContext,onRefresh}:CostCenters
   return (
     <>
       {!deleteDialogOpen&&<FinanceCenterLifecycleNotice state={lifecycle}/>}
-      <ERPDataTable<CostCenterWithRelations>
+      <ERPDataTable<CostCenterWithRelations> presentation="worklist"
         tableId="cost_centers_table"
         columns={columns}
         data={costCenters}

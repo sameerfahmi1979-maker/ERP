@@ -166,7 +166,7 @@ function PartyTypesSession({rows,authContext}:Props){
       {error&&!isDialogOpen&&<div role="alert" className="text-sm text-destructive">{error}</div>}
       {uncertain&&!isDialogOpen&&<Button disabled={isSubmitting||!canManage} onClick={()=>void handleSubmit()}>{reloadOnly?'Reload saved record':'Retry pending change'}</Button>}
       <div className="rounded-md border">
-        <ERPDataTable tableId="admin.party-types" resultsLabel="party types" data={displayRows} columns={columns} enableRowSelection={false} />
+        <ERPDataTable presentation="worklist" tableId="admin.party-types" resultsLabel="party types" data={displayRows} columns={columns} enableRowSelection={false} />
       </div>
 
       <ERPChildDialogForm

@@ -130,7 +130,7 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
     staleTime: 30 * 1000,
   });
 
-  const listView = useDmsListView(`document-links:${documentId}`, links, DMS_FIELDS.filter(field => field.id !== "actions" || !isViewing));
+  const listView = useDmsListView(`document-links:${documentId}`, links, DMS_FIELDS.filter(field => field.id !== "actions" || !isViewing), {presentation:"embedded"});
   const pendingLinkSuggestions = linkSuggestions.filter((s) => s.status === "pending");
 
   async function handleSuggestLinks() {
@@ -301,7 +301,7 @@ export function DmsDocumentLinksSection({ documentId, isViewing }: DmsDocumentLi
         </div>
       ) : (
         <div className="rounded-md border border-border overflow-hidden">
-          <div role="region" aria-label="document-links table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
+          <div role="region" aria-label="document-links table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ width: "100%", tableLayout: "auto" }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: undefined }} />)}</colgroup>
             <thead>
               <ConfiguredRow columns={listView.columns} className="border-b border-border bg-muted/20">
                 <th data-column="type" className="text-left px-3 py-2 font-medium text-muted-foreground">Entity Type</th>

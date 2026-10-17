@@ -39,7 +39,7 @@ export function AiProviderModelBreakdown({ filters, refreshKey }: Props) {
 
   return (
     <QueryReadBoundary queries={[uiRead1]}><div className="overflow-x-auto rounded-lg border">
-      {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.ai-observability.sections.ai-provider-model-breakdown" data={data} columns={[{id:"modelId",header:"Model",accessorFn:row=>loadedListValue(row,"modelId"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:row}})=>{
+      {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable presentation="embedded" tableId="special.dms.ai-observability.sections.ai-provider-model-breakdown" data={data} columns={[{id:"modelId",header:"Model",accessorFn:row=>loadedListValue(row,"modelId"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:row}})=>{
 return <>{row.modelId ?? "unknown"}</>;}},{id:"totalCalls",header:"Calls",accessorFn:row=>loadedListValue(row,"totalCalls"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
 return <>{row.totalCalls}</>;}},{id:"successCalls",header:"Success",accessorFn:row=>loadedListValue(row,"successCalls"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
 return <>{row.successCalls}</>;}},{id:"totalInputTokens",header:"Input tokens",accessorFn:row=>loadedListValue(row,"totalInputTokens"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{

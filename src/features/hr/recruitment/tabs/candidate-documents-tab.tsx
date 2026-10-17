@@ -159,7 +159,7 @@ export function CandidateDocumentsTab({ candidateId, canManage, authContext, onR
 
       {
         <div className="divide-y border rounded-lg">
-<RecordCollection id="hr.candidate-documents-tab.CandidateDocumentsTab.docs" rows={docs} serverRead={read.serverRead} isLoading={read.busy} message={read.validationMessage} userProfileId={String(authContext.profile?.id ?? "")} fields={[{"id":"dms_document_document_title","path":"dms_document.document_title","label":"Document Title"},{"id":"document_purpose","path":"document_purpose","label":"Document Purpose"}]} renderRecord={(doc) => (
+<RecordCollection presentation="embedded" id="hr.candidate-documents-tab.CandidateDocumentsTab.docs" rows={docs} serverRead={read.serverRead} isLoading={read.busy} message={read.validationMessage} userProfileId={String(authContext.profile?.id ?? "")} fields={[{"id":"dms_document_document_title","path":"dms_document.document_title","label":"Document Title"},{"id":"document_purpose","path":"document_purpose","label":"Document Purpose"}]} renderRecord={(doc) => (
             <div key={doc.id} className="flex items-center gap-3 p-3">
               <FileText className="h-4 w-4 text-slate-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">

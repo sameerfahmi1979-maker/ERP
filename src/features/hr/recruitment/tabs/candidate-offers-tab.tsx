@@ -288,7 +288,7 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, onRead
       {read.detailPending && <p role="status">Loading complete offer…</p>}
       {
         <div className="divide-y border rounded-lg">
-<RecordCollection id="hr.candidate-offers-tab.CandidateOffersTab.offers" rows={offers} serverRead={read.serverRead} isLoading={read.busy} message={read.validationMessage} userProfileId={String(authContext.profile?.id ?? "")} fields={[{"id":"offer_status","path":"offer_status","label":"Offer Status"},{"id":"proposed_joining_date","path":"proposed_joining_date","label":"Proposed Joining Date"},{"id":"valid_until","path":"valid_until","label":"Valid Until"}]} renderRecord={(offer) => (
+<RecordCollection presentation="embedded" id="hr.candidate-offers-tab.CandidateOffersTab.offers" rows={offers} serverRead={read.serverRead} isLoading={read.busy} message={read.validationMessage} userProfileId={String(authContext.profile?.id ?? "")} fields={[{"id":"offer_status","path":"offer_status","label":"Offer Status"},{"id":"proposed_joining_date","path":"proposed_joining_date","label":"Proposed Joining Date"},{"id":"valid_until","path":"valid_until","label":"Valid Until"}]} renderRecord={(offer) => (
             <div key={offer.id} className="flex items-center gap-3 p-3">
               <Gift className="h-4 w-4 text-slate-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">

@@ -21,6 +21,6 @@ export function CommonMasterList({ rows, fields, basePath, title }: {
       cell: ({ row }) => { const value = row.original[field.key]; return value == null || value === "" ? "—" : typeof value === "boolean" ? (value ? "Yes" : "No") : String(value); },
     } satisfies ColumnDef<CommonMasterRecord>)),
   ];
-  return <ERPDataTable tableId={`common:${basePath}`} resultsLabel={title} columns={columns} data={rows}
+  return <ERPDataTable presentation="worklist" tableId={`common:${basePath}`} resultsLabel={title} columns={columns} data={rows}
     enableRowSelection={false} searchPlaceholder={`Search ${title.toLocaleLowerCase()}…`} emptyMessage={`No ${title.toLocaleLowerCase()} are available.`} />;
 }

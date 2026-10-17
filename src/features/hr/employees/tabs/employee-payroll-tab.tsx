@@ -426,7 +426,7 @@ function SalaryComponentsSection({ employeeId, canManage, onChildOpen }: { emplo
       </div>
 
         <div className="divide-y text-sm">
-          <RecordCollection {...uiRead1.collection} id="hr.employee-payroll-tab.SalaryComponentsSection.components" rows={components} fields={[{"id":"component_type_name_en","path":"component_type.name_en","label":"Component"},{"id":"effective_from","path":"effective_from","label":"Effective From"},{"id":"effective_to","path":"effective_to","label":"Effective To"}]} renderRecord={(comp) => (
+          <RecordCollection presentation="embedded" {...uiRead1.collection} id="hr.employee-payroll-tab.SalaryComponentsSection.components" rows={components} fields={[{"id":"component_type_name_en","path":"component_type.name_en","label":"Component"},{"id":"effective_from","path":"effective_from","label":"Effective From"},{"id":"effective_to","path":"effective_to","label":"Effective To"}]} renderRecord={(comp) => (
             <div key={comp.id} className="flex items-center justify-between py-2.5 gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -591,7 +591,7 @@ function SalaryRevisionSection({ employeeId, canManage, onChildOpen }: { employe
       </div>
 
         <div className="divide-y text-sm">
-          <RecordCollection {...uiRead1.collection} id="hr.employee-payroll-tab.SalaryRevisionSection.revisions" rows={revisions} fields={[{"id":"effective_date","path":"effective_date","label":"Effective Date"},{"id":"revision_reason","path":"revision_reason","label":"Revision Reason"}]} renderRecord={(rev) => (
+          <RecordCollection presentation="embedded" {...uiRead1.collection} id="hr.employee-payroll-tab.SalaryRevisionSection.revisions" rows={revisions} fields={[{"id":"effective_date","path":"effective_date","label":"Effective Date"},{"id":"revision_reason","path":"revision_reason","label":"Revision Reason"}]} renderRecord={(rev) => (
             <div key={rev.id} className="py-2.5 grid grid-cols-4 gap-2">
               <div><span className="text-muted-foreground">Date:</span> <span className="font-medium">{fmtDate(rev.effective_date)}</span></div>
               <div><span className="text-muted-foreground">Old Basic:</span> <span>{fmtMoney(rev.old_gross)}</span></div>
@@ -1013,7 +1013,7 @@ function PayrollHoldsSection({ employeeId, canManage, onChildOpen }: { employeeI
       </div>
 
         <div className="divide-y text-sm">
-          <RecordCollection {...uiRead1.collection} id="hr.employee-payroll-tab.PayrollHoldsSection.holds" rows={holds} fields={[{"id":"hold_reason","path":"hold_reason","label":"Hold Reason"},{"id":"is_active","path":"is_active","label":"Is Active"},{"id":"hold_date","path":"hold_date","label":"Hold Date"}]} renderRecord={(hold) => (
+          <RecordCollection presentation="embedded" {...uiRead1.collection} id="hr.employee-payroll-tab.PayrollHoldsSection.holds" rows={holds} fields={[{"id":"hold_reason","path":"hold_reason","label":"Hold Reason"},{"id":"is_active","path":"is_active","label":"Is Active"},{"id":"hold_date","path":"hold_date","label":"Hold Date"}]} renderRecord={(hold) => (
             <div key={hold.id} className="flex items-start justify-between py-2.5 gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">

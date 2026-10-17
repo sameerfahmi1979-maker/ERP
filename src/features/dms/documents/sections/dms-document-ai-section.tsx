@@ -462,7 +462,7 @@ function AiResultCard({
                 Suggested Field Values ({fields.length})
               </p>
               <div className="rounded-md border border-border overflow-hidden">
-                {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.documents.sections.dms-document-ai-section.0" data={fields} columns={[{id:"0",header:"Field",accessorFn:item=>loadedListValue(item,"0"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:[fieldCode,]}})=>{
+                {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable presentation="embedded" tableId="special.dms.documents.sections.dms-document-ai-section.0" data={fields} columns={[{id:"0",header:"Field",accessorFn:item=>loadedListValue(item,"0"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:[fieldCode,]}})=>{
 return <>{fieldCode}</>;}},{id:"1",header:"Suggested value",accessorFn:item=>loadedListValue(item,"1"),meta:{filter:{type:"text"}},enableHiding:false,size:180,cell:({row:{original:[,value]}})=>{
 return <>{String(value)}</>;}},{id:"confidence",header:"Confidence",enableSorting:false,meta:{exportable:false},enableHiding:true,size:180,cell:({row:{original:[fieldCode,]}})=>{const conf = confidence?.[fieldCode];
 return <>{conf ? <DmsAiConfidenceBadge label={conf.label} score={conf.score} /> : "—"}</>;}},{id:"source",header:"Source",enableSorting:false,meta:{exportable:false},enableHiding:true,size:180,cell:({row:{original:[fieldCode,]}})=>{const conf = confidence?.[fieldCode];
@@ -720,7 +720,7 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
 
       {/* Diff table */}
       <div className="rounded-md border border-border overflow-hidden">
-        {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.documents.sections.dms-document-ai-section.1" data={diffRows.filter((r) => r.diffState !== "not_extractable" && r.diffState !== "no_ai_value" && r.diffState !== "same")} columns={[{id:"select",header:"Select",enableSorting:false,meta:{exportable:false},enableHiding:false,size:220,cell:({row:{original:row}})=>{
+        {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable presentation="embedded" tableId="special.dms.documents.sections.dms-document-ai-section.1" data={diffRows.filter((r) => r.diffState !== "not_extractable" && r.diffState !== "no_ai_value" && r.diffState !== "same")} columns={[{id:"select",header:"Select",enableSorting:false,meta:{exportable:false},enableHiding:false,size:220,cell:({row:{original:row}})=>{
 const isChecked = selectedIds.has(row.definitionId);
 return <>{row.canApply ? (
                         <input
@@ -981,7 +981,7 @@ function ApplyHistoryRunRow({
           {run.items.length === 0 ? (
             <p className="px-3 py-2 text-xs text-muted-foreground italic">No item details recorded.</p>
           ) : (
-            <ERPDataTable tableId={`special.ai-apply-history.${run.id}`} data={run.items} columns={[{id:"result",header:"Result",accessorKey:"itemStatus",meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:item}})=>{
+            <ERPDataTable presentation="embedded" tableId={`special.ai-apply-history.${run.id}`} data={run.items} columns={[{id:"result",header:"Result",accessorKey:"itemStatus",meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:item}})=>{
 return <>{item.itemStatus === "applied" ? (
                         <span>Applied <CheckCircle2 className="inline h-3 w-3 text-green-600 dark:text-green-300" aria-hidden /></span>
                       ) : (

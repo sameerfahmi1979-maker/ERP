@@ -41,5 +41,5 @@ export function EmailQueueTable({items, onRefresh, serverRead, canManage, canPro
       </div>;
     }},
   ];
-  return <ERPDataTable tableId="notifications.email-queue" data={items} columns={columns} serverRead={serverRead} isLoading={disabled} enableRowSelection={false} searchPlaceholder="Search queue…" emptyMessage="No queue entries match this view."/>;
+  return <ERPDataTable presentation="worklist" tableId="notifications.email-queue" data={items} columns={columns} serverRead={serverRead} isLoading={disabled} enableRowSelection={false} searchPlaceholder="Search queue…" emptyMessage="No queue entries match this view."/>;
 }

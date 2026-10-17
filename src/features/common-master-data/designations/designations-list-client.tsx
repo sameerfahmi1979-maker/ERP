@@ -128,7 +128,7 @@ export function DesignationsListClient({ designations: initial, canManage }: Pro
 
   return (
     <>
-      <ERPDataTable tableId="common.designations" resultsLabel="Designations" data={designations} columns={columns} enableRowSelection={false} />
+      <ERPDataTable presentation="worklist" tableId="common.designations" resultsLabel="Designations" data={designations} columns={columns} enableRowSelection={false} />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>

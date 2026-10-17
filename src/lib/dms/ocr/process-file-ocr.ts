@@ -59,6 +59,7 @@ export interface ProcessDmsFileOcrSystemInput {
    * Set to true to force re-extraction even when text exists.
    */
   forceRetry?: boolean;
+  forceVision?: boolean;
 }
 
 export interface ProcessDmsFileOcrSystemResult {
@@ -117,7 +118,8 @@ function safeErrorCode(err: unknown): { code: string; message: string } {
 export async function processDmsFileOcrSystem(
   input: ProcessDmsFileOcrSystemInput
 ): Promise<ProcessDmsFileOcrSystemResult> {
-  const { fileId, forceRetry = false } = input;
+  const { fileId } = input;
+  const forceRetry = input.forceRetry || input.forceVision || false;
   const performedBy = input.performedBy ?? 0;
 
   const admin = createAdminClient();
@@ -239,7 +241,7 @@ export async function processDmsFileOcrSystem(
 
   let gptProvider;
   try {
-    const { provider } = await getDmsAiProvider();
+    const { provider } = await getDmsAiProvider("ocr");
     gptProvider = provider.isConfigured() ? provider : null;
   } catch {
     gptProvider = null;
@@ -274,6 +276,7 @@ export async function processDmsFileOcrSystem(
       },
       azureProvider: azureOcrProvider,
       gptProvider,
+      forceVision: input.forceVision,
     });
   } catch (routerEx) {
     const { code, message } = safeErrorCode(routerEx);
@@ -281,6 +284,10 @@ export async function processDmsFileOcrSystem(
   }
 
   // ── 8. Persist OCR result ───────────────────────────────────────────────────
+  if (!routerResult.text.trim()) {
+    return { success: false, fileId, documentId, providerCode: routerResult.providerCode, model: routerResult.model,
+      hasText: false, errorCode: "no_readable_text", safeMessage: "OCR produced no readable text. Check the file and provider.", retryable: false };
+  }
 
   let persistResult;
   try {
@@ -299,7 +306,7 @@ export async function processDmsFileOcrSystem(
     return { success: false, fileId, documentId, providerCode: routerResult.providerCode, model: routerResult.model ?? null, hasText: false, errorCode: code, safeMessage: message, retryable: isRetryable(code) };
   }
 
-  if (!persistResult.fileUpdated) {
+  if (!persistResult.fileUpdated || !persistResult.documentUpdated || (persistResult.hasText && !persistResult.contentSynced)) {
     const errSummary = persistResult.errors.slice(0, 3).join("; ").slice(0, 200);
     return {
       success:     false,

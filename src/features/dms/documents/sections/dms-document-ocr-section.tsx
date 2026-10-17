@@ -1,8 +1,6 @@
 "use client";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { useGuardedTransition } from "@/hooks/use-guarded-transition";
-import { ERPDataTable } from "@/components/erp/table/erp-data-table";
-import { loadedListValue } from "@/components/erp/table/loaded-list-view";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 /**
@@ -14,7 +12,9 @@ import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
  */
 
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { DmsBilingualText } from "./dms-bilingual-text";
+import { RecentOcrJobsList } from "./recent-ocr-jobs-list";
+import { describeOcrStatusReadError, OcrStatusReadError } from "@/lib/dms/ocr/status-read-error";
 import { DmsOcrStatusBadge } from "@/features/dms/ocr/dms-ocr-status-badge";
 import { invalidateDmsDocumentFiles, invalidateDmsOcr } from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
@@ -28,7 +28,7 @@ import {
 } from "@/server/actions/dms/ocr";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
-import { AlertCircle, Check, Copy, Info, RefreshCw, RotateCcw, ScanText } from "lucide-react";
+import { AlertCircle, Check, Copy, Info, RefreshCw, ScanText } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
@@ -54,7 +54,7 @@ export function DmsDocumentOcrSection({
     queryKey: queryKeys.dms.documentOcrStatus(documentId),
     queryFn: async () => {
       const r = await getDmsOcrStatus(documentId);
-      if (!r.success) throw new Error(r.error);
+      if (!r.success) throw new OcrStatusReadError(r.errorCode, r.reference);
       return r.data!;
     },
     staleTime: 15_000,
@@ -85,7 +85,7 @@ export function DmsDocumentOcrSection({
     enabled: !!selectedFileId && viewingText,
     staleTime: 60_000,
   });
- const { data: ocrTextData, isLoading: textLoading, refetch: refetchText } = uiRead3;
+ const { data: ocrTextData, isLoading: textLoading } = uiRead3;
 
   const handleTriggerAll = () => triggerAction(async () => {
     if (!canTrigger) return;
@@ -135,9 +135,18 @@ export function DmsDocumentOcrSection({
     );
   }
 
+  // An unavailable read is not an empty file list or a Not Started result.
+  if (uiRead1.isError || !ocrStatus) {
+    return <QueryReadBoundary queries={[uiRead1]}>
+      <div role="status" className="rounded-md border border-border p-6 text-sm text-muted-foreground">
+        OCR status and attached files could not be loaded. Retry loading before running OCR.
+        <p className="mt-2">{describeOcrStatusReadError(uiRead1.error)}</p>
+      </div>
+    </QueryReadBoundary>;
+  }
+
   const files = ocrStatus?.files ?? [];
   const hasAnyComplete = files.some((f) => f.ocr_status === "complete");
-  const hasAnyFailed = files.some((f) => f.ocr_status === "failed");
   const supportedFiles = files.filter((f) =>
     !["processing"].includes(f.ocr_status)
   );
@@ -188,7 +197,7 @@ export function DmsDocumentOcrSection({
           <div className="text-xs text-amber-800 dark:text-amber-300">
             <strong>OCR completed but no text was extracted.</strong> This usually happens for scanned PDFs or images
             processed by the old engine. Click <strong>Re-run OCR (AI)</strong> on the file below to extract text
-            using GPT-4.1 vision.
+            using the configured vision OCR provider.
           </div>
         </div>
       )}
@@ -235,15 +244,12 @@ export function DmsDocumentOcrSection({
             </div>
           </div>
 
-          {textLoading ? (
+          {uiRead3.isError ? (
+            <div role="status" className="p-4 text-sm text-muted-foreground">OCR text could not be loaded. Retry loading; this does not mean the file has no text.</div>
+          ) : textLoading ? (
             <div className="p-4 text-center text-sm text-muted-foreground">Loading text…</div>
           ) : ocrTextData?.ocr_text ? (
-            <Textarea
-              readOnly
-              value={ocrTextData.ocr_text}
-              className="font-mono text-xs resize-none min-h-[300px] rounded-none border-0 focus-visible:ring-0 bg-background"
-              rows={20}
-            />
+            <DmsBilingualText text={ocrTextData.ocr_text} label="Extracted OCR text" />
           ) : (
             <div className="p-6 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
               <AlertCircle className="h-5 w-5 opacity-40" />
@@ -260,41 +266,16 @@ export function DmsDocumentOcrSection({
       )}
 
       {/* ── Recent OCR Jobs ── */}
-      {ocrJobs.length > 0 && (
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Recent OCR Jobs</p>
-          <div className="rounded-md border border-border overflow-hidden">
-            {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.documents.sections.dms-document-ocr-section" data={ocrJobs} columns={[{id:"id",header:"Job",accessorFn:job=>loadedListValue(job,"id"),meta:{filter:{type:"number"}},enableHiding:false,size:220,cell:({row:{original:job}})=>{
-return <>#{job.id}</>;}},{id:"provider",header:"Provider",accessorFn:job=>loadedListValue(job,"provider"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:job}})=>{
-return <>{formatOcrProvider(job.provider)}</>;}},{id:"status",header:"Status",accessorFn:job=>loadedListValue(job,"status"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:job}})=>{
-return <><DmsOcrStatusBadge status={job.status === "completed" ? "complete" : job.status} /></>;}},{id:"duration_ms",header:"Duration",accessorFn:job=>loadedListValue(job,"duration_ms"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:job}})=>{
-return <>{job.duration_ms ? `${(job.duration_ms / 1000).toFixed(1)}s` : "—"}</>;}},{id:"started_at",header:"Started",accessorFn:job=>loadedListValue(job,"started_at"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:job}})=>{
-return <>{job.started_at ? format(parseISO(job.started_at), "dd MMM HH:mm") : "—"}</>;}},{id:"error_message",header:"Error",accessorFn:job=>loadedListValue(job,"error_message"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:job}})=>{
-return <>{job.error_message ? (
-                        <span title={job.error_message}>{job.error_message.slice(0, 60)}</span>
-                      ) : "—"}</>;}},{id:"actions",header:"Actions",enableSorting:false,meta:{exportable:false},enableHiding:true,size:180,cell:({row:{original:job}})=>{
-return <>{canTrigger && job.status === "failed" && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 px-2 text-xs gap-1"
-                          onClick={() => handleRetry(job.id)}
-                          title="Retry this OCR job"
-                        >
-                          <RotateCcw className="h-3 w-3" />
-                          Retry
-                        </Button>
-                      )}</>;}}]} enableRowSelection={false} searchPlaceholder="Search loaded records…" initialPageSize={10} />
-          </div>
-        </div>
-      )}
+      <RecentOcrJobsList jobs={ocrJobs} canRetry={canTrigger} retrying={triggering}
+        onRetry={handleRetry} formatProvider={formatOcrProvider} />
 
       {/* ── Info note ── */}
       <div className="flex items-start gap-2 rounded-md border border-border/50 bg-muted/20 px-3 py-2">
         <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
         <p className="text-xs text-muted-foreground">
           OCR extracts text from any document — PDFs (text layer or scanned), images (passport, Emirates ID, certificates), DOCX, and XLSX.
-          Digital PDFs use fast local extraction (no AI cost). Scanned PDFs and images use Azure Document Intelligence or GPT-4.1 Vision depending on configuration.
+          Clean English PDF text layers use fast local extraction. Arabic, suspicious PDF text layers, scanned PDFs and images use the configured OCR provider.
+          If a PDF still reads incorrectly, use “Read page images” to ignore its embedded text. This uses AI and may incur processing costs.
           Once OCR is complete, use the <strong>AI Analysis</strong> tab to classify and extract metadata.
         </p>
       </div>
@@ -334,10 +315,10 @@ interface OcrFileRowProps {
 function OcrFileRow({ file, canTrigger, canViewText, documentId, onViewText, queryClient }: OcrFileRowProps) {
   const [running, runAction] = useGuardedTransition();
 
-  const handleRun = () => runAction(async () => {
+  const handleRun = (forceVision = false) => runAction(async () => {
     if (!canTrigger) return;
       const { triggerDmsOcrForFile } = await import("@/server/actions/dms/ocr");
-      const result = await triggerDmsOcrForFile({ fileId: file.file_id, forceRetry: file.ocr_status === "complete" });
+      const result = await triggerDmsOcrForFile({ fileId: file.file_id, forceRetry: forceVision || file.ocr_status === "complete", forceVision });
       if (result.success) {
         toast.success(result.data?.message ?? "OCR completed");
       } else {
@@ -385,7 +366,7 @@ function OcrFileRow({ file, canTrigger, canViewText, documentId, onViewText, que
               variant={file.ocr_status === "complete" && !file.has_text ? "outline" : "ghost"}
               className={`h-7 text-xs gap-1 ${file.ocr_status === "complete" && !file.has_text ? "border-amber-400 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30" : ""}`}
               disabled={running}
-              onClick={handleRun}
+              onClick={() => handleRun()}
             >
               {running
                 ? <div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
@@ -395,6 +376,10 @@ function OcrFileRow({ file, canTrigger, canViewText, documentId, onViewText, que
                 : "Run OCR (AI)"}
             </Button>
           )}
+          {canTrigger && isRunnable && file.mime_type === "application/pdf" && <Button
+            size="sm" variant="outline" className="h-7 text-xs" disabled={running}
+            title="Ignore the PDF text layer and use the configured vision model. AI processing costs may apply."
+            onClick={() => handleRun(true)}>Read page images</Button>}
         </div>
       </div>
     </div>

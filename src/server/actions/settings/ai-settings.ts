@@ -10,6 +10,7 @@ import type { AiProviderConfig, AiFeatureFlag } from "@/lib/ai/providers/types";
 import { writeAiProviderSecret } from "@/lib/settings/env-file-secrets";
 import { isAllowedAiSecretReference } from "@/lib/settings/ai-secret-policy";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { timingSafeEqual } from "node:crypto";
 
 const REVALIDATE_PATH = "/admin/settings/ai";
 
@@ -310,6 +311,45 @@ export async function deleteAiProviderConfig(id: number): Promise<ActionResult> 
  * The actual key value is NEVER stored in the DB.
  * Only the env var name (secret_ref) and a masked preview are stored.
  */
+export async function saveAiProviderSecretReference(
+  input: { id: number; secret_ref: string },
+): Promise<ActionResult> {
+  try {
+    const ctx = await getAuthContext();
+    if (!hasPermission(ctx, "settings.ai.secrets.manage")) {
+      return { success: false, error: "You do not have permission to manage AI secrets" };
+    }
+    const parsed = saveSecretSchema.omit({ secret_value: true }).safeParse(input);
+    if (!parsed.success) return { success: false, error: "Invalid provider key reference." };
+    const { id, secret_ref } = parsed.data;
+    const admin = createAdminClient();
+    const { data: provider, error: providerError } = await admin.from("erp_ai_provider_configs")
+      .select("id, provider_type, updated_at").eq("id", id)
+      .eq("is_active", true).is("deleted_at", null).maybeSingle();
+    if (providerError || !provider) return { success: false, error: "Active provider not found." };
+    if (!isAllowedAiSecretReference(provider.provider_type, id, secret_ref)) {
+      return { success: false, error: "Secret reference is not approved for this provider." };
+    }
+    if (!process.env[secret_ref]?.trim()) {
+      return { success: false, error: `The approved variable ${secret_ref} is not configured on this server. Add it in Railway and deploy the change first.` };
+    }
+    const { data, error } = await admin.from("erp_ai_provider_configs").update({
+      secret_ref, masked_secret_preview: null, last_test_status: "not_tested",
+      last_test_at: null, last_test_message: null, updated_by: ctx.profile?.id ?? null,
+      updated_at: new Date().toISOString(),
+    }).eq("id", id).eq("provider_type", provider.provider_type).eq("updated_at", provider.updated_at)
+      .eq("is_active", true).is("deleted_at", null).select("id");
+    if (error || data?.length !== 1) return { success: false, error: "The provider changed while saving. Refresh it before trying again." };
+    await logAudit({ module_code: "SETTINGS", entity_name: "erp_ai_provider_configs", entity_id: id,
+      entity_reference: `secret_reference_updated_for_${id}`, action: "update",
+      new_values: { secret_ref, existing_deployment_key: true } });
+    revalidatePath(REVALIDATE_PATH);
+    return { success: true };
+  } catch {
+    return { success: false, error: "The provider key reference could not be saved." };
+  }
+}
+
 export async function saveAiProviderSecret(
   input: z.infer<typeof saveSecretSchema>
 ): Promise<ActionResult> {
@@ -332,6 +372,15 @@ export async function saveAiProviderSecret(
       .select("id, provider_type, updated_at").eq("id", id).eq("is_active", true).is("deleted_at", null).maybeSingle();
     if (providerError || !provider) return { success: false, error: "Active provider not found." };
     if (!isAllowedAiSecretReference(provider.provider_type, id, secret_ref)) return { success: false, error: "Secret reference is not approved for this provider." };
+
+    // Pasting the already-deployed key is a reference change, not a rotation.
+    // Reuse it without enabling file writes or modifying Railway variables.
+    const deployedKey = process.env[secret_ref]?.trim();
+    const enteredKey = secret_value.trim();
+    if (deployedKey && Buffer.byteLength(deployedKey) === Buffer.byteLength(enteredKey) &&
+        timingSafeEqual(Buffer.from(deployedKey), Buffer.from(enteredKey))) {
+      return saveAiProviderSecretReference({ id, secret_ref });
+    }
 
     // Generate masked preview: show first 4 and last 4 characters only
     const masked = maskSecret(secret_value);

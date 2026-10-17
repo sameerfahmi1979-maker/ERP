@@ -23,7 +23,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { FileText, RefreshCw, AlertTriangle, Lock, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { DmsBilingualText } from "./dms-bilingual-text";
 import { Badge } from "@/components/ui/badge";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
@@ -240,12 +240,7 @@ export function DmsDocumentContentSection({
       </div>
 
       {/* Text content */}
-      <Textarea
-        value={row.contentText ?? ""}
-        readOnly
-        className="min-h-[320px] font-mono text-xs leading-relaxed"
-        aria-label="Extracted document text"
-      />
+      <DmsBilingualText text={row.contentText ?? ""} label="Extracted document text" />
     </div></QueryReadBoundary>
   );
 }

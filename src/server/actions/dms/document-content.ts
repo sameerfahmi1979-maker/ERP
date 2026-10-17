@@ -221,7 +221,7 @@ export async function resyncDocumentContentText(
     // Load OCR text from current-version files (or all active files if no version)
     let filesQuery = supabase
       .from("dms_document_files")
-      .select("id, file_name, ocr_text")
+      .select("id, created_at, file_name, ocr_text")
       .eq("document_id", documentId)
       .eq("ocr_status", "complete")
       .is("deleted_at", null)
@@ -415,7 +415,7 @@ export async function adminBackfillDmsContentText(
 
         let filesQuery = supabase
           .from("dms_document_files")
-          .select("id, file_name, ocr_text")
+          .select("id, created_at, file_name, ocr_text")
           .eq("document_id", row.id)
           .eq("ocr_status", "complete")
           .is("deleted_at", null)

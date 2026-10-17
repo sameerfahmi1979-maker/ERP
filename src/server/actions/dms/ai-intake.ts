@@ -422,7 +422,7 @@ export async function startAiIntakeFromUploadSession(
 
       if (featureFlags.dmsOcrRouter) {
         // Phase 10A router path
-        const { provider: gptProvider } = await getDmsAiProvider();
+        const { provider: gptProvider } = await getDmsAiProvider("ocr");
         const { provider: azureAdapter } = await getAzureDocumentIntelligenceProvider();
         const azureProvider = azureAdapter ? new AzureOcrProvider(azureAdapter) : null;
 
@@ -449,12 +449,12 @@ export async function startAiIntakeFromUploadSession(
         }
       }
 
-      // Proceed even if extraction produced nothing — the AI will note the limitation.
+      // Never classify an unreadable/partially rendered file as if it was read.
+      if (!ocrText.trim() && imageFiles.length === 0) throw new Error("No readable document content");
       contentExtracted = true;
     } catch (err) {
       logger.error("[ai-intake] file content extraction error:", err);
-      // Don't block the pipeline — let the AI report it couldn't read the file.
-      contentExtracted = true;
+      contentExtracted = false;
     }
 
     if (!contentExtracted) {
@@ -462,7 +462,7 @@ export async function startAiIntakeFromUploadSession(
         .from("dms_upload_sessions")
         .update({ intake_status: "failed", updated_at: new Date().toISOString() })
         .eq("id", uploadSessionId);
-      return { success: false, error: "Failed to read uploaded file from temporary storage" };
+      return { success: false, error: "The uploaded file could not be fully read. Check the OCR provider, or split a long PDF into files of at most four pages and retry." };
     }
 
     // ── Update status: AI processing ────────────────────────────────────────

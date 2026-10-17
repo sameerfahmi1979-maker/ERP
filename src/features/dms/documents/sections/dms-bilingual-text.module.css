@@ -1,0 +1,11 @@
+@font-face {
+  font-family: "ALGT DMS Arabic";
+  src: url("/fonts/noto-sans-arabic-400.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+.arabic {
+  font-family: "ALGT DMS Arabic", "Segoe UI", Tahoma, Arial, sans-serif;
+}

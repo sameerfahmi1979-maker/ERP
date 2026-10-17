@@ -18,6 +18,7 @@ import type {
 } from "./types";
 import { buildCombinedPrompt } from "./prompt-builders";
 import { validateAiOutput } from "./result-validator";
+import { dmsCompletionParameters } from "./completion-parameters";
 
 const COMPLETION_TIMEOUT_MS = 120_000; // 120 seconds — vision + full transcription requests take longer
 const MAX_TOKENS = 16_000;            // GPT-4.1 supports up to 16,384 output tokens — raised to capture long transcriptions
@@ -88,8 +89,7 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
         { role: "system", content: systemPrompt },
         userMessage,
       ],
-      max_tokens: MAX_TOKENS,
-      temperature: 0.1,
+      ...dmsCompletionParameters(model, MAX_TOKENS, 0.1),
     };
 
     // json_object response format is only reliable for text-only requests;
@@ -158,8 +158,7 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
       ],
-      max_tokens: SUMMARY_MAX_TOKENS,
-      temperature: 0.2,
+      ...dmsCompletionParameters(model, SUMMARY_MAX_TOKENS, 0.2),
     };
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -221,8 +220,7 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
       ],
-      max_tokens: opts?.maxTokens ?? STRUCTURED_DEFAULT_MAX_TOKENS,
-      temperature: opts?.temperature ?? 0.0,
+      ...dmsCompletionParameters(model, opts?.maxTokens ?? STRUCTURED_DEFAULT_MAX_TOKENS, opts?.temperature ?? 0.0),
       response_format: { type: "json_object" },
     };
 

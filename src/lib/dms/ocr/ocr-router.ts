@@ -53,6 +53,8 @@ export interface OcrRouterInput {
   azureProvider?: IOcrProvider | null;
   /** GPT-4.1 provider for vision OCR fallback. Null if not configured. */
   gptProvider?: IDmsAiProvider | null;
+  /** Ignore an unreliable embedded PDF text layer and use page-image OCR. */
+  forceVision?: boolean;
 }
 
 export interface OcrRouterResult {
@@ -142,13 +144,14 @@ export async function routeOcr(input: OcrRouterInput): Promise<OcrRouterResult> 
     // page-to-image rendering (~5s). Images are rendered lazily only if the
     // GPT vision fallback is actually needed.
     const azureUsable = !!(
-      featureFlags.dmsOcrAzure &&
+      !input.forceVision && featureFlags.dmsOcrAzure &&
       azureProvider?.isConfigured() &&
       azureProvider.supports(mime)
     );
 
     const content = await extractFileContent(buffer, mime, fileName, {
       skipPdfPageRendering: azureUsable,
+      forcePdfVision: input.forceVision,
     });
 
     if (content.method === "pdf-text-layer") {
@@ -170,9 +173,10 @@ export async function routeOcr(input: OcrRouterInput): Promise<OcrRouterResult> 
     // Fall through to the scanned/image routing below.
     if (content.images.length > 0 || content.method === "pdf-scanned-render-deferred") {
       return routeScannedOrImage(
-        { buffer, mimeType: mime, fileName, featureFlags, azureProvider, gptProvider },
+        { buffer, mimeType: mime, fileName, featureFlags, azureProvider, gptProvider, forceVision: input.forceVision },
         content.images,
-        "scanned"
+        content.pdfTextRejected ? "digital" : "scanned",
+        content.pageCount
       );
     }
 
@@ -247,34 +251,35 @@ async function getPdfPageCount(buffer: Buffer): Promise<number | null> {
 async function routeScannedOrImage(
   input: OcrRouterInput,
   images: ExtractedImage[],
-  sourceKind: "scanned" | "image"
+  sourceKind: "scanned" | "image" | "digital",
+  pdfPageCount?: number
 ): Promise<OcrRouterResult> {
   const { mimeType, fileName, featureFlags, azureProvider, gptProvider } = input;
+  let totalPdfPages = pdfPageCount;
 
   // SPEED.1 P2: page images may have been skipped when Azure handles the raw
   // buffer. Render them lazily only when the GPT vision path is actually used.
   const ensureImages = async (): Promise<ExtractedImage[]> => {
     if (images.length > 0) return images;
     const content = await extractFileContent(input.buffer, mimeType, fileName);
+    totalPdfPages = content.pageCount ?? totalPdfPages;
     return content.images;
   };
 
-  // SPEED.2O(b): GPT vision only sees the first ~4 rendered pages. When the
-  // document has more pages, record a visible warning so a 50-page scan never
-  // silently degrades to "AI saw 8% of the document".
+  // Keep the existing per-request page limit, but refuse partial/unknown
+  // coverage before billing an AI call or publishing incomplete OCR text.
   const buildCoverageWarnings = async (usedImages: ExtractedImage[]): Promise<string[]> => {
     if (mimeType !== "application/pdf" || usedImages.length === 0) return [];
-    const totalPages = await getPdfPageCount(input.buffer);
-    if (totalPages != null && totalPages > usedImages.length) {
-      return [
-        `AI vision fallback analyzed only the first ${usedImages.length} of ${totalPages} pages — results may be incomplete. Azure OCR is recommended for large scanned documents.`,
-      ];
+    const totalPages = totalPdfPages ?? await getPdfPageCount(input.buffer);
+    if (totalPages == null) throw new Error("PDF page coverage could not be verified. Retry with a smaller PDF; partial OCR was not saved.");
+    if (totalPages > usedImages.length) {
+      throw new Error(`Page-image OCR could only render ${usedImages.length} of ${totalPages} PDF pages. Split this PDF into smaller files and retry; partial OCR was not saved.`);
     }
     return [];
   };
 
   // ── Azure Document Intelligence ──────────────────────────────────────────
-  if (featureFlags.dmsOcrAzure && azureProvider?.isConfigured() && azureProvider.supports(mimeType)) {
+  if (!input.forceVision && featureFlags.dmsOcrAzure && azureProvider?.isConfigured() && azureProvider.supports(mimeType)) {
     try {
       const azureResult = await azureProvider.extractText({
         buffer: input.buffer,
@@ -318,8 +323,8 @@ async function routeScannedOrImage(
 
       // Fall through to GPT, mark fallbackUsed=true
       const fallbackImages = await ensureImages();
-      const gptResult = await tryGptVision(fallbackImages, fileName, gptProvider);
       const coverageWarnings = await buildCoverageWarnings(fallbackImages);
+      const gptResult = await tryGptVision(fallbackImages, fileName, gptProvider);
       return {
         ...gptResult,
         sourceKind,
@@ -332,8 +337,8 @@ async function routeScannedOrImage(
   // ── GPT-4.1 vision (primary when Azure disabled, fallback when Azure fails) ─
   if (featureFlags.dmsOcrGptVisionFallback) {
     const visionImages = await ensureImages();
-    const gptResult = await tryGptVision(visionImages, fileName, gptProvider);
     const coverageWarnings = await buildCoverageWarnings(visionImages);
+    const gptResult = await tryGptVision(visionImages, fileName, gptProvider);
     return {
       ...gptResult,
       sourceKind,

@@ -23,6 +23,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { processNextDmsAiJobs } from "@/lib/dms/ai-jobs/job-runner";
 import { logger } from "@/lib/logger";
@@ -44,7 +45,9 @@ function verifyWorkerSecret(request: NextRequest): boolean {
   }
 
   const providedSecret = authHeader.slice("Bearer ".length).trim();
-  return providedSecret === workerSecret;
+  const expected = Buffer.from(workerSecret);
+  const provided = Buffer.from(providedSecret);
+  return expected.length === provided.length && timingSafeEqual(expected, provided);
 }
 
 // ── Feature flag check (admin client) ────────────────────────────────────────
@@ -84,6 +87,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         .eq("job_status", "running"),
       isWorkerEnabled(),
     ]);
+
+    if (queuedCount.error || runningCount.error) {
+      return NextResponse.json({ status: "error", error: "Queue health is unavailable." }, { status: 503 });
+    }
 
     return NextResponse.json({
       status:              "ok",
@@ -126,7 +133,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   try {
     const body = await request.json() as { limit?: number; workerId?: string };
-    if (typeof body.limit === "number" && body.limit > 0 && body.limit <= 50) {
+    if (typeof body.limit === "number" && Number.isInteger(body.limit) && body.limit > 0 && body.limit <= 50) {
       limit = body.limit;
     }
     if (typeof body.workerId === "string" && body.workerId.trim()) {

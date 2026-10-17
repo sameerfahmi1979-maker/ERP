@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { getReadAuthContext } from "@/server/reads/read-context";
 import { readScopeVersion } from "@/lib/reads/scope-version";
-import { hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
+import { hasPermission } from "@/lib/rbac/check";
+import {DmsLifecycleNavigation} from "@/features/dms/documents/dms-lifecycle-navigation";
 import { readDmsDocumentPage } from "@/server/reads/dms-documents";
 import { readDmsListChoices } from "@/server/reads/dms-list-choices";
 import { DmsDocumentsTable } from "@/features/dms/documents/dms-documents-table";
@@ -32,9 +33,10 @@ export default async function DmsDocumentsPage() {
     <div className="p-6 space-y-4">
       <ERPPageHeader
         title="All Documents"
-        description="Browse, search, and manage all DMS documents."
+        description="Browse, search, and follow document progress, including retained history."
         breadcrumbs={[{ label: "DMS", href: "/dms" }, { label: "All Documents" }]}
       />
+      <DmsLifecycleNavigation />
 
       {!docsResult.success || !defaultsResult.success ? <DmsLoadError /> : <DmsDocumentsTable
         initialSeed={docsResult.data && authContext.profile?.auth_user_id ? {
@@ -50,7 +52,6 @@ export default async function DmsDocumentsPage() {
         canCreate={hasPermission(authContext, "dms.documents.upload") || hasPermission(authContext, "dms.admin")}
         canEdit={hasPermission(authContext, "dms.documents.edit") || hasPermission(authContext, "dms.admin")}
         canArchive={hasPermission(authContext, "dms.documents.archive") || hasPermission(authContext, "dms.admin")}
-        canHardDelete={isGlobalAdmin(authContext)}
       />}
     </div>
   );

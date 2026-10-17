@@ -90,9 +90,8 @@ export const ERP_MAPPING_TARGET_REGISTRY = {
         { column: "policy_number",        label: "Policy Number",         category: "text" },
         { column: "insurance_provider",   label: "Insurance Provider",    category: "text" },
         { column: "tpa",                  label: "TPA",                   category: "text" },
-        { column: "member_id",            label: "Member ID",             category: "text" },
-        { column: "plan_name",            label: "Plan Name",             category: "text" },
-        { column: "plan_class",           label: "Plan Class",            category: "text" },
+        { column: "insurance_card_number", label: "Insurance Card Number", category: "text" },
+        { column: "network_class", label: "Network Class", category: "text" },
         { column: "effective_date",       label: "Effective Date",        category: "date" },
         { column: "expiry_date",          label: "Expiry Date",           category: "date" },
       ],
@@ -156,11 +155,11 @@ export function validateErpMappingTarget(
   targetTable: string,
   targetField: string
 ): ErpMappingValidationResult {
-  if (!(targetModule in ERP_MAPPING_TARGET_REGISTRY)) {
+  if (!Object.hasOwn(ERP_MAPPING_TARGET_REGISTRY,targetModule)) {
     return { valid: false, reason: `target_module "${targetModule}" is not in the ERP mapping allowlist` };
   }
   const targetTables = ERP_MAPPING_TARGET_REGISTRY[targetModule as ErpMappingTargetModule];
-  if (!(targetTable in targetTables)) {
+  if (!Object.hasOwn(targetTables,targetTable)) {
     return {
       valid: false,
       reason: `target_table "${targetTable}" is not allowed for module "${targetModule}"`,
@@ -182,9 +181,9 @@ export function getErpMappingTargetConfig(
   targetModule: string,
   targetTable: string
 ): ErpMappingTargetConfig | null {
-  if (!(targetModule in ERP_MAPPING_TARGET_REGISTRY)) return null;
+  if (!Object.hasOwn(ERP_MAPPING_TARGET_REGISTRY,targetModule)) return null;
   const targetTables = ERP_MAPPING_TARGET_REGISTRY[targetModule as ErpMappingTargetModule];
-  if (!(targetTable in targetTables)) return null;
+  if (!Object.hasOwn(targetTables,targetTable)) return null;
   return targetTables[targetTable as keyof typeof targetTables] as ErpMappingTargetConfig;
 }
 

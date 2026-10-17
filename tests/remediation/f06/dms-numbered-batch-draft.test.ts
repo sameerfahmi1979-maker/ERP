@@ -2,8 +2,9 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {createHash} from 'node:crypto';
 import type {BatchRequest,BatchReceipt} from '@/lib/dms/batch-admission';
 import * as durable from '@/lib/dms/numbered-batch-draft';
+import {syntheticPdf} from '../f07/document-fixtures';
 
-const ai=vi.hoisted(()=>({factory:vi.fn(),azure:vi.fn(),analyze:vi.fn(),configured:vi.fn(),extract:vi.fn(),flags:vi.fn(),route:vi.fn(),candidates:vi.fn(),load:vi.fn(),fields:vi.fn(),usage:vi.fn(),reviewEnabled:vi.fn(),review:vi.fn(),log:vi.fn(),warn:vi.fn(),error:vi.fn(),approval:vi.fn(),unexpected:vi.fn()}));
+const ai=vi.hoisted(()=>({factory:vi.fn(),azure:vi.fn(),analyze:vi.fn(),configured:vi.fn(),extract:vi.fn(),flags:vi.fn(),route:vi.fn(),candidates:vi.fn(),load:vi.fn(),fields:vi.fn(),usage:vi.fn(),reviewEnabled:vi.fn(),review:vi.fn(),log:vi.fn(),warn:vi.fn(),error:vi.fn(),approval:vi.fn(),unexpected:vi.fn(),attest:vi.fn()}));
 vi.mock('@/lib/dms/ai/factory',()=>({getDmsAiProvider:ai.factory,getAzureDocumentIntelligenceProvider:ai.azure}));
 vi.mock('@/lib/dms/file-content-extractor',()=>({extractFileContent:ai.extract}));
 vi.mock('@/lib/dms/ocr/ocr-router',()=>({loadOcrFeatureFlags:ai.flags,routeOcr:ai.route}));
@@ -114,6 +115,7 @@ const durableRecovery=()=>({...durableAnchors(),members:[durableMember()]});
 const durablePrepare=(kind:"prepared"|"analysis_required"="prepared",processing=false)=>({...durableAnchors(),member:durableMember(kind,processing)});
 
 describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
+ const actualPdf=syntheticPdf();
  type Operation={table:string;action:string;payload:Record<string,unknown>|undefined;filters:Record<string,unknown>;selection:string|undefined;retry:unknown};
  let row:Record<string,unknown>;
  let operations:Operation[];
@@ -146,10 +148,12 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
  }
  beforeEach(()=>{
   row={id:17,session_code:"D".repeat(32),batch_id:6,admission_position:0,batch_draft_operation_id:durableOperation,uploaded_by:5,owning_company_id:20,owning_branch_id:21,status:"uploaded",intake_status:"uploaded",updated_at:"2026-10-05T00:00:00.000Z",deleted_at:null,document_id:null,ai_result_id:null,temp_cleaned_at:null,temp_storage_path:"sessions/"+"D".repeat(32)+"/a.pdf",original_filename:"a.pdf",mime_type:"application/pdf"};
+  Object.assign(row,{file_size_bytes:actualPdf.length,sha256_hash:createHash('sha256').update(actualPdf).digest('hex'),expires_at:'2027-01-01T00:00:00Z'});
   operations=[];claimResult=undefined;postGuard=undefined;prepareCount=0;hidden=false;resultWriteError=false;
   m.auth.mockResolvedValue({profile:{id:5,auth_user_id:durableAuth},isAccountActive:true});m.usable.mockReturnValue(true);
   m.from.mockImplementation(query);
   m.rpc.mockImplementation(async(name:string)=>{
+   if(name==='f07_prepare_intake_source')return {data:{actorId:5,authSessionId:durableAuth,source:{id:17,name:row.original_filename,mime:row.mime_type,size:row.file_size_bytes,sha256:row.sha256_hash,path:row.temp_storage_path,owner:row.uploaded_by,company:row.owning_company_id,branch:row.owning_branch_id,expiry:row.expires_at}},error:null};
    if(name==="read_dms_upload_batch_admission")return {data:durableReceipt(),error:null};
    if(name==="prepare_recoverable_dms_batch_draft"){
     prepareCount++;
@@ -164,8 +168,10 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
   ai.flags.mockResolvedValue({dmsOcrRouter:false});ai.extract.mockResolvedValue({text:"synthetic",images:[],method:"offline"});
   ai.analyze.mockImplementation(async()=>({classification:{suggestedTypeCode:null,confidenceScore:0.9,confidenceLabel:"high",reason:"fixture"},extraction:{fields:[],additionalFields:[]},detectedEntities:[],suggestedLinks:[]}));
   ai.reviewEnabled.mockResolvedValue(false);
-  m.download.mockResolvedValue({data:new Blob(["x"]),error:null});
-  m.admin.mockReturnValue({storage:{from:(bucket:string)=>{expect(bucket).toBe("dms-temp");return {download:m.download};}}});
+  m.download.mockReturnValue({asStream:async()=>({data:new Blob([actualPdf]).stream(),error:null})});
+  m.info.mockResolvedValue({data:{id:'00000000-0000-4000-8000-000000000020',version:'v1',lastModified:'2026-10-17T00:00:00Z'},error:null});
+  ai.attest.mockImplementation(async(name:string)=>{if(!['f07_attest_intake_source','f07_attest_intake_analysis'].includes(name)){ai.unexpected(name);throw Error('Unexpected privileged port');}return {data:null,error:null};});
+  m.admin.mockReturnValue({rpc:ai.attest,storage:{from:(bucket:string)=>{expect(bucket).toBe("dms-temp");return {download:m.download,info:m.info};}}});
  });
  function noPipeline(){
   expect(m.download).not.toHaveBeenCalled();expect(ai.extract).not.toHaveBeenCalled();expect(ai.route).not.toHaveBeenCalled();expect(ai.analyze).not.toHaveBeenCalled();expect(ai.load).not.toHaveBeenCalled();expect(ai.usage).not.toHaveBeenCalled();expect(m.audit).not.toHaveBeenCalled();expect(ai.approval).not.toHaveBeenCalled();
@@ -190,12 +196,14 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
    expect(claim).toMatchObject({table:"dms_upload_sessions",action:"update",selection:"id,batch_draft_operation_id,intake_status",retry:false,filters:{id:17,batch_draft_operation_id:durableOperation,batch_id:6,admission_position:0,uploaded_by:5,intake_status:"uploaded",status:"uploaded",updated_at:"2026-10-05T00:00:00.000Z",deleted_at:null,document_id:null,ai_result_id:null,temp_cleaned_at:null}});
    expect(claim.payload).toEqual({intake_status:"ocr_processing",updated_at:expect.any(String)});
   }
-  expect(m.download).toHaveBeenCalledExactlyOnceWith("sessions/"+"D".repeat(32)+"/a.pdf");expect(ai.extract).toHaveBeenCalledOnce();expect(ai.analyze).toHaveBeenCalledOnce();expect(ai.usage).toHaveBeenCalledOnce();
+  expect(m.download).toHaveBeenCalledExactlyOnceWith("sessions/"+"D".repeat(32)+"/a.pdf",{},expect.objectContaining({signal:expect.any(AbortSignal),cache:'no-store'}));expect(ai.extract).toHaveBeenCalledOnce();expect(ai.analyze).toHaveBeenCalledOnce();expect(ai.usage).toHaveBeenCalledOnce();
   expect(operations.filter(o=>o.action==="insert").map(o=>[o.table,o.payload?.upload_session_id])).toEqual([["dms_ai_extraction_jobs",17],["dms_ai_extraction_results",17]]);
   expect(row).toMatchObject({intake_status:"review_pending",ai_job_id:71,ai_result_id:72});
   expect(m.audit.mock.calls.filter(([v])=>v.new_values?.event==="ai_intake_started")).toHaveLength(1);
   expect(m.rpc.mock.calls.filter(([n])=>n==="prepare_recoverable_dms_batch_draft")).toHaveLength(3);
-  expect(m.rpc.mock.calls).toEqual(Array.from({length:3},()=>["prepare_recoverable_dms_batch_draft",{p_session:17}]));
+  expect(m.rpc.mock.calls.filter(([n])=>n==='prepare_recoverable_dms_batch_draft')).toEqual(Array.from({length:3},()=>["prepare_recoverable_dms_batch_draft",{p_session:17}]));
+  expect(m.rpc.mock.calls.filter(([n])=>n==='f07_prepare_intake_source')).toHaveLength(2);
+  expect(ai.attest.mock.calls.map(([n])=>n)).toEqual(['f07_attest_intake_source','f07_attest_intake_analysis']);
  });
  it.each(["zero","duplicate","wrong-id","wrong-marker","wrong-state","missing","40003","08007","throw"])("claim %s outcome never dispatches or retries",async kind=>{
   const returned={id:17,batch_draft_operation_id:durableOperation,intake_status:"ocr_processing"};
@@ -256,7 +264,7 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
   row.batch_draft_operation_id=null;row.intake_status="ocr_processing";
   expect(await (await real()).startAiIntakeFromUploadSession(input)).toMatchObject({success:true,data:{status:"review_pending"}});
   expect(operations).toContainEqual(expect.objectContaining({table:"dms_ai_extraction_jobs",action:"update",payload:expect.objectContaining({status:"failed",error_message:"Stale run — superseded by a new AI Fill request"})}));
-  expect(ai.analyze).toHaveBeenCalledOnce();expect(m.rpc).not.toHaveBeenCalled();expect(ai.warn).toHaveBeenCalledOnce();
+  expect(ai.analyze).toHaveBeenCalledOnce();expect(m.rpc.mock.calls.every(([n])=>n==='f07_prepare_intake_source')).toBe(true);expect(ai.attest).toHaveBeenCalledTimes(2);expect(ai.warn).toHaveBeenCalledOnce();
  });
  it("actual durable wrapper delegates one real start; unconfirmed claim never consumes",async()=>{
   claimResult="committed-lost";

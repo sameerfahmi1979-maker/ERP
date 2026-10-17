@@ -59,13 +59,13 @@ export function DmsApplyCorrectionProposalForm({
   const handleUsePrevious = () => {
     if (!source.restorePreviousEnabled) return;
     onModeChange("restore_previous");
-    onChange(source.reviewedRevision?source.originalBeforeValue??'':source.originalBeforeSummary??'');
+    onChange((source.reviewedRevision||source.reviewedSnapshot)?source.originalBeforeValue??'':source.originalBeforeSummary??'');
     setShowModeB(false);
   };
 
   const handleUseApplied = () => {
     onModeChange("reapply_ai_value");
-    onChange(source.reviewedRevision?source.originalAppliedValue??'':source.originalAppliedSummary??'');
+    onChange((source.reviewedRevision||source.reviewedSnapshot)?source.originalAppliedValue??'':source.originalAppliedSummary??'');
     setShowModeB(false);
   };
 

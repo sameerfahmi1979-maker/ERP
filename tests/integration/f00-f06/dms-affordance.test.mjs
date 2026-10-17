@@ -126,5 +126,15 @@ test('display permission codes match unchanged server mutation admission', () =>
     assert.ok(conditions.includes(`!hasPermission(ctx, "${code}") && !hasPermission(ctx, "dms.admin")`), action);
   }
   const hardDelete = tableElement.attributes.properties.find(node => ts.isJsxAttribute(node) && node.name.text === 'canHardDelete');
-  assert.equal(hardDelete.initializer.expression.getText(page), 'isGlobalAdmin(authContext)');
+  assert.equal(hardDelete, undefined, 'F07 does not expose permanent disposal as a global-admin record affordance');
+});
+
+test('retired permanent disposal has no table callback and its direct action refuses without any service ports',async()=>{
+  const callbacks=find(tableFunction,node=>ts.isCallExpression(node)&&node.expression.getText(table)==='deleteDmsDocument');
+  assert.equal(callbacks.length,0,'the routine list cannot dispatch permanent disposal');
+  const fn=server.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='deleteDmsDocument');assert.ok(fn);
+  // No injected database/Storage/auth ports: any attempted service access fails
+  // this source-backed execution instead of silently accepting a mocked delete.
+  const {deleteDmsDocument}=compile(`export ${fn.getText(server)}`);
+  for(const id of [1,7001]){const result=await deleteDmsDocument(id);assert.equal(result.success,false);assert.match(result.error,/retention\/legal-hold/);}
 });

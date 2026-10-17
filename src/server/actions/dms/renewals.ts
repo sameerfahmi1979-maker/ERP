@@ -5,7 +5,7 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { rebuildDmsExpiryReminders } from "./expiry-reminders";
+import {completeRenewalSchema, dmsLifecycleId, renewalCompletionReceiptSchema, renewalCompletionFailure} from "@/lib/dms/renewal-completion";
 import { readAllPages } from "@/server/reads/all-pages";
 import { renewalFilterSchema } from "@/server/reads/dms-renewal-contract";
 import { renewalBaseSelect, renewalBaseRowsSchema, hydrateRenewalReferences } from "@/server/reads/dms-renewal-references";
@@ -14,6 +14,7 @@ export type ActionResult<T = unknown> = {
   success: boolean;
   data?: T;
   error?: string;
+  uncertain?: boolean;
 };
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -244,153 +245,32 @@ export async function updateDmsRenewalRequest(
 
 // ── completeDmsRenewalRequest ─────────────────────────────────────────────────
 
-const CompleteRenewalSchema = z.object({
-  new_expiry_date: z.string().optional(),
-  // DMS RENEWAL.2 — required: the document the user already uploaded to replace the expiring one.
-  replacement_document_id: z.number().int().positive("Select the replacement document"),
-  replacement_version_id: z.number().int().positive().optional(),
-  notes: z.string().max(4000).optional(),
-});
+export type CompleteRenewalInput = z.infer<typeof completeRenewalSchema>;
 
-export type CompleteRenewalInput = z.infer<typeof CompleteRenewalSchema>;
-
-export async function completeDmsRenewalRequest(
-  id: number,
-  input: CompleteRenewalInput
-): Promise<ActionResult> {
+export async function completeDmsRenewalRequest(id: number,input: CompleteRenewalInput): Promise<ActionResult> {
+  let dispatched=false;
   try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canManageRenewals(ctx)) return { success: false, error: "Permission denied" };
-
-    const parsed = CompleteRenewalSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const { data: renewalReq, error: fetchErr } = await supabase
-      .from("dms_renewal_requests")
-      .select("id, document_id, renewal_no, status")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-
-    if (fetchErr || !renewalReq) return { success: false, error: "Renewal request not found" };
-
-    const req = renewalReq as Record<string, unknown>;
-    const documentId = req.document_id as number;
-    const replacementDocumentId = parsed.data.replacement_document_id;
-
-    if (replacementDocumentId === documentId) {
-      return { success: false, error: "The replacement document cannot be the same as the original document" };
-    }
-
-    // Validate the picked replacement document: exists, not deleted, same type, not deleted,
-    // and not already claimed by another completed renewal.
-    const [{ data: originalDoc }, { data: replacementDoc }, { data: conflictingRenewal }] = await Promise.all([
-      supabase.from("dms_documents").select("id, document_type_id, expiry_date").eq("id", documentId).is("deleted_at", null).single(),
-      supabase.from("dms_documents").select("id, document_no, document_type_id, expiry_date, status").eq("id", replacementDocumentId).is("deleted_at", null).single(),
-      supabase.from("dms_renewal_requests").select("id, renewal_no").eq("replacement_document_id", replacementDocumentId).eq("status", "renewed").maybeSingle(),
-    ]);
-
-    if (!originalDoc) return { success: false, error: "Original document not found" };
-    if (!replacementDoc) return { success: false, error: "Replacement document not found or has been deleted" };
-    if (conflictingRenewal) {
-      return {
-        success: false,
-        error: `Document ${replacementDoc.document_no} is already linked as the replacement for renewal ${conflictingRenewal.renewal_no ?? `#${conflictingRenewal.id}`}`,
-      };
-    }
-    if (replacementDoc.document_type_id !== originalDoc.document_type_id) {
-      return { success: false, error: "The replacement document must be of the same document type as the original" };
-    }
-
-    const newExpiryDate = parsed.data.new_expiry_date || replacementDoc.expiry_date || null;
-    const now = new Date().toISOString();
-
-    // Update renewal request to completed
-    await supabase
-      .from("dms_renewal_requests")
-      .update({
-        status: "renewed",
-        new_expiry_date: newExpiryDate,
-        replacement_document_id: replacementDocumentId,
-        replacement_version_id: parsed.data.replacement_version_id ?? null,
-        notes: parsed.data.notes ?? (req.notes as string | null),
-        completed_at: now,
-        updated_by: ctx.profile.id,
-        updated_at: now,
-      })
-      .eq("id", id);
-
-    // Update the OLD document: mark superseded and link to the replacement.
-    // DMS ARCHIVE.1 — also set is_archived so the doc is hidden from All Documents.
-    await supabase
-      .from("dms_documents")
-      .update({
-        status: "superseded",
-        superseded_by_document_id: replacementDocumentId,
-        is_archived: true,
-        archived_at: now,
-        updated_by: ctx.profile.id,
-        updated_at: now,
-      })
-      .eq("id", documentId);
-
-    await supabase.from("dms_document_events").insert({
-      document_id: documentId,
-      event_type: "document_superseded",
-      description: `Document superseded by ${replacementDoc.document_no} via renewal ${req.renewal_no}`,
-      performed_by: ctx.profile.id,
-      metadata_json: { renewal_id: id, replacement_document_id: replacementDocumentId },
+    const ctx=await getAuthContext();
+    if(!ctx.profile||!canManageRenewals(ctx))return {success:false,error:"Permission denied"};
+    const identity=dmsLifecycleId.safeParse(id),parsed=completeRenewalSchema.safeParse(input);
+    if(!identity.success||!parsed.success)return {success:false,error:"Review the renewal, selected document, version and dates."};
+    const client=await createClient();
+    dispatched=true;
+    const response=await client.rpc("f07_complete_document_renewal",{
+      p_request:identity.data,p_replacement:parsed.data.replacement_document_id,
+      p_version:parsed.data.replacement_version_id??null,p_expiry:parsed.data.new_expiry_date||null,p_notes:parsed.data.notes??null,
     });
-
-    // Update document expiry_date if provided/derived, so old-document expiry history stays accurate.
-    if (newExpiryDate) {
-      await supabase.from("dms_document_events").insert({
-        document_id: documentId,
-        event_type: "expiry_date_updated",
-        description: `Expiry date updated to ${newExpiryDate} via renewal ${req.renewal_no}`,
-        performed_by: ctx.profile.id,
-        metadata_json: { new_expiry_date: newExpiryDate, renewal_id: id },
-      });
-    }
-
-    // Dismiss old pending reminders — the superseded document no longer needs its own reminders.
-    await supabase
-      .from("dms_expiry_reminders")
-      .update({ status: "dismissed", dismissed_by: ctx.profile.id, dismissed_at: now, dismissal_reason: `Renewal completed: ${req.renewal_no}`, updated_at: now })
-      .eq("document_id", documentId)
-      .eq("status", "pending");
-
-    // Ensure the new replacement document has its own reminder schedule if it has an expiry date.
-    if (replacementDoc.expiry_date) {
-      await rebuildDmsExpiryReminders(replacementDocumentId);
-    }
-
-    await supabase.from("dms_document_events").insert({
-      document_id: documentId,
-      event_type: "document_renewed",
-      description: `Document renewed via ${req.renewal_no} — replaced by ${replacementDoc.document_no}`,
-      performed_by: ctx.profile.id,
-      metadata_json: { renewal_id: id, renewal_no: req.renewal_no, new_expiry_date: newExpiryDate, replacement_document_id: replacementDocumentId },
-    });
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_renewal_requests",
-      entity_id: id,
-      entity_reference: req.renewal_no as string,
-      action: "update",
-      new_values: { status: "renewed", new_expiry_date: newExpiryDate, replacement_document_id: replacementDocumentId },
-    });
-
-    revalidatePath("/dms/renewals");
-    revalidatePath("/dms/expiring");
-    revalidatePath(`/dms/documents/record/${documentId}`);
-    revalidatePath(`/dms/documents/record/${replacementDocumentId}`);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: String(e) };
+    if(response.error)return renewalCompletionFailure(response.error.code);
+    const result=renewalCompletionReceiptSchema.safeParse(response.data);
+    if(!result.success||result.data.renewalId!==id||result.data.replacementDocumentId!==parsed.data.replacement_document_id)return renewalCompletionFailure();
+    // Audit/events/reminder intent are part of the confirmed DB transaction.
+    // Cache failure must not turn completion into another business write.
+    try {
+      for(const path of ["/dms/renewals","/dms/expiring","/dms/documents",`/dms/documents/record/${result.data.documentId}`,`/dms/documents/record/${result.data.replacementDocumentId}`])revalidatePath(path);
+    }catch { /* durable receipt wins */ }
+    return {success:true,data:result.data};
+  }catch {
+    return dispatched?renewalCompletionFailure():{success:false,error:"The renewal could not be prepared. Refresh and check your access."};
   }
 }
 

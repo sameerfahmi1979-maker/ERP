@@ -1,0 +1,16 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const s=vi.hoisted(()=>({rpc:vi.fn(),single:vi.fn(),audit:vi.fn(),cache:vi.fn()}));
+vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({rpc:s.rpc,from:()=>{const q={select:()=>q,eq:()=>q,is:()=>q,single:s.single};return q;}})}));
+vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>{throw Error('Synthetic downstream notification failure');}}));
+vi.mock('@/lib/rbac/check',()=>({getAuthContext:async()=>({profile:{id:11,full_name:'Synthetic',display_name:null},roleCodes:[],permissionCodes:[]}),hasPermission:()=>true,getAuthContextForProfileId:vi.fn()}));
+vi.mock('@/server/actions/audit',()=>({logAudit:s.audit}));
+vi.mock('next/cache',()=>({revalidatePath:s.cache}));
+import {approveDocument,submitDocumentForApproval,rejectDocument,withdrawDocumentApproval} from '@/server/actions/dms/document-approvals';
+const document={id:7,document_no:'F07-7',title:'Synthetic',status:'pending_review',approval_status:'pending_approval',submitted_by:8,document_type_id:1,owner_user_id:null,created_by:null,document_type:{name_en:'Synthetic'}};
+beforeEach(()=>{vi.resetAllMocks();s.single.mockResolvedValue({data:document,error:null});s.rpc.mockResolvedValue({data:{approvalId:22,approvalStatus:'approved',pending:false,requiresRole:null},error:null});s.audit.mockImplementation(()=>{throw Error('Synthetic postcommit audit/cache failure');});});
+it('final approval receipt survives downstream notifications and cache failure',async()=>{expect(await approveDocument(7,20,{})).toMatchObject({success:true,data:{approvalId:22,approvalStatus:'approved'}});expect(s.rpc).toHaveBeenCalledTimes(1);});
+it('submission receipt survives failure to resolve notifications',async()=>{s.single.mockResolvedValue({data:{...document,status:'draft',approval_status:null},error:null});s.rpc.mockResolvedValue({data:{approvalId:22,approvalStatus:'pending_approval',pending:true,requiresRole:null},error:null});expect(await submitDocumentForApproval(7,{})).toMatchObject({success:true,data:{approvalId:22}});});
+it('rejection receipt survives a postcommit side-effect failure',async()=>{s.rpc.mockResolvedValue({data:{approvalId:22,approvalStatus:'rejected',pending:false,requiresRole:null},error:null});expect(await rejectDocument(7,20,{reason:'Synthetic reviewed rejection'})).toMatchObject({success:true});});
+it('withdrawal receipt survives downstream resolution failure',async()=>{s.rpc.mockResolvedValue({data:{approvalId:22,approvalStatus:'withdrawn',pending:false,requiresRole:null},error:null});expect(await withdrawDocumentApproval(7,20,{})).toMatchObject({success:true});});
+it.each([null,{approvalId:22},{approvalId:22,approvalStatus:'approved',pending:true,requiresRole:null}])('rejects absent, malformed or contradictory receipts',async data=>{s.rpc.mockResolvedValue({data,error:null});expect(await approveDocument(7,20,{})).toMatchObject({success:false,uncertain:true});expect(s.audit).not.toHaveBeenCalled();});
+it('lost approval response stays unconfirmed without an automatic second action',async()=>{s.rpc.mockRejectedValue(Error('Synthetic lost reply'));expect(await approveDocument(7,20,{})).toMatchObject({success:false,uncertain:true});expect(s.rpc).toHaveBeenCalledTimes(1);});

@@ -2,6 +2,7 @@
 import {readJson} from "@/lib/reads/client";
 import type {getDmsDocumentComments} from "@/server/actions/dms/document-comments";
 import type {getDmsDocumentEvents} from "@/server/actions/dms/document-events";
+import type {getDmsDocumentLifecycle,getDmsDocumentHistoryPage} from "@/server/actions/dms/lifecycle-history";
 import type {getDmsDocumentFiles} from "@/server/actions/dms/document-files";
 import type {getDmsDocumentVersions} from "@/server/actions/dms/document-files";
 import type {getDmsDocumentLinks} from "@/server/actions/dms/document-links";
@@ -33,6 +34,8 @@ import type {getDocumentApprovalHistory} from "@/server/actions/dms/document-app
 import type {listDmsApplyToErpRuns,getDmsApplyToErpRun} from "@/server/actions/dms/apply-to-erp";
 import type {getDmsExpiryReminders} from "@/server/actions/dms/expiry-reminders";
 type Readers={
+getDmsDocumentLifecycle:typeof getDmsDocumentLifecycle;
+getDmsDocumentHistoryPage:typeof getDmsDocumentHistoryPage;
 getDmsExpiryReminders:typeof getDmsExpiryReminders;
 listDmsApplyToErpRuns:typeof listDmsApplyToErpRuns;
 getDmsApplyToErpRun:typeof getDmsApplyToErpRun;

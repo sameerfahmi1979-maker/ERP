@@ -1,6 +1,9 @@
 import {z} from 'zod';
 import {zNullableDateString} from './date-validators';
 
+export const dmsCreationOriginSchema=z.object({entityType:z.enum(['employee','employee_dependent','company','branch','site','party']),
+ entityId:z.number().int().positive().max(Number.MAX_SAFE_INTEGER)}).strict();
+
 export const dmsDocumentCreateSchema=z.object({
  title:z.string().min(1,'Title is required').max(500),
  description:z.string().nullable().optional(),
@@ -15,6 +18,7 @@ export const dmsDocumentCreateSchema=z.object({
  issue_date:zNullableDateString,expiry_date:zNullableDateString,
  reminder_policy_id:z.number().int().positive().nullable().optional(),
  legacy_document_code:z.string().nullable().optional(),
+ originContext:dmsCreationOriginSchema.optional(),
 });
 export const dmsCreationContractSchema=z.object({operationId:z.string().uuid(),revision:z.null()}).strict();
 export const dmsCreationReceiptSchema=z.object({

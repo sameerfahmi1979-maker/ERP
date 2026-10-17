@@ -1,5 +1,5 @@
 import 'server-only';
-import {createHash} from 'node:crypto';
+import {readBoundedDmsObject,verifyDmsBlob} from '@/server/dms-file-verification';
 import {createClient} from '@/lib/supabase/server';
 import {createAdminClient} from '@/lib/supabase/admin';
 import {resolveStandardFileName} from '@/lib/dms/resolve-standard-file-name';
@@ -17,7 +17,11 @@ function failure(code:string|undefined,retained?:{documentId:number;documentNo:s
   code==='42501'?'This upload or its destination is unavailable, or you no longer have permission to complete it.':
   rollback?'The request was rejected. Check the upload and its metadata; no new document was committed.':unconfirmed};
 }
-const hash=async(value:Blob)=>createHash('sha256').update(Buffer.from(await value.arrayBuffer())).digest('hex');
+async function verifiedSource(storage:ReturnType<ReturnType<typeof createAdminClient>['storage']['from']>,source:z.infer<typeof uploadCreationSnapshotSchema>['source'],sha256=source.sha256_hash){
+ const body=await readBoundedDmsObject(storage,source.temp_storage_path,source.file_size_bytes);
+ const proof=await verifyDmsBlob(body,{name:source.original_filename,mime:source.mime_type,size:source.file_size_bytes,sha256});
+ return {body,proof};
+}
 const objectIdentity=z.object({id:z.string().uuid(),version:z.string().min(1),lastModified:z.string().datetime({offset:true})});
 
 /** Bounded upload consumer: read-only preparation, retained atomic creation,
@@ -40,11 +44,8 @@ export async function createNumberedDocumentFromUpload(input:UploadCreationInput
     (request.owning_company_id!==undefined&&request.owning_company_id!==snapshot.data.source.owning_company_id))return {success:false,error:'The upload source could not be verified.'};
    // Admission is caller-bound and current BEFORE privileged file access.
    const storage=createAdminClient();
-   const file=await storage.storage.from('dms-temp').download(snapshot.data.source.temp_storage_path);
-   if(file.error||!file.data)return {success:false,error:'The source file is unavailable. No document has been created.'};
-   const contentSha=await hash(file.data);
-   if(file.data.size!==snapshot.data.source.file_size_bytes||
-    (snapshot.data.source.sha256_hash&&snapshot.data.source.sha256_hash.toLowerCase()!==contentSha))return {success:false,error:'The source file does not match its upload metadata. No document has been created.'};
+   const {proof}=await verifiedSource(storage.storage.from('dms-temp'),snapshot.data.source);
+   const contentSha=proof.sha256;
    return {success:false,prepared:{operation_id:identity.data.operationId,snapshot:{...snapshot.data,content_sha256:contentSha}}};
   }
   dispatched=true;
@@ -58,13 +59,12 @@ export async function createNumberedDocumentFromUpload(input:UploadCreationInput
    operation_id:identity.data.operationId,upload_session_id:request.uploadSessionId,replayed:plan.data.replayed,completed:true})};
   const source=request.prepared.source;
   const storage=createAdminClient();
-  const original=await storage.storage.from('dms-temp').download(source.temp_storage_path);
-  if(original.error||!original.data||original.data.size!==source.file_size_bytes||await hash(original.data)!==request.prepared.content_sha256)return failure('PT409',retained);
+  const original=await verifiedSource(storage.storage.from('dms-temp'),source,request.prepared.content_sha256);
   // Immutable document-bound destination; neither upsert nor cleanup is allowed.
   // An ambiguous upload reply can be recovered ONLY by independently checking
   // exact bytes under a stable object identity/version at this operation's
   // newly allocated document path. This does not attest the first uploader.
-  await storage.storage.from('dms-documents').upload(plan.data.storage_path,original.data,{contentType:source.mime_type,upsert:false});
+  await storage.storage.from('dms-documents').upload(plan.data.storage_path,original.body,{contentType:original.proof.mime,upsert:false});
   const rechecked=await client.rpc('create_numbered_dms_upload',{p_operation:identity.data.operationId,p_request:request});
   const admission=uploadCreationPlanSchema.safeParse(rechecked.data);
   if(rechecked.error||!admission.success||admission.data.operation_id!==identity.data.operationId||admission.data.documentId!==documentId||
@@ -73,8 +73,7 @@ export async function createNumberedDocumentFromUpload(input:UploadCreationInput
   const before=await storage.storage.from('dms-documents').info(plan.data.storage_path);
   const beforeIdentity=objectIdentity.safeParse(before.data);
   if(before.error||!beforeIdentity.success)return failure(undefined,retained);
-  const existing=await storage.storage.from('dms-documents').download(plan.data.storage_path);
-  if(existing.error||!existing.data||existing.data.size!==source.file_size_bytes||await hash(existing.data)!==request.prepared.content_sha256)return failure('PT409',retained);
+  await verifiedSource(storage.storage.from('dms-documents'),{...source,temp_storage_path:plan.data.storage_path},request.prepared.content_sha256);
   const after=await storage.storage.from('dms-documents').info(plan.data.storage_path);
   const afterIdentity=objectIdentity.safeParse(after.data);
   if(after.error||!afterIdentity.success||JSON.stringify(beforeIdentity.data)!==JSON.stringify(afterIdentity.data))return failure('PT409',retained);

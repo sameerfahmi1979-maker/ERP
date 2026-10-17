@@ -11,11 +11,15 @@
  *   logger.error("DB insert failed", error);
  */
 
+import { filterLogRecord } from "./log-context";
 type LogLevel = "debug" | "info" | "warn" | "error";
 
 type LogContext = Record<string, unknown>;
 
 function emit(level: LogLevel, message: string, contextOrError?: LogContext | Error | unknown) {
+  const filtered = filterLogRecord(message, contextOrError);
+  message = filtered.message;
+  contextOrError = filtered.context;
   if (process.env.NODE_ENV === "production") {
     const payload: Record<string, unknown> = {
       level,

@@ -24,12 +24,15 @@ interface Props {
 }
 
 export function DmsApplyCorrectionSourceCard({ source, className }: Props) {
+  const current=source.reviewedSnapshot?source.currentValue??null:source.currentValueSummary;
+  const applied=source.reviewedSnapshot?source.originalAppliedValue??null:source.originalAppliedSummary;
+  const before=source.reviewedSnapshot?source.originalBeforeValue??null:source.originalBeforeSummary;
   const currentMatchesApplied =
-    normalizeForDisplay(source.currentValueSummary) ===
-    normalizeForDisplay(source.originalAppliedSummary);
+    normalizeForDisplay(current) ===
+    normalizeForDisplay(applied);
 
   const fieldValueChanged = !currentMatchesApplied &&
-    source.currentValueSummary !== source.originalAppliedSummary;
+    current !== applied;
 
   return (
     <div className={cn("rounded-md border border-border bg-muted/30 p-4 space-y-4", className)}>
@@ -67,19 +70,19 @@ export function DmsApplyCorrectionSourceCard({ source, className }: Props) {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <ValueRow
           label="Before Apply"
-          value={source.originalBeforeSummary}
+          value={before}
           emptyLabel="(empty)"
           variant="neutral"
         />
         <ValueRow
           label="AI Applied"
-          value={source.originalAppliedSummary}
+          value={applied}
           emptyLabel="(empty)"
           variant="info"
         />
         <ValueRow
           label="Current Live Value"
-          value={source.currentValueSummary}
+          value={current}
           emptyLabel="(empty)"
           variant={fieldValueChanged ? "warning" : "success"}
         />

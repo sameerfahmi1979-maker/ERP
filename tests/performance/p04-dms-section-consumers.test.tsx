@@ -11,7 +11,7 @@ import {syntheticAuthContext} from "./fixtures/auth-context";
 const serverReads=vi.hoisted(()=>({create:vi.fn(()=>{throw Error("No server actions in client read tests");})}));
 vi.mock("@/hooks/use-workspace",()=>({useWorkspace:()=>({openTab:vi.fn()})}));
 vi.mock("next/cache",()=>({revalidatePath:()=>{throw Error("No mutations");}}));
-vi.mock("next/navigation",()=>({useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
+vi.mock("next/navigation",()=>({usePathname:()=>"/dms/documents/record/9",useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
 vi.mock("@/lib/supabase/server",()=>({createClient:serverReads.create}));
 vi.mock("@/lib/supabase/admin",()=>({createAdminClient:()=>{throw Error("No privileged client");}}));
 import {DmsDocumentAiSection} from "@/features/dms/documents/sections/dms-document-ai-section";
@@ -65,7 +65,7 @@ it("metadata editor hides its portal on a denied recheck and restores the retain
  vi.stubGlobal("fetch",vi.fn(async (_url,init)=>{
   if(denied)return Response.json({success:false,error:"Denied"},{status:403});
   const {kind}=JSON.parse(init.body);
-  return Response.json({success:true,data:kind==="getMetadataDefinitionsForType"?[{id:1,field_label_en:"Reference",field_type:"text",is_required:true}]:[]});
+  return Response.json({success:true,data:kind==="getMetadataDefinitionsForType"?[{id:1,field_code:"reference",field_label_en:"Reference",field_type:"text",is_required:true,is_active:true}]:[],...(kind==="getDmsDocumentMetadataValues"?{snapshot:"a".repeat(64)}:{})});
  }));
  render(wrap(<DmsDocumentMetadataSection documentId={9} documentTypeId={2} isViewing={false}/>));
  fireEvent.click(await screen.findByRole("button",{name:"Edit metadata"}));

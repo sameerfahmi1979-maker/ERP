@@ -19,6 +19,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { currentJobClaim } from "@/lib/dms/ai-jobs/claim-scope";
 import { logger } from "@/lib/logger";
 import {
   buildInitialSteps,
@@ -39,6 +40,27 @@ import type {
 
 const SUMMARY_INPUT_MAX_CHARS = 20_000;
 const CONTENT_TEXT_MAX_CHARS  = 100_000;
+
+export async function runDurableStep(
+  step: DmsAiOrchestrationStepCode,
+  work: () => Promise<{ success: boolean; error?: string; skipped?: boolean }>
+): Promise<DmsAiOrchestrationStepResult> {
+  const claim = currentJobClaim();
+  if (!claim) return runPipelineStepSafe(step, work);
+  const db = createAdminClient();
+  const identity = { jobId: claim.jobId, token: claim.token, step };
+  const read = await db.rpc("f07_ai_worker", { p_action: "step_read", p_data: identity });
+  if (read.error || read.data?.success !== true) throw new Error("AI step receipt unavailable.");
+  const saved = read.data.step;
+  if (saved?.step === step && ["completed", "skipped"].includes(saved.status)) return saved as DmsAiOrchestrationStepResult;
+  const result = await runPipelineStepSafe(step, work);
+  result.safeErrorMessage = result.status === "failed" ? "AI step did not complete. Review the safe attempt code." : undefined;
+  if (result.status === "completed" || result.status === "skipped") {
+    const receipt = await db.rpc("f07_ai_worker", { p_action: "step_save", p_data: { ...identity, status: result.status } });
+    if (receipt.error || receipt.data?.success !== true) throw new Error("AI step receipt not confirmed.");
+  }
+  return result;
+}
 
 // ── Feature flag helper (admin client) ───────────────────────────────────────
 
@@ -908,7 +930,7 @@ export async function runDmsAiOrchestrationPostDraftSystem(params: {
     };
 
     markRunning("content_sync");
-    steps = mergeStepResult(steps, await runPipelineStepSafe("content_sync", () =>
+    steps = mergeStepResult(steps, await runDurableStep("content_sync", () =>
       runContentSyncStepSystem(documentId, uploadSessionId)
     ));
 
@@ -921,27 +943,27 @@ export async function runDmsAiOrchestrationPostDraftSystem(params: {
     await tryEnqueueMetadataSuggestionsJob(documentId);
 
     markRunning("ai_summary");
-    steps = mergeStepResult(steps, await runPipelineStepSafe("ai_summary", () =>
+    steps = mergeStepResult(steps, await runDurableStep("ai_summary", () =>
       runAiSummaryStepSystem(documentId)
     ));
 
     markRunning("intelligence");
-    steps = mergeStepResult(steps, await runPipelineStepSafe("intelligence", () =>
+    steps = mergeStepResult(steps, await runDurableStep("intelligence", () =>
       runIntelligenceStepSystem(documentId)
     ));
 
     markRunning("embedding");
-    steps = mergeStepResult(steps, await runPipelineStepSafe("embedding", () =>
+    steps = mergeStepResult(steps, await runDurableStep("embedding", () =>
       runEmbeddingStepSystem(documentId)
     ));
 
     markRunning("tag_suggestions");
-    steps = mergeStepResult(steps, await runPipelineStepSafe("tag_suggestions", () =>
+    steps = mergeStepResult(steps, await runDurableStep("tag_suggestions", () =>
       runTagSuggestionsStepSystem(documentId)
     ));
 
     markRunning("link_suggestions");
-    steps = mergeStepResult(steps, await runPipelineStepSafe("link_suggestions", () =>
+    steps = mergeStepResult(steps, await runDurableStep("link_suggestions", () =>
       runLinkSuggestionsStepSystem(documentId)
     ));
 

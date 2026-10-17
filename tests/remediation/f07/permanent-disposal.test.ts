@@ -1,0 +1,11 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const s=vi.hoisted(()=>({client:vi.fn(),admin:vi.fn(),auth:vi.fn(),audit:vi.fn()}));
+vi.mock('@/lib/supabase/server',()=>({createClient:s.client}));vi.mock('@/lib/supabase/admin',()=>({createAdminClient:s.admin}));
+vi.mock('@/lib/rbac/check',()=>({getAuthContext:s.auth,hasPermission:vi.fn(),canUseApplication:vi.fn()}));
+vi.mock('@/server/actions/audit',()=>({logAudit:s.audit}));
+import {adminHardDeleteDmsFile} from '@/server/actions/dms/document-files';
+import {deleteDmsDocument} from '@/server/actions/dms/documents';
+beforeEach(()=>vi.clearAllMocks());
+it.each([1,7001,Number.MAX_SAFE_INTEGER])('refuses permanent file disposal %s before storage or database access',async id=>{expect(await adminHardDeleteDmsFile(id)).toMatchObject({success:false,error:expect.stringMatching(/retention.*legal-hold/)});expect(s.client).not.toHaveBeenCalled();expect(s.admin).not.toHaveBeenCalled();expect(s.auth).not.toHaveBeenCalled();expect(s.audit).not.toHaveBeenCalled();});
+it.each([0,-1,1.5,NaN,Infinity,Number.MAX_SAFE_INTEGER+1])('invalid file identity %s cannot reach any deletion service',async id=>{expect(await adminHardDeleteDmsFile(id)).toMatchObject({success:false,error:'Invalid file identifier'});expect(s.client).not.toHaveBeenCalled();expect(s.admin).not.toHaveBeenCalled();});
+it('document purge remains disabled without any compensating Storage call',async()=>{expect(await deleteDmsDocument(7001)).toMatchObject({success:false,error:expect.stringMatching(/retention\/legal-hold/)});expect(s.client).not.toHaveBeenCalled();expect(s.admin).not.toHaveBeenCalled();expect(s.audit).not.toHaveBeenCalled();});

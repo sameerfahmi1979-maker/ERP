@@ -4,7 +4,7 @@
  * Handles:
  *  - Building the deterministic final storage path (requires reserved documentId)
  *  - Copying the temp file from dms-temp to dms-documents
- *  - Cleaning up a copied final file if the DB commit fails (compensation)
+ *  - Reconciling an existing final copy by exact bytes, never compensation
  *
  * Rules:
  *  - NEVER deletes from dms-temp (handled by DMS cleanup)
@@ -13,7 +13,9 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { logger } from "@/lib/logger";
+import {readBoundedDmsObject,verifyDmsBlob} from '@/server/dms-file-verification';
+import {z} from 'zod';
+const objectIdentity=z.object({id:z.string().uuid(),version:z.string().min(1),lastModified:z.string().datetime({offset:true})});
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
 
@@ -56,6 +58,7 @@ export interface StorageCopyResult {
   bucket: string;
   path: string;
   error?: string;
+  evidence?: {object:z.infer<typeof objectIdentity>;sha256:string};
 }
 
 export async function copyFileToFinalStorage(
@@ -66,37 +69,27 @@ export async function copyFileToFinalStorage(
     finalBucket: string;
     finalPath: string;
     mimeType: string;
+    originalFilename: string;
+    fileSizeBytes: number;
+    sha256Hash: string | null;
   }
 ): Promise<StorageCopyResult> {
-  const { tempBucket, tempPath, finalBucket, finalPath, mimeType } = params;
-
-  const { data: tempBlob, error: downloadError } = await adminClient.storage
-    .from(tempBucket)
-    .download(tempPath);
-
-  if (downloadError || !tempBlob) {
-    return {
-      success: false,
-      bucket: finalBucket,
-      path: finalPath,
-      error: `Failed to download temp file: ${downloadError?.message ?? "unknown"}`,
-    };
-  }
-
-  const { error: uploadError } = await adminClient.storage
-    .from(finalBucket)
-    .upload(finalPath, tempBlob, { contentType: mimeType, upsert: false });
-
-  if (uploadError) {
-    return {
-      success: false,
-      bucket: finalBucket,
-      path: finalPath,
-      error: `Failed to upload to final storage: ${uploadError.message}`,
-    };
-  }
-
-  return { success: true, bucket: finalBucket, path: finalPath };
+  const {tempBucket,tempPath,finalBucket,finalPath}=params;
+  try{
+    const expected={name:params.originalFilename,mime:params.mimeType,size:params.fileSizeBytes,sha256:params.sha256Hash};
+    const temp=await readBoundedDmsObject(adminClient.storage.from(tempBucket),tempPath,expected.size);
+    const proof=await verifyDmsBlob(temp,expected);
+    // A copy response can be lost or report an existing object. Neither proves
+    // failure or success. Reconcile this exact destination; never overwrite it.
+    try{await adminClient.storage.from(finalBucket).upload(finalPath,new Blob([temp],{type:proof.mime}),{contentType:proof.mime,upsert:false});}catch{/* Read exact retained destination below. */}
+    const storage=adminClient.storage.from(finalBucket),before=await storage.info(finalPath),b=objectIdentity.safeParse(before.data);
+    if(before.error||!b.success)throw Error('Unconfirmed final object');
+    const copied=await readBoundedDmsObject(storage,finalPath,expected.size);
+    await verifyDmsBlob(copied,{...expected,sha256:proof.sha256});
+    const after=await storage.info(finalPath),a=objectIdentity.safeParse(after.data);
+    if(after.error||!a.success||JSON.stringify(a.data)!==JSON.stringify(b.data))throw Error('Final object changed');
+    return {success:true,bucket:finalBucket,path:finalPath,evidence:{object:a.data,sha256:proof.sha256}};
+  }catch{return {success:false,bucket:finalBucket,path:finalPath,error:'File copy is unconfirmed, malformed or differs from its source. Retain the original intake and copied object for recovery.'};}
 }
 
 // ── Storage cleanup compensation ──────────────────────────────────────────────
@@ -107,24 +100,10 @@ export interface StorageCleanupResult {
 }
 
 export async function cleanupFinalStorageFile(
-  adminClient: SupabaseClient,
-  bucket: string,
-  path: string
+  _adminClient: SupabaseClient,
+  _bucket: string,
+  _path: string
 ): Promise<StorageCleanupResult> {
-  try {
-    const { error } = await adminClient.storage.from(bucket).remove([path]);
-    if (error) {
-      logger.warn("[approve-storage] cleanup failed — orphaned file may need admin removal", {
-        bucket,
-        path,
-        error: error.message,
-      });
-      return { success: false, error: error.message };
-    }
-    logger.info("[approve-storage] cleanup successful after RPC failure", { bucket, path });
-    return { success: true };
-  } catch (err) {
-    logger.warn("[approve-storage] cleanup exception", { bucket, path, err: String(err) });
-    return { success: false, error: String(err) };
-  }
+  void _adminClient; void _bucket; void _path;
+  return {success:false,error:'Final objects are retained for outcome reconciliation. Error-response compensation cannot authorize deletion.'};
 }

@@ -1,0 +1,14 @@
+import {beforeEach,expect,it,vi} from 'vitest';import type {SupabaseClient} from '@supabase/supabase-js';
+const s=vi.hoisted(()=>({read:vi.fn(),rpc:vi.fn(),admin:vi.fn(),from:vi.fn()}));
+vi.mock('@/server/dms-verified-intake-source',()=>({readVerifiedIntakeSource:s.read}));
+import {verifyAndAttestIntakeSource} from '@/server/dms-intake-source-attestation';
+const plan={actorId:7,authSessionId:'11111111-1111-4111-8111-111111111111',source:{id:9,name:'synthetic.pdf',mime:'application/pdf',size:3,sha256:'a'.repeat(64),path:'synthetic/original.pdf',owner:7,company:1,branch:null,expiry:'2027-01-01T00:00:00Z'}};
+const object={id:'22222222-2222-4222-8222-222222222222',version:'v1',lastModified:'2026-10-17T00:00:00Z'};
+const client={rpc:s.rpc} as unknown as SupabaseClient,admin={rpc:s.admin,storage:{from:s.from}} as unknown as SupabaseClient;
+beforeEach(()=>{vi.resetAllMocks();s.rpc.mockResolvedValue({data:plan,error:null});s.admin.mockResolvedValue({error:null});s.read.mockResolvedValue({bytes:Buffer.from([1,2,3]),proof:{sha256:'a'.repeat(64),size:3,mime:'application/pdf'},object});});
+it('ordinary admission and re-admission surround trusted source evidence',async()=>{const r=await verifyAndAttestIntakeSource(client,admin,9);expect(r.plan).toEqual(plan);expect(s.rpc).toHaveBeenCalledTimes(2);expect(s.admin).toHaveBeenCalledWith('f07_attest_intake_source',expect.objectContaining({p_session:9,p_actor:7,p_source:plan.source,p_object:object.id,p_sha256:'a'.repeat(64)}));});
+it('does not touch storage or service connection after ordinary denial',async()=>{s.rpc.mockResolvedValue({data:null,error:{code:'42501'}});await expect(verifyAndAttestIntakeSource(client,admin,9)).rejects.toThrow('access');expect(s.read).not.toHaveBeenCalled();expect(s.admin).not.toHaveBeenCalled();});
+it('does not attest a parser rejection',async()=>{s.read.mockRejectedValue(Error('Malformed'));await expect(verifyAndAttestIntakeSource(client,admin,9)).rejects.toThrow('Malformed');expect(s.admin).not.toHaveBeenCalled();});
+it('does not acknowledge missing attestation',async()=>{s.admin.mockResolvedValue({error:{code:'PT409'}});await expect(verifyAndAttestIntakeSource(client,admin,9)).rejects.toThrow('retained');});
+it('does not replace an actor after re-admission',async()=>{s.rpc.mockResolvedValueOnce({data:plan,error:null}).mockResolvedValueOnce({data:{...plan,actorId:8},error:null});await expect(verifyAndAttestIntakeSource(client,admin,9)).rejects.toThrow('access changed');});
+it('does not use a privileged byte attestation as user authorization',async()=>{s.rpc.mockResolvedValueOnce({data:plan,error:null}).mockResolvedValueOnce({data:null,error:{code:'42501'}});await expect(verifyAndAttestIntakeSource(client,admin,9)).rejects.toThrow('access changed');});

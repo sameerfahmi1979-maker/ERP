@@ -37,7 +37,7 @@ const RETRYABLE_CODES = new Set([
 export const ocrBackfillHandler: DmsAiJobHandler = {
   jobType: DMS_AI_JOB_TYPE.OCR_BACKFILL,
 
-  async handle(payload: Record<string, unknown>): Promise<DmsAiJobHandlerResult> {
+  async handle(payload: Record<string, unknown>, ctx): Promise<DmsAiJobHandlerResult> {
     // ── 1. Validate payload ──────────────────────────────────────────────────
     const parsed = OcrBackfillPayloadSchema.safeParse(payload);
     if (!parsed.success) {
@@ -55,7 +55,7 @@ export const ocrBackfillHandler: DmsAiJobHandler = {
     const result = await processDmsFileOcrSystem({
       fileId,
       documentId,
-      forceRetry,
+      forceRetry: forceRetry && (ctx?.attemptNumber ?? 1) === 1,
       source:      "admin_backfill",
       performedBy: 0,   // system context — no user session in worker
     });

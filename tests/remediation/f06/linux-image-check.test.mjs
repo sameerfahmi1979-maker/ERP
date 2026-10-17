@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 import test from 'node:test';
 import yaml from 'js-yaml';
-import {BASE,NATIVE,NATIVE_SHA,IMPACT,LOCK_GRAPH_SHA,TRUST_ROOTS,validateNativeTap,validateImage,validateOwnership,validateBaseLineage,validateTrust,nativeArguments,uncertainDockerOutcome} from '../../../tooling/testing/f06-linux-image-check.mjs';
+import vm from 'node:vm';
+import {BASE,NATIVE,NATIVE_SHA,IMPACT,LOCK_GRAPH_SHA,TRUST_ROOTS,validateNativeTap,validateImage,validateOwnership,validateBaseLineage,validateTrust,nativeArguments,uncertainDockerOutcome,parserRuntimeGuard,runtimeProbe} from '../../../tooling/testing/f06-linux-image-check.mjs';
 const hash=b=>createHash('sha256').update(b).digest('hex');
 test('unknown Docker outcomes require retained references, not assumed daemon quiescence',()=>{const known={cliEnded:true,code:0,reason:null,error:null,signal:null};assert.equal(uncertainDockerOutcome(known),false);assert.equal(uncertainDockerOutcome({...known,code:1}),false);for(const delta of [{cliEnded:false},{reason:'CLI_TIMEOUT'},{error:'CLI_END_UNKNOWN'},{signal:'SIGKILL'}])assert.equal(uncertainDockerOutcome({...known,...delta}),true);const s=fs.readFileSync('tooling/testing/f06-linux-image-check.mjs','utf8');assert.ok(s.indexOf("if(exe==='docker'&&uncertainDockerOutcome(r))")<s.indexOf("write(id+'-outcome.json'"));assert.ok(s.includes('for(const ref of [...refs]){if(uncertainDockerCommands.length)break;try{await close(ref);'));assert.ok(s.includes('FAIL_UNRESOLVED_DOCKER_OPERATION_RETAIN_REFERENCES'));});
 test('image build pipeline explicitly propagates docker failure, not just tee success',()=>{const s=fs.readFileSync('.github/workflows/engineering.yml','utf8');assert.match(s,/name: Build pinned production image with synthetic public configuration\s+shell: bash\s+run: \|\s+set -euo pipefail\s+docker build/);});
@@ -170,4 +171,28 @@ test('both real PDF fixtures admit only the reviewed additional quality helper',
   const text=fs.readFileSync(fixture,'utf8');assert.ok(text.includes("'"+file+"'"));
   assert.match(text,/allowed\.has\(/);assert.doesNotMatch(text,/allowed\.has\([^)]*\)\s*\|\|\s*true/);
  }
+});
+
+test('F07 parser runtime permits only its exact reviewed subtree and file hash',()=>{
+ const bytes=Buffer.from('synthetic trusted parser'),expected=hash(bytes),guard=vm.runInThisContext('(fs,hash,assert)=>'+parserRuntimeGuard(expected));
+ const filesystem={lstatSync:p=>({isDirectory:()=>!p.endsWith('.cjs'),isFile:()=>p.endsWith('.cjs'),isSymbolicLink:()=>false}),readdirSync:p=>p.endsWith('/dms')?['validate-intake.cjs']:['dms'],readFileSync:()=>bytes};
+ guard(filesystem,hash,assert);
+ assert.throws(()=>guard({...filesystem,readdirSync:()=>['unreviewed.cjs']},hash,assert));
+ assert.throws(()=>guard({...filesystem,lstatSync:()=>({isDirectory:()=>true,isFile:()=>true,isSymbolicLink:()=>true})},hash,assert));
+ assert.throws(()=>guard({...filesystem,readFileSync:()=>Buffer.from('different parser')},hash,assert));
+});
+test('F07 generated runtime proof compiles and requires actual PDF/XLSX validation plus malformed rejection',()=>{
+ const script=runtimeProbe({patchedFiles:{}},{},IMPACT['tooling/dms/validate-intake.cjs']);new vm.Script(script);
+ for(const needle of ["'/app/tooling/dms/validate-intake.cjs'","'application/pdf'","'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'","assert.equal(invalid.status,1)","env:{NODE_ENV:'production'}","timeout:10000","maxBuffer:128"])assert.ok(script.includes(needle),needle);
+ assert.throws(()=>parserRuntimeGuard('not a reviewed hash'));
+});
+test('F07 parser is in the source manifest and only its exact runtime file is copied',()=>{
+ const controller=fs.readFileSync('tooling/testing/f06-linux-image-check.mjs','utf8'),docker=fs.readFileSync('Dockerfile','utf8');
+ assert.ok(controller.includes("'tooling/dms/validate-intake.cjs'"));assert.ok(Object.hasOwn(IMPACT,'tooling/dms/validate-intake.cjs'));
+ assert.ok(docker.includes('COPY tooling/dms/validate-intake.cjs ./tooling/dms/validate-intake.cjs'));
+ assert.ok(docker.includes('COPY --from=build --chown=node:node /app/tooling/dms/validate-intake.cjs ./tooling/dms/validate-intake.cjs'));assert.doesNotMatch(docker,/COPY\s+(?:--[^\n]+\s+)?tooling\s/);
+});
+test('real PDF fixtures admit the reviewed logger seam without widening arbitrary source imports',()=>{
+ const file='src/lib/log-context.ts';assert.equal(IMPACT[file],hash(fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n')));
+ for(const fixture of [NATIVE,'tests/remediation/f06/pdf-byte-interop.cjs']){const text=fs.readFileSync(fixture,'utf8');assert.ok(text.includes("'"+file+"'"));assert.match(text,/allowed\.has\(/);assert.doesNotMatch(text,/allowed\.has\([^)]*\)\s*\|\|\s*true/);}
 });

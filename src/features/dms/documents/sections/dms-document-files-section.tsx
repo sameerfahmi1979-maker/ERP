@@ -13,14 +13,13 @@ import { FileSize } from "@/features/dms/upload/dms-file-size";
 import { FileTypeIcon, getMimeTypeLabel } from "@/features/dms/upload/dms-file-type-icon";
 import { invalidateDmsDocumentFiles, invalidateDmsOcr } from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
-import { adminDeleteDmsDocumentFile, getDmsDocumentFileSignedUrl, type DmsDocumentFileRow } from "@/server/actions/dms/document-files";
+import { getDmsDocumentFileSignedUrl, type DmsDocumentFileRow } from "@/server/actions/dms/document-files";
 import { triggerDmsOcrForFile } from "@/server/actions/dms/ocr";
 import { useQueryClient } from "@tanstack/react-query";
 import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
 import { format, parseISO } from "date-fns";
 import {
   AlertTriangle,
-  Check,
   ChevronRight,
   Download,
   ExternalLink,
@@ -31,7 +30,6 @@ import {
   FileX,
   Loader2,
   ScanText,
-  Trash2,
   X,
   ZoomIn,
   ZoomOut,
@@ -55,7 +53,6 @@ interface DmsDocumentFilesSectionProps {
   canPreview?: boolean;
   canDownload?: boolean;
   canTriggerOcr?: boolean;
-  canDeleteFiles?: boolean;
 }
 
 // ── Preview panel ─────────────────────────────────────────────────────────────
@@ -299,10 +296,8 @@ export function DmsDocumentFilesSection({
   canPreview = false,
   canDownload = false,
   canTriggerOcr = false,
-  canDeleteFiles = false,
 }: DmsDocumentFilesSectionProps) {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   // Undefined selects an initial preview. Null explicitly closes it.
   const [selectedFileId, setSelectedFileId] = useState<number | null | undefined>(undefined);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -363,40 +358,6 @@ export function DmsDocumentFilesSection({
     }
   };
 
-  const handleDeleteFile = async (file: DmsDocumentFileRow) => {
-    if (confirmDeleteId !== file.id) {
-      setConfirmDeleteId(file.id);
-      return;
-    }
-    const key = `${file.id}-delete`;
-    setActionError(null);
-    setConfirmDeleteId(null);
-    setLoadingAction(key);
-    try {
-      const result = await adminDeleteDmsDocumentFile(file.id);
-      if (result.success && result.data) {
-        const r = result.data;
-        const parts: string[] = [];
-        if (r.storageDeleted) parts.push("removed from storage");
-        if (r.storageAlreadyMissing) parts.push("already missing from storage");
-        if (r.aiResultsNulled > 0) parts.push(`${r.aiResultsNulled} AI result(s) unlinked`);
-        if (r.versionCleaned) parts.push("empty version cleaned up");
-        if (r.currentVersionUpdated) parts.push("current version updated");
-        toast.success(`File "${file.file_name}" deleted. ${parts.join(", ") || ""}`.trim());
-        if (selectedFileId === file.id) setSelectedFileId(null);
-        invalidateDmsDocumentFiles(queryClient, documentId);
-        invalidateDmsOcr(queryClient, documentId);
-        void queryClient.invalidateQueries({ queryKey: queryKeys.dms.documentVersions(documentId) });
-      } else {
-        setActionError("The file was not deleted. Check your access and refresh the file list before retrying.");
-      }
-    } catch {
-      setActionError("The deletion result could not be confirmed. Refresh the file list before retrying.");
-    } finally {
-      setLoadingAction(null);
-    }
-  };
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
@@ -450,9 +411,6 @@ export function DmsDocumentFilesSection({
               const canPrev = isPreviewable(f.mime_type);
               const isSelected = selectedFile?.id === f.id;
               const downloadKey = `${f.id}-download`;
-              const deleteKey = `${f.id}-delete`;
-              const isConfirmingDelete = confirmDeleteId === f.id;
-              const isDeletingThisFile = loadingAction === deleteKey;
 
               return (
                 <ConfiguredRow columns={listView.columns}
@@ -460,8 +418,6 @@ export function DmsDocumentFilesSection({
                   className={`transition-colors cursor-pointer ${
                     isSelected
                       ? "bg-primary/5 border-l-2 border-l-primary"
-                      : isConfirmingDelete
-                      ? "bg-destructive/5"
                       : "hover:bg-muted/20"
                   }`}
                   onClick={() => { if (canPreview) setSelectedFileId(isSelected ? null : f.id); }}
@@ -574,45 +530,7 @@ export function DmsDocumentFilesSection({
                         </Button>
                       )}
 
-                      {canDeleteFiles && !isConfirmingDelete && (
-                        <Button aria-label="Delete file (admin)"
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                          disabled={isDeletingThisFile}
-                          onClick={() => handleDeleteFile(f)}
-                          title="Delete file (admin)"
-                        >
-                          {isDeletingThisFile
-                            ? <div className="h-3 w-3 animate-spin rounded-full border border-destructive border-t-transparent" />
-                            : <Trash2 className="h-3.5 w-3.5" />}
-                        </Button>
-                      )}
 
-                      {canDeleteFiles && isConfirmingDelete && (
-                        <span className="flex items-center gap-1">
-                          <AlertTriangle className="h-3 w-3 text-destructive shrink-0" />
-                          <span className="text-[10px] text-destructive font-medium">Sure?</span>
-                          <Button aria-label="Confirm delete"
-                            size="icon"
-                            variant="ghost"
-                            className="h-6 w-6 text-destructive hover:bg-destructive/10"
-                            onClick={() => handleDeleteFile(f)}
-                            title="Confirm delete"
-                          >
-                            <Check className="h-3 w-3" />
-                          </Button>
-                          <Button aria-label="Cancel"
-                            size="icon"
-                            variant="ghost"
-                            className="h-6 w-6"
-                            onClick={() => setConfirmDeleteId(null)}
-                            title="Cancel"
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </span>
-                      )}
                     </div>
                   </td>
                 </ConfiguredRow>

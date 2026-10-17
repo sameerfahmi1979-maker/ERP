@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({ refresh: vi.fn(), allowed: true,
   sessions: { success: true, data: [] },
   defaults: { success: true, data: { categories: [], documentTypes: [] } } }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: state.refresh }), redirect: () => { throw new Error("denied"); } }));
+vi.mock("@/hooks/use-workspace", () => ({ useWorkspace: () => ({openTab: vi.fn()}) }));
 vi.mock("@/lib/rbac/check", () => ({ getAuthContext: async () => ({}), hasPermission: () => state.allowed, isGlobalAdmin: () => false }));
 vi.mock("@/server/actions/dms/documents", () => ({ getDmsDocuments: async () => state.docs, getArchivedDocuments: async () => state.docs, getDmsNewDocumentDefaults: async () => state.defaults }));
 vi.mock("@/server/reads/dms-documents",()=>({readDmsDocumentPage:async()=>({...state.docs,data:{rows:state.docs.data,totalCount:state.docs.data.length}})}));

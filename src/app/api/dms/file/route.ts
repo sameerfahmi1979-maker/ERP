@@ -5,6 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { checkDocumentConfidentialityAccess } from "@/lib/dms/document-access";
+import {createHash} from "node:crypto";
+
+const noStore = {"Cache-Control":"private, no-store", "Referrer-Policy":"no-referrer"};
+const unavailable = (error:string,status:number) => NextResponse.json({error},{status,headers:noStore});
 
 /**
  * GET /api/dms/file?fileId={id}&disposition={inline|attachment}
@@ -23,7 +27,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const dispositionParam = searchParams.get("disposition") ?? "inline";
 
     if (!fileIdRaw || !/^\d+$/.test(fileIdRaw) || !Number.isSafeInteger(Number(fileIdRaw)) || Number(fileIdRaw) <= 0 || !["inline", "attachment"].includes(dispositionParam)) {
-      return NextResponse.json({ error: "Invalid fileId" }, { status: 400 });
+      return unavailable("Invalid fileId",400);
     }
 
     const fileId = Number(fileIdRaw);
@@ -32,7 +36,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     // Auth
     const ctx = await getAuthContext();
     if (!ctx.profile) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      return unavailable("Not authenticated",401);
     }
 
     const requiredPermission = forceAttachment ? "dms.documents.download" : "dms.documents.preview";
@@ -42,7 +46,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     if (!hasAccess) {
       return NextResponse.json(
         { error: `Permission denied: requires ${requiredPermission}` },
-        { status: 403 }
+        { status: 403, headers:noStore }
       );
     }
 
@@ -50,13 +54,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const supabase = await createClient();
     const { data: file, error: fileError } = await supabase
       .from("dms_document_files")
-      .select("id, document_id, storage_bucket, storage_path, file_name, mime_type")
+      .select("id,document_id,version_id,storage_bucket,storage_path,file_name,mime_type,file_size_bytes,sha256_hash")
       .eq("id", fileId)
       .is("deleted_at", null)
       .single();
 
     if (fileError || !file) {
-      return NextResponse.json({ error: "File not found" }, { status: 404 });
+      return unavailable("File not found",404);
     }
 
     // Confidentiality check
@@ -69,7 +73,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     if (!access.allowed) {
       return NextResponse.json(
         { error: access.error ?? "Document access is restricted." },
-        { status: 403 }
+        { status: 403, headers:noStore }
       );
     }
 
@@ -82,7 +86,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     if (downloadError || !blob) {
       return NextResponse.json(
         { error: "The file could not be retrieved. Please retry." },
-        { status: 502 }
+        { status: 502, headers:noStore }
       );
     }
 
@@ -96,7 +100,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       current.data.document_id !== file.document_id || current.data.storage_bucket !== file.storage_bucket ||
       current.data.storage_path !== file.storage_path || current.data.mime_type !== file.mime_type || current.data.file_name !== file.file_name ||
       !(await checkDocumentConfidentialityAccess(supabase, file.document_id as number, ctx, requiredPermission)).allowed) {
-      return NextResponse.json({ error: "File access changed. Please retry." }, { status: 403 });
+      return unavailable("File access changed. Please retry.",403);
     }
 
     // Build response with correct headers
@@ -118,16 +122,21 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       "Content-Security-Policy": "sandbox; default-src 'none'; frame-ancestors 'self'",
       "Referrer-Policy": "no-referrer",
     });
-    // Logged after storage succeeds and before bytes are returned. This proves server
-    // delivery, not that the user saved/read the file or can later erase their copy.
-    const event = await adminClient.from("dms_document_events").insert({
-      document_id: file.document_id, event_type: forceAttachment ? "file_downloaded" : "file_previewed",
-      description: "File bytes served through authenticated endpoint",
-      performed_by: ctx.profile.id, metadata_json: { file_id: fileId, bytes: blob.size, delivery: "server_response" },
+    // Verify claims rather than trusting a browser-supplied actor. The restricted
+    // receipt operation rechecks the live original session, document capability
+    // and exact file/version/bytes atomically. No reusable storage URL escapes.
+    const claims = await supabase.auth.getClaims();
+    if (claims.error || !claims.data?.claims?.sub || claims.data.claims.sub !== ctx.profile.auth_user_id) return unavailable("File access changed. Please sign in again.",403);
+    const bytes = Buffer.from(await blob.arrayBuffer());
+    const event = await adminClient.rpc("f07_record_file_response", {
+      p_file:fileId, p_binding:file, p_action:forceAttachment?"download":"preview", p_bytes:bytes.length,
+      p_sha:createHash("sha256").update(bytes).digest("hex"),
+      p_claims:{sub:claims.data.claims.sub,session_id:claims.data.claims.session_id},
     });
-    if (event.error) return NextResponse.json({ error: "Download audit could not be recorded. Please retry." }, { status: 503 });
+    if (event.error || !event.data || event.data.fileId !== fileId || event.data.documentId !== file.document_id || !Number.isSafeInteger(event.data.eventId))
+      return unavailable("The current file response could not be verified. Please retry.",event.error?.code === "42501" ? 403 : event.error?.code === "PT409" ? 409 : 503);
     return new NextResponse(blob, { status: 200, headers });
   } catch {
-    return NextResponse.json({ error: "Unable to deliver the file." }, { status: 500 });
+    return unavailable("Unable to deliver the file.",500);
   }
 }

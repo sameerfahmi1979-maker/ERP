@@ -1,11 +1,9 @@
 "use server";
+import {changeDocumentVersion,versionIdentity} from "@/server/dms-version-transition";
 import {readAllPages} from "@/server/reads/all-pages";
 
 import { createClient } from "@/lib/supabase/server";
-import { logger } from "@/lib/logger";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
 import { checkDocumentConfidentialityAccess } from "@/lib/dms/document-access";
 
@@ -13,6 +11,7 @@ export type ActionResult<T = unknown> = {
   success: boolean;
   data?: T;
   error?: string;
+  uncertain?: boolean;
 };
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -59,6 +58,7 @@ export type DmsDocumentVersionRow = {
   version_label: string | null;
   change_notes: string | null;
   is_current: boolean;
+  unlinked_at?: string | null;
   created_by: number | null;
   created_at: string;
   // joined
@@ -131,7 +131,7 @@ export async function getDmsDocumentVersions(
       const result = await supabase
       .from("dms_document_versions")
       .select(
-        `id, document_id, version_number, version_label, change_notes, is_current,
+        `id, document_id, version_number, version_label, change_notes, is_current, unlinked_at,
          created_by, created_at,
          creator:user_profiles!created_by(full_name)`
       , {count:"exact"})
@@ -188,76 +188,12 @@ export async function getDmsDocumentFileSignedUrl(
 
 // ── Set current version ────────────────────────────────────────────────────────
 
-export async function setDmsDocumentCurrentVersion(
-  documentId: number,
-  versionId: number
-): Promise<ActionResult> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!hasPermission(ctx, "dms.documents.edit") && !hasPermission(ctx, "dms.admin")) {
-      return { success: false, error: "Permission denied: requires dms.documents.edit" };
-    }
-
-    // Verify version belongs to document
-    const { data: version, error: verError } = await supabase
-      .from("dms_document_versions")
-      .select("id, version_number, document_id")
-      .eq("id", versionId)
-      .eq("document_id", documentId)
-      .single();
-
-    if (verError || !version) return { success: false, error: "Version not found or does not belong to this document" };
-
-    // Mark all versions of this document as not current
-    await supabase
-      .from("dms_document_versions")
-      .update({ is_current: false })
-      .eq("document_id", documentId);
-
-    // Set selected version as current
-    await supabase
-      .from("dms_document_versions")
-      .update({ is_current: true })
-      .eq("id", versionId);
-
-    // Update document.current_version_id
-    await supabase
-      .from("dms_documents")
-      .update({
-        current_version_id: versionId,
-        updated_by: ctx.profile.id,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", documentId);
-
-    // Audit
-    await supabase.from("dms_document_events").insert({
-      document_id: documentId,
-      event_type: "current_version_changed",
-      description: `Current version set to v${version.version_number}`,
-      performed_by: ctx.profile.id,
-      metadata_json: { version_id: versionId, version_number: version.version_number },
-    });
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_document_versions",
-      entity_id: versionId,
-      entity_reference: String(documentId),
-      action: "update",
-      new_values: { is_current: true, version_number: version.version_number },
-    });
-
-    const { revalidatePath: rv } = await import("next/cache");
-    rv(`/dms/documents/record/${documentId}`);
-
-    return { success: true };
-  } catch (e) {
-    logger.error("setDmsDocumentCurrentVersion error", e);
-    return { success: false, error: String(e) };
-  }
+export async function setDmsDocumentCurrentVersion(documentId:number,versionId:number):Promise<ActionResult>{
+ const ctx=await getAuthContext();
+ if(!ctx.profile||(!hasPermission(ctx,"dms.documents.edit")&&!hasPermission(ctx,"dms.admin")))return {success:false,error:"Permission denied"};
+ const result=await changeDocumentVersion(await createClient(),documentId,versionId,"promote");
+ if(result.success){try{revalidatePath(`/dms/documents/record/${documentId}`);}catch{/* confirmed transaction wins */}}
+ return result;
 }
 
 // ── Unlink a version (DMS VERSION LINK.1 — Option B) ──────────────────────────
@@ -272,126 +208,17 @@ export type UnlinkVersionResult = {
   documentHasNoVersion: boolean;
 };
 
-export async function unlinkDmsDocumentVersion(
-  versionId: number
-): Promise<ActionResult<UnlinkVersionResult>> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!hasPermission(ctx, "dms.documents.edit") && !hasPermission(ctx, "dms.admin")) {
-      return { success: false, error: "Permission denied: requires dms.documents.edit" };
-    }
-
-    const { data: version, error: verError } = await supabase
-      .from("dms_document_versions")
-      .select("id, document_id, version_number, version_label, is_current")
-      .eq("id", versionId)
-      .single();
-
-    if (verError || !version) return { success: false, error: "Version not found" };
-
-    const documentId = version.document_id as number;
-
-    // Guard: block if a renewal request references this version as its replacement.
-    const { count: renewalRefCount } = await supabase
-      .from("dms_renewal_requests")
-      .select("id", { count: "exact", head: true })
-      .eq("replacement_version_id", versionId);
-
-    if ((renewalRefCount ?? 0) > 0) {
-      return {
-        success: false,
-        error: "This version is referenced by a renewal request and cannot be unlinked.",
-      };
-    }
-
-    const now = new Date().toISOString();
-
-    const { data: files } = await supabase
-      .from("dms_document_files")
-      .select("id")
-      .eq("version_id", versionId)
-      .is("deleted_at", null);
-
-    const fileIds = (files ?? []).map((f) => f.id as number);
-    if (fileIds.length > 0) {
-      await supabase.from("dms_document_files").update({ deleted_at: now }).in("id", fileIds);
-    }
-
-    const { error: deleteError } = await supabase
-      .from("dms_document_versions")
-      .delete()
-      .eq("id", versionId);
-
-    if (deleteError) return { success: false, error: deleteError.message };
-
-    let promotedVersionNumber: number | null = null;
-    let documentHasNoVersion = false;
-
-    if (version.is_current) {
-      const { data: nextVersion } = await supabase
-        .from("dms_document_versions")
-        .select("id, version_number")
-        .eq("document_id", documentId)
-        .order("version_number", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (nextVersion) {
-        await supabase
-          .from("dms_document_versions")
-          .update({ is_current: true })
-          .eq("id", nextVersion.id);
-        await supabase
-          .from("dms_documents")
-          .update({ current_version_id: nextVersion.id, updated_by: ctx.profile.id, updated_at: now })
-          .eq("id", documentId);
-        promotedVersionNumber = nextVersion.version_number as number;
-      } else {
-        await supabase
-          .from("dms_documents")
-          .update({ current_version_id: null, updated_by: ctx.profile.id, updated_at: now })
-          .eq("id", documentId);
-        documentHasNoVersion = true;
-      }
-    }
-
-    await supabase.from("dms_document_events").insert({
-      document_id: documentId,
-      event_type: "version_unlinked",
-      description: `Version v${version.version_number} unlinked${
-        promotedVersionNumber ? ` — v${promotedVersionNumber} promoted to current` : ""
-      }`,
-      performed_by: ctx.profile.id,
-      performed_at: now,
-      metadata_json: {
-        version_id: versionId,
-        version_number: version.version_number,
-        files_removed: fileIds.length,
-        promoted_version_number: promotedVersionNumber,
-      },
-    });
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_document_versions",
-      entity_id: versionId,
-      entity_reference: String(documentId),
-      action: "delete",
-      new_values: { version_number: version.version_number, files_removed: fileIds.length },
-    });
-
-    revalidatePath(`/dms/documents/record/${documentId}`);
-
-    return {
-      success: true,
-      data: { filesRemoved: fileIds.length, promotedVersionNumber, documentHasNoVersion },
-    };
-  } catch (e) {
-    logger.error("unlinkDmsDocumentVersion error", e);
-    return { success: false, error: String(e) };
-  }
+export async function unlinkDmsDocumentVersion(versionId:number):Promise<ActionResult<UnlinkVersionResult>>{
+ try{
+  const ctx=await getAuthContext();
+  if(!ctx.profile||(!hasPermission(ctx,"dms.documents.edit")&&!hasPermission(ctx,"dms.admin")))return {success:false,error:"Permission denied"};
+  if(!versionIdentity.safeParse(versionId).success)return {success:false,error:"The selected version is invalid."};
+  const client=await createClient(),version=await client.from("dms_document_versions").select("id,document_id").eq("id",versionId).maybeSingle();
+  if(version.error||!version.data)return {success:false,error:"The selected version could not be verified."};
+  const result=await changeDocumentVersion(client,version.data.document_id,versionId,"unlink");
+  if(result.success){try{revalidatePath(`/dms/documents/record/${version.data.document_id}`);}catch{/* confirmed transaction wins */}}
+  return result;
+ }catch{return {success:false,error:"The version could not be prepared. No new version change was sent."};}
 }
 
 // ── Admin: purge a file record and all its connections ────────────────────────
@@ -405,203 +232,10 @@ export type AdminDeleteFileResult = {
   currentVersionUpdated: boolean;
 };
 
-export async function adminDeleteDmsDocumentFile(
-  fileId: number
-): Promise<ActionResult<AdminDeleteFileResult>> {
-  try {
-    const supabase = await createClient();
-    const adminClient = createAdminClient();
-    const ctx = await getAuthContext();
-
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!hasPermission(ctx, "dms.admin")) {
-      return { success: false, error: "Permission denied: requires dms.admin" };
-    }
-
-    // ── Load the file record ────────────────────────────────────────────────
-
-    const { data: file, error: fileError } = await supabase
-      .from("dms_document_files")
-      .select("id, document_id, version_id, storage_bucket, storage_path, file_name, file_role")
-      .eq("id", fileId)
-      .is("deleted_at", null)
-      .single();
-
-    if (fileError || !file) return { success: false, error: "File record not found or already deleted" };
-
-    const documentId = file.document_id as number;
-    const versionId = file.version_id as number | null;
-    const access = await checkDocumentConfidentialityAccess(supabase, documentId, ctx, "dms.admin");
-    if (!access.allowed) return { success: false, error: "Document administration is outside your permitted scope." };
-    const storageBucket = (file.storage_bucket as string) || "dms-documents";
-    const storagePath = file.storage_path as string | null;
-    const fileName = file.file_name as string;
-    const now = new Date().toISOString();
-
-    const result: AdminDeleteFileResult = {
-      fileDeleted: false,
-      storageDeleted: false,
-      storageAlreadyMissing: false,
-      aiResultsNulled: 0,
-      versionCleaned: false,
-      currentVersionUpdated: false,
-    };
-
-    // ── 1. Remove from storage ─────────────────────────────────────────────
-
-    if (storagePath) {
-      const { error: storageError } = await adminClient.storage
-        .from(storageBucket)
-        .remove([storagePath]);
-
-      if (storageError) {
-        // Storage returns an error for missing files in some versions.
-        // Treat "not found" gracefully — the goal is cleanup.
-        const msg = storageError.message?.toLowerCase() ?? "";
-        if (msg.includes("not found") || msg.includes("does not exist") || msg.includes("404")) {
-          result.storageAlreadyMissing = true;
-        } else {
-          logger.error(`Storage delete warning for ${storagePath}:`, storageError.message);
-          result.storageAlreadyMissing = true; // treat as missing, continue
-        }
-      } else {
-        result.storageDeleted = true;
-      }
-    } else {
-      result.storageAlreadyMissing = true;
-    }
-
-    // ── 2. Null out file_id on AI extraction results for this file ────────
-    // Note: dms_ai_extraction_jobs does not have a file_id column — only results do.
-
-    const { count: aiResultCount } = await supabase
-      .from("dms_ai_extraction_results")
-      .select("id", { count: "exact", head: true })
-      .eq("file_id", fileId);
-
-    if ((aiResultCount ?? 0) > 0) {
-      await supabase
-        .from("dms_ai_extraction_results")
-        .update({ file_id: null })
-        .eq("file_id", fileId);
-      result.aiResultsNulled = aiResultCount ?? 0;
-    }
-
-    // ── 4. Soft-delete the file record ────────────────────────────────────
-
-    await supabase
-      .from("dms_document_files")
-      .update({ deleted_at: now })
-      .eq("id", fileId);
-
-    result.fileDeleted = true;
-
-    // ── 5. Version cleanup: if version has no remaining files, clean up ────
-
-    if (versionId) {
-      const { count: remainingFiles } = await supabase
-        .from("dms_document_files")
-        .select("id", { count: "exact", head: true })
-        .eq("version_id", versionId)
-        .is("deleted_at", null);
-
-      if ((remainingFiles ?? 0) === 0) {
-        // Version is now empty — check if it was the current version
-        const { data: version } = await supabase
-          .from("dms_document_versions")
-          .select("id, is_current, version_number")
-          .eq("id", versionId)
-          .single();
-
-        if (version?.is_current) {
-          // Find the next most recent version that still has files
-          const { data: prevVersions } = await supabase
-            .from("dms_document_versions")
-            .select(`id, version_number,
-              files:dms_document_files(id)`)
-            .eq("document_id", documentId)
-            .neq("id", versionId)
-            .order("version_number", { ascending: false });
-
-          const nextVersion = prevVersions?.find(
-            (v) => (v.files as { id: number }[]).length > 0
-          );
-
-          if (nextVersion) {
-            // Promote this version as current
-            await supabase
-              .from("dms_document_versions")
-              .update({ is_current: false })
-              .eq("document_id", documentId);
-            await supabase
-              .from("dms_document_versions")
-              .update({ is_current: true })
-              .eq("id", nextVersion.id);
-            await supabase
-              .from("dms_documents")
-              .update({ current_version_id: nextVersion.id, updated_by: ctx.profile.id, updated_at: now })
-              .eq("id", documentId);
-            result.currentVersionUpdated = true;
-          } else {
-            // No other versions with files — clear current_version_id
-            await supabase
-              .from("dms_documents")
-              .update({ current_version_id: null, updated_by: ctx.profile.id, updated_at: now })
-              .eq("id", documentId);
-            result.currentVersionUpdated = true;
-          }
-        }
-
-        // Mark the now-empty version as not current
-        await supabase
-          .from("dms_document_versions")
-          .update({ is_current: false })
-          .eq("id", versionId);
-
-        result.versionCleaned = true;
-      }
-    }
-
-    // ── 6. Document event + audit ─────────────────────────────────────────
-
-    await supabase.from("dms_document_events").insert({
-      document_id: documentId,
-      event_type: "file_deleted_by_admin",
-      description: `File "${fileName}" permanently deleted by admin`,
-      performed_by: ctx.profile.id,
-      performed_at: now,
-      metadata_json: {
-        file_id: fileId,
-        storage_path: storagePath,
-        storage_deleted: result.storageDeleted,
-        storage_already_missing: result.storageAlreadyMissing,
-        ai_results_nulled: result.aiResultsNulled,
-        version_cleaned: result.versionCleaned,
-      },
-    });
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_document_files",
-      entity_id: fileId,
-      entity_reference: fileName,
-      action: "delete",
-      new_values: {
-        event: "admin_file_purge",
-        document_id: documentId,
-        storage_path: storagePath,
-        storage_deleted: result.storageDeleted,
-      },
-    });
-
-    revalidatePath(`/dms/documents/record/${documentId}`);
-    revalidatePath("/dms/documents");
-
-    return { success: true, data: result };
-  } catch (e) {
-    logger.error("adminDeleteDmsDocumentFile error", e);
-    return { success: false, error: String(e) };
-  }
+/** No Storage-first destructive fallback: preserve originals, decisions and receipts. */
+export async function adminDeleteDmsDocumentFile(_fileId:number):Promise<ActionResult<AdminDeleteFileResult>> {
+  if(!Number.isSafeInteger(_fileId)||_fileId<=0)return {success:false,error:"Invalid file identifier"};
+  return {success:false,error:"Permanent file disposal is unavailable in a record form. Unlink a version using the checked lifecycle action, or request separately approved retention review."};
 }
 
 // ── Admin: scoped files, including deleted files of accessible active documents ──
@@ -689,98 +323,12 @@ export async function adminListDmsFiles(opts?: {
   }
 }
 
-// ── Admin: HARD-delete a file record + storage + AI results ──────────────────
-// Unlike the soft-delete approach, this permanently removes the DB row so the
-// sha256_hash is fully gone and can never trigger duplicate detection again.
-
+/** Permanent disposal is deliberately unavailable until a separately approved
+ * retention/legal-hold/independent-approval contract exists. Refuse before any
+ * Storage or database call: a later SQL denial cannot recover deleted bytes. */
 export async function adminHardDeleteDmsFile(
   fileId: number
 ): Promise<ActionResult<{ storageDeleted: boolean; aiResultsRemoved: number }>> {
-  try {
-    const supabase = await createClient();
-    const adminClient = createAdminClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!hasPermission(ctx, "dms.admin")) return { success: false, error: "Permission denied: requires dms.admin" };
-
-    // Load file record (allow already-soft-deleted rows so we can fully clean them)
-    const { data: file, error: fileError } = await supabase
-      .rpc("f03_read_document_files_for_admin", {}, { get: true })
-      .select("id, document_id, storage_bucket, storage_path, file_name")
-      .eq("id", fileId)
-      .maybeSingle();
-
-    if (fileError || !file) return { success: false, error: "File record not found" };
-
-    const storageBucket = (file.storage_bucket as string) || "dms-documents";
-    const storagePath = file.storage_path as string | null;
-    const fileName = file.file_name as string;
-    const documentId = file.document_id as number | null;
-    if (documentId === null || !(await checkDocumentConfidentialityAccess(supabase, documentId, ctx, "dms.admin")).allowed) {
-      return { success: false, error: "Document administration is outside your permitted scope." };
-    }
-
-    let storageDeleted = false;
-
-    // 1. Delete from storage
-    if (storagePath) {
-      const { error: storageErr } = await adminClient.storage
-        .from(storageBucket)
-        .remove([storagePath]);
-      if (!storageErr) storageDeleted = true;
-    }
-
-    // 2. Null out file_id on AI extraction results
-    const { count: aiCount } = await supabase
-      .from("dms_ai_extraction_results")
-      .select("id", { count: "exact", head: true })
-      .eq("file_id", fileId);
-
-    if ((aiCount ?? 0) > 0) {
-      await supabase
-        .from("dms_ai_extraction_results")
-        .update({ file_id: null })
-        .eq("file_id", fileId);
-    }
-
-    // 3. HARD-delete the row — sha256_hash is now completely gone from the table
-    await supabase
-      .from("dms_document_files")
-      .delete()
-      .eq("id", fileId);
-
-    // 4. Clear current_version_id on the document if it now has no active files
-    if (documentId) {
-      const { count: remainingFiles } = await supabase
-        .from("dms_document_files")
-        .select("id", { count: "exact", head: true })
-        .eq("document_id", documentId)
-        .is("deleted_at", null);
-
-      if ((remainingFiles ?? 0) === 0) {
-        await supabase
-          .from("dms_documents")
-          .update({ current_version_id: null })
-          .eq("id", documentId);
-      }
-    }
-
-    // 5. Audit
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_document_files",
-      entity_id: fileId,
-      entity_reference: fileName,
-      action: "delete",
-      new_values: { event: "admin_hard_delete", storage_path: storagePath, storage_deleted: storageDeleted },
-    });
-
-    if (documentId) revalidatePath(`/dms/documents/record/${documentId}`);
-    revalidatePath("/dms/documents");
-
-    return { success: true, data: { storageDeleted, aiResultsRemoved: aiCount ?? 0 } };
-  } catch (e) {
-    logger.error("adminHardDeleteDmsFile error", e);
-    return { success: false, error: String(e) };
-  }
+  if(!Number.isSafeInteger(fileId)||fileId<=0)return {success:false,error:"Invalid file identifier"};
+  return {success:false,error:"Permanent file disposal is unavailable. It requires a separately approved retention and legal-hold process; use the permitted replacement, unlink or archive operations for routine work."};
 }

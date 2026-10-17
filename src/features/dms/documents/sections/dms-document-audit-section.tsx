@@ -1,111 +1,38 @@
 "use client";
+import {useState} from "react";
 import {DmsLoadError} from "@/features/dms/dms-load-error";
-import {readDmsSection} from "@/features/dms/documents/section-read";
+import {readDmsSection} from "../section-read";
+import {useDmsSectionQuery} from "../section-activity";
+import {Button} from "@/components/ui/button";
+import {format,parseISO} from "date-fns";
 
-import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
-import { format, parseISO } from "date-fns";
-import { Loader2, Activity } from "lucide-react";
-
-import { queryKeys } from "@/lib/query/query-keys";
-
-const EVENT_LABELS: Record<string, string> = {
-  document_created: "Document created",
-  document_updated: "Document updated",
-  archived: "Document archived",
-  unarchived: "Document unarchived",
-  deleted: "Document deleted",
-  metadata_updated: "Metadata updated",
-  link_added: "Entity link added",
-  link_removed: "Entity link removed",
-  tags_updated: "Tags updated",
-  comment_added: "Comment added",
-  comment_updated: "Comment updated",
-  comment_deleted: "Comment deleted",
-  status_changed: "Status changed",
-  uploaded: "File uploaded",
-  version_added: "Version added",
-  file_uploaded: "File uploaded",
-  version_uploaded: "New version linked",
-  version_unlinked: "Version unlinked",
-  current_version_changed: "Current version changed",
-  ocr_completed: "OCR completed",
-  ai_extracted: "AI extraction completed",
-  approved: "Approved",
-  rejected: "Rejected",
-};
-
-interface DmsDocumentAuditSectionProps {
-  documentId: number | null;
-}
-
-export function DmsDocumentAuditSection({ documentId }: DmsDocumentAuditSectionProps) {
-  const { data: events = [], isLoading, isError, isFetching, refetch } = useQuery({
-    queryKey: queryKeys.dms.documentEvents(documentId ?? 0),
-    queryFn: async ({signal}) => {
-      if (!documentId) return [];
-      const r = await readDmsSection("getDmsDocumentEvents", [documentId], signal);
-      if(!r.success || !r.data) throw new Error("Document section unavailable");
-      return r.data;
-    },
-    enabled: !!documentId,
-    staleTime: 30 * 1000,
-  });
-
-  if (!documentId) {
-    return (
-      <div className="text-sm text-muted-foreground py-6 text-center">
-        Save the document to see audit events.
-      </div>
-    );
-  }
-
-  if (isError) return <DmsLoadError subject="audit events" pending={isFetching} retry={()=>refetch()} />;
-  if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 py-4 text-muted-foreground text-sm">
-        <Loader2 className="h-4 w-4 animate-spin" /> Loading audit events...
-      </div>
-    );
-  }
-
-  if (events.length === 0) {
-    return (
-      <div className="flex flex-col items-center gap-2 py-6 text-muted-foreground">
-        <Activity className="h-6 w-6 opacity-40" />
-        <p className="text-sm">No audit events yet</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-0">
-      <div className="relative">
-        {events.map((event, index) => (
-          <div key={event.id} className="relative flex gap-3 pb-4">
-            {index < events.length - 1 && (
-              <div className="absolute left-[7px] top-4 bottom-0 w-px bg-border" />
-            )}
-            <div className="flex-shrink-0 w-4 h-4 rounded-full bg-muted border-2 border-border mt-0.5" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium">
-                {EVENT_LABELS[event.event_type] ?? event.event_type}
-              </p>
-              {event.description && (
-                <p className="text-xs text-muted-foreground mt-0.5">{event.description}</p>
-              )}
-              <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground">
-                <span>{format(parseISO(event.performed_at), "dd MMM yyyy HH:mm")}</span>
-                {(event.performer as { display_name?: string } | null)?.display_name && (
-                  <>
-                    <span>·</span>
-                    <span>{(event.performer as { display_name?: string }).display_name}</span>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+const labels:Record<string,string>={file_download_response_prepared:"Download response prepared",file_preview_response_prepared:"Preview response prepared",
+ file_downloaded:"Legacy download event",file_previewed:"Legacy preview event",archived:"Document archived",unarchived:"Document restored"};
+export function DmsDocumentAuditSection({documentId}:{documentId:number|null}) {
+ const [page,setPage]=useState(1),[filter,setFilter]=useState<"all"|"downloads">("all");
+ const read=useDmsSectionQuery({queryKey:["dms","document-events-page",documentId,page,filter],enabled:!!documentId,staleTime:0,
+  queryFn:async({signal})=>{const r=await readDmsSection("getDmsDocumentHistoryPage",[documentId!,page,filter],signal);if(!r.success||!r.data)throw Error("History unavailable");return r.data;}});
+ if(!documentId)return <p>Save the document to see history.</p>;
+ const data=read.data;
+ return <section aria-label="History and downloads" className="space-y-3">
+  <div className="flex flex-wrap items-center gap-2">
+   <label className="text-sm">Show <select aria-label="History type" value={filter} onChange={e=>{setFilter(e.target.value as "all"|"downloads");setPage(1);}} className="rounded border border-input bg-background text-foreground p-2">
+    <option value="all">All lifecycle events</option><option value="downloads">Downloads & previews</option></select></label>
+   <Button type="button" size="sm" variant="outline" onClick={()=>void read.refetch()}>Refresh history</Button>
+  </div>
+  <p className="text-xs text-muted-foreground">A response receipt records server preparation, not proof that a person received, read or saved the file. Already downloaded copies cannot be revoked. Legacy events retain their original evidence level.</p>
+  {read.isError?<DmsLoadError subject="document history" pending={read.isFetching} retry={()=>read.refetch()}/>:
+   read.isFetching||!data?<p role="status">Loading verified history…</p>:<>
+    {data.rows.length===0&&<p>{data.totalCount===0?"No matching history recorded.":"No events on this page. Return to an earlier page."}</p>}
+    <ol className="space-y-3">{data.rows.map(event=>{const m=event.metadata_json as Record<string,unknown>;return <li key={event.id} className="border-l-2 border-border pl-3 text-sm space-y-1">
+     <h4 className="font-medium">{labels[event.event_type]??event.event_type.replaceAll("_"," ")}</h4>
+     {event.description&&<p>{event.description}</p>}
+     <p className="text-xs text-muted-foreground">{format(parseISO(event.performed_at),"dd MMM yyyy HH:mm:ss")} · {event.performer?.display_name??"Actor label unavailable"} · Event #{event.id}</p>
+     {typeof m.file_id==="number"&&<p className="text-xs">File #{m.file_id}{typeof m.version_id==="number"?` · Version #${m.version_id}`:""}{typeof m.bytes==="number"?` · ${m.bytes} bytes`:""}{m.historical===true?" · Historical version":""}</p>}
+    </li>;})}</ol>
+    <div className="flex flex-wrap items-center justify-between gap-2 text-xs"><span>{data.totalCount} events · Page {page} of {Math.max(1,Math.ceil(data.totalCount/data.pageSize))}</span>
+     <div className="flex gap-2"><Button type="button" size="sm" variant="outline" disabled={page<=1} onClick={()=>setPage(page-1)}>Previous history</Button>
+      <Button type="button" size="sm" variant="outline" disabled={page*data.pageSize>=data.totalCount} onClick={()=>setPage(page+1)}>Next history</Button></div></div>
+   </>}
+ </section>;
 }

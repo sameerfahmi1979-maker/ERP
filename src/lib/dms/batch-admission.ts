@@ -33,7 +33,7 @@ export const dmsFileMetadataSchema = z.object({
 }).strict().superRefine((v, ctx) => {
   if (!effectiveDmsMime(v.original_filename, v.mime_type)) ctx.addIssue({code: "custom", message: "File type and extension must match", path: ["mime_type"]});
 }).transform(v => ({...v, mime_type: effectiveDmsMime(v.original_filename, v.mime_type)!}));
-export const batchContextSchema = z.object({type: z.literal("party"), id: safeId}).strict().nullable();
+export const batchContextSchema = z.object({type: z.enum(['party','employee','employee_dependent','company','branch','site']), id: safeId}).strict().nullable();
 export const batchFileSchema = z.object({
   position: z.number().int().min(0).max(9), original_filename: z.string().refine(validBatchFilename),
   mime_type: z.string(), file_size_bytes: safeId.max(BATCH_MAX_BYTES),
@@ -51,7 +51,7 @@ export const batchOriginSchema = z.object({authUserId: batchUuid, profileId: saf
 export type BatchOrigin = z.infer<typeof batchOriginSchema>;
 export function canonicalBatchManifest(manifest: BatchManifest): string {
   const v = batchManifestSchema.parse(manifest);
-  return JSON.stringify(["dms-batch-admission/v1", v.context ? ["party", v.context.id] : null,
+  return JSON.stringify(["dms-batch-admission/v1", v.context ? [v.context.type, v.context.id] : null,
     v.files.map(f => [f.position, f.original_filename, f.mime_type, f.file_size_bytes, f.sha256_hash])]);
 }
 export async function batchFingerprint(manifest: BatchManifest): Promise<string> {

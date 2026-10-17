@@ -1,0 +1,13 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+import type {SupabaseClient} from '@supabase/supabase-js';
+import {discardRetainedIntake} from '@/server/dms-intake-discard';
+const rpc=vi.fn(),client={rpc} as unknown as SupabaseClient;
+const input={sessionId:44,documentId:11,reason:'Synthetic abandoned draft'};
+const receipt={uploadSessionId:44,documentId:11,batchId:7,retained:true,replayed:false};
+beforeEach(()=>{vi.resetAllMocks();rpc.mockResolvedValue({data:receipt,error:null});});
+it('uses one caller-scoped transaction and validates its retained receipt',async()=>{expect(await discardRetainedIntake(client,input)).toEqual({ok:true,batchId:7});expect(rpc).toHaveBeenCalledExactlyOnceWith('f07_discard_intake',{p_session:44,p_document:11,p_reason:input.reason});});
+it.each([0,-1,1.5,Number.MAX_SAFE_INTEGER+1])('invalid session %s never dispatches',async sessionId=>{expect(await discardRetainedIntake(client,{...input,sessionId})).toMatchObject({ok:false});expect(rpc).not.toHaveBeenCalled();});
+it('keeps the original request on response loss',async()=>{rpc.mockRejectedValueOnce(Error('private loss')).mockResolvedValueOnce({data:{...receipt,replayed:true},error:null});expect(await discardRetainedIntake(client,input)).toMatchObject({ok:false,uncertain:true});expect(await discardRetainedIntake(client,input)).toMatchObject({ok:true,batchId:7});expect(rpc.mock.calls[0]).toEqual(rpc.mock.calls[1]);});
+it.each(['42501','PT409','23514'])('reports a confirmed rejection without private details %s',async code=>{rpc.mockResolvedValue({data:null,error:{code,message:'PRIVATE'}});const r=await discardRetainedIntake(client,input);expect(r).toMatchObject({ok:false,uncertain:false});expect(JSON.stringify(r)).not.toContain('PRIVATE');});
+it.each([null,{}, {...receipt,documentId:99},{...receipt,uploadSessionId:99},{...receipt,retained:false}])('does not acknowledge an invalid receipt %j',async data=>{rpc.mockResolvedValue({data,error:null});expect(await discardRetainedIntake(client,input)).toMatchObject({ok:false,uncertain:true});});
+it('transport/server uncertainty cannot launch a destructive fallback',async()=>{rpc.mockResolvedValue({error:{code:'PGRST000',message:'PRIVATE'}});expect(await discardRetainedIntake(client,input)).toMatchObject({ok:false,uncertain:true});expect(rpc).toHaveBeenCalledTimes(1);});

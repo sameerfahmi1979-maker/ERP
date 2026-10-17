@@ -26,9 +26,9 @@ export function DmsApplyToErpItemTable({ items, selectedIndices, onToggle, disab
       meta: { filter: { type: "text" } }, size: 240,
       cell: ({ row }) => <div><div className="font-medium">{row.original.targetDisplayLabel}</div>
         <div className="text-xs text-muted-foreground">{row.original.targetTable}.{row.original.targetField}</div></div> },
-    { id: "current", accessorKey: "currentValueSummary", header: "Current value", size: 220,
+    { id: "current", accessorFn:row=>row.targetField==='tax_registration_number'?row.currentValueSummary:row.currentValue??row.currentValueSummary, header: "Current value", size: 220,
       meta: { filter: { type: "text" } }, cell: ({ getValue }) => String(getValue() ?? "Empty") },
-    { id: "proposed", accessorKey: "proposedValueSummary", header: "Proposed value", size: 220,
+    { id: "proposed", accessorFn: row => row.targetField==='tax_registration_number'?row.proposedValueSummary:row.proposedValue ?? row.proposedValueSummary, header: "Proposed value", size: 220,
       meta: { filter: { type: "text" } }, cell: ({ row,getValue }) => <span className="whitespace-pre-wrap break-words">{row.original.targetField==='tax_registration_number'?String(getValue()??'Empty'):row.original.proposedValue??String(getValue()??'Empty')}</span> },
     { id: "confidence", accessorKey: "confidence", header: "Confidence", size: 140,
       meta: { filter: { type: "number" } },

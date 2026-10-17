@@ -203,6 +203,7 @@ export function DmsDocumentVersionsSection({
                         <CheckCircle2 className="h-2.5 w-2.5" /> Current
                       </Badge>
                     )}
+                    {v.unlinked_at && <Badge variant="outline">Unlinked — history retained</Badge>}
                     {v.version_label && (
                       <Badge variant="outline" className="text-xs text-muted-foreground">
                         {v.version_label}
@@ -219,7 +220,7 @@ export function DmsDocumentVersionsSection({
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0">
-                    {canEdit && !v.is_current && (
+                    {canEdit && !v.is_current && !v.unlinked_at && (
                       <Button aria-label="Set as current version"
                         type="button"
                         size="sm"
@@ -231,7 +232,7 @@ export function DmsDocumentVersionsSection({
                         <Star className="h-3 w-3" /> Set Current
                       </Button>
                     )}
-                    {canEdit && (
+                    {canEdit && !v.unlinked_at && (
                       <Button aria-label="Unlink this version"
                         type="button"
                         size="sm"

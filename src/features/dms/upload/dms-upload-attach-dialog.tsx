@@ -17,6 +17,10 @@ import type { DmsDocumentRow } from "@/server/actions/dms/documents";
 import { attachUploadToExistingDocument } from "@/server/actions/dms/document-upload-attach";
 import { FileTypeIcon } from "./dms-file-type-icon";
 import { FileSize } from "./dms-file-size";
+import {DmsExactFileReview} from '@/features/dms/intake/dms-exact-file-review';
+import {confirmExactIntakeReview} from '@/server/actions/dms/intake-review';
+import type {IntakeReviewConfirmation} from '@/lib/dms/intake-review';
+import {DmsAttachmentRecovery} from './dms-attachment-recovery';
 
 interface DmsUploadAttachDialogProps {
   open: boolean;
@@ -41,6 +45,9 @@ function UploadAttachSession({
   const [changeNotes, setChangeNotes] = useState("");
   const [versionLabel, setVersionLabel] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fileReview,setFileReview]=useState<IntakeReviewConfirmation|null>(null);
+  const confirmedReview=useRef<string|null>(null);
+  const [recoveryBlocking,setRecoveryBlocking]=useState(true);
 
   const flight=useRef(false);
   const [search,setSearch]=useState(""),[debounced,setDebounced]=useState("");
@@ -54,6 +61,7 @@ function UploadAttachSession({
   if(selected&&!targetQuery.isError&&!documentOptions.some(row=>row.value===selected.value))documentOptions.unshift(selected);
 
   const handleSubmit = async () => {
+    if(recoveryBlocking){toast.error('Read or reconcile the original attachment request before starting a replacement.');return;}
     if (!session || !targetReady || flight.current) return;
     if (!documentId) {
       toast.error("Please select a document");
@@ -61,6 +69,9 @@ function UploadAttachSession({
     }
     flight.current=true;setIsSubmitting(true);
     try {
+      if(!fileReview||fileReview.sessionId!==session.id||fileReview.documentId!==documentId){toast.error('Verify and confirm the original file for this destination first.');return;}
+      const key=JSON.stringify(fileReview);
+      if(confirmedReview.current!==key){const reviewed=await confirmExactIntakeReview(fileReview);if(!reviewed.success){toast.error(reviewed.error);return;}confirmedReview.current=key;}
       const result = await attachUploadToExistingDocument({
         uploadSessionId: session.id,
         documentId,
@@ -109,6 +120,7 @@ function UploadAttachSession({
       onSubmit={handleSubmit}
     >
       <div className="space-y-4">
+        {session&&<DmsAttachmentRecovery open={open} uploadSessionId={session.id} onBlockingChange={setRecoveryBlocking} onRecovered={id=>{onSuccess?.(id);onOpenChange(false);router.refresh();}} onCancelled={()=>{onOpenChange(false);router.refresh();}}/>}
         {session && (
           <div className="flex items-center gap-3 p-3 rounded-md border border-border bg-muted/10">
             <FileTypeIcon mimeType={session.mime_type} className="h-5 w-5" />
@@ -167,9 +179,10 @@ function UploadAttachSession({
           </div>
         </div>
 
+        {session&&documentId&&<DmsExactFileReview sessionId={session.id} documentId={documentId} reviewKey={JSON.stringify({changeNotes,versionLabel})} disabled={isSubmitting} onChange={setFileReview}/>}
         {session?.is_duplicate && (
           <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-            ⚠ This file is a duplicate. The attach will proceed with admin override.
+            This upload is marked as a duplicate. Linking it does not grant an administrator override; exact-file review and destination permissions still apply.
           </div>
         )}
       </div>

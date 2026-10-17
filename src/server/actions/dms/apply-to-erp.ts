@@ -1,4 +1,5 @@
 "use server";
+import {previewDmsUpdate,prepareDmsUpdate,executeDmsUpdate,cancelDmsUpdate} from "@/server/dms-reviewed-updates";
 import {readAllPages} from "@/server/reads/all-pages";
 
 /**
@@ -35,30 +36,13 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/check";
 import { checkDocumentConfidentialityAccess } from "@/lib/dms/document-access";
-import { logAudit } from "@/server/actions/audit";
 import { logger } from "@/lib/logger";
 import { revalidatePath } from "next/cache";
 import {preparePartyDmsRun,executePartyDmsRun,cancelPartyDmsRun} from '@/server/party-dms-apply';
 import {
   validateApplyTarget,
   isForbiddenTarget,
-  getTargetPermissions,
 } from "@/lib/dms/apply-to-erp/apply-target-registry";
-import {
-  normalizeApplyValue,
-  buildValueSummary,
-  truncateSummary,
-} from "@/lib/dms/apply-to-erp/apply-value-normalizer";
-import {
-  detectDmsDocumentFieldConflict,
-} from "@/lib/dms/apply-to-erp/apply-conflict-detector";
-import {
-  buildRunCreatedMeta,
-  buildRunCompletedMeta,
-  buildRunCancelledMeta,
-  buildItemAppliedMeta,
-  buildItemSkippedMeta,
-} from "@/lib/dms/apply-to-erp/apply-audit";
 import type {
   ActionResult,
   ApplyRunStatus,
@@ -69,7 +53,6 @@ import type {
   CreateApplyRunInput,
   ApplyRunConfirmation,
   ApplyRunResult,
-  ApplyValueType,
   PartyApplyTargetKind,
   PartyLicenseRow,
   PartyTaxRow,
@@ -112,35 +95,10 @@ async function isDmsApplyToErpSubFlagEnabled(
   }
 }
 
-/** Check all required Tier 2 party flags for a given target table. */
-async function checkPartySubFlags(
-  targetTable: "party_licenses" | "party_tax_registrations"
-): Promise<{ ok: boolean; reason?: string }> {
-  const partyGate = await isDmsApplyToErpSubFlagEnabled("DMS_AI_APPLY_TO_ERP_PARTY");
-  if (!partyGate) return { ok: false, reason: "DMS_AI_APPLY_TO_ERP_PARTY is disabled" };
-
-  if (targetTable === "party_licenses") {
-    const ok = await isDmsApplyToErpSubFlagEnabled("DMS_AI_APPLY_TO_ERP_PARTY_LICENSES");
-    if (!ok) return { ok: false, reason: "DMS_AI_APPLY_TO_ERP_PARTY_LICENSES is disabled" };
-  } else {
-    const ok = await isDmsApplyToErpSubFlagEnabled("DMS_AI_APPLY_TO_ERP_PARTY_TAX");
-    if (!ok) return { ok: false, reason: "DMS_AI_APPLY_TO_ERP_PARTY_TAX is disabled" };
-  }
-  return { ok: true };
-}
-
-// ── Run code generator ─────────────────────────────────────────────────────────
-
-function generateRunCode(): string {
-  const ts = new Date().toISOString().replace(/[-:T.Z]/g, "").slice(0, 14);
-  const rand = Math.random().toString(36).slice(2, 7).toUpperCase();
-  return `APPLY-${ts}-${rand}`;
-}
-
 // ── Input Schemas ─────────────────────────────────────────────────────────────
 
 const ApplyItemProposalSchema = z.object({
-  proposedValue: z.string().max(1000).optional(),
+  proposedValue: z.string().max(16000).optional(),
   reviewedRevision: z.string().regex(/^[1-9]\d*$/).optional(),
   sourceType:           z.enum(["extraction_result", "validation_finding", "entity_match_candidate", "dms_metadata_apply"]),
   sourceId:             z.number().int().positive().nullable().optional(),
@@ -159,6 +117,7 @@ const ApplyItemProposalSchema = z.object({
 
 const CreateRunInputSchema = z.object({
   requestId: z.uuid().optional(),
+  reviewedSnapshot: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   sourceType:        z.enum(["extraction_result", "validation_finding", "entity_match_candidate", "dms_metadata_apply"]),
   sourceId:          z.number().int().positive().nullable().optional(),
   documentId:        z.number().int().positive(),
@@ -288,107 +247,7 @@ export async function createDmsApplyToErpRun(
     if(input.targetModule==='party')return preparePartyDmsRun(input as CreateApplyRunInput);
     if(input.items.some(i=>['party_licenses','party_tax_registrations'].includes(i.targetTable)))return {success:false,error:'Party fields require a party review.',errorCode:'invalid_input'};
 
-    // Validate all items against allowlist and forbidden list
-    const validItems = input.items.filter((item) => {
-      if (isForbiddenTarget(item.targetTable, item.targetField)) return false;
-      const v = validateApplyTarget(item.targetTable, item.targetField);
-      return v.valid;
-    });
-
-    if (validItems.length === 0) {
-      return { success: false, error: "No valid apply items after allowlist/forbidden check", errorCode: "invalid_input" };
-    }
-
-    const db = createAdminClient();
-    const runCode = generateRunCode();
-    const userId = ctx.profile.id;
-
-    // Create the apply run (history only — no target record writes)
-    const { data: runData, error: runError } = await db
-      .from("dms_ai_erp_apply_runs")
-      .insert({
-        run_code:            runCode,
-        source_type:         input.sourceType,
-        source_id:           input.sourceId ?? null,
-        document_id:         input.documentId,
-        review_queue_item_id: input.reviewQueueItemId ?? null,
-        status:              "pending" as ApplyRunStatus,
-        target_module:       input.targetModule,
-        target_table:        input.targetTable,
-        // For party module, target_record_id stores the partyId (parent entity).
-        // Child record IDs (license/tax) are stored per-item in apply_items.target_record_id.
-        target_record_id:    input.targetRecordId ?? null,
-        requested_by:        userId,
-        created_at:          new Date().toISOString(),
-        updated_at:          new Date().toISOString(),
-      })
-      .select("id")
-      .single();
-
-    if (runError || !runData) {
-      logger.error("[apply-to-erp] createDmsApplyToErpRun run insert error", {
-        error: (runError as { message?: string })?.message?.slice(0, 200),
-      });
-      return { success: false, error: "Failed to create apply run" };
-    }
-
-    const runId = (runData as { id: number }).id;
-
-    // Create apply items (history only)
-    const itemsToInsert = validItems.map((item) => ({
-      apply_run_id:          runId,
-      source_type:           item.sourceType,
-      source_id:             item.sourceId ?? null,
-      source_field_code:     item.sourceFieldCode ?? null,
-      target_table:          item.targetTable,
-      target_field:          item.targetField,
-      target_record_id:      item.targetRecordId ?? null,
-      target_display_label:  truncateSummary(item.targetDisplayLabel),
-      current_value_summary: truncateSummary(item.currentValueSummary ?? null),
-      proposed_value_summary: truncateSummary(item.proposedValueSummary ?? null),
-      value_type:            item.valueType,
-      confidence:            item.confidence ?? null,
-      status:                "proposed" as ApplyItemStatus,
-      requires_confirmation: item.requiresConfirmation ?? true,
-      confirmed:             false,
-      created_at:            new Date().toISOString(),
-      updated_at:            new Date().toISOString(),
-    }));
-
-    const { error: itemsError } = await db
-      .from("dms_ai_erp_apply_items")
-      .insert(itemsToInsert);
-
-    if (itemsError) {
-      logger.error("[apply-to-erp] createDmsApplyToErpRun items insert error", {
-        error: (itemsError as { message?: string })?.message?.slice(0, 200),
-      });
-      // Attempt cleanup
-      await db.from("dms_ai_erp_apply_runs").delete().eq("id", runId);
-      return { success: false, error: "Failed to create apply items" };
-    }
-
-    // Audit run creation
-    void logAudit({
-      module_code:     "dms_ai",
-      entity_name:     "dms_ai_erp_apply_runs",
-      entity_id:       runId,
-      entity_reference: runCode,
-      action:          "dms_apply_to_erp_run_created",
-      new_values:      buildRunCreatedMeta({
-        runId,
-        runCode,
-        documentId:  input.documentId,
-        sourceType:  input.sourceType,
-        targetModule: input.targetModule,
-        targetTable: input.targetTable,
-        itemCount:   validItems.length,
-      }),
-    });
-
-    logger.info("[apply-to-erp] run created", { runId, runCode, itemCount: validItems.length, userId });
-
-    return { success: true, data: { runId, runCode } };
+    return prepareDmsUpdate(input as CreateApplyRunInput);
   } catch (err) {
     logger.error("[apply-to-erp] createDmsApplyToErpRun error", { error: String(err) });
     return { success: false, error: "Failed to create apply run" };
@@ -455,9 +314,6 @@ export async function applyDmsApplyToErpRun(
       return { success: false, error: "Apply-to-ERP feature is not enabled", errorCode: "feature_flag_disabled" };
     }
 
-    const db = createAdminClient();
-    const userId = ctx.profile.id;
-
     // Reload run record
     const caller = await createClient();
     const { data: runRow, error: runLoadErr } = await caller
@@ -486,328 +342,9 @@ export async function applyDmsApplyToErpRun(
       return result;
     }
 
-    if (run.status !== "pending") {
-      return {
-        success: false,
-        error: `Run is in "${run.status}" status; only pending runs can be executed`,
-        errorCode: "run_not_in_pending_state",
-      };
-    }
-
-    // Mark run as in_progress
-    await db.from("dms_ai_erp_apply_runs").update({
-      status:     "in_progress",
-      started_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      confirmed_by: userId,
-    }).eq("id", runId);
-
-    // Load only the confirmed items
-    const { data: itemRows, error: itemsLoadErr } = await db
-      .from("dms_ai_erp_apply_items")
-      .select("*")
-      .eq("apply_run_id", runId)
-      .in("id", confirmation.confirmedItemIds);
-
-    if (itemsLoadErr) {
-      await db.from("dms_ai_erp_apply_runs").update({
-        status:     "failed",
-        failed_at:  new Date().toISOString(),
-        error_message: "Failed to load apply items",
-        updated_at: new Date().toISOString(),
-      }).eq("id", runId);
-      return { success: false, error: "Failed to load apply items" };
-    }
-
-    const items = (itemRows ?? []) as Array<{
-      id: number; target_table: string; target_field: string;
-      target_record_id: number | null; proposed_value_summary: string | null;
-      current_value_summary: string | null; value_type: string | null;
-      source_type: string; source_id: number | null; target_module: string | null;
-    }>;
-
-    // Track all items in the run (including unconfirmed = skipped)
-    const { data: allItemRows } = await db
-      .from("dms_ai_erp_apply_items")
-      .select("id, status")
-      .eq("apply_run_id", runId);
-
-    const allItemIds = new Set((allItemRows ?? []).map((i: { id: number }) => i.id));
-    const confirmedSet = new Set(confirmation.confirmedItemIds);
-
-    let appliedCount = 0;
-    let skippedCount = 0;
-    let conflictCount = 0;
-    let failedCount = 0;
-    const itemResults = [];
-
-    // Process confirmed items
-    for (const item of items) {
-      // Forbidden check
-      if (isForbiddenTarget(item.target_table, item.target_field)) {
-        await db.from("dms_ai_erp_apply_items").update({
-          status:         "forbidden",
-          failure_reason: "target is in the forbidden list",
-          updated_at:     new Date().toISOString(),
-        }).eq("id", item.id);
-        failedCount++;
-        itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "forbidden" as ApplyItemStatus, appliedValueSummary: null, skipReason: null, failureReason: "forbidden target" });
-
-        void logAudit({
-          module_code: "dms_ai", entity_name: "dms_ai_erp_apply_items", entity_id: item.id,
-          entity_reference: String(runId), action: "dms_apply_to_erp_item_skipped",
-          new_values: buildItemSkippedMeta({ itemId: item.id, runId, targetTable: item.target_table, targetField: item.target_field, reason: "forbidden target", status: "forbidden" }),
-        });
-        continue;
-      }
-
-      // Allowlist check
-      const validation = validateApplyTarget(item.target_table, item.target_field);
-      if (!validation.valid) {
-        await db.from("dms_ai_erp_apply_items").update({
-          status:         "forbidden",
-          failure_reason: validation.reason.slice(0, 200),
-          updated_at:     new Date().toISOString(),
-        }).eq("id", item.id);
-        failedCount++;
-        itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "forbidden" as ApplyItemStatus, appliedValueSummary: null, skipReason: null, failureReason: validation.reason });
-        continue;
-      }
-
-      // Target permission check
-      const perms = getTargetPermissions(item.target_table, item.target_field);
-      const hasTargetPermission =
-        hasPermission(ctx, perms.targetPermission) ||
-        hasPermission(ctx, perms.adminPermission) ||
-        hasPermission(ctx, "dms.admin") ||
-        hasPermission(ctx, "system_admin");
-
-      if (!hasTargetPermission) {
-        await db.from("dms_ai_erp_apply_items").update({
-          status:         "failed",
-          failure_reason: `insufficient target permission: requires ${perms.targetPermission}`,
-          updated_at:     new Date().toISOString(),
-        }).eq("id", item.id);
-        failedCount++;
-        itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "failed" as ApplyItemStatus, appliedValueSummary: null, skipReason: null, failureReason: "insufficient permission" });
-        continue;
-      }
-
-      // Determine which sub-flag is needed
-      let subFlagOk = true;
-      if (item.target_module === "dms_metadata" || item.target_table === "dms_document_metadata_values") {
-        subFlagOk = await isDmsApplyToErpSubFlagEnabled("DMS_AI_APPLY_TO_ERP_DMS_METADATA");
-      } else if (item.target_table === "dms_documents") {
-        subFlagOk = await isDmsApplyToErpSubFlagEnabled("DMS_AI_APPLY_TO_ERP_ENTITY_LINKS");
-      } else if (item.target_table === "party_licenses") {
-        const flagCheck = await checkPartySubFlags("party_licenses");
-        subFlagOk = flagCheck.ok;
-      } else if (item.target_table === "party_tax_registrations") {
-        const flagCheck = await checkPartySubFlags("party_tax_registrations");
-        subFlagOk = flagCheck.ok;
-      }
-
-      if (!subFlagOk) {
-        await db.from("dms_ai_erp_apply_items").update({
-          status:         "skipped",
-          skip_reason:    "sub-feature flag not enabled for this target type",
-          updated_at:     new Date().toISOString(),
-        }).eq("id", item.id);
-        skippedCount++;
-        itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "skipped" as ApplyItemStatus, appliedValueSummary: null, skipReason: "sub-flag disabled", failureReason: null });
-        continue;
-      }
-
-      // Party mutations must use the bound, atomic review path above.
-      if (["party_licenses","party_tax_registrations"].includes(item.target_table)) {
-        return {success:false,error:"Create a new party review for this target.",errorCode:"invalid_input"};
-      } else if (item.target_table === "dms_documents" && item.target_record_id) {
-        // Reload current document record
-        const { data: docRow } = await db
-          .from("dms_documents")
-          .select("id, owning_company_id, owning_branch_id, party_id, issue_date, expiry_date, title, description, deleted_at")
-          .eq("id", item.target_record_id)
-          .single();
-
-        const doc = docRow as {
-          id: number; owning_company_id: number | null; owning_branch_id: number | null;
-          party_id: number | null; issue_date: string | null; expiry_date: string | null;
-          title: string | null; description: string | null; deleted_at: string | null;
-        } | null;
-
-        // Conflict detection
-        const conflictResult = detectDmsDocumentFieldConflict(
-          doc,
-          item.target_field as keyof typeof doc,
-          item.current_value_summary,
-          confirmation.replaceExistingConfirmed
-        );
-
-        if (conflictResult.conflict) {
-          await db.from("dms_ai_erp_apply_items").update({
-            status:         "conflict",
-            skip_reason:    conflictResult.reason.slice(0, 200),
-            updated_at:     new Date().toISOString(),
-          }).eq("id", item.id);
-          conflictCount++;
-          itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "conflict" as ApplyItemStatus, appliedValueSummary: null, skipReason: conflictResult.reason, failureReason: null });
-
-          void logAudit({
-            module_code: "dms_ai", entity_name: "dms_ai_erp_apply_items", entity_id: item.id,
-            entity_reference: String(runId), action: "dms_apply_to_erp_item_conflict",
-            new_values: buildItemSkippedMeta({ itemId: item.id, runId, targetTable: item.target_table, targetField: item.target_field, reason: conflictResult.reason, status: "conflict" }),
-          });
-          continue;
-        }
-
-        // Normalize proposed value
-        const valueType = (item.value_type ?? "text") as ApplyValueType;
-        const normalized = normalizeApplyValue(
-          item.proposed_value_summary,
-          valueType,
-          item.target_field,
-          doc ? { issueDate: doc.issue_date } : undefined
-        );
-
-        if (!normalized.valid) {
-          await db.from("dms_ai_erp_apply_items").update({
-            status:         "failed",
-            failure_reason: normalized.validationError?.slice(0, 200),
-            updated_at:     new Date().toISOString(),
-          }).eq("id", item.id);
-          failedCount++;
-          itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "failed" as ApplyItemStatus, appliedValueSummary: null, skipReason: null, failureReason: normalized.validationError ?? "normalization failed" });
-          continue;
-        }
-
-        // Apply the write
-        const updatePayload: Record<string, unknown> = {
-          [item.target_field]: normalized.normalizedValue,
-          updated_by:          userId,
-          updated_at:          new Date().toISOString(),
-        };
-
-        const { error: writeErr } = await db
-          .from("dms_documents")
-          .update(updatePayload)
-          .eq("id", item.target_record_id);
-
-        if (writeErr) {
-          await db.from("dms_ai_erp_apply_items").update({
-            status:         "failed",
-            failure_reason: (writeErr as { message?: string })?.message?.slice(0, 200),
-            updated_at:     new Date().toISOString(),
-          }).eq("id", item.id);
-          failedCount++;
-          itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "failed" as ApplyItemStatus, appliedValueSummary: null, skipReason: null, failureReason: "DB write error" });
-          continue;
-        }
-
-        const appliedSummary = buildValueSummary(normalized.normalizedValue, valueType);
-
-        await db.from("dms_ai_erp_apply_items").update({
-          status:                "applied",
-          applied_value_summary: truncateSummary(appliedSummary),
-          applied_at:            new Date().toISOString(),
-          applied_by:            userId,
-          confirmed:             true,
-          updated_at:            new Date().toISOString(),
-        }).eq("id", item.id);
-
-        appliedCount++;
-        itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "applied" as ApplyItemStatus, appliedValueSummary: truncateSummary(appliedSummary), skipReason: null, failureReason: null });
-
-        void logAudit({
-          module_code: "dms_ai", entity_name: "dms_ai_erp_apply_items", entity_id: item.id,
-          entity_reference: String(runId), action: "dms_apply_to_erp_item_applied",
-          new_values: buildItemAppliedMeta({
-            itemId: item.id, runId, targetTable: item.target_table,
-            targetField: item.target_field, targetRecordId: item.target_record_id,
-            appliedValueSummary: truncateSummary(appliedSummary),
-          }),
-        });
-      } else {
-        // Metadata items or items without a record ID — skip gracefully
-        // (metadata apply is handled separately via Phase 6/7 bridge)
-        await db.from("dms_ai_erp_apply_items").update({
-          status:      "skipped",
-          skip_reason: "metadata apply uses Phase 6/7 engine — see applyAiAnalysisToMetadata()",
-          updated_at:  new Date().toISOString(),
-        }).eq("id", item.id);
-        skippedCount++;
-        itemResults.push({ itemId: item.id, targetTable: item.target_table, targetField: item.target_field, targetRecordId: item.target_record_id, status: "skipped" as ApplyItemStatus, appliedValueSummary: null, skipReason: "metadata apply via Phase 6/7", failureReason: null });
-      }
-    }  // end for (const item of items)
-
-    // Mark unconfirmed items as skipped
-    for (const itemId of allItemIds) {
-      if (!confirmedSet.has(itemId)) {
-        const alreadyProcessed = itemResults.find((r) => r.itemId === itemId);
-        if (!alreadyProcessed) {
-          await db.from("dms_ai_erp_apply_items").update({
-            status:      "skipped",
-            skip_reason: "not included in confirmed items selection",
-            updated_at:  new Date().toISOString(),
-          }).eq("id", itemId);
-          skippedCount++;
-        }
-      }
-    }
-
-    // Determine final run status
-    let finalStatus: ApplyRunStatus;
-    if (appliedCount === 0 && (failedCount > 0 || conflictCount > 0)) {
-      finalStatus = "failed";
-    } else if (appliedCount > 0 && (skippedCount > 0 || conflictCount > 0 || failedCount > 0)) {
-      finalStatus = "completed_with_warnings";
-    } else if (appliedCount > 0) {
-      finalStatus = "completed";
-    } else {
-      finalStatus = "completed_with_warnings";
-    }
-
-    const now = new Date().toISOString();
-    await db.from("dms_ai_erp_apply_runs").update({
-      status:       finalStatus,
-      completed_at: now,
-      failed_at:    finalStatus === "failed" ? now : null,
-      updated_at:   now,
-    }).eq("id", runId);
-
-    void logAudit({
-      module_code: "dms_ai", entity_name: "dms_ai_erp_apply_runs", entity_id: runId,
-      entity_reference: run.run_code ?? String(runId), action: "dms_apply_to_erp_run_completed",
-      new_values: buildRunCompletedMeta({
-        runId, runCode: run.run_code, documentId: run.document_id, status: finalStatus,
-        appliedCount, skippedCount, conflictCount, failedCount,
-      }),
-    });
-
-    // Revalidate DMS document pages
-    if (run.document_id) {
-      revalidatePath(`/dms/documents/record/${run.document_id}`);
-    }
-    revalidatePath("/dms/documents");
-
-    // Revalidate Party pages if this was a Tier 2 party apply run
-    if (run.target_module === "party" && run.target_record_id) {
-      revalidatePath("/admin/master-data/parties");
-      revalidatePath(`/admin/master-data/parties/record/${run.target_record_id}`);
-    }
-
-    const result: ApplyRunResult = {
-      runId,
-      runCode: run.run_code,
-      status:  finalStatus,
-      appliedCount,
-      skippedCount,
-      conflictCount,
-      failedCount,
-      items:        itemResults,
-      errorMessage: null,
-    };
-
-    return { success: true, data: result };
+    const result=await executeDmsUpdate(runId,confirmation);
+    if(result.success){for(const path of [`/dms/documents/record/${run.document_id}`,"/dms/documents"]){try{revalidatePath(path);}catch{logger.warn("ERP update committed; display refresh unavailable");}}}
+    return result;
   } catch (err) {
     logger.error("[apply-to-erp] applyDmsApplyToErpRun error", { error: String(err) });
     return { success: false, error: "Apply run execution failed" };
@@ -1076,9 +613,6 @@ export async function cancelDmsApplyToErpRun(
       return { success: false, error: "Permission denied", errorCode: "permission_denied" };
     }
 
-    const db = createAdminClient();
-    const userId = ctx.profile.id;
-
     const caller = await createClient();
     const { data: runRow } = await caller
       .from("dms_ai_erp_apply_runs")
@@ -1092,35 +626,7 @@ export async function cancelDmsApplyToErpRun(
 
     if(runRow.target_module==='party')return cancelPartyDmsRun(runId);
 
-    const run = runRow as { id: number; run_code: string | null; status: string; document_id: number | null; requested_by: number };
-
-    if (!["pending", "confirmed"].includes(run.status)) {
-      return { success: false, error: `Cannot cancel run in "${run.status}" status; only pending/confirmed runs can be cancelled` };
-    }
-
-    // Only the requestor or an admin can cancel
-    const isAdmin =
-      hasPermission(ctx, "dms.apply_to_erp.admin") ||
-      hasPermission(ctx, "dms.admin") ||
-      hasPermission(ctx, "system_admin");
-
-    if (run.requested_by !== userId && !isAdmin) {
-      return { success: false, error: "Permission denied: only run requestor or admin can cancel", errorCode: "permission_denied" };
-    }
-
-    await db.from("dms_ai_erp_apply_runs").update({
-      status:       "cancelled",
-      cancelled_at: new Date().toISOString(),
-      updated_at:   new Date().toISOString(),
-    }).eq("id", runId);
-
-    void logAudit({
-      module_code: "dms_ai", entity_name: "dms_ai_erp_apply_runs", entity_id: runId,
-      entity_reference: run.run_code ?? String(runId), action: "dms_apply_to_erp_run_cancelled",
-      new_values: buildRunCancelledMeta({ runId, runCode: run.run_code, documentId: run.document_id, cancelledBy: userId }),
-    });
-
-    return { success: true };
+    return cancelDmsUpdate(runId);
   } catch (err) {
     logger.error("[apply-to-erp] cancelDmsApplyToErpRun error", { error: String(err) });
     return { success: false, error: "Failed to cancel apply run" };
@@ -1185,4 +691,9 @@ function mapItemRow(row: Record<string, unknown>): DmsErpApplyItem {
     createdAt:            row.created_at as string,
     updatedAt:            row.updated_at as string,
   };
+}
+
+/** Resolve complete source and target values before human confirmation. */
+export async function getDmsApplyToErpReview(documentId:number,items:ApplyItemProposal[]){
+ return previewDmsUpdate(documentId,items);
 }

@@ -61,7 +61,7 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
         document_type_id, category_id, status, confidentiality_level,
         owner_user_id, owning_company_id, owning_branch_id, party_id,
         issue_date, expiry_date, reminder_policy_id, ocr_status, ai_status,
-        review_status, is_archived, archived_at, created_by, created_at,
+        review_status, approval_status, current_version_id, is_archived, archived_at, created_by, created_at,
         updated_by, updated_at, deleted_at, ai_risk_score, ai_risk_level,
         completeness_score, superseded_by_document_id,
         document_type:dms_document_types(type_code, name_en, requires_expiry_tracking, default_confidentiality),

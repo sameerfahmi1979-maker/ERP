@@ -139,29 +139,34 @@ it("view mode has no save dispatch and leaves cached reads unchanged", () => {
   const {q} = mount("view"); expect(m.shell?.onSave).toBeUndefined(); expect(m.shell?.onSaveAndClose).toBeUndefined();
   expect(q.getQueryState(browserKey)?.isInvalidated).toBe(false); expect(m.update).not.toHaveBeenCalled();
 });
-it.each([browserKey, dmsBrowserKey])("confirmed auto-link refreshes %j again after its own completion, replacing an earlier create-only read", async (...queryKey) => {
-  const link = deferred<unknown>(), oldRead = deferred<{revision: number}>(); m.link.mockReturnValue(link.promise);
+it.each([browserKey, dmsBrowserKey])("atomic origin creation refreshes %j only after the combined receipt, replacing an earlier stale read", async (...queryKey) => {
+  const commit = deferred<unknown>(), oldRead = deferred<{revision: number}>(); m.create.mockReturnValue(commit.promise);
   const {q} = mount("add", {entityType: "employee", entityId: 7}); let revision = 2, oldSignal: AbortSignal | undefined;
   const read = vi.fn(({signal}: {signal: AbortSignal}) => {if (revision === 2) {oldSignal = signal; return oldRead.promise;} return Promise.resolve({revision});});
   const observer = new QueryObserver(q, {queryKey, queryFn: read, staleTime: Infinity}); const stop = observer.subscribe(() => {}); let saved: unknown;
   try {
-    await act(async () => {saved = m.shell?.onSave?.(); await Promise.resolve();});
-    expect(m.link).toHaveBeenCalledExactlyOnceWith(11, "employee", 7, {is_primary: true}); expect(read).toHaveBeenCalledTimes(1);
+    await act(async () => {await q.invalidateQueries({queryKey,refetchType:'none'});void q.refetchQueries({queryKey});saved = m.shell?.onSave?.(); await Promise.resolve();});
+    expect(m.create).toHaveBeenCalledTimes(1);expect(m.create.mock.calls[0][0].originContext).toEqual({entityType:'employee',entityId:7});
+    expect(m.link).not.toHaveBeenCalled();expect(read).toHaveBeenCalledTimes(1);
     for (const key of entityKeys) expect(q.getQueryState(key)?.isInvalidated).toBe(false);
-    revision = 3; await act(async () => {link.resolve({success: true, data: {id: 91}}); await saved; await Promise.resolve();});
+    revision = 3; await act(async () => {commit.resolve({success:true,data:{id:11,document_no:'SYNTHETIC-DOC-11',operation_id:m.create.mock.calls[0][1].operationId,replayed:false}}); await saved; await Promise.resolve();});
     await act(async () => {oldRead.resolve({revision: 2}); await Promise.resolve();});
     expect(read).toHaveBeenCalledTimes(2); expect(oldSignal?.aborted).toBe(true); expect(q.getQueryData(queryKey)).toEqual({revision: 3});
     for (const key of entityKeys) expect(q.getQueryState(key)?.isInvalidated).toBe(true);
     expect(q.getQueryData(inactiveKey)).toEqual({revision: 1}); expect(m.create).toHaveBeenCalledTimes(1); expect(m.replace).toHaveBeenCalledTimes(1);
   } finally {stop();}
 });
-it.each(["returned-failure", "thrown-failure"])("%s auto-link preserves the known document write without pretending the entity link succeeded", async outcome => {
-  if (outcome === "returned-failure") m.link.mockResolvedValue({success: false, error: "Synthetic link denied"});
-  else m.link.mockRejectedValue(Error("Synthetic link response unavailable"));
+it.each(["returned-failure", "thrown-failure"])("%s atomic origin creation preserves the draft without pretending either document or link succeeded", async outcome => {
+  if (outcome === "returned-failure") m.create.mockResolvedValueOnce({success: false, error: "Synthetic origin denied"});
+  else m.create.mockRejectedValueOnce(Error("Synthetic atomic response unavailable"));
   const {q} = mount("add", {entityType: "employee", entityId: 7}); await save();
-  expect(q.getQueryState(browserKey)?.isInvalidated).toBe(true); expect(m.create).toHaveBeenCalledTimes(1); expect(m.link).toHaveBeenCalledTimes(1);
+  expect(q.getQueryState(browserKey)?.isInvalidated).toBe(false); expect(m.create).toHaveBeenCalledTimes(1); expect(m.link).not.toHaveBeenCalled();
+  const original=structuredClone(m.create.mock.calls[0]);expect(original[0].originContext).toEqual({entityType:'employee',entityId:7});
   for (const key of entityKeys) expect(q.getQueryState(key)?.isInvalidated).toBe(false);
-  // F06 keeps the accepted creation identity even when optional linking fails.
-  // Both paths open that document; neither dispatches a replacement creation.
-  expect(m.replace).toHaveBeenCalledExactlyOnceWith('/dms/documents/record/11?mode=edit');
+  expect(m.replace).not.toHaveBeenCalled();expect(m.store!.getDraft(draftKey)?.title).toBe('Synthetic changed');
+  m.create.mockImplementation(async (_payload:unknown,contract:WorkspaceSaveContract)=>({success:true,data:{id:11,document_no:'SYNTHETIC-DOC-11',operation_id:contract.operationId,replayed:outcome==='thrown-failure'}}));
+  await save();expect(m.create).toHaveBeenCalledTimes(2);expect(m.create.mock.calls[1][0]).toEqual(original[0]);
+  if(outcome==='thrown-failure')expect(m.create.mock.calls[1][1]).toEqual(original[1]);
+  expect(m.link).not.toHaveBeenCalled();expect(m.replace).toHaveBeenCalledExactlyOnceWith('/dms/documents/record/11?mode=edit');
+  for(const key of entityKeys)expect(q.getQueryState(key)?.isInvalidated).toBe(true);
 });

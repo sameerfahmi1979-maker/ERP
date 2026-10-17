@@ -37,7 +37,11 @@ import {batchDraftInputSchema,batchDraftContractSchema,batchDraftPrepareRpcSchem
 import {batchDraftSaveError,createNumberedBatchDraft,batchDraftRecoveryError,readNumberedBatchDraftRecovery,prepareRecoverableNumberedBatchDraft} from "@/server/numbered-batch-draft";
 import type {BatchDraftRecoveryResult,BatchDraftPreparationResult} from "@/lib/dms/numbered-batch-draft";
 import type {WorkspaceSaveContract} from "@/lib/workspace/save-contract";
-import { runApproveAiIntakeSaga } from "@/lib/dms/approve/approve-ai-intake";
+import { runPostCommitOcr } from "@/lib/dms/approve/approve-ai-intake";
+import {finalizeRetainedBatch} from '@/server/dms-retained-batch-finalization';
+import {aiApprovalInputSchema,type AiApprovalInput} from '@/lib/dms/numbered-ai-approval';
+import {triggerDmsPostApproveOrchestration} from '@/lib/dms/orchestration/post-approve-orchestration';
+import {discardRetainedIntake} from '@/server/dms-intake-discard';
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type ActionResult<T = unknown> = {
@@ -353,6 +357,7 @@ const FinalizeSchema = z
       .default([]),
     aiResultId: z.number().int().positive().nullable().optional(),
     standardFileName: z.string().min(1).max(200).nullable().optional(),
+    allowDuplicate:z.boolean().optional().default(false),
   })
   .refine(
     (v) => (v.uploadSessionId != null) !== (v.documentId != null),
@@ -360,6 +365,21 @@ const FinalizeSchema = z
   );
 
 export type FinalizeDraftInput = z.input<typeof FinalizeSchema>;
+
+/** Original actor/current access only. An unavailable read is not an empty
+ * recovery state and must never authorize a replacement finalization. */
+export async function recoverDraftFinalization(uploadSessionId:number):Promise<ActionResult<AiApprovalInput|null>>{
+ try{
+  if(!Number.isSafeInteger(uploadSessionId)||uploadSessionId<1)return {success:false,error:'Invalid intake'};
+  const ctx=await getAuthContext();if(!ctx.profile||!canApprove(ctx))return {success:false,error:'Finalization recovery unavailable'};
+  const client=await createClient(),r=await client.rpc('f07_recover_batch_finalization',{p_session:uploadSessionId});
+  if(r.error)return {success:false,error:'The original finalization could not be read. Do not submit a replacement.'};
+  if(r.data===null)return {success:true,data:null};
+  const p=aiApprovalInputSchema.safeParse(r.data);
+  if(!p.success||p.data.uploadSessionId!==uploadSessionId||p.data.prepared)return {success:false,error:'The retained request could not be verified.'};
+  return {success:true,data:p.data};
+ }catch{return {success:false,error:'Finalization recovery is unavailable. Retain this intake.'};}
+}
 
 export async function finalizeDraftIntake(
   input: FinalizeDraftInput
@@ -400,17 +420,14 @@ export async function finalizeDraftIntake(
     // Load the draft document.
     const { data: doc, error: docErr } = await supabase
       .from("dms_documents")
-      .select("id, document_no, status, current_version_id, owning_company_id")
+      .select("id, document_no, status, current_version_id, owning_company_id, owning_branch_id")
       .eq("id", documentId)
       .is("deleted_at", null)
       .single();
     if (docErr || !doc) return { success: false, error: "Draft document not found" };
 
-    // Idempotency: already approved.
-    if (doc.status === "active" || session.intake_status === "approved") {
-      return { success: true, data: { documentId, documentNo: doc.document_no as string } };
-    }
-    if (doc.status !== "pending_ai_review") {
+    // A status is not a receipt. The retained protocol alone can confirm replay.
+    if (doc.status !== "pending_ai_review" && doc.status !== "active") {
       return { success: false, error: `Document is not a pending AI draft (status: ${doc.status})` };
     }
 
@@ -449,51 +466,27 @@ export async function finalizeDraftIntake(
       };
     }
 
-    // Determine if file copy is needed (batch drafts may already have a file from a previous partial run)
-    const createFileVersion = !doc.current_version_id && !!session.temp_storage_path;
     const effectiveAiResultId = v.aiResultId ?? (session.ai_result_id as number | null);
     const confidentiality = v.confidentialityLevel ?? (docType.default_confidentiality as string | null) ?? "internal";
-
-    // ── Delegate to transactional approve saga ─────────────────────────────
-
-    const sagaResult = await runApproveAiIntakeSaga(supabase, admin, {
-      mode: "existing_batch_draft",
-      uploadSessionId,
-      sessionCode,
-      tempStoragePath: (session.temp_storage_path as string | null) ?? "",
-      originalFilename: session.original_filename as string,
-      mimeType: session.mime_type as string,
-      fileSizeBytes: session.file_size_bytes as number,
-      sha256Hash: (session.sha256_hash as string | null) ?? null,
-      documentId,
-      documentNo: doc.document_no as string,
-      title: v.title,
-      description: v.description ?? null,
-      documentTypeId: v.documentTypeId,
-      categoryId: docType.category_id as number,
-      typeCode: docType.type_code as string,
-      confidentialityLevel: confidentiality,
-      owningCompanyId: (v.owningCompanyId ?? (doc.owning_company_id as number | null)) ?? null,
-      owningBranchId: v.owningBranchId ?? null,
-      partyId: v.partyId ?? null,
-      issueDate: v.issueDate ?? null,
-      expiryDate: v.expiryDate ?? null,
-      resolvedFileName,
-      createFileVersion,
-      metadataValues: v.metadataValues ?? [],
-      tagIds: v.tagIds ?? [],
-      links: v.links ?? [],
-      aiResultId: effectiveAiResultId,
-      userId,
-    });
-
+    const business=aiApprovalInputSchema.safeParse({uploadSessionId,title:v.title,description:v.description??null,documentTypeId:v.documentTypeId,
+     confidentialityLevel:confidentiality,owningCompanyId:v.owningCompanyId===undefined?doc.owning_company_id:v.owningCompanyId,
+     owningBranchId:v.owningBranchId===undefined?doc.owning_branch_id:v.owningBranchId,partyId:v.partyId??null,issueDate:v.issueDate??null,expiryDate:v.expiryDate??null,
+     metadataValues:v.metadataValues,tagIds:v.tagIds,links:v.links,aiResultId:effectiveAiResultId,standardFileName:v.standardFileName??null,allowDuplicate:v.allowDuplicate});
+    if(!business.success)return {success:false,error:business.error.issues[0]?.message??'Invalid finalization values'};
+    const sagaResult=await finalizeRetainedBatch(supabase,admin,business.data,resolvedFileName,userId);
     if (!sagaResult.success) return sagaResult;
+    // Keep the deployed OCR implementation. Receipt-only replay never invokes
+    // the provider pipeline or reprocesses a document a second time.
+    if(!sagaResult.replayed)try{await runPostCommitOcr(supabase,admin,{documentId,aiResultId:effectiveAiResultId,fileId:null,
+     createFileVersion:true,sessionCode,userId,mimeType:session.mime_type as string,resolvedFileName});}catch{/* Confirmed core commit is authoritative. */}
+    if(!sagaResult.replayed)try{await triggerDmsPostApproveOrchestration({sessionCode,documentId,uploadSessionId,approveRunId:sagaResult.approveRunId,source:'batch_finalize'});}catch{/* Existing T07 admission keeps its own retained job outcome; no fallback. */}
 
-    if (batchId) await recomputeBatchStatus(batchId);
-
-    revalidatePath("/dms/documents");
-    revalidatePath("/dms/inbox");
-    revalidatePath(`/dms/intake/${sessionCode}`);
+    try {
+      if (batchId) await recomputeBatchStatus(batchId);
+      revalidatePath("/dms/documents");
+      revalidatePath("/dms/inbox");
+      revalidatePath(`/dms/intake/${sessionCode}`);
+    } catch { /* The confirmed business transaction wins over cache/bookkeeping. */ }
 
     return { success: true, data: sagaResult.data };
   } catch (e) {
@@ -528,82 +521,16 @@ type DiscardableSession = {
 
 /**
  * Core single-draft discard (no batch recompute — the caller decides when to
- * recompute so bulk discards can batch the bookkeeping). Soft-deletes the draft
- * document + files and purges storage, per the approved DMS delete standard.
+ * recompute so bulk discards can batch the bookkeeping). The checked operation
+ * archives an unpublished draft and retains its files, versions and receipts.
  * This is NOT an approval path; bulk discard simply loops this helper.
  */
 async function performDraftDiscard(
   session: DiscardableSession,
   reason: string | undefined,
-  supabase: SupabaseClient,
-  admin: SupabaseClient,
-  profileId: number
+  supabase: SupabaseClient
 ): Promise<{ ok: true; batchId: number | null } | { ok: false; error: string }> {
-  if (session.intake_status === "approved") {
-    return { ok: false, error: "Cannot discard an already-approved intake" };
-  }
-
-  const sessId = session.id;
-  const docId = session.document_id;
-  const batchId = session.batch_id;
-  const now = new Date().toISOString();
-
-  // Soft-delete the draft document + files, purge storage — per the approved
-  // DMS delete standard (same behaviour as deleteDmsDocument).
-  if (docId) {
-    const { data: fileRows } = await supabase
-      .from("dms_document_files")
-      .select("id, storage_bucket, storage_path")
-      .eq("document_id", docId)
-      .is("deleted_at", null);
-    const storageFiles = (fileRows ?? []) as { id: number; storage_bucket: string | null; storage_path: string | null }[];
-
-    await supabase
-      .from("dms_documents")
-      .update({ deleted_at: now, status: "deleted", updated_by: profileId })
-      .eq("id", docId)
-      .is("deleted_at", null);
-    await supabase.from("dms_document_files").update({ deleted_at: now }).eq("document_id", docId).is("deleted_at", null);
-    await supabase.from("dms_document_versions").update({ is_current: false }).eq("document_id", docId);
-
-    const byBucket = new Map<string, string[]>();
-    for (const f of storageFiles) {
-      if (!f.storage_bucket || !f.storage_path) continue;
-      const paths = byBucket.get(f.storage_bucket) ?? [];
-      paths.push(f.storage_path);
-      byBucket.set(f.storage_bucket, paths);
-    }
-    for (const [bucket, paths] of byBucket.entries()) {
-      try {
-        await admin.storage.from(bucket).remove(paths);
-      } catch (storageErr) {
-        logger.warn(`[DMS 13 discard] storage purge failed for "${bucket}":`, String(storageErr));
-      }
-    }
-  }
-
-  // Mark the session discarded.
-  await supabase
-    .from("dms_upload_sessions")
-    .update({
-      intake_status: "discarded",
-      review_status: "discarded",
-      discarded_at: now,
-      discard_reason: reason?.slice(0, 500) ?? null,
-      updated_at: now,
-    })
-    .eq("id", sessId);
-
-  await logAudit({
-    module_code: "DMS",
-    entity_name: "dms_upload_sessions",
-    entity_id: sessId,
-    entity_reference: session.session_code,
-    action: "delete",
-    new_values: { event: "dms_batch_draft_discarded", document_id: docId, batch_id: batchId },
-  });
-
-  return { ok: true, batchId };
+  return discardRetainedIntake(supabase,{sessionId:session.id,documentId:session.document_id,reason});
 }
 
 export async function discardDraftIntake(
@@ -615,7 +542,6 @@ export async function discardDraftIntake(
     const { uploadSessionId, documentId, reason } = parsed.data;
 
     const supabase = await createClient();
-    const admin = createAdminClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
     if (!canDiscard(ctx)) return { success: false, error: "Permission denied" };
@@ -628,7 +554,7 @@ export async function discardDraftIntake(
     const { data: session, error: sessErr } = await q.single();
     if (sessErr || !session) return { success: false, error: "Draft intake session not found" };
 
-    const res = await performDraftDiscard(session as DiscardableSession, reason, supabase, admin, ctx.profile.id);
+    const res = await performDraftDiscard(session as DiscardableSession, reason, supabase);
     if (!res.ok) return { success: false, error: res.error };
 
     if (res.batchId) await recomputeBatchStatus(res.batchId);
@@ -663,7 +589,6 @@ export async function discardDraftIntakeBulk(
     const { uploadSessionIds, reason } = parsed.data;
 
     const supabase = await createClient();
-    const admin = createAdminClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
     if (!canDiscard(ctx)) return { success: false, error: "Permission denied" };
@@ -688,7 +613,7 @@ export async function discardDraftIntakeBulk(
         errors.push(`Session ${id}: not found`);
         continue;
       }
-      const res = await performDraftDiscard(session, reason, supabase, admin, ctx.profile.id);
+      const res = await performDraftDiscard(session, reason, supabase);
       if (res.ok) {
         discarded++;
         if (res.batchId) affectedBatches.add(res.batchId);

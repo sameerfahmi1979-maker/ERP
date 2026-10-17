@@ -498,7 +498,7 @@ it("DMS item 2 populated archive replacement restore and cleanup",async()=>{
   state.client=clients.get("none")!;expect((await readDmsInboxPage({search:stamp})).success).toBe(false);expect((await getDmsUploadBatchDrafts(batch.data!.id)).success).toBe(false);
   state.client=clients.get("admin")!;
   for(const kind of ["getDmsDocumentComments","getDmsDocumentFiles","getDmsDocumentVersions","getDmsDocumentMetadataValues","getDmsDocumentTags","getDmsDocumentLinks","getDmsAiMetadataApplyHistory","getEligibleUploadSessionsForVersionLink","getDocumentApprovalHistory"]){
-   const result=await readDmsSection({kind,args:[a]});expect(result.success,kind+" "+result.error).toBe(true);samples.push({actor:"admin",resource:"native-section-contract",kind,success:true,fixture:"registered synthetic document"});
+   const result=await readDmsSection({kind,args:[a]});expect(result.success,kind+" "+('error' in result?result.error:'')).toBe(true);samples.push({actor:"admin",resource:"native-section-contract",kind,success:true,fixture:"registered synthetic document"});
   }
   // A replacement losing visibility must not leak its title through the old record.
   expect((await state.admin.from("dms_documents").update({confidentiality_level:"executive"}).eq("id",replacement)).error).toBeNull();

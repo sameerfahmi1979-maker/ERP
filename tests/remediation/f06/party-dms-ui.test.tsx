@@ -3,7 +3,11 @@
 import '../f05/setup';
 
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {cleanup,fireEvent,render as renderComponent,screen,waitFor} from '@testing-library/react';
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
+const clients:QueryClient[]=[];
+function render(ui:React.ReactNode){const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}});clients.push(client);return renderComponent(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);}
+afterEach(()=>clients.splice(0).forEach(client=>client.clear()));
 import {createWorkspaceDraftStore} from '@/lib/workspace/workspace-draft-store';
 const m=vi.hoisted(()=>({store:null as unknown,create:vi.fn(),detail:vi.fn(),apply:vi.fn(),preview:vi.fn()}));
 vi.mock('@/hooks/use-workspace-form-owner',()=>({useWorkspaceFormOwner:()=>({id:'dms-review-test'})}));

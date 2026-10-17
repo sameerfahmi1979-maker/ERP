@@ -9,7 +9,7 @@ import {fileURLToPath} from 'node:url';
 
 export const BASE='node:22.23.2-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9';
 export const NATIVE='tests/remediation/f06/linux-native-paths.cjs';
-export const NATIVE_SHA='54335c59ee622cb84c5e72d85b051c54aeef63530505f691909a9ea0866cffd0';
+export const NATIVE_SHA='4c727a06d20ac6e8fea882f095b5a4792430ee83aaf4a4d4ea5759efc2ca4a59';
 // Historical Windows bytes stay historical. CI pins canonical public LF bytes.
 export const HISTORICAL_RAW_IMPACT={
  'Dockerfile':'643e766a1d8b316170e652c3ba836e0f41f5a3052ca8cd438c8c877bfe78a139',
@@ -35,19 +35,34 @@ export const IMPACT={...HISTORICAL_RAW_IMPACT,
  'vendor/braces/PROVENANCE.json':'59dc07d3b7e125692206b9dbbc9f636544cc9a3e6e7df83227eac698c4c459ce',
  'vendor/sprintf-js-1.0.3-algt.1.tgz':'06a933e90dfbbcc5d80d90f377efb333d48e1025626276c48a20b2ee0b77cc5f',
  'vendor/braces-3.0.3-algt-integrated-2.tgz':'3b42ddbff088317a60e6f10e14f907fff6cb7db5b14d9204cf63534d573339ee',
- 'Dockerfile':'b87b791e462a2fb5fb0741b0d1110a2a2dec27e6281b45e64c319259725e86dd',
- '.dockerignore':'79407f536ac6fff8688ce20f5ca0db9e45f22019733e2591d19504375c99f263',
- 'package.json':'093e6b78f133212ba7ed72232227ff00d7fb360281600b9fa3bc197f4d946a61',
- 'package-lock.json':'8e68ccd2ed55b34c77ea36dbeeec42acf11ac3a6df158e71294db8564d6c468b',
+ // Reviewed F07 delta: one pinned saxes parser dependency and one runtime
+ // parser file, with the worker's universal secret-safe logging seam.
+ 'Dockerfile':'e50b94fcb2501a2d905805a85951043876538c0e993b57a604b6856d06b7b621',
+ '.dockerignore':'f08f96773d97f9bf1a182ff5ca9c210b3e9eb7910e2407ef61f969f9637bb26a',
+ 'package.json':'5685f7af2ee1477f8d322803cd60fd2449399fb06da8294277943ea9adde7636',
+ 'package-lock.json':'1fd79222c634e5ddcf5f664ab4fecf7b3ebf614e5184069afce230abc65f38fe',
  'src/lib/branding/constants.ts':'70a0e8005ce9b8ec76334643b8a345a2908944169252b2fcd59db33f41236e14',
  // Reviewed Arabic OCR successor; preserve historical F06 hashes above.
  'src/lib/dms/file-content-extractor.ts':'db6b17688166fac42bfbaea474b86d57084d81d9fae7a7966c45ae6539a0391f',
  'src/lib/dms/pdf-to-images.ts':'c687a287567d528b8082c9b8260e0eb58ca96f11cfa13f051fb713664e7e604e',
  'src/lib/dms/pdf-text-quality.ts':'82c743f7785ab87c9a839044f46765d531bebbb75b3167fb10b8606d7438f737',
- 'src/lib/logger.ts':'65d187672a8a18f74b46c461ef4fcb9211b7a703c24bc2c248614b9ef9ffff02'
+ 'src/lib/logger.ts':'e7d552f81142e3bf6449694b8c14293c4353c0564e2f6c3697824e50a5226067',
+ 'src/lib/log-context.ts':'8b90e656f51f09d1342febe516ecce239a5f2b3f208da549962cdfd8b464f803',
+ 'tooling/dms/validate-intake.cjs':'d524803ef5049bf600ca16e37ef74229b7dd494792df677326a1e7765f1764c6'
 };
-export const LOCK_GRAPH_SHA='89012eca840c7b48c7a4f7e3d2bb3e1b837326e3aac092ff8e20f5336a25acc1';
+export const LOCK_GRAPH_SHA='acb16a636330177c6d2ea52be9ec1649228db777bbbee54efa82ed1919a922fa';
 export const TRUST_ROOTS=['/etc/ssl/certs','/usr/local/share/ca-certificates','/etc/ca-certificates.conf','/usr/local/etc/npmrc','/etc/npmrc','/root/.npmrc','/home/node/.npmrc','/root/.npm','/home/node/.npm'];
+// F07 ships exactly one reviewed parser subprocess, not the developer tooling
+// tree. Keep strict runtime layout/hash checks and all original trust gates.
+export function parserRuntimeGuard(expectedHash){
+ assert.match(expectedHash,/^[a-f0-9]{64}$/);
+ return `{
+  for(const [dir,children] of [['/app/tooling',['dms']],['/app/tooling/dms',['validate-intake.cjs']]]){
+   const stat=fs.lstatSync(dir);assert.ok(stat.isDirectory()&&!stat.isSymbolicLink());assert.deepEqual(fs.readdirSync(dir).sort(),children);
+  }
+  const parser='/app/tooling/dms/validate-intake.cjs',stat=fs.lstatSync(parser);assert.ok(stat.isFile()&&!stat.isSymbolicLink());assert.equal(hash(fs.readFileSync(parser)),'${expectedHash}');
+ }`;
+}
 const sha=b=>createHash('sha256').update(b).digest('hex');
 const digestPattern=/^sha256:[a-f0-9]{64}$/;
 export function uncertainDockerOutcome(r){return !r.cliEnded||Boolean(r.reason||r.error||r.signal);}
@@ -69,7 +84,31 @@ export function validateTrust(base,runtime){
 }
 export function nativeArguments(root,verification){return['--network','none','--read-only','--user','1000','--tmpfs','/tmp:rw,noexec,nosuid,size=128m','--mount','type=bind,src='+root+'/src,dst=/app/src,readonly','--mount','type=bind,src='+verification+',dst=/app/verification,readonly','--entrypoint','node'];}
 const trustProbe=String.raw`const fs=require('fs'),path=require('path'),crypto=require('crypto');const roots=${JSON.stringify(TRUST_ROOTS)},files={};let count=0;function visit(p,depth=0){if(++count>20000||depth>32)throw Error('Bounded trust inventory exceeded');let s;try{s=fs.lstatSync(p);}catch(e){if(e.code!=='ENOENT')throw e;files[p]={kind:'absent'};return;}if(s.isDirectory()){files[p]={kind:'directory'};for(const n of fs.readdirSync(p).sort())visit(path.join(p,n),depth+1);return;}if(!s.isFile()&&!s.isSymbolicLink())throw Error('Unexpected trust file type');const t=fs.statSync(p);if(!t.isFile()||t.size>4*1024**2)throw Error('Trust leaf must be bounded regular file');const h=crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');files[p]=s.isSymbolicLink()?{kind:'symlink',link:fs.readlinkSync(p),sha256:h}:{kind:'file',sha256:h};}for(const r of roots)visit(r);console.log(JSON.stringify({node:process.version,platform:process.platform,roots,files}));`;
-function runtimeProbe(provenance,sprintfFiles){return String.raw`const fs=require('fs'),crypto=require('crypto'),path=require('path'),cp=require('child_process'),assert=require('assert/strict');const hash=b=>crypto.createHash('sha256').update(b).digest('hex'),expected=${JSON.stringify(provenance)},sprintfFiles=${JSON.stringify(sprintfFiles)};assert.equal(process.version,'v22.23.2');assert.equal(process.platform,'linux');assert.equal(process.arch,'x64');assert.ok(process.report.getReport().header.glibcVersionRuntime);assert.equal(cp.execFileSync('/usr/local/bin/npm',['--version'],{encoding:'utf8',timeout:10000}).trim(),'10.9.8');for(const p of ['/run/secrets/f06-inspection-root.pem','/app/verification','/app/verification-output','/app/.security-evidence','/app/tooling','/app/tests','/app/vendor','/tmp/f06-npm-cache']){try{fs.lstatSync(p);throw Error('Unexpected verification/secret path');}catch(e){if(e.code!=='ENOENT')throw e;}}assert.ok(!process.env.NODE_EXTRA_CA_CERTS&&!process.env.NODE_TLS_REJECT_UNAUTHORIZED);assert.equal(Object.keys(expected.patchedFiles).length,11);for(const[p,h]of Object.entries(expected.patchedFiles)){const f=path.join('/app/node_modules/braces',p);for(let q=f;q!=='/';q=path.dirname(q))assert.ok(!fs.lstatSync(q).isSymbolicLink());assert.ok(fs.lstatSync(f).isFile());assert.equal(hash(fs.readFileSync(f)),h);}assert.equal(Object.keys(sprintfFiles).length,3);for(const[p,h]of Object.entries(sprintfFiles)){const f=path.join('/app/node_modules/sprintf-js',p);for(let q=f;q!=='/';q=path.dirname(q))assert.ok(!fs.lstatSync(q).isSymbolicLink());assert.ok(fs.lstatSync(f).isFile());assert.equal(hash(fs.readFileSync(f)),h);}const {sprintf}=require('/app/node_modules/sprintf-js');for(const f of ['e','f','g'])assert.equal(sprintf('%.1000000000'+f,1.25),sprintf('%.100'+f,1.25));const buildId=fs.readFileSync('/app/.next/BUILD_ID','utf8').trim();assert.ok(buildId);console.log(JSON.stringify({node:process.version,npm:'10.9.8',platform:process.platform,arch:process.arch,glibc:process.report.getReport().header.glibcVersionRuntime,buildId,buildManifestSha256:hash(fs.readFileSync('/app/.next/build-manifest.json')),lockSha256:hash(fs.readFileSync('/app/package-lock.json')),bracesFiles:11,sprintfFiles:3}));`;}
+export function runtimeProbe(provenance,sprintfFiles,parserHash){
+ return String.raw`
+const fs=require('fs'),crypto=require('crypto'),path=require('path'),cp=require('child_process'),assert=require('assert/strict');
+const hash=b=>crypto.createHash('sha256').update(b).digest('hex'),expected=${JSON.stringify(provenance)},sprintfFiles=${JSON.stringify(sprintfFiles)};
+assert.equal(process.version,'v22.23.2');assert.equal(process.platform,'linux');assert.equal(process.arch,'x64');assert.ok(process.report.getReport().header.glibcVersionRuntime);
+assert.equal(cp.execFileSync('/usr/local/bin/npm',['--version'],{encoding:'utf8',timeout:10000}).trim(),'10.9.8');
+for(const p of ['/run/secrets/f06-inspection-root.pem','/app/verification','/app/verification-output','/app/.security-evidence','/app/tests','/app/vendor','/tmp/f06-npm-cache']){try{fs.lstatSync(p);throw Error('Unexpected verification/secret path');}catch(e){if(e.code!=='ENOENT')throw e;}}
+${parserRuntimeGuard(parserHash)}
+assert.ok(!process.env.NODE_EXTRA_CA_CERTS&&!process.env.NODE_TLS_REJECT_UNAUTHORIZED);
+assert.equal(Object.keys(expected.patchedFiles).length,11);
+for(const[p,h]of Object.entries(expected.patchedFiles)){const f=path.join('/app/node_modules/braces',p);for(let q=f;q!=='/';q=path.dirname(q))assert.ok(!fs.lstatSync(q).isSymbolicLink());assert.ok(fs.lstatSync(f).isFile());assert.equal(hash(fs.readFileSync(f)),h);}
+assert.equal(Object.keys(sprintfFiles).length,3);
+for(const[p,h]of Object.entries(sprintfFiles)){const f=path.join('/app/node_modules/sprintf-js',p);for(let q=f;q!=='/';q=path.dirname(q))assert.ok(!fs.lstatSync(q).isSymbolicLink());assert.ok(fs.lstatSync(f).isFile());assert.equal(hash(fs.readFileSync(f)),h);}
+const {sprintf}=require('/app/node_modules/sprintf-js');for(const f of ['e','f','g'])assert.equal(sprintf('%.1000000000'+f,1.25),sprintf('%.100'+f,1.25));
+const childOptions={env:{NODE_ENV:'production'},timeout:10000,maxBuffer:128,encoding:'utf8'};
+const {jsPDF}=require('/app/node_modules/jspdf'),pdf=new jsPDF({compress:false});pdf.text('F07 synthetic image parser verification',10,20);
+assert.equal(cp.execFileSync(process.execPath,['--max-old-space-size=384','/app/tooling/dms/validate-intake.cjs','application/pdf'],{...childOptions,input:Buffer.from(pdf.output('arraybuffer'))}),'F07_FORMAT_VALID\n');
+const XLSX=require('/app/node_modules/xlsx'),book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['F07 synthetic',7]]),'Synthetic');
+assert.equal(cp.execFileSync(process.execPath,['--max-old-space-size=384','/app/tooling/dms/validate-intake.cjs','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],{...childOptions,input:XLSX.write(book,{type:'buffer',bookType:'xlsx'})}),'F07_FORMAT_VALID\n');
+const invalid=cp.spawnSync(process.execPath,['--max-old-space-size=384','/app/tooling/dms/validate-intake.cjs','application/pdf'],{...childOptions,input:Buffer.from('%PDF-not-a-document')});
+assert.equal(invalid.status,1);assert.notEqual(invalid.stdout,'F07_FORMAT_VALID\n');
+const buildId=fs.readFileSync('/app/.next/BUILD_ID','utf8').trim();assert.ok(buildId);
+console.log(JSON.stringify({node:process.version,npm:'10.9.8',platform:process.platform,arch:process.arch,glibc:process.report.getReport().header.glibcVersionRuntime,buildId,buildManifestSha256:hash(fs.readFileSync('/app/.next/build-manifest.json')),lockSha256:hash(fs.readFileSync('/app/package-lock.json')),bracesFiles:11,sprintfFiles:3,documentParser:{sha256:${JSON.stringify(parserHash)},formats:['pdf','xlsx'],malformedRejected:true}}));
+`;
+}
 
 async function main(){
  assert.equal(process.platform,'linux');assert.equal(process.version,'v22.23.2');assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.GITHUB_REPOSITORY,'sameerfahmi1979-maker/ERP');assert.equal(process.env.ALGT_F06_CI_IMAGE_CHECK,'1');
@@ -94,7 +133,7 @@ async function main(){
  async function close(ref){const v=validateOwnership(await inspect(ref.id||ref.name),{...ref,id:ref.id||(await inspect(ref.name)).Id},owner);ref.id=v.Id;if(v.State.Running){await docker(['container','stop','--time','10',ref.id],{timeout:20000});}const ended=validateOwnership(await inspect(ref.id),ref,owner);assert.equal(ended.State.Running,false);assert.ok(['created','exited'].includes(ended.State.Status));await docker(['container','rm',ref.id]);await absent(ref.name);refs.splice(refs.indexOf(ref),1);closedRefs.push({...ref,endedState:ended.State.Status,absent:true});write('closed-'+ref.name+'.json',closedRefs.at(-1));return ended.State;}
  async function probe(image,label,script){const ref=await create(image,label,['--network','none','--read-only','--user','0','--tmpfs','/tmp:rw,noexec,nosuid,size=64m','--entrypoint','node','-i'],['-']);const r=await docker(['container','start','--attach','--interactive',ref.id],{input:script,timeout:60000});const v=validateOwnership(await inspect(ref.id),ref,owner);assert.equal(v.State.Running,false);assert.equal(v.State.ExitCode,0);assert.equal(v.State.OOMKilled,false);await close(ref);return JSON.parse(r.stdout);}
  async function image(id){const v=JSON.parse((await docker(['image','inspect',id])).stdout);assert.equal(v.length,1);assert.match(v[0].Id,digestPattern);assert.equal(v[0].Os,'linux');assert.equal(v[0].Architecture,'amd64');return v[0];}
- const sourceManifest=()=>{const names=['.github/workflows/engineering.yml','.gitattributes','tests/remediation/f06/linux-image-check.test.mjs','Dockerfile','.dockerignore','package.json','package-lock.json','next.config.ts','tsconfig.json','tsconfig.shipping.json','postcss.config.mjs','vendor/braces-3.0.3-algt-depth-1.tgz','vendor/braces-3.0.3-algt-integrated-2.tgz','vendor/sprintf-js-1.0.3-algt.1.tgz','vendor/braces-artifact.json','vendor/sprintf-js-artifact.json','vendor/PATCH-MANIFEST.json','tooling/security/verify-vendor-patches.cjs',NATIVE,'tooling/testing/f06-linux-image-check.mjs','vendor/braces/PROVENANCE.json','tooling/security/dependency-gate.cjs'];const walk=p=>{const s=fs.lstatSync(path.join(root,p));assert.ok(!s.isSymbolicLink());if(s.isDirectory())for(const n of fs.readdirSync(path.join(root,p)).sort())walk(p+'/'+n);else names.push(p);};walk('src');walk('public');return Object.fromEntries([...new Set(names)].sort().map(p=>[p,sha(ordinary(path.join(root,p)))]));};
+ const sourceManifest=()=>{const names=['.github/workflows/engineering.yml','.gitattributes','tests/remediation/f06/linux-image-check.test.mjs','Dockerfile','.dockerignore','package.json','package-lock.json','next.config.ts','tsconfig.json','tsconfig.shipping.json','postcss.config.mjs','vendor/braces-3.0.3-algt-depth-1.tgz','vendor/braces-3.0.3-algt-integrated-2.tgz','vendor/sprintf-js-1.0.3-algt.1.tgz','vendor/braces-artifact.json','vendor/sprintf-js-artifact.json','vendor/PATCH-MANIFEST.json','tooling/security/verify-vendor-patches.cjs',NATIVE,'tooling/testing/f06-linux-image-check.mjs','tooling/dms/validate-intake.cjs','vendor/braces/PROVENANCE.json','tooling/security/dependency-gate.cjs'];const walk=p=>{const s=fs.lstatSync(path.join(root,p));assert.ok(!s.isSymbolicLink());if(s.isDirectory())for(const n of fs.readdirSync(path.join(root,p)).sort())walk(p+'/'+n);else names.push(p);};walk('src');walk('public');return Object.fromEntries([...new Set(names)].sort().map(p=>[p,sha(ordinary(path.join(root,p)))]));};
  const request=(p,method='GET')=>new Promise((resolve,reject)=>{let done=false;const req=http.request({hostname:'127.0.0.1',port:16401,path:p,method},res=>{let size=0;const chunks=[];res.on('data',b=>{size+=b.length;if(size>4*1024**2)req.destroy(Error('HTTP body bound'));else chunks.push(b);});res.on('end',()=>{done=true;clearTimeout(timer);resolve({status:res.statusCode,location:res.headers.location||null,body:Buffer.concat(chunks)});});res.on('error',reject);});const timer=setTimeout(()=>req.destroy(Error('Absolute HTTP deadline')),5000);req.on('error',e=>{if(!done){clearTimeout(timer);reject(e);}});req.end();});
  try{
   write('intent.json',receipt);const checkout=(await run('git',['rev-parse','HEAD'])).stdout.trim();assert.equal(checkout,candidate);assert.equal((await run('git',['diff','--name-only','HEAD'])).stdout.trim(),'');receipt.actualCheckout=checkout;
@@ -102,7 +141,7 @@ async function main(){
   const logFile=path.join(process.env.RUNNER_TEMP,'f06-production-build.log'),buildLog=ordinary(logFile).toString();assert.ok(buildLog.length&&buildLog.length<=16*1024**2);assert.doesNotMatch(buildLog,/Trying to install package .* using npm|Trying to download |This install script will now attempt to work around|Downloading swc package/i);write('production-build.log',buildLog);receipt.buildLogSha256=sha(buildLog);
   const production=await image('algt-f02-ci'),imageId=validateImage(production),base=await image(BASE);validateBaseLineage(base,production);assert.equal(production.Config.Labels?.['org.opencontainers.image.revision'],candidate);assert.equal(production.Config.Labels?.['algt.f06.ci-owner'],owner);write('image-inspect.json',production);write('base-inspect.json',base);receipt.imageId=imageId;receipt.baseImageId=base.Id;receipt.baseLayerPrefixVerified=true;
   const trustBase=await probe(base.Id,'base-trust',trustProbe),trustRuntime=await probe(imageId,'runtime-trust',trustProbe);write('base-trust.json',trustBase);write('runtime-trust.json',trustRuntime);validateTrust(trustBase,trustRuntime);receipt.trustBaselineEqual=true;
-  const provenance=JSON.parse(ordinary(path.join(root,'vendor/braces/PROVENANCE.json')));const runtime=await probe(imageId,'runtime-proof',runtimeProbe(provenance,Object.fromEntries(Object.entries(JSON.parse(ordinary(path.join(root,'vendor/PATCH-MANIFEST.json'))).patchedFiles).map(([p,h])=>[p.replace('vendor/sprintf-js/',''),h]))));assert.equal(runtime.lockSha256,IMPACT['package-lock.json']);assert.equal(runtime.bracesFiles,11);assert.equal(runtime.sprintfFiles,3);write('runtime-proof.json',runtime);receipt.runtime=runtime;
+  const provenance=JSON.parse(ordinary(path.join(root,'vendor/braces/PROVENANCE.json')));const runtime=await probe(imageId,'runtime-proof',runtimeProbe(provenance,Object.fromEntries(Object.entries(JSON.parse(ordinary(path.join(root,'vendor/PATCH-MANIFEST.json'))).patchedFiles).map(([p,h])=>[p.replace('vendor/sprintf-js/',''),h])),IMPACT['tooling/dms/validate-intake.cjs']));assert.equal(runtime.lockSha256,IMPACT['package-lock.json']);assert.equal(runtime.bracesFiles,11);assert.equal(runtime.sprintfFiles,3);write('runtime-proof.json',runtime);receipt.runtime=runtime;
   const verification=path.join(out,'verification');fs.mkdirSync(verification,{mode:0o755});fs.writeFileSync(path.join(verification,'native-paths.test.cjs'),ordinary(path.join(root,NATIVE)),{flag:'wx',mode:0o644});fs.writeFileSync(path.join(verification,'source-manifest.json'),JSON.stringify({files:manifest}),{flag:'wx',mode:0o644});
   const native=await create(imageId,'native',nativeArguments(root,verification),['--conditions=react-server','--test','--test-reporter=tap','/app/verification/native-paths.test.cjs']);const result=await docker(['container','start','--attach',native.id],{timeout:120000});const nativeState=validateOwnership(await inspect(native.id),native,owner);assert.equal(nativeState.State.Running,false);assert.equal(nativeState.State.ExitCode,0);assert.equal(nativeState.State.OOMKilled,false);receipt.native=validateNativeTap(result.stdout);write('native.tap',result.stdout);await close(native);
   const boot=await create(imageId,'boot',['--read-only','--tmpfs','/tmp:rw,noexec,nosuid,size=64m','--network','bridge','--publish','127.0.0.1:16401:3000','--env','NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:16421','--env','NEXT_PUBLIC_SUPABASE_ANON_KEY=synthetic-ci-public-key','--env','NEXT_PUBLIC_SITE_URL=http://127.0.0.1:16401','--env','NEXT_TELEMETRY_DISABLED=1'],[]);const config=await inspect(boot.id);assert.equal(config.Config.User,'node');assert.deepEqual(config.Config.Cmd,production.Config.Cmd);assert.deepEqual(config.HostConfig.PortBindings,{'3000/tcp':[{HostIp:'127.0.0.1',HostPort:'16401'}]});assert.equal(config.HostConfig.ReadonlyRootfs,true);await docker(['container','start',boot.id]);

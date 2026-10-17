@@ -27,6 +27,8 @@ const file = {position: 0, original_filename: "a.pdf", mime_type: "application/p
 const manifest: BatchManifest = {version: 1, context: null, files: [file]};
 const request: BatchRequest = {manifest, contract: {operationId: operation, revision: null}};
 const origin = {authUserId, profileId: 5};
+import {syntheticPdf} from '../f07/document-fixtures';
+const validPdf=syntheticPdf();
 // Expected bytes are literals from the approved cross-language contract, not
 // computed from the implementation's canonicalizer. SQL must match these too.
 export const canonicalBatchVectors = [
@@ -133,7 +135,7 @@ describe("batch canonical parsed-value contract", () => {
     {...request, unknown: true}, {...request, contract: {...request.contract, revision: 1}},
     {...request, contract: {...request.contract, extra: "x"}}, {...request, manifest: {...manifest, extra: true}},
     {...request, manifest: {...manifest, context: {type: "party", id: 1, extra: true}}},
-    {...request, manifest: {...manifest, context: {type: "employee", id: 1}}},
+    {...request, manifest: {...manifest, context: {type: "vehicle", id: 1}}},
     {...request, manifest: {...manifest, files: [{...file, token: "never"}]}},
     {...request, manifest: {...manifest, version: 2}}, {...request, manifest: {...manifest, files: [{...file, mime_type: ""}]}},
   ])("rejects strict nested request mutation %j", value => expect(batchRequestSchema.safeParse(value).success).toBe(false));
@@ -191,7 +193,7 @@ describe("ordinary-auth atomic batch server adapter", () => {
   const absent = {data: null, error: {status: 404, statusCode: "NoSuchKey", message: "private object detail"}};
   const ctx = () => ({profile: {id: 5, auth_user_id: authUserId, must_change_password: false}, isAccountActive: true});
   function fixture(count = 1) {
-    const files = Array.from({length: count}, (_, position) => ({...file, position, original_filename: `${position}.pdf`, sha256_hash: digest("x")}));
+    const files = Array.from({length: count}, (_, position) => ({...file, position, original_filename: `${position}.pdf`,file_size_bytes:validPdf.length, sha256_hash: createHash('sha256').update(validPdf).digest('hex')}));
     currentRequest = {manifest: {...manifest, files}, contract: {...request.contract}};
     currentReceipt = {...receipt(), manifest: currentRequest.manifest,
       fingerprint: digest(JSON.stringify(["dms-batch-admission/v1", null, files.map(f => [f.position, f.original_filename, f.mime_type, f.file_size_bytes, f.sha256_hash])])),
@@ -202,9 +204,9 @@ describe("ordinary-auth atomic batch server adapter", () => {
   }
   function info(position = 0) {
     return {id: `00000000-0000-4000-8000-${String(position + 20).padStart(12, "0")}`, version: "version-1",
-      name: currentReceipt.members[position].path, bucketId: "dms-temp", size: 1, ignored: "not returned"};
+      name: currentReceipt.members[position].path, bucketId: "dms-temp", size: validPdf.length, ignored: "not returned"};
   }
-  function bytes(value: unknown = new Uint8Array([120])) {
+  function bytes(value: unknown = new Uint8Array(validPdf)) {
     return new ReadableStream({start(controller) {controller.enqueue(value); controller.close();}});
   }
   function present(position = 0) {
@@ -587,7 +589,7 @@ describe("ordinary-auth atomic batch server adapter", () => {
   });
   it("overshoot cancels a non-closing stream without waiting on its cleanup", async () => {
     present(); const cancel = vi.fn(() => new Promise<void>(() => undefined));
-    m.stream.mockResolvedValue({data: new ReadableStream({start(c) {c.enqueue(new Uint8Array([120, 120]));}, cancel}), error: null});
+    m.stream.mockResolvedValue({data: new ReadableStream({start(c) {c.enqueue(new Uint8Array(validPdf.length+1));}, cancel}), error: null});
     expect(await verify()).toMatchObject({state: "unavailable"}); expect(cancel).toHaveBeenCalledOnce();
   });
   it("stream deadline aborts/cancels without unbounded waiting", async () => {
@@ -711,19 +713,26 @@ describe("ordinary-auth atomic batch server adapter", () => {
     expect(m.rpc.mock.calls.some(([name]) => name === "dms_upload_batch_eligibility")).toBe(false);
   });
 
-  it.each(["", "application/octet-stream"])("single-file metadata %j normalizes before the unchanged insert/sign lifecycle", async mime_type => {
-    const insert = vi.fn(); const single = vi.fn();
-    const query = {select: vi.fn(), eq: vi.fn(), is: vi.fn(), limit: vi.fn(), maybeSingle: vi.fn(), insert, single};
-    for (const method of ["select", "eq", "is", "limit", "insert"] as const) query[method].mockReturnValue(query);
+  it.each(["", "application/octet-stream"])("single-file metadata %j normalizes before stable admission/signing", async mime_type => {
+    const query = {select: vi.fn(), eq: vi.fn(), is: vi.fn(), limit: vi.fn(), maybeSingle: vi.fn()};
+    for (const method of ["select", "eq", "is", "limit"] as const) query[method].mockReturnValue(query);
     query.maybeSingle.mockResolvedValue({data: null, error: null});
-    single.mockImplementation(async () => ({data: {id: 90, ...insert.mock.calls[0][0]}, error: null}));
     m.from.mockReturnValue(query);
-    const result = await createDmsUploadSession({original_filename: "a.pdf", mime_type, file_size_bytes: 1, sha256_hash: hash.toUpperCase()});
+    const path='sessions/SYNTHETIC/a.pdf';
+    m.rpc.mockResolvedValue({data:{operationId:operation,authUserId,replayed:false,session:{id:90,session_code:'SYNTHETIC',temp_storage_path:path,
+      original_filename:'a.pdf',mime_type:'application/pdf',file_size_bytes:1,sha256_hash:hash,status:'uploading',intake_status:'uploaded',uploaded_by:5,
+      document_id:null,origin_entity_type:null,origin_entity_id:null,deleted_at:null,expires_at:'2099-01-01T00:00:00Z',
+      is_duplicate:false,duplicate_document_id:null,uploaded_at:'2026-10-17T00:00:00Z',completed_at:null,temp_cleaned_at:null,cleanup_error_message:null,error_message:null,
+      created_at:'2026-10-17T00:00:00Z',updated_at:'2026-10-17T00:00:00Z',ai_result_id:null}},error:null});
+    m.info.mockResolvedValue({data:null,error:{status:404}});
+    m.sign.mockResolvedValue({data:{path,token:'synthetic-token',signedUrl:'http://127.0.0.1/synthetic'},error:null});
+    const result = await createDmsUploadSession({original_filename: "a.pdf", mime_type, file_size_bytes: 1, sha256_hash: hash.toUpperCase()},{operationId:operation,authUserId});
     expect(result.success).toBe(true);
-    expect(insert).toHaveBeenCalledWith(expect.objectContaining({mime_type: "application/pdf", sha256_hash: hash, status: "uploaded", uploaded_by: 5}));
-    expect(m.from.mock.calls.map(([table]) => table)).toEqual(["dms_document_files", "dms_upload_sessions"]);
-    expect(m.sign).toHaveBeenCalledExactlyOnceWith(insert.mock.calls[0][0].temp_storage_path);
-    expect(insert.mock.invocationCallOrder[0]).toBeLessThan(m.sign.mock.invocationCallOrder[0]); expect(m.audit).toHaveBeenCalledOnce();
+    expect(m.rpc).toHaveBeenCalledWith('f07_admit_single_upload',{p_request:{version:1,operationId:operation,authUserId,context:null,metadata:{original_filename:'a.pdf',mime_type:'application/pdf',file_size_bytes:1,sha256_hash:hash}}});
+    expect(m.from.mock.calls.map(([table]) => table)).toEqual(["dms_document_files"]);
+    expect(m.sign).toHaveBeenCalledExactlyOnceWith(path);
+    expect(m.rpc.mock.invocationCallOrder[0]).toBeLessThan(m.sign.mock.invocationCallOrder[0]);
+    expect(m.audit).not.toHaveBeenCalled(); // Audit is atomic with admission, not post-commit bookkeeping.
   });
   it.each(["constructor", "__proto__"])("single-file inherited extension %s fails before any row operation", async extension => {
     expect(await createDmsUploadSession({original_filename: `a.${extension}`, mime_type: "", file_size_bytes: 1, sha256_hash: hash})).toMatchObject({success: false});

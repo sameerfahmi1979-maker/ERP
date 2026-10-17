@@ -113,7 +113,7 @@ export const APPLY_TARGET_REGISTRY: Record<string, ApplyTargetConfig> = {
         valueType:   "text",
         permission:  "dms.documents.edit",
         replaceable: true,
-        maxLength:   500,
+        maxLength:   16000,
       },
     ],
   },
@@ -312,7 +312,7 @@ export function validateApplyTarget(
     return { valid: false, reason: `target "${targetTable}.${targetField}" is in the forbidden list` };
   }
 
-  const config = APPLY_TARGET_REGISTRY[targetTable];
+  const config = Object.hasOwn(APPLY_TARGET_REGISTRY,targetTable)?APPLY_TARGET_REGISTRY[targetTable]:undefined;
   if (!config) {
     return { valid: false, reason: `target_table "${targetTable}" is not in the apply allowlist` };
   }

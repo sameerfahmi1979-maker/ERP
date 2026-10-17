@@ -7,6 +7,7 @@ import {getDmsExpiryReminders} from "@/server/actions/dms/expiry-reminders";
 const id=z.number().int().positive();
 import {getDmsDocumentComments} from "@/server/actions/dms/document-comments";
 import {getDmsDocumentEvents} from "@/server/actions/dms/document-events";
+import {getDmsDocumentLifecycle,getDmsDocumentHistoryPage} from "@/server/actions/dms/lifecycle-history";
 import {getDmsDocumentFiles} from "@/server/actions/dms/document-files";
 import {getDmsDocumentVersions} from "@/server/actions/dms/document-files";
 import {getDmsDocumentLinks} from "@/server/actions/dms/document-links";
@@ -42,7 +43,7 @@ export async function readDmsSection(input:unknown) {
  const ctx=await getReadAuthContext();
  if(!ctx.profile||!ctx.isAccountActive||ctx.profile.must_change_password)return {success:false,error:"Permission denied"};
  const {kind,args}=base.data;
- const documentReads=new Set(["getDmsDocumentComments","getDmsDocumentEvents","getDmsDocumentFiles","getDmsDocumentVersions","getDmsDocumentLinks","getDmsLinkSuggestions","getDmsDocumentMetadataValues","getDmsDocumentTags","getDmsTagSuggestions","getDmsOcrStatus","getDocumentContentText","getDmsAiAnalysisStatus","getDmsAiExtractionResults","getDmsAiMetadataApplyHistory","getDmsAiSummaryStatus","getDmsDocumentCompletenessStatus","getDmsDocumentRiskStatus","getDmsDocumentEmbeddingStatus","getDmsDocumentSemanticIndexStatus","getDmsDocumentUnderstanding","getDmsErpMappingPreview","getEligibleUploadSessionsForVersionLink","getDocumentApprovalState","getDocumentApprovalHistory"]);
+ const documentReads=new Set(["getDmsDocumentLifecycle","getDmsDocumentHistoryPage","getDmsDocumentComments","getDmsDocumentEvents","getDmsDocumentFiles","getDmsDocumentVersions","getDmsDocumentLinks","getDmsLinkSuggestions","getDmsDocumentMetadataValues","getDmsDocumentTags","getDmsTagSuggestions","getDmsOcrStatus","getDocumentContentText","getDmsAiAnalysisStatus","getDmsAiExtractionResults","getDmsAiMetadataApplyHistory","getDmsAiSummaryStatus","getDmsDocumentCompletenessStatus","getDmsDocumentRiskStatus","getDmsDocumentEmbeddingStatus","getDmsDocumentSemanticIndexStatus","getDmsDocumentUnderstanding","getDmsErpMappingPreview","getEligibleUploadSessionsForVersionLink","getDocumentApprovalState","getDocumentApprovalHistory"]);
  if(documentReads.has(kind)){
   const parsedId=id.safeParse(args[0]);if(!parsedId.success)return {success:false,error:"Invalid document identifier"};
   const db=await createClient();const parent=await db.from("dms_documents").select("id").eq("id",parsedId.data).is("deleted_at",null).maybeSingle();
@@ -54,13 +55,15 @@ export async function readDmsSection(input:unknown) {
  case "listDmsApplyToErpRuns": {const p=z.tuple([z.object({documentId:id.optional(),page:z.number().int().min(1).max(100000),pageSize:z.literal(20)}).strict()]).safeParse(args);return p.success?listDmsApplyToErpRuns(...p.data):{success:false,error:"Invalid section arguments"};}
  case "getDmsApplyToErpRun": {const p=z.tuple([id]).safeParse(args);return p.success?getDmsApplyToErpRun(...p.data):{success:false,error:"Invalid section arguments"};}
  case "getDmsDocumentComments": {const p=z.tuple([id]).safeParse(args);return p.success?getDmsDocumentComments(...p.data):{success:false,error:"Invalid section arguments"};}
+ case "getDmsDocumentLifecycle": {const p=z.tuple([id]).safeParse(args);return p.success?getDmsDocumentLifecycle(...p.data):{success:false,error:"Invalid section arguments"};}
+ case "getDmsDocumentHistoryPage": {const p=z.tuple([id,z.number().int().min(1).max(100000),z.enum(["all","downloads"])]).safeParse(args);return p.success?getDmsDocumentHistoryPage(...p.data):{success:false,error:"Invalid section arguments"};}
  case "getDmsDocumentEvents": {const p=z.tuple([id]).safeParse(args);return p.success?getDmsDocumentEvents(...p.data):{success:false,error:"Invalid section arguments"};}
  case "getDmsDocumentFiles": {const p=z.tuple([id]).safeParse(args);return p.success?getDmsDocumentFiles(...p.data):{success:false,error:"Invalid section arguments"};}
  case "getDmsDocumentVersions": {const p=z.tuple([id]).safeParse(args);return p.success?getDmsDocumentVersions(...p.data):{success:false,error:"Invalid section arguments"};}
  case "getDmsDocumentLinks": {const p=z.tuple([id]).safeParse(args);return p.success?getDmsDocumentLinks(...p.data):{success:false,error:"Invalid section arguments"};}
  case "getDmsLinkSuggestions": {const p=z.tuple([id]).safeParse(args);return p.success?getDmsLinkSuggestions(...p.data):{success:false,error:"Invalid section arguments"};}
  case "getMetadataDefinitionsForType": {const p=z.tuple([id,z.enum(["all","intake","detail"]).optional(),id.optional()]).safeParse(args);return p.success?getMetadataDefinitionsForType(...p.data):{success:false,error:"Invalid section arguments"};}
- case "getDmsDocumentMetadataValues": {const p=z.tuple([id]).safeParse(args);return p.success?getDmsDocumentMetadataValues(...p.data):{success:false,error:"Invalid section arguments"};}
+ case "getDmsDocumentMetadataValues": {const p=z.tuple([id,id.optional()]).safeParse(args);return p.success?getDmsDocumentMetadataValues(...p.data):{success:false,error:"Invalid section arguments"};}
  case "getDmsTags": {const p=z.tuple([]).safeParse(args);return p.success?getDmsTags(...p.data):{success:false,error:"Invalid section arguments"};}
  case "getDmsDocumentTags": {const p=z.tuple([id]).safeParse(args);return p.success?getDmsDocumentTags(...p.data):{success:false,error:"Invalid section arguments"};}
  case "getDmsTagSuggestions": {const p=z.tuple([id]).safeParse(args);return p.success?getDmsTagSuggestions(...p.data):{success:false,error:"Invalid section arguments"};}

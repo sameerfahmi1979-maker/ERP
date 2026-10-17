@@ -10,6 +10,7 @@ COPY vendor/braces-3.0.3-algt-integrated-2.tgz ./vendor/braces-3.0.3-algt-integr
 COPY vendor/sprintf-js-1.0.3-algt.1.tgz ./vendor/sprintf-js-1.0.3-algt.1.tgz
 RUN npm ci --no-fund
 COPY src ./src
+COPY tooling/dms/validate-intake.cjs ./tooling/dms/validate-intake.cjs
 COPY public ./public
 COPY next.config.ts tsconfig.json tsconfig.shipping.json postcss.config.mjs ./
 # Only intentionally public browser configuration is accepted at build time.
@@ -32,6 +33,7 @@ COPY --from=build --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/.next ./.next
 COPY --from=build --chown=node:node /app/public ./public
+COPY --from=build --chown=node:node /app/tooling/dms/validate-intake.cjs ./tooling/dms/validate-intake.cjs
 COPY --from=build --chown=node:node /app/next.config.ts /app/tsconfig.json /app/tsconfig.shipping.json ./
 USER node
 EXPOSE 3000

@@ -7,11 +7,14 @@ import { DmsAdminFileStoragePanel } from "@/features/dms/admin/dms-admin-file-st
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { useDmsBatchAdmission } from "@/hooks/use-dms-batch-admission";
+import {useDmsSingleUploadAdmission} from '@/hooks/use-dms-single-upload-admission';
 import { startAiIntakeFromUploadSession } from "@/server/actions/dms/ai-intake";
 import type { DmsDocumentRow } from "@/server/actions/dms/documents";
 import {
   cancelDmsUploadSession,
   createDmsUploadSession,
+  completeDmsTempUpload,
+  acknowledgeDmsSingleUpload,
   type CreateUploadSessionInput,
   type DmsUploadSessionRow,
 } from "@/server/actions/dms/upload-sessions";
@@ -78,13 +81,14 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
   const [selectedSession, setSelectedSession] = useState<DmsUploadSessionRow | null>(null);
 
   const [uploadMode, setUploadMode] = useState<UploadMode>("single");
+  const singleAdmission=useDmsSingleUploadAdmission(entityContext);
   const batchFailureRef = useRef<HTMLDivElement>(null);
   const batch = useDmsBatchAdmission({
     enabled: batchEnabled && uploadMode === "batch",
     context: entityContext,
     upload: async (capability, body, mime) => {
       const {error} = await createSupabaseClient().storage.from("dms-temp")
-        .uploadToSignedUrl(capability.path, capability.token, body, {contentType: mime, upsert: false});
+        .uploadToSignedUrl(capability.path, capability.token, body.type===mime?body:new Blob([body],{type:mime}), {contentType: mime, upsert: false});
       return !error;
     },
     onResult: (confirmed, total, code) => {
@@ -245,17 +249,33 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
     input: CreateUploadSessionInput & { file: File }
   ) => {
     const { file, ...sessionInput } = input;
-
+    let retained:ReturnType<typeof singleAdmission.begin>;
+    try{retained=singleAdmission.begin(sessionInput);}
+    catch(e){setUploadState({phase:'error',message:e instanceof Error?e.message:'Retained upload recovery is unavailable.'});return;}
+    try{
     setUploadState({ phase: "uploading", progress: 0 });
 
-    const result = await createDmsUploadSession(sessionInput);
+    let result = await createDmsUploadSession({...sessionInput,context:retained.request.context??undefined},
+      {operationId:retained.request.operationId,authUserId:retained.request.authUserId});
+    if(!retained.isCurrent())return;
+    if(result.recovery){
+      if(!retained.recover(result.recovery))return;
+      result=await createDmsUploadSession({...sessionInput,context:retained.request.context??undefined},
+        {operationId:retained.request.operationId,authUserId:retained.request.authUserId});
+      if(!retained.isCurrent())return;
+    }
+    if(result.cancelled&&result.cancelled.operationId===retained.request.operationId){
+      if(retained.confirmed())setUploadState({phase:'error',message:result.error??'The prior upload is cancelled. You may now select a new file.'});
+      return;
+    }
     if (!result.success || !result.data) {
       setUploadState({ phase: "error", message: result.error ?? "Failed to create upload session" });
       return;
     }
 
-    const { session, signedUrl, token, path, isDuplicate, duplicateDocument } = result.data;
+    const { session:pendingSession, token, path, isDuplicate, duplicateDocument,uploadRequired } = result.data;
 
+    if(uploadRequired){
     try {
       const supabase = createSupabaseClient();
       // SPEED.2L (Issue #2): the storage upload has no built-in timeout — a
@@ -263,14 +283,16 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
       const timeoutMs = computeUploadTimeoutMs(file.size);
       const uploadPromise = supabase.storage
         .from("dms-temp")
-        .uploadToSignedUrl(path, token, file, { contentType: file.type });
+        .uploadToSignedUrl(path, token, new Blob([file],{type:pendingSession.mime_type}), { contentType: pendingSession.mime_type,upsert:false });
+      let uploadTimer:ReturnType<typeof setTimeout>|undefined;
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(
+        uploadTimer=setTimeout(
           () => reject(new Error(`Upload timed out after ${Math.round(timeoutMs / 1000)}s. Check your connection and try again.`)),
           timeoutMs
         )
       );
-      const { error: uploadError } = await Promise.race([uploadPromise, timeoutPromise]);
+      const { error: uploadError } = await Promise.race([uploadPromise, timeoutPromise]).finally(()=>clearTimeout(uploadTimer));
+      if(!retained.isCurrent())return;
 
       if (uploadError) {
         setUploadState({ phase: "error", message: `Upload failed: ${uploadError.message}` });
@@ -278,13 +300,26 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
         return;
       }
     } catch (e) {
+      if(!retained.isCurrent())return;
       const msg = e instanceof Error ? e.message : String(e);
       setUploadState({ phase: "error", message: msg });
       toast.error(msg.startsWith("Upload timed out") ? msg : "Upload failed. Please try again.");
       return;
     }
+    }
 
-    setSessions((prev) => [session, ...prev]);
+    const verified=await completeDmsTempUpload(pendingSession.id);
+    if(!retained.isCurrent())return;
+    if(!verified.success||!verified.data){
+      setUploadState({phase:'error',message:verified.error??'Upload verification is pending. Retain the existing Inbox session.'});
+      return;
+    }
+    const session=verified.data;
+    const acknowledged=await acknowledgeDmsSingleUpload(retained.request,session.id);
+    if(!retained.isCurrent())return;
+    if(!acknowledged.success){setUploadState({phase:'error',message:acknowledged.error??'Upload acknowledgment is unconfirmed. Reselect the same original file.'});return;}
+    if(!retained.confirmed())return;
+    setSessions((prev) => [session, ...prev.filter(s=>s.id!==session.id)]);
 
     if (isDuplicate) {
       setUploadState({ phase: "duplicate", session, duplicateDocument });
@@ -296,7 +331,10 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
       setUploadState({ phase: "ready", session });
       toast.success("File uploaded successfully! Choose what to do with it.");
     }
-  }, [autoStartEnabled, handleAiFill]);
+    }catch{
+      if(retained.isCurrent())setUploadState({phase:'error',message:'Upload outcome is unconfirmed. Reselect the same original file to recover this request; do not start another copy.'});
+    }finally{retained.settled();}
+  }, [autoStartEnabled, handleAiFill, singleAdmission]);
 
   const handleCancelDuplicate = () => {
     if (uploadState.phase === "duplicate") {

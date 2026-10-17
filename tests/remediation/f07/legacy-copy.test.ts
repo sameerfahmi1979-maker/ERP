@@ -1,0 +1,15 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+import type {SupabaseClient} from '@supabase/supabase-js';
+import {createHash} from 'node:crypto';
+import {copyFileToFinalStorage} from '@/lib/dms/approve/approve-ai-intake-storage';
+import {syntheticPdf} from './document-fixtures';
+const pdf=syntheticPdf(),sha=createHash('sha256').update(pdf).digest('hex');
+const s={download:vi.fn(),upload:vi.fn(),info:vi.fn(),remove:vi.fn()},client={storage:{from:()=>s}} as unknown as SupabaseClient;
+const params={tempBucket:'dms-temp',tempPath:'sessions/SYNTHETIC/original.pdf',finalBucket:'dms-documents',finalPath:'1/2026/TEST/1/v1/original.pdf',mimeType:'application/pdf',originalFilename:'original.pdf',fileSizeBytes:pdf.length,sha256Hash:sha};
+const identity={id:'c7000000-0000-4000-8000-000000000001',version:'synthetic-copy-v1',lastModified:'2026-10-17T00:00:00Z'};
+beforeEach(()=>{vi.resetAllMocks();s.download.mockImplementation(()=>({asStream:async()=>({data:new Blob([pdf]).stream(),error:null})}));s.upload.mockResolvedValue({error:null});s.info.mockResolvedValue({data:identity,error:null});});
+it('validates actual source and destination without overwriting any file',async()=>{expect(await copyFileToFinalStorage(client,params)).toMatchObject({success:true});expect(s.download).toHaveBeenCalledTimes(2);expect(s.upload).toHaveBeenCalledWith(params.finalPath,expect.any(Blob),{contentType:'application/pdf',upsert:false});expect(s.remove).not.toHaveBeenCalled();});
+it.each(['error','throw'])('a %s copy reply recovers by retained destination bytes, not a second upload',async mode=>{if(mode==='error')s.upload.mockResolvedValue({error:{message:'PRIVATE'}});else s.upload.mockRejectedValue(Error('PRIVATE'));expect(await copyFileToFinalStorage(client,params)).toMatchObject({success:true});expect(s.upload).toHaveBeenCalledOnce();expect(s.remove).not.toHaveBeenCalled();});
+it('hash-matching malformed source never reaches final storage',async()=>{const b=Buffer.from('%PDF-1.7\nnot a PDF\n%%EOF');s.download.mockImplementation(()=>({asStream:async()=>({data:new Blob([b]).stream(),error:null})}));expect(await copyFileToFinalStorage(client,{...params,fileSizeBytes:b.length,sha256Hash:createHash('sha256').update(b).digest('hex')})).toMatchObject({success:false});expect(s.upload).not.toHaveBeenCalled();});
+it('changed final bytes cannot be acknowledged or cleaned up',async()=>{let n=0;s.download.mockImplementation(()=>({asStream:async()=>({data:new Blob([++n===1?pdf:Buffer.alloc(pdf.length)]).stream(),error:null})}));expect(await copyFileToFinalStorage(client,params)).toMatchObject({success:false});expect(s.remove).not.toHaveBeenCalled();});
+it('changed final object identity cannot be acknowledged',async()=>{s.info.mockResolvedValueOnce({data:identity,error:null}).mockResolvedValueOnce({data:{...identity,version:'changed'},error:null});expect(await copyFileToFinalStorage(client,params)).toMatchObject({success:false});expect(s.remove).not.toHaveBeenCalled();});

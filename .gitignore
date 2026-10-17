@@ -98,3 +98,5 @@ CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F02_CLOSEOUT/
 # Dependency and exact-candidate image proofs are retained as CI artifacts.
 /.security-evidence/
 /.f06-linux-image-evidence/
+# F07 private lifecycle evidence, native fixtures and release receipts.
+/CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F07/

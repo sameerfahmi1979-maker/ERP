@@ -18,6 +18,7 @@ export type ActionResult<T = unknown> = {
   success: boolean;
   data?: T;
   error?: string;
+  uncertain?: boolean;
 };
 
 // ── Revalidation paths ────────────────────────────────────────────────────────
@@ -193,10 +194,15 @@ async function resolveApproverUserIds(admin: Awaited<ReturnType<typeof createAdm
 
 type ApprovalTransition = { approvalId: number; approvalStatus: string; pending: boolean; requiresRole: string | null };
 async function transitionApproval(documentId:number, approvalId:number|null, operation:string, comment?:string, reason?:string):Promise<ActionResult<ApprovalTransition>> {
-  const supabase = await createClient();
-  const {data,error} = await supabase.rpc("f05_transition_document_approval", {document_id:documentId,approval_id:approvalId,operation,comment_text:comment??null,reason_text:reason??null});
-  if (error) return {success:false,error:error.code==="PT409" ? "The approval changed. Refresh before taking another action." : error.code==="55000" ? "The workflow needs administrator review before this action can continue." : "The approval action was not completed. Check your access and refresh the document."};
-  return {success:true,data:data as ApprovalTransition};
+  let dispatched=false;
+  try{
+    const supabase = await createClient();dispatched=true;
+    const {data,error} = await supabase.rpc("f05_transition_document_approval", {document_id:documentId,approval_id:approvalId,operation,comment_text:comment??null,reason_text:reason??null});
+    if (error) return {success:false,uncertain:!(/^(?:22|23|42|P0|PT)[A-Z0-9]{3}$/.test(error.code??'')||error.code==='55000'),error:error.code==="PT409" ? "The reviewed content, workflow or approval changed. Refresh; withdraw and resubmit an outdated review before deciding." : error.code==="55000" ? "The workflow needs administrator review before this action can continue." : "The approval action was not confirmed. Check your access and refresh the document before retrying."};
+    const parsed=z.object({approvalId:positiveInt,approvalStatus:z.enum(['pending_approval','approved','rejected','withdrawn']),pending:z.boolean(),requiresRole:z.string().nullable()}).strict().safeParse(data);
+    if(!parsed.success||parsed.data.pending!==(parsed.data.approvalStatus==='pending_approval'))return {success:false,uncertain:true,error:'The approval outcome could not be verified. Refresh before another action.'};
+    return {success:true,data:parsed.data};
+  }catch{return {success:false,uncertain:dispatched,error:'The approval response is unavailable. Refresh this document to reconcile its current stage before retrying.'};}
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -394,6 +400,7 @@ export async function submitDocumentForApproval(
   documentId: number,
   input: { comment?: string },
 ): Promise<ActionResult<{ approvalId: number }>> {
+  let confirmed:ActionResult<{approvalId:number}>|undefined;
   try {
     const validId = positiveInt.safeParse(documentId);
     if (!validId.success) return { success: false, error: "Invalid document ID" };
@@ -433,9 +440,10 @@ export async function submitDocumentForApproval(
     }
 
     const transition = await transitionApproval(documentId, null, "submit", parsed.data.comment, undefined);
-    if (!transition.success || !transition.data) return { success: false, error: transition.error };
+    if (!transition.success || !transition.data) return transition;
     const outcome = transition.data;
     const ap = { id: outcome.approvalId };
+    confirmed={success:true,data:{approvalId:ap.id}};
 
 
     // Step 5: Notify eligible approvers
@@ -474,6 +482,7 @@ export async function submitDocumentForApproval(
     return { success: true, data: { approvalId: ap.id } };
   } catch (err) {
     logger.error("submitDocumentForApproval error", err);
+    if(confirmed)return confirmed;
     return { success: false, error: "Failed to submit document for approval" };
   }
 }
@@ -487,6 +496,7 @@ export async function approveDocument(
   approvalId: number,
   input: { comment?: string },
 ): Promise<ActionResult<ApprovalTransition>> {
+  let confirmed:ActionResult<ApprovalTransition>|undefined;
   try {
     const validDoc = positiveInt.safeParse(documentId);
     const validAp = positiveInt.safeParse(approvalId);
@@ -532,8 +542,9 @@ export async function approveDocument(
 
     // Verify approvalId is the current row
     const transition = await transitionApproval(documentId, approvalId, "approve", parsed.data.comment, undefined);
-    if (!transition.success || !transition.data) return { success: false, error: transition.error };
+    if (!transition.success || !transition.data) return transition;
     const outcome = transition.data;
+    confirmed={success:true,data:outcome};
 
     if (outcome.pending) {
       // A completed review step is not a final document approval.
@@ -585,6 +596,7 @@ export async function approveDocument(
     return { success: true, data: outcome };
   } catch (err) {
     logger.error("approveDocument error", err);
+    if(confirmed)return confirmed;
     return { success: false, error: "Failed to approve document" };
   }
 }
@@ -598,6 +610,7 @@ export async function rejectDocument(
   approvalId: number,
   input: { reason: string; comment?: string },
 ): Promise<ActionResult> {
+  let confirmed:ActionResult|undefined;
   try {
     const validDoc = positiveInt.safeParse(documentId);
     const validAp = positiveInt.safeParse(approvalId);
@@ -640,7 +653,8 @@ export async function rejectDocument(
     }
 
     const transition = await transitionApproval(documentId, approvalId, "reject", parsed.data.comment, parsed.data.reason);
-    if (!transition.success || !transition.data) return { success: false, error: transition.error };
+    if (!transition.success || !transition.data) return transition;
+    confirmed={success:true};
 
 
 
@@ -683,6 +697,7 @@ export async function rejectDocument(
     return { success: true };
   } catch (err) {
     logger.error("rejectDocument error", err);
+    if(confirmed)return confirmed;
     return { success: false, error: "Failed to reject document" };
   }
 }
@@ -696,6 +711,7 @@ export async function withdrawDocumentApproval(
   approvalId: number,
   input: { reason?: string },
 ): Promise<ActionResult> {
+  let confirmed:ActionResult|undefined;
   try {
     const validDoc = positiveInt.safeParse(documentId);
     const validAp = positiveInt.safeParse(approvalId);
@@ -737,7 +753,8 @@ export async function withdrawDocumentApproval(
     }
 
     const transition = await transitionApproval(documentId, approvalId, "withdraw", undefined, parsed.data.reason);
-    if (!transition.success || !transition.data) return { success: false, error: transition.error };
+    if (!transition.success || !transition.data) return transition;
+    confirmed={success:true};
 
 
 
@@ -777,6 +794,7 @@ export async function withdrawDocumentApproval(
     return { success: true };
   } catch (err) {
     logger.error("withdrawDocumentApproval error", err);
+    if(confirmed)return confirmed;
     return { success: false, error: "Failed to withdraw approval request" };
   }
 }

@@ -7,7 +7,7 @@ import { isDmsAiAutoStartEnabled } from "@/server/actions/dms/ai-intake";
 import { DmsUploadInboxPageClient } from "@/features/dms/upload/dms-upload-inbox-page-client";
 import type { DmsDocumentTypeOption, DmsEntityContext } from "@/features/dms/upload/dms-create-document-from-upload-dialog";
 import { ERPPageHeader } from "@/components/erp/page-header";
-import { DMS_ENTITY_TYPES } from "@/features/dms/documents/dms-document-constants";
+import {parseDmsUploadContext} from '@/lib/dms/upload-context';
 import { DmsLoadError } from "@/features/dms/documents/dms-load-error";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export const revalidate = 0;
 export default async function DmsInboxPage({
   searchParams,
 }: {
-  searchParams: Promise<{ entity_type?: string; entity_id?: string }>;
+  searchParams: Promise<Record<string,string|string[]|undefined>>;
 }) {
   const authContext = await getAuthContext();
 
@@ -27,15 +27,9 @@ export default async function DmsInboxPage({
   }
 
   const params = await searchParams;
-  const rawEntityType = params.entity_type;
-  const rawEntityId = params.entity_id ? parseInt(params.entity_id, 10) : null;
-  const entityContext: DmsEntityContext | null =
-    rawEntityType &&
-    DMS_ENTITY_TYPES.includes(rawEntityType as typeof DMS_ENTITY_TYPES[number]) &&
-    rawEntityId &&
-    rawEntityId > 0
-      ? { entityType: rawEntityType, entityId: rawEntityId }
-      : null;
+  const parsedContext=parseDmsUploadContext(params);
+  if(!parsedContext.success)return <div role="alert" className="p-6">This upload link has an invalid, conflicting or unsupported subject. Return to the original record and open its Documents section. No unlinked upload was substituted.</div>;
+  const entityContext:DmsEntityContext|null=parsedContext.context;
 
   const [defaultsResult, batchEnabled, autoStartEnabled] = await Promise.all([
     getDmsNewDocumentDefaults(),

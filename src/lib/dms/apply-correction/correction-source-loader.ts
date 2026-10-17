@@ -11,16 +11,15 @@
  * Read-only — writes nothing.
  */
 
+import {readDmsCorrection} from "@/server/dms-reviewed-updates";
 import { createClient } from "@/lib/supabase/server";
 import {isPartyCorrectionTarget,loadPartyCorrectionSource} from '@/server/party-dms-correction';
-import {
-  validateApplyTarget,
-} from "@/lib/dms/apply-to-erp/apply-target-registry";
+
 import type { CorrectionSourceData, CorrectionErrorCode } from "./types";
 
 // ── Summary max length ─────────────────────────────────────────────────────────
 
-const SUMMARY_MAX = 200;
+
 
 // ── Public: loadCorrectionSource ─────────────────────────────────────────────
 
@@ -89,150 +88,7 @@ export async function loadCorrectionSource(
     return result.success&&result.data?{ok:true,data:result.data}:{ok:false,error:{success:false,error:result.errorCode==='permission_denied'?'permission_denied':'server_error',message:result.error??'Correction source unavailable.'}};
   }
 
-  // ── 2. Load parent apply run ──────────────────────────────────────────────
-  type RunRow = {
-    id: number;
-    run_code: string | null;
-    document_id: number | null;
-    target_module: string;
-  };
-
-  const { data: rawRun, error: runErr } = await supabase
-    .from("dms_ai_erp_apply_runs")
-    .select("id, run_code, document_id, target_module")
-    .eq("id", item.apply_run_id)
-    .maybeSingle();
-
-  const run = rawRun as RunRow | null;
-
-  if (runErr || !run) {
-    return {
-      ok: false,
-      error: {
-        success: false,
-        error: "original_run_not_found",
-        message: `Apply run ${item.apply_run_id} not found.`,
-      },
-    };
-  }
-
-  // ── 3. Validate target is still allowlisted ───────────────────────────────
-  const targetModule = run.target_module as string;
-  const registryValidation = validateApplyTarget(item.target_table, item.target_field);
-
-  if (!registryValidation.valid) {
-    return {
-      ok: false,
-      error: {
-        success: false,
-        error: "target_not_allowlisted",
-        message: `${item.target_table}.${item.target_field} is no longer in the apply target allowlist.`,
-      },
-    };
-  }
-
-  // ── 4. Reload current live value from DB ──────────────────────────────────
-  const currentValueSummary = await loadCurrentValueSummary(
-    supabase,
-    item.target_table,
-    item.target_field,
-    item.target_record_id
-  );
-
-  // ── 5. Determine restorePreviousEnabled ───────────────────────────────────
-  const { enabled: restorePreviousEnabled, warning: restorePreviousWarning } =
-    evaluateRestorePrevious(
-      item.value_type as string,
-      item.current_value_summary as string | null
-    );
-
-  const sourceData: CorrectionSourceData = {
-    originalApplyItemId:    item.id,
-    originalApplyRunId:     run.id,
-    documentId:             run.document_id ?? null,
-    targetModule:           targetModule as CorrectionSourceData["targetModule"],
-    targetTable:            item.target_table,
-    targetField:            item.target_field,
-    targetRecordId:         item.target_record_id ?? null,
-    targetDisplayLabel:     (item.target_display_label as string | null) ?? null,
-    valueType:              item.value_type as CorrectionSourceData["valueType"],
-    originalBeforeSummary:  (item.current_value_summary as string | null) ?? null,
-    originalAppliedSummary: (item.applied_value_summary as string | null) ?? null,
-    currentValueSummary:    currentValueSummary,
-    restorePreviousEnabled,
-    restorePreviousWarning,
-  };
-
-  void userId; // auth context validated by server action
-  void targetModule; // captured for sourceData
-
-  return { ok: true, data: sourceData };
-}
-
-// ── Private: live value loader ────────────────────────────────────────────────
-
-async function loadCurrentValueSummary(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  targetTable: string,
-  targetField: string,
-  targetRecordId: number | null
-): Promise<string | null> {
-  if (!targetRecordId) return null;
-
-  try {
-    const { data } = await supabase
-      .from(targetTable as never)
-      .select(targetField)
-      .eq("id", targetRecordId)
-      .maybeSingle();
-
-    if (!data) return null;
-    const raw = (data as unknown as Record<string, unknown>)[targetField];
-    if (raw == null) return null;
-    const str = String(raw);
-    return str.length <= SUMMARY_MAX ? str : str.slice(0, SUMMARY_MAX - 3) + "...";
-  } catch {
-    return null;
-  }
-}
-
-// ── Private: restore previous eligibility ────────────────────────────────────
-
-function evaluateRestorePrevious(
-  valueType: string,
-  originalBeforeSummary: string | null
-): { enabled: boolean; warning: string | null } {
-  // Non-text types: safe to prefill from summary if present
-  if (valueType === "date" || valueType === "number" || valueType === "bigint" || valueType === "boolean") {
-    if (!originalBeforeSummary || originalBeforeSummary.trim() === "") {
-      return { enabled: false, warning: "No previous value is available to restore." };
-    }
-    return { enabled: true, warning: null };
-  }
-
-  // Text types: warn about potential truncation
-  if (valueType === "text") {
-    if (!originalBeforeSummary || originalBeforeSummary.trim() === "") {
-      return { enabled: false, warning: "No previous text value is available." };
-    }
-    const maybeTruncated =
-      originalBeforeSummary.length >= SUMMARY_MAX ||
-      originalBeforeSummary.endsWith("...");
-
-    if (maybeTruncated) {
-      return {
-        enabled: true,
-        warning:
-          "The previous value may be truncated. The summary stored in history may not be the exact original text. " +
-          "Review carefully before applying.",
-      };
-    }
-    return {
-      enabled: true,
-      warning:
-        "The previous value is a stored summary. Verify it is accurate before applying.",
-    };
-  }
-
-  return { enabled: false, warning: null };
+  const result=await readDmsCorrection(applyItemId);
+  void userId;
+  return result.success&&result.data?{ok:true,data:result.data}:{ok:false,error:{success:false,error:result.errorCode==='permission_denied'?'permission_denied':'server_error',message:result.error??"Correction source unavailable."}};
 }

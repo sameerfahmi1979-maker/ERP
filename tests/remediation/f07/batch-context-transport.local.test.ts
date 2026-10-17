@@ -1,0 +1,31 @@
+// Actual owned Data/Storage API; source Auth-context bootstrap is a scoped adapter.
+import {beforeAll,expect,it,vi} from 'vitest';import {createClient,type SupabaseClient} from '@supabase/supabase-js';import {createHash} from 'node:crypto';
+import type {BatchRequest} from '@/lib/dms/batch-admission';
+const s=vi.hoisted(()=>({user:null as unknown as SupabaseClient,admin:null as unknown as SupabaseClient,lost:false}));
+vi.mock('@/lib/supabase/server',()=>({createClient:async()=>s.user}));
+vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>s.admin}));
+vi.mock('@/lib/rbac/check',()=>({getAuthContext:async()=>({profile:{id:7001,auth_user_id:'a7000000-0000-4000-8000-000000000001'},isAccountActive:true}),canUseApplication:()=>true,hasPermission:()=>true}));
+import {admitBatch,verifyBatchUpload,recoverBatchMemberUpload} from '@/server/dms-batch-admission';
+import {admitSingleUpload} from '@/server/dms-single-upload-admission';
+import {syntheticPdf} from './document-fixtures';
+const pdf=syntheticPdf();
+function request(type:'employee'|'employee_dependent'|'company'|'branch'|'site',n:number,bytes=pdf):BatchRequest{return {contract:{operationId:`e7000000-0000-4000-8000-${String(n).padStart(12,'0')}`,revision:null},manifest:{version:1,context:{type,id:type.startsWith('employee')?7010:7001},files:[{position:0,original_filename:`synthetic-${n}.pdf`,mime_type:'application/pdf',file_size_bytes:bytes.length,sha256_hash:createHash('sha256').update(bytes).digest('hex')}]}};}
+beforeAll(async()=>{
+ expect(process.env.F07_CONTEXT_NATIVE).toBe('owned-local-only');const url=process.env.F07_CONTEXT_URL!;expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+ const make=(token:string,inject=false)=>createClient(url,token,{auth:{persistSession:false,autoRefreshToken:false},global:{headers:{Authorization:`Bearer ${token}`},fetch:async(input,init)=>{const r=await fetch(input,init);if(inject&&s.lost&&String(input).includes('/rpc/admit_dms_upload_batch')){s.lost=false;await r.arrayBuffer();throw Error('Synthetic lost reply after actual HTTP commit');}return r;}}});
+ s.user=make(process.env.F07_CONTEXT_USER_TOKEN!,true);s.admin=make(process.env.F07_CONTEXT_SERVICE_TOKEN!);expect((await s.admin.storage.createBucket('dms-temp',{public:false})).error).toBeNull();
+});
+for(const [i,type]of (['employee','employee_dependent','company','branch','site'] as const).entries())it(type+' context composes actual admission, signed upload, parser validation and member recovery',async()=>{
+ const input=request(type,i+1),a=await admitBatch(input);expect(a.state).toBe('admitted');if(a.state!=='admitted')throw Error('Admission missing');expect(a.capabilityState).toBe('ready');
+ expect(a.receipt.manifest.context).toEqual(input.manifest.context);expect(a.receipt.company_id).toBe(7001);expect(a.receipt.branch_id).toBe(type==='company'?null:7001);
+ const cap=a.capabilities[0];expect(cap).toBeTruthy();expect((await s.user.storage.from('dms-temp').uploadToSignedUrl(cap.path,cap.token,new Blob([pdf],{type:'application/pdf'}),{contentType:'application/pdf',upsert:false})).error).toBeNull();
+ expect(await verifyBatchUpload({request:input,position:0})).toEqual({state:'present'});
+ const replay=await admitBatch(input);expect(replay.state).toBe('admitted');if(replay.state!=='admitted')throw Error('Replay missing');expect(replay.receipt).toEqual(a.receipt);expect(replay.capabilities).toEqual([]);
+ expect(await recoverBatchMemberUpload({request:input,position:0})).toMatchObject({state:'ready',receipt:a.receipt,object:{state:'present'}});
+});
+it('committed lost-response admission recovers the original native graph',async()=>{const input=request('employee',10),before=await s.admin.from('dms_upload_batches').select('id',{head:true,count:'exact'});s.lost=true;expect(await admitBatch(input)).toMatchObject({state:'unconfirmed'});const r=await admitBatch(input);expect(r.state).toBe('admitted');const after=await s.admin.from('dms_upload_batches').select('id',{head:true,count:'exact'});expect(after.count).toBe(before.count!+1);});
+it('signature-only PDF cannot pass actual batch parser verification',async()=>{const b=Buffer.from('%PDF-1.7\ninvalid\n%%EOF'),input=request('branch',11,b),r=await admitBatch(input);if(r.state!=='admitted')throw Error('Admission missing');const c=r.capabilities[0];expect((await s.user.storage.from('dms-temp').uploadToSignedUrl(c.path,c.token,new Blob([b],{type:'application/pdf'}),{contentType:'application/pdf',upsert:false})).error).toBeNull();expect(await verifyBatchUpload({request:input,position:0})).toMatchObject({state:'unavailable'});});
+it('changed original context never creates a replacement graph',async()=>{const input=request('employee',10);input.manifest.context={type:'company',id:7001};expect(await admitBatch(input)).toMatchObject({state:'rejected'});});
+it('two simultaneous HTTP admissions retain one graph',async()=>{const input=request('branch',12),before=await s.admin.from('dms_upload_batches').select('id',{count:'exact',head:true});const results=await Promise.all([admitBatch(input),admitBatch(input)]);expect(results.some(r=>r.state==='admitted')).toBe(true);const after=await s.admin.from('dms_upload_batches').select('id',{count:'exact',head:true});expect(after.count).toBe(before.count!+1);const again=await admitBatch(input);expect(again.state).toBe('admitted');for(const r of results)if(r.state==='admitted'&&again.state==='admitted')expect(r.receipt).toEqual(again.receipt);});
+it('Work Site single-file admission retains the real subject and branch',async()=>{const {position:_,...metadata}=request('site',13).manifest.files[0];void _;const r=await admitSingleUpload({...metadata,context:{entityType:'site',entityId:7001}},{operationId:'e7000000-0000-4000-8000-000000000013',authUserId:'a7000000-0000-4000-8000-000000000001'});expect(r.success,r.error).toBe(true);expect(r.data?.session).toMatchObject({origin_entity_type:'site',origin_entity_id:7001,owning_company_id:7001,owning_branch_id:7001});});
+it('revocation of scoped HR management blocks member continuation',async()=>{expect((await s.admin.from('role_permissions').delete().eq('role_id',7001).eq('permission_id',7012)).error).toBeNull();expect(await recoverBatchMemberUpload({request:request('employee',1),position:0})).toMatchObject({state:'unavailable'});});

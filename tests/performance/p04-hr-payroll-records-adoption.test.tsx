@@ -17,6 +17,25 @@ import {HrWpsPageClient} from "@/features/hr/payroll/wps/hr-wps-page-client";
 import {payrollInquiryIdentity, type PayrollInquiryCriteria, type PayrollInquiryKind} from "@/lib/reads/hr-payroll-inquiries-schema";
 import {payrollInquiryPrefix} from "@/hooks/use-hr-payroll-inquiries";
 import {payrollInquiryPage} from "./hr-payroll-inquiry-fixtures";
+
+// F05 compact forms have no worklist criteria controls. Capture the real
+// collection adapter without replacing its renderer, read hook or authority.
+// Criteria-injection cases below test controller compatibility, not visible UI.
+const embeddedAdapters = vi.hoisted(() => new Map<string, import("@/components/erp/table/erp-table-types").ERPTableServerRead<unknown>>());
+vi.mock("@/components/erp/table/record-collection", async original => {
+  const actual = await original<typeof import("@/components/erp/table/record-collection")>();
+  return {...actual, RecordCollection: (props: React.ComponentProps<typeof actual.RecordCollection>) => {
+    if (props.serverRead) embeddedAdapters.set(props.id, props.serverRead);
+    return <actual.RecordCollection {...props} />;
+  }};
+});
+function controller(fragment: string) {
+  const found = [...embeddedAdapters].find(([id]) => id.includes(fragment))?.[1];
+  if (!found) throw Error("Real embedded adapter missing: " + fragment);
+  return found;
+}
+beforeEach(() => embeddedAdapters.clear());
+
 const state = vi.hoisted(() => ({transport: vi.fn(), page: vi.fn(), point: vi.fn(), choices: vi.fn(), inquiry: vi.fn(), success: vi.fn(), error: vi.fn(), mutations: Object.fromEntries(["archiveEmployeePayrollHold", "archiveEmployeeSalaryComponent", "createEmployeeSalaryComponent", "createEmployeeSalaryRevision", "createOrUpdateEmployeePayrollProfile", "createOrUpdateEmployeeWpsProfile", "placeEmployeePayrollHold", "releaseEmployeePayrollHold", "updateEmployeeSalaryComponent"].map(k => [k, vi.fn()]))}));
 vi.mock("sonner", () => ({toast: {success: state.success, error: state.error}}));
 vi.mock("next/navigation", () => ({usePathname: () => "/admin/hr/employees/record/880301"}));
@@ -67,6 +86,8 @@ function mount(initial: AuthContext = context) {
   const wrap = (ctx: AuthContext, visible = true, active = true) => <QueryClientProvider client={client}><WorkspaceUiMemoryProvider><RecordReadActivity active={active}>{visible && <EmployeePayrollTab employeeId={880301} authContext={ctx} onChildOpen={onChildOpen} />}</RecordReadActivity></WorkspaceUiMemoryProvider></QueryClientProvider>;
   const view = render(wrap(initial)); return {...view, client, onChildOpen, replace: (ctx: AuthContext) => view.rerender(wrap(ctx)), hide: () => view.rerender(wrap(initial, false)), restore: () => view.rerender(wrap(initial)), pause: () => view.rerender(wrap(initial, true, false))};
 }
+const recordId = (kind: PayrollRecordKind) => ({"salary-components":"SalaryComponentsSection", "salary-revisions":"SalaryRevisionSection", holds:"PayrollHoldsSection"}[kind]);
+function recordSearch(kind: PayrollRecordKind, value: string) {act(() => controller(recordId(kind)).onGlobalFilterChange(value));}
 const titles = {"salary-components": "Salary Components", "salary-revisions": "Salary Revision History", holds: "Payroll Holds"};
 function section(kind: PayrollRecordKind) {const element = screen.getByText(titles[kind]).closest("div.rounded-xl"); if (!element) throw Error("Actual payroll section missing"); return within(element as HTMLElement);}
 const token = (kind: PayrollRecordKind, id = 1) => kind === "salary-components" ? `Synthetic earning ${id}` : kind === "salary-revisions" ? `Synthetic revision ${id}` : `Synthetic hold ${id}`;
@@ -91,13 +112,13 @@ it.each(["salary-components", "salary-revisions", "holds"] as const)("%s actual 
 });
 it.each(["salary-components", "salary-revisions", "holds"] as const)("%s actual controls use complete total and next page instead of local slicing", async kind => {
   state.page.mockImplementation(async (input: PageInput) => input.kind === kind ? {rows: Array.from({length: Math.min(input.pageSize, 1107 - (input.page - 1) * input.pageSize)}, (_, n) => payrollRecordFixture(kind, (input.page - 1) * input.pageSize + n + 1)), totalCount: 1107} : {rows: [], totalCount: 0});
-  mount(); await waitFor(() => expect(section(kind).getByText(/1107 permitted records/)).toBeTruthy());
+  mount(); await waitFor(() => expect(section(kind).getByText("Page 1 of 45")).toBeTruthy());
   fireEvent.click(section(kind).getAllByRole("button", {name: "Next"}).at(-1)!);
   await waitFor(() => expect(state.transport.mock.calls.filter(c => c[0] === "hr-payroll-records" && c[1].kind === kind).at(-1)?.[1]).toMatchObject({page: 2, pageSize: 25}));
   await screen.findAllByText(token(kind, 26)); expect(section(kind).queryAllByText(token(kind, 1))).toHaveLength(0);
 });
-it("empty record pages retain search/filter controls and never call old Server Actions", async () => {
-  state.page.mockResolvedValue({rows: [], totalCount: 0}); mount(); await screen.findAllByText("No permitted records match this view."); expect(screen.getAllByPlaceholderText("Search all permitted records…")).toHaveLength(3);
+it("empty compact record pages omit worklist controls and never call old Server Actions", async () => {
+  state.page.mockResolvedValue({rows: [], totalCount: 0}); mount(); await screen.findAllByText("No related records yet."); expect(screen.queryByPlaceholderText("Search all permitted records…")).toBeNull(); expect(screen.queryByRole("button", {name: "Edit filters"})).toBeNull();
   expect(Object.values(state.mutations).every(m => m.mock.calls.length === 0)).toBe(true);
 });
 it.each(["salary-components", "salary-revisions", "holds"] as const)("%s failed refresh clears old rows, reports failure and manually retries", async kind => {
@@ -157,10 +178,10 @@ it("bounded salary totals coalesce between profile and revision editor and retai
 it("workspace criteria restore without persisting salary data to browser storage", async () => {
   localStorage.setItem("synthetic-unrelated-control", "retain-local"); sessionStorage.setItem("synthetic-unrelated-control", "retain-session");
   const localBefore = {...localStorage}, sessionBefore = {...sessionStorage};
-  const view = mount(); await screen.findAllByText(token("holds")); fireEvent.change(section("holds").getByPlaceholderText("Search all permitted records…"), {target: {value: "اختبار_%"}});
+  const view = mount(); await screen.findAllByText(token("holds")); recordSearch("holds", "اختبار_%");
   await waitFor(() => expect(state.transport.mock.calls.filter(c => c[0] === "hr-payroll-records" && c[1].kind === "holds").at(-1)?.[1]).toMatchObject({search: "اختبار_%"}));
   await screen.findAllByText(token("holds")); const count = state.transport.mock.calls.length; view.hide(); view.restore(); await screen.findAllByText(token("holds"));
-  expect((section("holds").getByPlaceholderText("Search all permitted records…") as HTMLInputElement).value).toBe("اختبار_%"); expect(state.transport).toHaveBeenCalledTimes(count);
+  expect(controller(recordId("holds")).globalFilter).toBe("اختبار_%"); expect(section("holds").getByRole("button", {name: "Clear list criteria"})).toBeTruthy(); expect(state.transport).toHaveBeenCalledTimes(count);
   expect({...localStorage}).toEqual(localBefore); expect({...sessionStorage}).toEqual(sessionBefore);
   expect(localStorage.getItem("synthetic-unrelated-control")).toBe("retain-local"); expect(sessionStorage.getItem("synthetic-unrelated-control")).toBe("retain-session");
 });
@@ -200,20 +221,20 @@ it("double Save submits one existing guarded mutation and response loss retains 
   await act(async () => reject(Error("Synthetic response lost after mock commit"))); expect(screen.getByRole("dialog", {name: "Edit Salary Component"})).toBeTruthy();
   fireEvent.click(within(dialog).getByRole("button", {name: "Save"})); expect(state.mutations.updateEmployeeSalaryComponent).toHaveBeenCalledTimes(1); expect(state.error).toHaveBeenCalledWith(expect.stringContaining("unconfirmed"));
 });
-it("invalid search is not sent, exposes correction feedback and cannot claim an empty payroll result", async () => {
+it("injected legacy search is not sent, exposes correction feedback and cannot claim an empty payroll result", async () => {
   mount(); await screen.findAllByText(token("holds")); const count = state.transport.mock.calls.filter(c => c[0] === "hr-payroll-records" && c[1].kind === "holds").length;
-  fireEvent.change(section("holds").getByPlaceholderText("Search all permitted records…"), {target: {value: "x".repeat(201)}}); await screen.findByText(/Invalid criteria were not sent/);
+  recordSearch("holds", "x".repeat(201)); await screen.findByText(/Invalid criteria were not sent/);
   expect(state.transport.mock.calls.filter(c => c[0] === "hr-payroll-records" && c[1].kind === "holds")).toHaveLength(count); expect(section("holds").queryByText("No permitted records match this view.")).toBeNull();
 });
 it("transient read retries once while remaining a failed result after the second attempt", async () => {
   state.page.mockImplementation(async (input: PageInput) => {if (input.kind === "holds") throw new ReadError("Synthetic unavailable", 503); return {rows: [], totalCount: 0};});
   mount(); await screen.findByText(/This is not an empty result/, {}, {timeout: 5000}); expect(state.page.mock.calls.filter(c => c[0].kind === "holds")).toHaveLength(2); expect(section("holds").queryByText("No permitted records match this view.")).toBeNull();
 });
-it("latest search wins and aborts its obsolete request", async () => {
+it("injected legacy search wins and aborts its obsolete request", async () => {
   let finish!: (data: unknown) => void; let oldSignal: AbortSignal | undefined;
   state.page.mockImplementation(async (input: PageInput, signal: AbortSignal) => input.kind === "holds" && input.search === "old" ? new Promise(resolve => {finish = resolve; oldSignal = signal;}) : {rows: [payrollRecordFixture(input.kind, input.search === "new" ? 2 : 1)], totalCount: 1});
-  mount(); await screen.findAllByText(token("holds")); const control = section("holds").getByPlaceholderText("Search all permitted records…");
-  fireEvent.change(control, {target: {value: "old"}}); await waitFor(() => expect(oldSignal).toBeDefined()); fireEvent.change(control, {target: {value: "new"}}); await screen.findAllByText(token("holds", 2));
+  mount(); await screen.findAllByText(token("holds"));
+  recordSearch("holds", "old"); await waitFor(() => expect(oldSignal).toBeDefined()); recordSearch("holds", "new"); await screen.findAllByText(token("holds", 2));
   await act(async () => finish({rows: [payrollRecordFixture("holds", 99)], totalCount: 1})); expect(oldSignal?.aborted).toBe(true); expect(screen.queryAllByText(token("holds", 99))).toHaveLength(0);
 });
 it("failed salary aggregate does not display a zero salary or absent salary profile", async () => {
@@ -222,7 +243,7 @@ it("failed salary aggregate does not display a zero salary or absent salary prof
 });
 it("active hold KPI remains complete when no filtered rows match", async () => {
   state.page.mockImplementation(async (input: PageInput) => ({rows: [], totalCount: 0, ...(input.kind === "holds" ? {activeCount: 1107} : {})}));
-  mount(); await section("holds").findByText("1107 Active"); expect(section("holds").getByText("0 matching holds")).toBeTruthy(); expect(section("holds").getByText("No permitted records match this view.")).toBeTruthy();
+  mount(); await section("holds").findByText("1107 Active"); expect(section("holds").getByText("0 matching holds")).toBeTruthy(); expect(section("holds").getByText("No related records yet.")).toBeTruthy();
 });
 
 type MutationJourney = {name: string; mutation: string; affected: Array<"salary" | "wps">; button: string; section?: PayrollRecordKind; dialog?: string; submit?: string; revisionHistoryOnly?: boolean};

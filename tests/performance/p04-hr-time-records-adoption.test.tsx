@@ -11,6 +11,25 @@ import {useHrTimeRecords} from "@/hooks/use-hr-time-records";
 import {ReadError} from "@/lib/reads/client";
 import {timeFixture, timeFixtureReply, timeKinds, type TimeFixtureKind} from "./fixtures/time-record-fixture";
 
+
+// F05 compact forms have no worklist criteria controls. Capture the real
+// collection adapter without replacing its renderer, read hook or authority.
+// Criteria-injection cases below test controller compatibility, not visible UI.
+const embeddedAdapters = vi.hoisted(() => new Map<string, import("@/components/erp/table/erp-table-types").ERPTableServerRead<unknown>>());
+vi.mock("@/components/erp/table/record-collection", async original => {
+  const actual = await original<typeof import("@/components/erp/table/record-collection")>();
+  return {...actual, RecordCollection: (props: React.ComponentProps<typeof actual.RecordCollection>) => {
+    if (props.serverRead) embeddedAdapters.set(props.id, props.serverRead);
+    return <actual.RecordCollection {...props} />;
+  }};
+});
+function controller(fragment: string) {
+  const found = [...embeddedAdapters].find(([id]) => id.includes(fragment))?.[1];
+  if (!found) throw Error("Real embedded adapter missing: " + fragment);
+  return found;
+}
+beforeEach(() => embeddedAdapters.clear());
+
 const state = vi.hoisted(() => ({read: vi.fn(), list: vi.fn(), mutate: vi.fn(), failed: false, error: vi.fn(), success: vi.fn(), submits: new Map<string, (() => unknown) | undefined>()}));
 vi.mock("@/components/erp/erp-child-dialog-form", async original => {
   const actual = await original<typeof import("@/components/erp/erp-child-dialog-form")>();
@@ -266,12 +285,12 @@ it("approved overtime indicator states that it describes only the visible page",
   state.read.mockImplementation(async (_resource: string, input: Record<string, unknown>) => timeFixtureReply(input, [{...timeFixture(input.kind as TimeFixtureKind), ...(input.kind === "overtime" ? {approval_status: "approved", hours: 2} : {})}]));
   mount(); await screen.findByText(/Approved on this page:/); expect(screen.queryByText(/^\(Approved:/)).toBeNull();
 });
-it("actual Shift-sort preserves ordered priorities and returns pagination to page one", async () => {
+it("retained sorting controller preserves ordered priorities and returns pagination to page one", async () => {
   mount(); await ready(); const root = section("Attendance");
-  fireEvent.click(within(root).getByRole("button", {name: "Attendance Date"}));
+  act(()=>controller("AttendanceSection.summaries").onSortingChange([{id:"attendance_date",desc:false}]));
   await waitFor(() => expect(state.read.mock.calls.filter(([, p]) => p.kind === "daily").at(-1)?.[1].sorting).toEqual([{id: "attendance_date", desc: false}]));
   await waitFor(() => expect((within(root).getByRole("button", {name: "Daily Summary"}) as HTMLButtonElement).disabled).toBe(false));
-  fireEvent.click(within(root).getByRole("button", {name: "Approval Status"}), {shiftKey: true});
+  act(()=>controller("AttendanceSection.summaries").onSortingChange([{id:"attendance_date",desc:false},{id:"approval_status",desc:false}]));
   await waitFor(() => expect(state.read.mock.calls.filter(([, p]) => p.kind === "daily").at(-1)?.[1]).toMatchObject({page: 1, sorting: [{id: "attendance_date", desc: false}, {id: "approval_status", desc: false}]}));
 });
 it("a canceled old search reply cannot replace current rows", async () => {
@@ -280,9 +299,9 @@ it("a canceled old search reply cannot replace current rows", async () => {
     if (input.kind === "daily" && input.search === "OLDER") {oldSignal = signal; return new Promise(resolve => {finish = resolve;});}
     return timeFixtureReply(input, [{...timeFixture(input.kind as TimeFixtureKind, input.search === "NEWER" ? 19 : 17), attendance_type: input.search === "NEWER" ? "office" : "site"}]);
   });
-  mount(); await ready(); const input = within(section("Attendance")).getByLabelText("Search all permitted records…");
-  fireEvent.change(input, {target: {value: "OLDER"}}); await waitFor(() => expect(oldSignal).toBeTruthy());
-  fireEvent.change(input, {target: {value: "NEWER"}}); await waitFor(() => expect(within(section("Attendance")).getByText("Office")).toBeTruthy());
+  mount(); await ready();
+  act(()=>controller("AttendanceSection.summaries").onGlobalFilterChange("OLDER")); await waitFor(() => expect(oldSignal).toBeTruthy());
+  act(()=>controller("AttendanceSection.summaries").onGlobalFilterChange("NEWER")); await waitFor(() => expect(within(section("Attendance")).getByText("Office")).toBeTruthy());
   expect(oldSignal?.aborted).toBe(true);
   await act(async () => {finish(timeFixtureReply({operation: "page", kind: "daily", employeeId: 7, page: 1, pageSize: 25}, [{...timeFixture("daily"), attendance_type: "RETIRED_LATE_ROW"}]));});
   expect(document.body.textContent).not.toContain("RETIRED_LATE_ROW");

@@ -40,8 +40,9 @@ export const IMPACT={...HISTORICAL_RAW_IMPACT,
  'package.json':'093e6b78f133212ba7ed72232227ff00d7fb360281600b9fa3bc197f4d946a61',
  'package-lock.json':'8e68ccd2ed55b34c77ea36dbeeec42acf11ac3a6df158e71294db8564d6c468b',
  'src/lib/branding/constants.ts':'70a0e8005ce9b8ec76334643b8a345a2908944169252b2fcd59db33f41236e14',
- 'src/lib/dms/file-content-extractor.ts':'0eb75a694231d11c3fa27e078271c213da5fcb19db70e04e303c35f3b22e9b91',
- 'src/lib/dms/pdf-to-images.ts':'8ad44c55162924db2638c7f64eb1df3f762f06c4eb8a35d1c54e6acab1d52ad7',
+ // Reviewed Arabic OCR successor; preserve historical F06 hashes above.
+ 'src/lib/dms/file-content-extractor.ts':'db6b17688166fac42bfbaea474b86d57084d81d9fae7a7966c45ae6539a0391f',
+ 'src/lib/dms/pdf-to-images.ts':'c687a287567d528b8082c9b8260e0eb58ca96f11cfa13f051fb713664e7e604e',
  'src/lib/logger.ts':'65d187672a8a18f74b46c461ef4fcb9211b7a703c24bc2c248614b9ef9ffff02'
 };
 export const LOCK_GRAPH_SHA='89012eca840c7b48c7a4f7e3d2bb3e1b837326e3aac092ff8e20f5336a25acc1';

@@ -41,6 +41,9 @@ const offlineSchemaFiles=['migration-contract.test.cjs','native-fixture.test.cjs
 const offlineAffordanceFiles=['employee-affordance.test.mjs','dms-affordance.test.mjs','report-permission-regression.test.mjs'].map(file=>'tests/integration/f00-f06/'+file);
 function validateEngineeringWorkflow(workflow){
  assert.equal(workflow.env.EXPECTED_CANDIDATE_SHA,candidateRef);
+ for(const job of Object.values(workflow.jobs))for(const step of job.steps??[]){
+  if(step.run)assert.doesNotMatch(step.run,/\bplaywright\b|\bnpm\s+run\s+test:(?:e2e|pdf)\b/i,'No browser runner is authorized by this release');
+ }
  assert.deepEqual(Object.keys(workflow.jobs).sort(),[...requiredJobs,'verify'].sort());
  for(const name of requiredJobs){
   const job=workflow.jobs[name],steps=job.steps;
@@ -152,3 +155,11 @@ test('offline affordance gate rejects omitted, substituted, filtered, duplicated
 test('controller records both SHAs and immutable image and never retries business mutations',()=>{const s=fs.readFileSync('tooling/testing/f06-linux-image-check.mjs','utf8');for(const key of ['candidateHead:candidate,eventSha:event','actualCheckout=checkout','imageId=validateImage(production)','newImageAllLayerCertificateScan:false','cliEnded:ended','CLI_END_UNKNOWN','CLI_TIMEOUT','OUTPUT_BOUND','Absolute HTTP deadline','/dashboard'])assert.ok(s.includes(key));assert.ok(s.includes("request('/dashboard','HEAD')"));assert.doesNotMatch(s,/docker.*rm.*--force|NODE_TLS_REJECT_UNAUTHORIZED=0/);});
 
 test('integration retains both immutable patches in image source and runtime proof',()=>{const s=fs.readFileSync('tooling/testing/f06-linux-image-check.mjs','utf8');for(const name of ['vendor/braces-3.0.3-algt-integrated-2.tgz','vendor/sprintf-js-1.0.3-algt.1.tgz','vendor/PATCH-MANIFEST.json','tooling/security/verify-vendor-patches.cjs']){assert.ok(Object.hasOwn(IMPACT,name));assert.ok(s.includes(name));}assert.ok(s.includes('assert.equal(runtime.sprintfFiles,3)'));assert.ok(s.includes("require('/app/node_modules/sprintf-js')"));const docker=fs.readFileSync('Dockerfile','utf8');assert.ok(docker.includes('COPY vendor/braces-3.0.3-algt-integrated-2.tgz'));assert.ok(docker.includes('COPY vendor/sprintf-js-1.0.3-algt.1.tgz'));});
+
+test('workflow rejects a browser runner even when it would only list tests',()=>{
+ const original=yaml.load(fs.readFileSync('.github/workflows/engineering.yml','utf8'));
+ for(const run of ['npm run test:e2e -- --list','npx playwright test','npm run test:pdf']){
+  const changed=structuredClone(original);changed.jobs['build-types'].steps.push({run});
+  assert.throws(()=>validateEngineeringWorkflow(changed),/No browser runner/);
+ }
+});

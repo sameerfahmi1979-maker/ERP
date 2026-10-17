@@ -232,7 +232,8 @@ jobs:
       - run: npm install --global npm@10.9.8
       - run: npm ci
       - run: npm run typecheck:e2e
-      - run: npm run test:e2e -- --list
+      # Static types above do not execute a browser runner. Owner browser/device
+      # acceptance is deferred; no Playwright invocation is authorized here.
       - run: npm run build
       - run: npm run typecheck
 

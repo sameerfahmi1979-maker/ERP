@@ -6,6 +6,7 @@ import vm from 'node:vm';
 import test from 'node:test';
 import path from 'node:path';
 import ts from 'typescript';
+import {z} from 'zod';
 const source = relative => fs.readFileSync(path.join(process.cwd(), relative), 'utf8');
 function load(path, mocks = {}) {
   const compiled = ts.transpileModule(source(path), {fileName: path, compilerOptions: {
@@ -147,4 +148,119 @@ test('actual employee authority denies inactive/password and scoped admin role a
   const subject = {id: 101, owner_company_id: 1, branch_id: 2, reporting_manager_id: null};
   for(const options of [{active: false, company: null}, {password: true, company: null}, {company: 1}, {company: 1, branch: 2}])
     assert.equal(employee.hasEmployeePermission(ctx({role: 'group_admin', ...options}), subject, 101, 'reports.run'), false);
+});
+
+// Ordinary report reads use real DTOs and authority helpers, with a finite I/O
+// recorder. It is deliberately not a native row-policy emulator.
+const readIdentity = load('src/lib/reads/hr-read-identity.ts', {'@/lib/rbac/scope': scope});
+const criteriaDto = load('src/lib/reads/report-criteria-schema.ts', {
+  zod: {z}, '@/lib/rbac/scope': scope, './hr-read-identity': readIdentity,
+});
+const savedDto = load('src/lib/reads/report-saved-filters-schema.ts', {zod: {z}, './hr-read-identity': readIdentity});
+const search = load('src/lib/reads/search.ts');
+const criterionSources = {
+  employee_id: {table: 'employees', row: {id: 7, full_name_en: 'Permitted employee', employee_code: 'SYN-7', deleted_at: null}},
+  owner_company_id: {table: 'owner_companies', row: {id: 7, legal_name_en: 'Permitted company', company_code: 'SYN-C', status: 'inactive'}},
+  branch_id: {table: 'branches', row: {id: 7, branch_name_en: 'Permitted branch', owner_company_id: 1, status: 'inactive'}},
+  department_id: {table: 'departments', row: {id: 7, department_name_en: 'Permitted department', owner_company_id: 1, deleted_at: null, is_active: false}},
+  designation_id: {table: 'designations', row: {id: 7, designation_name_en: 'Permitted designation', owner_company_id: 1, department_id: 2, deleted_at: null, is_active: false}},
+  work_site_id: {table: 'work_sites', row: {id: 7, site_name: 'Permitted site', owner_company_id: 1, deleted_at: null, status: 'closed'}},
+};
+async function reportRead(context, mode = 'criteria', options = {}) {
+  const calls = [], key = options.key ?? 'employee_id'; let ordinaryClients = 0;
+  const required = options.required ?? ['hr.employees.view'];
+  const savedRow = {id: 7, report_id: 3, user_profile_id: context.profile?.id ?? 101,
+    filter_name: 'Permitted saved filter', is_default: false, is_shared: false,
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', filters_json: {employee_id: 7}};
+  const ordinary = {from(table) {
+    const call = {table, methods: []}; calls.push(call);
+    const expected = mode === 'criteria' ? criterionSources[key].table : 'erp_report_saved_filters';
+    assert.ok(table === 'erp_report_registry' || table === expected, 'Unexpected read surface');
+    const query = {};
+    for (const method of ['select', 'eq', 'is', 'or', 'order', 'range', 'ilike', 'abortSignal'])
+      query[method] = (...args) => {call.methods.push([method, ...args]); return query;};
+    query.maybeSingle = async () => ({data: options.hiddenRegistry ? null : {
+      id: 3, report_code: 'HR_SOURCE_ONLY', required_permissions: required,
+      filter_schema_json: {filters: Object.keys(criterionSources)},
+    }, error: null});
+    query.then = (resolve, reject) => {
+      const row = mode === 'criteria' ? criterionSources[key].row : {...savedRow, ...(options.foreignSaved ? {user_profile_id: 999} : {})};
+      const selectedId = call.methods.find(([m, column]) => m === 'eq' && column === 'id')?.[2];
+      const rows = options.emptyRows || selectedId !== undefined && selectedId !== row.id ? [] : [row];
+      return Promise.resolve({data: rows, count: rows.length, error: null}).then(resolve, reject);
+    };
+    return query;
+  }};
+  const mod = load(mode === 'criteria' ? 'src/server/reads/report-criteria.ts' : 'src/server/reads/report-saved-filters.ts', {
+    'server-only': {}, zod: {z}, '@/lib/rbac/check': {...scope, getAuthContext: async () => context},
+    '@/lib/supabase/server': {createClient: async () => {ordinaryClients++; return ordinary;}},
+    '@/lib/reads/search': search, '@/lib/reads/report-criteria-schema': criteriaDto,
+    '@/lib/reads/report-saved-filters-schema': savedDto,
+  });
+  const input = mode === 'criteria' ? {reportCode: 'HR_SOURCE_ONLY', key, ...(options.criteria ?? {})}
+    : mode === 'saved-detail' ? {reportCode: 'HR_SOURCE_ONLY', mode: 'detail', id: 7}
+    : {reportCode: 'HR_SOURCE_ONLY', mode: 'list'};
+  const result = await (mode === 'criteria' ? mod.readReportCriteria : mod.readReportSavedFilters)(input, context);
+  return {result, calls, ordinaryClients};
+}
+for (const role of ['group_admin', 'system_admin']) {
+  for (const key of Object.keys(criterionSources)) test('global ' + role + ' reads ' + key + ' through ordinary bounded report criteria', async () => {
+    const out = await reportRead(ctx({role, company: null}), 'criteria', {key});
+    assert.equal(out.result.success, true); assert.equal(out.ordinaryClients, 1);
+    assert.equal(out.result.data.rows.length, 1); assert.equal(out.result.data.rows[0].value, 7);
+    assert.equal(out.result.data.totalCount, 1); assert.equal(out.calls[1].table, criterionSources[key].table);
+    assert.ok(out.calls[1].methods.some(([m, start, end]) => m === 'range' && start === 0 && end === 24));
+    assert.ok(!out.calls[1].methods.some(([m, col]) => m === 'eq' && ['status', 'is_active'].includes(col)));
+  });
+  for (const mode of ['saved-list', 'saved-detail']) test('global ' + role + ' reads ' + mode + ' without broadening saved ownership', async () => {
+    const out = await reportRead(ctx({role, company: null}), mode);
+    assert.equal(out.result.success, true); assert.equal(out.ordinaryClients, 1);
+    assert.equal(mode === 'saved-list' ? out.result.data.rows[0].id : out.result.data.record.id, 7);
+    assert.ok(out.calls[1].methods.some(([m, filter]) => m === 'or' && filter === 'user_profile_id.eq.101,is_shared.eq.true'));
+    assert.ok(out.calls[1].methods.some(([m, column, value]) => m === 'eq' && column === 'report_id' && value === 3));
+  });
+}
+for (const mode of ['criteria', 'saved-list', 'saved-detail']) {
+  test(mode + ' retains any-required admission and ordinary explicit grants', async () => {
+    const out = await reportRead(ctx({codes: ['reports.run', 'hr.employees.view']}), mode, {required: ['hr.employees.view', 'reports.synthetic.other']});
+    assert.equal(out.result.success, true); assert.equal(out.ordinaryClients, 1); assert.equal(out.calls.length, 2);
+  });
+  test(mode + ' retains empty requirements but never substitutes them for reports.run', async () => {
+    const allowed = await reportRead(ctx({codes: ['reports.run', 'hr.employees.view']}), mode, {required: []});
+    assert.equal(allowed.result.success, true);
+    const denied = await reportRead(ctx({codes: ['hr.employees.view']}), mode, {required: []});
+    assert.equal(denied.result.success, false); assert.equal(denied.ordinaryClients, 0); assert.equal(denied.calls.length, 0);
+  });
+  test(mode + ' rejects missing requirements before fetching labels or saved rows', async () => {
+    const out = await reportRead(ctx({codes: ['reports.run']}), mode);
+    assert.equal(out.result.success, false); assert.equal(out.result.error, 'Permission denied'); assert.equal(out.calls.length, 1);
+  });
+  test(mode + ' does not turn scoped/revoked admin codes or inactive principals into authority', async () => {
+    for (const options of [{role: 'group_admin'}, {role: 'system_admin'}, {role: 'group_admin', company: null, branch: 2},
+      {role: 'group_admin', company: null, assigned: false}, {role: null}, {role: 'group_admin', company: null, active: false},
+      {role: 'group_admin', company: null, password: true}]) {
+      const out = await reportRead(ctx(options), mode);
+      assert.equal(out.result.success, false); assert.equal(out.ordinaryClients, 0); assert.equal(out.calls.length, 0);
+    }
+  });
+}
+test('report criteria preserve scoped label restrictions independently of report admission', async () => {
+  for (const key of ['employee_id', 'department_id']) {
+    const out = await reportRead(ctx({role: 'group_admin', codes: ['reports.run', 'common_md.view']}), 'criteria', {key, required: ['reports.run']});
+    assert.equal(out.result.success, true); assert.equal(out.result.data.availability, 'restricted');
+    assert.equal(out.result.data.rows, undefined); assert.equal(out.calls.length, 1);
+  }
+});
+test('report criteria preserve dependency predicates, inaccessible selection and empty ordinary results', async () => {
+  const out = await reportRead(ctx({codes: ['reports.run', 'hr.employees.view'], branch: 2}), 'criteria', {
+    criteria: {ownerCompanyId: 1, branchId: 2, departmentId: 3, selectedId: 999}, emptyRows: true,
+  });
+  assert.equal(out.result.success, true); assert.equal(out.result.data.rows.length, 0);
+  assert.equal(out.result.data.totalCount, 0); assert.equal(out.result.data.selected, null);
+  for (const query of out.calls.slice(1)) for (const [column, value] of [['owner_company_id', 1], ['branch_id', 2], ['department_id', 3]])
+    assert.ok(query.methods.some(([m, field, actual]) => m === 'eq' && field === column && actual === value));
+});
+for (const mode of ['saved-list', 'saved-detail']) test(mode + ' rejects foreign nonshared rows even for a global admin', async () => {
+  const out = await reportRead(ctx({role: 'group_admin', company: null}), mode, {foreignSaved: true});
+  assert.equal(out.result.success, false); assert.equal(out.result.kind, 'unavailable'); assert.equal(out.result.data, undefined);
 });

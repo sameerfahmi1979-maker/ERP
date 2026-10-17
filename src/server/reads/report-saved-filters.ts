@@ -27,7 +27,7 @@ export async function readReportSavedFilters(input: unknown, context?: AuthConte
     const registry = registrySchema.parse(registryResult.data);
     if (registry.report_code !== p.reportCode) throw Error("Report applicability mismatch");
     // Same any-required-permission check as the existing report route/criteria.
-    if (registry.required_permissions.length && !registry.required_permissions.some(code => ctx.permissionCodes.includes(code)))
+    if (registry.required_permissions.length && !registry.required_permissions.some(code => hasPermission(ctx, code)))
       return {success: false as const, kind: "forbidden" as const, error: "Permission denied"};
     const base = (head = false) => attach(db.from("erp_report_saved_filters")
       .select(columns + (p.mode === "detail" ? ",filters_json" : ""), {count: "exact", head})

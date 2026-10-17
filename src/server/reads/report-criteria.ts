@@ -39,7 +39,7 @@ export async function readReportCriteria(input: unknown, context?: AuthContext, 
     const registry = registrySchema.parse(registryResult.data);
     if (registry.report_code !== p.reportCode) throw Error("Report applicability mismatch");
     // Preserve the existing route's any-required-permission contract exactly.
-    if (registry.required_permissions.length && !registry.required_permissions.some(code => ctx.permissionCodes.includes(code))) return {success: false, error: "Permission denied"};
+    if (registry.required_permissions.length && !registry.required_permissions.some(code => hasPermission(ctx, code))) return {success: false, error: "Permission denied"};
     const filters = registry.filter_schema_json.filters ?? [];
     if (!filters.includes(p.key) || Object.entries(dependencyKeys).some(([key, field]) => p[key as keyof typeof dependencyKeys] !== undefined && !filters.includes(field)))
       return {success: false, error: "Invalid report filter applicability"};

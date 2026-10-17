@@ -92,7 +92,7 @@ export function TaxTypesTable({ taxTypes, authContext, onRefresh, readGeneration
 
   return (
     <>
-      <ERPDataTable<TaxType>
+      <ERPDataTable<TaxType> presentation="worklist"
         tableId="tax_types_table"
         columns={columns}
         data={taxTypes}

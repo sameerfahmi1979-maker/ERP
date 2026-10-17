@@ -176,7 +176,7 @@ function PickerStep({
 
       {!isLoading && !accessError && docs.length > 0 && (
         <div className="space-y-1.5 max-h-[340px] overflow-y-auto pr-1">
-          {<RecordCollection id="employee-record-document-picker" rows={docs} fields={[{"id":"title","label":"Title","path":"title"},{"id":"document_no","label":"Document number","path":"document_no"},{"id":"document_type_name","label":"Document type","path":"document_type_name"}]} renderRecord={(doc) => {
+          {<RecordCollection presentation="embedded" id="employee-record-document-picker" rows={docs} fields={[{"id":"title","label":"Title","path":"title"},{"id":"document_no","label":"Document number","path":"document_no"},{"id":"document_type_name","label":"Document type","path":"document_type_name"}]} renderRecord={(doc) => {
             const selected = selectedIds.includes(doc.id);
             return (
               <button

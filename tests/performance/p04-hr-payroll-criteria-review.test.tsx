@@ -4,7 +4,7 @@
 import "../remediation/f05/setup";
 import React, {type ReactNode} from "react";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
-import {act, cleanup, fireEvent, render, renderHook, screen, waitFor, within} from "@testing-library/react";
+import {act, cleanup, fireEvent, render, renderHook, screen, waitFor} from "@testing-library/react";
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
 import {WorkspaceUiMemoryProvider} from "@/hooks/use-persistent-ui-state";
 import {PayrollReadScope, usePayrollRecords} from "@/hooks/use-hr-payroll-records";
@@ -16,6 +16,25 @@ import {invalidateHrPayrollGroups, invalidateHrSalaryComponentTypes} from "@/lib
 import type {AuthContext} from "@/lib/rbac/check";
 import {redactWpsProfile} from "@/lib/hr/payroll/redaction";
 import {payrollProfileFixture, payrollRecordFixture, payrollWpsFixture} from "./hr-payroll-record-fixtures";
+
+
+// F05 compact forms have no worklist criteria controls. Capture the real
+// collection adapter without replacing its renderer, read hook or authority.
+// Criteria-injection cases below test controller compatibility, not visible UI.
+const embeddedAdapters = vi.hoisted(() => new Map<string, import("@/components/erp/table/erp-table-types").ERPTableServerRead<unknown>>());
+vi.mock("@/components/erp/table/record-collection", async original => {
+  const actual = await original<typeof import("@/components/erp/table/record-collection")>();
+  return {...actual, RecordCollection: (props: React.ComponentProps<typeof actual.RecordCollection>) => {
+    if (props.serverRead) embeddedAdapters.set(props.id, props.serverRead);
+    return <actual.RecordCollection {...props} />;
+  }};
+});
+function controller(fragment: string) {
+  const found = [...embeddedAdapters].find(([id]) => id.includes(fragment))?.[1];
+  if (!found) throw Error("Real embedded adapter missing: " + fragment);
+  return found;
+}
+beforeEach(() => embeddedAdapters.clear());
 
 const state = vi.hoisted(() => ({transport: vi.fn(), page: vi.fn(), point: vi.fn(), choices: vi.fn(), mutation: vi.fn()}));
 vi.mock("next/navigation", () => ({usePathname: () => "/admin/hr/employees/record/880301"}));
@@ -88,10 +107,8 @@ function mountChoice(kind: PayrollChoiceKind = "payroll-groups") {
   </PayrollReadScope></QueryClientProvider>);
   return {qc, onReadState};
 }
-const titles = {"salary-components": "Salary Components", "salary-revisions": "Salary Revision History", holds: "Payroll Holds"};
-function section(kind: PayrollRecordKind) {
-  const element = screen.getByText(titles[kind]).closest("div.rounded-xl"); if (!element) throw Error("Actual payroll section missing"); return within(element as HTMLElement);
-}
+const recordId = (kind: PayrollRecordKind) => ({"salary-components":"SalaryComponentsSection", "salary-revisions":"SalaryRevisionSection", holds:"PayrollHoldsSection"}[kind]);
+function recordSearch(kind: PayrollRecordKind, value: string) {act(() => controller(recordId(kind)).onGlobalFilterChange(value));}
 const token = (kind: PayrollRecordKind) => kind === "salary-components" ? "Synthetic earning 1" : kind === "salary-revisions" ? "Synthetic revision 1" : "Synthetic hold 1";
 const dispatched = (resource: string, kind?: string) => state.transport.mock.calls.filter(c => c[0] === resource && (!kind || c[1]?.kind === kind));
 const settle = () => act(async () => {await new Promise(resolve => setTimeout(resolve, 300));});
@@ -99,17 +116,17 @@ async function choiceSearch(kind: PayrollChoiceKind) {
   await screen.findByText("1 matching choices · page 1"); fireEvent.click(screen.getByRole("combobox", {name: labels[kind]})); return screen.findByPlaceholderText("Search...");
 }
 
-it("CONTROL: actual record search sends valid settled criteria and leaves unrelated lists unchanged", async () => {
+it("CONTROL: retained record controller sends valid settled criteria and leaves unrelated lists unchanged", async () => {
   mountPayroll(); await screen.findAllByText(token("holds"));
-  fireEvent.change(section("holds").getByPlaceholderText("Search all permitted records…"), {target: {value: "اختبار_%"}});
+  recordSearch("holds", "اختبار_%");
   await waitFor(() => expect(dispatched("hr-payroll-records", "holds").at(-1)?.[1]).toMatchObject({search: "اختبار_%"}));
   expect(dispatched("hr-payroll-records").every(c => payrollRecordCriteriaSchema.safeParse(c[1]).success)).toBe(true);
   expect(dispatched("hr-payroll-records", "salary-components")).toHaveLength(1); expect(state.mutation).not.toHaveBeenCalled();
 });
-it.each(["salary-components", "salary-revisions", "holds"] as const)("%s correcting settled invalid search never dispatches that invalid value", async kind => {
-  mountPayroll(); await screen.findAllByText(token(kind)); const input = section(kind).getByPlaceholderText("Search all permitted records…");
-  fireEvent.change(input, {target: {value: invalidSearch}}); await settle(); expect(dispatched("hr-payroll-records", kind)).toHaveLength(1);
-  fireEvent.change(input, {target: {value: "corrected"}});
+it.each(["salary-components", "salary-revisions", "holds"] as const)("%s retained controller correcting settled invalid search never dispatches that invalid value", async kind => {
+  mountPayroll(); await screen.findAllByText(token(kind));
+  recordSearch(kind, invalidSearch); await settle(); expect(dispatched("hr-payroll-records", kind)).toHaveLength(1);
+  recordSearch(kind, "corrected");
   await waitFor(() => expect(dispatched("hr-payroll-records", kind).at(-1)?.[1]).toMatchObject({search: "corrected"}));
   expect(dispatched("hr-payroll-records", kind).filter(c => !payrollRecordCriteriaSchema.safeParse(c[1]).success)).toEqual([]);
 });

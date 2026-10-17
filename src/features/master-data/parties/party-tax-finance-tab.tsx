@@ -197,7 +197,7 @@ export function PartyTaxFinanceTab({ partyId, disabled:parentDisabled, authConte
           )}
         </div>
 
-        {taxLoading ? <Skeleton className="h-20 w-full" /> : taxError ? <div role="alert"><p>Tax registrations could not be loaded.</p><Button type="button" onClick={refetchTax}>Try again</Button></div> : <ERPDataTable tableId={`party.tax:${partyId}`} resultsLabel="Tax registrations" data={taxRegs ?? []} columns={taxColumns} enableRowSelection={false}/>}
+        {taxLoading ? <Skeleton className="h-20 w-full" /> : taxError ? <div role="alert"><p>Tax registrations could not be loaded.</p><Button type="button" onClick={refetchTax}>Try again</Button></div> : <ERPDataTable presentation="embedded" tableId={`party.tax:${partyId}`} resultsLabel="Tax registrations" data={taxRegs ?? []} columns={taxColumns} enableRowSelection={false}/>}
 
       </div>
 

@@ -113,7 +113,7 @@ function UomCategoriesTableSession({categories,authContext,onRefresh}:UomCategor
   return (
     <>
       {!deleteDialogOpen&&<UomLifecycleNotice state={lifecycle}/>}
-      <ERPDataTable<UomCategory>
+      <ERPDataTable<UomCategory> presentation="worklist"
         tableId="uom_categories_table"
         columns={columns}
         data={categories}

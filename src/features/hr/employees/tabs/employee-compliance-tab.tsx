@@ -394,7 +394,7 @@ function IdentityDocumentsSection({ authContext, onSubjectDenied, employeeId, ca
       {uiRead1.isSuccess && recordRead.serverRead.totalCount === 0 && !recordRead.invalid && <EmptyState message="No identity documents added yet." />}
       {!recordRead.denied && !recordRead.restricted && (
         <div className="space-y-2">
-          <RecordCollection serverRead={recordRead.serverRead} isLoading={isLoading} message={recordRead.validationMessage ?? recordRead.detailError} userProfileId={authContext.profile?.id?.toString()} id="hr.employee-compliance-tab.IdentityDocumentsSection.docs" rows={docs} fields={[{"id":"document_number","path":"document_number","label":"Document Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(doc) => (
+          <RecordCollection presentation="embedded" serverRead={recordRead.serverRead} isLoading={isLoading} message={recordRead.validationMessage ?? recordRead.detailError} userProfileId={authContext.profile?.id?.toString()} id="hr.employee-compliance-tab.IdentityDocumentsSection.docs" rows={docs} fields={[{"id":"document_number","path":"document_number","label":"Document Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(doc) => (
             <div key={doc.id} className="flex items-start justify-between p-3 border rounded-lg bg-card hover:bg-muted/30 transition-colors">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -646,7 +646,7 @@ function MedicalInsurancesSection({ authContext, onSubjectDenied, employeeId, ca
       {uiRead1.isSuccess && recordRead.serverRead.totalCount === 0 && !recordRead.invalid && <EmptyState message="No medical insurance records added yet." />}
       {!recordRead.denied && !recordRead.restricted && (
         <div className="space-y-2">
-          <RecordCollection serverRead={recordRead.serverRead} isLoading={isLoading} message={recordRead.validationMessage ?? recordRead.detailError} userProfileId={authContext.profile?.id?.toString()} id="hr.employee-compliance-tab.MedicalInsurancesSection.records" rows={records} fields={[{"id":"policy_number","path":"policy_number","label":"Policy Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(r) => (
+          <RecordCollection presentation="embedded" serverRead={recordRead.serverRead} isLoading={isLoading} message={recordRead.validationMessage ?? recordRead.detailError} userProfileId={authContext.profile?.id?.toString()} id="hr.employee-compliance-tab.MedicalInsurancesSection.records" rows={records} fields={[{"id":"policy_number","path":"policy_number","label":"Policy Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(r) => (
             <div key={r.id} className="flex items-start justify-between p-3 border rounded-lg bg-card hover:bg-muted/30">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -971,7 +971,7 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
       {uiRead1.isSuccess && recordRead.serverRead.totalCount === 0 && !recordRead.invalid && <EmptyState message="No dependents added yet." />}
       {!recordRead.denied && !recordRead.restricted && (
         <div className="space-y-2">
-          <RecordCollection serverRead={recordRead.serverRead} isLoading={isLoading} message={recordRead.validationMessage ?? recordRead.detailError} userProfileId={authContext.profile?.id?.toString()} id="hr.employee-compliance-tab.DependentsSection.records" rows={records} fields={[{"id":"dependent_name_en","path":"dependent_name_en","label":"Dependent Name En"}]} renderRecord={(r) => (
+          <RecordCollection presentation="embedded" serverRead={recordRead.serverRead} isLoading={isLoading} message={recordRead.validationMessage ?? recordRead.detailError} userProfileId={authContext.profile?.id?.toString()} id="hr.employee-compliance-tab.DependentsSection.records" rows={records} fields={[{"id":"dependent_name_en","path":"dependent_name_en","label":"Dependent Name En"}]} renderRecord={(r) => (
             <div key={r.id} className="flex items-start justify-between p-3 border rounded-lg bg-card hover:bg-muted/30">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1217,7 +1217,7 @@ function AccessCardsSection({ authContext, onSubjectDenied, employeeId, canManag
       {uiRead1.isSuccess && recordRead.serverRead.totalCount === 0 && !recordRead.invalid && <EmptyState message="No access cards or passes added yet." />}
       {!recordRead.denied && !recordRead.restricted && (
         <div className="space-y-2">
-          <RecordCollection serverRead={recordRead.serverRead} isLoading={isLoading} message={recordRead.validationMessage ?? recordRead.detailError} userProfileId={authContext.profile?.id?.toString()} id="hr.employee-compliance-tab.AccessCardsSection.records" rows={records} fields={[{"id":"card_number","path":"card_number","label":"Card Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(r) => (
+          <RecordCollection presentation="embedded" serverRead={recordRead.serverRead} isLoading={isLoading} message={recordRead.validationMessage ?? recordRead.detailError} userProfileId={authContext.profile?.id?.toString()} id="hr.employee-compliance-tab.AccessCardsSection.records" rows={records} fields={[{"id":"card_number","path":"card_number","label":"Card Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(r) => (
             <div key={r.id} className="flex items-start justify-between p-3 border rounded-lg bg-card hover:bg-muted/30">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1445,7 +1445,7 @@ function TrainingCertificatesSection({ authContext, onSubjectDenied, employeeId,
       {uiRead1.isSuccess && recordRead.serverRead.totalCount === 0 && !recordRead.invalid && <EmptyState message="No training certificates added yet." />}
       {!recordRead.denied && !recordRead.restricted && (
         <div className="space-y-2">
-          <RecordCollection serverRead={recordRead.serverRead} isLoading={isLoading} message={recordRead.validationMessage ?? recordRead.detailError} userProfileId={authContext.profile?.id?.toString()} id="hr.employee-compliance-tab.TrainingCertificatesSection.records" rows={records} fields={[{"id":"certificate_number","path":"certificate_number","label":"Certificate Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(r) => (
+          <RecordCollection presentation="embedded" serverRead={recordRead.serverRead} isLoading={isLoading} message={recordRead.validationMessage ?? recordRead.detailError} userProfileId={authContext.profile?.id?.toString()} id="hr.employee-compliance-tab.TrainingCertificatesSection.records" rows={records} fields={[{"id":"certificate_number","path":"certificate_number","label":"Certificate Number"},{"id":"expiry_date","path":"expiry_date","label":"Expiry Date"}]} renderRecord={(r) => (
             <div key={r.id} className="flex items-start justify-between p-3 border rounded-lg bg-card hover:bg-muted/30">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1671,7 +1671,7 @@ function MedicalRecordsSection({ authContext, onSubjectDenied, employeeId, canMe
       {uiRead1.isSuccess && recordRead.serverRead.totalCount === 0 && !recordRead.invalid && <EmptyState message="No medical records added yet." />}
       {!recordRead.denied && !recordRead.restricted && (
         <div className="space-y-2">
-          <RecordCollection serverRead={recordRead.serverRead} isLoading={isLoading} message={recordRead.validationMessage ?? recordRead.detailError} userProfileId={authContext.profile?.id?.toString()} id="hr.employee-compliance-tab.MedicalRecordsSection.records" rows={records} fields={[{"id":"examination_date","path":"examination_date","label":"Examination Date"}]} renderRecord={(r) => {
+          <RecordCollection presentation="embedded" serverRead={recordRead.serverRead} isLoading={isLoading} message={recordRead.validationMessage ?? recordRead.detailError} userProfileId={authContext.profile?.id?.toString()} id="hr.employee-compliance-tab.MedicalRecordsSection.records" rows={records} fields={[{"id":"examination_date","path":"examination_date","label":"Examination Date"}]} renderRecord={(r) => {
             const resultCfg = getMedicalResultBadge(r.result);
             return (
               <div key={r.id} className="flex items-start justify-between p-3 border rounded-lg bg-card hover:bg-muted/30">

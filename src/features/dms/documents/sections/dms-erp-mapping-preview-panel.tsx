@@ -199,7 +199,7 @@ export function ErpMappingPreviewPanel({ documentId }: ErpMappingPreviewPanelPro
           {/* Preview table */}
           {!isLoading && !error && previewRows.length > 0 && (
             <div className="rounded-md border border-border overflow-hidden">
-              {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.documents.sections.dms-erp-mapping-preview-panel" data={previewRows} columns={[{id:"fieldLabelEn",header:"DMS field",accessorFn:row=>loadedListValue(row,"fieldLabelEn"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:row}})=>{
+              {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable presentation="embedded" tableId="special.dms.documents.sections.dms-erp-mapping-preview-panel" data={previewRows} columns={[{id:"fieldLabelEn",header:"DMS field",accessorFn:row=>loadedListValue(row,"fieldLabelEn"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:row}})=>{
 return <><div className="font-medium text-foreground">{row.fieldLabelEn}</div><div className="text-[9px] text-muted-foreground font-mono">{row.fieldCode}</div></>;}},{id:"dmsValue",header:"DMS value",accessorFn:row=>loadedListValue(row,"dmsValue"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:row}})=>{
 return <>{row.dmsValue ? (
                           <span className="text-foreground">{row.dmsValue}</span>

@@ -118,7 +118,7 @@ export function UserEffectiveAccessSection({ userProfileId, authContext }: Props
         </div>
       )}
 
-      {!loading && !error && <ERPDataTable tableId={`user.access:${userProfileId}`} resultsLabel="Effective access" data={permissions} columns={columns} enableRowSelection={false}/>}
+      {!loading && !error && <ERPDataTable presentation="embedded" tableId={`user.access:${userProfileId}`} resultsLabel="Effective access" data={permissions} columns={columns} enableRowSelection={false}/>}
     </div>
   );
 }

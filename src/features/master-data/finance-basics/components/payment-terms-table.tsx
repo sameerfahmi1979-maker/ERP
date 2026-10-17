@@ -87,7 +87,7 @@ export function PaymentTermsTable({ paymentTerms, authContext, onRefresh, readGe
 
   return (
     <>
-      <ERPDataTable<PaymentTerm>
+      <ERPDataTable<PaymentTerm> presentation="worklist"
         tableId="payment_terms_table"
         columns={columns}
         data={paymentTerms}

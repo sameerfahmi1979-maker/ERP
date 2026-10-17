@@ -423,7 +423,7 @@ function AttendanceSection({
       <TimeReadFeedback read={dailyRead} />
       {dailyRead.restricted ? <p role="alert">Attendance access is restricted.</p> : (
         <div className="border rounded-md divide-y">
-          <RecordCollection id="hr.employee-time-tab.AttendanceSection.summaries" rows={summaries} serverRead={dailyRead.serverRead} isLoading={dailyRead.busy} fields={[{"id":"attendance_date","path":"attendance_date","label":"Attendance Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
+          <RecordCollection presentation="embedded" id="hr.employee-time-tab.AttendanceSection.summaries" rows={summaries} serverRead={dailyRead.serverRead} isLoading={dailyRead.busy} fields={[{"id":"attendance_date","path":"attendance_date","label":"Attendance Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
             const badge = getAttendanceStatusBadge(row.approval_status);
             return (
               <div key={row.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">
@@ -469,7 +469,7 @@ function AttendanceSection({
           <p className="font-medium text-muted-foreground mb-2">Correction History</p>
           <Button type="button" variant="outline" size="sm" onClick={() => setShowCorrections(null)}>Close history</Button>
           <TimeReadFeedback read={correctionRead} />
-          {correctionRead.collectionUnavailable ? <p role="alert">The selected attendance record is no longer available. Close its history or select another permitted record.</p> : <RecordCollection id="hr.employee-time-tab.AttendanceSection.corrections" rows={corrections} serverRead={correctionRead.serverRead} isLoading={correctionRead.busy} fields={[{"id":"created_at","path":"created_at","label":"Created At"}]} renderRecord={(c) => (
+          {correctionRead.collectionUnavailable ? <p role="alert">The selected attendance record is no longer available. Close its history or select another permitted record.</p> : <RecordCollection presentation="embedded" id="hr.employee-time-tab.AttendanceSection.corrections" rows={corrections} serverRead={correctionRead.serverRead} isLoading={correctionRead.busy} fields={[{"id":"created_at","path":"created_at","label":"Created At"}]} renderRecord={(c) => (
             <div key={c.id} className="flex gap-2 text-muted-foreground">
               <span className="shrink-0">{fmtDatetime(c.created_at)}</span>
               <span>{c.correction_reason}</span>
@@ -486,7 +486,7 @@ function AttendanceSection({
         {showPunches && (
           <div className="mt-2 border rounded-md divide-y text-xs">
             <TimeReadFeedback read={punchRead} />
-            <RecordCollection id="hr.employee-time-tab.AttendanceSection.punches" rows={punches} serverRead={punchRead.serverRead} isLoading={punchRead.busy} fields={[{"id":"punch_datetime","path":"punch_datetime","label":"Punch Datetime"},{"id":"punch_type","path":"punch_type","label":"Punch Type"}]} renderRecord={(p) => (
+            <RecordCollection presentation="embedded" id="hr.employee-time-tab.AttendanceSection.punches" rows={punches} serverRead={punchRead.serverRead} isLoading={punchRead.busy} fields={[{"id":"punch_datetime","path":"punch_datetime","label":"Punch Datetime"},{"id":"punch_type","path":"punch_type","label":"Punch Type"}]} renderRecord={(p) => (
               <div key={p.id} className="px-3 py-2 flex gap-3 text-muted-foreground">
                 <span>{fmtDatetime(p.punch_datetime)}</span>
                 <span className="font-medium">{getPunchTypeLabel(p.punch_type)}</span>
@@ -811,7 +811,7 @@ function ShiftCalendarSection({
       <TimeReadFeedback read={recordRead} />
       {recordRead.restricted ? <p role="alert">Shift access is restricted.</p> : (
         <div className="border rounded-md divide-y">
-          <RecordCollection id="hr.employee-time-tab.ShiftCalendarSection.assignments" rows={assignments} serverRead={recordRead.serverRead} isLoading={recordRead.busy} fields={[{"id":"effective_from","path":"effective_from","label":"Effective From"},{"id":"effective_to","path":"effective_to","label":"Effective To"}]} renderRecord={(row) => (
+          <RecordCollection presentation="embedded" id="hr.employee-time-tab.ShiftCalendarSection.assignments" rows={assignments} serverRead={recordRead.serverRead} isLoading={recordRead.busy} fields={[{"id":"effective_from","path":"effective_from","label":"Effective From"},{"id":"effective_to","path":"effective_to","label":"Effective To"}]} renderRecord={(row) => (
             <div key={row.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">
               <div className="flex-1 min-w-0">
                 <p className="font-medium">{row.work_shift?.shift_name ?? "—"}</p>
@@ -1103,7 +1103,7 @@ function LeaveSection({
       {/* Leave Requests */}
       {(
         <div className="border rounded-md divide-y">
-          <RecordCollection id="hr.employee-time-tab.LeaveSection.leaves" rows={leaves} serverRead={leaveRead.serverRead} fields={[{"id":"start_date","path":"start_date","label":"Start Date"},{"id":"end_date","path":"end_date","label":"End Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
+          <RecordCollection presentation="embedded" id="hr.employee-time-tab.LeaveSection.leaves" rows={leaves} serverRead={leaveRead.serverRead} fields={[{"id":"start_date","path":"start_date","label":"Start Date"},{"id":"end_date","path":"end_date","label":"End Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
             const badge = getLeaveApprovalStatusBadge(row.approval_status);
             return (
               <div key={row.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">
@@ -1414,7 +1414,7 @@ function OvertimeSection({
       {recordRead.restricted && <p role="alert">Overtime records are not available with your current access.</p>}
       {(
         <div className="border rounded-md divide-y">
-          <RecordCollection id="hr.employee-time-tab.OvertimeSection.records" rows={records} serverRead={recordRead.serverRead} fields={[{"id":"overtime_date","path":"overtime_date","label":"Overtime Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
+          <RecordCollection presentation="embedded" id="hr.employee-time-tab.OvertimeSection.records" rows={records} serverRead={recordRead.serverRead} fields={[{"id":"overtime_date","path":"overtime_date","label":"Overtime Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
             const badge = getOvertimeApprovalStatusBadge(row.approval_status);
             return (
               <div key={row.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">

@@ -96,7 +96,7 @@ export function BanksTable({ banks, authContext, onRefresh, readGeneration }: Ba
 
   return (
     <>
-      <ERPDataTable<Bank>
+      <ERPDataTable<Bank> presentation="worklist"
         tableId="banks_table"
         columns={columns}
         data={banks}

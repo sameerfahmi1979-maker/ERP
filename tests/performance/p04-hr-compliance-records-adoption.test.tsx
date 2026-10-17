@@ -12,6 +12,25 @@ import {complianceFixture, complianceFixtureReply} from "./fixtures/compliance-r
 import {COMPLIANCE_KINDS, type ComplianceKind} from "@/lib/reads/hr-compliance-records-schema";
 import {syntheticAuthContext} from "./fixtures/auth-context";
 
+
+// F05 compact forms have no worklist criteria controls. Capture the real
+// collection adapter without replacing its renderer, read hook or authority.
+// Criteria-injection cases below test controller compatibility, not visible UI.
+const embeddedAdapters = vi.hoisted(() => new Map<string, import("@/components/erp/table/erp-table-types").ERPTableServerRead<unknown>>());
+vi.mock("@/components/erp/table/record-collection", async original => {
+  const actual = await original<typeof import("@/components/erp/table/record-collection")>();
+  return {...actual, RecordCollection: (props: React.ComponentProps<typeof actual.RecordCollection>) => {
+    if (props.serverRead) embeddedAdapters.set(props.id, props.serverRead);
+    return <actual.RecordCollection {...props} />;
+  }};
+});
+function controller(fragment: string) {
+  const found = [...embeddedAdapters].find(([id]) => id.includes(fragment))?.[1];
+  if (!found) throw Error("Real embedded adapter missing: " + fragment);
+  return found;
+}
+beforeEach(() => embeddedAdapters.clear());
+
 const state = vi.hoisted(() => ({read: vi.fn(), list: vi.fn(), mutate: vi.fn(), settings: vi.fn(), failed: false, error: vi.fn(), success: vi.fn(), submits: new Map<string, (() => unknown) | undefined>()}));
 vi.mock("@/components/erp/erp-child-dialog-form", async original => {
   const actual = await original<typeof import("@/components/erp/erp-child-dialog-form")>();
@@ -303,28 +322,28 @@ it("all six kinds preserve the ordinary entered values after a returned save fai
   }
   expect(state.mutate).toHaveBeenCalledTimes(COMPLIANCE_KINDS.length);
 });
-it("invalid immediate criteria stay correctable and are never sent through delayed reads or Retry", async () => {
-  mount(); await screen.findByText("Synthetic identity"); const root = section(), input = within(root).getByLabelText("Search all permitted records…");
-  fireEvent.change(input, {target: {value: "x".repeat(201)}});
+it("injected immediate criteria stay correctable and are never sent through delayed reads or Retry", async () => {
+  mount(); await screen.findByText("Synthetic identity"); const root = section();
+  act(() => controller("IdentityDocumentsSection").onGlobalFilterChange("x".repeat(201)));
   await screen.findByText("Review the filters, search length and page criteria. Invalid criteria were not sent.");
   await act(async () => {await new Promise(resolve => setTimeout(resolve, 300));});
   expect(state.read.mock.calls.some(([, p]) => p.search?.length > 200)).toBe(false);
-  expect(input.closest("[inert]")).toBeNull();
-  fireEvent.change(input, {target: {value: "SYNTHETIC"}});
+  expect(within(root).getByRole("button", {name: "Clear list criteria"}).closest("[inert]")).toBeNull();
+  act(() => controller("IdentityDocumentsSection").onGlobalFilterChange("SYNTHETIC"));
   await waitFor(() => expect(state.read.mock.calls.some(([, p]) => p.kind === "identity" && p.search === "SYNTHETIC")).toBe(true));
   await waitFor(() => expect(within(root).queryByText(/Invalid criteria were not sent/)).toBeNull());
 });
-it("actual Shift-sort gestures send all ordered supported priorities and counted Next requests remain server paged", async () => {
+it("retained controller sorting sends ordered supported priorities and compact Next remains server paged", async () => {
   state.read.mockImplementation(async (_: string, p: Record<string, unknown>) => p.kind === "identity"
     ? complianceFixtureReply(p, Array.from({length: 1001}, (_, index) => complianceFixture("identity", index + 1, 7, {document_number: `SYNTH-${index + 1}`}))) : page(p));
-  mount(); const root = section(); await waitFor(() => expect(within(root).getByText(/Showing 25 of 1001 matching records/)).toBeTruthy());
+  mount(); const root = section(); await waitFor(() => expect(within(root).getByText("Page 1 of 41")).toBeTruthy());
   fireEvent.click(within(root).getByRole("button", {name: "Next"}));
   await waitFor(() => expect(state.read.mock.calls.some(([, p]) => p.kind === "identity" && p.page === 2 && p.pageSize === 25)).toBe(true));
   await waitFor(() => expect((within(root).getByRole("button", {name: "Next"}) as HTMLButtonElement).disabled).toBe(false));
-  fireEvent.click(within(root).getByRole("button", {name: "Document Number"}));
+  act(() => controller("IdentityDocumentsSection").onSortingChange([{id: "document_number", desc: false}]));
   await waitFor(() => expect(state.read.mock.calls.some(([, p]) => p.sorting?.[0]?.id === "document_number")).toBe(true));
   await waitFor(() => expect((within(root).getByRole("button", {name: "Next"}) as HTMLButtonElement).disabled).toBe(false));
-  fireEvent.click(within(root).getByRole("button", {name: "Expiry Date"}), {shiftKey: true});
+  act(() => controller("IdentityDocumentsSection").onSortingChange([{id: "document_number", desc: false}, {id: "expiry_date", desc: false}]));
   await waitFor(() => expect(state.read.mock.calls.filter(([, p]) => p.kind === "identity").at(-1)?.[1]).toMatchObject({page: 1, sorting: [{id: "document_number", desc: false}, {id: "expiry_date", desc: false}]}));
 });
 it("late canceled search data cannot overwrite the current list", async () => {
@@ -334,16 +353,16 @@ it("late canceled search data cannot overwrite the current list", async () => {
     if (p.search === "OLDER") {oldSignal = signal; return old.promise;}
     return complianceFixtureReply(p, [complianceFixture("identity", 19, 7, {document_number: "CURRENT_RECORD"})]);
   });
-  mount(); await screen.findByText("Synthetic identity"); const root = section(), input = within(root).getByLabelText("Search all permitted records…");
-  fireEvent.change(input, {target: {value: "OLDER"}}); await waitFor(() => expect(oldSignal).toBeTruthy());
-  fireEvent.change(input, {target: {value: "NEWER"}}); await waitFor(() => expect(within(root).getAllByText("CURRENT_RECORD").length).toBeGreaterThan(0));
+  mount(); await screen.findByText("Synthetic identity"); const root = section();
+  act(() => controller("IdentityDocumentsSection").onGlobalFilterChange("OLDER")); await waitFor(() => expect(oldSignal).toBeTruthy());
+  act(() => controller("IdentityDocumentsSection").onGlobalFilterChange("NEWER")); await waitFor(() => expect(within(root).getAllByText("CURRENT_RECORD").length).toBeGreaterThan(0));
   expect(oldSignal!.aborted).toBe(true);
   await act(async () => {old.resolve(complianceFixtureReply({operation: "page", kind: "identity", employeeId: 7, search: "OLDER"}, [complianceFixture("identity", 18, 7, {document_number: "OLD_RETIRED_RECORD"})]));});
   expect(within(root).queryByText("OLD_RETIRED_RECORD")).toBeNull(); expect(state.mutate).not.toHaveBeenCalled();
 });
 it("a malformed page is unavailable with an unknown count, not an accepted empty list", async () => {
   state.read.mockImplementation(async (_: string, p: Record<string, unknown>) => p.kind === "identity" ? {success: true, data: {operation: "page", kind: p.kind, employeeId: 7, page: 1, pageSize: 25, totalCount: 0}} : page(p));
-  mount(); const root = section(); await waitFor(() => expect(within(root).getByText("Matching total is not yet available")).toBeTruthy());
+  mount(); const root = section(); await waitFor(() => expect(within(root).getByText("Records could not yet be verified. Check the read status or retry.")).toBeTruthy());
   expect(within(root).queryByText(/0 permitted records/)).toBeNull(); expect(within(root).queryByText(/No permitted records match/)).toBeNull(); expect(state.mutate).not.toHaveBeenCalled();
 });
 it("partial selected detail never creates an incomplete edit form and can be explicitly retried", async () => {

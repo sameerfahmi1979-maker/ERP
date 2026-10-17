@@ -122,7 +122,7 @@ export function OrganizationsTable({
   ];
 
   return (
-    <ERPDataTable
+    <ERPDataTable presentation="worklist"
       tableId="admin.organizations"
       columns={columns}
       data={data}

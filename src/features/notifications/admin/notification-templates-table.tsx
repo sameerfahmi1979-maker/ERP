@@ -33,7 +33,7 @@ export function NotificationTemplatesTable({templates,identity,onRefresh,serverR
  const close=()=>setEditing(null);
  const success=()=>{if(owner.current){setEditing(null);onRefresh();}};
  return <div className="space-y-3">{canManage&&<Button variant="outline" disabled={disabled||acting} onClick={()=>{if(current.current())setEditing("new");}}>New Template</Button>}
- <ERPDataTable tableId="notifications.templates" data={templates} columns={columns} serverRead={serverRead} isLoading={disabled} enableRowSelection={false} searchPlaceholder="Search template metadata…" emptyMessage="No templates match this view."/>
+ <ERPDataTable presentation="worklist" tableId="notifications.templates" data={templates} columns={columns} serverRead={serverRead} isLoading={disabled} enableRowSelection={false} searchPlaceholder="Search template metadata…" emptyMessage="No templates match this view."/>
  {canManage&&editing!==null&&(editing==="new"?<NotificationTemplateFormDialog open onClose={close} onSuccess={success} template={null}/>:<TemplateDetail key={identity+":"+editing} id={editing} identity={identity} onClose={close} onSuccess={success}/>)}</div>;
 }
 function TemplateDetail({id,identity,onClose,onSuccess}:{id:number;identity:string;onClose:()=>void;onSuccess:()=>void}){

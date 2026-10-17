@@ -320,7 +320,7 @@ function ProProcessesSection({ employeeId, canManage, qc, onChildOpen }: {
       <SectionHeader icon={Globe} title="PRO Processes" count={uiRead1.collection.serverRead.totalCount ?? undefined} onAdd={canManage ? () => {void openDialog();} : undefined} addLabel="Add Process" />
       {
         <div className="space-y-2">
-          <RecordCollection id="hr.employee-hr-actions-tab.ProProcessesSection.items" rows={items} fields={[...HR_ACTION_RECORD_CONFIG.pro.fields]} {...uiRead1.collection} renderRecord={item => (
+          <RecordCollection presentation="embedded" id="hr.employee-hr-actions-tab.ProProcessesSection.items" rows={items} fields={[...HR_ACTION_RECORD_CONFIG.pro.fields]} {...uiRead1.collection} renderRecord={item => (
             <div key={item.id} className="flex items-start justify-between p-3 rounded border bg-background hover:bg-accent/30 transition">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -445,7 +445,7 @@ function HrActionsSection({ employeeId, canManage, qc, onChildOpen }: {
       <SectionHeader icon={Zap} title="HR Actions" count={uiRead1.collection.serverRead.totalCount ?? undefined} onAdd={canManage ? () => {void openDialog();} : undefined} addLabel="Add Action" />
       {
         <div className="space-y-2">
-          <RecordCollection id="hr.employee-hr-actions-tab.HrActionsSection.items" rows={items} fields={[...HR_ACTION_RECORD_CONFIG.actions.fields]} {...uiRead1.collection} renderRecord={item => (
+          <RecordCollection presentation="embedded" id="hr.employee-hr-actions-tab.HrActionsSection.items" rows={items} fields={[...HR_ACTION_RECORD_CONFIG.actions.fields]} {...uiRead1.collection} renderRecord={item => (
             <div key={item.id} className="flex items-start justify-between p-3 rounded border bg-background hover:bg-accent/30 transition">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -556,7 +556,7 @@ function PerformanceSection({ employeeId, canManage, qc, onChildOpen }: {
       <SectionHeader icon={TrendingUp} title="Performance Reviews" count={uiRead1.collection.serverRead.totalCount ?? undefined} onAdd={canManage ? () => {void openDialog();} : undefined} addLabel="Add Review" />
       {
         <div className="space-y-2">
-          <RecordCollection id="hr.employee-hr-actions-tab.PerformanceSection.items" rows={items} fields={[...HR_ACTION_RECORD_CONFIG.performance.fields]} {...uiRead1.collection} renderRecord={item => (
+          <RecordCollection presentation="embedded" id="hr.employee-hr-actions-tab.PerformanceSection.items" rows={items} fields={[...HR_ACTION_RECORD_CONFIG.performance.fields]} {...uiRead1.collection} renderRecord={item => (
             <div key={item.id} className="flex items-start justify-between p-3 rounded border bg-background hover:bg-accent/30 transition">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -662,7 +662,7 @@ function DisciplinarySection({ employeeId, canManage, qc, onChildOpen }: {
       <SectionHeader icon={AlertTriangle} title="Disciplinary & Warnings" count={uiRead1.collection.serverRead.totalCount ?? undefined} onAdd={canManage ? () => {void openDialog();} : undefined} addLabel="Add Record" />
       {
         <div className="space-y-2">
-          <RecordCollection id="hr.employee-hr-actions-tab.DisciplinarySection.items" rows={items} fields={[...HR_ACTION_RECORD_CONFIG.disciplinary.fields]} {...uiRead1.collection} renderRecord={item => (
+          <RecordCollection presentation="embedded" id="hr.employee-hr-actions-tab.DisciplinarySection.items" rows={items} fields={[...HR_ACTION_RECORD_CONFIG.disciplinary.fields]} {...uiRead1.collection} renderRecord={item => (
             <div key={item.id} className="flex items-start justify-between p-3 rounded border bg-background hover:bg-accent/30 transition">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -766,7 +766,7 @@ function HrNotesSection({ employeeId, canManage, qc, onChildOpen }: {
       <p className="text-xs text-amber-600 mb-3 flex items-center gap-1 dark:text-amber-300"><AlertCircle className="h-3 w-3" /> Restricted visibility. Contents not shown in overview.</p>
       {
         <div className="space-y-2">
-          <RecordCollection id="hr.employee-hr-actions-tab.HrNotesSection.items" rows={items} fields={[...HR_ACTION_RECORD_CONFIG.notes.fields]} {...uiRead1.collection} renderRecord={item => (
+          <RecordCollection presentation="embedded" id="hr.employee-hr-actions-tab.HrNotesSection.items" rows={items} fields={[...HR_ACTION_RECORD_CONFIG.notes.fields]} {...uiRead1.collection} renderRecord={item => (
             <div key={item.id} className="p-3 rounded border bg-background">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
@@ -867,7 +867,7 @@ function ApprovalsSection({ employeeId, canManage, qc, onChildOpen }: {
       <SectionHeader icon={CheckSquare} title="Approval Requests" count={uiRead1.collection.serverRead.totalCount ?? undefined} onAdd={canManage ? openDialog : undefined} addLabel="New Request" />
       {
         <div className="space-y-2">
-          <RecordCollection id="hr.employee-hr-actions-tab.ApprovalsSection.items" rows={items} fields={[...HR_ACTION_RECORD_CONFIG.approvals.fields]} {...uiRead1.collection} renderRecord={item => (
+          <RecordCollection presentation="embedded" id="hr.employee-hr-actions-tab.ApprovalsSection.items" rows={items} fields={[...HR_ACTION_RECORD_CONFIG.approvals.fields]} {...uiRead1.collection} renderRecord={item => (
             <div key={item.id} className="flex items-start justify-between p-3 rounded border bg-background hover:bg-accent/30 transition">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1051,7 +1051,7 @@ function EosSection({ employeeId, canManage, qc, onChildOpen }: {
 
       {
         <div className="space-y-4">
-          <RecordCollection id="hr.employee-hr-actions-tab.EosSection.eosCases" rows={eosCases} fields={[...HR_ACTION_RECORD_CONFIG.eos.fields]} {...uiRead1.collection} renderRecord={eos => {
+          <RecordCollection presentation="embedded" id="hr.employee-hr-actions-tab.EosSection.eosCases" rows={eosCases} fields={[...HR_ACTION_RECORD_CONFIG.eos.fields]} {...uiRead1.collection} renderRecord={eos => {
             const isSelected = activeCaseId === eos.id;
             return (
               <div key={eos.id} className="rounded border bg-background">
@@ -1078,7 +1078,7 @@ function EosSection({ employeeId, canManage, qc, onChildOpen }: {
                   <div className="border-t px-3 pb-3 pt-2">
                     <p className="text-xs font-medium text-muted-foreground mb-2">Clearance Checklist</p>
                     <div className="grid grid-cols-1 gap-1.5">
-                      {<RecordCollection id={`employee-clearance-items-${eos.id}`} rows={clearanceItems} fields={[...HR_ACTION_RECORD_CONFIG.clearance.fields]} {...uiRead2.collection} renderRecord={ci => (
+                      {<RecordCollection presentation="embedded" id={`employee-clearance-items-${eos.id}`} rows={clearanceItems} fields={[...HR_ACTION_RECORD_CONFIG.clearance.fields]} {...uiRead2.collection} renderRecord={ci => (
                         <div key={ci.id} className="flex items-center justify-between text-xs p-2 rounded bg-muted">
                           <div className="flex items-center gap-2">
                             <span className="text-muted-foreground uppercase text-[10px] font-medium">{ci.clearance_area}</span>

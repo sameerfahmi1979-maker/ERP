@@ -186,7 +186,7 @@ export function PartyDocumentsTab({ partyId, disabled, onChildOpen }: PartyDocum
       )}
 
       {loadError ? <div role="alert" className="rounded border p-4"><p>Document records could not be loaded.</p><Button type="button" variant="outline" onClick={refetch}>Try again</Button></div> :
-        <ERPDataTable tableId={`party.documents:${partyId}`} resultsLabel="Document" data={documents ?? []} columns={columns} enableRowSelection={false} />}
+        <ERPDataTable presentation="embedded" tableId={`party.documents:${partyId}`} resultsLabel="Document" data={documents ?? []} columns={columns} enableRowSelection={false} />}
 
       {isDialogOpen && <PartyChildSaveDialog
         key={editing?.id ?? 'new'}

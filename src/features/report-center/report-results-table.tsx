@@ -79,7 +79,7 @@ export function ReportResultsTable({ data, isLoading, error }: ReportResultsTabl
 
   return (
     <div className="border rounded-lg overflow-hidden bg-card">
-      <ERPDataTable key={columns.join("|")} tableId={`reports.results:${columns.join("|")}`} columns={tableColumns} data={rows}
+      <ERPDataTable presentation="worklist" key={columns.join("|")} tableId={`reports.results:${columns.join("|")}`} columns={tableColumns} data={rows}
         enableRowSelection={false} searchPlaceholder="Search generated rows…" initialPageSize={25} />
       <div className="px-4 py-2 border-t bg-muted/20 text-xs text-muted-foreground">
         {rows.length.toLocaleString()} loaded row{rows.length !== 1 ? "s" : ""}. List filters affect these generated rows only, not the report definition or its exports.

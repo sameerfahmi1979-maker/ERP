@@ -80,7 +80,7 @@ export function HrAiActivityPanel({ employeeId, canView }: Props) {
           <p className="text-sm text-muted-foreground py-4 text-center">No HR AI activity yet for this employee.</p>
         ) : (
           <div className="space-y-1">
-            {<RecordCollection id="special.hr-ai-activity-panel" rows={records} fields={[{"id":"featureCode","path":"featureCode","label":"Feature"},{"id":"createdAt","path":"createdAt","label":"Created"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(r) => (
+            {<RecordCollection presentation="embedded" id="special.hr-ai-activity-panel" rows={records} fields={[{"id":"featureCode","path":"featureCode","label":"Feature"},{"id":"createdAt","path":"createdAt","label":"Created"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(r) => (
               <div key={r.id} className="flex items-center gap-2 py-1.5 border-b border-border/50 last:border-0">
                 {r.status === "success" ? (
                   <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />

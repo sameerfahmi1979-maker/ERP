@@ -263,7 +263,7 @@ export function DuplicateCandidatesPageClient({
             {!isLoading && rows.length === 0 && (
               <p className="p-4 text-sm text-muted-foreground">No candidates match filters.</p>
             )}
-            {<RecordCollection id="special.duplicate-candidates-page-client" rows={rows} fields={[{"id":"candidateType","path":"candidateType","label":"Candidate type"},{"id":"entityTypeA","path":"entityTypeA","label":"Entity type"},{"id":"confidenceScore","path":"confidenceScore","label":"Confidence"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(row) => (
+            {<RecordCollection presentation="worklist" id="special.duplicate-candidates-page-client" rows={rows} fields={[{"id":"candidateType","path":"candidateType","label":"Candidate type"},{"id":"entityTypeA","path":"entityTypeA","label":"Entity type"},{"id":"confidenceScore","path":"confidenceScore","label":"Confidence"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(row) => (
               <CandidateListItem
                 key={row.id}
                 row={row}

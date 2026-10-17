@@ -233,7 +233,7 @@ export function ValuesTable({ values, onRefresh, canManage, canLock, readGenerat
 
   return (
     <>
-      <ERPDataTable<LookupValueWithCategory>
+      <ERPDataTable<LookupValueWithCategory> presentation="worklist"
         tableId="lookup_values_table"
         columns={columns}
         data={values}

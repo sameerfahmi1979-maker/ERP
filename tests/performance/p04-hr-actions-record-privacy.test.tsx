@@ -13,6 +13,25 @@ import {HR_ACTION_RECORD_CONFIG,hrActionRecordRowSchemas, type HrActionRecordKin
 import {ReadError} from "@/lib/reads/client";
 import type {ERPChildDialogFormProps} from "@/components/erp/erp-child-dialog-form";
 
+
+// F05 compact forms have no worklist criteria controls. Capture the real
+// collection adapter without replacing its renderer, read hook or authority.
+// Criteria-injection cases below test controller compatibility, not visible UI.
+const embeddedAdapters = vi.hoisted(() => new Map<string, import("@/components/erp/table/erp-table-types").ERPTableServerRead<unknown>>());
+vi.mock("@/components/erp/table/record-collection", async original => {
+  const actual = await original<typeof import("@/components/erp/table/record-collection")>();
+  return {...actual, RecordCollection: (props: React.ComponentProps<typeof actual.RecordCollection>) => {
+    if (props.serverRead) embeddedAdapters.set(props.id, props.serverRead);
+    return <actual.RecordCollection {...props} />;
+  }};
+});
+function controller(fragment: string) {
+  const found = [...embeddedAdapters].find(([id]) => id.includes(fragment))?.[1];
+  if (!found) throw Error("Real embedded adapter missing: " + fragment);
+  return found;
+}
+beforeEach(() => embeddedAdapters.clear());
+
 const state=vi.hoisted(()=>({
  reads:Object.fromEntries(['pro','actions','performance','disciplinary','notes','approvals','eos','clearance'].map(k=>[k,vi.fn()])),
  mutations:Object.fromEntries(['acknowledgeEmployeeDisciplinaryRecord','approveEmployeeApprovalRequest','approveEmployeePerformanceRecord','archiveEmployeeDisciplinaryRecord','archiveEmployeeHrAction','archiveEmployeeHrNote','archiveEmployeePerformanceRecord','archiveEmployeeProProcess','blockEmployeeClearanceItem','cancelEmployeeApprovalRequest','clearEmployeeClearanceItem','closeEmployeeHrAction','createEmployeeApprovalRequest','createEmployeeClearanceItem','createEmployeeDisciplinaryRecord','createEmployeeEosCase','createEmployeeHrAction','createEmployeeHrNote','createEmployeePerformanceRecord','createEmployeeProProcess','rejectEmployeeApprovalRequest','submitEmployeePerformanceRecord','updateEmployeeDisciplinaryRecord','updateEmployeeEosCase','updateEmployeeHrAction','updateEmployeePerformanceRecord','updateEmployeeProProcess'].map(n=>[n,vi.fn()])),
@@ -149,6 +168,8 @@ it('late clearance reply cannot restore the previous principal checklist',async(
  await act(async()=>finish([row('clearance')]));expect(screen.queryAllByText(token('clearance'))).toHaveLength(0);
  expect(view.client.getQueryCache().getAll().some(q=>q.queryKey.at(-1)===readIdentity(context))).toBe(false);
 });
+const recordId=(kind: typeof kinds[number])=>({pro:'ProProcessesSection',actions:'HrActionsSection',performance:'PerformanceSection',disciplinary:'DisciplinarySection',notes:'HrNotesSection',approvals:'ApprovalsSection',eos:'EosSection'}[kind]);
+function recordSearch(kind: typeof kinds[number], value: string){act(()=>controller(recordId(kind)).onGlobalFilterChange(value));}
 const prefixes={pro:'pro-processes',actions:'hr-actions',performance:'performance',disciplinary:'disciplinary',notes:'notes',approvals:'approvals',eos:'eos-cases'};
 const emptyText={pro:'No permitted records match this view.',actions:'No permitted records match this view.',performance:'No permitted records match this view.',disciplinary:'No permitted records match this view.',notes:'No permitted records match this view.',approvals:'No permitted records match this view.',eos:'No permitted records match this view.'};
 it.each(kinds)('%s failed refresh hides warm content, does not claim empty, and manual retry recovers once',async kind=>{
@@ -165,7 +186,7 @@ it.each(['system_admin','group_admin'])('%s code on a company-scoped assignment 
 const titles={pro:'PRO Processes',actions:'HR Actions',performance:'Performance Reviews',disciplinary:'Disciplinary & Warnings',notes:'HR Notes',approvals:'Approval Requests',eos:'EOS & Clearance'};
 function section(kind:typeof kinds[number]){const element=screen.getByText(titles[kind]).closest('div.rounded-lg');if(!element)throw Error('Actual section missing');return within(element as HTMLElement);}
 type PageInput={kind:HrActionRecordKind;page:number;pageSize:number;search:string;columnFilters:Record<string,string>;sortKey:string;sortDir:string;eosCaseId?:number};
-it.each(kinds)('%s actual controls page a 1,107-row total without confusing page length with completeness',async kind=>{
+it.each(kinds)('%s compact Next and retained page-size controller page a 1,107-row total without confusing page length with completeness',async kind=>{
  state.pages.mockImplementation(async(input:PageInput)=>input.kind===kind?{rows:Array.from({length:Math.min(input.pageSize,1107-(input.page-1)*input.pageSize)},(_,n)=>row(kind,(input.page-1)*input.pageSize+n+1)),totalCount:1107}:undefined);
  mount();await waitFor(()=>expect(section(kind).getByText('1107')).toBeTruthy());
  expect(state.transport.mock.calls.filter(c=>c[1].kind===kind)).toHaveLength(1);
@@ -173,27 +194,28 @@ it.each(kinds)('%s actual controls page a 1,107-row total without confusing page
  await waitFor(()=>expect(state.transport.mock.calls.filter(c=>c[1].kind===kind).at(-1)?.[1]).toMatchObject({page:2,pageSize:25}));
  await waitFor(()=>expect(section(kind).getByText('1107')).toBeTruthy());
  expect(state.transport.mock.calls.filter(c=>c[1].kind===kind)).toHaveLength(2);
- fireEvent.change(section(kind).getAllByLabelText('Rows per page').at(-1)!,{target:{value:'100'}});
+ expect(section(kind).queryByLabelText('Rows per page')).toBeNull();
+ act(()=>controller(recordId(kind)).onPaginationChange({pageIndex:0,pageSize:100}));
  await waitFor(()=>expect(state.transport.mock.calls.filter(c=>c[1].kind===kind).at(-1)?.[1]).toMatchObject({page:1,pageSize:100}));
  await waitFor(()=>expect(section(kind).getByText('1107')).toBeTruthy());
 });
 it('invalid search criteria do not send a read or claim an empty result',async()=>{
  mount();await screen.findAllByText(token('pro'));const calls=state.transport.mock.calls.filter(c=>c[1].kind==='pro').length;
- fireEvent.change(section('pro').getByPlaceholderText('Search all permitted records…'),{target:{value:'x'.repeat(201)}});
+ recordSearch('pro','x'.repeat(201));
  await screen.findByText('Review the filters, search length and page criteria. Invalid criteria were not sent.');
  expect(state.transport.mock.calls.filter(c=>c[1].kind==='pro')).toHaveLength(calls);
  expect(section('pro').queryByText('No permitted records match this view.')).toBeNull();
- expect(section('pro').getByText(/Records unavailable or loading/)).toBeTruthy();
+ expect(controller(recordId('pro')).totalCount).toBeNull();
 });
-it('search and sort reach the native-read criteria and page state returns from workspace memory without disk storage',async()=>{
+it('injected legacy search and sort reach the native-read criteria and page state returns from workspace memory without disk storage',async()=>{
  state.pages.mockImplementation(async(input:PageInput)=>input.kind==='pro'?{rows:[row('pro',input.search?101:input.page)],totalCount:input.search?1:1}:undefined);
  const view=mount();await screen.findAllByText(token('pro'));
- fireEvent.change(section('pro').getByPlaceholderText('Search all permitted records…'),{target:{value:'literal %_ اختبار'}});
+ recordSearch('pro','literal %_ اختبار');
  await screen.findAllByText(token('pro',101));
- fireEvent.click(section('pro').getByRole('button',{name:'Process Title'}));
+ act(()=>controller(recordId('pro')).onSortingChange([{id:'process_title',desc:false}]));
  await waitFor(()=>expect(state.transport.mock.calls.filter(c=>c[1].kind==='pro').at(-1)?.[1]).toMatchObject({page:1,search:'literal %_ اختبار',sortKey:'process_title'}));
  const calls=state.transport.mock.calls.length;view.hide();view.restore();await screen.findAllByText(token('pro',101));
- expect((section('pro').getByPlaceholderText('Search all permitted records…') as HTMLInputElement).value).toBe('literal %_ اختبار');expect(state.transport).toHaveBeenCalledTimes(calls);
+ expect(controller(recordId('pro')).globalFilter).toBe('literal %_ اختبار');expect(state.transport).toHaveBeenCalledTimes(calls);
  expect(Object.values(localStorage).some(v=>typeof v==='string'&&v.includes('literal %_ اختبار'))).toBe(false);
 });
 it('read-only EOS users can select each case checklist and selection returns with its owned workspace',async()=>{
@@ -233,16 +255,16 @@ it('failed complete detail does not open a partial editor and permits a fresh ex
  const notes='Original complete wording '+ 'x'.repeat(5000);state.details.mockResolvedValue({...row('pro'),notes});fireEvent.click(section('pro').getByRole('button',{name:'Edit record'}));await screen.findByRole('dialog');
  expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).value).toBe(notes);expect(Object.values(state.mutations).every(m=>m.mock.calls.length===0)).toBe(true);expect(view.onChildOpen).toHaveBeenLastCalledWith(true);
 });
-it.each(kinds)('%s full-result search and two AND filters are sent by the real shared controls',async kind=>{
+it.each(kinds)('%s retained controller search and two AND filters reach the guarded reader',async kind=>{
  state.pages.mockImplementation(async(input:PageInput)=>input.kind===kind?{rows:[row(kind,input.search?1101:1)],totalCount:1}:undefined);
  mount();await screen.findAllByText(token(kind));
- fireEvent.change(section(kind).getAllByPlaceholderText('Search all permitted records…')[0],{target:{value:'literal %_ اختبار'}});
+ recordSearch(kind,'literal %_ اختبار');
  await waitFor(()=>expect(state.transport.mock.calls.filter(c=>c[1].kind===kind).at(-1)?.[1].search).toBe('literal %_ اختبار'));
  await waitFor(()=>expect(section(kind).getAllByText('1').length).toBeGreaterThan(0));
- fireEvent.click(section(kind).getAllByRole('button',{name:'Edit filters'})[0]);
- const dialog=await screen.findByRole('dialog'),fields=HR_ACTION_RECORD_CONFIG[kind].fields.slice(0,2),expected:Record<string,string>={};
- for(const field of fields){let value=field.type==='date'?'2026-01-01':'Synthetic';if(field.type==='select'){if(!field.options?.[0])throw Error('Native filter options missing');value=field.options[0].value;}expected[field.id]=value;fireEvent.change(within(dialog).getByLabelText(field.label),{target:{value}});}
- fireEvent.click(within(dialog).getByRole('button',{name:'Apply'}));
+ expect(section(kind).queryByRole('button',{name:'Edit filters'})).toBeNull();
+ const fields=HR_ACTION_RECORD_CONFIG[kind].fields.slice(0,2),expected:Record<string,string>={};
+ for(const field of fields){let value=field.type==='date'?'2026-01-01':'Synthetic';if(field.type==='select'){if(!field.options?.[0])throw Error('Native filter options missing');value=field.options[0].value;}expected[field.id]=value;}
+ act(()=>controller(recordId(kind)).onColumnFiltersChange(Object.entries(expected).map(([id,value])=>({id,value}))));
  await waitFor(()=>expect(state.transport.mock.calls.filter(c=>c[1].kind===kind).at(-1)?.[1]).toMatchObject({page:1,search:'literal %_ اختبار',columnFilters:expected}));
 });
 it('an obsolete search is aborted and a late response cannot replace the latest matching rows',async()=>{
@@ -251,9 +273,9 @@ it('an obsolete search is aborted and a late response cannot replace the latest 
   if(input.search==='obsolete')return new Promise(resolve=>{finish=resolve;});
   return {rows:[row('pro',input.search==='latest'?3:1)],totalCount:1};
  });mount();await screen.findAllByText(token('pro'));
- fireEvent.change(section('pro').getByPlaceholderText('Search all permitted records…'),{target:{value:'obsolete'}});
+ recordSearch('pro','obsolete');
  await waitFor(()=>expect(finish).toBeTypeOf('function'));const obsolete=state.transport.mock.calls.find(c=>c[1].kind==='pro'&&c[1].search==='obsolete');
- fireEvent.change(section('pro').getByPlaceholderText('Search all permitted records…'),{target:{value:'latest'}});await screen.findAllByText(token('pro',3));
+ recordSearch('pro','latest');await screen.findAllByText(token('pro',3));
  expect(obsolete?.[2]?.aborted).toBe(true);await act(async()=>finish({rows:[row('pro',2)],totalCount:1}));
  expect(screen.queryAllByText(token('pro',2))).toHaveLength(0);expect(screen.queryAllByText(token('pro',3)).length).toBeGreaterThan(0);
 });

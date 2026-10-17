@@ -138,7 +138,7 @@ export function BranchesTable({
 
   return (
     <>
-      <ERPDataTable
+      <ERPDataTable presentation="worklist"
         tableId="admin.branches"
         columns={columns}
         data={data}

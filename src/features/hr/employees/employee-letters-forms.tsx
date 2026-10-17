@@ -562,7 +562,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
               {GROUP_LABELS[group]}
             </h4>
             <div className="min-w-0">
-              {<RecordCollection id={`employee-output-catalog-${group}`} rows={items} fields={[{"id":"name","label":"Name","path":"name"},{"id":"category","label":"Category","path":"category"},{"id":"outputCode","label":"Output code","path":"outputCode"}]} renderRecord={(item) => (
+              {<RecordCollection presentation="embedded" id={`employee-output-catalog-${group}`} rows={items} fields={[{"id":"name","label":"Name","path":"name"},{"id":"category","label":"Category","path":"category"},{"id":"outputCode","label":"Output code","path":"outputCode"}]} renderRecord={(item) => (
                 <div
                   key={item.outputCode}
                   className={`rounded-lg border p-3 transition-colors ${
@@ -724,7 +724,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
           </p>
         ) : (
           <div className="rounded-lg border overflow-hidden">
-            {/* UI04 explicit table: loaded authorized rows only */}<ERPDataTable tableId="hr.employees.employee-letters-forms" data={filteredHistory} columns={[{id:"file_name",header:"Document",accessorFn:item=>loadedListValue(item,"file_name"),enableHiding:false,size:240,cell:({row:{original:item}})=><><div className="font-medium text-foreground truncate" title={item.file_name.replace(/\.pdf$/i, "").replace(/_/g, " ")}>
+            {/* UI04 explicit table: loaded authorized rows only */}<ERPDataTable presentation="embedded" tableId="hr.employees.employee-letters-forms" data={filteredHistory} columns={[{id:"file_name",header:"Document",accessorFn:item=>loadedListValue(item,"file_name"),enableHiding:false,size:240,cell:({row:{original:item}})=><><div className="font-medium text-foreground truncate" title={item.file_name.replace(/\.pdf$/i, "").replace(/_/g, " ")}>
                         {item.file_name.replace(/\.pdf$/i, "").replace(/_/g, " ")}
                       </div>{item.status === "revoked" && item.revoke_reason && (
                         <div className="text-[11px] text-muted-foreground truncate">

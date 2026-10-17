@@ -17,6 +17,25 @@ import {candidateChildFixtureReply} from "./fixtures/candidate-child-read-fixtur
 import type {AuthContext} from "@/lib/rbac/check";
 import type {CandidateRow} from "@/server/actions/hr/recruitment";
 
+
+// F05 compact forms have no worklist criteria controls. Capture the real
+// collection adapter without replacing its renderer, read hook or authority.
+// Criteria-injection cases below test controller compatibility, not visible UI.
+const embeddedAdapters = vi.hoisted(() => new Map<string, import("@/components/erp/table/erp-table-types").ERPTableServerRead<unknown>>());
+vi.mock("@/components/erp/table/record-collection", async original => {
+  const actual = await original<typeof import("@/components/erp/table/record-collection")>();
+  return {...actual, RecordCollection: (props: React.ComponentProps<typeof actual.RecordCollection>) => {
+    if (props.serverRead) embeddedAdapters.set(props.id, props.serverRead);
+    return <actual.RecordCollection {...props} />;
+  }};
+});
+function controller(fragment: string) {
+  const found = [...embeddedAdapters].find(([id]) => id.includes(fragment))?.[1];
+  if (!found) throw Error("Real embedded adapter missing: " + fragment);
+  return found;
+}
+beforeEach(() => embeddedAdapters.clear());
+
 const state = vi.hoisted(() => ({read: vi.fn(), legacyList: vi.fn(), prerequisites: vi.fn(), prep: vi.fn(), mutate: vi.fn(),
   dispatch: vi.fn(), toast: vi.fn(), store: null as ReturnType<typeof createWorkspaceDraftStore> | null,
   submit: null as (() => void | Promise<unknown>) | null}));
@@ -105,6 +124,8 @@ function mount(mode: "add" | "edit" = "edit") {
   </WorkspaceUiMemoryProvider></QueryClientProvider>;
   const view = render(tree()); return {...view, client, replace: (id: number, authContext = context) => view.rerender(tree(id, authContext))};
 }
+const recordId=(kind: CandidateChildKind)=>({documents:'CandidateDocumentsTab',interviews:'CandidateInterviewsTab',offers:'CandidateOffersTab',onboarding:'CandidateOnboardingTab'}[kind]);
+function recordSearch(kind: CandidateChildKind,value:string){act(()=>controller(recordId(kind)).onGlobalFilterChange(value));}
 async function ready() {await waitFor(() => expect((screen.getByLabelText("Expected Salary (AED)") as HTMLInputElement).disabled).toBe(false));}
 function calls(kind?: CandidateChildKind, operation?: "page" | "detail") {return state.read.mock.calls.filter(([route, input]) => route === "hr-candidate-children" && (!kind || input.kind === kind) && (!operation || input.operation === operation));}
 function section(s: Scenario) {fireEvent.click(screen.getAllByRole("button", {name: s.section})[0]);}
@@ -128,16 +149,16 @@ it("an unsaved candidate never requests child collections", async () => {
   mount("add"); await ready(); for (const s of scenarios) section(s);
   expect(calls()).toHaveLength(0); expect(state.legacyList).not.toHaveBeenCalled();
 });
-it.each(scenarios)("$kind pages more than the old cap, searches the full controlled result, and preserves controls on zero", async s => {
+it.each(scenarios)("$kind compact Next pages beyond the old cap and legacy criteria retain safe clear on zero", async s => {
   rowCount = 1036; mount(); await ready(); await visit(s);
   expect(await screen.findByText("Page 1 of 42")).toBeTruthy(); expect(calls(s.kind, "page")[0][1]).toMatchObject({candidateId: 880100, page: 1, pageSize: 25});
   fireEvent.click(screen.getByRole("button", {name: "Next"})); await screen.findByText("Page 2 of 42");
   expect(calls(s.kind, "page")).toHaveLength(2);
-  fireEvent.change(screen.getByRole("textbox", {name: "Search all permitted records…"}), {target: {value: "881235"}});
-  await screen.findByText(/^1 permitted records\./); expect(calls(s.kind, "page").at(-1)![1]).toMatchObject({page: 1, search: "881235"});
-  fireEvent.change(screen.getByRole("textbox", {name: "Search all permitted records…"}), {target: {value: "NO SUCH SYNTHETIC ROW"}});
-  await screen.findByText(/^0 permitted records\./); expect(screen.getByRole("button", {name: "Clear search and filters"})).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", {name: "Clear search and filters"})); await screen.findByText("Page 1 of 42");
+  recordSearch(s.kind,"881235");
+  await waitFor(()=>expect(controller(recordId(s.kind)).totalCount).toBe(1)); expect(calls(s.kind, "page").at(-1)![1]).toMatchObject({page: 1, search: "881235"});
+  recordSearch(s.kind,"NO SUCH SYNTHETIC ROW");
+  await screen.findByText("No records match the current criteria."); expect(controller(recordId(s.kind)).totalCount).toBe(0); expect(screen.getByRole("button", {name: "Clear list criteria"})).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name: "Clear list criteria"})); await screen.findByText("Page 1 of 42");
   expect(state.legacyList).not.toHaveBeenCalled(); expect(calls(s.kind, "detail")).toHaveLength(0);
 });
 it.each([
@@ -145,23 +166,13 @@ it.each([
   {s: scenarios[1], filter: "Interview Round", key: "interview_round", value: "first", sort: "Interview Round", sortKey: "interview_round"},
   {s: scenarios[2], filter: "Offer Status", key: "offer_status", value: "draft", sort: "Offer Status", sortKey: "offer_status"},
   {s: scenarios[3], filter: "Task Status", key: "task_status", value: "pending", sort: "Task Title", sortKey: "task_title"},
-])("$s.kind real filter/sort controls send approved criteria and reset the page", async ({s, filter, key, value, sort, sortKey}) => {
+])("$s.kind retained controller sends approved filter/sort criteria and resets the page", async ({s, key, value, sortKey}) => {
   rowCount = 60; mount(); await ready(); await visit(s);
   fireEvent.click(screen.getByRole("button", {name: "Next"})); await screen.findByText("Page 2 of 3");
-  fireEvent.click(screen.getByRole("button", {name: "Edit filters"}));
-  const dialog = await screen.findByRole("dialog", {name: "Edit filters"});
-  const field = within(dialog).getByLabelText(filter);
-  act(() => field.focus());
-  fireEvent.change(field, {target: {value}});
-  fireEvent.click(await within(dialog).findByRole("button", {name: "Apply"}));
+  expect(screen.queryByRole("button", {name:"Edit filters"})).toBeNull();
+  act(()=>controller(recordId(s.kind)).onColumnFiltersChange([{id:key,value}]));
   await waitFor(() => expect(calls(s.kind, "page").at(-1)![1]).toMatchObject({page: 1, columnFilters: {[key]: value}}));
-  // The read may settle before the real dialog finishes restoring parent
-  // accessibility. Wait for its exit; never query/click hidden background UI.
-  await waitFor(() => {
-    expect(screen.queryByRole("dialog", {name: "Edit filters"})).toBeNull();
-    expect(screen.getAllByRole("button", {name: s.section}).length).toBeGreaterThan(0);
-  });
-  await visit(s); fireEvent.click(screen.getByRole("button", {name: sort}));
+  act(()=>controller(recordId(s.kind)).onSortingChange([{id:sortKey,desc:false}]));
   await waitFor(() => expect(calls(s.kind, "page").at(-1)![1]).toMatchObject({page: 1, sortKey, columnFilters: {[key]: value}}));
 });
 it.each(scenarios.flatMap(s => ["unavailable", "malformed", "partial", "wrong-subject"].map(failure => ({s, failure}))))(
@@ -175,7 +186,7 @@ it.each(scenarios.flatMap(s => ["unavailable", "malformed", "partial", "wrong-su
     };
     await act(async () => {await view.client.invalidateQueries({queryKey: candidateChildPrefix(s.kind, candidate.id)});});
     await screen.findByText(/This is not an empty result/); expect(screen.queryByText("0 permitted records")).toBeNull();
-    expect(screen.getByText("Page total unavailable")).toBeTruthy(); expect((screen.getByRole("button", {name: s.add}) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("Records could not yet be verified. Check the read status or retry.")).toBeTruthy(); expect((screen.getByRole("button", {name: s.add}) as HTMLButtonElement).disabled).toBe(true);
     expect(state.mutate).not.toHaveBeenCalled();
   });
 it.each(scenarios.flatMap(s => [401, 403].map(status => ({s, status}))))("$s.kind terminal $status retires the actual parent", async ({s, status}) => {

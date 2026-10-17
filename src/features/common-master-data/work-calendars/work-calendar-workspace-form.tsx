@@ -347,7 +347,7 @@ function CalendarFormSession({ calendar, mode, authContext, companies = [] }: Pr
             )}
             {(shiftsLoadError||shiftRefreshFailure) && <div role="alert" className="text-sm text-destructive">Work shifts could not be refreshed. Previously loaded rows may be out of date. <Button type="button" variant="outline" size="sm" disabled={shiftsLoading} onClick={()=>void reloadShifts().then(result=>{if(!result.error)setShiftRefreshFailure(false);})}>Retry shifts</Button></div>}
             {shiftError && removeTarget===null && <p role="alert" className="text-sm text-destructive">{shiftError}</p>}
-            <ERPDataTable tableId={`calendar.shifts:${calendarId}`} resultsLabel="Work shifts" data={(shifts ?? []).filter(s=>!s.deleted_at)} columns={shiftColumns} enableRowSelection={false}/>
+            <ERPDataTable presentation="embedded" tableId={`calendar.shifts:${calendarId}`} resultsLabel="Work shifts" data={(shifts ?? []).filter(s=>!s.deleted_at)} columns={shiftColumns} enableRowSelection={false}/>
             {!isViewing&&<MasterArchivePanel key={`${authContext.profile?.id}:${calendarId}`} entity="work_shifts" calendarId={calendarId} title="Archived shifts" disabled={disabled||isDirty||shiftDialog.open||removingShift||removeUnconfirmed} onRestored={refreshShifts} onTaskOpenChange={setArchiveTaskOpen} refreshVersion={archiveRefreshVersion}/>}
             {shiftDialog.open && (
               <ValidatedTaskForm id="work-shift-task-form" key={String(shiftDialog.editing?.id ?? "new")} onSubmit={handleSaveShift} className="mt-4 border rounded-md p-4 space-y-3 bg-muted/30">

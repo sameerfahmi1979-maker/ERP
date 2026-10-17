@@ -97,7 +97,7 @@ export function AiCostRateAdmin({ refreshKey }: Props) {
       </div>
 
       <div className="overflow-x-auto rounded-lg border">
-        {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.ai-observability.ai-cost-rate-admin" data={(rates ?? [])} columns={[{id:"providerType",header:"Provider",accessorFn:r=>loadedListValue(r,"providerType"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:r}})=>{
+        {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable presentation="worklist" tableId="special.dms.ai-observability.ai-cost-rate-admin" data={(rates ?? [])} columns={[{id:"providerType",header:"Provider",accessorFn:r=>loadedListValue(r,"providerType"),meta:{filter:{type:"text"}},enableHiding:false,size:220,cell:({row:{original:r}})=>{
 return <>{r.providerType}</>;}},{id:"modelId",header:"Model",accessorFn:r=>loadedListValue(r,"modelId"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:r}})=>{
 return <>{r.modelId}</>;}},{id:"rateType",header:"Type",accessorFn:r=>loadedListValue(r,"rateType"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:r}})=>{
 return <>{r.rateType}</>;}},{id:"inputCostPer1mTokens",header:"Input cost per 1M",accessorFn:r=>loadedListValue(r,"inputCostPer1mTokens"),meta:{filter:{type:"number"}},enableHiding:true,size:180,cell:({row:{original:r}})=>{

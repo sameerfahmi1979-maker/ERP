@@ -65,7 +65,7 @@ export function PublicLinksAdminClient({ initialLinks, totalLinks, canManage, in
     <p className="text-sm text-muted-foreground">{links.length} loaded of {total} authorized links (latest 100). Columns, search and filters apply to the loaded set. Dates use your browser timezone.</p>
     {failed && <div role="alert">Links could not be loaded or refreshed. Retained rows may be out of date; cancellation is disabled.</div>}
     {message && <p role="status">{message}</p>}
-    <ERPDataTable tableId="reports.public-links" data={links} columns={columns} enableRowSelection={false} searchPlaceholder="Search loaded verification links…" />
+    <ERPDataTable presentation="worklist" tableId="reports.public-links" data={links} columns={columns} enableRowSelection={false} searchPlaceholder="Search loaded verification links…" />
     <p className="text-xs text-muted-foreground">Anyone with a valid verification URL can view its published details. Share it only with intended recipients.</p>
     <AlgtDialog open={!!target} onOpenChange={open => { if (!busy && !open) setTarget(null); }} title="Cancel this verification link?" actions={<><Button variant="outline" disabled={busy} onClick={() => setTarget(null)}>Keep link</Button><Button disabled={busy || failed || loading} onClick={() => void cancel()}>Confirm cancellation</Button></>}>
       <p>{target?.document_title}: cancellation prevents further valid verification through this link and cannot be undone.</p>

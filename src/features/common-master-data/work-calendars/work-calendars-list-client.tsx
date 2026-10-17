@@ -46,7 +46,7 @@ export function WorkCalendarsListClient({calendars,authContext}:{calendars:WorkC
  ];
  return <div className="space-y-4">
   {refreshFailure&&<p role="alert">Calendar archived, but the list could not refresh. <Button variant="outline" onClick={()=>void refresh().catch(()=>setRefreshFailure(true))}>Refresh calendars</Button></p>}
-  <ERPDataTable tableId="common-md.work-calendars" resultsLabel="Work calendars" data={rows} columns={columns} enableRowSelection={false}/>
+  <ERPDataTable presentation="worklist" tableId="common-md.work-calendars" resultsLabel="Work calendars" data={rows} columns={columns} enableRowSelection={false}/>
   {canOpenCalendarEditor(authContext)&&<MasterArchivePanel key={authContext.profile?.id} entity="work_calendars" title="Archived calendars" disabled={target!==null} onRestored={refresh} refreshVersion={archiveRefreshVersion}/>}
   <AlertDialog open={target!==null} onOpenChange={value=>{if(!value&&!saving&&!uncertain)setTarget(null);}}><AlertDialogContent>
    <AlertDialogHeader><AlertDialogTitle>Archive work calendar</AlertDialogTitle><AlertDialogDescription>Archive {target?.calendar_name} ({target?.calendar_code})? Its history is retained. Linked shifts, attendance and schedules must be resolved first.</AlertDialogDescription></AlertDialogHeader>

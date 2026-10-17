@@ -392,7 +392,7 @@ return (<>
             )}
           </div>
         ) : (
-          <ERPDataTable tableId={`permission-roles:${selectedPermission.id}`} resultsLabel="Role assignments" data={filteredRoles} columns={assignmentColumns} enableRowSelection={false} enableGlobalFilter={false} />
+          <ERPDataTable presentation="embedded" tableId={`permission-roles:${selectedPermission.id}`} resultsLabel="Role assignments" data={filteredRoles} columns={assignmentColumns} enableRowSelection={false} enableGlobalFilter={false} />
         )}
       </div>
     </div>

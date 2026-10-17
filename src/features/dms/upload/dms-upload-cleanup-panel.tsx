@@ -31,7 +31,7 @@ export function DmsUploadCleanupPanel({ isAdmin = false }: DmsUploadCleanupPanel
   const [lastResult, setLastResult] = useState<CleanupResult | null>(null);
   const [isMarkingExpired, setIsMarkingExpired] = useState(false);
   const busy = isLoadingPreview || isRunning || isMarkingExpired;
-  const view = useDmsListView("cleanup-preview", preview?.candidates ?? [], CLEANUP_FIELDS);
+  const view = useDmsListView("cleanup-preview", preview?.candidates ?? [], CLEANUP_FIELDS, {presentation:"embedded"});
 
   const handleMarkExpired = async () => {
     if (flight.current) return;
@@ -188,12 +188,12 @@ export function DmsUploadCleanupPanel({ isAdmin = false }: DmsUploadCleanupPanel
                 </span>
               </div>
 
-              <p className="text-xs text-muted-foreground">Filters affect only this preview. Run Cleanup rechecks eligibility and processes up to 100 eligible sessions; it does not use the filtered rows as a selection.</p>
+              <p className="text-xs text-muted-foreground">This is an eligibility preview, not a selection. Run Cleanup rechecks eligibility and processes up to 100 eligible sessions.</p>
               <DmsListTools view={view} search />
               {view.rows.length > 0 ? (
                 <div role="region" aria-label="Cleanup candidates" tabIndex={0} className="rounded-sm border border-border max-w-full overflow-auto">
-                  <table className="w-full text-xs" style={{minWidth:view.visible.reduce((sum,c)=>sum+c.width,0)}}>
-                    <colgroup>{view.visible.map(c=><col key={c.id} style={{width:c.width}} />)}</colgroup>
+                  <table className="w-full text-xs" style={{width: "100%", tableLayout: "auto"}}>
+                    <colgroup>{view.visible.map(c=><col key={c.id} style={{width: undefined}} />)}</colgroup>
                     <thead>
                       <ConfiguredRow columns={view.columns} className="bg-muted/20 border-b border-border">
                         {view.visible.map(c=><th key={c.id} data-column={c.id} className="text-left px-3 py-2 font-medium text-muted-foreground">{c.label}</th>)}

@@ -152,7 +152,7 @@ export function PartyNotesTab({ partyId, canManage, currentUserProfileId, onChil
         )}
       </div>
 
-      {error ? <div role="alert"><p>Notes could not be loaded.</p><Button type="button" onClick={refetch}>Try again</Button></div> : <ERPDataTable tableId={`party.notes:${partyId}`} resultsLabel="Notes" data={notes ?? []} columns={columns} enableRowSelection={false}/>}
+      {error ? <div role="alert"><p>Notes could not be loaded.</p><Button type="button" onClick={refetch}>Try again</Button></div> : <ERPDataTable presentation="embedded" tableId={`party.notes:${partyId}`} resultsLabel="Notes" data={notes ?? []} columns={columns} enableRowSelection={false}/>}
 
       {isDialogOpen && <PartyChildSaveDialog
         key={editing?.id ?? 'new'}

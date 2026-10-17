@@ -628,7 +628,7 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
       </p>
 
       <div className="rounded-md border overflow-hidden">
-        <ERPDataTable<DmsMetadataDefinitionRow>
+        <ERPDataTable<DmsMetadataDefinitionRow> presentation="worklist"
           tableId="dms_metadata_definitions"
           columns={columns}
           data={filteredRows}

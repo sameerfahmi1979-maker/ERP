@@ -343,7 +343,7 @@ export function RiskScoresPageClient({
               <p className="p-4 text-sm text-muted-foreground">No risk scores yet.</p>
             ) : (
               <div className="divide-y">
-                {<RecordCollection id="special.risk-scores-page-client" rows={rows} fields={[{"id":"entityLabel","path":"entityLabel","label":"Entity"},{"id":"entityType","path":"entityType","label":"Type"},{"id":"riskScore","path":"riskScore","label":"Risk score"},{"id":"riskLevel","path":"riskLevel","label":"Risk level"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(row: RiskScoreRow) => (
+                {<RecordCollection presentation="worklist" id="special.risk-scores-page-client" rows={rows} fields={[{"id":"entityLabel","path":"entityLabel","label":"Entity"},{"id":"entityType","path":"entityType","label":"Type"},{"id":"riskScore","path":"riskScore","label":"Risk score"},{"id":"riskLevel","path":"riskLevel","label":"Risk level"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(row: RiskScoreRow) => (
                   <div key={row.id}>
                     <button
                       type="button"

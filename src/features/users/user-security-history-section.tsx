@@ -216,7 +216,7 @@ function UserSecurityHistoryContent({ userProfileId, authContext }: Props) {
         </div>
       )}
 
-      {!loading && !error && <ERPDataTable tableId={`user.security-history:${userProfileId}`} resultsLabel="Loaded security events" data={filtered} columns={columns} enableRowSelection={false} initialPageSize={20} emptyMessage="No security events recorded for this user."/>}
+      {!loading && !error && <ERPDataTable presentation="embedded" tableId={`user.security-history:${userProfileId}`} resultsLabel="Loaded security events" data={filtered} columns={columns} enableRowSelection={false} initialPageSize={20} emptyMessage="No security events recorded for this user."/>}
     </div>
   );
 }

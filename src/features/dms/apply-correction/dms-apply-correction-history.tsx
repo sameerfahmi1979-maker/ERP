@@ -109,7 +109,7 @@ export function DmsApplyCorrectionHistory({ documentId, targetTable, targetRecor
     <QueryReadBoundary queries={[uiRead1]}><>
       {cancelError && <p role="alert" className="text-sm text-destructive">{cancelError}</p>}
       <div className="space-y-3">
-        {<RecordCollection id="special.dms-apply-correction-history" rows={proposals} fields={[{"id":"id","path":"id","label":"Proposal"},{"id":"status","path":"status","label":"Status"},{"id":"created_at","path":"created_at","label":"Created"}]} renderRecord={(proposal) => (
+        {<RecordCollection presentation="embedded" id="special.dms-apply-correction-history" rows={proposals} fields={[{"id":"id","path":"id","label":"Proposal"},{"id":"status","path":"status","label":"Status"},{"id":"created_at","path":"created_at","label":"Created"}]} renderRecord={(proposal) => (
           <CorrectionHistoryRow
             key={proposal.id}
             proposal={proposal}

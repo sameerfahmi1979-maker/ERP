@@ -439,7 +439,7 @@ export function DmsAiMetadataSuggestionsDialog({
           </div>
         ) : (
           <div className="rounded-md border overflow-hidden">
-            {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable tableId="special.dms.admin.dms-ai-metadata-suggestions-dialog.3" data={suggestions} columns={[{id:"select",header:"Select",enableSorting:false,meta:{exportable:false},enableHiding:false,size:220,cell:({row:{original:s}})=>{
+            {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable presentation="embedded" tableId="special.dms.admin.dms-ai-metadata-suggestions-dialog.3" data={suggestions} columns={[{id:"select",header:"Select",enableSorting:false,meta:{exportable:false},enableHiding:false,size:220,cell:({row:{original:s}})=>{
 const isSelected = selected.has(s.field_code);
 const status = rowStatus.get(s.field_code) ?? "pending";
 

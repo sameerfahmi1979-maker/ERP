@@ -206,7 +206,7 @@ export function CandidateOnboardingTab({ candidateId, canManage, authContext, on
       {read.detailPending && <p role="status">Loading complete onboarding task…</p>}
       {
         <div className="divide-y border rounded-lg">
-<RecordCollection id="hr.candidate-onboarding-tab.CandidateOnboardingTab.tasks" rows={tasks} serverRead={read.serverRead} isLoading={read.busy} message={read.validationMessage} userProfileId={String(authContext.profile?.id ?? "")} fields={[{"id":"task_title","path":"task_title","label":"Task Title"},{"id":"task_status","path":"task_status","label":"Task Status"},{"id":"due_date","path":"due_date","label":"Due Date"}]} renderRecord={(task) => (
+<RecordCollection presentation="embedded" id="hr.candidate-onboarding-tab.CandidateOnboardingTab.tasks" rows={tasks} serverRead={read.serverRead} isLoading={read.busy} message={read.validationMessage} userProfileId={String(authContext.profile?.id ?? "")} fields={[{"id":"task_title","path":"task_title","label":"Task Title"},{"id":"task_status","path":"task_status","label":"Task Status"},{"id":"due_date","path":"due_date","label":"Due Date"}]} renderRecord={(task) => (
             <div key={task.id} className="flex items-center gap-3 p-3">
               <CheckSquare className={`h-4 w-4 flex-shrink-0 ${task.task_status === "completed" ? "text-green-500" : "text-slate-400"}`} />
               <div className="flex-1 min-w-0">

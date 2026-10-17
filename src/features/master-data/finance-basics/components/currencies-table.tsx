@@ -249,7 +249,7 @@ export function CurrenciesTable({ currencies, authContext, onRefresh }: Currenci
     <>
       {actionError&&<div role="alert" className="mb-3 rounded border border-destructive p-3 text-sm"><p>{actionError}</p>{unconfirmed&&<Button type="button" disabled={busy} variant="outline" onClick={()=>{const p=pending.current;if(p)void changeCurrency(p.item,p.action);}}>Retry same currency change</Button>}</div>}
       {refreshError&&<div role="alert" className="mb-3 rounded border border-destructive p-3 text-sm"><p>The currency change was saved, but the display could not refresh. Refresh the list before making another change.</p><Button type="button" variant="outline" onClick={handleRefresh}>Refresh currency list</Button></div>}
-      <ERPDataTable<Currency>
+      <ERPDataTable<Currency> presentation="worklist"
         tableId="currencies_table"
         columns={columns}
         data={currencies}

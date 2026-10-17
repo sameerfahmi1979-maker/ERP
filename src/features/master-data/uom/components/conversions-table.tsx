@@ -117,7 +117,7 @@ function ConversionsTableSession({conversions,authContext,onRefresh}:Conversions
   return (
     <>
       {!deleteDialogOpen&&<UomLifecycleNotice state={lifecycle}/>}
-      <ERPDataTable<UomConversionWithUnits>
+      <ERPDataTable<UomConversionWithUnits> presentation="worklist"
         tableId="uom_conversions_table"
         columns={columns}
         data={conversions}

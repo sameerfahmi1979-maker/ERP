@@ -285,7 +285,7 @@ export function NumberingRulesTable({ rules,canManage,canLock }: NumberingRulesT
   ];
 
   return (
-    <ERPDataTable<NumberingRule>
+    <ERPDataTable<NumberingRule> presentation="worklist"
       tableId="numbering_rules_table"
       columns={columns}
       data={rules.map(rule=>receipts[rule.id]&&Number(receipts[rule.id].revision)>=(rule.workspace_revision??0)?{...rule,...receipts[rule.id],workspace_revision:Number(receipts[rule.id].revision)}:rule)}

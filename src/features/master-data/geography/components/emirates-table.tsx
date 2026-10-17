@@ -159,7 +159,7 @@ function EmiratesTableSession({ emirates, authContext, onRefresh }: EmiratesTabl
   return (
     <>
       {!deleteDialogOpen&&<GeographyLifecycleNotice state={lifecycle}/>}
-      <ERPDataTable<Emirate>
+      <ERPDataTable<Emirate> presentation="worklist"
         tableId="emirates_table"
         columns={columns}
         data={emirates}

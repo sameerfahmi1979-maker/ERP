@@ -263,7 +263,7 @@ export function PartiesTable({ parties, authContext, onRefresh, defaultTypeCode,
   ];
 
   return (
-    <><ERPDataTable<Party>
+    <><ERPDataTable<Party> presentation="worklist"
       tableId="parties_table"
       columns={columns}
       data={parties}

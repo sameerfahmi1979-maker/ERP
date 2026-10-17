@@ -209,7 +209,7 @@ export function CandidateInterviewsTab({ candidateId, canManage, authContext, on
       {read.detailPending && <p role="status">Loading complete interview…</p>}
       {
         <div className="divide-y border rounded-lg">
-<RecordCollection id="hr.candidate-interviews-tab.CandidateInterviewsTab.interviews" rows={interviews} serverRead={read.serverRead} isLoading={read.busy} message={read.validationMessage} userProfileId={String(authContext.profile?.id ?? "")} fields={[{"id":"interview_round","path":"interview_round","label":"Interview Round"},{"id":"interview_status","path":"interview_status","label":"Interview Status"},{"id":"interview_datetime","path":"interview_datetime","label":"Interview Datetime (UTC)"}]} renderRecord={(interview) => (
+<RecordCollection presentation="embedded" id="hr.candidate-interviews-tab.CandidateInterviewsTab.interviews" rows={interviews} serverRead={read.serverRead} isLoading={read.busy} message={read.validationMessage} userProfileId={String(authContext.profile?.id ?? "")} fields={[{"id":"interview_round","path":"interview_round","label":"Interview Round"},{"id":"interview_status","path":"interview_status","label":"Interview Status"},{"id":"interview_datetime","path":"interview_datetime","label":"Interview Datetime (UTC)"}]} renderRecord={(interview) => (
             <div key={interview.id} className="flex items-center gap-3 p-3">
               <Calendar className="h-4 w-4 text-slate-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">

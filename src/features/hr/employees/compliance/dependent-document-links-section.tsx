@@ -148,7 +148,7 @@ function DependentDocumentLinksSession({
 
       {(existingLinks.length > 0 || stagedAdds.length > 0) && (
         <div className="space-y-1.5 mb-3">
-          {<RecordCollection id="dependent-existing-links" rows={existingLinks} fields={[{"id":"title","label":"Title","path":"title"},{"id":"document_no","label":"Document number","path":"document_no"},{"id":"document_type_name","label":"Document type","path":"document_type_name"}]} renderRecord={(link) => (
+          {<RecordCollection presentation="embedded" id="dependent-existing-links" rows={existingLinks} fields={[{"id":"title","label":"Title","path":"title"},{"id":"document_no","label":"Document number","path":"document_no"},{"id":"document_type_name","label":"Document type","path":"document_type_name"}]} renderRecord={(link) => (
             <LinkedDocRow
               key={`existing-${link.link_id}`}
               title={link.title}
@@ -159,7 +159,7 @@ function DependentDocumentLinksSession({
               onToggle={() => toggleRemoval(link.document_id)}
             />
           )} />}
-          {<RecordCollection id="dependent-pending-links" rows={stagedAdds} fields={[{"id":"title","label":"Title","path":"title"},{"id":"document_no","label":"Document number","path":"document_no"},{"id":"document_type_name","label":"Document type","path":"document_type_name"}]} renderRecord={(doc) => (
+          {<RecordCollection presentation="embedded" id="dependent-pending-links" rows={stagedAdds} fields={[{"id":"title","label":"Title","path":"title"},{"id":"document_no","label":"Document number","path":"document_no"},{"id":"document_type_name","label":"Document type","path":"document_type_name"}]} renderRecord={(doc) => (
             <LinkedDocRow
               key={`staged-${doc.id}`}
               title={doc.title}

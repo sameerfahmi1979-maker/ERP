@@ -167,7 +167,7 @@ function CitiesTableSession({ cities, authContext, onRefresh }: CitiesTableProps
   return (
     <>
       {!deleteDialogOpen&&<GeographyLifecycleNotice state={lifecycle}/>}
-      <ERPDataTable<CityWithEmirate>
+      <ERPDataTable<CityWithEmirate> presentation="worklist"
         tableId="cities_table"
         columns={columns}
         data={cities}

@@ -3,10 +3,12 @@
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { EmbeddedListNavigation, type ListPresentation } from "./embedded-list-navigation";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 interface TablePaginationProps {
+  presentation?: ListPresentation;
   page: number;
   totalPages: number;
   onPage: (p: number) => void;
@@ -17,6 +19,7 @@ interface TablePaginationProps {
 }
 
 export function TablePagination({
+  presentation = "worklist",
   page,
   totalPages,
   onPage,
@@ -25,6 +28,8 @@ export function TablePagination({
   total,
   className,
 }: TablePaginationProps) {
+  if (presentation === "embedded") return <EmbeddedListNavigation label="Related records" total={total} pagination={{pageIndex:page-1,pageSize}}
+    onPaginationChange={update => { const next = typeof update === "function" ? update({pageIndex:page-1,pageSize}) : update; onPage(next.pageIndex+1); }} />;
   if (total === 0) return null;
 
   const from = Math.min((page - 1) * pageSize + 1, total);

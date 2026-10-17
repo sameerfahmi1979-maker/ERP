@@ -45,5 +45,5 @@ function DmsReadTable({authContext,tab,showBridgeStatus,identity}:Props&{identit
  if(read.denied)return <p role="alert">Document notification access could not be verified.</p>;
  return <div className="space-y-3"><Button variant="outline" onClick={read.refresh}>Refresh document notifications</Button>
  {read.failed&&<p role="alert">Document notifications could not be verified. Refresh to retry.</p>}
- <ERPDataTable tableId="dms.notifications" data={read.rows} columns={columns} serverRead={read.serverRead} isLoading={read.busy||read.failed} enableRowSelection={false} searchPlaceholder="Search document notifications…" emptyMessage="No document notifications match this view."/></div>;
+ <ERPDataTable presentation="worklist" tableId="dms.notifications" data={read.rows} columns={columns} serverRead={read.serverRead} isLoading={read.busy||read.failed} enableRowSelection={false} searchPlaceholder="Search document notifications…" emptyMessage="No document notifications match this view."/></div>;
 }

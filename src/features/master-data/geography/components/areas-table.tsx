@@ -201,7 +201,7 @@ function AreasTableSession({ areas, authContext, onRefresh }: AreasTableProps) {
   return (
     <>
       {!deleteDialogOpen&&<GeographyLifecycleNotice state={lifecycle}/>}
-      <ERPDataTable<AreaZoneWithRelations>
+      <ERPDataTable<AreaZoneWithRelations> presentation="worklist"
         tableId="areas_table"
         columns={columns}
         data={areas}

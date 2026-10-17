@@ -236,7 +236,7 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
       </div>
 
       {loadError ? <div role="alert" className="rounded border p-4"><p>Bank details records could not be loaded.</p><Button type="button" variant="outline" onClick={refetch}>Try again</Button></div> :
-        <ERPDataTable tableId={`party.bank-details:${partyId}`} resultsLabel="Bank details" data={bankDetails ?? []} columns={columns} enableRowSelection={false} />}
+        <ERPDataTable presentation="embedded" tableId={`party.bank-details:${partyId}`} resultsLabel="Bank details" data={bankDetails ?? []} columns={columns} enableRowSelection={false} />}
 
       {verifying&&<PartyBankVerificationDialog key={`${verifying.id}:${verifying.workspace_revision}`} record={verifying}
         onClose={()=>{setVerifying(null);onChildOpen?.(false);}}

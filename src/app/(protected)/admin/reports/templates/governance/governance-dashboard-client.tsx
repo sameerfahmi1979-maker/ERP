@@ -114,7 +114,7 @@ function GovernanceQueue({rows,canApprove,canPublish,canManage,onAction,busy,tab
       </div>;
     }},
   ];
-  return <ERPDataTable tableId={tableId} columns={columns} data={rows} enableRowSelection={false} searchPlaceholder="Search loaded templates…" />;
+  return <ERPDataTable presentation="worklist" tableId={tableId} columns={columns} data={rows} enableRowSelection={false} searchPlaceholder="Search loaded templates…" />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -216,7 +216,7 @@ export function PartyContactsTab({ partyId, disabled, onChildOpen }: PartyContac
       )}
 
       {loadError ? <div role="alert" className="rounded border p-4"><p>Contact records could not be loaded.</p><Button type="button" variant="outline" onClick={refetch}>Try again</Button></div> :
-        <ERPDataTable tableId={`party.contacts:${partyId}`} resultsLabel="Contact" data={contacts ?? []} columns={columns} enableRowSelection={false} />}
+        <ERPDataTable presentation="embedded" tableId={`party.contacts:${partyId}`} resultsLabel="Contact" data={contacts ?? []} columns={columns} enableRowSelection={false} />}
 
       {isDialogOpen && <PartyChildSaveDialog
         key={editing?.id ?? 'new'}

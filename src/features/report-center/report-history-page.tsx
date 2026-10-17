@@ -211,7 +211,7 @@ function ReportHistoryView(props: ReportHistoryProps & {identity: string}) {
       <p className="text-xs text-muted-foreground">Search and filters cover all permitted history, including rows, duration and dates. Sort any data column; hold Shift to sort by multiple columns. Report and Run By use case-insensitive natural ordering, with record IDs breaking ties.</p>
       {(read.error || read.invalid) && <div role="alert">Could not load report history. <Button onClick={() => void read.retry()}>Retry report history</Button></div>}
       <div className="rounded-md border border-border overflow-hidden">
-        <ERPDataTable
+        <ERPDataTable presentation="worklist"
           tableId="admin.reports.history"
           columns={columns}
           data={runs}

@@ -21,7 +21,7 @@ export function SearchResultGroupComponent({ group, results }: SearchResultGroup
         </span>
       </div>
       <div className="space-y-2">
-        {<RecordCollection id={`special.search-result-group-${group.resultType}`} rows={results} fields={[{"id":"title","path":"title","label":"Title"},{"id":"subtitle","path":"subtitle","label":"Reference"},{"id":"resultType","path":"resultType","label":"Type"}]} renderRecord={(result) => (
+        {<RecordCollection presentation="embedded" id={`special.search-result-group-${group.resultType}`} rows={results} fields={[{"id":"title","path":"title","label":"Title"},{"id":"subtitle","path":"subtitle","label":"Reference"},{"id":"resultType","path":"resultType","label":"Type"}]} renderRecord={(result) => (
           <SearchResultCard key={result.key} result={result} />
         )} />}
       </div>

@@ -70,7 +70,7 @@ export function HrSearchResultGroup({ category, results, count, defaultExpanded 
 
       {expanded && (
         <div className="p-3 space-y-2">
-          {<RecordCollection id={`special.hr-search-result-group-${category}`} rows={results} fields={[{"id":"title","path":"title","label":"Title"},{"id":"subtitle","path":"subtitle","label":"Reference"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(r) => (
+          {<RecordCollection presentation="embedded" id={`special.hr-search-result-group-${category}`} rows={results} fields={[{"id":"title","path":"title","label":"Title"},{"id":"subtitle","path":"subtitle","label":"Reference"},{"id":"status","path":"status","label":"Status"}]} renderRecord={(r) => (
             <HrSearchResultCard key={r.id} result={r} />
           )} />}
         </div>

@@ -70,7 +70,7 @@ function DepartmentsListInstance({departments:initial,canManage,authContext}:Pro
  ];
  return <div className="space-y-4">
   {refreshFailure&&<p role="alert">Department saved, but the list could not refresh. <Button variant="outline" onClick={()=>void refresh().catch(()=>setRefreshFailure(true))}>Refresh departments</Button></p>}
-  <ERPDataTable tableId="departments" data={rows} columns={columns} enableRowSelection={false} searchPlaceholder="Search departments" emptyMessage="No departments are available in your current scope."/>
+  <ERPDataTable presentation="worklist" tableId="departments" data={rows} columns={columns} enableRowSelection={false} searchPlaceholder="Search departments" emptyMessage="No departments are available in your current scope."/>
   {canManage&&canOpenDepartmentEditor(authContext)&&<MasterArchivePanel entity="departments" title="Archived departments" disabled={target!==null} onRestored={refresh} onTaskOpenChange={setRestoreOpen} refreshVersion={archiveRefreshVersion}/>}
   <AlertDialog open={target!==null} onOpenChange={open=>{if(!open&&!saving&&!uncertain)setTarget(null);}}><AlertDialogContent>
    <AlertDialogHeader><AlertDialogTitle>{target?.kind==='archive'?'Archive Department':'Department status'}</AlertDialogTitle><AlertDialogDescription>{target?.kind==='archive'?'Archive '+target.row.department_name_en+'? History is retained. Referenced departments cannot be archived until their linked records are resolved.':(target?.active?'Activate ':'Deactivate ')+target?.row.department_name_en+'? If the response is interrupted, retry this same change to recover its result.'}</AlertDialogDescription></AlertDialogHeader>

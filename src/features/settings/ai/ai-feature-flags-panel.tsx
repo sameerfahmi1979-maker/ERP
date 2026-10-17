@@ -51,7 +51,7 @@ export function AiFeatureFlagsPanel({ flags, canManage=false }: AiFeatureFlagsPa
       </div>
 
       <div className="grid gap-3">
-        {<RecordCollection id="special.ai-feature-flags-panel" rows={flags} fields={[{"id":"featureCode","path":"featureCode","label":"Feature"},{"id":"featureName","path":"featureName","label":"Name"},{"id":"isEnabled","path":"isEnabled","label":"Enabled"}]} renderRecord={(flag) => {
+        {<RecordCollection presentation="worklist" id="special.ai-feature-flags-panel" rows={flags} fields={[{"id":"featureCode","path":"featureCode","label":"Feature"},{"id":"featureName","path":"featureName","label":"Name"},{"id":"isEnabled","path":"isEnabled","label":"Enabled"}]} renderRecord={(flag) => {
           const isUpdating = !canManage || operation.busy || operation.uncertain || !flag.workspaceRevision;
           return (
             <Card key={flag.featureCode}>

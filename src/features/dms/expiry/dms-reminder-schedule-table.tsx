@@ -72,7 +72,7 @@ export function DmsReminderScheduleTable({ documentId, canManage = false }: DmsR
     staleTime: 30_000,
   });
 
-  const listView = useLoadedListView("DmsReminderScheduleTable", reminders, LIST_FIELDS.filter(f => f.id !== "actions" || canManage));
+  const listView = useLoadedListView("DmsReminderScheduleTable", reminders, LIST_FIELDS.filter(f => f.id !== "actions" || canManage), {presentation:"embedded"});
   const pagination = useSortPaginate(listView.rows,{memoryKey:"DmsReminderScheduleTable"});
   const act = async (id: number, action: "dismiss" | "handle") => {
     if (!canManage || isError || flight.current) return;
@@ -102,7 +102,7 @@ export function DmsReminderScheduleTable({ documentId, canManage = false }: DmsR
 
   return (
     <div className="rounded-md border border-border overflow-hidden"><LoadedListTools view={listView} search />
-      <div role="region" aria-label="DmsReminderScheduleTable results" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{minWidth:listView.visible.reduce((sum,c)=>sum+c.width,0)}}><colgroup>{listView.visible.map(c=><col key={c.id} style={{width:c.width}} />)}</colgroup>
+      <div role="region" aria-label="DmsReminderScheduleTable results" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{width: "100%", tableLayout: "auto"}}><colgroup>{listView.visible.map(c=><col key={c.id} style={{width: undefined}} />)}</colgroup>
         <thead>
           <ConfiguredRow columns={listView.columns} className="bg-muted/20 border-b border-border">
             <th data-column="reminder_days_before" className="text-left px-3 py-2 font-medium text-muted-foreground uppercase text-[10px] tracking-wide">Days Before</th>
@@ -153,6 +153,6 @@ export function DmsReminderScheduleTable({ documentId, canManage = false }: DmsR
           ))}
         </tbody>
       </table></div>
-    <TablePagination page={pagination.page} totalPages={pagination.totalPages} onPage={pagination.setPage} pageSize={pagination.pageSize} onPageSize={pagination.setPageSize} total={pagination.totalFiltered}/></div>
+    <TablePagination presentation="embedded" page={pagination.page} totalPages={pagination.totalPages} onPage={pagination.setPage} pageSize={pagination.pageSize} onPageSize={pagination.setPageSize} total={pagination.totalFiltered}/></div>
   );
 }

@@ -207,6 +207,11 @@ jobs:
           tests/integration/f00-f06/schema/reconciled-receipt.test.cjs
           tests/integration/f00-f06/schema/branding-acl.test.cjs
           tests/integration/f00-f06/schema/template-set.test.cjs
+      - name: Employee and DMS display-authority contracts (offline only)
+        run: >-
+          node --test
+          tests/integration/f00-f06/employee-affordance.test.mjs
+          tests/integration/f00-f06/dms-affordance.test.mjs
 
   build-types:
     needs: security

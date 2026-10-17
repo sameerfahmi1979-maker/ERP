@@ -99,6 +99,10 @@ interface DmsDocumentsTableProps {
   initialUpdatedAt: number;
   categories: { id: number; name_en: string }[];
   documentTypes: { id: number; name_en: string }[];
+  /** Display capabilities only; server actions and row policies remain authoritative. */
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canArchive?: boolean;
   /** Only system_admin users — hard delete is permanently irreversible */
   canHardDelete?: boolean;
 }
@@ -110,6 +114,9 @@ export function DmsDocumentsTable({
   initialUpdatedAt,
   categories,
   documentTypes,
+  canCreate = false,
+  canEdit = false,
+  canArchive = false,
   canHardDelete = false,
 }: DmsDocumentsTableProps) {
 
@@ -210,16 +217,19 @@ export function DmsDocumentsTable({
   const columnState = useListColumns("dms-documents", DOC_COLUMNS);
   const colWidths = Object.fromEntries(columnState.columns.map(column=>[column.id,column.width])) as Record<DocColKey,number>;
 
-  function openDocument(id: number, mode: "edit" | "view" = "edit") {
+  function openDocument(id: number) {
+    const mode = canEdit ? "edit" : "view";
     const route = `/dms/documents/record/${id}?mode=${mode}`;
     openTab({ route, title: `Document #${id}` });
   }
 
   function openNewDocument() {
+    if (!canCreate) return;
     openTab({ route: "/dms/documents/record/new", title: "New Document" });
   }
 
   function handleArchive(doc: DmsDocumentRow) {
+    if (!canArchive) return;
     startTransition(async () => {
       const result = doc.is_archived
         ? await unarchiveDmsDocument(doc.id)
@@ -372,10 +382,12 @@ export function DmsDocumentsTable({
           <Button variant="outline" size="sm" aria-label="Refresh documents" onClick={() => {void uiReadDocuments.refetch();}} disabled={isPending||uiReadDocuments.isBusy}>
             <RefreshCw className="h-3.5 w-3.5" />
           </Button>
-          <Button size="sm" onClick={openNewDocument} className="gap-1.5">
-            <Plus className="h-3.5 w-3.5" />
-            New Document
-          </Button>
+          {canCreate && (
+            <Button size="sm" onClick={openNewDocument} className="gap-1.5">
+              <Plus className="h-3.5 w-3.5" />
+              New Document
+            </Button>
+          )}
         </div>
       </div>
 
@@ -681,9 +693,11 @@ export function DmsDocumentsTable({
                   <div className="flex flex-col items-center gap-2">
                     <FileText className="h-8 w-8 opacity-30" />
                     <p className="text-sm">{uiReadDocuments.isBusy ? "Loading documents…" : "No documents found"}</p>
-                    <Button size="sm" variant="outline" onClick={openNewDocument} className="mt-1 gap-1.5">
-                      <Plus className="h-3.5 w-3.5" /> Create first document
-                    </Button>
+                    {canCreate && (
+                      <Button size="sm" variant="outline" onClick={openNewDocument} className="mt-1 gap-1.5">
+                        <Plus className="h-3.5 w-3.5" /> Create first document
+                      </Button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -766,25 +780,27 @@ export function DmsDocumentsTable({
                         size="icon"
                         variant="ghost"
                         className="h-11 w-11 sm:h-8 sm:w-8"
-                        onClick={() => openDocument(doc.id, "edit")}
+                        onClick={() => openDocument(doc.id)}
                         title="Open"
                       >
                         <ExternalLink className="h-3 w-3" />
                       </Button>
-                      <Button aria-label={doc.is_archived ? "Unarchive" : "Archive"}
-                        size="icon"
-                        variant="ghost"
-                        className="h-11 w-11 sm:h-8 sm:w-8"
-                        onClick={() => handleArchive(doc)}
-                        disabled={isPending}
-                        title={doc.is_archived ? "Unarchive" : "Archive"}
-                      >
-                        {doc.is_archived ? (
-                          <ArchiveX className="h-3 w-3" />
-                        ) : (
-                          <Archive className="h-3 w-3" />
-                        )}
-                      </Button>
+                      {canArchive && (
+                        <Button aria-label={doc.is_archived ? "Unarchive" : "Archive"}
+                          size="icon"
+                          variant="ghost"
+                          className="h-11 w-11 sm:h-8 sm:w-8"
+                          onClick={() => handleArchive(doc)}
+                          disabled={isPending}
+                          title={doc.is_archived ? "Unarchive" : "Archive"}
+                        >
+                          {doc.is_archived ? (
+                            <ArchiveX className="h-3 w-3" />
+                          ) : (
+                            <Archive className="h-3 w-3" />
+                          )}
+                        </Button>
+                      )}
                       {canHardDelete && (
                         <Button aria-label="Permanently Delete (system admin only)"
                           size="icon"

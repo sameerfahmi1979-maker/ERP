@@ -80,6 +80,7 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
   const route = query ? `${pathname}?${query}` : pathname;
   const router = useRouter();
   const prevPathname = useRef<string | null>(null);
+  const deniedRouteNavigation = useRef<string | null>(null);
   const isTabActive = useCallback((tabId: string) => stateRef.current.activeTabId === tabId, []);
   const navigationBlocked = useCallback(() => {
     if (!stateRef.current.tabs.some(tab => tab.id === stateRef.current.activeTabId && tab.childDialogOpen)) return false;
@@ -103,8 +104,8 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
       dispatch({ type: "RESTORE_TABS", tabs: saved.tabs, activeTabId: saved.activeTabId, defaultRoute });
     } else {
       // No saved state — create a tab for the current URL
-      const tab = createTabFromRoute(route);
-      dispatch({ type: "RESTORE_TABS", tabs: [tab], activeTabId: tab.id, defaultRoute });
+      const tab = canRestoreRoute && !canRestoreRoute(route) ? null : createTabFromRoute(route);
+      dispatch({ type: "RESTORE_TABS", tabs: tab ? [tab] : [], activeTabId: tab?.id ?? null, defaultRoute });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -132,9 +133,25 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
   // ── Sync active tab when pathname changes (browser back/forward, direct URL) ─
   useEffect(() => {
     if (!state.isHydrated) return;
+    if (!isWorkspaceRoute(route)) return;
+    if (canRestoreRoute && !canRestoreRoute(route)) {
+      // Never admit a known-denied route then wait for its filtered-out owner.
+      // Keep children masked; the server still enforces every page's authority.
+      const home = defaultRoute ?? DASHBOARD_ROUTE;
+      const destination = isWorkspaceRoute(home) && canRestoreRoute(home) ? home : "/access-denied";
+      const attempt = `${route}\n${destination}`;
+      // A permission refresh can arrive before navigation settles. Re-admit the
+      // route if it becomes permitted, without discarding other tabs or drafts.
+      prevPathname.current = null;
+      if (deniedRouteNavigation.current !== attempt) {
+        deniedRouteNavigation.current = attempt;
+        router.replace(destination);
+      }
+      return;
+    }
+    deniedRouteNavigation.current = null;
     if (route === prevPathname.current) return;
     prevPathname.current = route;
-    if (!isWorkspaceRoute(route)) return;
     const current = stateRef.current;
     const existing = current.tabs.find(tab => tab.route.split("?")[0] === pathname);
     if (existing) {
@@ -147,7 +164,7 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
     } else {
       dispatch({type:"SYNC_ROUTE", route, tab:createTabFromRoute(route)});
     }
-  }, [route, pathname, state.isHydrated, dispatch, router]);
+  }, [route, pathname, state.isHydrated, dispatch, router, canRestoreRoute, defaultRoute]);
 
   // ── Persist to localStorage after every state change ──────────────────────
   useEffect(() => {

@@ -34,6 +34,7 @@ import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
 import { useWorkspaceControlledDraft, type WorkspaceDraftCodec } from "@/hooks/use-workspace-controlled-draft";
 import { createSaveAdmission } from "@/lib/workspace/save-admission";
 import type { AuthContext } from "@/lib/rbac/check";
+import { hasPermission } from "@/lib/rbac/scope";
 import type { EmployeeCreateInput, EmployeeListRow, EmployeeUpdateInput } from "@/server/actions/hr/employees";
 import { createEmployee, updateEmployee } from "@/server/actions/hr/employees";
 import {
@@ -62,11 +63,7 @@ import { EmployeeProfileTab, type EmployeeProfileFormState } from "./tabs/employ
 import { EmployeeTimeTab } from "./tabs/employee-time-tab";
 
 function checkPermission(ctx: AuthContext, code: string): boolean {
-  return (
-    ctx.permissionCodes.includes(code) ||
-    ctx.roleCodes.includes("system_admin") ||
-    ctx.roleCodes.includes("group_admin")
-  );
+  return hasPermission(ctx, code);
 }
 
 const FORM_ID = "employee-workspace-form";

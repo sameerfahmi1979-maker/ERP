@@ -47,6 +47,9 @@ export default async function DmsDocumentsPage() {
         initialUpdatedAt={docsResult.data?.updatedAt??0}
         categories={categories}
         documentTypes={documentTypes}
+        canCreate={hasPermission(authContext, "dms.documents.upload") || hasPermission(authContext, "dms.admin")}
+        canEdit={hasPermission(authContext, "dms.documents.edit") || hasPermission(authContext, "dms.admin")}
+        canArchive={hasPermission(authContext, "dms.documents.archive") || hasPermission(authContext, "dms.admin")}
         canHardDelete={isGlobalAdmin(authContext)}
       />}
     </div>

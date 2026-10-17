@@ -142,15 +142,9 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
   const page = pagination.pageIndex + 1;
   const pageSize = pagination.pageSize;
 
-  const canCreate =
-    authContext.permissionCodes?.includes("hr.employees.create") ||
-    authContext.roleCodes?.includes("system_admin");
-  const canUpdate =
-    authContext.permissionCodes?.includes("hr.employees.update") ||
-    authContext.roleCodes?.includes("system_admin");
-  const canArchive =
-    authContext.permissionCodes?.includes("hr.employees.archive") ||
-    authContext.roleCodes?.includes("system_admin");
+  const canCreate = hasPermission(authContext, "hr.employees.create");
+  const canUpdate = hasPermission(authContext, "hr.employees.update");
+  const canArchive = hasPermission(authContext, "hr.employees.archive");
 
   const columnState = useListColumns("hr-employees", EMP_COLUMNS);
   const showNationality = true; // ConfiguredRow owns visibility and ordering.

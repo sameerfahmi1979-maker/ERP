@@ -89,7 +89,9 @@ it.each([401, 403])("same-principal %s retires all browser private cache and pre
   const view = mount(); await selectEmployee(); await screen.findByTitle("Synthetic file 11.pdf"); denied = true;
   await act(async () => {await view.client.invalidateQueries({queryKey: [...hrBrowserPrefix(hrDocumentBrowserIdentity(context)), "documents"]});});
   await screen.findByText(/Previous records and previews have been cleared/); expect(document.querySelector("iframe")).toBeNull(); expect(screen.queryByText("Synthetic Alpha")).toBeNull();
-  expect(op("documents")).toHaveLength(2); expect(view.client.getQueryCache().findAll({queryKey: hrBrowserPrefix(hrDocumentBrowserIdentity(context))})).toHaveLength(0);
+  expect(op("documents")).toHaveLength(2);
+  await waitFor(() => expect(view.client.getQueryCache().findAll({queryKey: hrBrowserPrefix(hrDocumentBrowserIdentity(context))})).toHaveLength(0));
+  expect(op("documents")).toHaveLength(2);
 });
 it("confirmed unavailable file target clears its metadata without treating it as no attachments", async () => {
   state.read.mockImplementation((_r, p: HrDocumentBrowserCriteria) => Promise.resolve(p.operation === "files" ? {success: true, data: {criteria: p, asOf: new Date().toISOString(), availability: "unavailable"}} : response(p)));

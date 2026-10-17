@@ -121,6 +121,9 @@ export async function cleanupDmsExpiredUploadSessions(
     }
 
     const { dryRun, statusFilter, olderThanHours, limit } = parsed.data;
+    // Age/status alone cannot prove that a retained creation, approval or copy
+    // no longer references these bytes. Keep legacy cleanup report-only.
+    if (!dryRun) return {success:false,error:"Temporary-file deletion is unavailable until reference, recovery and retention review is complete. Run Preview; no files will be deleted."};
     const supabase = await createClient();
     const adminClient = createAdminClient();
     const now = new Date();

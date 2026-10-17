@@ -1,9 +1,6 @@
 "use server";
 import {readAllPages} from "@/server/reads/all-pages";
 
-import { createClient } from "@/lib/supabase/server";
-import { logger } from "@/lib/logger";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -19,32 +16,14 @@ export type DmsDocumentEventRow = {
   performed_by: number | null;
   performed_at: string;
   metadata_json: unknown;
-  performer?: { display_name: string } | null;
+  performer?: { display_name: string | null } | null;
 };
 
-export async function getDmsDocumentEvents(
-  documentId: number
-): Promise<ActionResult<DmsDocumentEventRow[]>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-
-    const supabase = await createClient();
-    const data = await readAllPages(async (from,to) => {
-      const result = await supabase
-      .from("dms_document_events")
-      .select("id, document_id, event_type, description, performed_by, performed_at, metadata_json, performer:user_profiles!performed_by(display_name)", {count:"exact"})
-      .eq("document_id", documentId)
-      .order("performed_at", { ascending: false }).order("id",{ascending:true}).range(from,to);
-      return result;
-    }, {identity:row=>row.id,maxRows:10000});
-
-
-    return { success: true, data: (data ?? []) as unknown as DmsDocumentEventRow[] };
-  } catch (err) {
-    logger.error("getDmsDocumentEvents error", err);
-    return { success: false, error: "Failed to load events" };
-  }
+/** Legacy complete consumer: bounded traversal, never a silently truncated page. */
+export async function getDmsDocumentEvents(documentId:number):Promise<ActionResult<DmsDocumentEventRow[]>> {
+ try {
+  const {getDmsDocumentHistoryPage}=await import("./lifecycle-history");
+  const rows=await readAllPages<DmsDocumentEventRow>(async from=>{const r=await getDmsDocumentHistoryPage(documentId,Math.floor(from/20)+1,"all");return r.success?{data:r.data.rows,count:r.data.totalCount,error:null}:{data:null,count:null,error:r.error};},{batchSize:20,maxRows:10000,identity:r=>r.id});
+  return {success:true,data:rows};
+ }catch{return {success:false,error:"History could not be completely loaded. Please use the paged history section."};}
 }

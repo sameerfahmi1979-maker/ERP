@@ -144,8 +144,32 @@ export interface EnqueueDmsAiJobInput {
 
 export interface DmsAiJobHandlerCtx {
   jobId:         number;
+  token:         string;
   workerId:      string;
   attemptNumber: number;
+}
+
+/** Reject unknown/content-bearing fields before any database/provider call. */
+export function validateJobInput(input: EnqueueDmsAiJobInput) {
+  const schemas = {
+    post_approve_orchestration: PostApproveOrchestrationPayloadSchema.strict(),
+    ocr_backfill: OcrBackfillPayloadSchema.strict(),
+    semantic_document_index: SemanticDocumentIndexPayloadSchema.strict(),
+    generate_metadata_definition_suggestions: GenerateMetadataDefinitionSuggestionsPayloadSchema.strict(),
+    ai_re_extraction: AiReExtractionPayloadSchema.strict(),
+  };
+  if (!Object.hasOwn(schemas, input.jobType)) throw new Error("Unregistered job type");
+  const schema = schemas[input.jobType as keyof typeof schemas];
+  const payload = schema.parse(input.payload);
+  const documentId = "documentId" in payload ? payload.documentId : payload.triggerDocumentId;
+  if (input.relatedDocumentId !== documentId) throw new Error("Job document identity mismatch");
+  const maxAttempts = input.maxAttempts ?? JOB_TYPE_MAX_ATTEMPTS[input.jobType];
+  z.number().int().min(1).max(JOB_TYPE_MAX_ATTEMPTS[input.jobType]).parse(maxAttempts);
+  const idempotencyKey = z.string().min(1).max(200).parse(input.idempotencyKey);
+  const priority = z.number().int().min(1).max(1000).parse(input.priority ?? 100);
+  return { jobType: input.jobType, payload, relatedDocumentId: documentId, idempotencyKey, maxAttempts, priority,
+    relatedUploadSessionId: input.relatedUploadSessionId, relatedAiResultId: input.relatedAiResultId,
+    relatedApproveRunId: input.relatedApproveRunId, runAfter: input.runAfter?.toISOString() };
 }
 
 export type DmsAiJobHandler = {

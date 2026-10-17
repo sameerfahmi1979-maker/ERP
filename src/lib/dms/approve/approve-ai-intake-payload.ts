@@ -34,21 +34,26 @@ export function resolveMetadataPayloadColumns(
 ): Omit<MetadataValuePayload, "definition_id"> {
   switch (fieldType) {
     case "number":
-    case "decimal": {
-      const num = parseFloat(rawValue);
-      return { value_number: isNaN(num) ? null : num };
+    case "decimal":
+    case "currency": {
+      if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(rawValue) || !Number.isFinite(Number(rawValue)))
+        throw new Error("Enter a valid metadata number.");
+      return { value_number: Number(rawValue) };
     }
     case "date":
       return { value_date: rawValue || null };
     case "datetime":
       return { value_datetime: rawValue || null };
     case "boolean":
+      if (!["true", "false", "1", "0"].includes(rawValue)) throw new Error("Choose Yes or No for metadata.");
       return { value_boolean: rawValue === "true" || rawValue === "1" };
     case "json":
+    case "multiselect":
+    case "multi_select":
       try {
         return { value_json: JSON.parse(rawValue) };
       } catch {
-        return { value_json: rawValue };
+        throw new Error("Enter valid JSON metadata or selections.");
       }
     default:
       return { value_text: rawValue || null };

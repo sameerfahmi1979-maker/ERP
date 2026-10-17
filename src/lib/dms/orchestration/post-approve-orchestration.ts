@@ -14,7 +14,7 @@
  *   - OCR text, prompts, and AI responses are never logged here.
  *   - DMS_AI_ORCHESTRATION feature flag is checked inside runDmsAiOrchestrationPostDraft.
  *   - Human-review-first: this only fires after a human-triggered approval succeeds.
- *   - If queue enqueue fails, falls back to inline orchestration (fail-safe).
+ *   - An unconfirmed queue admission never falls back to unfenced inline work.
  *   - Phase 4 approve RPC and approval transaction remain UNCHANGED.
  */
 
@@ -50,17 +50,18 @@ const SKIP_TRIGGER_STATUSES = new Set(["running", "complete", "complete_with_war
 
 // ── Feature flag helpers ──────────────────────────────────────────────────────
 
-async function isJobQueueEnabled(): Promise<boolean> {
+async function isJobQueueEnabled(): Promise<boolean | null> {
   try {
     const db = createAdminClient();
-    const { data } = await db
+    const { data, error } = await db
       .from("erp_ai_feature_flags")
       .select("is_enabled")
       .eq("feature_code", "DMS_AI_JOB_QUEUE")
       .single();
+    if (error) return null;
     return (data as { is_enabled?: boolean } | null)?.is_enabled === true;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -73,7 +74,7 @@ async function isJobQueueEnabled(): Promise<boolean> {
  *   - If DMS_AI_JOB_QUEUE = true:
  *       Enqueues post_approve_orchestration job, returns immediately.
  *       Worker processes the pipeline asynchronously.
- *       Falls back to inline if enqueue fails (fail-safe).
+ *       Keeps an unconfirmed admission unresolved; never executes twice inline.
  *   - If DMS_AI_JOB_QUEUE = false (default):
  *       Runs inline (exact Phase 5 behavior, unchanged).
  *
@@ -96,12 +97,14 @@ export async function triggerDmsPostApproveOrchestration(
     // ── 1. Check current orchestration status ──────────────────────────────
 
     const supabase = await createClient();
-    const { data: sessionRow } = await supabase
+    const { data: sessionRow, error: sessionError } = await supabase
       .from("dms_upload_sessions")
       .select("orchestration_status")
       .eq("session_code", sessionCode)
       .is("deleted_at", null)
       .maybeSingle();
+
+    if (sessionError || !sessionRow) return { triggered: false, orchestrationStatus: "error", error: "Orchestration source could not be verified." };
 
     const currentStatus = (sessionRow as { orchestration_status?: string } | null)?.orchestration_status ?? "pending";
 
@@ -149,6 +152,8 @@ export async function triggerDmsPostApproveOrchestration(
     // ── 4. Check if queue is enabled ───────────────────────────────────────
 
     const useQueue = await isJobQueueEnabled();
+
+    if (useQueue === null) return { triggered: false, orchestrationStatus: "error", error: "Queue configuration could not be verified. No processing was started." };
 
     if (useQueue) {
       return await triggerViaQueue(input);
@@ -201,7 +206,7 @@ async function triggerViaQueue(
     entity_name:      "dms_documents",
     entity_id:        documentId,
     entity_reference: sessionCode,
-    action:           "dms_post_approve_orchestration_queued",
+    action:           "dms_post_approve_orchestration_admission_requested",
     new_values: {
       sessionCode,
       documentId,
@@ -229,14 +234,15 @@ async function triggerViaQueue(
   });
 
   if (!enqueueResult.success) {
-    // Enqueue failed — fall back to inline to preserve approval quality
-    logger.warn("[post-approve-orchestration] queue enqueue failed, falling back to inline", {
+    // Admission may already have committed. Retry its stable identity instead
+    // of launching duplicate, unfenced provider work through another path.
+    logger.warn("[post-approve-orchestration] queue admission not confirmed", {
       sessionCode,
       documentId,
       error: enqueueResult.error,
     });
 
-    return await triggerInline(input);
+    return { triggered: false, orchestrationStatus: "error", error: "AI job admission not confirmed. Reconcile the same approval operation before retrying." };
   }
 
   if (enqueueResult.skipped) {
@@ -245,6 +251,7 @@ async function triggerViaQueue(
       documentId,
       jobId: enqueueResult.jobId,
     });
+    return { triggered: false, orchestrationStatus: "skipped", jobId: enqueueResult.jobId, skippedReason: "The same AI operation already exists; its retained job status remains authoritative." };
   }
 
   return {

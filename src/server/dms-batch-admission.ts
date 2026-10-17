@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canUseApplication, getAuthContext } from "@/lib/rbac/check";
+import {verifyDmsBlob} from '@/server/dms-file-verification';
 import {
   BATCH_MAX_BYTES, batchAdmissionResultSchema, batchOriginSchema, batchReceiptSchema,
   batchRequestSchema, batchUuid, verifyBatchReceipt, batchMemberRequestSchema, batchMemberUploadResultSchema,
@@ -131,7 +132,7 @@ function metadata(raw: unknown, member: Member) {
 
 // Never await the SDK's Blob builder: the stream is counted before hashing and
 // no file body is accumulated. Cleanup never waits on an unresponsive source.
-async function hashObject(storage: Storage, member: Member, deadline: Deadline): Promise<void> {
+async function hashObject(storage: Storage, member: Member, deadline: Deadline,parse=false): Promise<void> {
   const controller = new AbortController();
   const end = Date.now() + 30_000;
   let stream: ReadableStream<Uint8Array> | undefined;
@@ -151,6 +152,7 @@ async function hashObject(storage: Storage, member: Member, deadline: Deadline):
     if (result.error || !stream) throw new Error("object stream");
     reader = stream.getReader();
     const hash = createHash("sha256");
+    const parts:Uint8Array<ArrayBuffer>[]=[];
     let count = 0;
     for (;;) {
       const chunk = await deadline.wait(() => reader!.read(), end - Date.now());
@@ -159,8 +161,10 @@ async function hashObject(storage: Storage, member: Member, deadline: Deadline):
       count += chunk.value.byteLength;
       if (count > member.size || count > BATCH_MAX_BYTES) throw new Error("object overflow");
       hash.update(chunk.value);
+      if(parse)parts.push(Uint8Array.from(chunk.value));
     }
     if (count !== member.size || hash.digest("hex") !== member.sha256) throw new Error("object digest");
+    if(parse)await verifyDmsBlob(new Blob(parts),{name:member.name,mime:member.mime,size:member.size,sha256:member.sha256});
   } finally {
     controller.abort();
     if (reader) {
@@ -170,7 +174,7 @@ async function hashObject(storage: Storage, member: Member, deadline: Deadline):
   }
 }
 
-async function observe(bound: Bound, storage: Storage, member: Member, selected=false): Promise<"present" | "absent"> {
+async function observe(bound: Bound, storage: Storage, member: Member, selected=false,parse=false): Promise<"present" | "absent"> {
   const check=()=>selected?selectedFresh(bound,member.position):fresh(bound);
   await check();
   const first = await bound.deadline.wait(() => storage.info(member.path));
@@ -181,7 +185,7 @@ async function observe(bound: Bound, storage: Storage, member: Member, selected=
   }
   const before = metadata(first.data, member);
   await check();
-  await hashObject(storage, member, bound.deadline);
+  await hashObject(storage, member, bound.deadline,parse);
   await check();
   const second = await bound.deadline.wait(() => storage.info(member.path));
   if (second.error || JSON.stringify(metadata(second.data, member)) !== JSON.stringify(before)) throw new Error("object changed");
@@ -355,6 +359,6 @@ export async function verifyBatchUpload(input: {request: BatchRequest; position:
     const bound = {client, deadline, origin, request, receipt};
     await fresh(bound);
     const storage = createAdminClient().storage.from("dms-temp");
-    return {state: await observe(bound, storage, receipt.members[position])};
+    return {state: await observe(bound, storage, receipt.members[position],false,true)};
   } catch { return {state: "unavailable", error: OBJECT_UNAVAILABLE}; }
 }

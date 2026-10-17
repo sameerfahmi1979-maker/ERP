@@ -1,0 +1,14 @@
+import {expect,it} from 'vitest';
+import {createHash} from 'node:crypto';
+import {matchesDmsSignature,verifyDmsBlob} from '@/server/dms-file-verification';
+import {syntheticPdf} from './document-fixtures';
+const pdf=syntheticPdf();
+const source={name:'synthetic.pdf',mime:'application/pdf',size:pdf.length,sha256:createHash('sha256').update(pdf).digest('hex')};
+it('binds real bytes, size, canonical extension/MIME and SHA-256',async()=>{expect(await verifyDmsBlob(new Blob([pdf]),source)).toEqual({sha256:source.sha256,size:pdf.length,mime:source.mime});});
+it('can establish an actual hash for a legacy null fingerprint',async()=>{expect(await verifyDmsBlob(new Blob([pdf]),{...source,sha256:null})).toMatchObject({sha256:source.sha256});});
+it.each([{size:pdf.length+1},{size:0},{size:52428801},{sha256:'a'.repeat(64)},{name:'attack.exe'},{mime:'image/png'}])('rejects inconsistent source metadata %j',async change=>{await expect(verifyDmsBlob(new Blob([pdf]),{...source,...change})).rejects.toThrow();});
+it('rejects HTML renamed PDF even if its claimed hash and size match',async()=>{const bytes=Buffer.from('<html>fake PDF</html>');await expect(verifyDmsBlob(new Blob([bytes]),{...source,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')})).rejects.toThrow(/actual file format/);});
+it('rejects a truncated PDF without a final marker',()=>{expect(matchesDmsSignature(Buffer.from('%PDF-1.7\n'),source.mime)).toBe(false);});
+it.each([['89504e470d0a1a0a','image/png'],['ffd8ff','image/jpeg'],['49492a00','image/tiff'],['4d4d002a','image/tiff'],['524946460000000057454250','image/webp']])('recognizes supported binary signature %s', (hex,mime)=>{expect(matchesDmsSignature(Buffer.from(hex,'hex'),mime)).toBe(true);});
+it.each(['application/msword','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'])('does not trust an Office extension for %s',mime=>{expect(matchesDmsSignature(pdf,mime)).toBe(false);});
+it('rejects short, malformed and unbounded ZIP containers without inflating content',()=>{for(const bytes of [Buffer.alloc(0),Buffer.from('504b0304','hex'),Buffer.alloc(100,0xff)])expect(matchesDmsSignature(bytes,'application/vnd.openxmlformats-officedocument.wordprocessingml.document')).toBe(false);});

@@ -22,6 +22,7 @@ export default defineConfig({
       'tests/remediation/f03/*.test.{ts,tsx}',
       'tests/remediation/f04/*.test.{ts,tsx}',
       'tests/remediation/f05/*.test.{ts,tsx}',
+      'tests/remediation/f07/*.test.{ts,tsx}',
     ],
     // Browser suites must use JSDOM's per-window stores on every supported
     // Node runtime, including Node 25+ which exposes its own host getters.

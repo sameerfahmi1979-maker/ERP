@@ -1,4 +1,6 @@
 "use server";
+import {discardRetainedIntake} from '@/server/dms-intake-discard';
+import {verifyAndAttestIntakeSource} from '@/server/dms-intake-source-attestation';
 
 /**
  * DMS.11 — Option A AI-First Upload-Session Intake Server Actions
@@ -107,7 +109,7 @@ async function matchEntitiesToParties(
 
 function canStartIntake(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
   return (
-    hasPermission(ctx, "dms.documents.upload") ||
+    (hasPermission(ctx, "dms.documents.upload") && hasPermission(ctx,"dms.documents.review_ai") && hasPermission(ctx,"dms.documents.preview")) ||
     hasPermission(ctx, "dms.admin")
   );
 }
@@ -225,7 +227,7 @@ export async function startAiIntakeFromUploadSession(
     const ctx = await getAuthContext();
 
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canStartIntake(ctx)) return { success: false, error: "Permission denied: requires dms.documents.upload" };
+    if (!canStartIntake(ctx)) return { success: false, error: "Permission denied: scoped upload, preview and AI review are required." };
 
     // ── Load upload session ─────────────────────────────────────────────────
 
@@ -413,18 +415,13 @@ export async function startAiIntakeFromUploadSession(
     let ocrText = "";
     const imageFiles: DmsAiImageFile[] = [];
     let contentExtracted = false;
+    let verifiedSource:Awaited<ReturnType<typeof verifyAndAttestIntakeSource>>|undefined;
 
     try {
-      const { data: blob, error: dlErr } = await adminClient.storage.from("dms-temp").download(tempPath);
-      if (dlErr || !blob) {
-        await supabase
-          .from("dms_upload_sessions")
-          .update({ intake_status: "failed", updated_at: new Date().toISOString() })
-          .eq("id", uploadSessionId);
-        return { success: false, error: "Failed to read uploaded file from temporary storage" };
-      }
-
-      const buffer = Buffer.from(await blob.arrayBuffer());
+      verifiedSource = await verifyAndAttestIntakeSource(supabase,adminClient,uploadSessionId);
+      if(verifiedSource.plan.actorId!==ctx.profile.id||verifiedSource.plan.source.path!==tempPath||verifiedSource.plan.source.name!==originalFilename||verifiedSource.plan.source.mime!==mimeType)
+        throw Error('Intake source changed before extraction.');
+      const buffer = verifiedSource.bytes;
 
       // Content extraction — Phase 10A: router-aware.
       // When DMS_OCR_ROUTER=true: router handles text extraction (local → Azure → GPT).
@@ -777,9 +774,7 @@ export async function startAiIntakeFromUploadSession(
 
     // ── Store AI result ────────────────────────────────────────────────────
 
-    const { data: result, error: resultErr } = await supabase
-      .from("dms_ai_extraction_results")
-      .insert({
+    const resultPayload = {
         job_id: jobId,
         document_id: null,
         upload_session_id: uploadSessionId,
@@ -809,8 +804,10 @@ export async function startAiIntakeFromUploadSession(
           const best = localText ?? aiTranscription;
           return best ? best.slice(0, 100_000) : null;
         })(),
-        created_at: completedAt,
-      })
+    };
+    const { data: result, error: resultErr } = await supabase
+      .from("dms_ai_extraction_results")
+      .insert({...resultPayload,created_at:completedAt})
       .select("id")
       .single();
 
@@ -834,6 +831,13 @@ export async function startAiIntakeFromUploadSession(
       .from("dms_ai_extraction_jobs")
       .update({ status: "complete", completed_at: completedAt, duration_ms: durationMs })
       .eq("id", jobId);
+
+    if(!verifiedSource)return {success:false,error:'The exact original-file proof is missing. Retain this intake for reconciliation.'};
+    const attestedAnalysis=await adminClient.rpc('f07_attest_intake_analysis',{
+      p_session:uploadSessionId,p_actor:verifiedSource.plan.actorId,p_auth_session:verifiedSource.plan.authSessionId,
+      p_result:resultId,p_expected:resultPayload,
+    });
+    if(attestedAnalysis.error)return {success:false,error:'The AI result could not be verified against its exact original file. Retain this intake; no approval was submitted.'};
 
     await supabase
       .from("dms_upload_sessions")
@@ -1485,7 +1489,7 @@ export async function discardAiIntake(
 
     const { data: session, error: sessionError } = await supabase
       .from("dms_upload_sessions")
-      .select("id, session_code, intake_status")
+      .select("id, session_code, intake_status, document_id")
       .eq("id", uploadSessionId)
       .is("deleted_at", null)
       .single();
@@ -1497,28 +1501,9 @@ export async function discardAiIntake(
       return { success: false, error: "Cannot discard an already-approved intake" };
     }
 
-    const now = new Date().toISOString();
-    await supabase
-      .from("dms_upload_sessions")
-      .update({
-        intake_status: "discarded",
-        review_status: "discarded",
-        discarded_at: now,
-        discard_reason: reason?.slice(0, 500) ?? null,
-        updated_at: now,
-      })
-      .eq("id", uploadSessionId);
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_upload_sessions",
-      entity_id: uploadSessionId,
-      entity_reference: typedSession.session_code as string,
-      action: "update",
-      new_values: { event: "ai_intake_discarded", reason: reason ?? null, discarded_by: ctx.profile.id },
-    });
-
-    revalidatePath("/dms/inbox");
+    const result=await discardRetainedIntake(supabase,{sessionId:uploadSessionId,documentId:typedSession.document_id as number|null,reason});
+    if(!result.ok)return {success:false,error:result.error};
+    try{revalidatePath("/dms/inbox");}catch{/* Committed receipt wins. */}
     return { success: true };
   } catch (e) {
     return { success: false, error: String(e) };

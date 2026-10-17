@@ -1,0 +1,17 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+import {createHash} from 'node:crypto';
+const s=vi.hoisted(()=>({rpc:vi.fn(),attest:vi.fn(),info:vi.fn(),download:vi.fn(),admin:vi.fn()}));
+vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({rpc:s.rpc})}));
+vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>{s.admin();return {rpc:s.attest,storage:{from:()=>({info:s.info,download:s.download})}};}}));
+import {verifyTemporaryUpload} from '@/server/dms-temp-upload-verification';
+import {syntheticPdf} from './document-fixtures';
+const pdf=syntheticPdf(),sha256=createHash('sha256').update(pdf).digest('hex');
+const plan={actorId:7,authSessionId:'b7000000-0000-4000-8000-000000000001',source:{id:44,name:'synthetic.pdf',mime:'application/pdf',size:pdf.length,sha256,path:'sessions/F07/test.pdf',owner:7,company:1,branch:null,expiry:'2026-10-30T00:00:00Z'}};
+const identity={id:'c7000000-0000-4000-8000-000000000001',version:'synthetic-temp',lastModified:'2026-10-17T00:00:00.000Z'};
+beforeEach(()=>{vi.resetAllMocks();s.rpc.mockImplementation(async name=>({data:name==='f07_prepare_temp_upload'?plan:{id:44,status:'uploaded'},error:null}));s.attest.mockResolvedValue({error:null});s.info.mockResolvedValue({data:identity,error:null});s.download.mockImplementation(()=>({asStream:async()=>({data:new Blob([pdf]).stream(),error:null})}));});
+it('separates private byte attestation from authenticated upload completion',async()=>{expect(await verifyTemporaryUpload(44)).toMatchObject({success:true,data:{id:44,status:'uploaded'}});expect(s.attest).toHaveBeenCalledWith('f07_attest_temp_upload',expect.objectContaining({p_sha256:sha256,p_object:identity.id,p_source:plan.source}));expect(s.rpc.mock.calls.map(c=>c[0])).toEqual(['f07_prepare_temp_upload','f07_complete_temp_upload']);});
+it('does not touch privileged storage on denied or expired admission',async()=>{s.rpc.mockResolvedValue({data:null,error:{code:'42501'}});expect(await verifyTemporaryUpload(44)).toMatchObject({success:false});expect(s.admin).not.toHaveBeenCalled();});
+it('requires actual matching format, not just the supplied file hash',async()=>{s.download.mockImplementation(()=>({asStream:async()=>({data:new Blob(['not PDF']).stream(),error:null})}));expect(await verifyTemporaryUpload(44)).toMatchObject({success:false});expect(s.attest).not.toHaveBeenCalled();expect(s.rpc).toHaveBeenCalledTimes(1);});
+it('object version replacement prevents attestation',async()=>{s.info.mockResolvedValueOnce({data:identity,error:null}).mockResolvedValueOnce({data:{...identity,version:'changed'},error:null});expect(await verifyTemporaryUpload(44)).toMatchObject({success:false});expect(s.attest).not.toHaveBeenCalled();});
+it('unconfirmed completion cannot trigger a new upload or report success',async()=>{s.rpc.mockImplementation(async name=>{if(name==='f07_complete_temp_upload')throw Error('Synthetic lost reply');return {data:plan,error:null};});expect(await verifyTemporaryUpload(44)).toMatchObject({success:false,uncertain:true});expect(s.rpc).toHaveBeenCalledTimes(2);});
+it.each([0,-1,1.5])('invalid session %s never dispatches',async id=>{expect(await verifyTemporaryUpload(id)).toMatchObject({success:false});expect(s.rpc).not.toHaveBeenCalled();});

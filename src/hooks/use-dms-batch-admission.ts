@@ -30,7 +30,7 @@ export function useDmsBatchAdmission({enabled,context,upload,onResult}:Options){
  const ownerLive=!!readOwner?.isLive()&&readOwner.admits(readOwner.identity);
  const contextKey=`${context?.entityType??'inbox'}:${context?.entityId??'all'}`;
  const contextValue=context?{type:context.entityType,id:context.entityId}:null;
- const validContext=!context||(context.entityType==='party'&&Number.isSafeInteger(context.entityId)&&context.entityId>0);
+ const validContext=!context||(['party','employee','employee_dependent','company','branch','site'].includes(context.entityType)&&Number.isSafeInteger(context.entityId)&&context.entityId>0);
  const key=`draft:tab:${ownerId}:f06-batch-admission:${contextKey}`;
  const epoch=useMemo(()=>({store,ownerId,readOwner,ownerLive,enabled,key}),[store,ownerId,readOwner,ownerLive,enabled,key]);
  type Lease={epoch:typeof epoch;retired:boolean;origin:BatchOrigin|null;attempt:BatchRetainedAttempt|null;witness:string|undefined;fault:boolean;flight:object|null;failed:boolean;failureSequence:number};

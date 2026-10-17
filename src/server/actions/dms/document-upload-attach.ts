@@ -1,20 +1,15 @@
 "use server";
 
-import { clampToValidDate } from "@/lib/dms/date-validators";
+import {attachVerifiedDocumentVersion,type AttachmentInput} from '@/server/dms-version-attachment';
 import type { WorkspaceSaveContract } from "@/lib/workspace/save-contract";
 import type { UploadCreationInput, UploadCreationResult } from "@/lib/dms/numbered-upload-create";
 import { createNumberedDocumentFromUpload } from "@/server/numbered-upload-create";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getAuthContext, hasPermission,hasPermissionInScope,hasGlobalPermission } from "@/lib/rbac/check";
 import { readAllPages } from "@/server/reads/all-pages";
 import { createClient } from "@/lib/supabase/server";
-import { checkDocumentConfidentialityAccess } from "@/lib/dms/document-access";
-import { logAudit } from "@/server/actions/audit";
-import {
-  resolveStandardFileNameForExistingDocument,
-} from "@/server/actions/dms/standard-file-name";
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
+import {attachmentRecoverySchema,type AttachmentRecovery} from '@/lib/dms/attachment-recovery';
+import {discardRetainedIntake} from '@/server/dms-intake-discard';
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -22,41 +17,6 @@ export type ActionResult<T = unknown> = {
   error?: string;
 };
 
-// ── Storage path helpers ──────────────────────────────────────────────────────
-
-function buildFinalStoragePath(
-  owningCompanyId: number | null,
-  year: number,
-  typeCode: string,
-  documentId: number,
-  versionNumber: number,
-  ext: string
-): string {
-  const company = owningCompanyId ?? 0;
-  return `${company}/${year}/${typeCode}/${documentId}/v${versionNumber}/original.${ext}`;
-}
-
-function getExtension(filename: string, mimeType?: string | null): string {
-  const parts = filename.split(".");
-  if (parts.length > 1) return parts[parts.length - 1].toLowerCase();
-  // Fallback: derive from MIME type to avoid generic ".bin" extension
-  if (mimeType) {
-    const m = mimeType.toLowerCase().split(";")[0].trim();
-    const mimeMap: Record<string, string> = {
-      "application/pdf": "pdf",
-      "image/jpeg": "jpg", "image/jpg": "jpg",
-      "image/png": "png", "image/gif": "gif", "image/webp": "webp",
-      "image/tiff": "tiff", "image/heic": "heic",
-      "application/msword": "doc",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
-      "application/vnd.ms-excel": "xls",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
-      "text/plain": "txt", "text/csv": "csv", "application/zip": "zip",
-    };
-    if (mimeMap[m]) return mimeMap[m];
-  }
-  return "pdf"; // safer default than "bin" — almost all DMS documents are PDFs
-}
 
 function canAttach(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
   return (
@@ -66,256 +26,42 @@ function canAttach(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
   );
 }
 
-// ── insertDmsEvent helper ─────────────────────────────────────────────────────
-
-async function insertDmsEvent(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  documentId: number,
-  eventType: string,
-  performedBy: number,
-  description: string,
-  metadata?: Record<string, unknown>
-) {
-  await supabase.from("dms_document_events").insert({
-    document_id: documentId,
-    event_type: eventType,
-    description,
-    performed_by: performedBy,
-    performed_at: new Date().toISOString(),
-    metadata_json: metadata ?? null,
-  });
-}
 
 // ── Attach upload to existing document ───────────────────────────────────────
 
-const AttachSchema = z.object({
-  uploadSessionId: z.number().int().positive(),
-  documentId: z.number().int().positive(),
-  changeNotes: z.string().max(2000).optional(),
-  versionLabel: z.string().max(100).optional(),
-  allowDuplicate: z.boolean().optional().default(false),
-});
+export type AttachUploadInput = AttachmentInput;
 
-export type AttachUploadInput = z.infer<typeof AttachSchema>;
+export async function readOriginalAttachmentRequests(input:{uploadSessionId?:number;documentId?:number;page?:number}):Promise<ActionResult<AttachmentRecovery>>{
+ try{
+  const {uploadSessionId,documentId,page=1}=input;
+  if((uploadSessionId===undefined)===(documentId===undefined)||!Number.isSafeInteger(uploadSessionId??documentId)||(uploadSessionId??documentId??0)<1||!Number.isInteger(page)||page<1||page>10000)return {success:false,error:'Invalid original attachment selector'};
+  const client=await createClient(),r=await client.rpc('f07_read_attachment_recovery',{p_session:uploadSessionId??null,p_document:documentId??null,p_page:page});
+  const p=attachmentRecoverySchema.safeParse(r.data);
+  if(r.error||!p.success||p.data.page!==page||p.data.rows.some(row=>uploadSessionId!==undefined?row.uploadSessionId!==uploadSessionId:!row.unavailable&&row.documentId!==documentId))return {success:false,error:'The original attachment requests are unavailable. No empty recovery result was substituted.'};
+  return {success:true,data:p.data};
+ }catch{return {success:false,error:'The original attachment requests could not be read. Retain the original upload.'};}
+}
 
-export async function attachUploadToExistingDocument(
-  input: AttachUploadInput
-): Promise<ActionResult<{ documentId: number; versionId: number; fileId: number }>> {
-  try {
-    const supabase = await createClient();
-    const adminClient = createAdminClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canAttach(ctx))
-      return { success: false, error: "Permission denied: requires dms.documents.upload or dms.documents.edit" };
-
-    const parsed = AttachSchema.safeParse(input);
-    if (!parsed.success)
-      return { success: false, error: parsed.error.issues[0]?.message ?? "Validation error" };
-
-    const { uploadSessionId, documentId, changeNotes, versionLabel, allowDuplicate } = parsed.data;
-
-    const { data: session, error: sessionError } = await supabase
-      .from("dms_upload_sessions")
-      .select("*")
-      .eq("id", uploadSessionId)
-      .is("deleted_at", null)
-      .single();
-
-    if (sessionError || !session) return { success: false, error: "Upload session not found" };
-    if (session.status === "completed") return { success: false, error: "Upload session is already completed" };
-    if (session.status === "cancelled") return { success: false, error: "Upload session has been cancelled" };
-    if (!session.temp_storage_path) return { success: false, error: "Temporary file path is missing" };
-    // Duplicate detection is informational only — admins may proceed intentionally.
-
-    const { data: document, error: docError } = await supabase
-      .from("dms_documents")
-      .select("id, document_no, owning_company_id, document_type_id, document_type:dms_document_types!document_type_id(type_code, name_en)")
-      .eq("id", documentId)
-      .is("deleted_at", null)
-      .single();
-
-    if (docError || !document) return { success: false, error: "Document not found" };
-
-    // Authorize the destination action before using the service-key Storage client.
-    // A read grant or an upload grant in another company is not attachment authority.
-    const destination = await checkDocumentConfidentialityAccess(supabase, documentId, ctx, "dms.documents.upload");
-    const editable = destination.allowed ? destination : await checkDocumentConfidentialityAccess(supabase, documentId, ctx, "dms.documents.edit");
-    const administrative = editable.allowed ? editable : await checkDocumentConfidentialityAccess(supabase, documentId, ctx, "dms.admin");
-    if (!administrative.allowed) return { success: false, error: "Document attachment access is restricted." };
-
-    const typeCode = (document.document_type as unknown as { type_code: string } | null)?.type_code ?? "OTHER";
-    const year = new Date().getFullYear();
-    const userId = ctx.profile.id;
-
-    // DMS VERSION LINK.1 — require AI review before a file can become a document version.
-    // This closes the gap where wrong-type / already-expired files could silently become
-    // the current version of a document without any content validation.
-    const intakeStatus = session.intake_status as string | undefined;
-    if (intakeStatus !== "review_pending") {
-      return {
-        success: false,
-        error:
-          "This file hasn't completed AI review yet. Go to the Inbox and run \"Upload & AI Fill\" on it before linking it as a document version.",
-      };
-    }
-
-    const aiResultId = session.ai_result_id as number | null;
-    if (aiResultId) {
-      const { data: aiResult } = await supabase
-        .from("dms_ai_extraction_results")
-        .select(
-          `suggested_document_type_id, expiry_date_suggestion,
-           suggested_document_type:dms_document_types!suggested_document_type_id(name_en)`
-        )
-        .eq("id", aiResultId)
-        .maybeSingle();
-
-      if (aiResult) {
-        const suggestedTypeId = aiResult.suggested_document_type_id as number | null;
-        if (suggestedTypeId && suggestedTypeId !== document.document_type_id) {
-          const suggestedTypeName =
-            (aiResult.suggested_document_type as unknown as { name_en: string } | null)?.name_en ??
-            "a different document type";
-          const targetTypeName =
-            (document.document_type as unknown as { name_en: string } | null)?.name_en ?? "this document's type";
-          return {
-            success: false,
-            error: `AI identified this file as "${suggestedTypeName}", which does not match ${targetTypeName}. Attach it to a matching document instead, or upload the correct file.`,
-          };
-        }
-
-        const expirySuggestion = clampToValidDate(aiResult.expiry_date_suggestion as string | null);
-        const today = new Date().toISOString().slice(0, 10);
-        if (expirySuggestion && expirySuggestion < today) {
-          return {
-            success: false,
-            error: `AI detected that this file's expiry date (${expirySuggestion}) has already passed. Upload a valid, non-expired document instead.`,
-          };
-        }
-      }
-    }
-
-    const { data: maxVerRow } = await supabase
-      .from("dms_document_versions")
-      .select("version_number")
-      .eq("document_id", documentId)
-      .order("version_number", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const nextVersionNumber = (maxVerRow?.version_number ?? 0) + 1;
-    const sessionMimeType = session.mime_type as string | null;
-    const ext = getExtension(session.original_filename as string, sessionMimeType);
-
-    const resolvedFileName = await resolveStandardFileNameForExistingDocument({
-      documentId,
-      originalFilename: session.original_filename as string,
-      mimeType: sessionMimeType,
-    });
-
-    const finalPath = buildFinalStoragePath(
-      document.owning_company_id as number | null,
-      year,
-      typeCode,
-      documentId,
-      nextVersionNumber,
-      ext
-    );
-
-    const { data: tempFileData, error: downloadError } = await adminClient.storage
-      .from("dms-temp")
-      .download(session.temp_storage_path as string);
-
-    if (downloadError || !tempFileData)
-      return { success: false, error: `Failed to read temp file: ${downloadError?.message}` };
-
-    const { error: uploadError } = await adminClient.storage
-      .from("dms-documents")
-      .upload(finalPath, tempFileData, { contentType: session.mime_type as string, upsert: false });
-
-    if (uploadError) return { success: false, error: `Failed to store file: ${uploadError.message}` };
-
-    await supabase
-      .from("dms_document_versions")
-      .update({ is_current: false })
-      .eq("document_id", documentId);
-
-    const { data: version, error: verError } = await supabase
-      .from("dms_document_versions")
-      .insert({
-        document_id: documentId,
-        version_number: nextVersionNumber,
-        version_label: versionLabel ?? `v${nextVersionNumber}`,
-        change_notes: changeNotes ?? null,
-        is_current: true,
-        created_by: userId,
-        created_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-
-    if (verError) return { success: false, error: verError.message };
-
-    const { data: fileRecord, error: fileError } = await supabase
-      .from("dms_document_files")
-      .insert({
-        document_id: documentId,
-        version_id: version.id,
-        file_role: "original",
-        storage_bucket: "dms-documents",
-        storage_path: finalPath,
-        file_name: resolvedFileName,
-        mime_type: session.mime_type,
-        file_size_bytes: session.file_size_bytes,
-        sha256_hash: session.sha256_hash,
-        created_by: userId,
-        created_at: new Date().toISOString(),
-      })
-      .select("id")
-      .single();
-
-    if (fileError) return { success: false, error: fileError.message };
-
-    await supabase
-      .from("dms_documents")
-      .update({ current_version_id: version.id, updated_by: userId, updated_at: new Date().toISOString() })
-      .eq("id", documentId);
-
-    await supabase
-      .from("dms_upload_sessions")
-      .update({ document_id: documentId, status: "completed", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .eq("id", uploadSessionId);
-
-    await insertDmsEvent(supabase, documentId, "file_uploaded", userId,
-      `File uploaded: ${session.original_filename} (v${nextVersionNumber})`,
-      { file_id: fileRecord.id, version_id: version.id, version_number: nextVersionNumber });
-
-    await insertDmsEvent(supabase, documentId, "version_uploaded", userId,
-      `New version created: v${nextVersionNumber}`,
-      { version_id: version.id, version_number: nextVersionNumber, is_current: true });
-
-    await insertDmsEvent(supabase, documentId, "current_version_changed", userId,
-      `Current version updated to v${nextVersionNumber}`,
-      { version_id: version.id, version_number: nextVersionNumber });
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_documents",
-      entity_id: documentId,
-      entity_reference: document.document_no as string,
-      action: "update",
-      new_values: { event: "file_attached", version_number: nextVersionNumber },
-    });
-
-    revalidatePath(`/dms/documents/record/${documentId}`);
-    revalidatePath("/dms/documents");
-    revalidatePath("/dms/inbox");
-
-    return { success: true, data: { documentId, versionId: version.id, fileId: fileRecord.id } };
-  } catch (e) {
-    return { success: false, error: String(e) };
+export async function cancelOriginalAttachmentRequest(input:{uploadSessionId:number;documentId:number;operationId:string}):Promise<ActionResult<{cancelled:true;uploadSessionId:number;operationId:string}>>{
+ try{
+  const discovered=await readOriginalAttachmentRequests({uploadSessionId:input.uploadSessionId});
+  const row=discovered.data?.rows[0];
+  if(!discovered.success||!row||row.unavailable||row.documentId!==input.documentId||row.operationId!==input.operationId)return {success:false,error:'The owned original attachment could not be verified. Its request and files are retained.'};
+  if(row.completed)return {success:false,error:'This attachment already completed. Confirm its original result; the destination must not be archived or cancelled.'};
+  if(!row.closed){
+   const client=await createClient();
+   const r=await discardRetainedIntake(client,{sessionId:input.uploadSessionId,documentId:null,reason:'Reviewer explicitly cancelled this uncommitted attachment. Original request, history and copied bytes remain retained.'});
+   if(!r.ok)return {success:false,error:'Cancellation was not confirmed. Read the original request again; its files remain retained.'};
   }
+  try{revalidatePath('/dms/inbox');revalidatePath(`/dms/documents/record/${row.documentId}`);}catch{/* The checked cancellation receipt wins over cache refresh. */}
+  return {success:true,data:{cancelled:true,uploadSessionId:row.uploadSessionId,operationId:row.operationId}};
+ }catch{return {success:false,error:'Cancellation is unconfirmed. Retain this upload and read its original request again.'};}
+}
+
+export async function attachUploadToExistingDocument(input: AttachUploadInput) {
+  const result=await attachVerifiedDocumentVersion(input);
+  if(result.success){try{revalidatePath(`/dms/documents/record/${input.documentId}`);revalidatePath("/dms/documents");revalidatePath("/dms/inbox");}catch{/* Confirmed transaction cannot be undone by cache failure. */}}
+  return result;
 }
 
 // ── DMS VERSION LINK.1 — eligible inbox files for linking as a new version ───
@@ -352,22 +98,26 @@ export async function getEligibleUploadSessionsForVersionLink(
 
     const { data: document, error: docError } = await supabase
       .from("dms_documents")
-      .select("id, document_type_id")
+      .select("id, document_type_id, owning_company_id, owning_branch_id")
       .eq("id", documentId)
       .is("deleted_at", null)
       .single();
 
     if (docError || !document) return { success: false, error: "Document not found" };
 
-    const sessions = await readAllPages(async(from,to)=>await supabase
+    const sessions = await readAllPages(async(from,to)=>{
+      let query=supabase
       .from("dms_upload_sessions")
       .select("id, session_code, original_filename, mime_type, file_size_bytes, uploaded_at, ai_result_id",{count:"exact"})
       .eq("status", "uploaded")
       .eq("intake_status", "review_pending")
+      .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
       .is("document_id", null)
-      .is("deleted_at", null)
-      .order("uploaded_at", { ascending: false })
-      .order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
+      .is("deleted_at", null);
+      query=document.owning_company_id===null?query.is('owning_company_id',null):query.eq('owning_company_id',document.owning_company_id);
+      query=document.owning_branch_id===null?query.is('owning_branch_id',null):query.eq('owning_branch_id',document.owning_branch_id);
+      return await query.order("uploaded_at", { ascending: false }).order("id").range(from,to);
+    },{identity:row=>row.id,maxRows:10000});
 
 
     const resultIds = (sessions ?? [])
@@ -381,6 +131,8 @@ export async function getEligibleUploadSessionsForVersionLink(
         suggested_document_type_name: string | null;
         classification_confidence: string | null;
         expiry_date_suggestion: string | null;
+        upload_session_id: number | null;
+        successful_job: boolean;
       }
     >();
 
@@ -388,7 +140,8 @@ export async function getEligibleUploadSessionsForVersionLink(
       const aiResults = await readAllPages(async(from,to)=>await supabase
         .from("dms_ai_extraction_results")
         .select(
-          `id, suggested_document_type_id, classification_confidence, expiry_date_suggestion,
+          `id, upload_session_id, suggested_document_type_id, classification_confidence, expiry_date_suggestion,
+           job:dms_ai_extraction_jobs!job_id(status),
            suggested_document_type:dms_document_types!suggested_document_type_id(name_en)`,{count:"exact"}
         )
         .in("id", resultIds.slice(offset,offset+100)).order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
@@ -400,11 +153,14 @@ export async function getEligibleUploadSessionsForVersionLink(
             (r.suggested_document_type as unknown as { name_en: string } | null)?.name_en ?? null,
           classification_confidence: r.classification_confidence as string | null,
           expiry_date_suggestion: r.expiry_date_suggestion as string | null,
+          upload_session_id:r.upload_session_id as number|null,
+          successful_job:(r.job as unknown as {status:string}|null)?.status==='complete',
         });
       }
     }
 
     const today = new Date().toISOString().slice(0, 10);
+    const mayOverride=document.owning_company_id===null?hasGlobalPermission(ctx,'dms.admin'):hasPermissionInScope(ctx,'dms.admin',document.owning_company_id,document.owning_branch_id);
 
     const candidates: EligibleVersionLinkCandidate[] = (sessions ?? []).map((s) => {
       const ai = s.ai_result_id ? resultsById.get(s.ai_result_id as number) : undefined;
@@ -419,7 +175,10 @@ export async function getEligibleUploadSessionsForVersionLink(
 
       let eligible = true;
       let ineligibleReason: string | null = null;
-      if (typeMatch === "mismatch") {
+      if (!ai||ai.upload_session_id!==s.id||!ai.successful_job) {
+        eligible=false;
+        ineligibleReason='A successful AI Fill result for this upload is required. Re-run its review in the Inbox.';
+      } else if (typeMatch === "mismatch") {
         eligible = false;
         ineligibleReason = `AI detected type "${ai?.suggested_document_type_name ?? "a different type"}" — does not match this document`;
       } else if (isExpiredSuggestion) {
@@ -427,6 +186,7 @@ export async function getEligibleUploadSessionsForVersionLink(
         ineligibleReason = `AI detected expiry date ${ai?.expiry_date_suggestion} has already passed`;
       }
 
+      if(!eligible&&mayOverride){eligible=true;ineligibleReason='Administrator review and a recorded manual-override reason are required. This is not verified AI classification.';}
       return {
         id: s.id as number,
         session_code: s.session_code as string,

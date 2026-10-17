@@ -5,29 +5,22 @@
  *   TypeScript validation + storage saga → atomic Postgres RPC for core DB writes.
  *
  * Sequence:
- *  1. Create approve run record
- *  2. Set session approve_status = 'processing'
- *  3. Copy file dms-temp → dms-documents (upsert: false)
- *  4. Update approve run to storage_copied
- *  5. Call approve_dms_ai_intake() RPC (atomic DB transaction)
- *  6a. If RPC fails: cleanup copied file, update approve run to failed, return error
- *  6b. If RPC succeeds: run post-commit OCR/content sync best-effort (Phase 4)
- *  7. Update approve run to completed
- *  8. Trigger post-approve AI orchestration pipeline best-effort (Phase 5)
- *  9. Return document_id / document_no
+ * The compatibility export delegates to the F07 retained batch protocol.
+ * PostgreSQL freezes the original run, payload and path and commits its receipt
+ * atomically. Receipt-only replay never repeats post-commit provider work.
  *
  * Safety rules:
  *  - NEVER deletes from dms-temp
- *  - Compensates storage on RPC failure where possible
+ *  - NEVER deletes a copied final object on an absent/failed transaction response
  *  - OCR/content failure does NOT roll back a successful approval
  *  - Orchestration failure does NOT roll back a successful approval (Phase 5)
  *  - No raw OCR text, prompts, or AI responses in approve run metadata
  */
 
-import { randomUUID } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { logger } from "@/lib/logger";
-import { logAudit } from "@/server/actions/audit";
+import {finalizeRetainedBatch} from '@/server/dms-retained-batch-finalization';
+import type {AiApprovalInput} from '@/lib/dms/numbered-ai-approval';
 import { persistFileOcrResult } from "@/lib/dms/ocr/persist-file-ocr-result";
 import { writeDocumentContentTextSystem } from "@/server/actions/dms/document-content";
 import { extractFileContent } from "@/lib/dms/file-content-extractor";
@@ -35,21 +28,6 @@ import { getDmsAiProvider, getAzureDocumentIntelligenceProvider } from "@/lib/dm
 import { loadOcrFeatureFlags, routeOcr } from "@/lib/dms/ocr/ocr-router";
 import { AzureOcrProvider } from "@/lib/dms/ocr/azure-ocr-provider";
 import {
-  createApproveRun,
-  updateApproveRunStage,
-  recordApproveRunOnSession,
-  sanitizeApproveError,
-  APPROVE_STAGE,
-  APPROVE_STATUS,
-} from "./approve-ai-intake-events";
-import {
-  buildFinalStoragePath,
-  getFileExtension,
-  copyFileToFinalStorage,
-  cleanupFinalStorageFile,
-} from "./approve-ai-intake-storage";
-import {
-  buildApproveRpcPayload,
   type MetadataValueInput,
   type LinkInput,
 } from "./approve-ai-intake-payload";
@@ -94,291 +72,35 @@ export type ApproveAiIntakeSagaInput = {
 
 export type ApproveAiIntakeSagaResult =
   | { success: true; data: { documentId: number; documentNo: string } }
-  | { success: false; error: string };
-
-// ── RPC response type ─────────────────────────────────────────────────────────
-
-type RpcResultRow = {
-  out_document_id: number;
-  out_document_no: string;
-  out_status: string;
-};
+  | { success: false; error: string; uncertain?: boolean; retained?: {approveRunId:number|null;documentId:number;uploadSessionId:number} };
 
 // ── Main saga ─────────────────────────────────────────────────────────────────
 
+/** Compatibility export: every remaining legacy caller uses the same retained
+ * protocol. Never create a new run or storage year from a retry. */
 export async function runApproveAiIntakeSaga(
   supabase: SupabaseClient,
   adminClient: SupabaseClient,
   input: ApproveAiIntakeSagaInput
 ): Promise<ApproveAiIntakeSagaResult> {
-  const {
-    mode,
-    uploadSessionId,
-    sessionCode,
-    tempStoragePath,
-    originalFilename,
-    mimeType,
-    fileSizeBytes,
-    sha256Hash,
-    documentId,
-    documentNo,
-    title,
-    description,
-    documentTypeId,
-    categoryId,
-    typeCode,
-    confidentialityLevel,
-    owningCompanyId,
-    owningBranchId,
-    partyId,
-    issueDate,
-    expiryDate,
-    resolvedFileName,
-    createFileVersion,
-    existingFileId,
-    metadataValues,
-    tagIds,
-    links,
-    aiResultId,
-    userId,
-  } = input;
-
-  const runKey = `${uploadSessionId}-${randomUUID()}`;
-
-  // ── 1. Create approve run ────────────────────────────────────────────────
-  const approveRunId = await createApproveRun(supabase, {
-    uploadSessionId,
-    aiResultId,
-    runKey,
-    startedBy: userId,
-  });
-
-  await recordApproveRunOnSession(supabase, uploadSessionId, approveRunId, "processing");
-
-  await logAudit({
-    module_code: "DMS",
-    entity_name: "dms_upload_sessions",
-    entity_id: uploadSessionId,
-    entity_reference: sessionCode,
-    action: "update",
-    new_values: {
-      event: APPROVE_STAGE.STARTED,
-      approve_run_id: approveRunId,
-      document_no: documentNo,
-      mode,
-    },
-  });
-
-  // ── 2. Storage copy ──────────────────────────────────────────────────────
-
-  const year = new Date().getFullYear();
-  const ext = getFileExtension(originalFilename);
-
-  let finalPath: string | null = null;
-  let finalBucket: string | null = null;
-  const fileId: number | null = existingFileId ?? null;
-
-  if (createFileVersion) {
-    finalPath = buildFinalStoragePath({
-      owningCompanyId,
-      year,
-      typeCode,
-      documentId,
-      versionNumber: 1,
-      ext,
-    });
-    finalBucket = "dms-documents";
-
-    const copyResult = await copyFileToFinalStorage(adminClient, {
-      tempBucket: "dms-temp",
-      tempPath: tempStoragePath,
-      finalBucket,
-      finalPath,
-      mimeType,
-    });
-
-    if (!copyResult.success) {
-      const errInfo = sanitizeApproveError(copyResult.error);
-      await updateApproveRunStage(supabase, approveRunId, APPROVE_STATUS.FAILED, APPROVE_STAGE.FAILED, {
-        errorCode: errInfo.code,
-        errorMessage: errInfo.message,
-        completedAt: new Date().toISOString(),
-      });
-      await recordApproveRunOnSession(supabase, uploadSessionId, approveRunId, "failed", errInfo.message);
-      return { success: false, error: copyResult.error ?? "Failed to copy file to final storage" };
-    }
-
-    await updateApproveRunStage(supabase, approveRunId, APPROVE_STATUS.STORAGE_COPIED, APPROVE_STAGE.STORAGE_COPIED, {
-      finalStorageBucket: finalBucket,
-      finalStoragePath: finalPath,
-    });
-
-    logger.info("[approve-saga] storage copied", { sessionCode, finalPath, documentId });
+  if(input.mode!=="existing_batch_draft")return {success:false,error:"Single-file approval requires its retained numbered protocol."};
+  const result=await finalizeRetainedBatch(supabase,adminClient,{
+    uploadSessionId:input.uploadSessionId,title:input.title,description:input.description,documentTypeId:input.documentTypeId,
+    confidentialityLevel:input.confidentialityLevel as AiApprovalInput["confidentialityLevel"],
+    owningCompanyId:input.owningCompanyId,owningBranchId:input.owningBranchId,partyId:input.partyId,
+    issueDate:input.issueDate,expiryDate:input.expiryDate,
+    metadataValues:input.metadataValues as AiApprovalInput["metadataValues"],tagIds:input.tagIds,
+    links:input.links as AiApprovalInput["links"],aiResultId:input.aiResultId,standardFileName:input.resolvedFileName,allowDuplicate:false,
+  },input.resolvedFileName,input.userId);
+  if(!result.success)return result;
+  if(!result.replayed){
+    try{await runPostCommitOcr(supabase,adminClient,{documentId:result.data.documentId,aiResultId:input.aiResultId,
+      fileId:input.existingFileId??null,createFileVersion:true,sessionCode:input.sessionCode,userId:input.userId,
+      mimeType:input.mimeType,resolvedFileName:input.resolvedFileName});}catch{/* Committed receipt wins. */}
+    try{await triggerDmsPostApproveOrchestration({sessionCode:input.sessionCode,documentId:result.data.documentId,
+      uploadSessionId:input.uploadSessionId,approveRunId:result.approveRunId,source:"batch_finalize"});}catch{/* No inline retry/fallback. */}
   }
-
-  // ── 3. Build and call atomic RPC ─────────────────────────────────────────
-
-  await updateApproveRunStage(supabase, approveRunId, APPROVE_STATUS.STORAGE_COPIED, APPROVE_STAGE.DB_STARTED);
-
-  const rpcPayload = buildApproveRpcPayload({
-    mode,
-    uploadSessionId,
-    approveRunId,
-    aiResultId,
-    documentId,
-    documentNo,
-    title,
-    description,
-    documentTypeId,
-    categoryId,
-    confidentialityLevel,
-    owningCompanyId,
-    owningBranchId,
-    partyId,
-    issueDate,
-    expiryDate,
-    createFileVersion,
-    finalStorageBucket: finalBucket,
-    finalStoragePath: finalPath,
-    fileName: resolvedFileName,
-    mimeType,
-    fileSizeBytes,
-    sha256Hash,
-    versionNumber: 1,
-    metadataValues,
-    tagIds,
-    links,
-  });
-
-  const { data: rpcRows, error: rpcError } = await supabase.rpc(
-    "approve_dms_ai_intake",
-    { p_payload: rpcPayload }
-  );
-
-  if (rpcError) {
-    // ── Compensate storage if DB commit failed ──────────────────────────
-    let cleanupStatus: string = APPROVE_STATUS.FAILED;
-    let cleanupStage: string = APPROVE_STAGE.FAILED;
-
-    if (createFileVersion && finalBucket && finalPath) {
-      const cleanup = await cleanupFinalStorageFile(adminClient, finalBucket, finalPath);
-      if (!cleanup.success) {
-        cleanupStatus = APPROVE_STATUS.FAILED_STORAGE_CLEANUP;
-        cleanupStage = APPROVE_STAGE.CLEANUP_FAILED;
-        logger.warn("[approve-saga] storage compensation failed — orphaned object", {
-          finalBucket,
-          finalPath,
-          sessionCode,
-        });
-      }
-    }
-
-    const errInfo = sanitizeApproveError(rpcError);
-    await updateApproveRunStage(supabase, approveRunId, cleanupStatus, cleanupStage, {
-      errorCode: errInfo.code,
-      errorMessage: errInfo.message,
-      completedAt: new Date().toISOString(),
-    });
-    await recordApproveRunOnSession(supabase, uploadSessionId, approveRunId, "failed", errInfo.message);
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_upload_sessions",
-      entity_id: uploadSessionId,
-      entity_reference: sessionCode,
-      action: "update",
-      new_values: {
-        event: APPROVE_STAGE.FAILED,
-        approve_run_id: approveRunId,
-        error_code: errInfo.code,
-      },
-    });
-
-    return { success: false, error: rpcError.message ?? "DB transaction failed during approval" };
-  }
-
-  // ── 4. Extract RPC result ────────────────────────────────────────────────
-
-  const rpcResult = (rpcRows as RpcResultRow[] | null)?.[0];
-  if (!rpcResult?.out_document_id) {
-    const errInfo = sanitizeApproveError("RPC returned no result rows");
-    await updateApproveRunStage(supabase, approveRunId, APPROVE_STATUS.FAILED, APPROVE_STAGE.FAILED, {
-      errorCode: errInfo.code,
-      errorMessage: errInfo.message,
-      completedAt: new Date().toISOString(),
-    });
-    await recordApproveRunOnSession(supabase, uploadSessionId, approveRunId, "failed");
-    return { success: false, error: "Approval RPC returned no result" };
-  }
-
-  const finalDocumentId = rpcResult.out_document_id;
-  const finalDocumentNo = rpcResult.out_document_no;
-  const rpcStatus = rpcResult.out_status;
-
-  // ── 5. Post-commit OCR / content sync (best-effort) ──────────────────────
-
-  await updateApproveRunStage(supabase, approveRunId, APPROVE_STATUS.DB_COMMITTED, APPROVE_STAGE.POST_COMMIT_STARTED, {
-    documentId: finalDocumentId,
-  });
-
-  await runPostCommitOcr(supabase, adminClient, {
-    documentId: finalDocumentId,
-    aiResultId,
-    fileId,
-    createFileVersion,
-    sessionCode,
-    userId,
-    mimeType,
-    resolvedFileName,
-  });
-
-  // ── 6. Mark completed ────────────────────────────────────────────────────
-
-  await updateApproveRunStage(supabase, approveRunId, APPROVE_STATUS.COMPLETED, APPROVE_STAGE.COMPLETED, {
-    documentId: finalDocumentId,
-    completedAt: new Date().toISOString(),
-    metadata: {
-      mode,
-      rpc_status: rpcStatus,
-      metadata_count: metadataValues.filter((v) => v.rawValue !== "").length,
-      tag_count: tagIds.length,
-      link_count: links.length,
-    },
-  });
-
-  await logAudit({
-    module_code: "DMS",
-    entity_name: "dms_documents",
-    entity_id: finalDocumentId,
-    entity_reference: finalDocumentNo,
-    action: "create",
-    new_values: {
-      event: APPROVE_STAGE.COMPLETED,
-      upload_session_id: uploadSessionId,
-      ai_result_id: aiResultId,
-      approve_run_id: approveRunId,
-      mode,
-    },
-  });
-
-  // ── 8. Phase 5 — Trigger post-approve AI orchestration (best-effort) ───────
-  // approveRunId may be null if run record creation failed earlier; skip trigger in that case.
-  if (approveRunId != null) {
-    try {
-      await triggerDmsPostApproveOrchestration({
-        sessionCode,
-        documentId: finalDocumentId,
-        uploadSessionId,
-        approveRunId,
-        source: mode === "existing_batch_draft" ? "batch_finalize" : "single_file_approve",
-      });
-    } catch {
-      // Non-fatal — orchestration failure must never fail approval
-      logger.warn("[approve-saga] post-approve orchestration trigger threw unexpectedly", { sessionCode });
-    }
-  }
-
-  return { success: true, data: { documentId: finalDocumentId, documentNo: finalDocumentNo } };
+  return {success:true,data:result.data};
 }
 
 // ── Post-commit OCR helper ────────────────────────────────────────────────────

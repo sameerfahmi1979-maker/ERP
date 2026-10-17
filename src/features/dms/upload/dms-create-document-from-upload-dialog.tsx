@@ -81,7 +81,7 @@ function CreateDocumentSession({
       // another document creation or turn the receipt back into uncertainty.
       try {
         if (creation.claimEffects()) {
-          if (entityContext) {
+          if (entityContext && !session.origin_entity_type) {
             try {
               const link = await linkDmsDocumentToEntity(documentId, entityContext.entityType, entityContext.entityId, {is_primary:true});
               if (!creation.isCurrent()) return;
@@ -92,7 +92,7 @@ function CreateDocumentSession({
             }
           }
           if (!creation.isCurrent()) return;
-          toast.success(`Document ${documentNo} created successfully`);
+          toast.success(`Document ${documentNo} created. Complete any required Metadata and expiry date before activating or submitting it.`);
           onSuccess?.(documentId, documentNo);
         }
         if (!creation.isCurrent()) return;

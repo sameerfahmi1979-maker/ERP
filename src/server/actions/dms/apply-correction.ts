@@ -19,33 +19,23 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logger } from "@/lib/logger";
 import { revalidatePath } from "next/cache";
+import {runDmsCorrection} from "@/server/dms-reviewed-updates";
 import {isPartyCorrectionTarget,runPartyCorrection} from '@/server/party-dms-correction';
 import {correctionHistorySelect,projectCorrectionHistory} from '@/lib/dms/apply-correction/correction-history';
 import {
   loadCorrectionSource,
 } from "@/lib/dms/apply-correction/correction-source-loader";
-import {
-  buildCorrectionValue,
-} from "@/lib/dms/apply-correction/correction-value-builder";
-import {
-  createCorrectionProposal,
-  executeCorrectionProposal,
-  cancelCorrectionProposal,
-} from "@/lib/dms/apply-correction/correction-engine";
 import { logAudit } from "@/server/actions/audit";
 import {
   buildCorrectionSourceViewedMeta,
 } from "@/lib/dms/apply-correction/correction-audit";
 import {
-  validateApplyTarget,
   getTargetPermissions,
 } from "@/lib/dms/apply-to-erp/apply-target-registry";
 import type {
   CorrectionSourceData,
   CorrectionProposalHistory,
-  CorrectionResult,
   ListCorrectionProposalsFilter,
-  CorrectionMode,
 } from "@/lib/dms/apply-correction/types";
 import type { ActionResult } from "@/lib/dms/apply-to-erp/types";
 
@@ -192,6 +182,7 @@ const CreateProposalSchema = z.object({
   rawCorrectionValue:        z.string().min(1, "Correction value cannot be empty."),
   /** Source snapshot captured by UI from getApplyCorrectionSource response. */
   sourceSnapshot:            z.object({
+    reviewedSnapshot: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     reviewedRevision: z.string().regex(/^[1-9]\d*$/).optional(),
     originalApplyItemId:    z.number(),
     originalApplyRunId:     z.number(),
@@ -258,45 +249,9 @@ export async function createApplyCorrectionProposal(
       return result;
     }
 
-    // Validate target still allowlisted
-    const targetValidation = validateApplyTarget(
-      input.sourceSnapshot.targetTable,
-      input.sourceSnapshot.targetField
-    );
-    if (!targetValidation.valid) {
-      return { success: false, error: targetValidation.reason, errorCode: "target_not_allowlisted" };
-    }
-
-    // Build and validate correction value
-    const valueResult = buildCorrectionValue(
-      input.rawCorrectionValue,
-      input.sourceSnapshot.valueType as never,
-      input.sourceSnapshot.targetField
-    );
-    if (!valueResult.ok) {
-      return { success: false, error: valueResult.error };
-    }
-
-    // Create the proposal (writes proposal row only)
-    const result: CorrectionResult = await createCorrectionProposal(
-      {
-        originalApplyItemId:       input.originalApplyItemId,
-        correctionMode:            input.correctionMode as CorrectionMode,
-        correctionValue:           valueResult.correctionValueJson,
-        proposedCorrectionSummary: valueResult.proposedCorrectionSummary,
-        sourceSnapshot:            input.sourceSnapshot as CorrectionSourceData,
-      },
-      ctx.profile.id,
-      ctx.profile.id
-    );
-
-    if (!result.success) {
-      return { success: false, error: result.message, errorCode: result.error };
-    }
-
-    revalidatePath("/dms");
-
-    return { success: true, data: { proposalId: result.proposalId } };
+    const result=await runDmsCorrection("prepare",{originalApplyItemId:input.originalApplyItemId,requestId:input.requestId,snapshot:input.sourceSnapshot.reviewedSnapshot,mode:input.correctionMode,value:input.rawCorrectionValue});
+    if(result.success)refreshCorrectionViews(canonical.data.documentId);
+    return result;
   } catch (err) {
     logger.error("[apply-correction] createApplyCorrectionProposal error", { error: String(err) });
     return { success: false, error: "Failed to create correction proposal." };
@@ -537,24 +492,9 @@ export async function applyCorrectionProposal(
       return result;
     }
 
-    // Execute the correction
-    const result = await executeCorrectionProposal(
-      {
-        proposalId:               input.proposalId,
-        humanReviewConfirmed:     input.humanReviewConfirmed,
-        replaceExistingConfirmed: input.replaceExistingConfirmed,
-      },
-      ctx.profile.id,
-      ctx.profile.id
-    );
-
-    if (!result.success) {
-      return { success: false, error: result.message, errorCode: result.error };
-    }
-
-    revalidatePath("/dms");
-
-    return { success: true, data: { proposalId: result.proposalId, status: result.status } };
+    const result=await runDmsCorrection("apply",input);
+    if(result.success)refreshCorrectionViews();
+    return result;
   } catch (err) {
     logger.error("[apply-correction] applyCorrectionProposal error", { error: String(err) });
     return { success: false, error: "Failed to apply correction." };
@@ -603,15 +543,9 @@ export async function cancelApplyCorrectionProposal(
       if(result.success)refreshCorrectionViews();
       return result;
     }
-    const result = await cancelCorrectionProposal(proposalId, ctx.profile.id, ctx.profile.id);
-
-    if (!result.success) {
-      return { success: false, error: result.message, errorCode: result.error };
-    }
-
-    revalidatePath("/dms");
-
-    return { success: true, data: { proposalId } };
+    const result=await runDmsCorrection("cancel",{proposalId});
+    if(result.success)refreshCorrectionViews();
+    return result;
   } catch (err) {
     logger.error("[apply-correction] cancelApplyCorrectionProposal error", { error: String(err) });
     return { success: false, error: "Failed to cancel correction proposal." };

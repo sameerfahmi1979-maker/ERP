@@ -4,6 +4,7 @@ import { useState, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { useNumberedAiApproval } from "@/hooks/use-numbered-ai-approval";
+import {useRetainedBatchFinalization} from '@/hooks/use-retained-batch-finalization';
 import { toast } from "sonner";
 import {
   Bot,
@@ -32,11 +33,14 @@ import {
   saveAiIntakeDraft,
   getIntakeSessionSignedUrl,
 } from "@/server/actions/dms/ai-intake";
-import { finalizeDraftIntake, discardDraftIntake } from "@/server/actions/dms/batch-intake";
+import { finalizeDraftIntake, discardDraftIntake,recoverDraftFinalization } from "@/server/actions/dms/batch-intake";
 import { previewDmsStandardFileName } from "@/server/actions/dms/standard-file-name";
 import type { DmsDocumentTypeRow } from "@/server/actions/dms/document-types";
 import { DmsOrchestrationProgressCard } from "@/features/dms/orchestration";
 import { DmsIntakeLinkPanel, type IntakeLinkChip } from "@/features/dms/intake/dms-intake-link-panel";
+import {DmsExactFileReview} from './dms-exact-file-review';
+import {confirmExactIntakeReview} from '@/server/actions/dms/intake-review';
+import type {IntakeReviewConfirmation} from '@/lib/dms/intake-review';
 
 // ── Format file size ──────────────────────────────────────────────────────────
 
@@ -63,7 +67,9 @@ export function DmsAiIntakePageClient({
   const { activeTab, updateTabRoute, renameTab, closeTab } = useWorkspace();
   const [session] = useState<IntakeSessionData>(initialSession);
   const approval = useNumberedAiApproval(String(initialSession.id), approveAiIntakeAndCreateDocument);
-  const retainedApproval = !session.document_id && approval.pendingSessionIds.includes(session.id);
+  const batchApproval=useRetainedBatchFinalization({enabled:!!session.document_id,sessionId:session.id,recover:recoverDraftFinalization,submit:finalizeDraftIntake});
+  const retainedApproval = session.document_id?batchApproval.pending:approval.pendingSessionIds.includes(session.id);
+  const approvalBlocked=session.document_id?(batchApproval.loading||batchApproval.blocked||batchApproval.busy):approval.retentionError;
   const [aiResultPatch, setAiResultPatch] = useState<Partial<IntakeAiResultRow> | null>(null);
   const aiResult = session.ai_result
     ? ({ ...session.ai_result, ...aiResultPatch } as IntakeAiResultRow)
@@ -83,6 +89,7 @@ export function DmsAiIntakePageClient({
   const [discardReason, setDiscardReason] = useState("");
   // HR.DOCLINK.1A — ticked ERP record links, applied on Approve
   const [entityLinks, setEntityLinks] = useState<IntakeLinkChip[]>([]);
+  const [fileReview,setFileReview]=useState<IntakeReviewConfirmation|null>(null);
 
   const isFailed = session.intake_status === "failed";
   const isProcessing = ["ocr_pending", "ocr_processing", "ai_pending", "ai_processing"].includes(session.intake_status);
@@ -141,7 +148,7 @@ export function DmsAiIntakePageClient({
   // ── Save draft ────────────────────────────────────────────────────────────
 
   const handleSaveDraft = () => {
-    if (retainedApproval) return;
+    if (retainedApproval || approvalBlocked) return;
     startTransition(async () => {
       const draftPayload = buildDraftPayload(formValues);
       const result = await saveAiIntakeDraft(session.id, draftPayload);
@@ -156,11 +163,20 @@ export function DmsAiIntakePageClient({
   // ── Approve & Save ────────────────────────────────────────────────────────
 
   const handleApprove = () => {
+    if(approvalBlocked)return;
     startTransition(async () => {
       const error = retainedApproval ? null : await validate();
       if (error) {
         toast.error(error);
         return;
+      }
+
+      if(!retainedApproval){
+        if(!fileReview||fileReview.sessionId!==session.id||fileReview.typeId!==formValues.documentTypeId||fileReview.expiryDate!==(formValues.expiryDate||null)){
+          toast.error('Verify and explicitly confirm the original file, selected type and expiry date before approval.');return;
+        }
+        const reviewed=await confirmExactIntakeReview(fileReview);
+        if(!reviewed.success){toast.error(reviewed.error);return;}
       }
 
       const sharedPayload = {
@@ -182,18 +198,19 @@ export function DmsAiIntakePageClient({
         // HR.DOCLINK.1A — ticked suggestions + manual links, written by the approve saga
         links: entityLinks.map((l) => ({ entityType: l.entityType, entityId: l.entityId })),
         aiResultId: aiResult?.id ?? null,
+        allowDuplicate:fileReview?.confirmed===true&&fileReview.override===true,
       };
 
       // Batch drafts already have a draft document (pending_ai_review): finalize
       // that ONE draft in place. Single-file intake creates the document now.
       // Both paths approve exactly one document — never in bulk.
       const result = session.document_id
-        ? await finalizeDraftIntake(sharedPayload)
+        ? await batchApproval.run(sharedPayload)
         : await approval.run(sharedPayload);
 
       // A response from a closed/replaced owner must not navigate a new tab or
       // another account. Batch dispatch and its existing lifecycle stay unchanged.
-      if (!session.document_id && !approval.isCurrent()) return;
+      if(!result||(session.document_id?!batchApproval.isCurrent():!approval.isCurrent()))return;
 
       if (result.success && result.data) {
         toast.success(`Document ${result.data.documentNo} created successfully`);
@@ -218,7 +235,7 @@ export function DmsAiIntakePageClient({
   // ── Retry AI ──────────────────────────────────────────────────────────────
 
   const handleRetry = () => {
-    if (retainedApproval) return;
+    if (retainedApproval || approvalBlocked) return;
     startTransition(async () => {
       const result = await retryAiIntake(session.id);
       if (result.success) {
@@ -335,7 +352,7 @@ export function DmsAiIntakePageClient({
               <Button
                 size="sm"
                 onClick={handleApprove}
-                disabled={isPending || (!session.document_id && approval.retentionError)}
+                disabled={isPending || approvalBlocked}
                 className="bg-green-600 hover:bg-green-700 text-white"
               >
                 {isPending ? (
@@ -362,6 +379,8 @@ export function DmsAiIntakePageClient({
 
       {retainedApproval && <p role="status" className="mt-3 text-sm text-amber-700">An approval request is retained for recovery. Retry uses its original reviewed values, even if the form has changed. Do not discard or re-run analysis until it is reconciled.</p>}
       {approval.retentionError && !session.document_id && <p role="alert" className="mt-3 text-sm text-destructive">The retained approval could not be read. Reopen the original workspace; a replacement request will not be created.</p>}
+      {session.document_id&&batchApproval.loading&&<p role="status" className="mt-3 text-sm">Checking the original finalization request…</p>}
+      {session.document_id&&batchApproval.blocked&&<p role="alert" className="mt-3 text-sm text-destructive">The original finalization could not be read. Reopen this intake after access is restored; do not submit a replacement.</p>}
       {/* ── Discard confirmation ────────────────────────────────────────────── */}
       {discardDialogOpen && (
         <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-3">
@@ -384,7 +403,7 @@ export function DmsAiIntakePageClient({
               size="sm"
               variant="destructive"
               onClick={handleDiscard}
-              disabled={isPending}
+              disabled={isPending || retainedApproval}
             >
               Confirm Discard
             </Button>
@@ -556,7 +575,7 @@ export function DmsAiIntakePageClient({
             <DmsIntakeLinkPanel
               sessionCode={session.session_code}
               aiReady={isReady}
-              disabled={isPending}
+              disabled={isPending || retainedApproval || approvalBlocked}
               value={entityLinks}
               onChange={setEntityLinks}
             />
@@ -633,6 +652,7 @@ export function DmsAiIntakePageClient({
         </div>
       )}
 
+      {isReady&&!retainedApproval&&<DmsExactFileReview sessionId={session.id} typeId={formValues.documentTypeId??undefined} expiryDate={formValues.expiryDate||null} reviewKey={JSON.stringify({formValues,entityLinks})} disabled={isPending} onChange={setFileReview}/>}
       {/* ── Footer ─────────────────────────────────────────────────────────── */}
       {isReady && (
         <div className="mt-6 flex items-center justify-between border-t pt-4">
@@ -659,7 +679,7 @@ export function DmsAiIntakePageClient({
             <Button
               size="sm"
               onClick={handleApprove}
-              disabled={isPending || (!session.document_id && approval.retentionError)}
+              disabled={isPending || approvalBlocked}
               className="bg-green-600 hover:bg-green-700 text-white"
             >
               {isPending ? (

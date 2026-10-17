@@ -1,5 +1,4 @@
 import 'server-only';
-import {createHash} from 'node:crypto';
 import {z} from 'zod';
 import {createClient} from '@/lib/supabase/server';
 import {createAdminClient} from '@/lib/supabase/admin';
@@ -11,9 +10,15 @@ import {runPostCommitOcr} from '@/lib/dms/approve/approve-ai-intake';
 import {triggerDmsPostApproveOrchestration} from '@/lib/dms/orchestration/post-approve-orchestration';
 import {aiApprovalContractSchema,aiApprovalInputSchema,aiApprovalSnapshotSchema,aiApprovalPlanSchema,aiApprovalReceiptSchema,type AiApprovalResult} from '@/lib/dms/numbered-ai-approval';
 import type {WorkspaceSaveContract} from '@/lib/workspace/save-contract';
+import {readBoundedDmsObject,verifyDmsBlob} from '@/server/dms-file-verification';
 
 const identity=z.object({id:z.string().uuid(),version:z.string().min(1),lastModified:z.string().datetime({offset:true})});
-const hash=async(blob:Blob)=>createHash('sha256').update(Buffer.from(await blob.arrayBuffer())).digest('hex');
+type ApprovalSource=z.infer<typeof aiApprovalSnapshotSchema>['source'];
+async function verifiedApprovalBytes(storage:ReturnType<ReturnType<typeof createAdminClient>['storage']['from']>,path:string,source:ApprovalSource,expected=source.sha256_hash){
+ const blob=await readBoundedDmsObject(storage,path,source.file_size_bytes);
+ const proof=await verifyDmsBlob(blob,{name:source.original_filename,mime:source.mime_type,size:source.file_size_bytes,sha256:expected});
+ return {blob:new Blob([blob],{type:proof.mime}),proof};
+}
 const lost='Approval is unconfirmed. Retry this retained request; do not create another document.';
 function failure(code?:string,retained?:{documentId:number;documentNo:string}):AiApprovalResult{
  // Use one exact decision for both recovery state and safe feedback.
@@ -44,10 +49,10 @@ export async function approveNumberedAiIntake(input:unknown,contract?:WorkspaceS
    if(!snapshot.success||snapshot.data.source.id!==request.uploadSessionId||snapshot.data.type.id!==request.documentTypeId)return {success:false,error:'The approval context could not be verified.'};
    if(request.standardFileName&&!validateStandardFileName(request.standardFileName,{requiresExpiryTracking:snapshot.data.type.requires_expiry_tracking}).valid)return preparationFailure({success:false,error:'Standard file name is incomplete. Review it before approving.'});
    const storage=createAdminClient(),source=snapshot.data.source;
-   const original=await storage.storage.from('dms-temp').download(source.temp_storage_path);
-   if(original.error||!original.data||original.data.size!==source.file_size_bytes)return preparationFailure({success:false,error:'The source file is unavailable or changed. No reference was reserved.'});
-   const sha=await hash(original.data);
-   if(source.sha256_hash&&source.sha256_hash.toLowerCase()!==sha)return preparationFailure({success:false,error:'The source file does not match its recorded content. No reference was reserved.'});
+   let original:Awaited<ReturnType<typeof verifiedApprovalBytes>>;
+   try{original=await verifiedApprovalBytes(storage.storage.from('dms-temp'),source.temp_storage_path,source);}
+   catch{return preparationFailure({success:false,error:'The source file is unavailable, changed or does not match its recorded format. No reference was reserved.'});}
+   const sha=original.proof.sha256;
    return {success:false,prepared:{operation_id:c.data.operationId,snapshot:{...snapshot.data,content_sha256:sha}}};
   }
   dispatched=true;
@@ -63,9 +68,8 @@ export async function approveNumberedAiIntake(input:unknown,contract?:WorkspaceS
    standardFileName:request.standardFileName??null,originalFilename:source.original_filename,aiResultId:request.prepared.analysis_result_id,
    description:request.description??null,title:request.title});
   if(!validateStandardFileName(fileName,{requiresExpiryTracking:request.prepared.type.requires_expiry_tracking}).valid)return failure('22023',retained);
-  const storage=createAdminClient(),original=await storage.storage.from('dms-temp').download(source.temp_storage_path);
-  if(original.error||!original.data||original.data.size!==source.file_size_bytes||await hash(original.data)!==request.prepared.content_sha256)return failure('PT409',retained);
-  await storage.storage.from('dms-documents').upload(p.storage_path,original.data,{contentType:source.mime_type,upsert:false});
+  const storage=createAdminClient(),original=await verifiedApprovalBytes(storage.storage.from('dms-temp'),source.temp_storage_path,source,request.prepared.content_sha256);
+  await storage.storage.from('dms-documents').upload(p.storage_path,original.blob,{contentType:original.proof.mime,upsert:false});
   const recheck=await client.rpc('reserve_numbered_ai_intake',{p_operation:c.data.operationId,p_request:request});
   const current=aiApprovalPlanSchema.safeParse(recheck.data);
   if(recheck.error||!current.success||['documentId','documentNo','operation_id','upload_session_id','approve_run_id','storage_path','actor_id','auth_session_id'].some(key=>current.data[key as keyof typeof current.data]!==p[key as keyof typeof p]))return failure(recheck.error?.code,retained);
@@ -76,8 +80,7 @@ export async function approveNumberedAiIntake(input:unknown,contract?:WorkspaceS
   }
   const before=await storage.storage.from('dms-documents').info(p.storage_path),beforeId=identity.safeParse(before.data);
   if(before.error||!beforeId.success)return failure(undefined,retained);
-  const copied=await storage.storage.from('dms-documents').download(p.storage_path);
-  if(copied.error||!copied.data||copied.data.size!==source.file_size_bytes||await hash(copied.data)!==request.prepared.content_sha256)return failure('PT409',retained);
+  await verifiedApprovalBytes(storage.storage.from('dms-documents'),p.storage_path,source,request.prepared.content_sha256);
   const after=await storage.storage.from('dms-documents').info(p.storage_path),afterId=identity.safeParse(after.data);
   if(after.error||!afterId.success||JSON.stringify(afterId.data)!==JSON.stringify(beforeId.data))return failure('PT409',retained);
   const proof=await storage.rpc('attest_numbered_ai_intake',{p_actor:p.actor_id,p_session:p.auth_session_id,p_operation:c.data.operationId,p_request:request,

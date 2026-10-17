@@ -205,6 +205,10 @@ export async function generateAndQueueMetadataSuggestions(
       payloadJson,
     });
 
+    if (!upsertResult.itemId) {
+      return { success: false, error: "Suggestion review publication was not confirmed." };
+    }
+
     await db
       .from("dms_document_types")
       .update({ ai_suggestions_generated_at: nowIso })

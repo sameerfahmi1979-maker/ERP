@@ -10,7 +10,6 @@ import {
   ExternalLink,
   Archive,
   ArchiveX,
-  Trash2,
   FileText,
   RefreshCw,
   Sparkles,
@@ -22,17 +21,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel,
-  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
-  AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
 import { Badge } from "@/components/ui/badge";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { DmsDocumentStatusBadge } from "./dms-document-status-badge";
 import { DmsExpiryBadge } from "./dms-expiry-badge";
-import { archiveDmsDocument, unarchiveDmsDocument, deleteDmsDocument } from "@/server/actions/dms/documents";
+import { archiveDmsDocument, unarchiveDmsDocument } from "@/server/actions/dms/documents";
 import type { DmsDocumentRow } from "@/server/actions/dms/documents";
 import { DmsRiskBadge } from "./dms-risk-badge";
 import { askDmsDocumentsQuestion } from "@/server/actions/dms/ai-search";
@@ -46,6 +40,7 @@ import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { ConfiguredRow, EditColumns, EditFilters, useListColumns, type ListColumn } from "@/components/erp/table/list-controls";
 import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
 import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
+import {documentLifecycle} from "@/lib/dms/lifecycle";
 
 type DocColKey =
   | "docNo"
@@ -117,12 +112,11 @@ export function DmsDocumentsTable({
   canCreate = false,
   canEdit = false,
   canArchive = false,
-  canHardDelete = false,
 }: DmsDocumentsTableProps) {
 
   const { openTab } = useWorkspace();
   const [isPending, startTransition] = useTransition();
-  const [deleteTarget, setDeleteTarget] = useState<DmsDocumentRow | null>(null);
+  const [lifecycleMode,setLifecycleMode]=usePersistentUiState("dms-documents:lifecycle",false);
 
   // ERP REALTIME.1B — live DMS document list sync.
   // Revalidate only the active protected read when another user changes a document.
@@ -207,7 +201,7 @@ export function DmsDocumentsTable({
   const [sortDir,setSortDir]=usePersistentUiState<"asc"|"desc">("dms-documents:table:direction","desc");
   const seed=useMemo(()=>({rows:initialDocuments,totalCount:initialTotal,page:1,pageSize:25}),[initialDocuments,initialTotal]);
   const today=new Date().toISOString().slice(0,10);
-  const filters={excludeArchived:true,search:search.trim()||undefined,searchMode:searchMode==="quick"?"quick":searchMode==="safe"?"safe_fts":searchMode==="content"?"content":undefined,document_type_id:filterType??undefined,category_id:filterCategory??undefined,status:filterStatus??undefined,confidentiality:filterConfidentiality??undefined,expired:filterExpiry==="expired"?true:undefined,expiring_soon:filterExpiry==="expiring_30"?true:undefined,expiry_from:filterExpiry==="valid"?today:undefined,expiryState:filterExpiry==="no_expiry"?"missing_expiry":undefined};
+  const filters={excludeArchived:!lifecycleMode,search:search.trim()||undefined,searchMode:searchMode==="quick"?"quick":searchMode==="safe"?"safe_fts":searchMode==="content"?"content":undefined,document_type_id:filterType??undefined,category_id:filterCategory??undefined,status:filterStatus??undefined,confidentiality:filterConfidentiality??undefined,expired:filterExpiry==="expired"?true:undefined,expiring_soon:filterExpiry==="expiring_30"?true:undefined,expiry_from:filterExpiry==="valid"?today:undefined,expiryState:filterExpiry==="no_expiry"?"missing_expiry":undefined};
   const uiReadDocuments=useServerPage<DmsDocumentRow>({resource:"dms-documents",params:{page,pageSize,sortKey:sortKey??"created_at",sortDir,filters},...(initialSeed ? {seed:initialSeed} : {seedParams:{page:1,pageSize:25,sortKey:"created_at",sortDir:"desc",filters:{excludeArchived:true}},seed,updatedAt:initialUpdatedAt})});
   const total=uiReadDocuments.data?.totalCount??0;
   const totalPages=Math.max(1,Math.ceil(total/pageSize));
@@ -244,25 +238,6 @@ export function DmsDocumentsTable({
     });
   }
 
-  function handleDelete(doc: DmsDocumentRow) {
-    setDeleteTarget(doc);
-  }
-
-  function confirmDelete() {
-    if (!deleteTarget) return;
-    const doc = deleteTarget;
-    setDeleteTarget(null);
-    startTransition(async () => {
-      const result = await deleteDmsDocument(doc.id);
-      if (result.success) {
-        toast.success(`Document "${doc.document_no}" permanently deleted`);
-        void uiReadDocuments.refetch();
-
-      } else {
-        toast.error(result.error ?? "Delete failed");
-      }
-    });
-  }
 
   // ── Filter combobox options ──────────────────────────────────────────────
   const typeOptions: ERPComboboxOption[] = useMemo(
@@ -284,6 +259,12 @@ export function DmsDocumentsTable({
 
   return (
     <QueryReadBoundary queries={[uiReadDocuments]}><div className="space-y-4">
+      <div className="space-y-1">
+        <Button type="button" variant="outline" size="sm" aria-pressed={lifecycleMode} onClick={()=>{setLifecycleMode(!lifecycleMode);table.setPage(1);}}>
+          {lifecycleMode?"Show active collection":"Show lifecycle, including historical documents"}
+        </Button>
+        <p className="text-xs text-muted-foreground">{lifecycleMode?"Lifecycle view includes archived and replaced records. Search and filters run before server pagination. Open a document’s Lifecycle section for the next step and queue links.":"Active collection. Use lifecycle view to include archived and replaced records; uploads not yet saved as documents remain in Upload Inbox."}</p>
+      </div>
       {/* Row 1: Search */}
       <div className="flex flex-wrap items-center gap-2">
         {/* Search mode selector */}
@@ -734,12 +715,14 @@ export function DmsDocumentsTable({
                     {!doc.ai_summary && doc.description && (
                       <p className="text-muted-foreground truncate mt-0.5">{doc.description}</p>
                     )}
+                    {lifecycleMode && <div className="mt-1 text-xs whitespace-normal space-y-1"><p>Next: {documentLifecycle(doc).next}</p>{documentLifecycle(doc).blocker&&<p className="text-muted-foreground">Blocked: {documentLifecycle(doc).blocker}</p>}</div>}
                   </td>
                   <td data-column="type" className="px-3 py-2 text-muted-foreground truncate">
                     {doc.document_type?.name_en ?? "—"}
                   </td>
                   <td data-column="status" className="px-3 py-2">
                     <DmsDocumentStatusBadge status={doc.status} />
+                    {lifecycleMode && <p className="mt-1 text-xs" title={`${documentLifecycle(doc).next} ${documentLifecycle(doc).blocker??""}`}>{documentLifecycle(doc).stage}<span className="block text-muted-foreground">{documentLifecycle(doc).owner}</span></p>}
                   </td>
                   <td data-column="expiry" className="px-3 py-2">
                     {doc.expiry_date ? (
@@ -801,18 +784,7 @@ export function DmsDocumentsTable({
                           )}
                         </Button>
                       )}
-                      {canHardDelete && (
-                        <Button aria-label="Permanently Delete (system admin only)"
-                          size="icon"
-                          variant="ghost"
-                          className="h-11 w-11 sm:h-8 sm:w-8 text-destructive hover:text-destructive"
-                          onClick={() => handleDelete(doc)}
-                          disabled={isPending}
-                          title="Permanently Delete (system admin only)"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      )}                    </div>
+                    </div>
                   </td>
                 </ConfiguredRow>
               ))
@@ -836,40 +808,7 @@ export function DmsDocumentsTable({
         </div>
       )}
 
-      {/* ── Hard Delete Confirmation Dialog ─────────────────────────────────── */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-destructive">Permanently Delete Document?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-2">
-                <p>
-                  You are about to permanently delete{" "}
-                  <span className="font-semibold text-foreground">{deleteTarget?.document_no}</span>
-                  {deleteTarget?.title ? ` — ${deleteTarget.title}` : ""}.
-                </p>
-                <p className="font-medium text-destructive">
-                  This action is irreversible. The document and all associated data
-                  (files, versions, metadata, review queue items, upload sessions) will be
-                  permanently removed from the system.
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Only system administrators may perform this action.
-                </p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Permanently Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+
     </div></QueryReadBoundary>
   );
 }

@@ -15,6 +15,10 @@ import { ERPChildDialogForm } from "@/features/dms/documents/section-read-bounda
 import { ERPCombobox } from "@/components/erp/combobox";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
 import { attachUploadToExistingDocument, type EligibleVersionLinkCandidate } from "@/server/actions/dms/document-upload-attach";
+import {DmsExactFileReview} from '@/features/dms/intake/dms-exact-file-review';
+import {confirmExactIntakeReview} from '@/server/actions/dms/intake-review';
+import type {IntakeReviewConfirmation} from '@/lib/dms/intake-review';
+import {DmsAttachmentRecovery} from '@/features/dms/upload/dms-attachment-recovery';
 import {
   invalidateDmsDocumentFiles,
   invalidateDmsDocumentVersions,
@@ -41,6 +45,9 @@ export function DmsLinkVersionDialog({
   const [versionLabel, setVersionLabel] = useState("");
   const [changeNotes, setChangeNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fileReview,setFileReview]=useState<IntakeReviewConfirmation|null>(null);
+  const confirmedReview=useRef<string|null>(null);
+  const [recoveryBlocking,setRecoveryBlocking]=useState(true);
 
   const flight=useRef(false);
   const candidateQuery = useQuery({
@@ -71,6 +78,7 @@ export function DmsLinkVersionDialog({
   };
 
   const handleSubmit = async () => {
+    if(recoveryBlocking){toast.error('Read or reconcile the original attachment request before starting a replacement.');return;}
     if(flight.current||!ready)return;
     if (!uploadSessionId || !candidates.some(c=>c.id===uploadSessionId&&c.eligible)) {
       toast.error("Select an uploaded file to link as the new version");
@@ -78,6 +86,9 @@ export function DmsLinkVersionDialog({
     }
     flight.current=true;setIsSubmitting(true);
     try {
+      if(!fileReview||fileReview.sessionId!==uploadSessionId||fileReview.documentId!==documentId){toast.error('Verify and confirm the selected original file first.');return;}
+      const key=JSON.stringify(fileReview);
+      if(confirmedReview.current!==key){const reviewed=await confirmExactIntakeReview(fileReview);if(!reviewed.success){toast.error(reviewed.error);return;}confirmedReview.current=key;}
       const result = await attachUploadToExistingDocument({
         uploadSessionId,
         documentId,
@@ -110,7 +121,7 @@ export function DmsLinkVersionDialog({
         : c.is_expired_suggestion
         ? "Expired"
         : c.type_match === "match"
-        ? "Type verified"
+        ? "AI type matches — review required"
         : undefined;
     return {
       value: c.id,
@@ -142,6 +153,7 @@ export function DmsLinkVersionDialog({
       submitLabel="Link Version"
     >
       <div className="space-y-4">
+        <DmsAttachmentRecovery open={open} documentId={documentId} onBlockingChange={setRecoveryBlocking} onRecovered={()=>{invalidateDmsDocumentFiles(queryClient,documentId);invalidateDmsDocumentVersions(queryClient,documentId);invalidateDmsDocumentFileStorage(queryClient,documentId);handleClose(false);onSuccess?.();}} onCancelled={id=>{if(uploadSessionId===id)setUploadSessionId(null);void candidateQuery.refetch();}}/>
         {candidateQuery.isError&&<DmsLoadError subject="eligible uploads" retry={()=>candidateQuery.refetch()} pending={loadingCandidates}/>}
         <div className="rounded-md bg-muted/20 border border-border p-3 text-xs text-muted-foreground">
           <p>
@@ -169,6 +181,7 @@ export function DmsLinkVersionDialog({
           />
         </div>
 
+        {open&&uploadSessionId&&<DmsExactFileReview sessionId={uploadSessionId} documentId={documentId} reviewKey={JSON.stringify({changeNotes,versionLabel})} disabled={isSubmitting} onChange={setFileReview}/>}
         {!loadingCandidates && candidates.length === 0 && (
           <div className="flex flex-col items-center gap-2 py-6 text-muted-foreground rounded-md border border-dashed border-muted-foreground/30">
             <InboxIcon className="h-6 w-6 opacity-40" />

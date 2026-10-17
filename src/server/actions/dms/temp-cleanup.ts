@@ -5,19 +5,16 @@
  *
  * v6.1 requirements implemented here:
  *  - settings-driven retention per terminal status (erp_dms_temp_cleanup_settings)
- *  - dry-run by default; real deletion requires settings.enabled AND the
- *    DMS_TEMP_CLEANUP_DELETE_ENABLED feature flag AND dms.admin
+ *  - report-only until retained outcomes/reference and retention review pass
  *  - legal-hold prefixes and manual retain list are never deleted
  *  - orphan reconciliation (storage folders with no session row) — report-only
  *  - every run is persisted to erp_dms_temp_cleanup_runs via service role
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { logger } from "@/lib/logger";
-import { revalidatePath } from "next/cache";
-import { isDmsTempCleanupDeletionEnabled } from "@/lib/output/feature-flags";
 import {
   CLEANABLE_STATUSES,
   evaluateSessionEligibility,
@@ -45,13 +42,12 @@ export type DmsTempCleanupRunSummary = {
 };
 
 const ORPHAN_SCAN_FOLDER_LIMIT = 1000;
-const STORAGE_DELETE_RETRIES = 2;
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 export async function getDmsTempCleanupSettings(): Promise<ActionResult<DmsTempCleanupSettings>> {
   const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "dms.admin")) return { success: false, error: "Permission denied: requires dms.admin" };
+  if (!hasGlobalPermission(ctx, "dms.admin")) return { success: false, error: "Permission denied: requires global dms.admin" };
 
   const db = createAdminClient();
   const { data, error } = await db
@@ -67,7 +63,7 @@ export async function updateDmsTempCleanupSettings(
   patch: Partial<DmsTempCleanupSettings>
 ): Promise<ActionResult> {
   const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "dms.admin")) return { success: false, error: "Permission denied: requires dms.admin" };
+  if (!hasGlobalPermission(ctx, "dms.admin")) return { success: false, error: "Permission denied: requires global dms.admin" };
 
   const allowed: Record<string, unknown> = {};
   if (typeof patch.enabled === "boolean") allowed.enabled = patch.enabled;
@@ -117,9 +113,11 @@ export async function runDmsTempCleanup(options?: {
   const startedAt = Date.now();
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "dms.admin")) {
+    if (!hasGlobalPermission(ctx, "dms.admin")) {
       return { success: false, error: "Permission denied: requires dms.admin" };
     }
+
+    if(options?.mode==='delete')return {success:false,error:'Temporary-file deletion is unavailable while retained creation/approval outcomes and reference/retention review are unresolved. Use dry-run reporting; no files will be deleted.'};
 
     const db = createAdminClient();
     const { data: settingsRow, error: settingsError } = await db
@@ -132,15 +130,7 @@ export async function runDmsTempCleanup(options?: {
     }
     const settings = normalizeSettings(settingsRow);
 
-    const mode: "dry_run" | "delete" = options?.mode === "delete" ? "delete" : "dry_run";
-    if (mode === "delete" && (!settings.enabled || !isDmsTempCleanupDeletionEnabled())) {
-      // Governance gate: fall back to dry-run rather than deleting.
-      return {
-        success: false,
-        error:
-          "Deletion mode is disabled. Enable it in cleanup settings AND set DMS_TEMP_CLEANUP_DELETE_ENABLED=true. Run a dry-run instead.",
-      };
-    }
+    const mode = "dry_run" as const;
 
     // 1. Load candidate sessions (terminal statuses, not yet cleaned)
     const { data: rows, error: fetchError } = await db
@@ -166,17 +156,19 @@ export async function runDmsTempCleanup(options?: {
     // 2. Orphan reconciliation (report-only): storage folders with no session row
     let orphanFolders: string[] = [];
     try {
-      const { data: folders } = await db.storage
+      const { data: folders, error: folderError } = await db.storage
         .from("dms-temp")
         .list("sessions", { limit: ORPHAN_SCAN_FOLDER_LIMIT });
+      if(folderError||!Array.isArray(folders))throw Error('Folder preview unavailable');
       const folderCodes = (folders ?? [])
         .filter((f) => f.id === null) // folders, not files
         .map((f) => f.name);
       if (folderCodes.length > 0) {
-        const { data: known } = await db
+        const { data: known, error: knownError } = await db
           .from("dms_upload_sessions")
           .select("session_code")
           .in("session_code", folderCodes);
+        if(knownError||!Array.isArray(known))throw Error('Reference preview unavailable');
         orphanFolders = findOrphanFolders(
           folderCodes,
           new Set((known ?? []).map((k: { session_code: string }) => k.session_code))
@@ -184,6 +176,7 @@ export async function runDmsTempCleanup(options?: {
       }
     } catch (e) {
       logger.error("dms-temp orphan scan failed", e);
+      return {success:false,error:'Cleanup reference preview is incomplete. No files were deleted and no orphan classification is confirmed.'};
     }
 
     const summary: DmsTempCleanupRunSummary = {
@@ -201,41 +194,6 @@ export async function runDmsTempCleanup(options?: {
       errors: [],
       duration_ms: 0,
     };
-
-    // 3. Deletion (only in delete mode)
-    if (mode === "delete") {
-      for (const s of eligibleSessions) {
-        const path = s.temp_storage_path as string;
-        let lastError: string | null = null;
-        for (let attempt = 0; attempt <= STORAGE_DELETE_RETRIES; attempt++) {
-          const { error: delError } = await db.storage.from("dms-temp").remove([path]);
-          if (!delError) { lastError = null; break; }
-          lastError = delError.message;
-          await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
-        }
-
-        if (lastError) {
-          summary.failed++;
-          summary.errors.push({ session_id: s.id, error: lastError });
-          await db
-            .from("dms_upload_sessions")
-            .update({ cleanup_error_message: lastError, updated_at: now.toISOString() })
-            .eq("id", s.id);
-          continue;
-        }
-
-        await db
-          .from("dms_upload_sessions")
-          .update({
-            temp_cleaned_at: now.toISOString(),
-            cleanup_error_message: null,
-            updated_at: now.toISOString(),
-          })
-          .eq("id", s.id);
-        summary.deleted++;
-        summary.bytes_freed += s.file_size_bytes ?? 0;
-      }
-    }
 
     summary.duration_ms = Date.now() - startedAt;
 
@@ -259,25 +217,8 @@ export async function runDmsTempCleanup(options?: {
       })
       .select("id")
       .single();
-    if (runError) logger.error("dms-temp cleanup run log insert failed", runError);
+    if (runError || !runRow) return {success:false,error:'Cleanup preview could not be recorded. No deletion was performed.'};
     summary.run_id = runRow?.id ?? null;
-
-    if (mode === "delete") {
-      await logAudit({
-        module_code: "DMS",
-        entity_name: "dms_upload_sessions",
-        entity_id: 0,
-        entity_reference: `temp-cleanup-run-${summary.run_id ?? "?"}`,
-        action: "delete",
-        new_values: {
-          deleted: summary.deleted,
-          failed: summary.failed,
-          bytes_freed: summary.bytes_freed,
-          orphans_found: summary.orphans_found,
-        },
-      });
-      revalidatePath("/dms/inbox");
-    }
 
     return { success: true, data: summary };
   } catch (err) {
@@ -288,7 +229,7 @@ export async function runDmsTempCleanup(options?: {
 
 export async function listDmsTempCleanupRuns(limit = 20): Promise<ActionResult<unknown[]>> {
   const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "dms.admin")) return { success: false, error: "Permission denied: requires dms.admin" };
+  if (!hasGlobalPermission(ctx, "dms.admin")) return { success: false, error: "Permission denied: requires global dms.admin" };
 
   const db = createAdminClient();
   const { data, error } = await db

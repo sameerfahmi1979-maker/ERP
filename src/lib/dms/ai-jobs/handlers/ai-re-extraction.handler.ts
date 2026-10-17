@@ -6,7 +6,7 @@
  * Runs AFTER an authorized user has approved AI-suggested metadata definitions
  * and they have been created via createDmsMetadataDefinition(). Re-extraction
  * is extraction-only: it does NOT reclassify the document, and it NEVER
- * overwrites existing metadata values — only definitions with no existing
+ * saves metadata values. It publishes pending-review extraction suggestions. Only definitions with no existing
  * value row for the document are considered, so human-approved values (or any
  * previously saved value) are always preserved.
  *
@@ -15,10 +15,8 @@
  * src/server/actions/dms/ai-intake.ts only works for in-progress intake
  * sessions (requires dms_ai_extraction_results.raw_ocr_text and a non-approved
  * intake_status), not for already-approved documents. This handler is a new,
- * minimal, extraction-only flow built for approved documents; it reuses the
- * existing metadata-value column mapping helper
- * (resolveMetadataPayloadColumns / buildMetadataValuePayloads) instead of
- * duplicating that logic.
+ * extraction-only flow built for approved documents. The canonical T06 review
+ * contract validates and saves only fields an authorized human selects later.
  *
  * Security rules:
  *   - Called only from the WORKER_SECRET-authenticated worker route.
@@ -30,7 +28,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { callCommonAiStructuredCompletion } from "@/lib/ai/common/provider-bridge";
-import { buildMetadataValuePayloads } from "@/lib/dms/approve/approve-ai-intake-payload";
+import { currentJobClaim } from "../claim-scope";
 import type { DmsAiJobHandler, DmsAiJobHandlerResult } from "@/lib/dms/ai-jobs/job-types";
 import { DMS_AI_JOB_TYPE, AiReExtractionPayloadSchema } from "@/lib/dms/ai-jobs/job-types";
 
@@ -51,15 +49,24 @@ export const aiReExtractionHandler: DmsAiJobHandler = {
     }
 
     const { documentId } = parsed.data;
+    const claim = currentJobClaim();
+    if (!claim) return { success: false, errorCode: "auth_error", retryable: false };
+
 
     try {
       const db = createAdminClient();
 
-      const { data: doc } = await db
+      const replay = await db.rpc("f07_ai_worker", { p_action: "suggestion_read", p_data: { jobId: claim.jobId, token: claim.token } });
+      if (replay.error || replay.data?.success !== true) return { success: false, errorCode: "database_error", retryable: true };
+      if (Number.isSafeInteger(replay.data.resultId) && replay.data.resultId > 0) return { success: true };
+
+      const { data: doc, error: docError } = await db
         .from("dms_documents")
         .select("id, document_type_id, deleted_at")
         .eq("id", documentId)
         .maybeSingle();
+
+      if (docError) return { success: false, errorCode: "database_error", retryable: true };
 
       const docRow = doc as { id: number; document_type_id: number | null; deleted_at: string | null } | null;
       if (!docRow || docRow.deleted_at || !docRow.document_type_id) {
@@ -68,13 +75,15 @@ export const aiReExtractionHandler: DmsAiJobHandler = {
 
       // Fields eligible for extraction: active, AI-extractable definitions
       // for this document's type.
-      const { data: defsRaw } = await db
+      const { data: defsRaw, error: definitionsError } = await db
         .from("dms_metadata_definitions")
         .select("id, field_code, field_label_en, field_type, ai_field_hint")
         .eq("document_type_id", docRow.document_type_id)
         .eq("is_active", true)
         .eq("is_ai_extractable", true)
         .is("deleted_at", null);
+
+      if (definitionsError) return { success: false, errorCode: "database_error", retryable: true };
 
       const defs = (defsRaw ?? []) as Array<{
         id: number;
@@ -89,11 +98,13 @@ export const aiReExtractionHandler: DmsAiJobHandler = {
       }
 
       // Never overwrite existing values — only extract fields with NO existing row.
-      const { data: existingValuesRaw } = await db
+      const { data: existingValuesRaw, error: valuesError } = await db
         .from("dms_document_metadata_values")
         .select("definition_id")
         .eq("document_id", documentId)
         .is("deleted_at", null);
+
+      if (valuesError) return { success: false, errorCode: "database_error", retryable: true };
 
       const existingDefIds = new Set(
         ((existingValuesRaw ?? []) as Array<{ definition_id: number }>).map((v) => v.definition_id)
@@ -104,11 +115,13 @@ export const aiReExtractionHandler: DmsAiJobHandler = {
         return { success: true }; // all fields already have values — nothing to fill
       }
 
-      const { data: contentRow } = await db
+      const { data: contentRow, error: contentError } = await db
         .from("dms_document_content")
         .select("content_text")
         .eq("document_id", documentId)
         .maybeSingle();
+
+      if (contentError) return { success: false, errorCode: "database_error", retryable: true };
 
       const contentText = (contentRow as { content_text?: string | null } | null)?.content_text ?? null;
       if (!contentText?.trim()) {
@@ -137,11 +150,11 @@ export const aiReExtractionHandler: DmsAiJobHandler = {
           temperature: 0,
         });
         if (!result.success) {
-          return { success: true }; // AI call failed or not configured — non-fatal, no values to overwrite
+          return { success: false, errorCode: "provider_unavailable", retryable: !result.isProviderNotConfigured };
         }
         rawJson = result.rawJson;
       } catch {
-        return { success: true };
+        return { success: false, errorCode: "provider_unavailable", retryable: true };
       }
 
       let extracted: Record<string, unknown> = {};
@@ -149,58 +162,23 @@ export const aiReExtractionHandler: DmsAiJobHandler = {
         const jsonParsed = JSON.parse(rawJson);
         if (jsonParsed && typeof jsonParsed === "object" && !Array.isArray(jsonParsed)) {
           extracted = jsonParsed as Record<string, unknown>;
-        }
+        } else return { success: false, errorCode: "validation_error", retryable: false };
       } catch {
-        return { success: true }; // unparsable AI response — non-fatal
+        return { success: false, errorCode: "validation_error", retryable: false };
       }
 
       const byFieldCode = new Map(missingDefs.map((d) => [d.field_code, d]));
-      const valueInputs = Object.entries(extracted)
-        .filter(([code, value]) => byFieldCode.has(code) && value !== null && value !== undefined && String(value).trim() !== "")
-        .map(([code, value]) => ({
-          definitionId: byFieldCode.get(code)!.id,
-          fieldType: byFieldCode.get(code)!.field_type,
-          rawValue: String(value),
-        }));
-
-      const valuePayloads = buildMetadataValuePayloads(valueInputs);
-      if (valuePayloads.length === 0) {
-        return { success: true }; // AI found nothing new — safe no-op
-      }
-
-      const nowIso = new Date().toISOString();
-      const { error: insertError } = await db.from("dms_document_metadata_values").insert(
-        valuePayloads.map((v) => ({
-          document_id: documentId,
-          ...v,
-          created_at: nowIso,
-          updated_at: nowIso,
-        }))
-      );
-
-      if (insertError) {
-        // Unique violation means a value row was created concurrently (e.g. user
-        // saved manually) between our existence check and this insert — safe to
-        // treat as a no-op rather than a failure, since we never overwrite.
-        if ((insertError as { code?: string }).code === "23505") {
-          return { success: true };
-        }
-        return {
-          success: false,
-          errorCode: "database_error",
-          safeMessage: "Failed to save re-extracted metadata values.",
-          retryable: true,
-        };
-      }
-
-      logger.info("[ai-re-extraction] values filled", {
-        documentId,
-        fieldsFilled: valuePayloads.length,
+      const fields = Object.fromEntries(Object.entries(extracted).filter(([code, value]) =>
+        byFieldCode.has(code) && value !== null && ["string", "number", "boolean"].includes(typeof value) && String(value).trim() !== ""
+      ));
+      const { data: receipt, error } = await db.rpc("f07_ai_metadata_suggestions", {
+        p_job: claim.jobId, p_token: claim.token, p_fields: fields,
       });
-
+      if (error || receipt?.success !== true || !Number.isSafeInteger(receipt.resultId) || receipt.resultId < 1) return { success: false, errorCode: "database_error", retryable: true };
+      logger.info("[ai-re-extraction] suggestions retained for human review", { documentId, fieldCount: Object.keys(fields).length });
       return { success: true };
-    } catch (err) {
-      logger.error("[ai-re-extraction] unexpected error", { documentId, error: String(err).slice(0, 200) });
+    } catch {
+      logger.error("[ai-re-extraction] unexpected error", { documentId, error: "AI re-extraction failed" });
       return {
         success: false,
         errorCode: "unexpected",

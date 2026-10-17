@@ -1,11 +1,12 @@
 "use client";
 
+import {useQuery} from "@tanstack/react-query";
 import { useState } from "react";
 import { ShieldCheck, AlertTriangle } from "lucide-react";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { DmsApplyToErpItemTable } from "./dms-apply-to-erp-item-table";
 import type { ApplyItemProposal, ApplyRunResult, ApplyTargetModule, PartyApplyTargetKind } from "@/lib/dms/apply-to-erp/types";
-import { createDmsApplyToErpRun, applyDmsApplyToErpRun } from "@/server/actions/dms/apply-to-erp";
+import { createDmsApplyToErpRun, applyDmsApplyToErpRun, getDmsApplyToErpReview } from "@/server/actions/dms/apply-to-erp";
 import { cn } from "@/lib/utils";
 import {useWorkspaceSaveSession} from '@/hooks/use-workspace-save-session';
 import {createSaveAdmission} from '@/lib/workspace/save-admission';
@@ -38,12 +39,15 @@ export function DmsApplyToErpConfirmDialog(props:Props){
 function ConfirmSession({
   open, onOpenChange,
   documentId, reviewQueueItemId, sourceType, sourceId,
-  proposals, targetModule, targetTable, targetRecordId,
+  proposals:initialProposals, targetModule, targetTable, targetRecordId,
   partyId, partyName, targetKind,
   onApplied,
 }: Props) {
+  const review=useQuery({queryKey:["f07-dms-review",documentId,initialProposals],enabled:targetModule!=="party",retry:false,refetchOnWindowFocus:false,staleTime:Infinity,
+    queryFn:async()=>{const r=await getDmsApplyToErpReview(documentId,initialProposals);if(!r.success||!r.data)throw new Error(r.error??"Review unavailable");return r.data;}});
+  const proposals=targetModule==="party"?initialProposals:review.data?.items??[];
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(
-    () => new Set(proposals.map((_, i) => i))
+    () => new Set(initialProposals.map((_, i) => i))
   );
   const [humanReviewConfirmed, setHumanReviewConfirmed] = useState(false);
   const [replaceExistingConfirmed, setReplaceExistingConfirmed] = useState(false);
@@ -66,6 +70,7 @@ function ConfirmSession({
   };
 
   const handleApply = async () => {
+    if(targetModule!=="party"&&(!review.data||review.isError)){setError("Load the authoritative review before applying.");return;}
     if (!humanReviewConfirmed) {
       setError("You must confirm you have reviewed each field before applying.");
       return;
@@ -86,10 +91,11 @@ function ConfirmSession({
     try {
       // Step 1: Create apply run (history only, no target writes)
       const selectedProposals = proposals.filter((_, i) => selectedIndices.has(i));
-      const requestId=targetModule==='party'?session.begin({documentId,partyId,targetTable,targetRecordId,items:selectedProposals,replaceExistingConfirmed}).operationId:undefined;
+      const requestId=session.begin({documentId,partyId,targetTable,targetRecordId,items:selectedProposals,replaceExistingConfirmed,snapshot:review.data?.snapshot}).operationId;
 
       const runResult = await createDmsApplyToErpRun({
         requestId,
+        reviewedSnapshot:review.data?.snapshot,
         sourceType,
         sourceId: sourceId ?? null,
         documentId,
@@ -120,7 +126,7 @@ function ConfirmSession({
       );
 
       if (!detailResult.success || !detailResult.data) {
-        setUncertain(targetModule==='party');
+        setUncertain(true);
         setError("Failed to load apply run items.");
         setIsSubmitting(false);
         return;
@@ -143,7 +149,7 @@ function ConfirmSession({
       }
 
       session.rejected();setUncertain(false);
-      onApplied?.(applyResult.data);
+      try{onApplied?.(applyResult.data);}catch{/* Commit receipt is authoritative. */}
       onOpenChange(false);
     } catch {
       setUncertain(targetModule==='party');setError("The result is unconfirmed. Keep the same selection and retry this review.");
@@ -156,7 +162,7 @@ function ConfirmSession({
   return (
     <ERPChildDialogForm
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={next=>{if(!isSubmitting&&!uncertain)onOpenChange(next);}}
       title={
         targetModule === "party"
           ? targetKind === "party_licenses"
@@ -270,7 +276,8 @@ function ConfirmSession({
           </label>
         )}
 
-        {error && (
+        {targetModule!=="party"&&(review.isPending||review.isError)&&<p role="status">{review.isError?"The current review could not be loaded. Close and reopen to retry.":"Loading complete current values…"}</p>}
+      {error && (
           <div role="alert" className="rounded-md border border-destructive bg-destructive/10 px-3 py-2 text-sm text-foreground">
             {error}
           </div>

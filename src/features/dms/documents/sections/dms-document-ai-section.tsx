@@ -30,6 +30,7 @@ import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-a
 import {
   AlertCircle, AlertTriangle, Brain, Check, CheckCircle2, ChevronDown, ChevronUp, History, Info, Loader2, MinusCircle, RefreshCw, RotateCcw, Wand2, XCircle, } from "lucide-react";
 import { AlertDialog } from "@/features/dms/documents/section-read-boundary";
+import {useWorkspaceSaveSession} from "@/hooks/use-workspace-save-session";
 import { useState } from "react";
 import { toast } from "sonner";
 // Phase 16 — Apply-to-ERP history (DMS document field runs)
@@ -542,7 +543,10 @@ interface AiMetadataDiffSectionProps {
   onApplied: () => void;
 }
 
-function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }: AiMetadataDiffSectionProps) {
+export function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }: AiMetadataDiffSectionProps) {
+  const session=useWorkspaceSaveSession(`dms-ai-metadata:${documentId}:${result.id}`,null,undefined);
+  const [uncertain,setUncertain]=useState(false);
+  const [frozen,setFrozen]=useState<{definitions:DmsMetadataDefinitionBase[];review:{rows:CurrentMetadataValueRow[];snapshot:string;sourceSnapshot:string};source:DmsAiResultRow}|null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -551,26 +555,31 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
 
   // Load definitions and current values
   const uiRead1 = useQuery({
-    queryKey: queryKeys.dms.documentMetadataDefs(documentTypeId),
+    queryKey: [...queryKeys.dms.documentMetadataDefs(documentTypeId),"reviewed",documentId],
     queryFn: async ({signal}) => {
-      const r = await readDmsSection("getMetadataDefinitionsForType", [documentTypeId, "all"], signal);
+      const r = await readDmsSection("getMetadataDefinitionsForType", [documentTypeId, "all", documentId], signal);
+      if(!r.success||!r.data)throw new Error("Metadata definitions unavailable");
       return (r.data ?? []) as DmsMetadataDefinitionBase[];
     },
     staleTime: 5 * 60 * 1000,
   });
- const { data: defs = [], isLoading: defsLoading } = uiRead1;
+ const { data: liveDefs = [], isLoading: defsLoading } = uiRead1;
 
   const uiRead2 = useQuery({
-    queryKey: queryKeys.dms.documentMetadata(documentId),
+    queryKey: [...queryKeys.dms.documentMetadata(documentId),"reviewed-ai",result.id],
     queryFn: async ({signal}) => {
-      const r = await readDmsSection("getDmsDocumentMetadataValues", [documentId], signal);
-      return r.data ?? [];
+      const r = await readDmsSection("getDmsDocumentMetadataValues", [documentId,result.id], signal);
+      if(!r.success||!r.data||!r.snapshot||!r.sourceSnapshot)throw new Error("Metadata review unavailable");
+      return {rows:r.data,snapshot:r.snapshot,sourceSnapshot:r.sourceSnapshot};
     },
     staleTime: 30 * 1000,
   });
- const { data: currentValues = [], isLoading: valuesLoading } = uiRead2;
+ const { data: liveReviewData, isLoading: valuesLoading } = uiRead2;
 
-  if (defsLoading || valuesLoading) {
+  const defs=frozen?.definitions??liveDefs;
+  const reviewData=frozen?.review??liveReviewData;
+  const reviewedSource=frozen?.source??result;
+  if (!frozen&&(defsLoading || valuesLoading)) {
     return (
       <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="flex items-center gap-2 py-3 text-xs text-muted-foreground border-t border-border/50 pt-4">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -579,6 +588,7 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
     );
   }
 
+  const currentValues=reviewData?.rows??[];
   const mappedCurrentValues: CurrentMetadataValueRow[] = currentValues.map((v) => ({
     definition_id: v.definition_id,
     value_text: v.value_text,
@@ -590,8 +600,8 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
     updated_at: null,
   }));
 
-  const extractedFields = (result.extracted_fields_json as Record<string, unknown> | null) ?? null;
-  const fieldConf = (result.field_confidence_json as Record<string, ConfidenceEntry> | null) ?? null;
+  const extractedFields = (reviewedSource.extracted_fields_json as Record<string, unknown> | null) ?? null;
+  const fieldConf = (reviewedSource.field_confidence_json as Record<string, ConfidenceEntry> | null) ?? null;
 
   const diffRows = buildMetadataDiff(defs, mappedCurrentValues, extractedFields, fieldConf);
   const applicableRows = diffRows.filter((r) => r.canApply);
@@ -635,13 +645,15 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
   const handleSelectNone = () => setSelectedIds(new Set());
 
   const handleOpenConfirm = () => {
+    if(!reviewData||uiRead1.isError||uiRead2.isError)return;
+    setFrozen({definitions:defs,review:reviewData,source:reviewedSource});
     setReplaceConfirmed(false);
     setLowConfConfirmed(false);
     setConfirmOpen(true);
   };
 
   const handleApply = async () => {
-    setConfirmOpen(false);
+    if(!reviewData||applying||(!frozen&&(uiRead1.isError||uiRead2.isError)))return;
     setApplying(true);
     try {
       const selections: ApplyAiMetadataSelection[] = selectedRows.map((row) => ({
@@ -652,7 +664,9 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
         expectedUpdatedAt: row.currentUpdatedAt ?? undefined,
       }));
 
+      const requestId=session.begin({documentId,aiResultId:result.id,selections,snapshot:reviewData.snapshot,sourceSnapshot:reviewData.sourceSnapshot,replaceConfirmed,lowConfConfirmed}).operationId;
       const r = await applyAiAnalysisToMetadata({
+        requestId,snapshot:reviewData.snapshot,sourceSnapshot:reviewData.sourceSnapshot,
         documentId,
         aiResultId: result.id,
         selections,
@@ -663,6 +677,7 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
       });
 
       if (r.success && r.data) {
+        setUncertain(false);session.rejected();setConfirmOpen(false);setFrozen(null);
         const { appliedCount, skippedCount, skippedFields } = r.data;
         if (appliedCount > 0) {
           toast.success(`${appliedCount} field${appliedCount !== 1 ? "s" : ""} applied to metadata.`);
@@ -671,22 +686,17 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
           toast.warning(`${skippedCount} field${skippedCount !== 1 ? "s" : ""} skipped: ${skippedFields.map((s) => s.fieldCode).join(", ")}`);
         }
         setSelectedIds(new Set());
-        onApplied();
+        try{onApplied();}catch{/* Committed receipt remains successful. */}
       } else {
-        toast.error(r.error ?? "Failed to apply metadata");
+        setUncertain(r.uncertain===true);if(!r.uncertain){session.rejected();setFrozen(null);setConfirmOpen(false);void uiRead2.refetch();}toast.error(r.error ?? "Failed to apply metadata");
       }
+    } catch {setUncertain(true);toast.error("The result is unconfirmed. Retry this same review to recover it.");
     } finally {
       setApplying(false);
     }
   };
 
-  // Pre-select "new" rows by default on first render
-  // (use initialisation pattern: only if selectedIds is empty and we haven't set anything)
-  const newRowIds = applicableRows.filter((r) => r.diffState === "new").map((r) => r.definitionId);
-  if (selectedIds.size === 0 && newRowIds.length > 0) {
-    // Defer to avoid setState-during-render
-    setTimeout(() => setSelectedIds(new Set(newRowIds)), 0);
-  }
+  // Every write selection is explicit. Clearing a selection must stay cleared.
 
   return (
     <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="border-t border-border/50 pt-4 space-y-3">
@@ -702,7 +712,7 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={handleSelectAll}
+            disabled={applying||uncertain} onClick={handleSelectAll}
             className="text-[10px] text-blue-600 hover:underline dark:text-blue-300"
           >
             All
@@ -710,7 +720,7 @@ function AiMetadataDiffSection({ documentId, documentTypeId, result, onApplied }
           <span className="text-[10px] text-muted-foreground">/</span>
           <button
             type="button"
-            onClick={handleSelectNone}
+            disabled={applying||uncertain} onClick={handleSelectNone}
             className="text-[10px] text-blue-600 hover:underline dark:text-blue-300"
           >
             None
@@ -726,6 +736,7 @@ return <>{row.canApply ? (
                         <input
                           type="checkbox"
                           checked={isChecked}
+                          disabled={applying||uncertain}
                           onChange={() => handleToggle(row.definitionId)}
                           className="h-3.5 w-3.5 cursor-pointer accent-primary"
                           title={row.fieldCode}
@@ -777,7 +788,7 @@ return <><DiffStateBadge state={row.diffState} /></>;}}]} enableRowSelection={fa
       </div>
 
       {/* Confirmation dialog */}
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      <AlertDialog open={confirmOpen} onOpenChange={next=>{if(!applying&&!uncertain){setConfirmOpen(next);if(!next)setFrozen(null);}}}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Apply Selected Metadata</AlertDialogTitle>
@@ -808,7 +819,7 @@ return <><DiffStateBadge state={row.diffState} /></>;}}]} enableRowSelection={fa
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={replaceConfirmed}
+                      disabled={applying||uncertain} checked={replaceConfirmed}
                       onChange={(e) => setReplaceConfirmed(e.target.checked)}
                       className="h-4 w-4 accent-primary"
                     />
@@ -819,7 +830,7 @@ return <><DiffStateBadge state={row.diffState} /></>;}}]} enableRowSelection={fa
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={lowConfConfirmed}
+                      disabled={applying||uncertain} checked={lowConfConfirmed}
                       onChange={(e) => setLowConfConfirmed(e.target.checked)}
                       className="h-4 w-4 accent-primary"
                     />
@@ -830,8 +841,8 @@ return <><DiffStateBadge state={row.diffState} /></>;}}]} enableRowSelection={fa
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction disabled={!confirmReady} onClick={handleApply}>
+            <AlertDialogCancel disabled={applying||uncertain}>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={!confirmReady||applying} onClick={event=>{event.preventDefault();void handleApply();}}>
               Apply Selected
             </AlertDialogAction>
           </AlertDialogFooter>

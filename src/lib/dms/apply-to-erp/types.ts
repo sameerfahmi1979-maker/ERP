@@ -143,6 +143,7 @@ export type ApplyErrorCode =
 // ── Apply item proposal (read-only, pre-confirmation) ─────────────────────────
 
 export type ApplyItemProposal = {
+  currentValue?: string | null;
   /** Full reviewed write value; display summaries are never write payloads. */
   proposedValue?: string;
   reviewedRevision?: string;
@@ -166,6 +167,7 @@ export type ApplyItemProposal = {
 export type CreateApplyRunInput = {
   /** Stable across retries of the same reviewed operation. */
   requestId?: string;
+  reviewedSnapshot?: string;
   sourceType:          ApplySourceType;
   sourceId:            number | null;
   documentId:          number;

@@ -200,7 +200,7 @@ export function DmsMetadataErpMappingsDialog({
           target_record_strategy: form.target_record_strategy,
           mapping_priority: isNaN(priority) ? 10 : priority,
           is_active: form.is_active,
-          requires_confirmation: form.requires_confirmation,
+          requires_confirmation: true,
           notes: form.notes || null,
         });
         if (!r.success) { toast.error(r.error ?? "Failed to update mapping"); return; }
@@ -218,7 +218,7 @@ export function DmsMetadataErpMappingsDialog({
           target_record_strategy: form.target_record_strategy,
           mapping_priority: isNaN(priority) ? 10 : priority,
           is_active: form.is_active,
-          requires_confirmation: form.requires_confirmation,
+          requires_confirmation: true,
           notes: form.notes || null,
         });
         if (!r.success) { toast.error(r.error ?? "Failed to create mapping"); return; }
@@ -476,8 +476,8 @@ return <><div className="flex items-center gap-1 justify-end">
               <label className="flex items-center gap-2 text-xs cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={form.requires_confirmation}
-                  onChange={(e) => setFormField("requires_confirmation", e.target.checked)}
+                  checked={true}
+                  disabled
                   className="h-3.5 w-3.5 accent-primary"
                 />
                 Requires Confirmation

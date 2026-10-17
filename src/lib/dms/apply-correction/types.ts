@@ -45,6 +45,8 @@ export type CorrectionScalarValue = {
 
 export type CorrectionSourceData = {
   reviewedRevision?: string;
+  reviewedSnapshot?: string;
+  currentValue?: string | null;
   partyId?: number;
   /** Exact governed values, never reconstructed from display summaries. */
   originalBeforeValue?: string | null;
@@ -78,6 +80,7 @@ export type CorrectionSourceData = {
 // ── Create proposal input ─────────────────────────────────────────────────────
 
 export type CreateCorrectionProposalInput = {
+  requestId?: string;
   originalApplyItemId:       number;
   correctionMode:            CorrectionMode;
   /** Human-entered correction value (scalar only). */

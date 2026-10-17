@@ -27,7 +27,7 @@ const NON_RETRYABLE_ERROR_CODES = new Set([
 export const semanticDocumentIndexHandler: DmsAiJobHandler = {
   jobType: DMS_AI_JOB_TYPE.SEMANTIC_DOCUMENT_INDEX,
 
-  async handle(payload: Record<string, unknown>): Promise<DmsAiJobHandlerResult> {
+  async handle(payload: Record<string, unknown>, ctx): Promise<DmsAiJobHandlerResult> {
     // ── Validate payload ────────────────────────────────────────────────────────
     const parsed = SemanticDocumentIndexPayloadSchema.safeParse(payload);
     if (!parsed.success) {
@@ -45,7 +45,7 @@ export const semanticDocumentIndexHandler: DmsAiJobHandler = {
     const result = await indexDmsDocumentSemantically({
       documentId,
       source: source as SemanticDocumentIndexInput["source"],
-      forceRebuild,
+      forceRebuild: forceRebuild && (ctx?.attemptNumber ?? 1) === 1,
     });
 
     if (result.success) {

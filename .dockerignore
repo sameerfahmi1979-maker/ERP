@@ -15,3 +15,6 @@
 !src/**
 !public/
 !public/**
+!tooling/
+!tooling/dms/
+!tooling/dms/validate-intake.cjs

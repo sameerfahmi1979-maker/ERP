@@ -1,0 +1,11 @@
+import {afterEach,expect,it,vi} from 'vitest';
+import {readBoundedDmsObject} from '@/server/dms-file-verification';
+import type {SupabaseClient} from '@supabase/supabase-js';
+type Storage=ReturnType<SupabaseClient['storage']['from']>;
+const storage=(stream:ReadableStream<Uint8Array>)=>({download:vi.fn(()=>({asStream:async()=>({data:stream,error:null})}))}) as unknown as Storage;
+afterEach(()=>vi.useRealTimers());
+it('counts chunks before returning a bounded Blob',async()=>{const stream=new ReadableStream<Uint8Array>({start(c){c.enqueue(Uint8Array.from([1,2]));c.enqueue(Uint8Array.from([3]));c.close();}});expect(new Uint8Array(await (await readBoundedDmsObject(storage(stream),'synthetic',3)).arrayBuffer())).toEqual(Uint8Array.from([1,2,3]));});
+it('rejects an oversized response as soon as it exceeds admitted size',async()=>{const cancel=vi.fn(),stream=new ReadableStream<Uint8Array>({start(c){c.enqueue(new Uint8Array(4));},cancel});await expect(readBoundedDmsObject(storage(stream),'synthetic',3)).rejects.toThrow(/exceeds/);expect(cancel).toHaveBeenCalled();});
+it('does not accept a truncated response',async()=>{const stream=new ReadableStream<Uint8Array>({start(c){c.enqueue(new Uint8Array(2));c.close();}});await expect(readBoundedDmsObject(storage(stream),'synthetic',3)).rejects.toThrow(/Incomplete/);});
+it('limits an unresponsive stream without waiting for its cancellation',async()=>{vi.useFakeTimers();const stream=new ReadableStream<Uint8Array>({pull(){return new Promise(()=>undefined);},cancel(){return new Promise(()=>undefined);}});const pending=readBoundedDmsObject(storage(stream),'synthetic',3);const asserted=expect(pending).rejects.toThrow(/timed out/);await vi.advanceTimersByTimeAsync(30000);await asserted;});
+it.each([0,-1,52428801,1.5])('invalid admitted size %s cannot start a transfer',async size=>{const download=vi.fn();await expect(readBoundedDmsObject({download} as unknown as Storage,'synthetic',size)).rejects.toThrow(/Invalid/);expect(download).not.toHaveBeenCalled();});

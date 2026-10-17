@@ -2,12 +2,12 @@
 import {readAllDmsDocuments} from "@/server/reads/dms-documents";
 import { traceRequest } from "@/lib/performance/request";
 
-import { dmsDocumentCreateSchema as documentCreateSchema, dmsCreationContractSchema, type DmsCreationReceipt } from "@/lib/dms/numbered-document-create";
+import { dmsDocumentCreateSchema as documentCreateSchema, dmsCreationContractSchema,dmsCreationOriginSchema, type DmsCreationReceipt } from "@/lib/dms/numbered-document-create";
 import type { WorkspaceSaveContract } from "@/lib/workspace/save-contract";
 import { createNumberedDmsDocument } from "@/server/numbered-dms-create";
+import { changeDocumentArchive } from "@/server/dms-archive-transition";
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
 import {
@@ -36,6 +36,8 @@ export type DmsDocumentRow = {
   document_type_id: number;
   category_id: number;
   status: string;
+  approval_status?: string | null;
+  current_version_id?: number | null;
   confidentiality_level: string;
   owner_user_id: number | null;
   owning_company_id: number | null;
@@ -290,6 +292,7 @@ export type DmsDocumentRecordData = DmsDocumentRow & {
 export async function getDmsDocumentRecordData(
   id: number
 ): Promise<ActionResult<DmsDocumentRecordData>> {
+  if(!Number.isSafeInteger(id)||id<=0)return {success:false,error:"Invalid document identifier"};
   try {
     const ctx = await getAuthContext();
     if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
@@ -298,53 +301,15 @@ export async function getDmsDocumentRecordData(
 
     const supabase = await createClient();
 
-    const [docResult, metaResult, linksResult, versionsResult, filesResult] = await Promise.all([
-      supabase
-        .from("dms_documents")
-        .select(`
-          *,
-          document_type:dms_document_types(type_code, name_en, requires_expiry_tracking, default_confidentiality, is_renewable),
-          category:dms_document_categories(category_code, name_en),
-          tags:dms_document_tags(tag_id, tag:dms_tags(tag_name, color_hex)),
-          superseded_by:dms_documents!superseded_by_document_id(id, document_no, title)
-        `)
-        .eq("id", id)
-        .is("deleted_at", null)
-        .single(),
-
-      supabase
-        .from("dms_document_metadata_values")
-        .select(`
-          id, definition_id, value_text, value_number, value_date, value_datetime, value_boolean, value_json,
-          definition:dms_metadata_definitions(id, field_code, field_label_en, field_type, is_required, sort_order, options_json)
-        `)
-        .eq("document_id", id)
-        .is("deleted_at", null)
-        .order("definition_id"),
-
-      supabase
-        .from("dms_document_links")
-        .select("id, entity_type, entity_id, link_role, is_primary, notes, linked_at")
-        .eq("document_id", id)
-        .is("deleted_at", null)
-        .order("linked_at"),
-
-      supabase
-        .from("dms_document_versions")
-        .select("id, version_number, version_label, change_notes, is_current, created_at")
-        .eq("document_id", id)
-        .order("version_number", { ascending: false }),
-
-      supabase
-        .from("dms_document_files")
-        .select("id, file_name, mime_type, file_size_bytes, file_role, created_at")
-        .eq("document_id", id)
-        .is("deleted_at", null)
-        .order("created_at"),
-    ]);
+    // Sections fetch their own counted/protected data lazily. Do not fetch four
+    // unbounded child arrays here or replace their failures with empty values.
+    const docResult=await supabase.from("dms_documents").select(`
+      *, document_type:dms_document_types(type_code,name_en,requires_expiry_tracking,default_confidentiality,is_renewable),
+      category:dms_document_categories(category_code,name_en), tags:dms_document_tags(tag_id,tag:dms_tags(tag_name,color_hex))
+    `).eq("id",id).is("deleted_at",null).single();
 
     if (docResult.error || !docResult.data) {
-      return { success: false, error: docResult.error?.message ?? "Document not found" };
+      return { success: false, error: "Document record is unavailable or outside your access. Please retry." };
     }
 
     const docRow = docResult.data as DmsDocumentRow;
@@ -354,13 +319,17 @@ export async function getDmsDocumentRecordData(
       return { success: false, error: "Document access is restricted." };
     }
 
-    const record: DmsDocumentRecordData = {
-      ...docRow,
-      metadata_values: (metaResult.data ?? []) as unknown as DmsDocumentRecordData["metadata_values"],
-      links: (linksResult.data ?? []) as unknown as DmsDocumentRecordData["links"],
-      versions: (versionsResult.data ?? []) as unknown as DmsDocumentRecordData["versions"],
-      files: (filesResult.data ?? []) as unknown as DmsDocumentRecordData["files"],
-    };
+    let replacement:DmsDocumentRow["superseded_by"]=null;
+    if(docRow.superseded_by_document_id){
+      const linked=await supabase.from("dms_documents").select("id,document_no,title").eq("id",docRow.superseded_by_document_id).is("deleted_at",null).maybeSingle();
+      if(linked.error)return {success:false,error:"Document replacement could not be verified. Please retry."};
+      if(linked.data){
+        const safe=z.object({id:z.number().int().positive().refine(Number.isSafeInteger),document_no:z.string(),title:z.string()}).safeParse(linked.data);
+        if(!safe.success||safe.data.id!==docRow.superseded_by_document_id)return {success:false,error:"Document replacement could not be verified. Please retry."};
+        replacement=safe.data;
+      }
+    }
+    const record:DmsDocumentRecordData={...docRow,superseded_by:replacement};
 
     return { success: true, data: record };
   } catch (err) {
@@ -410,6 +379,16 @@ export async function getDmsNewDocumentDefaults(): Promise<
 }
 
 // ── createDmsDocument ─────────────────────────────────────────────────────────
+
+export async function prepareDmsManualOrigin(input:unknown):Promise<ActionResult<{company:number|null;branch:number|null}>>{
+ try{
+  const p=dmsCreationOriginSchema.safeParse(input);if(!p.success)return {success:false,error:'Invalid original document subject'};
+  const client=await createClient(),r=await client.rpc('f07_prepare_manual_origin',{p_context:p.data});
+  const scope=z.object({company:z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable(),branch:z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable()}).strict().safeParse(r.data);
+  if(r.error||!scope.success)return {success:false,error:'The original document subject is unavailable or outside your current access. No unlinked document was substituted.'};
+  return {success:true,data:scope.data};
+ }catch{return {success:false,error:'The original document subject could not be verified. No unlinked document was substituted.'};}
+}
 
 export async function createDmsDocument(
   input: CreateDmsDocumentInput,
@@ -494,6 +473,7 @@ export async function updateDmsDocument(
       return { success: false, error: parsed.error.issues[0]?.message ?? "Validation failed" };
     }
     const data = parsed.data;
+    if(data.originContext)return {success:false,error:'The original creation context cannot be reassigned through a document update.'};
 
     if (data.expiry_date && data.issue_date && data.expiry_date < data.issue_date) {
       return { success: false, error: "Expiry date must be on or after issue date" };
@@ -573,19 +553,9 @@ export async function archiveDmsDocument(id: number): Promise<ActionResult> {
     }
 
     const supabase = await createClient();
-    const { error } = await supabase
-      .from("dms_documents")
-      .update({ is_archived: true, archived_at: new Date().toISOString(), status: "archived", updated_by: ctx.profile?.id ?? null })
-      .eq("id", id)
-      .is("deleted_at", null);
-
-    if (error) return { success: false, error: error.message };
-
-    await insertDmsEvent(supabase, id, "archived", ctx.profile?.id ?? null, "Document archived");
-    await logAudit({ module_code: "DMS", entity_name: "dms_documents", entity_id: id, entity_reference: String(id), action: "archive" });
-    revalidateDmsDocuments(id);
-
-    return { success: true };
+    const result=await changeDocumentArchive(supabase,id,true);
+    if(result.success){try{revalidateDmsDocuments(id);}catch{/* A cache failure cannot undo the confirmed transaction. */}}
+    return result;
   } catch (err) {
     logger.error("archiveDmsDocument error", err);
     return { success: false, error: "Failed to archive document" };
@@ -602,24 +572,9 @@ export async function unarchiveDmsDocument(id: number): Promise<ActionResult> {
     }
 
     const supabase = await createClient();
-    const { data: archived, error: readError } = await supabase.from("dms_documents")
-      .select("id,approval_status,updated_at").eq("id", id).eq("is_archived", true).is("deleted_at", null).maybeSingle();
-    if (readError || !archived) return { success: false, error: "The archived document is unavailable. Refresh and check your access." };
-    const restoredStatus = archived.approval_status === "approved" ? "approved" : "active";
-    const { data: restored, error } = await supabase
-      .from("dms_documents")
-      .update({ is_archived: false, archived_at: null, status: restoredStatus, updated_by: ctx.profile?.id ?? null })
-      .eq("id", id)
-      .eq("updated_at", archived.updated_at)
-      .is("deleted_at", null).select("id").maybeSingle();
-
-    if (error || !restored) return { success: false, error: "The document was not restored. It may have changed; refresh before trying again." };
-
-    await insertDmsEvent(supabase, id, "unarchived", ctx.profile?.id ?? null, "Document unarchived");
-    await logAudit({ module_code: "DMS", entity_name: "dms_documents", entity_id: id, entity_reference: String(id), action: "unarchive" });
-    revalidateDmsDocuments(id);
-
-    return { success: true };
+    const result=await changeDocumentArchive(supabase,id,false);
+    if(result.success){try{revalidateDmsDocuments(id);}catch{/* Confirmed receipt wins. */}}
+    return result;
   } catch (err) {
     logger.error("unarchiveDmsDocument error", err);
     return { success: false, error: "Failed to unarchive document" };
@@ -642,80 +597,8 @@ export async function getArchivedDocuments(): Promise<ActionResult<ArchivedDocum
   return readAllDmsArchive();
 }
 
-// ── deleteDmsDocument ─────────────────────────────────────────────────────────
-//
-// Performs a HARD DELETE via the purge_dms_document() PostgreSQL RPC.
-//
-// The RPC (SECURITY DEFINER) atomically:
-//   - Collects file metadata for storage purge
-//   - Hard-deletes the dms_documents row
-//   - Postgres CASCADE removes all DMS-owned child rows automatically
-//   - Postgres SET NULL nullifies cross-module FK references (employee, party, HR)
-//
-// After the RPC returns, this action purges physical files from Storage buckets.
-// Storage purge errors are non-fatal (document data is already removed from DB).
-
-export async function deleteDmsDocument(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    // Hard delete is system_admin only — no exceptions.
-    if (!ctx.roleCodes.includes("system_admin")) {
-      return { success: false, error: "Permission denied — only system administrators may permanently delete documents" };
-    }
-
-    const supabase = await createClient();
-    const adminClient = createAdminClient();
-
-    // ── 1. Call purge_dms_document() RPC — atomic hard-delete ────────────────
-    // The RPC handles pre-delete cleanup (sessions, indirect review queue items)
-    // and then hard-deletes the document. DB CASCADE removes all DMS child rows.
-    const { data: rpcRows, error: rpcError } = await supabase
-      .rpc("purge_dms_document", { p_id: id });
-
-    if (rpcError) {
-      if (rpcError.message?.includes("not found")) {
-        return { success: false, error: "Document not found" };
-      }
-      return { success: false, error: rpcError.message };
-    }
-
-    // ── 2. Purge physical files from Supabase Storage ─────────────────────────
-    const rpcResult = (rpcRows as { out_storage_files: unknown; out_files_found: number }[] | null)?.[0];
-    const storageFiles = rpcResult?.out_storage_files as
-      { bucket: string; path: string }[] | null ?? [];
-    const fileCount = rpcResult?.out_files_found ?? 0;
-
-    const byBucket = new Map<string, string[]>();
-    for (const f of storageFiles) {
-      if (!f.bucket || !f.path) continue;
-      const paths = byBucket.get(f.bucket) ?? [];
-      paths.push(f.path);
-      byBucket.set(f.bucket, paths);
-    }
-
-    for (const [bucket, paths] of byBucket.entries()) {
-      try {
-        await adminClient.storage.from(bucket).remove(paths);
-      } catch (storageErr) {
-        // Non-fatal: document is already removed from DB.
-        logger.warn(`[DMS delete] Storage purge failed for bucket "${bucket}":`, String(storageErr));
-      }
-    }
-
-    // ── 3. Audit log ──────────────────────────────────────────────────────────
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_documents",
-      entity_id: id,
-      entity_reference: String(id),
-      action: "delete",
-      new_values: { storage_files_purged: fileCount },
-    });
-
-    revalidateDmsDocuments();
-    return { success: true };
-  } catch (err) {
-    logger.error("deleteDmsDocument error", err);
-    return { success: false, error: "Failed to delete document" };
-  }
+/** Retired unsafe purge. Archive is the supported routine operation. */
+export async function deleteDmsDocument(_id: number): Promise<ActionResult> {
+  if(!Number.isSafeInteger(_id)||_id<=0)return {success:false,error:"Invalid document identifier"};
+  return {success:false,error:"Permanent disposal is unavailable here. It requires a separately approved retention/legal-hold process; use Archive for routine work."};
 }

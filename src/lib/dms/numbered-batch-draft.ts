@@ -77,7 +77,7 @@ function boundAnchors(value:RecoveryEnvelope|PrepareEnvelope,receipt:BatchReceip
 function boundMember(member:DurableMember,receipt:BatchReceipt):boolean{
  const source=receipt.members[member.position];
  return !!source&&source.id===member.upload_session_id&&source.code===member.session_code&&
-  (member.kind!=='prepared'||member.request.prepared.party_id===(receipt.manifest.context?.id??null));
+  (member.kind!=='prepared'||member.request.prepared.party_id===(receipt.manifest.context?.type==='party'?receipt.manifest.context.id:null));
 }
 export function parseBatchDraftRecovery(raw:unknown,receipt:BatchReceipt,origin:BatchOrigin):RecoveryEnvelope|null{
  const parsed=batchDraftRecoveryEnvelopeSchema.safeParse(raw);

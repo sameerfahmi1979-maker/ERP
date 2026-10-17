@@ -184,18 +184,20 @@ export function DmsUploadDropzone({
 
   const removeFile = useCallback((hash: string, name: string) => {
     processing.current = null; setIsHashing(false);
+    setValidationError(null);
     const next = selectedFilesRef.current.filter((f) => !(f.sha256_hash === hash && f.original_filename === name));
     selectedFilesRef.current = next;
     setSelectedFiles(next);
     onFilesSelected?.(next);
-  }, [onFilesSelected, setIsHashing]);
+  }, [onFilesSelected, setIsHashing, setValidationError]);
 
   const clearAll = useCallback(() => {
     processing.current = null; setIsHashing(false);
+    setValidationError(null);
     selectedFilesRef.current = [];
     setSelectedFiles([]);
     onFilesSelected?.([]);
-  }, [onFilesSelected, setIsHashing]);
+  }, [onFilesSelected, setIsHashing, setValidationError]);
 
   // ── Event handlers ────────────────────────────────────────────────────────
   const handleDrop = useCallback(async (e: React.DragEvent) => {

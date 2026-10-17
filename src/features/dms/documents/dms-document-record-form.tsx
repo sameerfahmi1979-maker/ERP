@@ -23,7 +23,7 @@ import type { AuthContext } from "@/lib/rbac/check";
 import { hasPermission } from "@/lib/rbac/scope";
 import type { DmsDocumentRecordData } from "@/server/actions/dms/documents";
 import { createDmsDocument, updateDmsDocument } from "@/server/actions/dms/documents";
-import { linkDmsDocumentToEntity } from "@/server/actions/dms/entity-documents";
+import {dmsCreationOriginSchema} from '@/lib/dms/numbered-document-create';
 import {
   Activity,
   Brain,
@@ -53,6 +53,7 @@ import { DmsDocumentAiSummarySection } from "./sections/dms-document-ai-summary-
 import { DmsDocumentApprovalsSection } from "./sections/dms-document-approvals-section";
 import { DmsDocumentAskAiSection } from "./sections/dms-document-ask-ai-section";
 import { DmsDocumentAuditSection } from "./sections/dms-document-audit-section";
+import {DmsDocumentLifecycleSection} from "./sections/dms-document-lifecycle-section";
 import { DmsDocumentCommentsSection } from "./sections/dms-document-comments-section";
 import { DmsDocumentContentSection } from "./sections/dms-document-content-section";
 import { DmsDocumentExpirySection } from "./sections/dms-document-expiry-section";
@@ -87,6 +88,7 @@ interface Category {
 export type DmsEntityContext = {
   entityType: string;
   entityId: number;
+  scope?:{company:number|null;branch:number|null};
 };
 
 export type DmsDocumentRecordFormProps = {
@@ -175,13 +177,13 @@ function DmsDocumentRecordFormInner({
     return creation.pending?.payload.confidentiality_level ?? (d || doc?.confidentiality_level || "internal");
   });
   const [owningCompanyId, setOwningCompanyId] = useState<number | null>(() => {
-    return creation.pending ? creation.pending.payload.owning_company_id ?? null : getDraftNullableId("owning_company_id", doc?.owning_company_id);
+    return creation.pending ? creation.pending.payload.owning_company_id ?? null : getDraftNullableId("owning_company_id", doc?doc.owning_company_id:entityContext?.scope?.company);
   });
   const [owningBranchId, setOwningBranchId] = useState<number | null>(() => {
-    return creation.pending ? creation.pending.payload.owning_branch_id ?? null : getDraftNullableId("owning_branch_id", doc?.owning_branch_id);
+    return creation.pending ? creation.pending.payload.owning_branch_id ?? null : getDraftNullableId("owning_branch_id", doc?doc.owning_branch_id:entityContext?.scope?.branch);
   });
   const [partyId, setPartyId] = useState<number | null>(() => {
-    return creation.pending ? creation.pending.payload.party_id ?? null : getDraftNullableId("party_id", doc?.party_id);
+    return creation.pending ? creation.pending.payload.party_id ?? null : getDraftNullableId("party_id", doc?doc.party_id:(entityContext?.entityType==='party'?entityContext.entityId:undefined));
   });
 
   // ── Child dialog blocking ─────────────────────────────────────────────────────
@@ -193,6 +195,7 @@ function DmsDocumentRecordFormInner({
   const sections: ERPRecordSection[] = useMemo(
     () => [
       { id: "overview", label: "Overview", icon: <LayoutList className="h-3.5 w-3.5" /> },
+      { id: "lifecycle", label: "Lifecycle", icon: <GitBranch className="h-3.5 w-3.5" />, disabled: childLocked },
       { id: "metadata", label: "Metadata", icon: <Database className="h-3.5 w-3.5" />, disabled: childLocked },
       { id: "links", label: "Links", icon: <Link2 className="h-3.5 w-3.5" />, disabled: childLocked },
       { id: "tags", label: "Tags", icon: <Tag className="h-3.5 w-3.5" />, disabled: childLocked },
@@ -237,7 +240,10 @@ function DmsDocumentRecordFormInner({
       return false;
     }
 
+    const origin=currentMode==='add'&&entityContext?dmsCreationOriginSchema.safeParse({entityType:entityContext.entityType,entityId:entityContext.entityId}):null;
+    if(origin&&!origin.success){toast.error('The original document subject is invalid. Reopen the source record.');return false;}
     const payload = creation.pending?.payload ?? {
+      ...(origin?.success?{originContext:origin.data}:{}),
       title: (fd.get("title") as string) || "",
       description: (fd.get("description") as string) || null,
       document_type_id: documentTypeId,
@@ -282,19 +288,9 @@ function DmsDocumentRecordFormInner({
           // Preserve the committed identity before any optional post-create work.
           setCreatedDocId(newId);
           setCurrentMode("edit");
-          if (entityContext) {
-            try {
-              const link = await linkDmsDocumentToEntity(newId, entityContext.entityType, entityContext.entityId, { is_primary: true });
-              if (!creation.isCurrent()) return false;
-              if (link.success) {
-                invalidateDmsDocumentRecord(queryClient, newId);
-                invalidateDmsEntityDocuments(queryClient, entityContext.entityType, entityContext.entityId);
-              }
-              if (!link.success) toast.warning("Document created, but the entity link could not be added. Add it from Links; do not create another document.");
-            } catch {
-              if (!creation.isCurrent()) return false;
-              toast.warning("Document created, but the entity link was not confirmed. Check Links before adding it again.");
-            }
+          if(entityContext){
+            if(payload.originContext)invalidateDmsEntityDocuments(queryClient,entityContext.entityType,entityContext.entityId);
+            else toast.warning('This retained creation predates atomic subject linking. Verify its Links before adding a subject; do not create a replacement document.');
           }
 
           if (activeTab?.id) {
@@ -484,11 +480,6 @@ function DmsDocumentRecordFormInner({
               canTriggerOcr={
                 authContext.permissionCodes.includes("dms.documents.ocr.trigger") ||
                 authContext.permissionCodes.includes("dms.documents.edit") ||
-                authContext.permissionCodes.includes("dms.admin") ||
-                authContext.roleCodes.includes("system_admin") ||
-                authContext.roleCodes.includes("group_admin")
-              }
-              canDeleteFiles={
                 authContext.permissionCodes.includes("dms.admin") ||
                 authContext.roleCodes.includes("system_admin") ||
                 authContext.roleCodes.includes("group_admin")
@@ -704,6 +695,9 @@ function DmsDocumentRecordFormInner({
           />
         </ERPRecordSectionPanel>
 
+        <ERPRecordSectionPanel id="lifecycle" activeId={activeSection} lazyMount>
+          <DmsDocumentLifecycleSection documentId={effectiveDocId} onNavigate={setActiveSection}/>
+        </ERPRecordSectionPanel>
         {/* ── Audit ── */}
         <ERPRecordSectionPanel id="audit" activeId={activeSection} lazyMount>
           <DmsDocumentAuditSection documentId={effectiveDocId} />

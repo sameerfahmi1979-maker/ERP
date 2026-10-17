@@ -18,7 +18,6 @@
 
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import {
   enqueueDmsAiJob,
@@ -27,9 +26,7 @@ import {
 } from "@/lib/dms/ai-jobs/job-runner";
 import {
   type EnqueueDmsAiJobInput,
-  DMS_AI_JOB_STATUS,
 } from "@/lib/dms/ai-jobs/job-types";
-import { logAudit } from "@/server/actions/audit";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -76,14 +73,6 @@ function canRunAiJobs(ctx: Awaited<ReturnType<typeof getAuthContext>>): boolean 
   return (
     hasPermission(ctx, "dms.documents.upload") ||
     hasPermission(ctx, "dms.documents.edit") ||
-    hasPermission(ctx, "dms.admin") ||
-    ctx.roleCodes.includes("system_admin") ||
-    ctx.roleCodes.includes("group_admin")
-  );
-}
-
-function isAdminUser(ctx: Awaited<ReturnType<typeof getAuthContext>>): boolean {
-  return (
     hasPermission(ctx, "dms.admin") ||
     ctx.roleCodes.includes("system_admin") ||
     ctx.roleCodes.includes("group_admin")
@@ -214,143 +203,19 @@ export async function getDmsAiJobsForDocument(
   }
 }
 
-// ── cancelDmsAiJob ────────────────────────────────────────────────────────────
-
-export async function cancelDmsAiJob(
-  jobId: number
-): Promise<ActionResult> {
-  try {
-    const parsed = z.number().int().positive().safeParse(jobId);
-    if (!parsed.success) return { success: false, error: "Invalid job ID." };
-
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated." };
-    if (!isAdminUser(ctx)) return { success: false, error: "Permission denied. Requires dms.admin or system_admin." };
-
-    const adminDb = createAdminClient();
-
-    // Only cancel jobs that are in a cancellable state
-    const { data: job } = await adminDb
-      .from("dms_ai_job_queue")
-      .select("id, job_status, related_document_id")
-      .eq("id", jobId)
-      .single();
-
-    if (!job) return { success: false, error: "Job not found." };
-
-    const typedJob = job as Record<string, unknown>;
-    const currentStatus = typedJob.job_status as string;
-
-    const cancellableStatuses: string[] = [DMS_AI_JOB_STATUS.QUEUED, DMS_AI_JOB_STATUS.RETRY_SCHEDULED];
-    if (!cancellableStatuses.includes(currentStatus)) {
-      return {
-        success: false,
-        error: `Job cannot be cancelled in status '${currentStatus}'. Only queued or retry_scheduled jobs can be cancelled.`,
-      };
-    }
-
-    const { error: updateError } = await adminDb
-      .from("dms_ai_job_queue")
-      .update({
-        job_status: DMS_AI_JOB_STATUS.CANCELLED,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", jobId);
-
-    if (updateError) return { success: false, error: "Failed to cancel job." };
-
-    await logAudit({
-      module_code:      "DMS",
-      entity_name:      "dms_ai_job_queue",
-      entity_id:        jobId,
-      entity_reference: `JOB-${jobId}`,
-      action:           "dms_ai_job_cancelled",
-      new_values: {
-        jobId,
-        documentId:    typedJob.related_document_id ?? null,
-        cancelledBy:   ctx.profile.id,
-      },
-    });
-
-    return { success: true };
-  } catch (err) {
-    return { success: false, error: String(err).slice(0, 200) };
-  }
+// Scoped transitions are checked and audited atomically by the database.
+export async function cancelDmsAiJob(jobId: number): Promise<ActionResult> {
+  return controlJob("cancel", jobId);
 }
-
-// ── retryDmsAiJob ─────────────────────────────────────────────────────────────
-
-export async function retryDmsAiJob(
-  jobId: number
-): Promise<ActionResult> {
+export async function retryDmsAiJob(jobId: number): Promise<ActionResult> {
+  return controlJob("retry", jobId);
+}
+async function controlJob(action: "cancel" | "retry", jobId: number): Promise<ActionResult> {
+  if (!Number.isSafeInteger(jobId) || jobId < 1) return { success: false, error: "Invalid job ID." };
   try {
-    const parsed = z.number().int().positive().safeParse(jobId);
-    if (!parsed.success) return { success: false, error: "Invalid job ID." };
-
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated." };
-    if (!canRunAiJobs(ctx)) return { success: false, error: "Permission denied." };
-
-    const adminDb = createAdminClient();
-
-    const { data: job } = await adminDb
-      .from("dms_ai_job_queue")
-      .select("id, job_status, attempt_count, max_attempts, related_document_id")
-      .eq("id", jobId)
-      .single();
-
-    if (!job) return { success: false, error: "Job not found." };
-
-    const typedJob = job as Record<string, unknown>;
-    const currentStatus = typedJob.job_status as string;
-    const attemptCount  = typedJob.attempt_count as number;
-    const maxAttempts   = typedJob.max_attempts as number;
-
-    const retryableStatuses: string[] = [DMS_AI_JOB_STATUS.FAILED, DMS_AI_JOB_STATUS.CANCELLED];
-    if (!retryableStatuses.includes(currentStatus)) {
-      return {
-        success: false,
-        error: `Job cannot be retried in status '${currentStatus}'. Only failed or cancelled jobs can be retried.`,
-      };
-    }
-
-    if (attemptCount >= maxAttempts && !isAdminUser(ctx)) {
-      return {
-        success: false,
-        error: "Max attempts exhausted. Requires dms.admin to force retry.",
-      };
-    }
-
-    const { error: updateError } = await adminDb
-      .from("dms_ai_job_queue")
-      .update({
-        job_status:        DMS_AI_JOB_STATUS.QUEUED,
-        run_after:         new Date().toISOString(),
-        last_error_code:   null,
-        last_error_message: null,
-        locked_by:         null,
-        locked_at:         null,
-        updated_at:        new Date().toISOString(),
-      })
-      .eq("id", jobId);
-
-    if (updateError) return { success: false, error: "Failed to retry job." };
-
-    await logAudit({
-      module_code:      "DMS",
-      entity_name:      "dms_ai_job_queue",
-      entity_id:        jobId,
-      entity_reference: `JOB-${jobId}`,
-      action:           "dms_ai_job_retried",
-      new_values: {
-        jobId,
-        documentId: typedJob.related_document_id ?? null,
-        retriedBy:  ctx.profile.id,
-      },
-    });
-
-    return { success: true };
-  } catch (err) {
-    return { success: false, error: String(err).slice(0, 200) };
-  }
+    const db = await createClient();
+    const { data, error } = await db.rpc("f07_ai_job_control", { p_action: action, p_data: { jobId } });
+    return !error && data?.success === true && data.jobId === jobId ? { success: true }
+      : { success: false, error: "Job transition not confirmed. Check its current status and attempt budget." };
+  } catch { return { success: false, error: "Job transition not confirmed. Refresh its status before retrying." }; }
 }

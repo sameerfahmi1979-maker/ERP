@@ -1,0 +1,25 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const s=vi.hoisted(()=>({rpc:vi.fn(),from:vi.fn(),cache:vi.fn(),ctx:{profile:{id:7},permissionCodes:['dms.renewals.manage']}}));
+vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({rpc:s.rpc,from:s.from})}));
+vi.mock('@/lib/rbac/check',()=>({getAuthContext:async()=>s.ctx,hasPermission:(_:unknown,p:string)=>s.ctx.permissionCodes.includes(p)}));
+vi.mock('next/cache',()=>({revalidatePath:s.cache}));
+vi.mock('@/server/actions/audit',()=>({logAudit:()=>{throw Error('Atomic RPC owns audit');}}));
+import {completeDmsRenewalRequest} from '@/server/actions/dms/renewals';
+import {completeRenewalSchema,renewalCompletionFailure} from '@/lib/dms/renewal-completion';
+const input={replacement_document_id:22,new_expiry_date:'2028-02-29',notes:'Synthetic reviewed renewal'};
+const receipt={renewalId:8,documentId:11,replacementDocumentId:22,status:'renewed',replayed:false,reminderIntent:'schedule_retained'};
+beforeEach(()=>{vi.resetAllMocks();s.ctx.permissionCodes=['dms.renewals.manage'];s.rpc.mockResolvedValue({data:receipt,error:null});s.from.mockImplementation(()=>{throw Error('No sequential table writes');});});
+it('completes through one authenticated atomic operation, not independent writes',async()=>{
+ expect(await completeDmsRenewalRequest(8,input)).toMatchObject({success:true,data:receipt});
+ expect(s.rpc).toHaveBeenCalledExactlyOnceWith('f07_complete_document_renewal',{p_request:8,p_replacement:22,p_version:null,p_expiry:'2028-02-29',p_notes:input.notes});expect(s.from).not.toHaveBeenCalled();
+});
+it('retains a confirmed receipt when cache refresh fails',async()=>{s.cache.mockImplementation(()=>{throw Error('Synthetic postcommit cache failure');});expect(await completeDmsRenewalRequest(8,input)).toMatchObject({success:true});expect(s.rpc).toHaveBeenCalledTimes(1);});
+it('returns a confirmed idempotent replay without rebuilding reminders',async()=>{s.rpc.mockResolvedValue({data:{...receipt,replayed:true},error:null});expect(await completeDmsRenewalRequest(8,input)).toMatchObject({success:true,data:{replayed:true}});expect(s.from).not.toHaveBeenCalled();});
+it('denies a caller without a renewal capability before dispatch',async()=>{s.ctx.permissionCodes=[];expect(await completeDmsRenewalRequest(8,input)).toMatchObject({success:false});expect(s.rpc).not.toHaveBeenCalled();});
+it.each([0,-1,1.5,Number.MAX_SAFE_INTEGER+1])('rejects invalid request identity %s',async id=>{expect(await completeDmsRenewalRequest(id,input)).toMatchObject({success:false});expect(s.rpc).not.toHaveBeenCalled();});
+it.each(['2027-02-29','2028-04-31','not a date'])('rejects impossible calendar date %s',async date=>{expect(await completeDmsRenewalRequest(8,{...input,new_expiry_date:date})).toMatchObject({success:false});expect(s.rpc).not.toHaveBeenCalled();});
+it('rejects unexpected owner/status/authority fields rather than forwarding them',()=>{expect(completeRenewalSchema.safeParse({...input,status:'renewed',owning_company_id:1}).success).toBe(false);});
+it.each(['42501','PT409','23505'])('retains a sanitized known rollback %s without retry',async code=>{s.rpc.mockResolvedValue({data:null,error:{code,message:'PRIVATE_INTERNAL_DETAIL'}});const r=await completeDmsRenewalRequest(8,input);expect(r).toMatchObject({success:false,uncertain:false});expect(JSON.stringify(r)).not.toContain('PRIVATE_INTERNAL_DETAIL');expect(s.rpc).toHaveBeenCalledTimes(1);});
+it('does not mistake a lost transport response for a rolled-back transaction',async()=>{s.rpc.mockRejectedValue(Error('Synthetic response lost after commit'));expect(await completeDmsRenewalRequest(8,input)).toMatchObject({success:false,uncertain:true});expect(s.rpc).toHaveBeenCalledTimes(1);});
+it.each([null,{...receipt,renewalId:99},{...receipt,replacementDocumentId:99},{...receipt,status:'pending'}])('does not acknowledge an absent/mismatched completion receipt',async data=>{s.rpc.mockResolvedValue({data,error:null});expect(await completeDmsRenewalRequest(8,input)).toMatchObject({success:false,uncertain:true});});
+it('classifies unknown provider/proxy failures as uncertain, not safe new writes',()=>{for(const code of [undefined,'502','PGRST000'])expect(renewalCompletionFailure(code).uncertain).toBe(true);});

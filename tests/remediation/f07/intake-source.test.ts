@@ -1,0 +1,14 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+import type {SupabaseClient} from '@supabase/supabase-js';
+const s=vi.hoisted(()=>({read:vi.fn(),verify:vi.fn(),info:vi.fn()}));
+vi.mock('@/server/dms-file-verification',()=>({readBoundedDmsObject:s.read,verifyDmsBlob:s.verify}));
+import {readVerifiedIntakeSource} from '@/server/dms-verified-intake-source';
+const object={id:'11111111-1111-4111-8111-111111111111',version:'1',lastModified:'2026-10-17T10:00:00Z'};
+const source={path:'synthetic/original.pdf',name:'original.pdf',mime:'application/pdf',size:3,sha256:'a'.repeat(64)};
+const storage={info:s.info} as unknown as ReturnType<SupabaseClient['storage']['from']>;
+beforeEach(()=>{vi.resetAllMocks();s.info.mockResolvedValue({data:object,error:null});s.read.mockResolvedValue(new Blob([new Uint8Array([1,2,3])]));s.verify.mockResolvedValue({sha256:source.sha256,size:3,mime:source.mime});});
+it('returns only the parsed bounded source bytes and stable identity',async()=>{const r=await readVerifiedIntakeSource(storage,source);expect(r.bytes).toEqual(Buffer.from([1,2,3]));expect(r.object).toEqual(object);expect(s.read).toHaveBeenCalledWith(storage,source.path,3);expect(s.verify).toHaveBeenCalledWith(expect.any(Blob),source);});
+it('does not read when the identity is missing',async()=>{s.info.mockResolvedValue({data:null,error:{message:'private'}});await expect(readVerifiedIntakeSource(storage,source)).rejects.toThrow('identity');expect(s.read).not.toHaveBeenCalled();});
+it('rejects replacement during parsing',async()=>{s.info.mockResolvedValueOnce({data:object,error:null}).mockResolvedValueOnce({data:{...object,version:'2'},error:null});await expect(readVerifiedIntakeSource(storage,source)).rejects.toThrow('changed');});
+it('does not expose any bytes when the parser rejects them',async()=>{s.verify.mockRejectedValue(Error('Invalid format'));await expect(readVerifiedIntakeSource(storage,source)).rejects.toThrow('Invalid format');expect(s.info).toHaveBeenCalledTimes(1);});
+it('does not accept disappearance after a successful parse',async()=>{s.info.mockResolvedValueOnce({data:object,error:null}).mockResolvedValueOnce({data:null,error:{}});await expect(readVerifiedIntakeSource(storage,source)).rejects.toThrow('changed');});

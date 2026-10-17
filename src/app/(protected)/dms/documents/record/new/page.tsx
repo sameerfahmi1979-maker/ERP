@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { getDmsNewDocumentDefaults } from "@/server/actions/dms/documents";
+import { getDmsNewDocumentDefaults,prepareDmsManualOrigin } from "@/server/actions/dms/documents";
 import { DmsDocumentRecordForm, type DmsEntityContext } from "@/features/dms/documents/dms-document-record-form";
-import { DMS_ENTITY_TYPES } from "@/features/dms/documents/dms-document-constants";
+import {parseDmsUploadContext} from '@/lib/dms/upload-context';
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -10,7 +10,7 @@ export const revalidate = 0;
 export default async function DmsDocumentNewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ entity_type?: string; entity_id?: string; mode?: string }>;
+  searchParams: Promise<Record<string,string|string[]|undefined>>;
 }) {
   const authContext = await getAuthContext();
 
@@ -23,15 +23,16 @@ export default async function DmsDocumentNewPage({
   }
 
   const params = await searchParams;
-  const rawEntityType = params.entity_type;
-  const rawEntityId = params.entity_id ? parseInt(params.entity_id, 10) : null;
-  const entityContext: DmsEntityContext | null =
-    rawEntityType &&
-    DMS_ENTITY_TYPES.includes(rawEntityType as typeof DMS_ENTITY_TYPES[number]) &&
-    rawEntityId &&
-    rawEntityId > 0
-      ? { entityType: rawEntityType, entityId: rawEntityId }
-      : null;
+  const parsedContext=parseDmsUploadContext(params);
+  if(!parsedContext.success)return <div role="alert" className="p-6">This document link has an invalid, conflicting or unsupported subject. Return to the original record. No unlinked document was substituted.</div>;
+  let entityContext:DmsEntityContext|null=parsedContext.context;
+  if(entityContext){
+    const origin=await prepareDmsManualOrigin(entityContext);
+    if(!origin.success||!origin.data)return <div role="alert" className="p-6">{origin.error??'Original subject unavailable. No unlinked document was substituted.'}</div>;
+    // A Party is global master data; its document scope remains an explicit
+    // form choice, never a company/branch guessed from the Party or profile.
+    if(entityContext.entityType!=='party')entityContext={...entityContext,scope:origin.data};
+  }
 
   const defaultsResult = await getDmsNewDocumentDefaults();
   const documentTypes = defaultsResult.data?.documentTypes ?? [];

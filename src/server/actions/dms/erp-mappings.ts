@@ -20,10 +20,11 @@ import {
   validateErpMappingTarget,
   type ErpMappingTargetConfig,
 } from "@/lib/dms/erp-mapping/erp-mapping-targets";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import {readAllPages} from "@/server/reads/all-pages";
+import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/check";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { logAudit } from "@/server/actions/audit";
+
 import { z } from "zod";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -95,7 +96,7 @@ const createMappingSchema = z.object({
   target_record_strategy: z.enum(ALLOWED_RECORD_STRATEGIES).default("link_exact"),
   mapping_priority: z.number().int().min(1).max(999).default(10),
   is_active: z.boolean().default(true),
-  requires_confirmation: z.boolean().default(true),
+  requires_confirmation: z.literal(true).default(true),
   notes: z.string().max(500).nullable().optional(),
 });
 
@@ -106,16 +107,11 @@ const updateMappingSchema = createMappingSchema.partial().extend({
 // ── Permission helpers ─────────────────────────────────────────────────────────
 
 function isAdminUser(ctx: Awaited<ReturnType<typeof getAuthContext>>): boolean {
-  return (
-    hasPermission(ctx, "dms.admin") ||
-    hasPermission(ctx, "dms.documents.manage_types") ||
-    ctx.roleCodes?.includes("system_admin") ||
-    ctx.roleCodes?.includes("group_admin") ||
-    false
-  );
+  return ctx.isAccountActive&&!ctx.profile?.must_change_password&&(hasGlobalPermission(ctx,"dms.admin")||hasGlobalPermission(ctx,"dms.documents.manage_types"));
 }
 
 function canViewMappings(ctx: Awaited<ReturnType<typeof getAuthContext>>): boolean {
+  if(!ctx.isAccountActive||ctx.profile?.must_change_password)return false;
   return (
     hasPermission(ctx, "dms.documents.view") ||
     hasPermission(ctx, "dms.documents.ai.view") ||
@@ -166,22 +162,20 @@ export async function getDmsErpMappingsForDefinition(
 ): Promise<ActionResult<DmsErpMappingRow[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!canViewMappings(ctx)) return { success: false, error: "Insufficient permissions to view ERP mappings" };
+    if (!isAdminUser(ctx)) return { success: false, error: "Insufficient permissions to view ERP mappings" };
 
-    const adminClient = createAdminClient();
-    const { data, error } = await adminClient
+    const adminClient = await createClient();
+    const data = await readAllPages(async(from,to)=>await adminClient
       .from("dms_metadata_erp_mappings")
-      .select("*")
+      .select("*",{count:"exact"})
       .eq("metadata_definition_id", definitionId)
       .is("deleted_at", null)
       .order("mapping_priority", { ascending: true })
-      .order("created_at", { ascending: true });
-
-    if (error) return { success: false, error: error.message };
+      .order("created_at", { ascending: true }).order("id").range(from,to),{identity:r=>r.id,maxRows:10000});
     const rows = ((data ?? []) as unknown as Array<Record<string, unknown>>).map(mapMappingRow);
     return { success: true, data: rows };
-  } catch (err) {
-    return { success: false, error: String(err) };
+  } catch {
+    return { success: false, error: "ERP mapping could not be verified. No target update was performed." };
   }
 }
 
@@ -192,23 +186,21 @@ export async function getDmsErpMappingsForDocumentType(
 ): Promise<ActionResult<DmsErpMappingRow[]>> {
   try {
     const ctx = await getAuthContext();
-    if (!canViewMappings(ctx)) return { success: false, error: "Insufficient permissions" };
+    if (!isAdminUser(ctx)) return { success: false, error: "Insufficient permissions" };
 
-    const adminClient = createAdminClient();
-    const { data, error } = await adminClient
+    const adminClient = await createClient();
+    const data = await readAllPages(async(from,to)=>await adminClient
       .from("dms_metadata_erp_mappings")
-      .select("*")
+      .select("*",{count:"exact"})
       .eq("document_type_id", documentTypeId)
       .eq("is_active", true)
       .is("deleted_at", null)
       .order("mapping_priority", { ascending: true })
-      .order("created_at", { ascending: true });
-
-    if (error) return { success: false, error: error.message };
+      .order("created_at", { ascending: true }).order("id").range(from,to),{identity:r=>r.id,maxRows:10000});
     const rows = ((data ?? []) as unknown as Array<Record<string, unknown>>).map(mapMappingRow);
     return { success: true, data: rows };
-  } catch (err) {
-    return { success: false, error: String(err) };
+  } catch {
+    return { success: false, error: "ERP mapping could not be verified. No target update was performed." };
   }
 }
 
@@ -254,7 +246,7 @@ export async function createDmsErpMapping(
     // Validate mapping_direction is only dms_to_erp
     // (future-proofing: reject other values)
 
-    const adminClient = createAdminClient();
+    const adminClient = await createClient();
 
     // Verify metadata_definition belongs to the document_type_id
     const { data: def, error: defErr } = await adminClient
@@ -296,18 +288,10 @@ export async function createDmsErpMapping(
     if (error) return { success: false, error: error.message };
     const row = data as unknown as Record<string, unknown>;
 
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_metadata_erp_mappings",
-      entity_id: row["id"] as number,
-      entity_reference: `${parsed.data.target_table}.${parsed.data.target_field}`,
-      action: "create",
-      new_values: { target_table: parsed.data.target_table, target_field: parsed.data.target_field },
-    });
 
     return { success: true, data: { id: row["id"] as number } };
-  } catch (err) {
-    return { success: false, error: String(err) };
+  } catch {
+    return { success: false, error: "ERP mapping could not be verified. No target update was performed." };
   }
 }
 
@@ -318,12 +302,15 @@ export async function updateDmsErpMapping(
   input: Omit<z.infer<typeof updateMappingSchema>, "id">
 ): Promise<ActionResult<void>> {
   try {
+    const parsed=updateMappingSchema.safeParse({...input,id});
+    if(!parsed.success)return {success:false,error:"Invalid mapping changes."};
+    input=parsed.data;
     const ctx = await getAuthContext();
     if (!isAdminUser(ctx)) {
       return { success: false, error: "Only DMS admins can update ERP mapping rules" };
     }
 
-    const adminClient = createAdminClient();
+    const adminClient = await createClient();
 
     // Fetch existing row
     const { data: existing, error: fetchErr } = await adminClient
@@ -365,25 +352,16 @@ export async function updateDmsErpMapping(
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = await adminClient
+    const { data:updated,error } = await adminClient
       .from("dms_metadata_erp_mappings")
       .update(updatePayload)
-      .eq("id", id);
+      .eq("id", id).is("deleted_at",null).select("id").single();
+    if(error||!updated)return {success:false,error:"Mapping changed, was rejected or access was revoked."};
 
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_metadata_erp_mappings",
-      entity_id: id,
-      entity_reference: `${targetTable}.${targetField}`,
-      action: "update",
-      new_values: { target_table: targetTable, target_field: targetField },
-    });
 
     return { success: true };
-  } catch (err) {
-    return { success: false, error: String(err) };
+  } catch {
+    return { success: false, error: "ERP mapping could not be verified. No target update was performed." };
   }
 }
 
@@ -396,26 +374,18 @@ export async function deleteDmsErpMapping(id: number): Promise<ActionResult<void
       return { success: false, error: "Only DMS admins can delete ERP mapping rules" };
     }
 
-    const adminClient = createAdminClient();
-    const { error } = await adminClient
+    const adminClient = await createClient();
+    const { data:removed,error } = await adminClient
       .from("dms_metadata_erp_mappings")
       .update({ deleted_at: new Date().toISOString(), is_active: false, updated_at: new Date().toISOString() })
       .eq("id", id)
-      .is("deleted_at", null);
+      .is("deleted_at", null).select("id").single();
+    if(error||!removed)return {success:false,error:"Mapping changed, was rejected or access was revoked."};
 
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_metadata_erp_mappings",
-      entity_id: id,
-      entity_reference: String(id),
-      action: "delete",
-    });
 
     return { success: true };
-  } catch (err) {
-    return { success: false, error: String(err) };
+  } catch {
+    return { success: false, error: "ERP mapping could not be verified. No target update was performed." };
   }
 }
 
@@ -426,10 +396,10 @@ export async function getDmsErpMappingTargetRegistry(): Promise<
 > {
   try {
     const ctx = await getAuthContext();
-    if (!canViewMappings(ctx)) return { success: false, error: "Insufficient permissions" };
+    if (!isAdminUser(ctx)) return { success: false, error: "Insufficient permissions" };
     return { success: true, data: listErpMappingTargets() };
-  } catch (err) {
-    return { success: false, error: String(err) };
+  } catch {
+    return { success: false, error: "ERP mapping could not be verified. No target update was performed." };
   }
 }
 
@@ -463,23 +433,12 @@ export async function getDmsErpMappingPreview(
     // ── 2. Load document ────────────────────────────────────────────────────
     const { data: doc, error: docErr } = await supabase
       .from("dms_documents")
-      .select("id, document_type_id, is_confidential")
-      .eq("id", documentId)
+      .select("id, document_type_id, confidentiality_level")
+      .eq("id", documentId).is("deleted_at",null)
       .single();
 
     if (docErr || !doc) return { success: false, error: "Document not found or access denied" };
     const docRow = doc as unknown as Record<string, unknown>;
-
-    // Confidentiality gate — consistent with AI Analysis
-    if (docRow["is_confidential"] === true) {
-      if (
-        !hasPermission(ctx, "dms.admin") &&
-        !ctx.roleCodes?.includes("system_admin") &&
-        !ctx.roleCodes?.includes("group_admin")
-      ) {
-        return { success: false, error: "Access denied: document is confidential" };
-      }
-    }
 
     const documentTypeId = docRow["document_type_id"] as number | null;
     if (!documentTypeId) {
@@ -487,15 +446,13 @@ export async function getDmsErpMappingPreview(
     }
 
     // ── 3. Load active ERP mappings for document type ──────────────────────
-    const { data: mappingData, error: mappingErr } = await adminClient
+    const mappingData = await readAllPages(async(from,to)=>await adminClient
       .from("dms_metadata_erp_mappings")
-      .select("*")
+      .select("*",{count:"exact"})
       .eq("document_type_id", documentTypeId)
       .eq("is_active", true)
       .is("deleted_at", null)
-      .order("mapping_priority", { ascending: true });
-
-    if (mappingErr) return { success: false, error: mappingErr.message };
+      .order("mapping_priority", { ascending: true }).order("id").range(from,to),{identity:r=>r.id,maxRows:10000});
     const mappings = ((mappingData ?? []) as unknown as Array<Record<string, unknown>>).map(mapMappingRow);
 
     if (mappings.length === 0) {
@@ -503,25 +460,21 @@ export async function getDmsErpMappingPreview(
     }
 
     // ── 4. Load approved DMS metadata values ──────────────────────────────
-    const { data: metaData, error: metaErr } = await supabase
+    const metaData = await readAllPages(async(from,to)=>await supabase
       .from("dms_document_metadata_values")
-      .select("definition_id, value_text, value_number, value_date, value_boolean, value_json")
-      .eq("document_id", documentId);
-
-    if (metaErr) return { success: false, error: metaErr.message };
+      .select("id,definition_id, value_text, value_number, value_date,value_datetime, value_boolean, value_json",{count:"exact"})
+      .eq("document_id", documentId).is("deleted_at",null).order("id").range(from,to),{identity:r=>r.id,maxRows:10000});
     const metaByDef = new Map<number, Record<string, unknown>>();
     for (const mv of (metaData ?? []) as unknown as Array<Record<string, unknown>>) {
       metaByDef.set(mv["definition_id"] as number, mv);
     }
 
     // ── 5. Load DMS document links ─────────────────────────────────────────
-    const { data: linkData, error: linkErr } = await supabase
+    const linkData = await readAllPages(async(from,to)=>await supabase
       .from("dms_document_links")
-      .select("id, entity_type, entity_id, is_primary")
-      .eq("document_id", documentId)
-      .order("is_primary", { ascending: false });
-
-    if (linkErr) return { success: false, error: linkErr.message };
+      .select("id, entity_type, entity_id, is_primary",{count:"exact"})
+      .eq("document_id", documentId).is("deleted_at",null)
+      .order("is_primary", { ascending: false }).order("id").range(from,to),{identity:r=>r.id,maxRows:10000});
     const links = (linkData ?? []) as unknown as Array<{
       id: number;
       entity_type: string;
@@ -531,11 +484,13 @@ export async function getDmsErpMappingPreview(
 
     // ── 6. Load definition labels ──────────────────────────────────────────
     const definitionIds = [...new Set(mappings.map((m) => m.metadata_definition_id))];
-    const { data: defData } = await adminClient
+    const { data: defData,error:defError } = await adminClient
       .from("dms_metadata_definitions")
       .select("id, field_code, field_label_en")
       .in("id", definitionIds)
+      .eq("document_type_id",documentTypeId).eq("is_active",true)
       .is("deleted_at", null);
+    if(defError||!defData||defData.length!==definitionIds.length)throw new Error("Mapping definitions could not be verified");
 
     const defMap = new Map<number, { field_code: string; field_label_en: string }>();
     for (const d of (defData ?? []) as unknown as Array<Record<string, unknown>>) {
@@ -549,6 +504,8 @@ export async function getDmsErpMappingPreview(
     const previewRows: DmsErpMappingPreviewRow[] = [];
 
     for (const mapping of mappings) {
+      const target=validateErpMappingTarget(mapping.target_module,mapping.target_table,mapping.target_field);
+      if(!target.valid||target.config.relationField!==mapping.target_relation_field||target.config.permission!==mapping.requires_target_permission)throw new Error("Invalid mapping target contract");
       const def = defMap.get(mapping.metadata_definition_id);
       const fieldCode  = def?.field_code  ?? `field_${mapping.metadata_definition_id}`;
       const fieldLabel = def?.field_label_en ?? fieldCode;
@@ -611,7 +568,7 @@ export async function getDmsErpMappingPreview(
           targetValue: null,
           diffStatus: "ambiguous",
           requiredPermission: mapping.requires_target_permission,
-          warning: `${linkResult.count} matching records found. Phase 9 will require explicit selection.`,
+          warning: `${linkResult.count} matching records found. Select the intended record explicitly.`,
         });
         continue;
       }
@@ -620,7 +577,7 @@ export async function getDmsErpMappingPreview(
 
       // Fetch target ERP record value (read-only)
       const erpValueResult = await fetchErpFieldValue(
-        adminClient,
+        supabase,
         mapping.target_table,
         mapping.target_field,
         mapping.target_record_strategy,
@@ -628,7 +585,7 @@ export async function getDmsErpMappingPreview(
         mapping.target_relation_field
       );
 
-      if (erpValueResult.status === "not_found") {
+      if (erpValueResult.status === "not_found"||erpValueResult.status==="ambiguous") {
         previewRows.push({
           mappingId: mapping.id,
           metadataDefinitionId: mapping.metadata_definition_id,
@@ -643,9 +600,9 @@ export async function getDmsErpMappingPreview(
           targetRecordId: targetEntityId,
           targetRecordLabel: `#${targetEntityId}`,
           targetValue: null,
-          diffStatus: "no_target",
+          diffStatus: erpValueResult.status==="ambiguous"?"ambiguous":"no_target",
           requiredPermission: mapping.requires_target_permission,
-          warning: "Target record not found or was deleted.",
+          warning: erpValueResult.status==="ambiguous"?"Several eligible target records match. Select the intended record explicitly.":"Target is unavailable or not permitted.",
         });
         continue;
       }
@@ -677,8 +634,8 @@ export async function getDmsErpMappingPreview(
     }
 
     return { success: true, data: previewRows };
-  } catch (err) {
-    return { success: false, error: String(err) };
+  } catch {
+    return { success: false, error: "ERP mapping could not be verified. No target update was performed." };
   }
 }
 
@@ -691,10 +648,11 @@ function extractMetadataValueAsString(
   if (!mv) return null;
   if (mv["value_text"] != null && mv["value_text"] !== "") return String(mv["value_text"]);
   if (mv["value_date"] != null) return String(mv["value_date"]);
+  if (mv["value_datetime"] != null) return String(mv["value_datetime"]);
   if (mv["value_number"] != null) return String(mv["value_number"]);
   if (mv["value_boolean"] != null) return String(mv["value_boolean"]);
   if (mv["value_json"] != null) {
-    try { return JSON.stringify(mv["value_json"]).slice(0, 100); } catch { return null; }
+    try { return JSON.stringify(mv["value_json"]); } catch { return null; }
   }
   return null;
 }
@@ -706,8 +664,8 @@ function computeDiffStatus(
 ): DmsErpMappingPreviewRow["diffStatus"] {
   if (dmsValue == null || dmsValue === "") return "no_dms_value";
   if (erpValue == null || erpValue === "") return "new";
-  const normalizedDms = dmsValue.trim().toLowerCase();
-  const normalizedErp = erpValue.trim().toLowerCase();
+  const normalizedDms = dmsValue.trim();
+  const normalizedErp = erpValue.trim();
   if (normalizedDms === normalizedErp) return "same";
   return "changed";
 }
@@ -736,8 +694,8 @@ function resolveTargetRecord(
     if (matching.length === 0) return { status: "no_link" };
     if (matching.length === 1) return { status: "found", entityId: matching[0]!.entity_id };
     // Multiple exact links — prefer primary
-    const primary = matching.find((l) => l.is_primary);
-    if (primary) return { status: "found", entityId: primary.entity_id };
+    const primary = matching.filter((l) => l.is_primary);
+    if (primary.length===1) return { status: "found", entityId: primary[0].entity_id };
     return { status: "ambiguous", count: matching.length };
   }
 
@@ -746,8 +704,8 @@ function resolveTargetRecord(
     const matching = links.filter((l) => l.entity_type === config.parentEntityType);
     if (matching.length === 0) return { status: "no_link" };
     // With link_parent the entity_id is the parent; we'll fetch child records in fetchErpFieldValue
-    const primary = matching.find((l) => l.is_primary) ?? matching[0]!;
-    return { status: "found", entityId: primary.entity_id };
+    if(matching.length!==1)return {status:"ambiguous",count:matching.length};
+    return { status: "found", entityId: matching[0]!.entity_id };
   }
 
   return { status: "no_link" };
@@ -756,7 +714,8 @@ function resolveTargetRecord(
 /** Fetch current value of a specific field from the ERP target table. */
 type ErpFetchResult =
   | { status: "found"; value: string | null; recordId: number }
-  | { status: "not_found" };
+  | { status: "not_found" }
+  | { status: "ambiguous" };
 
 async function fetchErpFieldValue(
   adminClient: ReturnType<typeof createAdminClient>,
@@ -766,60 +725,15 @@ async function fetchErpFieldValue(
   entityId: number,
   relationField: string
 ): Promise<ErpFetchResult> {
-  try {
-    // Safety: only query tables in the allowlist
-    const allowedTables = [
-      "employee_identity_documents",
-      "employee_medical_insurances",
-      "party_licenses",
-      "party_tax_registrations",
-    ];
-    if (!allowedTables.includes(targetTable)) {
-      return { status: "not_found" };
-    }
-
-    if (strategy === "link_exact") {
-      // entity_id IS the record id
-      const { data, error } = await adminClient
-        .from(targetTable as "employee_identity_documents")
-        .select(`id, ${targetField}`)
-        .eq("id", entityId)
-        .is("deleted_at", null)
-        .maybeSingle();
-
-      if (error || !data) return { status: "not_found" };
-      const row = data as unknown as Record<string, unknown>;
-      const value = row[targetField];
-      return {
-        status: "found",
-        value: value != null ? String(value) : null,
-        recordId: row["id"] as number,
-      };
-    }
-
-    if (strategy === "link_parent") {
-      // entity_id is the parent; find child records
-      const { data, error } = await adminClient
-        .from(targetTable as "employee_identity_documents")
-        .select(`id, ${targetField}`)
-        .eq(relationField, entityId)
-        .is("deleted_at", null)
-        .order("id", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error || !data) return { status: "not_found" };
-      const row = data as unknown as Record<string, unknown>;
-      const value = row[targetField];
-      return {
-        status: "found",
-        value: value != null ? String(value) : null,
-        recordId: row["id"] as number,
-      };
-    }
-
-    return { status: "not_found" };
-  } catch {
-    return { status: "not_found" };
-  }
+  const filter=targetTable.startsWith("party_")?"archived_at":"deleted_at";
+  const query=adminClient.from(targetTable).select(`id, ${targetField}`).is(filter,null);
+  const response=strategy==="link_exact"
+    ?await query.eq("id",entityId).limit(2)
+    :strategy==="link_parent"?await query.eq(relationField,entityId).order("id").limit(2):null;
+  if(!response||response.error)throw new Error("ERP target comparison could not be verified");
+  const rows=response.data as unknown as Record<string,unknown>[];
+  if(!rows.length)return {status:"not_found"};
+  if(rows.length>1)return {status:"ambiguous"};
+  const row=rows[0];
+  return {status:"found",value:row[targetField]==null?null:String(row[targetField]),recordId:row.id as number};
 }

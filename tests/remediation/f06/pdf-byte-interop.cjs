@@ -10,7 +10,7 @@ const {createHash}=require('node:crypto');
 const ts=require('typescript');
 const {jsPDF}=require('jspdf');
 const root=process.cwd();
-const allowed=new Set(['src/lib/dms/file-content-extractor.ts','src/lib/dms/pdf-to-images.ts','src/lib/logger.ts']);
+const allowed=new Set(['src/lib/dms/file-content-extractor.ts','src/lib/dms/pdf-to-images.ts','src/lib/dms/pdf-text-quality.ts','src/lib/logger.ts']);
 const originalResolve=Module._resolveFilename,originalTs=Module._extensions['.ts'];
 let extractFileContent;
 try{

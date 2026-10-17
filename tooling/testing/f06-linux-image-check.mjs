@@ -9,7 +9,7 @@ import {fileURLToPath} from 'node:url';
 
 export const BASE='node:22.23.2-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9';
 export const NATIVE='tests/remediation/f06/linux-native-paths.cjs';
-export const NATIVE_SHA='4ce9b37f3b4e155c184722e43f432b8c6584f68e8eeaaedf465a8117bb333622';
+export const NATIVE_SHA='54335c59ee622cb84c5e72d85b051c54aeef63530505f691909a9ea0866cffd0';
 // Historical Windows bytes stay historical. CI pins canonical public LF bytes.
 export const HISTORICAL_RAW_IMPACT={
  'Dockerfile':'643e766a1d8b316170e652c3ba836e0f41f5a3052ca8cd438c8c877bfe78a139',
@@ -43,6 +43,7 @@ export const IMPACT={...HISTORICAL_RAW_IMPACT,
  // Reviewed Arabic OCR successor; preserve historical F06 hashes above.
  'src/lib/dms/file-content-extractor.ts':'db6b17688166fac42bfbaea474b86d57084d81d9fae7a7966c45ae6539a0391f',
  'src/lib/dms/pdf-to-images.ts':'c687a287567d528b8082c9b8260e0eb58ca96f11cfa13f051fb713664e7e604e',
+ 'src/lib/dms/pdf-text-quality.ts':'82c743f7785ab87c9a839044f46765d531bebbb75b3167fb10b8606d7438f737',
  'src/lib/logger.ts':'65d187672a8a18f74b46c461ef4fcb9211b7a703c24bc2c248614b9ef9ffff02'
 };
 export const LOCK_GRAPH_SHA='89012eca840c7b48c7a4f7e3d2bb3e1b837326e3aac092ff8e20f5336a25acc1';

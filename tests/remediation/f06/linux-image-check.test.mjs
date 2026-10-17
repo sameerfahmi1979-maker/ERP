@@ -21,7 +21,7 @@ test('CI admits exactly the digest-pinned amd64 base before build and verificati
  assert.ok(fs.readFileSync('Dockerfile','utf8').split(/\r?\n/).includes(`FROM ${BASE} AS base`));
 });
 const validTap=()=>['TAP version 13',...Array.from({length:11},(_,i)=>'ok '+(i+1)+' - synthetic '+i),'1..11','# tests 11','# suites 0','# pass 11','# fail 0','# cancelled 0','# skipped 0','# todo 0'].join('\n');
-test('actual unchanged Linux fixture bytes remain pinned',()=>assert.equal(hash(fs.readFileSync(NATIVE)),NATIVE_SHA));
+test('reviewed narrow Linux fixture bytes remain pinned',()=>assert.equal(hash(fs.readFileSync(NATIVE)),NATIVE_SHA));
 test('reviewed integrated dependency inputs match exact pinned public bytes',()=>{for(const[p,h]of Object.entries(IMPACT)){const b=fs.readFileSync(p);const canonical=p.endsWith('.tgz')?b:Buffer.from(b.toString('utf8').replace(/\r\n/g,'\n'));assert.equal(hash(canonical),h,p);if(!p.endsWith('.tgz'))assert.doesNotMatch(b.toString('utf8'),/\r(?!\n)/);}assert.equal(hash(JSON.stringify(JSON.parse(fs.readFileSync('package-lock.json')))),LOCK_GRAPH_SHA);});
 test('native acceptance admits exactly eleven complete positive cases',()=>assert.deepEqual(validateNativeTap(validTap()),{tests:11,pass:11,fail:0,cancelled:0,skipped:0,todo:0}));
 for(const[name,change]of [['failed case',s=>s.replace('ok 1 -','not ok 1 -')],['skip',s=>s.replace('ok 1 - synthetic 0','ok 1 - synthetic 0 # SKIP')],['todo',s=>s.replace('# todo 0','# todo 1')],['cancellation',s=>s.replace('# cancelled 0','# cancelled 1')],['missing summary',s=>s.replace('# fail 0','')],['duplicated summary',s=>s+'\n# pass 11'],['wrong case count',s=>s.replace('ok 11 - synthetic 10','')]])test('native summary rejects '+name,()=>assert.throws(()=>validateNativeTap(change(validTap()))));
@@ -161,5 +161,13 @@ test('workflow rejects a browser runner even when it would only list tests',()=>
  for(const run of ['npm run test:e2e -- --list','npx playwright test','npm run test:pdf']){
   const changed=structuredClone(original);changed.jobs['build-types'].steps.push({run});
   assert.throws(()=>validateEngineeringWorkflow(changed),/No browser runner/);
+ }
+});
+
+test('both real PDF fixtures admit only the reviewed additional quality helper',()=>{
+ const file='src/lib/dms/pdf-text-quality.ts';assert.equal(IMPACT[file],hash(fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n')));
+ for(const fixture of [NATIVE,'tests/remediation/f06/pdf-byte-interop.cjs']){
+  const text=fs.readFileSync(fixture,'utf8');assert.ok(text.includes("'"+file+"'"));
+  assert.match(text,/allowed\.has\(/);assert.doesNotMatch(text,/allowed\.has\([^)]*\)\s*\|\|\s*true/);
  }
 });

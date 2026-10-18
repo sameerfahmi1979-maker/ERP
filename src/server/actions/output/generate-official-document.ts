@@ -60,6 +60,8 @@ import {
 } from "@/lib/output/class-policy";
 import { runIssuance, type IssuancePorts } from "@/lib/output/issuance-engine";
 import { recoverDurableOutput, issuanceCommandHash } from "@/lib/output/durable-operation";
+import { requirePermittedLetterhead } from "@/lib/output/letterhead-selection";
+import type { ReportRegistryEntry } from "@/lib/report-center/types";
 import { serialStatusOnTransition, stageTimestampColumn, type LifecycleState } from "@/lib/output/lifecycle";
 import { isOutputCoordinatorEnabled, isOfficialIssuanceEnabled } from "@/lib/output/feature-flags";
 import type {
@@ -272,6 +274,11 @@ export async function generateOfficialDocument(
       };
     }
 
+    await requirePermittedLetterhead({ selectedTemplateId: options.templateId,
+      ownerCompanyId: employeeAccess.subject.owner_company_id,
+      canOverride: employeeAccess.allows("reports.branding.override"),
+      registry: registry as unknown as ReportRegistryEntry, principal: ctx });
+
     // ── 4. Data provider (report engine: permissions, redaction, branding) ──
     const runResult = await runReport(
       {
@@ -279,6 +286,7 @@ export async function generateOfficialDocument(
         outputFormat: "pdf",
         filters: { ...(options.filters ?? {}), employee_id: String(recordId) },
         templateId: options.templateId,
+        ownerCompanyIds: [employeeAccess.subject.owner_company_id],
         requestedByUserId: actorId,
       },
       ctx
@@ -325,22 +333,10 @@ export async function generateOfficialDocument(
     // ── 6. Branding (versioned signed assets; stamp/signature need reports.sign)
     // Overriding the record's default template/letterhead requires the
     // dedicated audited permission (Section 10.2, seeded in OFFICIAL DOCS.1).
-    if (
-      definition &&
-      options.templateId &&
-      runResult.resolvedTemplateId &&
-      options.templateId !== runResult.resolvedTemplateId &&
-      !employeeAccess.allows("reports.branding.override")
-    ) {
-      return {
-        success: false,
-        blocked: "permission_denied",
-        error:
-          "Selecting a non-default letterhead/branding profile requires the " +
-          "'reports.branding.override' permission.",
-      };
-    }
     const resolvedTemplateId = options.templateId ?? runResult.resolvedTemplateId ?? null;
+    if (policy.official && !resolvedTemplateId) {
+      return { success: false, blocked: "validation_failed", error: "Choose an available governed company letterhead before issuing this document." };
+    }
     let branding: ExportBrandingContext | undefined;
     if (resolvedTemplateId) {
       // Cross-company template substitution guard: template branding must

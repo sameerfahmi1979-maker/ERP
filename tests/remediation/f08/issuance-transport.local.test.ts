@@ -4,12 +4,13 @@ import {beforeAll,expect,it,vi} from 'vitest';
 import {createClient} from '@supabase/supabase-js';
 import {NextRequest} from 'next/server';
 import {createHash} from 'node:crypto';
-const s=vi.hoisted(()=>({user:null as any,admin:null as any,mode:'none',renderCount:0,perm:true}));
+const s=vi.hoisted(()=>({user:null as any,admin:null as any,public:null as any,mode:'none',renderCount:0,perm:true}));
 vi.mock('@/lib/supabase/server',()=>({createClient:async()=>s.user}));
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>s.admin}));
 vi.mock('@/lib/rbac/check',()=>({getAuthContext:async()=>({profile:{id:980101},isAccountActive:true}),canUseApplication:()=>true}));
 import {recoverDurableOutput} from '@/lib/output/durable-operation';
 import {GET} from '@/app/api/output/file/route';
+import {completeReportRead} from '@/lib/report-center/complete-read';
 const sha=(x:Buffer)=>createHash('sha256').update(x).digest('hex');
 const request=(id:number)=>new NextRequest(`http://synthetic.invalid/api/output/file?issuanceId=${id}`);
 const nativeFetch=globalThis.fetch.bind(globalThis);
@@ -24,6 +25,7 @@ beforeAll(()=>{
   return response;
  }}});
  s.user=make(process.env.F08_NATIVE_USER!);s.admin=make(process.env.F08_NATIVE_SERVICE!);
+ s.public=make(process.env.F08_NATIVE_ANON!);
  vi.spyOn(globalThis,'fetch').mockImplementation(async(input,init)=>{if(String(input).includes('/forms/chromium/convert/html'))s.renderCount++;return nativeFetch(input,init);});
 });
 it('issues through actual RPC/renderer/Storage and downloads identical original bytes twice',async()=>{
@@ -51,6 +53,31 @@ it('a differently stored object cannot be silently replaced by recovery',async()
 });
 it('direct authenticated checkpoint forgery is denied by the actual API',async()=>{const r=await s.user.rpc('f08_checkpoint_operation',{p_id:980107,p_lease:crypto.randomUUID(),p_actor:980101,p_session:'f0800000-0000-4000-8000-000000000102',p_plan:{html:'fake'}});expect(r.error).toBeTruthy();});
 it('actual public verification follows revocation rather than a stale link',async()=>{
- const issued=await recoverDurableOutput(980108);expect(issued.kind).toBe('issued');
+ const issued=await recoverDurableOutput(980108);expect(issued.kind).toBe('issued');if(issued.kind!=='issued')return;
+ expect(issued.qr.status).toBe('activated');if(issued.qr.status!=='activated')return;
+ const token=new URL(issued.qr.publicUrl,'http://synthetic.invalid').pathname.split('/').at(-1);
+ const before=await s.public.rpc('get_public_verification_by_token',{p_token:token});expect(before.error).toBeNull();expect(before.data).toMatchObject({status:'valid',download_enabled:false});
  const revoked=await s.user.rpc('f08_revoke_output',{p_id:980108,p_reason:'Synthetic transport revocation'});expect(revoked.error).toBeNull();expect((await GET(request(980108))).status).toBe(404);expect((await recoverDurableOutput(980108)).kind).toBe('reconciliation_required');
+ const after=await s.public.rpc('get_public_verification_by_token',{p_token:token});expect(after.error).toBeNull();expect(after.data).toMatchObject({status:'cancelled',download_enabled:false,verification_summary:{},public_payload:{}});
+});
+it('collects all filtered synthetic analytical rows across a real API row ceiling',async()=>{
+ const prefix='f08.transport.page.';const rows=Array.from({length:1201},(_,i)=>({permission_code:prefix+String(i).padStart(4,'0'),permission_name:'F08 synthetic pagination fixture',module_code:'reports',action_code:'view'}));
+ const inserted=await s.admin.from('permissions').insert(rows);expect(inserted.error).toBeNull();
+ const result=await completeReportRead(s.admin.from('permissions').select('permission_code',{count:'exact'}).like('permission_code',prefix+'%')).order('permission_code').limit(5000);
+ expect(result.error).toBeNull();expect(result.count).toBe(1201);expect(result.data).toHaveLength(1201);expect(new Set(result.data.map((r:{permission_code:string})=>r.permission_code)).size).toBe(1201);
+});
+it('a non-global branch-scoped issuer can recover; download still requires its separate read/export permissions',async()=>{
+ const role=await s.admin.from('user_roles').update({role_id:980102,owner_company_id:980101,branch_id:980101}).eq('id',980101);expect(role.error).toBeNull();
+ const issued=await recoverDurableOutput(980109);expect(issued,JSON.stringify(issued)).toMatchObject({kind:'issued',issuanceId:980109});expect((await GET(request(980109))).status).toBe(404);
+ expect((await s.admin.from('permissions').insert(['reports.export','reports.view'].map(code=>({permission_code:code,permission_name:'Synthetic independent '+code,module_code:'reports',action_code:'view'})))).error).toBeNull();
+ const permissions=await s.admin.from('permissions').select('id').in('permission_code',['reports.export','reports.view']);expect(permissions.data).toHaveLength(2);
+ expect((await s.admin.from('role_permissions').insert(permissions.data.map((p:{id:number})=>({role_id:980102,permission_id:p.id})))).error).toBeNull();expect((await GET(request(980109))).status).toBe(200);
+});
+it('the same-company wrong branch cannot recover or download a previously visible original',async()=>{
+ const role=await s.admin.from('user_roles').update({branch_id:980102}).eq('id',980101);expect(role.error).toBeNull();
+ expect((await GET(request(980109))).status).toBe(404);expect((await recoverDurableOutput(980110)).kind).toBe('reconciliation_required');
+});
+it('a different company assignment cannot reuse the former branch download capability',async()=>{
+ const role=await s.admin.from('user_roles').update({owner_company_id:980102,branch_id:null}).eq('id',980101);expect(role.error).toBeNull();
+ expect((await GET(request(980109))).status).toBe(404);expect((await recoverDurableOutput(980111)).kind).toBe('reconciliation_required');
 });

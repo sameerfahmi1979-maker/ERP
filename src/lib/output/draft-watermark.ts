@@ -7,8 +7,8 @@
  */
 
 const WATERMARK_MARKUP = `
-<div aria-hidden="true" style="position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-  <span style="transform: rotate(-30deg); font-family: Arial, sans-serif; font-size: 54px; font-weight: 800; letter-spacing: 5px; color: rgba(220, 38, 38, 0.16); white-space: nowrap; text-transform: uppercase;">Draft — Not Officially Issued</span>
+<div aria-hidden="true" dir="ltr" lang="en" style="position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+  <span style="transform: rotate(-30deg); font-family: Arial, sans-serif; font-size: 26px; font-weight: 800; letter-spacing: 2px; color: rgba(220, 38, 38, 0.16); max-width: 90%; line-height: 1.3; text-align: center; white-space: normal; text-transform: uppercase;">Draft — Not Officially Issued</span>
 </div>
 `;
 

@@ -302,6 +302,7 @@ function renderNeutralHeader(
  */
 export async function exportToPDF<T>(options: ERPExportOptions<T>): Promise<ERPExportResult> {
   try {
+    if(options.canCommit?.()===false)throw Error('This report is no longer current. Run it again before exporting.');
     const {
       columns,
       data,
@@ -465,6 +466,7 @@ export async function exportToPDF<T>(options: ERPExportOptions<T>): Promise<ERPE
     }
 
     const downloadFilename = generateFilename(filename, "pdf");
+    if(options.canCommit?.()===false)throw Error('This report is no longer current. No file was downloaded.');
     doc.save(downloadFilename);
 
     return { success: true, filename: downloadFilename };

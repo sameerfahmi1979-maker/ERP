@@ -50,7 +50,7 @@ export const OFFICIAL_DOCUMENT_PAGE_MARGINS_MM = {
 } as const;
 
 /** Renderer-frame version is separate from each definition's wording version. */
-export const OFFICIAL_DOCUMENT_LAYOUT_VERSION = 2;
+export const OFFICIAL_DOCUMENT_LAYOUT_VERSION = 3;
 
 /** Same body and text model as the HTML preview, with print-engine running
  * identity/footer zones. Page totals are filled by the engine after pagination,
@@ -58,10 +58,11 @@ export const OFFICIAL_DOCUMENT_LAYOUT_VERSION = 2;
  */
 export function renderOfficialDocumentPrintPackage(definition: OfficialDocumentDefinition, ctx: OfficialDocumentRenderContext) {
   const marginsMm = { top: 18, bottom: 20, left: 18, right: 18 };
-  const company = elEscapeHtml(ctx.branding?.companyNameEn ?? "");
+  const company = elEscapeHtml(ctx.language === "ar" ? ctx.branding?.companyNameAr || ctx.branding?.companyNameEn || "" : ctx.branding?.companyNameEn ?? "");
   const ref = elEscapeHtml(ctx.serialNo ?? "DRAFT");
   const footer = officialFooterParts(ctx.branding).join(" · ");
-  const frameStyle = `<style>html,body{margin:0;padding:0;font:8pt Arial,sans-serif;color:#475569;width:100%;} .frame{margin:0 18mm;width:174mm;} .row{display:flex;justify-content:space-between;gap:4mm;} .identity{overflow-wrap:anywhere;} .pages{white-space:nowrap;} .legal{font-size:7.5pt;border-top:1px solid #94a3b8;padding-top:2mm;overflow-wrap:anywhere;}</style>`;
+  const frameFont = /[\u0600-\u06ff]/.test(company + footer) ? buildArabicFontFaceCss() : "";
+  const frameStyle = `<style>${frameFont}html,body{margin:0;padding:0;font:8pt ${ARABIC_FONT_STACK};color:#475569;width:100%;} .frame{margin:0 18mm;width:174mm;} .row{display:flex;justify-content:space-between;gap:4mm;} .identity{overflow-wrap:anywhere;unicode-bidi:plaintext;} .pages{white-space:nowrap;} .legal{font-size:7.5pt;border-top:1px solid #94a3b8;padding-top:2mm;overflow-wrap:anywhere;unicode-bidi:plaintext;}</style>`;
   return {
     html: renderOfficialDocumentHtml(definition, ctx).replace("</head>", "<style>.od-footer{display:none}.od-page{min-height:259mm}</style></head>"),
     marginsMm,
@@ -248,7 +249,7 @@ export function renderOfficialDocumentHtml(
   const model = definition.build(ctx);
   const language = ctx.language;
   const branding = ctx.branding;
-  const needsArabic = language !== "en";
+  const needsArabic = language !== "en" || /[\u0600-\u06ff]/.test(JSON.stringify([model, branding]));
   const pageDir = language === "ar" ? "rtl" : "ltr";
 
   // ── Branding values (pre-gated by the coordinator) ──────────────────────
@@ -331,7 +332,7 @@ export function renderOfficialDocumentHtml(
   // ── Signature / stamp zone (one shared full-width zone) ─────────────────
   const sigName = branding?.signatoryName ?? "";
   const sigTitle = branding?.signatoryTitleEn ?? "";
-  const showSignature = model.showSignature !== false;
+  const showSignature = !ctx.draft && model.showSignature !== false;
   const signatoryLabel =
     language === "ar"
       ? "المفوض بالتوقيع"
@@ -339,15 +340,15 @@ export function renderOfficialDocumentHtml(
         ? 'Authorized Signatory <span lang="ar" dir="rtl">/ المفوض بالتوقيع</span>'
         : "Authorized Signatory";
 
-  const signatureHtml = showSignature
+  const signatureHtml = showSignature || stampUrl
     ? `<div class="od-signature">
         <table class="od-signature-table"><tr>
-          <td class="od-sig-left">
+          <td class="od-sig-left">${showSignature ? `
             ${signatureUrl ? `<img src="${signatureUrl}" alt="Signature" class="od-sig-img" onerror="this.style.display='none'">` : ""}
             <div class="od-sig-rule">
               ${sigName ? `<div class="od-sig-name">${elEscapeHtml(sigName)}</div>` : ""}
               <div class="od-sig-title">${sigTitle ? elEscapeHtml(sigTitle) : signatoryLabel}</div>
-            </div>
+            </div>` : ""}
           </td>
           <td class="od-sig-right">
             ${stampUrl ? `<img src="${stampUrl}" alt="Stamp" class="od-stamp-img" onerror="this.style.display='none'">` : ""}

@@ -14,6 +14,7 @@ import { getTypedExportValue, escapeCsvField, generateFilename } from "./format-
  */
 export function exportToCSV<T>(options: ERPExportOptions<T>): ERPExportResult {
   try {
+    if(options.canCommit?.()===false)throw Error('This report is no longer current. No file was downloaded.');
     const { columns, data, filename } = options;
 
     // Generate header row

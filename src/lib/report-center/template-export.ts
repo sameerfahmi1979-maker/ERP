@@ -14,6 +14,8 @@ export async function resolveTemplateForExport(input: {
   principalId: number;
   /** Official issuance requires exact historical identity; ordinary exports retain their contract. */
   forIssuance?: boolean;
+  /** Drafts use governed brand resources but never official marks or signatories. */
+  omitOfficialMarks?: boolean;
 }): Promise<ExportBrandingContext | null> {
   try {
     const principal = await getAuthContextForProfileId(input.principalId);
@@ -36,7 +38,7 @@ export async function resolveTemplateForExport(input: {
       ? hasPermissionInScope(principal, permission, companyId)
       : hasGlobalPermission(principal, permission);
     if (!scoped("reports.view") && !scoped("reports.manage")) return null;
-    const canSign = scoped("reports.sign");
+    const canSign = !input.omitOfficialMarks && scoped("reports.sign");
 
     let provenance: IssuedBrandingProvenance | undefined;
     let assetUrls;
@@ -93,8 +95,8 @@ export async function resolveTemplateForExport(input: {
       trn: bp?.trn ?? null,
       tradeLicenseNo: bp?.trade_license_no ?? null,
       footerTextEn: bp?.footer_text_en ?? null,
-      signatoryName: bp?.signatory_name ?? null,
-      signatoryTitleEn: bp?.signatory_title_en ?? null,
+      signatoryName: canSign ? bp?.signatory_name ?? null : null,
+      signatoryTitleEn: canSign ? bp?.signatory_title_en ?? null : null,
       themePrimaryColor: bp?.theme_primary_color ?? null,
       themeHeaderBgColor: bp?.theme_header_bg_color ?? null,
       themeHeaderTextColor: bp?.theme_header_text_color ?? null,
@@ -102,8 +104,8 @@ export async function resolveTemplateForExport(input: {
       showAddress: tpl.show_address,
       showTrn: tpl.show_trn,
       showLicense: tpl.show_license,
-      showSignatory: tpl.show_signatory,
-      showStamp: tpl.show_stamp,
+      showSignatory: tpl.show_signatory && canSign,
+      showStamp: tpl.show_stamp && canSign,
       showWatermark: tpl.show_watermark,
       watermarkText: tpl.watermark_text ?? bp?.watermark_text ?? null,
       reportCode: input.reportCode ?? null,

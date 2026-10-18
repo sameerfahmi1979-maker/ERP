@@ -109,6 +109,8 @@ export type ERPExportColumn<T = unknown> = {
 };
 
 export type ERPExportOptions<T = unknown> = {
+  /** Client-only lifetime fence; never serialize to a server or persist in a report definition. */
+  canCommit?: () => boolean;
   /** Report title */
   title: string;
   /** Report subtitle/description */

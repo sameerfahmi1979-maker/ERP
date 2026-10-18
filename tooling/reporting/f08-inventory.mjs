@@ -13,6 +13,16 @@ const walk = folder => fs.existsSync(folder) ? fs.readdirSync(folder, { withFile
   return entry.isDirectory() ? walk(name) : /\.(ts|tsx|mts)$/.test(name) ? [name] : [];
 }) : [];
 const source = walk(path.join(root, 'src')).map(file => ({ file, relative: path.relative(root, file).replaceAll('\\', '/'), text: fs.readFileSync(file, 'utf8') }));
+const sourcePaths = new Set(source.map(item=>item.relative));
+const imports = source.flatMap(caller=>caller.text.split(/\r?\n/).flatMap((line,index)=>{
+  const specs=[...line.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s*)["']([^"']+)["']/g)].map(match=>match[1]);
+  return specs.flatMap(spec=>{
+    if(!spec.startsWith('@/')&&!spec.startsWith('.'))return [];
+    const base=spec.startsWith('@/')?'src/'+spec.slice(2):path.posix.normalize(path.posix.join(path.posix.dirname(caller.relative),spec));
+    const target=[base,base+'.ts',base+'.tsx',base+'.mts',base+'/index.ts',base+'/index.tsx'].find(name=>sourcePaths.has(name));
+    return target?[{target,path:caller.relative,line:index+1,specifier:spec}]:[];
+  });
+}));
 const areas = [
   ['fixed-definitions', 'src/lib/official-documents/', 'RETAIN_REPAIR', 'Fixed versioned wording and canonical layout; no unapproved text activation.'],
   ['issuance', 'src/lib/output/', 'RETAIN_REPAIR', 'Canonical identity, class policy and durable issuance; preserve existing originals.'],
@@ -32,13 +42,10 @@ const areas = [
 const entries = source.flatMap(item => {
   const area = areas.find(([, prefix]) => item.relative.startsWith(prefix));
   if (!area) return [];
-  const references = source.flatMap(caller => caller.text.split(/\r?\n/).flatMap((line, index) => {
-    const module = '@/' + item.relative.slice(4).replace(/\.(tsx?|mts)$/, '');
-    return line.includes(module) ? [{ path: caller.relative, line: index + 1 }] : [];
-  }));
+  const references = imports.filter(ref=>ref.target===item.relative).map(({target:_,...ref})=>ref);
   return [{ id: 'F08-SRC-' + createHash('sha256').update(item.relative).digest('hex').slice(0, 12), path: item.relative,
     sha256: createHash('sha256').update(fs.readFileSync(item.file)).digest('hex'), area: area[0], decision: area[2], rationale: area[3], references,
-    evidence: 'STATIC_SOURCE_ONLY; relative imports, dynamic dispatch and live DB registrations require separate reconciliation' }];
+    evidence: 'STATIC_SOURCE_ONLY; literal alias and relative imports included; nonliteral dynamic dispatch and live DB registrations require separate reconciliation' }];
 });
 const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
 fs.mkdirSync(path.dirname(output), { recursive: true });

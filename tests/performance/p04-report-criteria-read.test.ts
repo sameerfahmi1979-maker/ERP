@@ -95,6 +95,13 @@ const statusSources = [
   {key: "owner_company_id", table: "owner_companies", label: "legal_name_en", id: 1, fields: "id,legal_name_en,company_code"},
   {key: "branch_id", table: "branches", label: "branch_name_en", id: 11, fields: "id,branch_name_en"},
 ] as const;
+it('the active Employee Profile with a legacy null schema receives its required scoped employee choices',async()=>{
+ state.rows.erp_report_registry=[{report_code:'HR_EMPLOYEE_PROFILE',required_permissions:['reports.run'],filter_schema_json:null,is_active:true,deleted_at:null}];
+ const result=await readReportCriteria({reportCode:'HR_EMPLOYEE_PROFILE',key:'employee_id'});expect(result.success).toBe(true);expect(reportCriteriaPageSchema.parse(result.data).rows.map(r=>r.value)).toEqual([1]);expect(state.schemaErrors).toEqual([]);
+});
+it('a null schema never invents criterion access for an unknown report',async()=>{
+ state.rows.erp_report_registry[0].filter_schema_json=null;expect(await read()).toMatchObject({success:false,error:'Invalid report filter applicability'});expect(state.calls.filter(c=>c.table==='employees')).toHaveLength(0);
+});
 it.each(statusSources.flatMap(source => ["ordinary", "search", "selected", "recount"].map(mode => ({...source, mode}))))("strict source schema: $key $mode succeeds without a nonexistent deleted_at predicate", async ({key, table, label, id, fields, mode}) => {
   const base = state.rows[table][0];
   state.rows[table] = [

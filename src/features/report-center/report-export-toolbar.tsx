@@ -25,6 +25,7 @@ import { useLegacyEmailAccess } from "@/hooks/use-legacy-email-access";
 import { generatePDFAttachment, generateExcelAttachment, generateCSVAttachment } from "@/lib/export/generate-attachment";
 import type { ReportDataResult, ReportRegistryEntry } from "@/lib/report-center/types";
 import type { ExportBrandingContext, ERPExportOptions } from "@/lib/export/export-types";
+import {usesOfficialDocumentSurface} from '@/lib/report-center/output-surface';
 
 interface ReportExportToolbarProps {
   registryEntry: ReportRegistryEntry;
@@ -87,30 +88,6 @@ export function ReportExportToolbar({
     };
   };
 
-  const handleCsvDownload = () => {
-    if (!canUseData()) return;
-    const { columns, rows } = data;
-    const header = columns.join(",");
-    const rowLines = rows.map((row) =>
-      columns
-        .map((col) => {
-          const val = row[col];
-          if (val === null || val === undefined) return "";
-          const str = String(val);
-          return str.includes(",") || str.includes('"') ? `"${str.replace(/"/g, '""')}"` : str;
-        })
-        .join(",")
-    );
-    const csv = [header, ...rowLines].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${filenameBase}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   // A closed/retired dialog may still retain a generation promise or callback.
   // Do not hand attachment bytes back to it after the report owner changes.
   const prepareAttachment = async (format: "pdf" | "excel" | "csv") => {
@@ -143,6 +120,8 @@ export function ReportExportToolbar({
     }] : []),
   ];
 
+  if(usesOfficialDocumentSurface(registryEntry)) return <div role="note" className="rounded-sm border bg-card p-4 text-sm">This is document source data, not an official document. Open the employee record’s Letters &amp; Forms section to preview a watermarked draft or issue an approved document. Unapproved wording cannot be issued. Official originals are downloaded from issuance history.</div>;
+
   return (
     <>
       <div className="flex items-center justify-between gap-3 border rounded-lg bg-card px-4 py-2.5">
@@ -160,7 +139,7 @@ export function ReportExportToolbar({
 
         <div className="flex items-center gap-2">
           {hasCsv && (
-            <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={handleCsvDownload} disabled={isExporting}>
+            <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={()=>{if(canUseData())onExport('csv');}} disabled={isExporting}>
               <Download className="h-3 w-3" />
               CSV
             </Button>

@@ -15,6 +15,8 @@ vi.mock('sonner',()=>({toast:{success:m.toast,error:m.toast}}));
 vi.mock('@/components/ui/button',()=>({Button:({children,variant:_,size:__,...props}:React.ButtonHTMLAttributes<HTMLButtonElement>&{variant?:string;size?:string})=><button {...props}>{children}</button>}));
 vi.mock('@/components/ui/badge',()=>({Badge:({children}:{children:ReactNode})=><span>{children}</span>}));
 vi.mock('@/features/report-center/letter-preview-dialog',()=>({LetterPreviewDialog:()=>null}));
+vi.mock('@/features/report-center/official-draft-preview-dialog',()=>({OfficialDraftPreviewDialog:()=>null}));
+vi.mock('@/components/report-center/report-template-select-dialog',()=>({ReportTemplateSelectDialog:({open,onSelect}:{open:boolean;onSelect:(id:number,t:unknown)=>void})=>open?<button onClick={()=>onSelect(3,{template_name:'Synthetic letterhead'})}>Select synthetic letterhead</button>:null}));
 // Lightweight child shell here tests actual caller handlers, not layout or native-dialog accessibility.
 vi.mock('@/components/erp/erp-child-dialog-form',()=>({ERPChildDialogForm:({open,children,onSubmit,submitLabel,isSubmitting}:{open:boolean;children:ReactNode;onSubmit:()=>void;submitLabel:string;isSubmitting:boolean})=>open?<section><form onSubmit={e=>{e.preventDefault();onSubmit();}}>{children}<button disabled={isSubmitting}>{submitLabel}</button></form></section>:null}));
 vi.mock('@/components/erp/table/record-collection',()=>({RecordCollection:({rows,renderRecord}:{rows:unknown[];renderRecord:(r:unknown)=>ReactNode})=><>{rows.map(renderRecord)}</>}));
@@ -61,4 +63,9 @@ it('Recover original uses only the retained ID and clears only its matching opaq
 });
 it('download network failure is handled without changing any original',async()=>{
  m.download.mockRejectedValue(Error('Network'));render(page());fireEvent.click(await screen.findByRole('button',{name:'Download / Reprint Original PDF'}));await waitFor(()=>expect(m.toast).toHaveBeenCalledWith('Download unavailable',expect.anything()));expect(m.generate).not.toHaveBeenCalled();
+});
+it('binds a chosen letterhead into both the durable command identity and the actual generation request',async()=>{
+ m.catalog.mockResolvedValue({success:true,data:[{...item,canBrandingOverride:true,ownerCompanyId:1}]});render(page());await panel();
+ fireEvent.click(screen.getByRole('button',{name:'Choose letterhead'}));fireEvent.click(screen.getByRole('button',{name:'Select synthetic letterhead'}));fireEvent.click(screen.getByRole('button',{name:'Generate Official'}));
+ await waitFor(()=>expect(m.generate).toHaveBeenCalled());expect(m.generate.mock.calls[0][2]).toMatchObject({templateId:3});expect(JSON.stringify(m.intent.mock.calls[0])).toContain('templateId');expect(JSON.stringify(m.intent.mock.calls[0])).toContain('3');
 });

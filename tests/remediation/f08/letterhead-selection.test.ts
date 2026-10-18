@@ -1,0 +1,12 @@
+import { beforeEach, expect, it, vi } from "vitest";
+import type { AuthContext } from "@/lib/rbac/check";
+import type { ReportRegistryEntry } from "@/lib/report-center/types";
+const resolve = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/report-center/branding-resolver", () => ({ resolveReportBranding: resolve }));
+import { requirePermittedLetterhead } from "@/lib/output/letterhead-selection";
+const input = { selectedTemplateId: 2, ownerCompanyId: 1, canOverride: false, registry: { is_letter_type: true } as ReportRegistryEntry, principal: {} as AuthContext };
+beforeEach(() => { vi.resetAllMocks(); resolve.mockResolvedValue({ resolvedTemplate: { id: 2 }, requiresManualTemplateSelection: false }); });
+it("accepts a scoped user's actual company default", async () => { await requirePermittedLetterhead(input); expect(resolve).toHaveBeenCalledWith(expect.objectContaining({ ownerCompanyIds: [1], isLetterType: true }), input.principal); expect(resolve.mock.calls[0][0]).not.toHaveProperty("templateId"); });
+it("rejects a non-default even if the selected resolver would echo that same id", async () => { resolve.mockResolvedValue({ resolvedTemplate: { id: 3 } }); await expect(requirePermittedLetterhead(input)).rejects.toThrow(/different company letterhead/); });
+it("does not downgrade default-resolution failures to an ordinary scope denial", async () => { resolve.mockRejectedValue(Error("Unavailable default")); await expect(requirePermittedLetterhead(input)).rejects.toThrow("Unavailable default"); });
+it("permits explicit overrides only when the separate current capability was established", async () => { await requirePermittedLetterhead({ ...input, canOverride: true }); expect(resolve).not.toHaveBeenCalled(); });

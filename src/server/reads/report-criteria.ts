@@ -4,6 +4,7 @@ import {getAuthContext, hasPermission, type AuthContext} from "@/lib/rbac/check"
 import {createClient} from "@/lib/supabase/server";
 import {literalContains} from "@/lib/reads/search";
 import {canReadReportCriterion, reportCriteriaSchema, reportCriteriaPageSchema, reportCriteriaRestrictedSchema, type ReportCriteria, type ReportCriteriaResponse, type ReportCriterionKey} from "@/lib/reads/report-criteria-schema";
+import {reportFilterKeys} from '@/lib/report-center/filter-contract';
 
 type Definition = {table: string; label: string; code?: string; softDelete: boolean; dependencies: Partial<Record<"ownerCompanyId" | "branchId" | "departmentId", string>>};
 const definitions: Record<ReportCriterionKey, Definition> = {
@@ -14,7 +15,7 @@ const definitions: Record<ReportCriterionKey, Definition> = {
   designation_id: {table: "designations", label: "designation_name_en", softDelete: true, dependencies: {ownerCompanyId: "owner_company_id", departmentId: "department_id"}},
   work_site_id: {table: "work_sites", label: "site_name", softDelete: true, dependencies: {ownerCompanyId: "owner_company_id"}},
 };
-const registrySchema = z.object({report_code: z.string(), required_permissions: z.array(z.string()), filter_schema_json: z.object({filters: z.array(z.string()).optional()}).passthrough()});
+const registrySchema = z.object({report_code: z.string(), required_permissions: z.array(z.string()), filter_schema_json: z.unknown()});
 const dependencyKeys = {ownerCompanyId: "owner_company_id", branchId: "branch_id", departmentId: "department_id"} as const;
 type Result = {success: boolean; data?: ReportCriteriaResponse; error?: string};
 
@@ -40,7 +41,7 @@ export async function readReportCriteria(input: unknown, context?: AuthContext, 
     if (registry.report_code !== p.reportCode) throw Error("Report applicability mismatch");
     // Preserve the existing route's any-required-permission contract exactly.
     if (registry.required_permissions.length && !registry.required_permissions.some(code => hasPermission(ctx, code))) return {success: false, error: "Permission denied"};
-    const filters = registry.filter_schema_json.filters ?? [];
+    const filters = reportFilterKeys(registry.report_code,registry.filter_schema_json);
     if (!filters.includes(p.key) || Object.entries(dependencyKeys).some(([key, field]) => p[key as keyof typeof dependencyKeys] !== undefined && !filters.includes(field)))
       return {success: false, error: "Invalid report filter applicability"};
     if (!canReadReportCriterion(ctx, p.key)) return {success: true, data: reportCriteriaRestrictedSchema.parse({criteria: p, availability: "restricted"})};

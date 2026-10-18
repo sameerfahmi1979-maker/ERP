@@ -30,6 +30,7 @@ function triggerDownload(buffer: ArrayBuffer, filename: string) {
  */
 export async function exportToExcel<T>(options: ERPExportOptions<T>): Promise<ERPExportResult> {
   try {
+    if(options.canCommit?.()===false)throw Error('This report is no longer current. Run it again before exporting.');
     const { columns, data, filename, title, subtitle, generatedBy, generatedAt, filters, branding } = options;
 
     const workbook = new ExcelJS.Workbook();
@@ -96,6 +97,7 @@ export async function exportToExcel<T>(options: ERPExportOptions<T>): Promise<ER
       (buffer as Buffer).byteOffset,
       (buffer as Buffer).byteOffset + (buffer as Buffer).byteLength
     );
+    if(options.canCommit?.()===false)throw Error('This report is no longer current. No file was downloaded.');
     triggerDownload(ab as ArrayBuffer, downloadFilename);
 
     return { success: true, filename: downloadFilename };

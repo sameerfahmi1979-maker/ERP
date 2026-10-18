@@ -54,6 +54,8 @@ import {
 import { toast } from "sonner";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { LetterPreviewDialog } from "@/features/report-center/letter-preview-dialog";
+import { OfficialDraftPreviewDialog } from "@/features/report-center/official-draft-preview-dialog";
+import { ReportTemplateSelectDialog } from "@/components/report-center/report-template-select-dialog";
 import {
   listEmployeeOutputCatalog,
   type EmployeeOutputCatalogItem,
@@ -176,6 +178,8 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
   const [genLanguage, setGenLanguage] = useState<OfficialDocumentLanguage>("en");
   const [genInputs, setGenInputs] = useState<Record<string, string>>({});
   const [genAuthorizeReissue, setGenAuthorizeReissue] = useState(false);
+  const [genTemplate, setGenTemplate] = useState<{ id: number; name: string } | null>(null);
+  const [chooseLetterhead, setChooseLetterhead] = useState(false);
 
   // Inline result banner — official-generation outcomes must stay visible
   // (blocked reasons are actionable, e.g. "complete the disciplinary record"),
@@ -199,6 +203,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
     item: EmployeeOutputCatalogItem;
     language: OfficialDocumentLanguage;
     inputs: Record<string, string>;
+    templateId?: number;
   } | null>(null);
 
   // Lookup map: outputCode → catalog item (for Generate New in history table)
@@ -227,7 +232,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
     const current = capture();
     startLoading(async () => {
       try {
-      const [catRes] = await Promise.all([listEmployeeOutputCatalog(), refreshHistory()]);
+      const [catRes] = await Promise.all([listEmployeeOutputCatalog(employeeId), refreshHistory()]);
       if (!current()) return;
       if (catRes.success && catRes.data) {
         setCatalog(catRes.data);
@@ -264,7 +269,9 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
   const handleGenerateClick = (item: EmployeeOutputCatalogItem, autoAuthorizeReissue = false) => {
     setGenerateResult(null);
     setRepeatTarget(null);
-    if (item.languages.length > 1 || item.optionalInputs.length > 0) {
+    if (item.languages.length > 1 || item.optionalInputs.length > 0 || item.canBrandingOverride) {
+      setGenTemplate(null);
+      setChooseLetterhead(false);
       setGenLanguage(item.languages[0] ?? "en");
       setGenInputs({});
       setGenAuthorizeReissue(autoAuthorizeReissue);
@@ -290,7 +297,8 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
     item: EmployeeOutputCatalogItem,
     language: OfficialDocumentLanguage = "en",
     inputs: Record<string, string> = {},
-    authorizeReissue = false
+    authorizeReissue = false,
+    templateId?: number
   ) => {
     if (issueFlight.current) return;
     issueFlight.current = true;
@@ -300,7 +308,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
     setRepeatTarget(null);
     try {
       const intent = await getOutputRequestIntent(requestOwner, employeeId, item.outputCode,
-        { language, inputs, authorizeReissue, issueQr: item.qrPolicy !== "none" }, current);
+        { language, inputs, authorizeReissue, issueQr: item.qrPolicy !== "none", ...(templateId ? { templateId } : {}) }, current);
       if (!current()) return;
       const outcome = await generateOfficialDocument(item.outputCode, employeeId, {
         issueQr: item.qrPolicy !== "none",
@@ -308,6 +316,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
         language,
         inputs,
         authorizeReissue,
+        ...(templateId ? { templateId } : {}),
       });
       if (!current()) return;
       if (outcome.success) {
@@ -332,7 +341,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
         // The exact same content was already issued. Present a deliberate repeat-
         // generation confirmation — a new issuance with a new serial and new hash.
         // This is separate from Reissue/Supersede which marks the old copy superseded.
-        setRepeatTarget({ item, language, inputs });
+        setRepeatTarget({ item, language, inputs, templateId });
         setGenerateTarget(null);
         setGenerateResult({
           kind: "warning",
@@ -562,7 +571,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                   onClick={() => {
                     const t = repeatTarget;
                     setRepeatTarget(null);
-                    void handleOfficialIssue(t.item, t.language, t.inputs, true);
+                    void handleOfficialIssue(t.item, t.language, t.inputs, true, t.templateId);
                   }}
                 >
                   {issuingCode ? <Loader2 className="h-3 w-3 animate-spin" /> : <Stamp className="h-3 w-3" />}
@@ -692,12 +701,9 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                       )}
                     </div>
                   </div>
-                  {item.canGenerate && item.generatable && (
+                  {(item.canPreview || (item.canGenerate && item.generatable)) && (
                     <div className="flex items-center gap-1.5 mt-2.5 justify-end">
-                      {/* Preview stays only for legacy (non-catalog) outputs —
-                          catalog documents open the real issued PDF, so a
-                          divergent draft preview would break parity. */}
-                      {item.wordingStatus === "legacy" && (
+                      {(item.canPreview || item.wordingStatus === "legacy") && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -705,10 +711,10 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                           onClick={() => setPreview({ outputCode: item.outputCode, label: item.name })}
                         >
                           <Eye className="h-3 w-3" />
-                          Preview
+                          Preview draft
                         </Button>
                       )}
-                      {item.official && (
+                      {item.official && item.canGenerate && item.generatable && (
                         <Button
                           size="sm"
                           className="h-7 text-xs gap-1"
@@ -886,7 +892,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
       <ERPChildDialogForm
         open={!!generateTarget}
         onOpenChange={(open) => {
-          if (!open) setGenerateTarget(null);
+          if (!open) { setGenerateTarget(null); setChooseLetterhead(false); }
         }}
         title={generateTarget ? `Generate ${generateTarget.name}` : "Generate Document"}
         subtitle="The document is generated from verified ERP data using the fixed approved template."
@@ -895,7 +901,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
         size="md"
         isSubmitting={issuingCode !== null}
         onSubmit={() => {
-          if (generateTarget) void handleOfficialIssue(generateTarget, genLanguage, genInputs, genAuthorizeReissue);
+          if (generateTarget) void handleOfficialIssue(generateTarget, genLanguage, genInputs, genAuthorizeReissue, genTemplate?.id);
         }}
         submitLabel="Generate Official"
       >
@@ -923,15 +929,20 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                 <span>
                   Company letterhead:{" "}
                   <span className="text-foreground font-medium">
-                    Employee&apos;s company (auto-resolved)
+                    {genTemplate?.name ?? "Employee's company default"}
                   </span>
                   {generateTarget.canBrandingOverride && (
                     <span className="ml-1.5 text-[10px] text-blue-600 dark:text-blue-400 font-normal">
-                      · Override available — select a template when prompted
+                      · Choose a permitted company letterhead below
                     </span>
                   )}
                 </span>
               </div>
+
+              {generateTarget.canBrandingOverride && <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" disabled={issuingCode !== null} onClick={() => setChooseLetterhead(true)}>Choose letterhead</Button>
+                {genTemplate && <Button type="button" variant="ghost" disabled={issuingCode !== null} onClick={() => setGenTemplate(null)}>Use company default</Button>}
+              </div>}
 
               {/* QR verification — locked on/off by policy */}
               <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
@@ -957,7 +968,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                   Stamp / signature:{" "}
                   {generateTarget.userCanSign ? (
                     <span className="text-emerald-700 dark:text-emerald-400 font-medium">
-                      Will be applied — you hold the stamp/signature permission (reports.sign)
+                      Applied only when enabled in the selected letterhead and currently permitted
                     </span>
                   ) : (
                     <span className="text-foreground font-medium">
@@ -1024,10 +1035,16 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
         </div>
       </ERPChildDialogForm>
 
+      <ReportTemplateSelectDialog authContext={authContext} open={chooseLetterhead && !!generateTarget} onOpenChange={setChooseLetterhead}
+        ownerCompanyIds={generateTarget?.ownerCompanyId ? [generateTarget.ownerCompanyId] : undefined} selectedTemplateId={genTemplate?.id} issuableOnly
+        readGeneration={JSON.stringify([employeeId, generateTarget?.outputCode, genLanguage])} dialogTitle="Choose company letterhead"
+        onSelect={(id, selected) => { const current = capture(); if (current()) setGenTemplate({ id, name: selected.template_name }); }} />
+
       {/* ── Preview dialog (quick print = watermarked draft) ────────────── */}
+      <OfficialDraftPreviewDialog authContext={authContext} employeeId={employeeId} item={previewItem ?? null} open={!!preview && previewItem?.wordingStatus !== "legacy"} onOpenChange={open => { if (!open) setPreview(null); }} />
       <LetterPreviewDialog
         authContext={authContext}
-        open={!!preview}
+        open={!!preview && previewItem?.wordingStatus === "legacy"}
         onOpenChange={(open) => !open && setPreview(null)}
         reportCode={preview?.outputCode ?? ""}
         reportLabel={preview?.label ?? ""}

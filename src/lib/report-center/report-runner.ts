@@ -22,8 +22,10 @@ import type {
 import { resolveReportBranding } from "./branding-resolver";
 import { applyRedaction } from "./redaction-engine";
 import { REPORT_FETCHERS } from "./report-fetchers";
-import { assertAccountActive, hasPermission, type AuthContext } from "@/lib/rbac/check";
+import { assertAccountActive, hasPermission, getAuthContextForProfileId, type AuthContext } from "@/lib/rbac/check";
 import { createScopedReportReadClient } from "./scoped-read-client";
+import {collectedCompanyIds,reportAuthorityIdentity} from './result-identity';
+import {getEmployeeAccess} from '@/lib/rbac/employee-access';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Registry loader
@@ -33,13 +35,14 @@ async function loadRegistryEntry(
   reportCode: string
 ): Promise<ReportRegistryEntry | null> {
   const db = createAdminClient();
-  const { data } = await db
+  const { data, error } = await db
     .from("erp_report_registry")
     .select("*")
     .eq("report_code", reportCode)
     .eq("is_active", true)
     .is("deleted_at", null)
     .maybeSingle();
+  if(error)throw Error('Report configuration could not be loaded. Retry the request.');
   return data as ReportRegistryEntry | null;
 }
 
@@ -110,11 +113,12 @@ export async function completeReportRunLog(
   runId: number,
   rowCount: number,
   redactionSummaryJson: Record<string, unknown>,
-  durationMs: number
-): Promise<void> {
+  durationMs: number,
+  context?: {ownerCompanyIds:number[];templateId:number|null;profileId:number|null}
+): Promise<boolean> {
   try {
     const db = createAdminClient();
-    await db
+    const result=await db
       .from("erp_report_runs")
       .update({
         run_status: "success",
@@ -122,10 +126,15 @@ export async function completeReportRunLog(
         redaction_summary_json: redactionSummaryJson,
         completed_at: new Date().toISOString(),
         duration_ms: durationMs,
+        ...(context?{owner_company_ids:context.ownerCompanyIds,was_multi_company:context.ownerCompanyIds.length>1,
+          selected_template_id:context.templateId,resolved_branding_profile_id:context.profileId}:{}),
       })
-      .eq("id", runId);
+      .eq("id", runId).select('id').maybeSingle();
+    if(result.error||result.data?.id!==runId)throw Error('Report run completion not confirmed');
+    return true;
   } catch (err) {
     logger.error("[report-runner] completeReportRunLog exception:", err);
+    return false;
   }
 }
 
@@ -171,7 +180,7 @@ export async function runReport(
   const startMs = Date.now();
   assertAccountActive(actor);
   if(actor.profile!.id!==request.requestedByUserId) return {success:false,error:"Report principal mismatch"};
-  const callerPermissionCodes=actor.permissionCodes;
+  let callerPermissionCodes=actor.permissionCodes;
   const deliveryPermissions = request.outputFormat === "screen" ? [] : request.outputFormat === "email" ? ["reports.export","reports.email"] : ["reports.export"];
   if (deliveryPermissions.some(code=>!hasPermission(actor,code))) return {success:false,error:"Separate report export/email permission is required."};
 
@@ -234,10 +243,12 @@ export async function runReport(
     sensitiveDataIncluded: registryEntry.sensitive_profile !== "normal",
   });
 
+  if(!runId)return {success:false,error:'Report audit admission could not be confirmed. No report was produced.'};
+
   // ── 5. Fetch data ─────────────────────────────────────────────────────────
   const fetcher = REPORT_FETCHERS[request.reportCode];
   if (!fetcher) {
-    const errMsg = `Fetcher for '${request.reportCode}' is not implemented in this phase (REPORT.2). It will be available in REPORT.4.`;
+    const errMsg = 'The data source for this report is not available. Ask an administrator to review its configuration; no partial report was produced.';
     if (runId) {
       await failReportRunLog(runId, errMsg, Date.now() - startMs);
     }
@@ -246,6 +257,15 @@ export async function runReport(
 
   let rawData: ReportDataResult;
   try {
+    // A capability granted for another company must not unmask fields on this
+    // selected employee. The collection facade independently narrows row IDs.
+    if(request.reportCode.startsWith('HR_') && request.filters?.employee_id!==undefined){
+      const id=Number(request.filters.employee_id);
+      if(!Number.isSafeInteger(id)||id<=0)throw Error('Select a valid employee.');
+      const access=await getEmployeeAccess(actor,id);
+      if(!['reports.run',...registryEntry.required_permissions,...deliveryPermissions].every(access.allows))throw Error('This employee report is outside your current permitted scope.');
+      callerPermissionCodes=access.scopedContext.permissionCodes;
+    }
     rawData = await fetcher.fetch(
       request.filters ?? {},
       callerPermissionCodes,
@@ -259,6 +279,24 @@ export async function runReport(
     return { success: false, error: errMsg, runId: runId ?? undefined };
   }
 
+  // Caller-supplied company IDs are hints, never the identity of returned data.
+  // Rebind the final letterhead to the actual complete, scoped collection.
+  let actualCompanies:number[];
+  try{
+    actualCompanies=collectedCompanyIds(rawData);
+    if(request.ownerCompanyIds?.length && JSON.stringify([...new Set(request.ownerCompanyIds)].sort((a,b)=>a-b))!==JSON.stringify(actualCompanies))throw Error('The requested company context no longer matches the report data. Run it again.');
+    const fresh=await getAuthContextForProfileId(actor.profile!.id);
+    assertAccountActive(fresh);
+    if(reportAuthorityIdentity(fresh)!==reportAuthorityIdentity(actor))throw Error('Your report permissions changed during collection. Run it again.');
+    brandingResult=await resolveReportBranding({templateId:request.templateId,ownerCompanyIds:actualCompanies,registryEntry,isLetterType:registryEntry.is_letter_type},fresh);
+    if(brandingResult.requiresManualTemplateSelection){await failReportRunLog(runId,'Company letterhead selection required',Date.now()-startMs);return {success:false,runId,requiresManualTemplateSelection:true,error:'This report spans multiple companies. Select a governed group or neutral letterhead.'};}
+    const brandCompany=brandingResult.resolvedBrandingProfile?.owner_company_id;
+    if(brandCompany!==null&&brandCompany!==undefined && (actualCompanies.length!==1||actualCompanies[0]!==brandCompany))throw Error('Choose a letterhead matching the report company, or a governed group/neutral letterhead for combined data.');
+  }catch(error){
+    const message=error instanceof Error&&/company context|permissions changed|Choose a letterhead/.test(error.message)?error.message:'Report company or branding authority could not be verified. No output was produced.';
+    await failReportRunLog(runId,message,Date.now()-startMs);return {success:false,error:message,runId};
+  }
+
   // ── 6. Apply redaction ────────────────────────────────────────────────────
   const { sanitizedData, summary } = applyRedaction(rawData, {
     profile: registryEntry.sensitive_profile,
@@ -268,12 +306,14 @@ export async function runReport(
   // ── 7. Complete run log ───────────────────────────────────────────────────
   const durationMs = Date.now() - startMs;
   if (runId) {
-    await completeReportRunLog(
+    const completed=await completeReportRunLog(
       runId,
       sanitizedData.rows.length,
       summary as unknown as Record<string, unknown>,
-      durationMs
+      durationMs,
+      {ownerCompanyIds:actualCompanies,templateId:brandingResult.resolvedTemplate?.id??null,profileId:brandingResult.resolvedBrandingProfile?.id??null}
     );
+    if(!completed)return {success:false,error:'Report completion could not be confirmed. Run it again.',runId};
   }
 
   return {

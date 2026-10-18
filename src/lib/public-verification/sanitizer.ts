@@ -18,6 +18,18 @@
 import { SAFE_SUMMARY_FIELDS } from "./types";
 import type { SafeSummaryField } from "./types";
 
+/** F08 public policy: flat allowed values only; no nested/array fallback. */
+export function sanitizeVerificationFields(payload: unknown, outputType: string): Record<string, unknown> {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return {};
+  const fields = new Set(["document_type", "document_title", "document_ref", "document_date", "issuing_company", "issuing_company_trn", "valid_from", "valid_until", "status",
+    ...(["letter", "certificate", "form"].includes(outputType) ? ["subject_name", "subject_role"] : [])]);
+  return Object.fromEntries(Object.entries(payload).flatMap(([key, value]) => {
+    if (!fields.has(key) || (value !== null && !["string", "number", "boolean"].includes(typeof value))) return [];
+    if (typeof value === "number" && !Number.isFinite(value)) return [];
+    return [[key, value === null ? null : String(value).slice(0, 256)]];
+  }));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Blocked field patterns (applied on top of allowlist for defense in depth)
 // ─────────────────────────────────────────────────────────────────────────────

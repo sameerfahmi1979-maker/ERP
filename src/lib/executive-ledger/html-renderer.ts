@@ -7,7 +7,7 @@
  *
  * Security contract:
  * - All dynamic text is escaped via elEscapeHtml() / elEscapeAttr().
- * - Image URLs are validated via elEscapeAttr() (https:// only).
+ * - Image sources allow HTTPS or verified embedded raster PNG; links remain HTTPS-only.
  * - The renderer never queries Supabase, calls OpenAI, or resolves branding assets.
  * - Stamp/signature render only if provided in the already-gated ExportBrandingContext.
  * - No raw dangerouslySetInnerHTML in calling React components — output is safe HTML.
@@ -266,12 +266,13 @@ export function renderExecutiveLedgerHtml(doc: ExecutiveLedgerDocument): string 
 
   // ── Branding values ────────────────────────────────────────────────────────
   const companyName = branding?.companyNameEn ?? EL_NEUTRAL_COMPANY_NAME;
-  const logoUrl = branding?.showLogo ? elEscapeAttr(branding.logoUrl) : "";
-  const stampUrl = branding?.showStamp ? elEscapeAttr(branding?.stampUrl) : "";
-  const signatureUrl = branding?.showSignatory ? elEscapeAttr(branding?.signatureUrl) : "";
-  const letterheadBgUrl = elEscapeAttr(branding?.letterheadBackgroundUrl);
+  const imageSrc = (value: string | null | undefined) => value && /^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/=]+$/.test(value) ? value : elEscapeAttr(value);
+  const logoUrl = branding?.showLogo ? imageSrc(branding.logoUrl) : "";
+  const stampUrl = branding?.showStamp ? imageSrc(branding?.stampUrl) : "";
+  const signatureUrl = branding?.showSignatory ? imageSrc(branding?.signatureUrl) : "";
+  const letterheadBgUrl = imageSrc(branding?.letterheadBackgroundUrl);
   const watermarkUrl = branding?.showWatermark && branding.watermarkUrl
-    ? elEscapeAttr(branding.watermarkUrl)
+    ? imageSrc(branding.watermarkUrl)
     : "";
   const watermarkText = branding?.showWatermark && !watermarkUrl
     ? elEscapeHtml(branding?.watermarkText)

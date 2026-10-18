@@ -51,7 +51,7 @@ beforeAll(async()=>{
  const ur=await state.admin.from('user_roles').insert({user_profile_id:actors.combined.id,role_id:role,owner_company_id:900102,branch_id:900203});if(ur.error)throw ur.error;
  for(const [employee,company,code] of [[900301,900101,'HR_EMPLOYMENT_LETTER'],[900301,900101,'HR_SALARY_CERT_WITH_AMOUNT'],[900305,900101,'HR_EMPLOYMENT_LETTER'],[900307,900102,'HR_EMPLOYMENT_LETTER']] as const){
   const object=run+'/'+ledger.documents.length+'.pdf';const up=await state.admin.storage.from('erp-generated-pdfs').upload(object,bytes,{contentType:'application/pdf'});if(up.error)throw up.error;ledger.objects.push(object);save();
-  const id=await insert('erp_generated_pdf_documents',{template_key:code.toLowerCase(),output_code:code,source_record_type:'employee',source_record_id:employee,owner_company_id:company,storage_path:object,file_name:'F03 synthetic العربية.pdf',checksum:createHash('sha256').update(bytes).digest('hex'),renderer:'f03_synthetic',generated_by:actors.download.id,lifecycle_state:'issued',data_snapshot_json:{fixture:run}});
+  const id=await insert('erp_generated_pdf_documents',{template_key:code.toLowerCase(),output_code:code,source_record_type:'employee',source_record_id:employee,owner_company_id:company,storage_path:object,file_name:'F03 synthetic العربية.pdf',checksum:createHash('sha256').update(bytes).digest('hex'),file_size_bytes:bytes.length,renderer:'f03_synthetic',generated_by:actors.download.id,lifecycle_state:'issued',data_snapshot_json:{fixture:run}});
   ledger.documents.push(id);save();
  }
 },60000);

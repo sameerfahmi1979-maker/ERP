@@ -46,6 +46,7 @@ function makePorts(overrides: Partial<IssuancePorts> = {}): IssuancePorts & {
     transition: vi.fn(async (_id, from, to) => {
       transitions.push([from, to]);
     }),
+    reserveSerial: vi.fn(async () => ({ serialNo: "HR_TEST-C1-2026-000101" })),
     createPendingPublicLink: vi.fn(async () => ({
       linkId: 55,
       publicUrl: "https://erp.algt.net/verify/tok",
@@ -68,6 +69,19 @@ function makePorts(overrides: Partial<IssuancePorts> = {}): IssuancePorts & {
 }
 
 describe("issuance engine — canonical lifecycle", () => {
+  it("production managed admission bypasses the old non-durable writer", async () => {
+    const managed = { kind: "reconciliation_required" as const, issuanceId: 101, error: "Original retained" };
+    const ports = makePorts({ runManaged: vi.fn(async () => managed) });
+    expect(await runIssuance(baseInput(), ports)).toEqual(managed);
+    expect(ports.runManaged).toHaveBeenCalledWith(101);
+    expect(ports.reserveSerial).not.toHaveBeenCalled(); expect(ports.render).not.toHaveBeenCalled(); expect(ports.transition).not.toHaveBeenCalled();
+  });
+  it("production same-token replay delegates to the fenced original before fingerprint or insertion", async () => {
+    const ports = makePorts({ findByRequestKey: vi.fn(async () => ({ id: 77, lifecycle_state: "rendering" as const, storage_path: "original.pdf", file_name: "original.pdf", checksum: "pending", file_size_bytes: null })),
+      runManaged: vi.fn(async () => ({ kind: "reconciliation_required" as const, issuanceId: 77, error: "Busy" })) });
+    expect(await runIssuance(baseInput(), ports)).toMatchObject({ issuanceId: 77 });
+    expect(ports.runManaged).toHaveBeenCalledWith(77); expect(ports.insertIssuance).not.toHaveBeenCalled(); expect(ports.findIssuedWithFingerprint).not.toHaveBeenCalled();
+  });
   it("happy path: pending → rendering → uploaded → issued with verified final hash", async () => {
     const ports = makePorts();
     const out = await runIssuance(baseInput(), ports);
@@ -89,8 +103,9 @@ describe("issuance engine — canonical lifecycle", () => {
         lifecycle_state: "issued" as const,
         storage_path: "x",
         file_name: "x.pdf",
-        checksum: "abc",
+        checksum: hashFinalPdfBytes(PDF),
         file_size_bytes: 10,
+        serial_no: "HR_TEST-C1-2026-000077",
       })),
     });
     const out = await runIssuance(baseInput(), ports);
@@ -98,6 +113,9 @@ describe("issuance engine — canonical lifecycle", () => {
     if (out.kind !== "issued") return;
     expect(out.issuanceId).toBe(77);
     expect(out.idempotentReplay).toBe(true);
+    expect(out.storagePath).toBe("x");
+    expect(out.fileName).toBe("x.pdf");
+    expect(out.serialNo).toBe("HR_TEST-C1-2026-000077");
     expect(ports.insertIssuance).not.toHaveBeenCalled();
     expect(ports.render).not.toHaveBeenCalled();
   });
@@ -117,13 +135,19 @@ describe("issuance engine — canonical lifecycle", () => {
       findIssuedWithFingerprint: vi.fn(async () => ({ id: 42 })),
       insertIssuance,
     });
-    const out = await runIssuance(baseInput({ authorizeReissue: true }), ports);
+    const out = await runIssuance(baseInput({ authorizeReissue: true, supersedesIssuanceId: 42 }), ports);
     expect(out.kind).toBe("issued");
     if (out.kind !== "issued") return;
     expect(out.reissued).toBe(true);
     expect(insertIssuance).toHaveBeenCalledWith(
       expect.objectContaining({ supersedesIssuanceId: 42 })
     );
+  });
+
+  it("an authorized independent repeat does not implicitly supersede equal content", async () => {
+    const ports = makePorts({ findIssuedWithFingerprint: vi.fn(async () => ({ id: 42 })) });
+    expect((await runIssuance(baseInput({ authorizeReissue: true }), ports)).kind).toBe("issued");
+    expect(ports.insertIssuance).toHaveBeenCalledWith(expect.objectContaining({ supersedesIssuanceId: null }));
   });
 
   it("retryable render failure lands in failed_retryable", async () => {
@@ -298,6 +322,34 @@ describe("issuance engine — canonical lifecycle", () => {
     });
     const out = await runIssuance(baseInput(), ports);
     expect(out.kind).toBe("failed_retryable");
+    expect(ports.insertIssuance).not.toHaveBeenCalled();
+  });
+
+  it("required serial capability cannot silently be omitted", async () => {
+    const ports = makePorts({ reserveSerial: undefined });
+    const out = await runIssuance(baseInput(), ports);
+    expect(out.kind).toBe("failed_terminal");
+    expect(ports.render).not.toHaveBeenCalled();
+    expect(ports.upload).not.toHaveBeenCalled();
+  });
+
+  it("incomplete legacy integrity metadata requires reconciliation, never invented success", async () => {
+    const ports = makePorts({ findByRequestKey: vi.fn(async () => ({ id: 77, lifecycle_state: "issued" as const, storage_path: "original.pdf", file_name: "original.pdf", checksum: "pending", file_size_bytes: null })) });
+    expect((await runIssuance(baseInput(), ports)).kind).toBe("reconciliation_required");
+    expect(ports.insertIssuance).not.toHaveBeenCalled();
+  });
+
+  it("a rejected rendering transition stops before rendering or uploading", async () => {
+    const ports = makePorts({ transition: vi.fn(async () => { throw new Error("Concurrent cancellation"); }) });
+    await expect(runIssuance(baseInput(), ports)).rejects.toThrow("Concurrent cancellation");
+    expect(ports.render).not.toHaveBeenCalled();
+    expect(ports.upload).not.toHaveBeenCalled();
+  });
+
+  it.each([{ revoked_at: "2026-01-01" }, { archived_at: "2026-01-01" }, { superseded_by_id: 99 }, { expires_at: "2020-01-01" }, { expires_at: "not-a-date" }])("replay cannot revive an unavailable original: %j", async fields => {
+    const ports = makePorts({ findByRequestKey: vi.fn(async () => ({ id: 77, lifecycle_state: "issued" as const, storage_path: "original.pdf", file_name: "original.pdf", checksum: hashFinalPdfBytes(PDF), file_size_bytes: PDF.length, serial_no: "ORIGINAL", ...fields })) });
+    expect((await runIssuance(baseInput(), ports)).kind).toBe("failed_terminal");
+    expect(ports.render).not.toHaveBeenCalled();
     expect(ports.insertIssuance).not.toHaveBeenCalled();
   });
 });

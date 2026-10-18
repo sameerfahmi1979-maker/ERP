@@ -21,14 +21,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { canAccessIssuedFile } from "@/lib/output/issued-file-access";
 import { getAuthContext, hasPermission, type AuthContext } from "@/lib/rbac/check";
+import { recoverOfficialDocument } from "@/server/actions/output/recover-official-document";
 import { logAudit } from "@/server/actions/audit";
-import { generateOfficialDocument } from "@/server/actions/output/generate-official-document";
 import { isGotenbergHealthy } from "@/lib/pdf/gotenberg";
 import {
   canTransition,
-  isRetryable,
-  serialStatusOnTransition,
-  stageTimestampColumn,
   type LifecycleState,
 } from "@/lib/output/lifecycle";
 import { isOutputOpsConsoleEnabled } from "@/lib/output/feature-flags";
@@ -293,54 +290,6 @@ export async function getOpsIssuanceDetail(issuanceId: number): Promise<ActionRe
 // Lifecycle transition helper (serial voiding + stage timestamps + audit)
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function opsTransition(input: {
-  ctx: AuthContext;
-  row: { id: number; lifecycle_state: string | null; serial_no: string | null; output_code: string | null };
-  to: LifecycleState;
-  reason: string;
-  event: string;
-}): Promise<ActionResult> {
-  const from = input.row.lifecycle_state as LifecycleState;
-  if (!canTransition(from, input.to)) {
-    return { success: false, error: `Illegal lifecycle transition ${from} → ${input.to}.` };
-  }
-  if (!(await canAccessIssuedFile(input.row.id, "outputs.ops.retry"))) return { success: false, error: "Issuance unavailable or access denied." };
-  const db = createAdminClient();
-  const patch: Record<string, unknown> = {
-    lifecycle_state: input.to,
-    failure_reason: input.reason,
-  };
-  const stampCol = stageTimestampColumn(input.to);
-  if (stampCol) patch[stampCol] = new Date().toISOString();
-  const serialStatus = serialStatusOnTransition(input.to, input.row.serial_no != null);
-  if (serialStatus) {
-    patch.serial_status = serialStatus;
-    if (serialStatus === "voided") patch.serial_void_reason = input.reason;
-  }
-
-  // Atomic conditional update = idempotency guard (state must still match `from`).
-  const { data, error } = await db
-    .from("erp_generated_pdf_documents")
-    .update(patch)
-    .eq("id", input.row.id)
-    .eq("lifecycle_state", from)
-    .select("id");
-  if (error) return { success: false, error: error.message };
-  if (!data || data.length === 0) {
-    return { success: false, error: "The issuance state changed concurrently — refresh and retry." };
-  }
-
-  await logAudit({
-    module_code: "reports",
-    entity_name: "erp_generated_pdf_documents",
-    entity_id: input.row.id,
-    entity_reference: input.row.output_code ?? String(input.row.id),
-    action: "update",
-    new_values: { event: input.event, from, to: input.to, reason: input.reason },
-  }).catch(() => {});
-
-  return { success: true };
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Retry
@@ -348,14 +297,11 @@ async function opsTransition(input: {
 
 const retrySchema = z.object({
   issuanceId: z.number().int().positive(),
-  reason: z.string().min(5).max(1000),
+  reason: z.string().trim().min(5).max(1000),
 });
 
 /**
- * Operator retry: the failed attempt is closed out (cancelled — its serial is
- * voided, never recycled) and a FRESH coordinator run is started for the same
- * output + record. Idempotent: the close-out is an atomic conditional
- * transition, so a concurrent second retry fails cleanly instead of duplicating.
+ * Recover the same original. Never cancel it or allocate another request/serial.
  */
 export async function retryOpsIssuance(
   input: z.infer<typeof retrySchema>
@@ -379,41 +325,17 @@ export async function retryOpsIssuance(
   if (companies !== null && !companies.has(row.owner_company_id as number)) {
     return { success: false, error: "You do not have access to this issuance's company." };
   }
-  if (!isRetryable(row.lifecycle_state as LifecycleState)) {
-    return { success: false, error: `Only retryable failures can be retried (state: ${row.lifecycle_state}).` };
+  if (!["pending", "rendering", "uploaded", "failed_retryable", "reconciliation_required", "issued"].includes(String(row.lifecycle_state))) {
+    return { success: false, error: "Only an interrupted original or issued verification activation can be recovered." };
   }
   if (!row.output_code) {
     return { success: false, error: "Legacy issuances without an output code cannot be retried here." };
   }
 
-  const closed = await opsTransition({
-    ctx,
-    row: row as never,
-    to: "cancelled",
-    reason: `Operator retry: ${parsed.data.reason}`,
-    event: "output_ops_retry_closeout",
-  });
-  if (!closed.success) return closed as ActionResult<{ outcome: GenerateOfficialDocumentOutcome }>;
-
-  const outcome = await generateOfficialDocument(row.output_code as string, row.source_record_id as number, {
-    templateId: (row.template_id as number | null) ?? undefined,
-    issueQr: false,
-    clientRequestToken: `ops-retry-${row.id}-${Date.now()}`,
-  });
-
-  await logAudit({
-    module_code: "reports",
-    entity_name: "erp_generated_pdf_documents",
-    entity_id: row.id,
-    entity_reference: row.output_code as string,
-    action: "update",
-    new_values: {
-      event: "output_ops_retry",
-      reason: parsed.data.reason,
-      new_issuance_id: outcome.success ? outcome.issuanceId : null,
-      result: outcome.success ? "issued" : outcome.blocked ?? "failed",
-    },
-  }).catch(() => {});
+  if (!(await canAccessIssuedFile(row.id as number, "outputs.ops.retry"))) return { success: false, error: "Original request unavailable or access denied." };
+  try { await logAudit({ module_code: "reports", entity_name: "erp_generated_pdf_documents", entity_id: row.id, entity_reference: String(row.output_code ?? row.id), action: "update", new_values: { event: "output_recovery_requested", reason: parsed.data.reason } }); }
+  catch { return { success: false, error: "Recovery request audit was not recorded. No replacement was created." }; }
+  const outcome = await recoverOfficialDocument(row.id as number);
 
   return { success: true, data: { outcome } };
 }
@@ -424,7 +346,7 @@ export async function retryOpsIssuance(
 
 const cancelSchema = z.object({
   issuanceId: z.number().int().positive(),
-  reason: z.string().min(5).max(1000),
+  reason: z.string().trim().min(5).max(1000),
 });
 
 export async function cancelOpsIssuance(input: z.infer<typeof cancelSchema>): Promise<ActionResult> {
@@ -447,17 +369,14 @@ export async function cancelOpsIssuance(input: z.infer<typeof cancelSchema>): Pr
   if (companies !== null && !companies.has(row.owner_company_id as number)) {
     return { success: false, error: "You do not have access to this issuance's company." };
   }
-  if (!canTransition(row.lifecycle_state as LifecycleState, "cancelled")) {
+  if (row.lifecycle_state !== "cancelled" && !canTransition(row.lifecycle_state as LifecycleState, "cancelled")) {
     return { success: false, error: `A ${row.lifecycle_state} issuance cannot be cancelled.` };
   }
 
-  return opsTransition({
-    ctx,
-    row: row as never,
-    to: "cancelled",
-    reason: parsed.data.reason,
-    event: "output_ops_cancelled",
-  });
+  if (!(await canAccessIssuedFile(row.id as number, "outputs.ops.retry"))) return { success: false, error: "Original request unavailable or access denied." };
+  const cancelled = await db.rpc("f08_end_operation", { p_id: row.id, p_lease: null, p_cancel: true, p_reason: parsed.data.reason });
+  if (cancelled.error || cancelled.data?.id !== row.id) return { success: false, error: "Cancellation was not confirmed. Refresh the original request; no replacement was created." };
+  return { success: true };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -69,6 +69,8 @@ export interface GenerateOfficialDocumentOptions {
   authorizeReissue?: boolean;
   /** Issuance this new document supersedes (one-directional). */
   supersedesIssuanceId?: number;
+  /** Required for a superseding issuance; retained in the atomic history. */
+  reissueReason?: string;
 }
 
 export type QrOutcome =
@@ -78,6 +80,8 @@ export type QrOutcome =
   | { status: "activation_failed_retryable"; error: string };
 
 export interface GenerateOfficialDocumentResult {
+  /** Opaque retained request identity, used only to reconcile a lost response. */
+  requestKey?: string;
   success: true;
   issuanceId: number;
   lifecycleState: "issued";

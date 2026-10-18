@@ -36,9 +36,18 @@ export interface ExistingIssuance {
   file_name: string | null;
   checksum: string | null;
   file_size_bytes: number | null;
+  serial_no?: string | null;
+  qr?: QrOutcome;
+  revoked_at?: string | null;
+  archived_at?: string | null;
+  superseded_by_id?: number | null;
+  expires_at?: string | null;
 }
 
 export interface IssuancePorts {
+  /** Production uses the persisted, leased operation driver. Unmanaged ports
+   * remain solely for legacy pure-orchestration contract tests. */
+  runManaged?(issuanceId: number): Promise<RunIssuanceOutcome>;
   findByRequestKey(requestKey: string): Promise<ExistingIssuance | null>;
   findIssuedWithFingerprint(contentFingerprint: string): Promise<{ id: number } | null>;
   insertIssuance(row: {
@@ -104,6 +113,8 @@ export type RunIssuanceOutcome =
       idempotentReplay: boolean;
       reissued: boolean;
       serialNo: string | null;
+      storagePath: string;
+      fileName: string;
     }
   | { kind: "duplicate_content_warning"; existingIssuanceId: number }
   | { kind: "failed_retryable"; issuanceId: number; error: string }
@@ -119,16 +130,28 @@ export async function runIssuance(
   // 1. Request idempotency — the same logical request never issues twice.
   const existing = await ports.findByRequestKey(input.requestKey);
   if (existing) {
+    if (ports.runManaged) return ports.runManaged(existing.id);
     if (existing.lifecycle_state === "issued") {
+      if (existing.revoked_at || existing.archived_at || existing.superseded_by_id ||
+          (existing.expires_at && (!Number.isFinite(Date.parse(existing.expires_at)) || Date.parse(existing.expires_at) <= Date.now()))) {
+        return { kind: "failed_terminal", issuanceId: existing.id, error: "This original is revoked, superseded, archived or expired. Review its retained history; replay cannot issue a replacement." };
+      }
+      if (!existing.storage_path || !existing.file_name || !/^[a-f0-9]{64}$/i.test(existing.checksum ?? "") ||
+          !Number.isSafeInteger(existing.file_size_bytes) || (existing.file_size_bytes ?? 0) <= 0 ||
+          (input.policy.requiresSerial && !existing.serial_no?.trim())) {
+        return { kind: "reconciliation_required", issuanceId: existing.id, error: "The retained original has incomplete integrity or serial metadata. Reconciliation is required; no replacement was generated." };
+      }
       return {
         kind: "issued",
         issuanceId: existing.id,
-        finalSha256: existing.checksum ?? "",
-        fileSizeBytes: existing.file_size_bytes ?? 0,
-        qr: { status: "not_requested" },
+        finalSha256: existing.checksum!,
+        fileSizeBytes: existing.file_size_bytes!,
+        qr: existing.qr ?? (input.issueQr ? { status: "activation_failed_retryable", error: "Retained verification state needs reconciliation." } : { status: "not_requested" }),
         idempotentReplay: true,
         reissued: false,
-        serialNo: null,
+        serialNo: existing.serial_no ?? null,
+        storagePath: existing.storage_path,
+        fileName: existing.file_name,
       };
     }
     // Same request, prior attempt failed → report its state, never duplicate.
@@ -163,16 +186,25 @@ export async function runIssuance(
     documentClass: input.policy.documentClass,
     storagePath: input.storagePath,
     fileName: input.fileName,
-    supersedesIssuanceId: reissued ? input.supersedesIssuanceId ?? equal?.id ?? null : input.supersedesIssuanceId ?? null,
+    // An authorized independent repeat is not an implicit supersession. Only
+    // the explicit reissue action may name a predecessor.
+    supersedesIssuanceId: input.supersedesIssuanceId ?? null,
   });
+
+  if (ports.runManaged) return ports.runManaged(issuanceId);
 
   // 3b. Reserve the official serial when class policy requires one.
   //     Failure is retryable and the row moves to failed_retryable BEFORE any
   //     rendering happens; a reserved serial is never released for reuse.
   let serialNo: string | null = null;
+  if (input.policy.requiresSerial && !ports.reserveSerial) {
+    await ports.transition(issuanceId, "pending", "failed_terminal", { failure_reason: "Required serial reservation is unavailable." });
+    return { kind: "failed_terminal", issuanceId, error: "Required serial reservation is unavailable." };
+  }
   if (input.policy.requiresSerial && ports.reserveSerial) {
     try {
       serialNo = (await ports.reserveSerial({ issuanceId })).serialNo;
+      if (!serialNo?.trim()) throw new Error("Serial reservation returned an empty serial.");
     } catch (err) {
       await ports.transition(issuanceId, "pending", "failed_retryable", {
         failure_reason: `Serial reservation failed: ${errMessage(err)}`,
@@ -297,6 +329,8 @@ export async function runIssuance(
     idempotentReplay: false,
     reissued,
     serialNo,
+    storagePath: input.storagePath,
+    fileName: input.fileName,
   };
 }
 

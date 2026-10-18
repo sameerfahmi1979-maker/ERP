@@ -27,6 +27,7 @@ import type {
   OfficialDocumentLanguage,
   OfficialDocumentStatus,
 } from "@/lib/official-documents/types";
+import { officialWordingBlockers } from "@/lib/official-documents/catalogue";
 
 type ActionResult<T = unknown> = { success: boolean; data?: T; error?: string };
 
@@ -130,7 +131,9 @@ export async function listEmployeeOutputCatalog(): Promise<
     const missing = required.filter((p) => !hasPermission(ctx, p));
 
     const definition = getOfficialDocumentDefinition(row.report_code as string);
-    const generatable = definition ? isGeneratable(definition) : true;
+    const languages = definition ? definition.supportedLanguages.filter(language =>
+      !policy.official || officialWordingBlockers(definition, language).length === 0) : [];
+    const generatable = definition ? isGeneratable(definition) && (!policy.official || languages.length > 0) : !policy.official;
 
     items.push({
       outputCode: row.report_code as string,
@@ -149,7 +152,7 @@ export async function listEmployeeOutputCatalog(): Promise<
       sensitive: (row.sensitive_profile as string) !== "normal",
       wordingStatus: definition ? definition.status : "legacy",
       generatable,
-      languages: definition ? [...definition.supportedLanguages] : ["en"],
+      languages: definition ? (policy.official ? languages : [...definition.supportedLanguages]) : ["en"],
       optionalInputs: (definition?.optionalInputs ?? []).map((f) => ({
         key: f.key,
         labelEn: f.labelEn,

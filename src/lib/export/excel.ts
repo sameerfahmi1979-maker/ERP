@@ -6,7 +6,7 @@
 
 import ExcelJS from "exceljs";
 import type { ERPExportOptions, ERPExportResult } from "./export-types";
-import { getColumnValue, generateFilename, formatFilters } from "./format-export-data";
+import { getTypedExportValue, generateFilename, formatFilters } from "./format-export-data";
 import { format } from "date-fns";
 
 /** Trigger a browser file download from a Uint8Array buffer */
@@ -81,14 +81,7 @@ export async function exportToExcel<T>(options: ERPExportOptions<T>): Promise<ER
 
     // ── Data rows ─────────────────────────────────────────────────────────
     for (const row of data) {
-      const values = columns.map((col) => {
-        const value = getColumnValue(row, col);
-        const num = Number(value);
-        if (!isNaN(num) && typeof value === "string" && value.trim() !== "") {
-          return num;
-        }
-        return value;
-      });
+      const values = columns.map((col) => getTypedExportValue(row, col));
       worksheet.addRow(values);
     }
 

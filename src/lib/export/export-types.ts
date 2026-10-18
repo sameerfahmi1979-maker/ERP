@@ -100,6 +100,8 @@ export type ERPExportColumn<T = unknown> = {
   key: keyof T | string;
   /** Column header text */
   header: string;
+  /** Explicit spreadsheet type. Without a declaration, preserve the source type; never infer numbers from text. */
+  valueType?: "text" | "number" | "boolean";
   /** Custom value getter function */
   getValue?: (row: T) => string | number | boolean | null | undefined;
   /** Column width (for PDF/Excel) */

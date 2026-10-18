@@ -105,7 +105,7 @@ export interface CreateOutputPublicLinkInput {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface PublicVerificationResult {
-  status: OutputPublicLinkStatus;
+  status: OutputPublicLinkStatus | "legacy_metadata";
   access_level: OutputPublicLinkAccessLevel;
   output_type: OutputPublicLinkOutputType;
   document_title: string;

@@ -49,6 +49,36 @@ export const OFFICIAL_DOCUMENT_PAGE_MARGINS_MM = {
   right: 18,
 } as const;
 
+/** Renderer-frame version is separate from each definition's wording version. */
+export const OFFICIAL_DOCUMENT_LAYOUT_VERSION = 2;
+
+/** Same body and text model as the HTML preview, with print-engine running
+ * identity/footer zones. Page totals are filled by the engine after pagination,
+ * never guessed from HTML length. All values are escaped; no external assets.
+ */
+export function renderOfficialDocumentPrintPackage(definition: OfficialDocumentDefinition, ctx: OfficialDocumentRenderContext) {
+  const marginsMm = { top: 18, bottom: 20, left: 18, right: 18 };
+  const company = elEscapeHtml(ctx.branding?.companyNameEn ?? "");
+  const ref = elEscapeHtml(ctx.serialNo ?? "DRAFT");
+  const footer = officialFooterParts(ctx.branding).join(" · ");
+  const frameStyle = `<style>html,body{margin:0;padding:0;font:8pt Arial,sans-serif;color:#475569;width:100%;} .frame{margin:0 18mm;width:174mm;} .row{display:flex;justify-content:space-between;gap:4mm;} .identity{overflow-wrap:anywhere;} .pages{white-space:nowrap;} .legal{font-size:7.5pt;border-top:1px solid #94a3b8;padding-top:2mm;overflow-wrap:anywhere;}</style>`;
+  return {
+    html: renderOfficialDocumentHtml(definition, ctx).replace("</head>", "<style>.od-footer{display:none}.od-page{min-height:259mm}</style></head>"),
+    marginsMm,
+    headerHtml: `<html><head>${frameStyle}</head><body><div class="frame row"><span class="identity">${company}</span><span class="identity">${ref}</span></div></body></html>`,
+    footerHtml: `<html><head>${frameStyle}</head><body><div class="frame"><div class="row"><span class="identity">${ref}</span><span class="pages">Page <span class="pageNumber"></span> of <span class="totalPages"></span></span></div><div class="legal">${footer}</div></div></body></html>`,
+  };
+}
+
+function officialFooterParts(branding: OfficialDocumentRenderContext["branding"]): string[] {
+  const parts: string[] = [];
+  if (branding?.footerTextEn) parts.push(elEscapeHtml(branding.footerTextEn));
+  if (branding?.showTrn !== false && branding?.trn) parts.push(`TRN: ${elEscapeHtml(branding.trn)}`);
+  if (branding?.showLicense !== false && branding?.tradeLicenseNo) parts.push(`License: ${elEscapeHtml(branding.tradeLicenseNo)}`);
+  if (parts.length === 0 && branding?.companyNameEn) parts.push(elEscapeHtml(branding.companyNameEn));
+  return parts;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Small helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -238,12 +268,7 @@ export function renderOfficialDocumentHtml(
   if (branding?.email) contactParts.push(elEscapeHtml(branding.email));
   if (branding?.website) contactParts.push(elEscapeHtml(branding.website));
 
-  const footerParts: string[] = [];
-  if (branding?.footerTextEn) footerParts.push(elEscapeHtml(branding.footerTextEn));
-  if (branding?.showTrn !== false && branding?.trn) footerParts.push(`TRN: ${elEscapeHtml(branding.trn)}`);
-  if (branding?.showLicense !== false && branding?.tradeLicenseNo)
-    footerParts.push(`License: ${elEscapeHtml(branding.tradeLicenseNo)}`);
-  if (footerParts.length === 0 && companyNameEn) footerParts.push(elEscapeHtml(companyNameEn));
+  const footerParts = officialFooterParts(branding);
 
   // ── Title (shared bilingual title per Section 9.3) ──────────────────────
   let titleHtml = "";

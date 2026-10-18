@@ -18,6 +18,7 @@ import type { PublicVerificationResult } from "@/lib/public-verification/types";
 interface VerifyPageContentProps {
   token: string;
   result: PublicVerificationResult | null;
+  unavailable?: boolean;
 }
 
 function formatDate(value: string | null | undefined): string {
@@ -148,7 +149,7 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function VerifyPageContent({ token, result }: VerifyPageContentProps) {
+export function VerifyPageContent({ token, result, unavailable = false }: VerifyPageContentProps) {
   const isValid = result?.status === "valid";
   const isExpired = result?.status === "expired";
   const isCancelled = result?.status === "cancelled";
@@ -195,7 +196,9 @@ export function VerifyPageContent({ token, result }: VerifyPageContentProps) {
       <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
 
         {/* Status banner */}
-        {!result && <NotFoundBanner />}
+        {unavailable && <div role="alert" className="rounded-xl border-2 border-input bg-card p-5 text-foreground"><p className="font-semibold">Verification temporarily unavailable</p><p className="mt-1 text-sm">No authenticity claim can be made right now. Try again later or contact the issuing organization.</p></div>}
+        {!unavailable && !result && <NotFoundBanner />}
+        {result?.status === "legacy_metadata" && <div role="status" className="rounded-xl border-2 border-input bg-card p-5 text-foreground"><p className="font-semibold">Historical metadata only</p><p className="mt-1 text-sm">This link is not bound to a verified issued original. It does not confirm the authenticity or current validity of a document. Contact the issuing organization.</p></div>}
         {isValid && <ValidBanner title={result!.document_title} />}
         {isExpired && <ExpiredBanner />}
         {isCancelled && <CancelledBanner reason={result?.cancel_reason} />}

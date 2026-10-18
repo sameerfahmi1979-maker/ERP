@@ -41,15 +41,17 @@ import {
   findMissingDataError,
 } from "@/lib/official-documents/registry";
 import {
-  renderOfficialDocumentHtml,
-  OFFICIAL_DOCUMENT_PAGE_MARGINS_MM,
+  renderOfficialDocumentPrintPackage,
+  OFFICIAL_DOCUMENT_LAYOUT_VERSION,
 } from "@/lib/official-documents/layout/render";
 import type {
   OfficialDocumentDefinition,
   OfficialDocumentLanguage,
 } from "@/lib/official-documents/types";
 import { findUnresolvedTokens } from "@/lib/output/variable-allowlist";
-import { buildRequestKey, buildContentFingerprint } from "@/lib/output/idempotency";
+import { officialWordingBlockers } from "@/lib/official-documents/catalogue";
+import { attestStoredOutput, finalizeVerifiedOutput, activateVerifiedOutput } from "@/lib/output/verified-original";
+import { hashFinalPdfBytes, buildRequestKey, buildContentFingerprint } from "@/lib/output/idempotency";
 import {
   resolveEffectivePolicy,
   type ClassPolicyRow,
@@ -57,6 +59,7 @@ import {
   type RegistryPolicyOverrides,
 } from "@/lib/output/class-policy";
 import { runIssuance, type IssuancePorts } from "@/lib/output/issuance-engine";
+import { recoverDurableOutput, issuanceCommandHash } from "@/lib/output/durable-operation";
 import { serialStatusOnTransition, stageTimestampColumn, type LifecycleState } from "@/lib/output/lifecycle";
 import { isOutputCoordinatorEnabled, isOfficialIssuanceEnabled } from "@/lib/output/feature-flags";
 import type {
@@ -91,6 +94,16 @@ export async function generateOfficialDocument(
   options: GenerateOfficialDocumentOptions = {}
 ): Promise<GenerateOfficialDocumentOutcome> {
   try {
+    if (options.supersedesIssuanceId !== undefined && (!options.authorizeReissue || !Number.isSafeInteger(options.supersedesIssuanceId) ||
+        options.supersedesIssuanceId <= 0 || typeof options.reissueReason !== "string" || options.reissueReason.trim().length < 5 || options.reissueReason.trim().length > 1000)) {
+      return { success: false, blocked: "validation_failed", error: "A valid predecessor and meaningful reissue reason are required." };
+    }
+    if (!Number.isSafeInteger(recordId) || recordId <= 0 || !/^[A-Z0-9_]{1,100}$/.test(outputCode) ||
+        (options.templateId !== undefined && (!Number.isSafeInteger(options.templateId) || options.templateId <= 0)) ||
+        (options.filters && Object.keys(options.filters).some(key => key !== "employee_id")) ||
+        (options.filters?.employee_id !== undefined && String(options.filters.employee_id) !== String(recordId))) {
+      return { success: false, blocked: "validation_failed", error: "Invalid document, employee, template or subject filters. Select the intended record again." };
+    }
     if (!isOutputCoordinatorEnabled()) {
       return {
         success: false,
@@ -113,6 +126,26 @@ export async function generateOfficialDocument(
       };
     }
     const actorId = ctx.profile.id;
+    if (options.clientRequestToken !== undefined && !/^[A-Za-z0-9_-]{8,200}$/.test(options.clientRequestToken)) {
+      return { success: false, blocked: "validation_failed", error: "Invalid original request token." };
+    }
+    const commandHash = issuanceCommandHash(options);
+    if (options.clientRequestToken) {
+      const original = await createAdminClient().from("erp_generated_pdf_documents").select("id,source_record_id,output_code,data_snapshot_json")
+        .eq("request_key", buildRequestKey({ outputCode, recordId, actorProfileId: actorId, clientToken: options.clientRequestToken })).maybeSingle();
+      if (original.error) return { success: false, blocked: "reconciliation_required", error: "Original request lookup is unavailable; no new issuance was created." };
+      if (original.data) {
+        if (original.data.source_record_id !== recordId || original.data.output_code !== outputCode || original.data.data_snapshot_json?.operation?.commandHash !== commandHash) {
+          return { success: false, blocked: "reconciliation_required", error: "This request token belongs to a different or legacy command. Reconcile its original history." };
+        }
+        const retained = await recoverDurableOutput(original.data.id);
+        if (retained.kind !== "issued") return { success: false, blocked: "reconciliation_required", issuanceId: original.data.id, error: "error" in retained ? retained.error : "Original request requires recovery." };
+        return { success: true, issuanceId: retained.issuanceId, requestKey: buildRequestKey({ outputCode, recordId, actorProfileId: actorId, clientToken: options.clientRequestToken }), lifecycleState: "issued", storagePath: retained.storagePath, fileName: retained.fileName,
+          finalSha256: retained.finalSha256, fileSizeBytes: retained.fileSizeBytes, downloadUrl: employeeAccess.allows("reports.export") ? issuedFileUrl(retained.issuanceId) : null,
+          qr: retained.qr, idempotentReplay: true, reissued: retained.reissued, serialNo: retained.serialNo,
+          policy: original.data.data_snapshot_json.operation.policy };
+      }
+    }
     if (options.supersedesIssuanceId) {
       if (!(await canAccessIssuedFile(options.supersedesIssuanceId, "reports.pdf.approve")) && !(await canAccessIssuedFile(options.supersedesIssuanceId, "outputs.ops.retry"))) {
         return { success: false, blocked: "permission_denied", error: "The superseded document is unavailable or outside your approval scope." };
@@ -187,6 +220,10 @@ export async function generateOfficialDocument(
     const language: OfficialDocumentLanguage = options.language ?? "en";
     let parsedInputs: Record<string, string> = {};
 
+    if (!definition && policy.official) {
+      return { success: false, blocked: "validation_failed", error: "This official output has no approved fixed definition. It remains unavailable pending catalogue review." };
+    }
+
     if (definition) {
       if (!isGeneratable(definition)) {
         return {
@@ -218,6 +255,10 @@ export async function generateOfficialDocument(
         };
       }
       parsedInputs = parsed.data as Record<string, string>;
+      if (policy.official) {
+        const blockers = officialWordingBlockers(definition, language);
+        if (blockers.length) return { success: false, blocked: "validation_failed", error: blockers.join("\n") };
+      }
     }
 
     // ── 3. Approval policy ─────────────────────────────────────────────────
@@ -252,6 +293,12 @@ export async function generateOfficialDocument(
     const row = runResult.data.rows[0];
     if (!row) {
       return { success: false, blocked: "validation_failed", error: "No data returned for this record." };
+    }
+    // Every returned row must bind to the selected subject, including multi-row
+    // forms. A matching company alone cannot prove employee identity.
+    if (Number(runResult.data.meta?.sourceRecordId) !== recordId ||
+        runResult.data.rows.some((item) => Number(item.owner_company_id) !== employeeAccess.subject.owner_company_id)) {
+      return { success: false, blocked: "validation_failed", error: "Report data does not match the selected employee. No document was issued." };
     }
 
     // Precise, user-facing missing-data errors (definition-driven).
@@ -328,18 +375,18 @@ export async function generateOfficialDocument(
     // Language and validated inputs are part of the content identity: the
     // same record in a different language (or with a different NOC purpose)
     // is a different document, not a duplicate.
-    const dataSnapshot: Record<string, unknown> = definition
-      ? {
-          columns: runResult.data.columns,
-          row,
-          language,
-          inputs: parsedInputs,
-          definition_version: definition.version,
-        }
-      : { columns: runResult.data.columns, row };
+    // Multi-row forms must retain every row, not only their first employee row.
+    // Language/inputs also remain explicit for governed non-catalogue outputs.
+    const dataSnapshot: Record<string, unknown> = {
+      columns: runResult.data.columns, row, rows: runResult.data.rows,
+      language, inputs: parsedInputs,
+      ...(definition ? { definition_version: definition.version, layout_version: OFFICIAL_DOCUMENT_LAYOUT_VERSION } : {}),
+      operation: { commandHash, issueQr: options.issueQr ?? false, title: registry.report_name_en, policy },
+    };
     // A governed branding change is a new content identity. Replaying an old
     // request still returns its stored issuance; this never rewrites history.
     if (branding) dataSnapshot.branding = issuedBrandingSnapshot(branding);
+    if (options.supersedesIssuanceId) dataSnapshot.reissue_reason = options.reissueReason!.trim();
     const requestKey = buildRequestKey({
       outputCode,
       recordId,
@@ -409,7 +456,7 @@ export async function generateOfficialDocument(
         blocked: "duplicate_content_warning",
         error:
           "An identical document has already been issued for this record. " +
-          "Re-run with authorizeReissue to issue a superseding copy.",
+          "Authorize a separate copy, or use the explicit reissue action to replace the original.",
         existingIssuanceId: outcome.existingIssuanceId,
       };
     }
@@ -428,9 +475,10 @@ export async function generateOfficialDocument(
     return {
       success: true,
       issuanceId: outcome.issuanceId,
+      requestKey,
       lifecycleState: "issued",
-      storagePath,
-      fileName,
+      storagePath: outcome.storagePath,
+      fileName: outcome.fileName,
       finalSha256: outcome.finalSha256,
       fileSizeBytes: outcome.fileSizeBytes,
       downloadUrl,
@@ -444,7 +492,7 @@ export async function generateOfficialDocument(
     logger.error("[output-coordinator] generateOfficialDocument error", err);
     return {
       success: false,
-      blocked: "validation_failed",
+      blocked: "reconciliation_required",
       error: err instanceof Error ? err.message : String(err),
     };
   }
@@ -480,6 +528,8 @@ function buildRealPorts(deps: {
   // finalize or void it (never recycle). Tracked per issuance run.
   let hasSerial = false;
   let reservedSerialNo: string | null = null;
+  let currentIssuanceId: number | null = null;
+  let renderedOriginal: { sha256: string; rendererVersion: string } | null = null;
 
   async function transition(
     issuanceId: number,
@@ -487,6 +537,11 @@ function buildRealPorts(deps: {
     to: LifecycleState,
     extra?: Record<string, unknown>
   ): Promise<void> {
+    if (to === "issued") {
+      if (typeof extra?.checksum !== "string") throw new Error("Verified final checksum is required.");
+      await finalizeVerifiedOutput(issuanceId, extra.checksum);
+      return;
+    }
     const update: Record<string, unknown> = { lifecycle_state: to, ...(extra ?? {}) };
     const tsCol = stageTimestampColumn(to);
     if (tsCol) update[tsCol] = new Date().toISOString();
@@ -495,26 +550,36 @@ function buildRealPorts(deps: {
     if (serialStatus === "voided") {
       update.serial_void_reason = (extra?.failure_reason as string) ?? `Lifecycle moved to ${to}`;
     }
-    const { error } = await db
+    const { data, error } = await db
       .from("erp_generated_pdf_documents")
       .update(update)
       .eq("id", issuanceId)
-      .eq("lifecycle_state", from); // optimistic guard against concurrent movers
-    if (error) throw new Error(`Lifecycle transition ${from}→${to} failed: ${error.message}`);
+      .eq("lifecycle_state", from).select("id");
+    if (error || data?.length !== 1) throw new Error(`Lifecycle transition ${from}→${to} was not confirmed. Refresh/reconcile the original request.`);
   }
 
   return {
+    runManaged: recoverDurableOutput,
     async findByRequestKey(requestKey) {
-      const { data } = await db
+      const { data, error } = await db
         .from("erp_generated_pdf_documents")
-        .select("id, lifecycle_state, storage_path, file_name, checksum, file_size_bytes")
+        .select("id, lifecycle_state, storage_path, file_name, checksum, file_size_bytes, serial_no, revoked_at, archived_at, superseded_by_id, expires_at")
         .eq("request_key", requestKey)
         .maybeSingle();
-      return (data as never) ?? null;
+      if (error) throw new Error("Prior issuance could not be verified. Retry the original request after recovery.");
+      if (!data) return null;
+      const link = await db.from("erp_output_public_links").select("id,public_token,status")
+        .eq("generated_pdf_document_id", data.id).is("deleted_at", null).order("id", { ascending: false }).limit(1).maybeSingle();
+      if (link.error) throw new Error("Retained verification state could not be confirmed. Retry the original request after recovery.");
+      const qr: import("@/lib/output/types").QrOutcome = link.data?.status === "valid"
+        ? { status: "activated", publicUrl: buildVerificationUrl(link.data.public_token), linkId: link.data.id }
+        : link.data ? { status: "activation_failed_retryable", error: "Retained verification is not active. Review its status before retrying activation." }
+          : { status: "not_requested" };
+      return { ...data, qr };
     },
 
     async findIssuedWithFingerprint(contentFingerprint) {
-      const { data } = await db
+      const { data, error } = await db
         .from("erp_generated_pdf_documents")
         .select("id")
         .eq("content_fingerprint", contentFingerprint)
@@ -523,6 +588,7 @@ function buildRealPorts(deps: {
         .order("id", { ascending: false })
         .limit(1)
         .maybeSingle();
+      if (error) throw new Error("Existing document identity could not be verified.");
       return (data as { id: number } | null) ?? null;
     },
 
@@ -561,6 +627,7 @@ function buildRealPorts(deps: {
         .select("id")
         .single();
       if (error || !data) throw new Error(`Issuance insert failed: ${error?.message ?? "no data"}`);
+      currentIssuanceId = data.id as number;
       return { id: data.id as number };
     },
 
@@ -572,12 +639,12 @@ function buildRealPorts(deps: {
       // Gaps are expected and honest — voided serials are never reused.
       const year = new Date().getUTCFullYear();
       const serialNo = `${deps.registry.report_code}-C${deps.ownerCompanyId}-${year}-${String(issuanceId).padStart(6, "0")}`;
-      const { error } = await db
+      const { data, error } = await db
         .from("erp_generated_pdf_documents")
         .update({ serial_no: serialNo, serial_status: "reserved" })
         .eq("id", issuanceId)
-        .is("serial_no", null);
-      if (error) throw new Error(`Serial reservation failed: ${error.message}`);
+        .is("serial_no", null).eq("lifecycle_state", "pending").select("id");
+      if (error || data?.length !== 1) throw new Error("Serial reservation was not confirmed. Reconcile the original request.");
       hasSerial = true;
       reservedSerialNo = serialNo;
       return { serialNo };
@@ -607,9 +674,9 @@ function buildRealPorts(deps: {
           status: "pending_activation",
           access_level: deps.policy.publicDisclosure === "download" ? "full_view_download_ready" : "summary",
           verification_summary_json: {
-            document: deps.registry.report_name_en,
-            reference: deps.fileName,
-            company_id: deps.ownerCompanyId,
+            document_title: deps.registry.report_name_en,
+            document_ref: reservedSerialNo ?? deps.fileName,
+            issuing_company: deps.branding?.companyNameEn ?? String(deps.row.company_name ?? ""),
           },
           public_payload_json: {},
           download_enabled: deps.policy.publicDisclosure === "download",
@@ -626,11 +693,12 @@ function buildRealPorts(deps: {
 
     async render(qrCtx) {
       let html: string;
+      let printFrame: ReturnType<typeof renderOfficialDocumentPrintPackage> | undefined;
       if (deps.definition) {
         // Fixed code-based template (OFFICIAL DOCS.1) — the ONLY body source
         // for catalog documents. Deterministic build from server data only.
         const now = new Date();
-        html = renderOfficialDocumentHtml(deps.definition, {
+        printFrame = renderOfficialDocumentPrintPackage(deps.definition, {
           row: deps.row,
           rows: deps.rows,
           inputs: deps.inputs,
@@ -645,6 +713,7 @@ function buildRealPorts(deps: {
           issuedDateAr: formatIssueDateAr(now),
           // watermarkText intentionally never set on official issuance
         });
+        html = printFrame.html;
       } else {
         const document = buildLetterExecutiveLedgerDocument({
           columns: deps.columns.filter((c) => c !== "owner_company_id"),
@@ -671,9 +740,13 @@ function buildRealPorts(deps: {
         html,
         // Official-documents HTML is margin-free; engine margins repeat on
         // every page. Executive Ledger HTML keeps zero engine margins.
-        marginsMm: deps.definition ? OFFICIAL_DOCUMENT_PAGE_MARGINS_MM : undefined,
+        marginsMm: printFrame?.marginsMm,
+        headerHtml: printFrame?.headerHtml,
+        footerHtml: printFrame?.footerHtml,
       });
-      return { buffer: rendered.buffer, rendererVersion: rendered.rendererVersion };
+      const rendererVersion = printFrame ? `official-layout@${OFFICIAL_DOCUMENT_LAYOUT_VERSION}/${rendered.rendererVersion}` : rendered.rendererVersion;
+      renderedOriginal = { sha256: hashFinalPdfBytes(rendered.buffer), rendererVersion };
+      return { buffer: rendered.buffer, rendererVersion };
     },
 
     async upload(storagePath, buffer) {
@@ -681,18 +754,12 @@ function buildRealPorts(deps: {
     },
 
     async downloadStored(storagePath) {
-      const { data, error } = await db.storage.from("erp-generated-pdfs").download(storagePath);
-      if (error || !data) throw new Error(`Stored-object download failed: ${error?.message ?? "no data"}`);
-      return Buffer.from(await data.arrayBuffer());
+      if (!currentIssuanceId || !renderedOriginal || storagePath !== deps.storagePath) throw new Error("Retained rendering identity is unavailable.");
+      return attestStoredOutput({ issuanceId: currentIssuanceId, expectedSha256: renderedOriginal.sha256, rendererVersion: renderedOriginal.rendererVersion });
     },
 
     async activatePublicLink({ linkId }) {
-      const { error } = await db
-        .from("erp_output_public_links")
-        .update({ status: "valid", updated_at: new Date().toISOString(), updated_by: deps.actorId })
-        .eq("id", linkId)
-        .eq("status", "pending_activation");
-      if (error) throw new Error(`Public link activation failed: ${error.message}`);
+      await activateVerifiedOutput(linkId);
     },
 
     async audit(event, payload) {

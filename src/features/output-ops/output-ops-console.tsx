@@ -12,7 +12,8 @@
  * exclusively through `getIssuanceDownloadUrl`.
  */
 
-import { useCallback, useEffect, useMemo, useState, useTransition, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, useTransition, useRef } from "react";
+import { useReadCacheOwner } from "@/components/layout/read-cache-boundary";
 import { ConfiguredRow, EditColumns, EditFilters, useListColumns, type ListColumn } from "@/components/erp/table/list-controls";
 import {
   Activity,
@@ -102,6 +103,13 @@ function fmtDate(iso: string | null | undefined): string {
 }
 
 export function OutputOpsConsole() {
+  const owner = useReadCacheOwner();
+  return <OutputOpsSession key={JSON.stringify([owner?.identity ?? null, owner?.generation ?? 0])} />;
+}
+function OutputOpsSession() {
+  const owner = useReadCacheOwner(), activation = useRef<{live:boolean} | null>(null);
+  useLayoutEffect(() => { const token={live:true}; activation.current=token; return () => {token.live=false;}; }, [owner]);
+  const capture=useCallback(() => {const token=activation.current;return () => !!token?.live && activation.current===token && owner?.isLive()!==false;},[owner]);
   const columns=useListColumns('reports.output-ops:v1',OPS_COLUMNS);
   const [loadFailed,setLoadFailed]=useState(false);
   const latest=useRef(0);
@@ -128,6 +136,7 @@ export function OutputOpsConsole() {
   const [actionPending, setActionPending] = useState(false);
 
   const load = useCallback(() => {
+    const current=capture();
     const request=++latest.current;
     startLoading(async () => {
       try {
@@ -141,7 +150,7 @@ export function OutputOpsConsole() {
           search: search || undefined,
         }),
       ]);
-      if(request!==latest.current)return;
+      if(!current() || request!==latest.current)return;
       setLoadFailed(!m.success || !l.success);
       if (m.success && m.data) setMetrics(m.data);
       else if (m.error) toast.error("Metrics failed", { description: m.error });
@@ -151,30 +160,32 @@ export function OutputOpsConsole() {
         setCanRetry(l.data.canRetry);
         setCanRevoke(l.data.canRevoke);
       } else if (l.error) toast.error("History failed", { description: l.error });
-      } catch { if(request===latest.current){setLoadFailed(true);setCanRetry(false);setCanRevoke(false);} }
+      } catch { if(current() && request===latest.current){setLoadFailed(true);setCanRetry(false);setCanRevoke(false);} }
     });
-  }, [page, stateFilter, classFilter, search]);
+  }, [page, stateFilter, classFilter, search, capture]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   const openDetail = async (row: OpsIssuanceRow) => {
+    const current=capture();
     const request=++latestDetail.current;
     setDetailOpen(true);
     setDetail(null);
     try {
     const res = await getOpsIssuanceDetail(row.id);
-    if(request!==latestDetail.current)return;
+    if(!current() || request!==latestDetail.current)return;
     if (res.success && res.data) setDetail(res.data);
     else {
       toast.error("Detail failed", { description: res.error });
       setDetailOpen(false);
     }
-    } catch { if(request===latestDetail.current){toast.error("Issuance details could not be loaded. Try opening the record again.");setDetailOpen(false);} }
+    } catch { if(current() && request===latestDetail.current){toast.error("Issuance details could not be loaded. Try opening the record again.");setDetailOpen(false);} }
   };
 
   const runAction = async () => {
+    const current=capture();
     if (!actionTarget || actionFlight.current || loadFailed || isLoading) return;
     if (actionReason.trim().length < 5) {
       toast.error("A reason of at least 5 characters is required.");
@@ -185,19 +196,22 @@ export function OutputOpsConsole() {
       let ok = false;
       if (actionTarget.kind === "retry") {
         const res = await retryOpsIssuance({ issuanceId: actionTarget.row.id, reason: actionReason });
+        if (!current()) return;
         if (res.success && res.data) {
           ok = true;
           const o = res.data.outcome;
-          if (o.success) toast.success("Retry issued", { description: `New issuance #${o.issuanceId} (${o.serialNo ?? "no serial"})` });
-          else toast.warning("Retry ran but did not issue", { description: o.error });
+          if (o.success) toast.success("Original recovered", { description: `Same issuance #${o.issuanceId} (${o.serialNo ?? "no serial"}). ${o.qr.status === "activation_failed_retryable" ? "Verification activation is still pending." : "No replacement was created."}` });
+          else toast.warning("Original still needs recovery", { description: o.error });
         } else toast.error("Retry failed", { description: res.error });
       } else if (actionTarget.kind === "cancel") {
         const res = await cancelOpsIssuance({ issuanceId: actionTarget.row.id, reason: actionReason });
+        if (!current()) return;
         ok = res.success;
         if (res.success) toast.success("Issuance cancelled");
         else toast.error("Cancel failed", { description: res.error });
       } else {
         const res = await revokeIssuance({ issuanceId: actionTarget.row.id, reason: actionReason });
+        if (!current()) return;
         ok = res.success;
         if (res.success) toast.success("Document revoked");
         else toast.error("Revoke failed", { description: res.error });
@@ -207,10 +221,10 @@ export function OutputOpsConsole() {
         setActionReason("");
         load();
       }
-    } catch { toast.error("The action could not be confirmed. Refresh this record before retrying."); }
+    } catch { if(current()) toast.error("The action could not be confirmed. Refresh this record before retrying."); }
     finally {
       actionFlight.current=false;
-      setActionPending(false);
+      if(current()) setActionPending(false);
     }
   };
 
@@ -419,15 +433,15 @@ export function OutputOpsConsole() {
                 <td data-column="duration" className="px-3 py-2">{fmtMs(r.total_duration_ms)}</td>
                 <td data-column="actions" className="px-3 py-2 text-right">
                   <div className="flex items-center gap-1 justify-end">
-                    {canRetry && !loadFailed && !isLoading && (r.lifecycle_state === "failed_retryable" || r.lifecycle_state === "reconciliation_required") && (
+                    {canRetry && !loadFailed && !isLoading && !r.revoked_at && !r.superseded_by_id && (["pending","rendering","uploaded","failed_retryable","reconciliation_required"].includes(r.lifecycle_state ?? "") || (r.lifecycle_state === "issued" && r.qr_status === "pending_activation")) && (
                       <Button
                         variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
                         onClick={() => { setActionReason(""); setActionTarget({ kind: "retry", row: r }); }}
                       >
-                        <RotateCcw className="h-3 w-3" /> Retry
+                        <RotateCcw className="h-3 w-3" /> Recover original
                       </Button>
                     )}
-                    {canRetry && !loadFailed && !isLoading && (r.lifecycle_state === "pending" || r.lifecycle_state === "failed_retryable" || r.lifecycle_state === "reconciliation_required") && (
+                    {canRetry && !loadFailed && !isLoading && ["pending","rendering","uploaded","failed_retryable","reconciliation_required"].includes(r.lifecycle_state ?? "") && (
                       <Button
                         variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
                         onClick={() => { setActionReason(""); setActionTarget({ kind: "cancel", row: r }); }}
@@ -576,13 +590,13 @@ export function OutputOpsConsole() {
         open={actionTarget != null}
         onOpenChange={(open) => { if (!open) setActionTarget(null); }}
         title={
-          actionTarget?.kind === "retry" ? "Retry Failed Issuance"
+          actionTarget?.kind === "retry" ? "Recover Original Issuance"
             : actionTarget?.kind === "cancel" ? "Cancel Issuance"
             : "Revoke Issued Document"
         }
         subtitle={
           actionTarget?.kind === "retry"
-            ? "The failed attempt is closed out (serial voided, never recycled) and a fresh issuance is started."
+            ? "Resume the retained original request, file and serial. No replacement is created. Only the original issuer with current permissions can recover it; a busy request must finish or its lease expire."
             : actionTarget?.kind === "cancel"
             ? "The issuance is cancelled; a reserved serial is voided and never recycled."
             : "The document and its public verification link become permanently invalid."
@@ -592,7 +606,7 @@ export function OutputOpsConsole() {
         size="sm"
         isSubmitting={actionPending}
         submitLabel={
-          actionTarget?.kind === "retry" ? "Retry Issuance"
+          actionTarget?.kind === "retry" ? "Recover Original"
             : actionTarget?.kind === "cancel" ? "Cancel Issuance"
             : "Revoke Document"
         }

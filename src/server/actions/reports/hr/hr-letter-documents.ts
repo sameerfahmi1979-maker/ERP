@@ -81,7 +81,7 @@ export const experienceLetterFetcher: ReportFetcher = {
     return {
       columns: Object.keys(row).filter((k) => k !== "owner_company_id"),
       rows: [row],
-      meta: { letter_type: "experience_letter", ownerCompanyIds: [emp.owner_company_id] },
+      meta: { sourceRecordId: emp.id, letter_type: "experience_letter", ownerCompanyIds: [emp.owner_company_id] },
     };
   },
 };
@@ -116,7 +116,7 @@ export const employmentLetterFetcher: ReportFetcher = {
     return {
       columns: Object.keys(row).filter((k) => k !== "owner_company_id"),
       rows: [row],
-      meta: { letter_type: "employment_letter", ownerCompanyIds: [emp.owner_company_id] },
+      meta: { sourceRecordId: emp.id, letter_type: "employment_letter", ownerCompanyIds: [emp.owner_company_id] },
     };
   },
 };
@@ -160,7 +160,7 @@ export const employmentConfirmationFetcher: ReportFetcher = {
     return {
       columns: Object.keys(row).filter((k) => k !== "owner_company_id"),
       rows: [row],
-      meta: { letter_type: "employment_confirmation", ownerCompanyIds: [emp.owner_company_id] },
+      meta: { sourceRecordId: emp.id, letter_type: "employment_confirmation", ownerCompanyIds: [emp.owner_company_id] },
     };
   },
 };
@@ -217,6 +217,7 @@ export const warningLetterFetcher: ReportFetcher = {
       columns: Object.keys(row).filter((k) => k !== "owner_company_id"),
       rows: [row],
       meta: {
+        sourceRecordId: emp.id,
         letter_type: "warning_letter",
         ownerCompanyIds: [emp.owner_company_id],
         sensitive: true,
@@ -256,7 +257,7 @@ export const salaryCertGeneralFetcher: ReportFetcher = {
     return {
       columns: ["employee_name", "employee_code", "designation", "department", "company_name", "employment_type", "joining_date", "generated_date", "certificate_body"],
       rows: [row],
-      meta: { letter_type: "salary_cert_general", ownerCompanyIds: [emp.owner_company_id] },
+      meta: { sourceRecordId: emp.id, letter_type: "salary_cert_general", ownerCompanyIds: [emp.owner_company_id] },
     };
   },
 };
@@ -323,7 +324,7 @@ export const salaryCertWithAmountFetcher: ReportFetcher = {
     return {
       columns: ["employee_name", "employee_code", "designation", "company_name", "joining_date", "basic_salary", "gross_salary", "currency", "generated_date"],
       rows: [row],
-      meta: { letter_type: "salary_cert_with_amount", ownerCompanyIds: [emp.owner_company_id], sensitive: true },
+      meta: { sourceRecordId: emp.id, letter_type: "salary_cert_with_amount", ownerCompanyIds: [emp.owner_company_id], sensitive: true },
     };
   },
 };
@@ -372,7 +373,7 @@ export const nocFetcher: ReportFetcher = {
     return {
       columns: ["employee_name", "employee_code", "designation", "company_name", "passport_number_masked", "purpose", "generated_date"],
       rows: [row],
-      meta: { letter_type: "noc", ownerCompanyIds: [emp.owner_company_id] },
+      meta: { sourceRecordId: emp.id, letter_type: "noc", ownerCompanyIds: [emp.owner_company_id] },
     };
   },
 };
@@ -405,7 +406,7 @@ export const employeeIdCardFetcher: ReportFetcher = {
     return {
       columns: ["employee_code", "employee_name", "designation", "department", "company_name", "company_code", "generated_date"],
       rows: [row],
-      meta: { letter_type: "id_card", ownerCompanyIds: [emp.owner_company_id] },
+      meta: { sourceRecordId: emp.id, letter_type: "id_card", ownerCompanyIds: [emp.owner_company_id] },
     };
   },
 };
@@ -449,7 +450,7 @@ export const ppeIssueFormFetcher: ReportFetcher = {
     return {
       columns: ["employee_code", "employee_name", "ppe_item", "ppe_category", "quantity", "issue_date", "condition", "issued_by", "signature_placeholder"],
       rows: rows.length ? rows : [{ employee_code: emp.employee_code, employee_name: emp.full_name_en, ppe_item: "No items", ppe_category: "", quantity: 0, issue_date: "", condition: "", issued_by: "", signature_placeholder: "", owner_company_id: emp.owner_company_id }],
-      meta: { letter_type: "ppe_issue_form", ownerCompanyIds: [emp.owner_company_id] },
+      meta: { sourceRecordId: emp.id, letter_type: "ppe_issue_form", ownerCompanyIds: [emp.owner_company_id] },
     };
   },
 };
@@ -494,7 +495,7 @@ export const joiningChecklistFetcher: ReportFetcher = {
     return {
       columns: ["employee_code", "employee_name", "joining_date", "area", "checklist_item", "status", "remarks"],
       rows,
-      meta: { letter_type: "joining_checklist", ownerCompanyIds: [emp.owner_company_id] },
+      meta: { sourceRecordId: emp.id, letter_type: "joining_checklist", ownerCompanyIds: [emp.owner_company_id] },
     };
   },
 };
@@ -550,7 +551,7 @@ export const clearanceFormFetcher: ReportFetcher = {
     return {
       columns: ["employee_code", "employee_name", "clearance_area", "status", "signature_placeholder", "remarks"],
       rows,
-      meta: { letter_type: "clearance_form", ownerCompanyIds: [emp.owner_company_id] },
+      meta: { sourceRecordId: emp.id, letter_type: "clearance_form", ownerCompanyIds: [emp.owner_company_id] },
     };
   },
 };

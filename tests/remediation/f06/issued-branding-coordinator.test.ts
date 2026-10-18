@@ -3,29 +3,34 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 import type {ExportBrandingContext} from '@/lib/export/export-types';
 import type {IssuancePorts,RunIssuanceInput} from '@/lib/output/issuance-engine';
-const m=vi.hoisted(()=>({brand:vi.fn(),input:null as RunIssuanceInput|null,inserted:null as Record<string,unknown>|null}));
+const m=vi.hoisted(()=>({brand:vi.fn(),originalPath:null as string|null,input:null as RunIssuanceInput|null,inserted:null as Record<string,unknown>|null}));
 vi.mock('@/lib/rbac/check',()=>({getAuthContext:async()=>({profile:{id:11}})}));
 vi.mock('@/lib/rbac/employee-access',()=>({getEmployeeAccess:async()=>({subject:{owner_company_id:1},allows:()=>true})}));
 vi.mock('@/lib/output/issued-file-access',()=>({canAccessIssuedFile:async()=>true,issuedFileUrl:(id:number)=>`/api/output/file?issuanceId=${id}`}));
-vi.mock('@/lib/report-center/report-runner',()=>({runReport:async()=>({success:true,data:{columns:['employee_name'],rows:[{owner_company_id:1,employee_name:'Synthetic employee'}]},resolvedTemplateId:7})}));
+vi.mock('@/lib/report-center/report-runner',()=>({runReport:async()=>({success:true,data:{columns:['employee_name'],rows:[{owner_company_id:1,employee_name:'Synthetic employee'}],meta:{sourceRecordId:1}},resolvedTemplateId:7})}));
 vi.mock('@/lib/report-center/template-export',()=>({resolveTemplateForExport:m.brand}));
 vi.mock('@/lib/output/feature-flags',()=>({isOutputCoordinatorEnabled:()=>true,isOfficialIssuanceEnabled:()=>true}));
 vi.mock('@/server/actions/audit',()=>({logAudit:vi.fn()}));
 vi.mock('@/lib/output/issuance-engine',()=>({runIssuance:async(input:RunIssuanceInput,ports:IssuancePorts)=>{
   m.input=input;await ports.insertIssuance({requestKey:input.requestKey,contentFingerprint:input.contentFingerprint,outputCode:input.outputCode,documentClass:input.policy.documentClass,storagePath:input.storagePath,fileName:input.fileName,supersedesIssuanceId:null});
-  return {kind:'issued',issuanceId:9,finalSha256:'synthetic',fileSizeBytes:100,qr:{status:'not_requested'},idempotentReplay:false,reissued:false,serialNo:null};
+  return {kind:'issued',issuanceId:9,finalSha256:'synthetic',fileSizeBytes:100,qr:{status:'not_requested'},idempotentReplay:!!m.originalPath,reissued:false,serialNo:null,storagePath:m.originalPath??input.storagePath,fileName:m.originalPath?'retained-original.pdf':input.fileName};
 }}));
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>({from:(table:string)=>{
   const result=()=>({error:null,data:table==='erp_report_registry'?{id:1,report_code:'F06_BRANDING_TEST',report_name_en:'Synthetic',module_code:'HR',required_permissions:[],document_class:'G'}:table==='erp_output_class_policies'?{document_class:'G',qr_policy:'none',approval_required:false,official:false,requires_serial:false}:table==='erp_report_templates'?{id:7,branding_profile:{owner_company_id:1}}:{id:9}});
-  const q={select:()=>q,eq:()=>q,is:()=>q,insert:(value:Record<string,unknown>)=>{m.inserted=value;return q;},single:async()=>result(),maybeSingle:async()=>result()};return q;
+  const q={select:()=>q,eq:()=>q,is:()=>q,insert:(value:Record<string,unknown>)=>{m.inserted=value;return q;},single:async()=>result(),maybeSingle:async()=>table==='erp_generated_pdf_documents'?{error:null,data:null}:result()};return q;
 }})}));
 import {generateOfficialDocument} from '@/server/actions/output/generate-official-document';
 const brand=():ExportBrandingContext=>({companyNameEn:'F06 issuer',logoUrl:'https://synthetic.invalid/asset?token=TEST_CAPABILITY',provenance:{schemaVersion:1,templateId:7,templateRevision:'5',templateVersion:2,brandingProfileId:4,brandingRevision:'3',ownerCompanyId:1,assets:[{id:10,type:'report_logo',version:2,revision:'1'}]}});
-beforeEach(()=>{vi.clearAllMocks();m.input=null;m.inserted=null;m.brand.mockResolvedValue(brand());});
+beforeEach(()=>{vi.clearAllMocks();m.originalPath=null;m.input=null;m.inserted=null;m.brand.mockResolvedValue(brand());});
+it('returns the authoritative stored original path and name on replay, not a newly computed path',async()=>{
+  m.originalPath='retained/earlier-second/original.pdf';
+  expect(await generateOfficialDocument('F06_BRANDING_TEST',1,{clientRequestToken:'synthetic-stable-request'})).toMatchObject({success:true,storagePath:m.originalPath,fileName:'retained-original.pdf',idempotentReplay:true});
+});
 it('persists exact branding provenance and requests the strict issuance resolver',async()=>{
   expect((await generateOfficialDocument('F06_BRANDING_TEST',1)).success).toBe(true);
   expect(m.brand).toHaveBeenCalledWith({templateId:7,reportCode:'F06_BRANDING_TEST',principalId:11,forIssuance:true});
   expect(m.inserted?.branding_snapshot_json).toMatchObject({schemaVersion:1,templateId:7,templateRevision:'5',brandingProfileId:4,brandingRevision:'3',assets:[{id:10,type:'report_logo',version:2,revision:'1'}]});
+  expect(m.inserted?.data_snapshot_json).toMatchObject({language:'en',rows:[{owner_company_id:1,employee_name:'Synthetic employee'}]});
   expect(JSON.stringify(m.inserted)).not.toMatch(/TEST_CAPABILITY|https:/);
 });
 it('legacy governed output persists its actual template version instead of null',async()=>{

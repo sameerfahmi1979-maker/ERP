@@ -24,6 +24,35 @@ export function getColumnValue<T>(
   return formatValue(value);
 }
 
+/** Preserve identifiers and leading zeroes. Numeric conversion requires an explicit column contract. */
+export function getTypedExportValue<T>(row: T, column: ERPExportColumn<T>): string | number | boolean {
+  const raw = column.getValue
+    ? column.getValue(row)
+    : row == null ? undefined : (row as Record<string, unknown>)[column.key as string];
+  if (raw === null || raw === undefined) return "";
+  if (column.valueType === "text") return formatValue(raw);
+  if (column.valueType === "number") {
+    if ((typeof raw !== "number" && typeof raw !== "string") || String(raw).trim() === "") {
+      throw new Error(`Invalid numeric value for ${column.header}.`);
+    }
+    const number = Number(raw);
+    if (!Number.isFinite(number) || (Number.isInteger(number) && !Number.isSafeInteger(number))) {
+      throw new Error(`Invalid or unsafe numeric value for ${column.header}.`);
+    }
+    return number;
+  }
+  if (column.valueType === "boolean") {
+    if (typeof raw !== "boolean") throw new Error(`Invalid boolean value for ${column.header}.`);
+    return raw;
+  }
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw)) throw new Error(`Non-finite number for ${column.header}.`);
+    return raw;
+  }
+  if (typeof raw === "boolean") return raw;
+  return formatValue(raw);
+}
+
 /**
  * Format a value for export
  */
@@ -70,13 +99,17 @@ export function generateFilename(
 /**
  * Escape CSV field
  */
-export function escapeCsvField(value: string): string {
+export function escapeCsvField(value: string | number | boolean): string {
+  // Text is untrusted even after whitespace/control characters; CSV quoting alone
+  // does not stop spreadsheet formula execution. Genuine numeric negatives remain numbers.
+  const text = typeof value === "string" && /^[\s\u0000-\u0020\u007f-\u009f]*[=+@\-]/u.test(value)
+    ? `'${value}` : String(value);
   // If field contains comma, quote, or newline, wrap in quotes
-  if (/[",\n\r]/.test(value)) {
+  if (/[",\n\r]/.test(text)) {
     // Escape quotes by doubling them
-    return `"${value.replace(/"/g, '""')}"`;
+    return `"${text.replace(/"/g, '""')}"`;
   }
-  return value;
+  return text;
 }
 
 /**

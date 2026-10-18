@@ -45,13 +45,14 @@ export async function resolveTemplateForExport(input: {
           !Number.isSafeInteger(tpl.version_no) || tpl.version_no < 1) return null;
       const templateRevision = requireBrandingRevision(tpl.workspace_revision);
       const brandingRevision = requireBrandingRevision(bp.workspace_revision);
-      const selected = await resolveReportBrandingProfileAssets(bp.id, principal, brandingRevision);
-      assetUrls = selected.urls;
       const visible: Record<ReportBrandingAssetType, boolean> = {
         report_logo: tpl.show_logo, report_logo_small: tpl.show_small_logo,
         stamp: tpl.show_stamp && canSign, signature: tpl.show_signatory && canSign,
         watermark: tpl.show_watermark, letterhead_background: true,
       };
+      const selected = await resolveReportBrandingProfileAssets(bp.id, principal, brandingRevision,
+        (Object.keys(visible) as ReportBrandingAssetType[]).filter(type => visible[type]));
+      assetUrls = selected.urls;
       // Legacy mutable URLs have no governed version; don't invent provenance.
       for (const [type, url] of Object.entries({report_logo:bp.logo_url,report_logo_small:bp.small_logo_url,stamp:bp.stamp_url,signature:bp.signature_url,watermark:bp.watermark_url})) {
         if (visible[type as ReportBrandingAssetType] && url && !assetUrls[type as ReportBrandingAssetType]) return null;

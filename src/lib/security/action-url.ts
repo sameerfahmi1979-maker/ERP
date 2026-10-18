@@ -13,6 +13,9 @@ const ALLOWED_PREFIXES: readonly string[] = [
   "/notifications",
   "/admin/dms/",
   "/admin/notifications",
+  "/admin/hr/employees/record/",
+  "/admin/hr/recruitment/candidates/record/",
+  "/admin/reports/templates/governance",
   "/hr/",
   "/parties/",
   "/finance/",
@@ -33,7 +36,8 @@ const BLOCKED_PATTERN =
 export function isInternalActionUrlAllowed(url: unknown): url is string {
   if (!url || typeof url !== "string" || url.trim() === "") return false;
   if (BLOCKED_PATTERN.test(url)) return false;
-  return ALLOWED_PREFIXES.some((prefix) => url.startsWith(prefix));
+  return ALLOWED_PREFIXES.some((prefix) => url.startsWith(prefix) &&
+    (prefix.endsWith('/') || url.length===prefix.length || ['/', '?', '#'].includes(url.charAt(prefix.length))));
 }
 
 /**

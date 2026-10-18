@@ -5,6 +5,7 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
 import { getDmsNotificationSettingsForScheduler } from "@/server/actions/dms/notification-settings";
+import {changePersonalDmsNotification} from '@/server/notification-personal-state';
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -121,7 +122,7 @@ export async function getDmsNotifications(
 
 export async function generateDmsExpiryNotifications(
   options: { limit?: number } = {}
-): Promise<ActionResult<{ created: number; skipped: number }>> {
+): Promise<ActionResult<{ created: number; skipped: number; failed?:number }>> {
   try {
     if(!Number.isSafeInteger(options.limit??100)||(options.limit??100)<1||(options.limit??100)>200)return {success:false,error:'Invalid notification batch limit.'};
     const supabase = await createClient();
@@ -129,14 +130,14 @@ export async function generateDmsExpiryNotifications(
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
     if (!canManageNotifications(ctx)) return { success: false, error: "Permission denied" };
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 
     // Get due reminders with document info
     const { data: dueReminders, error: remError } = await supabase
       .from("dms_expiry_reminders")
       .select(
         `id, document_id, reminder_days_before, reminder_date, notification_status,
-         document:dms_documents!document_id(id, document_no, title, expiry_date, created_by, owner_user_id)`
+         document:dms_documents!document_id(id, document_no, title, expiry_date, created_by, owner_user_id,status,is_archived,expiry_tracking_override)`
       )
       .lte("reminder_date", today)
       .eq("status", "pending")
@@ -147,22 +148,26 @@ export async function generateDmsExpiryNotifications(
 
     // Load global settings once for the batch
     const globalSettings = await getDmsNotificationSettingsForScheduler();
+    if(!globalSettings)return {success:false,error:'Notification settings could not be verified. No default recipient was assumed.'};
+    if(!globalSettings.is_enabled||!globalSettings.in_app_enabled&&!globalSettings.email_enabled)return {success:true,data:{created:0,skipped:0}};
 
     let created = 0;
     let skipped = 0;
+    let failed = 0;
     const now = new Date().toISOString();
 
     for (const reminder of dueReminders ?? []) {
       const rem = reminder as Record<string, unknown>;
       const doc = rem.document as Record<string, unknown> | null;
       if (!doc) { skipped++; continue; }
+      if(doc.is_archived||['archived','superseded','deleted'].includes(String(doc.status))||doc.expiry_tracking_override==='ignored'){skipped++;continue;}
 
       const documentId = rem.document_id as number;
       const remId = rem.id as number;
       const daysBefore = rem.reminder_days_before as number;
       const expiryDate = doc.expiry_date as string | null;
 
-      const isExpired = daysBefore === 0 || (expiryDate && new Date(expiryDate) < new Date());
+      const isExpired = !!expiryDate&&expiryDate<today;
       const subject = isExpired
         ? `DMS Document Expired: ${doc.document_no} — ${doc.title}`
         : `DMS Expiry Reminder: ${doc.document_no} — ${doc.title}`;
@@ -191,14 +196,14 @@ export async function generateDmsExpiryNotifications(
       if (globalSettings?.recipient_roles?.length) {
         const { data: roleUsers,error:roleError } = await supabase
           .from("user_roles")
-          .select("user_profile_id, role:roles!role_id(role_code)")
+          .select("user_profile_id, role:roles!role_id(role_code,is_active)")
           .eq("is_active", true).limit(1001);
         if(roleError||(roleUsers?.length??0)>1000)return {success:false,error:'Configured recipients could not be completely verified. No reminder completion is assumed.'};
         for (const ru of roleUsers ?? []) {
           const rur = ru as Record<string, unknown>;
           const roleRow = rur.role as Record<string, unknown> | null;
           if (
-            roleRow?.role_code &&
+            roleRow?.role_code &&roleRow.is_active===true&&
             globalSettings.recipient_roles.includes(roleRow.role_code as string) &&
             rur.user_profile_id
           ) {
@@ -207,8 +212,8 @@ export async function generateDmsExpiryNotifications(
         }
       }
 
-      // Fallback if still empty
-      if (recipientIds.size === 0) recipientIds.add(ctx.profile.id);
+      // Missing configuration is not authority to alert the operator/creator.
+      if (recipientIds.size === 0) {skipped++;continue;}
 
       // ── Insert one notification per unique recipient ───────────────────────
       let allEnsured = true;
@@ -232,22 +237,24 @@ export async function generateDmsExpiryNotifications(
 
       if (allEnsured) {
         // Mark reminder notification_status = sent
-        await supabase
+        const marked=await supabase
           .from("dms_expiry_reminders")
           .update({ notification_status: "sent", last_notification_at: now, updated_at: now })
-          .eq("id", remId);
+          .eq("id", remId).select('id');
+        if(marked.error||!Array.isArray(marked.data)||marked.data.length!==1)return {success:false,error:'Recipient sources retained; reminder completion is unconfirmed. Reconcile the original reminder before retrying.'};
 
-        await supabase.from("dms_document_events").insert({
+        const history=await supabase.from("dms_document_events").insert({
           document_id: documentId,
           event_type: "expiry_notification_created",
           description: subject,
           performed_by: ctx.profile.id,
           metadata_json: { reminder_id: remId, days_before: daysBefore },
         });
+        if(history.error)return {success:false,error:'Recipient sources retained; source history is unconfirmed. No delivery confirmation is claimed.'};
 
         created++;
       } else {
-        skipped++;
+        failed++;
       }
     }
 
@@ -257,12 +264,12 @@ export async function generateDmsExpiryNotifications(
       entity_id: 0,
       entity_reference: `batch-${now}`,
       action: "create",
-      new_values: { created, skipped },
+      new_values: { created, skipped,failed },
     });
 
     revalidatePath("/dms/notifications");
     revalidatePath("/dms/expiring");
-    return { success: true, data: { created, skipped } };
+    return { success: failed===0, data: { created, skipped,failed },...(failed?{error:'Some recipient sources were not saved. Original reminders remain eligible; reconcile them before retrying.'}:{}) };
   } catch (e) {
     return { success: false, error: String(e) };
   }
@@ -271,84 +278,29 @@ export async function generateDmsExpiryNotifications(
 // ── markDmsNotificationRead ───────────────────────────────────────────────────
 
 export async function markDmsNotificationRead(id: number): Promise<ActionResult> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-
-    const now = new Date().toISOString();
-    const { error } = await supabase
-      .from("dms_notification_queue")
-      .update({ status: "read", read_at: now, updated_at: now })
-      .eq("id", id)
-      .or(`recipient_user_id.eq.${ctx.profile.id},recipient_user_id.is.null`);
-
-    if (error) return { success: false, error: error.message };
-
-    await supabase.from("dms_document_events").insert({
-      document_id: null,
-      event_type: "expiry_notification_read",
-      description: `Notification ${id} marked as read`,
-      performed_by: ctx.profile.id,
-      metadata_json: { notification_id: id },
-    }).maybeSingle();
-
-    revalidatePath("/dms/notifications");
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+ const result=await changePersonalDmsNotification(id,'read');
+ if(result.success){revalidatePath('/dms/notifications');revalidatePath('/notifications');}
+ return result;
 }
 
 // ── dismissDmsNotification ────────────────────────────────────────────────────
 
 export async function dismissDmsNotification(id: number, reason?: string): Promise<ActionResult> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-
-    const now = new Date().toISOString();
-    const { error } = await supabase
-      .from("dms_notification_queue")
-      .update({ status: "dismissed", dismissed_at: now, last_error: reason ?? null, updated_at: now })
-      .eq("id", id)
-      .or(`recipient_user_id.eq.${ctx.profile.id},recipient_user_id.is.null`);
-
-    if (error) return { success: false, error: error.message };
-
-    await supabase.from("dms_document_events").insert({
-      document_id: null,
-      event_type: "expiry_notification_dismissed",
-      description: `Notification ${id} dismissed${reason ? `: ${reason}` : ""}`,
-      performed_by: ctx.profile.id,
-      metadata_json: { notification_id: id, reason },
-    }).maybeSingle();
-
-    revalidatePath("/dms/notifications");
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+ if(reason!==undefined&&(typeof reason!=='string'||reason.trim()))return {success:false,error:'Dismissal changes only personal state. Record business notes on the document before dismissing.'};
+ const result=await changePersonalDmsNotification(id,'dismissed');
+ if(result.success){revalidatePath('/dms/notifications');revalidatePath('/notifications');}
+ return result;
 }
 
 // ── getUnreadDmsNotificationsCount ────────────────────────────────────────────
 
 export async function getUnreadDmsNotificationsCount(): Promise<ActionResult<number>> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: true, data: 0 };
-
-    const { count } = await supabase
-      .from("dms_notification_queue")
-      .select("id", { count: "exact", head: true })
-      .eq("recipient_user_id", ctx.profile.id)
-      .eq("status", "pending")
-      .is("read_at", null);
-
-    return { success: true, data: count ?? 0 };
-  } catch {
-    return { success: true, data: 0 };
-  }
+ try{
+  const ctx=await getAuthContext();if(!ctx.profile||!ctx.isAccountActive||ctx.profile.must_change_password)return {success:false,error:'Permission denied'};
+  const r=await (await createClient()).from('erp_notifications').select('id',{count:'exact',head:true})
+   .eq('recipient_user_id',ctx.profile.id).eq('source_module','DMS').eq('status','unread').eq('channel_in_app',true)
+   .is('deleted_at',null).lte('scheduled_for',new Date().toISOString());
+  if(r.error||!Number.isSafeInteger(r.count)||r.count===null||r.count<0)return {success:false,error:'Document unread count could not be verified. Retry after refreshing.'};
+  return {success:true,data:r.count};
+ }catch{return {success:false,error:'Document unread count could not be verified. Retry after refreshing.'};}
 }

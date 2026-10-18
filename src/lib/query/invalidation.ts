@@ -538,6 +538,8 @@ export function invalidateDmsDocumentRenewals(queryClient: QueryClient, document
 
 export function invalidateDmsNotifications(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: ["dms", "notifications"] });
+  void queryClient.invalidateQueries({ queryKey: ["notifications", "my"] });
+  void queryClient.invalidateQueries({ queryKey: ["notifications", "unread-count"] });
 }
 
 // ── DMS.10 — AI Analysis ─────────────────────────────────────────────────────
@@ -675,6 +677,7 @@ export function invalidateCommonMdCompanySignatories(queryClient: QueryClient, c
 export function invalidateMyNotifications(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: ["notifications", "my"] });
   void queryClient.invalidateQueries({ queryKey: ["notifications", "unread-count"] });
+  void queryClient.invalidateQueries({ queryKey: ["dms", "notifications"] });
 }
 
 export function invalidateUnreadNotifications(queryClient: QueryClient): void {

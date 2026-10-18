@@ -3,18 +3,19 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { getDmsDocumentRecordData, getDmsNewDocumentDefaults } from "@/server/actions/dms/documents";
 import { DmsDocumentRecordForm } from "@/features/dms/documents/dms-document-record-form";
 import Link from "next/link";
+import {NotificationArrival} from '@/features/notifications/notification-open';
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 interface Props {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ mode?: string }>;
+  searchParams: Promise<{ mode?: string; f10_open?:string }>;
 }
 
 export default async function DmsDocumentRecordPage({ params, searchParams }: Props) {
   const { id: idStr } = await params;
-  const { mode: modeParam } = await searchParams;
+  const { mode: modeParam,f10_open } = await searchParams;
 
   const id = parseInt(idStr, 10);
   if (isNaN(id)) notFound();
@@ -53,6 +54,7 @@ export default async function DmsDocumentRecordPage({ params, searchParams }: Pr
 
   return (
     <div className="h-full">
+      <NotificationArrival token={f10_open} path={`/dms/documents/record/${id}`}/>
       <DmsDocumentRecordForm
         doc={docResult.data}
         mode={resolvedMode}

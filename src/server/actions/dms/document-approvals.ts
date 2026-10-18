@@ -4,13 +4,11 @@ import {readAllPages} from "@/server/reads/all-pages";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
-import { getAuthContext, getAuthContextForProfileId, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
-import { eligibleApprovalRecipient } from "@/lib/dms/approval-notification-recipient";
 import { hasGlobalPermission } from "@/lib/rbac/scope";
-import { assertInternalActionUrl } from "@/lib/security/action-url";
 
 // ── Result type (matches project pattern) ─────────────────────────────────────
 
@@ -119,78 +117,6 @@ function isDmsAdmin(ctx: AuthCtx) {
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
-
-/**
- * Insert an in-app notification directly into erp_notifications.
- * Uses admin client to bypass RLS restrictions on the notifications table.
- */
-async function sendApprovalNotification(opts: {
-  documentId: number;
-  documentNo: string;
-  title: string;
-  documentType: string;
-  actorName: string;
-  notificationType: string;
-  notificationCode: string;
-  severity: "info" | "warning" | "urgent";
-  channelEmail: boolean;
-  recipientUserId: number;
-  actionLabel: string;
-  commentsOrReason?: string;
-  createdBy: number | null;
-}): Promise<void> {
-  try {
-    const admin = createAdminClient();
-    const {data: subject,error: subjectError} = await admin.from("dms_documents").select("owning_company_id,owning_branch_id,confidentiality_level").eq("id",opts.documentId).is("deleted_at",null).maybeSingle();
-    if (subjectError || !subject || !eligibleApprovalRecipient(await getAuthContextForProfileId(opts.recipientUserId), subject, null, false)) return;
-    const now = new Date().toISOString();
-    const actionUrl = assertInternalActionUrl(PATHS.docRecord(opts.documentId), PATHS.dmsApprovals);
-    // Email/in-app previews deliberately contain no document title, number,
-    // employee details, comments or reasons. Linked-subject access can change
-    // before delivery; the protected ERP destination is authoritative.
-    const message = opts.notificationCode === "DMS_APPROVAL_REQUESTED"
-      ? {title:"Document approval requires review",body:"An approval step may require your review. Open the ERP approval queue to see documents currently available to you."}
-      : {title:"Document approval updated",body:"A document approval has been updated. Open the ERP to see its current status, subject to your current access."};
-
-    const { error: notificationError } = await admin.from("erp_notifications").insert({
-      notification_code: opts.notificationCode,
-      source_module: "DMS",
-      source_entity_type: "dms_documents",
-      source_entity_id: opts.documentId,
-      notification_type: opts.notificationType,
-      severity: opts.severity,
-      title: message.title,
-      message: message.body,
-      recipient_user_id: opts.recipientUserId,
-      channel_in_app: true,
-      channel_email: opts.channelEmail,
-      status: "unread",
-      scheduled_for: now,
-      action_url: actionUrl,
-      action_label: opts.actionLabel,
-      created_by: opts.createdBy,
-      created_at: now,
-      updated_at: now,
-    });
-    if (notificationError) logger.error("Approval notification was not queued", { code: notificationError.code });
-  } catch (err) {
-    logger.error("sendApprovalNotification failed — non-fatal", err);
-  }
-}
-
-async function resolveApproverUserIds(admin: Awaited<ReturnType<typeof createAdminClient>>, documentId:number, requiresRole:string|null):Promise<number[]> {
-  const {data:doc,error} = await admin.from("dms_documents").select("owning_company_id,owning_branch_id,confidentiality_level").eq("id",documentId).is("deleted_at",null).maybeSingle();
-  if(error || !doc) return [];
-  const {data:assignments,error:assignmentError} = await admin.from("user_roles").select("user_profile_id").eq("is_active",true)
-    .or(doc.owning_company_id === null ? "and(owner_company_id.is.null,branch_id.is.null)" : "and(owner_company_id.is.null,branch_id.is.null),owner_company_id.eq."+doc.owning_company_id);
-  if(assignmentError) return [];
-  const eligible:number[]=[];
-  for(const id of new Set((assignments??[]).map(row=>row.user_profile_id).filter((id):id is number=>typeof id==="number"))) {
-    try { if(eligibleApprovalRecipient(await getAuthContextForProfileId(id),doc,requiresRole,true)) eligible.push(id); }
-    catch { /* A disabled/removed recipient must not fail an already committed decision. */ }
-  }
-  return eligible;
-}
 
 type ApprovalTransition = { approvalId: number; approvalStatus: string; pending: boolean; requiresRole: string | null };
 async function transitionApproval(documentId:number, approvalId:number|null, operation:string, comment?:string, reason?:string):Promise<ActionResult<ApprovalTransition>> {
@@ -413,7 +339,6 @@ export async function submitDocumentForApproval(
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Validation failed" };
 
     const supabase = await createClient();
-    const profileId = ctx.profile.id;
 
     // Fetch document
     const { data: doc, error: docErr } = await supabase
@@ -446,23 +371,7 @@ export async function submitDocumentForApproval(
     confirmed={success:true,data:{approvalId:ap.id}};
 
 
-    // Step 5: Notify eligible approvers
-    const actorName = ctx.profile.display_name ?? ctx.profile.full_name ?? "User";
-    const docTypeName = d.document_type?.name_en ?? "Document";
-    const admin = createAdminClient();
-    const approverIds = await resolveApproverUserIds(admin, documentId, outcome.requiresRole);
-    for (const uid of approverIds) {
-      if (uid === profileId) continue; // Don't notify self
-      await sendApprovalNotification({
-        documentId, documentNo: d.document_no, title: d.title,
-        documentType: docTypeName, actorName,
-        notificationType: "approval_requested",
-        notificationCode: "DMS_APPROVAL_REQUESTED",
-        severity: "info", channelEmail: true,
-        recipientUserId: uid, actionLabel: "Review Document",
-        createdBy: profileId,
-      });
-    }
+    // F10 captures this transition event in the same database transaction.
 
     // Audit log
     await logAudit({
@@ -548,36 +457,11 @@ export async function approveDocument(
 
     if (outcome.pending) {
       // A completed review step is not a final document approval.
-      const admin=createAdminClient();
-      for(const uid of await resolveApproverUserIds(admin,documentId,outcome.requiresRole)) {
-        if(uid===profileId || uid===d.submitted_by) continue;
-        await sendApprovalNotification({documentId,documentNo:d.document_no,title:d.title,documentType:d.document_type?.name_en??"Document",actorName:"Reviewer",notificationType:"approval_requested",notificationCode:"DMS_APPROVAL_REQUESTED",severity:"info",channelEmail:true,recipientUserId:uid,actionLabel:"Review Document",createdBy:profileId});
-      }
-
       revalidatePath(PATHS.docRecord(documentId)); revalidatePath(PATHS.dmsDocuments); revalidatePath(PATHS.dmsApprovals);
       return { success: true, data: outcome };
     }
 
-    // Step 5: Notify submitter and owner/creator
-    const actorName = ctx.profile.display_name ?? ctx.profile.full_name ?? "User";
-    const docTypeName = d.document_type?.name_en ?? "Document";
-    const notifyIds = new Set<number>();
-    if (d.submitted_by) notifyIds.add(d.submitted_by);
-    if (d.owner_user_id && d.owner_user_id !== d.submitted_by) notifyIds.add(d.owner_user_id);
-    if (d.created_by && d.created_by !== d.submitted_by) notifyIds.add(d.created_by);
-
-    for (const uid of notifyIds) {
-      if (uid === profileId) continue;
-      await sendApprovalNotification({
-        documentId, documentNo: d.document_no, title: d.title,
-        documentType: docTypeName, actorName,
-        notificationType: "approval_approved",
-        notificationCode: "DMS_APPROVED",
-        severity: "info", channelEmail: true,
-        recipientUserId: uid, actionLabel: "View Document",
-        createdBy: profileId,
-      });
-    }
+    // F10 captures this transition event in the same database transaction.
 
     await logAudit({
       module_code: "DMS",
@@ -658,27 +542,7 @@ export async function rejectDocument(
 
 
 
-    // Step 5: Notify submitter and owner/creator
-    const actorName = ctx.profile.display_name ?? ctx.profile.full_name ?? "User";
-    const docTypeName = d.document_type?.name_en ?? "Document";
-    const notifyIds = new Set<number>();
-    if (d.submitted_by) notifyIds.add(d.submitted_by);
-    if (d.owner_user_id && d.owner_user_id !== d.submitted_by) notifyIds.add(d.owner_user_id);
-    if (d.created_by && d.created_by !== d.submitted_by) notifyIds.add(d.created_by);
-
-    for (const uid of notifyIds) {
-      if (uid === profileId) continue;
-      await sendApprovalNotification({
-        documentId, documentNo: d.document_no, title: d.title,
-        documentType: docTypeName, actorName,
-        notificationType: "approval_rejected",
-        notificationCode: "DMS_REJECTED",
-        severity: "urgent", channelEmail: true,
-        recipientUserId: uid, actionLabel: "View Document",
-        commentsOrReason: parsed.data.reason,
-        createdBy: profileId,
-      });
-    }
+    // F10 captures this transition event in the same database transaction.
 
     await logAudit({
       module_code: "DMS",
@@ -758,24 +622,7 @@ export async function withdrawDocumentApproval(
 
 
 
-    // Step 5: Notify eligible approvers
-    const actorName = ctx.profile.display_name ?? ctx.profile.full_name ?? "User";
-    const docTypeName = d.document_type?.name_en ?? "Document";
-    const admin = createAdminClient();
-    const approverIds = await resolveApproverUserIds(admin, documentId, null);
-    for (const uid of approverIds) {
-      if (uid === profileId) continue;
-      await sendApprovalNotification({
-        documentId, documentNo: d.document_no, title: d.title,
-        documentType: docTypeName, actorName,
-        notificationType: "approval_withdrawn",
-        notificationCode: "DMS_APPROVAL_WITHDRAWN",
-        severity: "warning", channelEmail: false,
-        recipientUserId: uid, actionLabel: "View Document",
-        commentsOrReason: parsed.data.reason,
-        createdBy: profileId,
-      });
-    }
+    // F10 captures this transition event in the same database transaction.
 
     await logAudit({
       module_code: "DMS",

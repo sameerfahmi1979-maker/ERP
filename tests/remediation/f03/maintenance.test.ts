@@ -10,7 +10,7 @@ beforeEach(()=>{vi.stubEnv('ERP_MAINTENANCE_MODE','1');state.refresh.mockReset()
 afterEach(()=>vi.unstubAllEnvs());
 it.each(['1','true','false','', 'unexpected'])('explicit maintenance setting %j fails closed',value=>expect(maintenanceEnabled(value)).toBe(true));
 it('unset and explicit zero retain normal mode',()=>{vi.stubEnv('ERP_MAINTENANCE_MODE',undefined);expect(maintenanceEnabled()).toBe(false);expect(maintenanceEnabled('0')).toBe(false);});
-it.each(['/','/login','/auth/confirm?token_hash=synthetic','/auth/verify?invitation=synthetic','/dashboard','/api/internal/process-email-queue','/_next/static/app.js','/_next/image?url=/logo.png','/api/files/private.png','/favicon.ico'])('covers and blocks %s before Auth',async url=>{
+it.each(['/','/login','/auth/confirm?token_hash=synthetic','/auth/verify?invitation=synthetic','/dashboard','/api/internal/process-email-queue','/api/internal/process-notification-events','/_next/static/app.js','/_next/image?url=/logo.png','/api/files/private.png','/favicon.ico'])('covers and blocks %s before Auth',async url=>{
  expect(unstable_doesMiddlewareMatch({config,nextConfig:{},url})).toBe(true);
  const res=await proxy(new NextRequest('https://erp.invalid'+url));expect(res.status).toBe(503);expect(res.headers.get('cache-control')).toContain('no-store');expect(res.headers.get('retry-after')).toBe('120');expect(state.refresh).not.toHaveBeenCalled();expect(res.headers.get('set-cookie')).toBeNull();expect(await res.text()).not.toContain('synthetic');
 });

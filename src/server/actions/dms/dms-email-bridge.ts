@@ -195,8 +195,9 @@ export async function bridgeDueDmsNotificationsToGlobal(options?: {
 
     REVALIDATE_PATHS.forEach((p) => revalidatePath(p));
     return {
-      success: true,
+      success: failed===0,
       data: { total: (rows ?? []).length, bridged, alreadyDone, failed,deferred, results },
+      ...(failed?{error:'Some original bridge outcomes remain unconfirmed. Review their receipts before retrying.'}:{}),
     };
   } catch {
     return { success: false, error: 'Bridge batch is unconfirmed. Reconcile the same sources before retrying.' };

@@ -1,12 +1,13 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
 import { assertInternalActionUrl } from "@/lib/security/action-url";
 import {readUnreadNotificationCount} from "@/server/reads/notifications";
+import {changePersonalNotification,markAllPersonalNotificationsRead} from "@/server/notification-personal-state";
 
 const REVALIDATE_PATH = "/notifications";
 const REVALIDATE_ADMIN_PATH = "/admin/notifications";
@@ -109,6 +110,8 @@ export async function getMyNotifications(
       .from("erp_notifications")
       .select("*")
       .eq("recipient_user_id", ctx.profile.id)
+      .eq("channel_in_app", true)
+      .lte("scheduled_for", new Date().toISOString())
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(filters?.limit ?? 100);
@@ -132,7 +135,7 @@ export async function getAllNotifications(
     const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!hasPermission(ctx, "notifications.admin") && !hasPermission(ctx, "notifications.manage")) {
+    if (!hasGlobalPermission(ctx, "notifications.admin") && !hasGlobalPermission(ctx, "notifications.manage")) {
       return { success: false, error: "Permission denied" };
     }
 
@@ -171,7 +174,7 @@ export async function createNotification(
     const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!hasPermission(ctx, "notifications.manage") && !hasPermission(ctx, "notifications.admin")) {
+    if (!hasGlobalPermission(ctx, "notifications.manage") && !hasGlobalPermission(ctx, "notifications.admin")) {
       return { success: false, error: "Permission denied" };
     }
 
@@ -216,92 +219,32 @@ export async function createNotification(
 // ── markNotificationRead ──────────────────────────────────────────────────────
 
 export async function markNotificationRead(id: number): Promise<ActionResult> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-
-    const now = new Date().toISOString();
-    const { error } = await supabase
-      .from("erp_notifications")
-      .update({ status: "read", read_at: now, updated_at: now })
-      .eq("id", id)
-      .eq("recipient_user_id", ctx.profile.id);
-
-    if (error) return { success: false, error: error.message };
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+  const result=await changePersonalNotification(id,"read");
+  if(result.success)revalidatePath(REVALIDATE_PATH);
+  return result;
 }
 
 // ── markAllMyNotificationsRead ────────────────────────────────────────────────
 
-export async function markAllMyNotificationsRead(): Promise<ActionResult<{ count: number }>> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-
-    const now = new Date().toISOString();
-    const { data, error } = await supabase
-      .from("erp_notifications")
-      .update({ status: "read", read_at: now, updated_at: now })
-      .eq("recipient_user_id", ctx.profile.id)
-      .eq("status", "unread")
-      .select("id");
-
-    if (error) return { success: false, error: error.message };
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true, data: { count: (data ?? []).length } };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+export async function markAllMyNotificationsRead(expectedIdentity:string): Promise<ActionResult<{ count: number }>> {
+  if(typeof expectedIdentity!=='string'||!expectedIdentity||expectedIdentity.length>65536)return {success:false,error:'Refresh your session before marking notifications read.'};
+  const result=await markAllPersonalNotificationsRead(expectedIdentity);
+  if(result.success)revalidatePath(REVALIDATE_PATH);
+  return result;
 }
 
 // ── dismissNotification ───────────────────────────────────────────────────────
 
 export async function dismissNotification(id: number): Promise<ActionResult> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-
-    const now = new Date().toISOString();
-    const { error } = await supabase
-      .from("erp_notifications")
-      .update({ status: "dismissed", dismissed_at: now, updated_at: now })
-      .eq("id", id)
-      .eq("recipient_user_id", ctx.profile.id);
-
-    if (error) return { success: false, error: error.message };
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+  const result=await changePersonalNotification(id,"dismissed");
+  if(result.success)revalidatePath(REVALIDATE_PATH);
+  return result;
 }
 
 // ── archiveNotification ───────────────────────────────────────────────────────
 
 export async function archiveNotification(id: number): Promise<ActionResult> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-
-    const now = new Date().toISOString();
-    const { error } = await supabase
-      .from("erp_notifications")
-      .update({ status: "archived", archived_at: now, updated_at: now })
-      .eq("id", id)
-      .eq("recipient_user_id", ctx.profile.id);
-
-    if (error) return { success: false, error: error.message };
-    revalidatePath(REVALIDATE_PATH);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+  const result=await changePersonalNotification(id,"archived");
+  if(result.success)revalidatePath(REVALIDATE_PATH);
+  return result;
 }

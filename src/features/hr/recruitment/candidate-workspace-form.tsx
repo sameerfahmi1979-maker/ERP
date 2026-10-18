@@ -1,6 +1,8 @@
 "use client";
 import { reportWorkspaceFieldErrors } from "@/lib/workspace/field-errors";
 import {useWorkspaceSaveSession} from "@/hooks/use-workspace-save-session";
+import type {NotificationTaskContext} from '@/lib/notifications/task-context';
+import {NotificationTaskContextCard} from '@/features/notifications/notification-task-context';
 
 import type { ERPRecordStatusVariant } from "@/components/workspace/erp-record-header";
 import type { ERPRecordSection } from "@/components/workspace/erp-record-section-nav";
@@ -37,6 +39,7 @@ type Props = {
   mode: "add" | "edit" | "view";
   authContext: AuthContext;
   initialRead?: CandidateRecordInitial;
+  notificationTask?:NotificationTaskContext;
 };
 
 const SECTIONS: ERPRecordSection[] = [
@@ -136,7 +139,7 @@ export function CandidateWorkspaceForm(props: Props) {
   return <CandidateWorkspaceFormInstance key={`${props.candidate?.id ?? "new"}:${props.mode}`} {...props} read={read} />;
 }
 
-function CandidateWorkspaceFormInstance({ candidate: openingCandidate, mode, authContext, read }: Props & {read: ReturnType<typeof useHrCandidateRecord>}) {
+function CandidateWorkspaceFormInstance({ candidate: openingCandidate, mode, authContext, read,notificationTask }: Props & {read: ReturnType<typeof useHrCandidateRecord>}) {
   const router = useRouter();
   const owner = useWorkspaceFormOwner();
   const {closeTab, markDirty, updateTabRoute, isTabActive} = useWorkspace();
@@ -365,6 +368,7 @@ function CandidateWorkspaceFormInstance({ candidate: openingCandidate, mode, aut
       statusLabel={candidate ? candidate.candidate_status.replace(/_/g, " ").toUpperCase() : undefined}
     >
       <DraftRestoredNotice visible={editable && restoredFromDraft} />
+      {notificationTask&&!read.query.isError&&<NotificationTaskContextCard task={notificationTask} onSection={setActiveSection} blocked={isPending||childDialogOpen||saveBlocked||saveSession.requiresReconciliation}/>}
       <ERPRecordSectionPanel id="overview" activeId={activeSection}>
         {candidate && (
           <CandidateOverviewTab

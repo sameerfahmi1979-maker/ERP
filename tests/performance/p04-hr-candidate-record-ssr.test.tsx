@@ -1,4 +1,6 @@
 import {beforeEach, expect, it, vi} from "vitest";
+import {Children,isValidElement,type ComponentProps,type ReactElement} from 'react';
+import {CandidateWorkspaceForm} from '@/features/hr/recruitment/candidate-workspace-form';
 import type {AuthContext} from "@/lib/rbac/check";
 import {candidateRecordIdentity} from "@/lib/reads/hr-candidate-record-schema";
 import CandidateRecordPage from "@/app/(protected)/admin/hr/recruitment/candidates/record/[id]/page";
@@ -14,8 +16,12 @@ it("SSR passes exact reader output with matching identity/time and reuses server
   const before = Date.now(); state.read.mockResolvedValue({success: true, data, updatedAt: before});
   const element = await CandidateRecordPage({params: Promise.resolve({id: "42"})});
   expect(state.read).toHaveBeenCalledExactlyOnceWith({kind: "record", candidateId: 42}, context);
-  expect(element.props.candidate).toBe(data.candidate); expect(element.props.initialRead.data).toBe(data);
-  expect(element.props.initialRead.identity).toBe(candidateRecordIdentity(context)); expect(element.props.initialRead.updatedAt).toBeGreaterThanOrEqual(before);
+  const forms=Children.toArray(element.props.children).filter((child):child is ReactElement<ComponentProps<typeof CandidateWorkspaceForm>>=>isValidElement(child)&&child.type===CandidateWorkspaceForm);
+  expect(forms).toHaveLength(1);const props=forms[0].props;
+  const initialRead=props.initialRead;if(!initialRead)throw Error('SSR form hydration seed is missing');
+  expect(props.candidate).toBe(data.candidate); expect(initialRead.data).toBe(data);
+  expect(props.authContext).toBe(context);
+  expect(initialRead.identity).toBe(candidateRecordIdentity(context)); expect(initialRead.updatedAt).toBeGreaterThanOrEqual(before);
 });
 it.each(["42extra", "-2", "0", "1e3", "9007199254740992"])("invalid route %s never reaches native record reading", async id => {
   await expect(CandidateRecordPage({params: Promise.resolve({id})})).rejects.toThrow("NOT_FOUND"); expect(state.read).not.toHaveBeenCalled();

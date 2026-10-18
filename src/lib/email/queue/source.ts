@@ -2,6 +2,8 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContextForProfileId } from "@/lib/rbac/check";
 import {requireDmsNoticeAccess,DMS_NOTICE,confirmedDeliveryMailbox} from './dms-policy';
+import {notificationDocumentSubjectsAllowed} from '@/server/notification-document-authority';
+import {boundedQuery} from './runtime-limits';
 import { DeliveryPolicyError, requireQueuePermission } from "./policy";
 import type { EmailClaim } from "./worker";
 import type { EmailMessageInput } from "../providers/types";
@@ -50,7 +52,11 @@ async function prepareDmsNotice(q: DeliveryClaim): Promise<EmailMessageInput> {
     if (docError)
         throw new Error("Source lookup failed");
     if(!doc||doc.is_archived||['archived','superseded','deleted'].includes(doc.status)||doc.expiry_tracking_override==='ignored')throw new DeliveryPolicyError();
+    const eligibility=await boundedQuery(db.rpc('f10_dms_notification_delivery_eligible',{notification_id:n.id}));
+    if(eligibility.error)throw Error('Current reminder eligibility unavailable');
+    if(eligibility.data!==true)throw new DeliveryPolicyError();
     requireDmsNoticeAccess(recipient,doc);
+    if(!await notificationDocumentSubjectsAllowed(recipient,doc.id))throw new DeliveryPolicyError();
     // Independently check the current confirmed auth mailbox; never use metadata as authorization.
     const { data: auth, error: authError } = await db.auth.admin.getUserById(recipient.profile!.auth_user_id);
     if (authError)

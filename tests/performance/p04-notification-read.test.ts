@@ -1,13 +1,13 @@
 import {afterEach, expect, it, vi} from "vitest";
-const state = vi.hoisted(() => ({active: true, password: false, permissions: [] as string[], calls: [] as unknown[][], results: [] as unknown[], authReads: 0}));
+const state = vi.hoisted(() => ({active: true, password: false, permissions: [] as string[], globalPermissions: [] as string[], calls: [] as unknown[][], results: [] as unknown[], authReads: 0}));
 vi.mock("@/lib/rbac/check", async () => ({...await import("@/lib/rbac/scope"), getAuthContext: async () => {
-  state.authReads++; return {profile: {id: 6, must_change_password: state.password}, isAccountActive: state.active, permissionCodes: state.permissions, roleCodes: [], roleAssignments: []};
+  state.authReads++; return {profile: {id: 6, must_change_password: state.password}, isAccountActive: state.active, permissionCodes: state.permissions, globalPermissionCodes:state.globalPermissions, roleCodes: [], roleAssignments: []};
 }}));
 vi.mock("@/lib/supabase/server", () => ({createClient: async () => ({from: (...args: unknown[]) => {
   state.calls.push(["from", ...args]);
   const result = state.results.shift();
   const query: Record<string, unknown> = {then: (resolve: (r: unknown) => unknown) => Promise.resolve(result).then(resolve)};
-  for (const method of ["select", "or", "ilike", "eq", "is", "order", "range", "abortSignal"]) query[method] = (...args: unknown[]) => {state.calls.push([method, ...args]); return query;};
+  for (const method of ["select", "or", "ilike", "eq", "is", "lte", "order", "range", "abortSignal"]) query[method] = (...args: unknown[]) => {state.calls.push([method, ...args]); return query;};
   return query;
 }})}));
 import {readNotifications, readUnreadNotificationCount} from "@/server/reads/notifications";
@@ -19,19 +19,24 @@ const row = {id: 1, notification_code: "PERF-N1", source_module: "HR", source_en
   recipient_role_code: null, recipient_email: null, channel_in_app: true, channel_email: false, status: "unread", scheduled_for: "2026-10-14T00:00:00Z",
   read_at: null, dismissed_at: null, archived_at: null, action_url: "/notifications", action_label: "Open", metadata_json: {secret: "PRIVATE"}, created_at: "2026-10-14T00:00:00Z", updated_at: "2026-10-14T00:00:00Z"};
 const result = (data: unknown[] = [row], count = data.length) => ({data, count, error: null});
-afterEach(() => Object.assign(state, {active: true, password: false, permissions: [], calls: [], results: [], authReads: 0}));
+afterEach(() => Object.assign(state, {active: true, password: false, permissions: [], globalPermissions:[], calls: [], results: [], authReads: 0}));
 it("pages beyond 1000 with recipient restriction and minimal projection, no metadata leak", async () => {
   state.results = [result([row], 1101)]; const read = await readNotifications({page: 12, pageSize: 100});
   expect(read.success).toBe(true); expect(read.data?.totalCount).toBe(1101); expect(state.calls).toContainEqual(["eq", "recipient_user_id", 6]);
   expect(state.calls).toContainEqual(["range", 1100, 1199]); expect(state.authReads).toBe(1);
   expect(String(state.calls.find(call => call[0] === "select")?.[1])).not.toMatch(/\*|metadata_json/);
   expect(JSON.stringify(read)).not.toContain("PRIVATE");
+  expect(state.calls).toContainEqual(["eq","channel_in_app",true]);
+  expect(state.calls.some(call=>call[0]==="lte"&&call[1]==="scheduled_for"&&Number.isFinite(Date.parse(String(call[2]))))).toBe(true);
+});
+it.each(["notifications.admin","notifications.manage"])("company-only %s is not global notification administration",async permission=>{
+ state.permissions=[permission];expect(await readNotifications({audience:'admin'})).toMatchObject({success:false,error:'Permission denied'});expect(state.calls).toEqual([]);
 });
 it.each([{}, {active: false}, {password: true}])("admin read requires active permitted principal: %j", async overrides => {
   Object.assign(state, overrides); const read = await readNotifications({audience: "admin"}); expect(read).toMatchObject({success: false, error: "Permission denied"}); expect(state.calls).toEqual([]);
 });
 it.each(["notifications.admin", "notifications.manage"])("admin read preserves %s gate without pretending to grant database access", async permission => {
-  state.permissions = [permission]; state.results = [result()]; expect((await readNotifications({audience: "admin"})).success).toBe(true);
+  state.permissions = [permission]; state.globalPermissions=[permission]; state.results = [result()]; expect((await readNotifications({audience: "admin"})).success).toBe(true);
   expect(state.calls).not.toContainEqual(["eq", "recipient_user_id", 6]);
 });
 it.each([{page: 0}, {pageSize: 101}, {search: "a".repeat(201)}, {recipientUserId: 7}, {audience: "all"}, {status: "unknown"}, {sorting: [{id: "metadata_json", desc: true}]}])("rejects invalid or authority-injecting criteria %j", async criteria => {

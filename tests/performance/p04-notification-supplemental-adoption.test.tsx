@@ -19,7 +19,8 @@ import TemplatesServer from "@/app/(protected)/admin/notifications/templates/pag
 import DmsServer from "@/app/(protected)/dms/notifications/page";
 const state=vi.hoisted(()=>({read:vi.fn(),action:vi.fn(),toast:vi.fn()}));
 vi.mock("@/lib/reads/client",async original=>({...await original<typeof import("@/lib/reads/client")>(),readJson:state.read}));
-vi.mock("next/navigation",()=>({usePathname:()=>"/notifications",redirect:vi.fn()}));
+vi.mock("next/navigation",()=>({usePathname:()=>"/notifications",redirect:vi.fn(),useRouter:()=>({push:vi.fn()})}));
+vi.mock('@/server/actions/notifications/open',()=>({prepareNotificationOpen:vi.fn(),completeNotificationOpen:vi.fn()}));
 vi.mock("@/lib/rbac/check",async()=>({...await import("@/lib/rbac/scope"),getAuthContext:vi.fn()}));
 vi.mock("@/lib/supabase/server",()=>({createClient:vi.fn()}));
 vi.mock("@/server/actions/notifications/email-queue",()=>({retryEmailQueueItem:state.action,cancelEmailQueueItem:state.action,processEmailQueueItem:state.action,processEmailQueue:state.action}));

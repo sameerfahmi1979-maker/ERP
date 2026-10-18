@@ -120,13 +120,14 @@ it.each(["wrong-owner", "partial", "private-field"])("%s DTO is rejected instead
   });
   mount(); await selectEmployee(); await screen.findByRole("button", {name: "Retry documents"}); expect(op("files")).toHaveLength(0); expect(screen.queryByText(/SYNTHETIC_PRIVATE/)).toBeNull();
 });
-it("actual table search retains its input/focus during a pending complete-result read", async () => {
+it("actual compact picker retains selection focus without mounting a document search or export menu", async () => {
   mount(); await selectEmployee(); await screen.findByTitle("Synthetic file 11.pdf");
-  const input = screen.getByRole("textbox", {name: "Search all permitted records…"}); input.focus();
-  fireEvent.change(input, {target: {value: "Document 12"}});
-  expect(screen.getByRole("textbox", {name: "Search all permitted records…"})).toBe(input); expect(document.activeElement).toBe(input);
-  await waitFor(() => expect(op("documents")).toHaveLength(2)); expect(op("documents")[1][1]).toMatchObject({search: "Document 12", page: 1});
-  // Original RecordCollection does not expose a collection export menu.
+  const list = within(screen.getByRole("region", {name: "Selected employee documents"}));
+  const selection = list.getByRole("button", {name: /Document 12/}); selection.focus(); fireEvent.click(selection);
+  await screen.findByTitle("Synthetic file 12.pdf");
+  expect(list.getByRole("button", {name: /Document 12/, pressed: true})).toBe(selection);
+  expect(document.activeElement).toBe(selection); expect(list.queryByRole("textbox")).toBeNull();
+  expect(op("documents")).toHaveLength(1);
   expect(state.loadExport).toBeUndefined();
 });
 it("actual hierarchy, document table and file controls request later pages instead of truncating their collections", async () => {
@@ -154,20 +155,13 @@ it("actual hierarchy, document table and file controls request later pages inste
   expect(op("documents").at(-1)?.[1]).toMatchObject({page: 2, pageSize: 25});
   await waitFor(() => expect(document.querySelector("iframe")?.getAttribute("src")).toBe("/api/dms/file?fileId=3600&disposition=inline")); expect(op("files").at(-1)?.[1]).toMatchObject({documentId: 36, page: 1});
 });
-it("actual Edit filters and column sort issue complete-result criteria without client-only filtering", async () => {
+it("actual document picker has only permitted cards, without duplicate columns, filter or column controls", async () => {
   mount(); await selectEmployee(); await screen.findByTitle("Synthetic file 11.pdf");
   const list = within(screen.getByRole("region", {name: "Selected employee documents"}));
-  fireEvent.click(list.getByRole("button", {name: "Edit filters"}));
-  const dialog = await screen.findByRole("dialog", {name: "Edit filters"});
-  fireEvent.change(within(dialog).getByRole("textbox", {name: "Type"}), {target: {value: "Evidence"}});
-  fireEvent.click(within(dialog).getByRole("button", {name: "Apply"}));
-  await waitFor(() => expect(screen.queryByRole("dialog", {name: "Edit filters"})).toBeNull());
-  await waitFor(() => expect(op("documents")).toHaveLength(2));
-  expect(op("documents")[1][1]).toMatchObject({page: 1, columnFilters: {typeNameEn: "Evidence"}});
-  await screen.findByTitle("Synthetic file 11.pdf");
-  fireEvent.click(list.getByRole("button", {name: "Document"}));
-  await waitFor(() => expect(op("documents")).toHaveLength(3));
-  expect(op("documents")[2][1]).toMatchObject({page: 1, sortKey: "title", sortDir: "asc", columnFilters: {typeNameEn: "Evidence"}});
-  await screen.findByTitle("Synthetic file 11.pdf"); fireEvent.click(list.getByRole("button", {name: "Document"}));
-  await waitFor(() => expect(op("documents")).toHaveLength(4)); expect(op("documents")[3][1].sortDir).toBe("desc");
+  expect(list.queryByRole("table")).toBeNull(); expect(list.queryByRole("columnheader")).toBeNull();
+  expect(list.queryByRole("button", {name: /Edit filters|Edit columns/})).toBeNull();
+  expect(list.getAllByText("Document 11")).toHaveLength(1);
+  expect(list.getAllByRole("button")).toHaveLength(2);
+  expect(op("documents")).toHaveLength(1);
+  expect(op("documents")[0][1]).toMatchObject({page: 1, sortKey: "expiryDate", sortDir: "asc", columnFilters: {}, search: ""});
 });

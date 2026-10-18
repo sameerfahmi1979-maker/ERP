@@ -1,5 +1,5 @@
 "use client";
-import { RecordCollection } from "@/components/erp/table/record-collection";
+import { EmbeddedRecordCollection } from "@/components/erp/table/embedded-record-collection";
 
 /**
  * HR.DOC_BROWSER.1 — Column 2: unified document list for the selected entity.
@@ -44,7 +44,7 @@ export function HrDocBrowserDocList({
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex min-w-0 flex-col h-full overflow-hidden">
       {/* Entity header */}
       <div className="px-3 py-2.5 border-b border-border/60 shrink-0">
         <p className="text-sm font-semibold truncate">{entity.name}</p>
@@ -62,7 +62,7 @@ export function HrDocBrowserDocList({
             No documents linked yet. Link documents from the {entity.type === "employee" ? "employee profile" : "dependent record"}.
           </p>
         ) : (
-          <RecordCollection presentation="worklist" id={`special.hr-doc-browser-doc-list-${entity.type}-${entity.id}`} rows={documents} serverRead={serverRead} isLoading={isLoading} fields={[{"id":"title","path":"title","label":"Document"},{"id":"typeNameEn","path":"typeNameEn","label":"Type"},{"id":"source","path":"source","label":"Source"}]} renderRecord={(doc, index) => {
+          <EmbeddedRecordCollection id={`special.hr-doc-browser-doc-list-${entity.type}-${entity.id}`} rows={documents} serverRead={serverRead} isLoading={isLoading} renderRecord={(doc, index) => {
             const isSelected = selectedIndex === index;
             return (
               <button
@@ -71,7 +71,7 @@ export function HrDocBrowserDocList({
                 aria-pressed={isSelected}
                 onClick={() => onSelect(index)}
                 className={cn(
-                  "w-full text-left px-3 py-2.5 border-l-2 border-b border-b-border/40 transition-colors",
+                  "w-full min-w-0 text-left px-3 py-2.5 border-l-2 border-b border-b-border/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                   isSelected
                     ? "bg-primary/10 border-l-primary"
                     : "border-l-transparent hover:bg-muted/50"

@@ -1,7 +1,7 @@
 import "server-only";
 import {z} from "zod";
-import {getAuthContext, hasPermission, type AuthContext} from "@/lib/rbac/check";
-import {canUseApplication} from "@/lib/rbac/scope";
+import {getAuthContext, type AuthContext} from "@/lib/rbac/check";
+import {canUseApplication,hasGlobalPermission} from "@/lib/rbac/scope";
 import {createClient} from "@/lib/supabase/server";
 import {literalContains, literalLike} from "@/lib/reads/search";
 import {isInternalActionUrlAllowed} from "@/lib/security/action-url";
@@ -18,12 +18,12 @@ export async function readNotifications(input: unknown, context?: AuthContext, s
   if (!parsed.success) return {success: false as const, error: "Invalid notification criteria"};
   try {
     signal?.throwIfAborted(); const ctx = context ?? await getAuthContext(); signal?.throwIfAborted();
-    if (!canUseApplication(ctx) || !ctx.profile || parsed.data.audience === "admin" && !hasPermission(ctx, "notifications.admin") && !hasPermission(ctx, "notifications.manage")) return {success: false as const, error: "Permission denied"};
+    if (!canUseApplication(ctx) || !ctx.profile || parsed.data.audience === "admin" && !hasGlobalPermission(ctx, "notifications.admin") && !hasGlobalPermission(ctx, "notifications.manage")) return {success: false as const, error: "Permission denied"};
     const p = parsed.data, db = await createClient(); signal?.throwIfAborted();
     const base = (head = false) => {
       const q = db.from("erp_notifications").select(fields.join(","), {count: "exact", head}).is("deleted_at", null);
       if (signal) q.abortSignal(signal);
-      if (p.audience === "my") q.eq("recipient_user_id", ctx.profile!.id);
+      if (p.audience === "my") q.eq("recipient_user_id", ctx.profile!.id).eq("channel_in_app", true).lte("scheduled_for", new Date().toISOString());
       if (p.status) q.eq("status", p.status);
       if (p.severity) q.eq("severity", p.severity);
       if (p.sourceModule) q.ilike("source_module", literalLike(p.sourceModule));
@@ -51,7 +51,7 @@ export async function readUnreadNotificationCount(context?: AuthContext, signal?
     signal?.throwIfAborted(); const ctx = context ?? await getAuthContext(); signal?.throwIfAborted();
     if (!canUseApplication(ctx) || !ctx.profile) return {success: false as const, error: "Permission denied"};
     const db = await createClient(); signal?.throwIfAborted();
-    const q = db.from("erp_notifications").select("id", {count: "exact", head: true}).eq("recipient_user_id", ctx.profile.id).eq("status", "unread").is("deleted_at", null);
+    const q = db.from("erp_notifications").select("id", {count: "exact", head: true}).eq("recipient_user_id", ctx.profile.id).eq("status", "unread").eq("channel_in_app",true).lte("scheduled_for",new Date().toISOString()).is("deleted_at", null);
     if (signal) q.abortSignal(signal);
     const result = await q; signal?.throwIfAborted();
     if (result.error) throw Error("Unavailable count");

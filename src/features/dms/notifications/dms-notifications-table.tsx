@@ -15,6 +15,7 @@ import {markDmsNotificationRead,dismissDmsNotification} from "@/server/actions/d
 import {bridgeDmsNotificationToGlobal} from "@/server/actions/dms/dms-email-bridge";
 import {invalidateDmsNotifications,invalidateEmailQueue} from "@/lib/query/invalidation";
 import {DmsBridgeStatusBadge} from "./dms-bridge-status-badge";
+import {NotificationOpenButton} from '@/features/notifications/notification-open';
 type Props={authContext:AuthContext;tab:"my"|"all"|"unread"|"not_bridged";showBridgeStatus:boolean};
 export function DmsNotificationsTable(props:Props){const identity=dmsNotificationIdentity(props.authContext);return <DmsReadTable key={identity+props.tab} {...props} identity={identity}/>;}
 function DmsReadTable({authContext,tab,showBridgeStatus,identity}:Props&{identity:string}){
@@ -39,7 +40,9 @@ function DmsReadTable({authContext,tab,showBridgeStatus,identity}:Props&{identit
  ...(showBridgeStatus?[{accessorKey:"bridge_status",header:"Bridge",size:130,cell:({row})=><DmsBridgeStatusBadge status={row.original.bridge_status}/>} satisfies ColumnDef<DmsNotificationReadRow>]:[]),
  {accessorKey:"scheduled_for",header:"Scheduled",size:190,cell:({row})=>new Date(row.original.scheduled_for).toLocaleString()},
  {id:"actions",header:"Actions",enableSorting:false,meta:{exportable:false},size:270,cell:({row})=><div className="flex flex-wrap gap-1">
-  {row.original.visible_document_id!==null&&<Link href={`/dms/documents/record/${row.original.visible_document_id}`}>Open document</Link>}
+  {row.original.visible_document_id!==null&&(row.original.global_notification_id
+   ?<NotificationOpenButton id={row.original.global_notification_id} label="Open document" disabled={acting||!read.canAct()}/>
+   :<Link href={`/dms/documents/record/${row.original.visible_document_id}`}>Open document</Link>)}
   {canBridge&&!row.original.global_notification_id&&<Button size="sm" variant="outline" disabled={acting||!read.canAct()} onClick={()=>void action(row.original,"bridge")}>Bridge</Button>}
   {row.original.status==="pending"&&<><Button size="sm" variant="outline" disabled={acting||!read.canAct()} onClick={()=>void action(row.original,"read")}>Mark read</Button><Button size="sm" variant="outline" disabled={acting||!read.canAct()} onClick={()=>void action(row.original,"dismiss")}>Dismiss</Button></>}
  </div>}];

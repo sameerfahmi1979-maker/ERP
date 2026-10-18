@@ -70,7 +70,10 @@ function validateEngineeringWorkflow(workflow){
  const f09=workflow.jobs['f09-tests'];
  for(const [name,command]of [
   ['F09 offline delivery, permission, retry and UI-component contracts (no browser)','node node_modules/vitest/vitest.mjs run --config tests/remediation/f09/vitest.config.mts'],
-  ['Actual Deno handler authentication, no-work and partial-failure contracts (no external delivery)','npm exec --yes --package=deno@2.9.6 -- deno test --no-lock --allow-env=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,DMS_SCHEDULER_SECRET,APP_URL,INTERNAL_API_SECRET tests/remediation/f09/edge-runtime.deno.mts'],
+  ['Actual Deno handler authentication, no-work and partial-failure contracts (no external delivery)','npm exec --yes --package=deno@2.9.6 -- deno test --no-lock --allow-env=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,DMS_SCHEDULER_SECRET,APP_URL,INTERNAL_API_SECRET,F10_DURABLE_NOTIFICATIONS,F09_EMAIL_TRIGGER_ENABLED tests/remediation/f09/edge-runtime.deno.mts'],
+  ['F10 offline lifecycle, routing, recovery and component contracts (no browser)','node node_modules/vitest/vitest.mjs run --config tests/remediation/f10/vitest.config.mts'],
+  ['F10 test and adapter type contracts','node node_modules/typescript/bin/tsc --project tests/remediation/f10/tsconfig.json --noEmit'],
+  ['F10 actual Edge durable-mode contracts (controlled data, no delivery)','npm exec --yes --package=deno@2.9.6 -- deno test --no-lock --allow-env=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,DMS_SCHEDULER_SECRET,APP_URL,INTERNAL_API_SECRET,F10_DURABLE_NOTIFICATIONS,F09_EMAIL_TRIGGER_ENABLED tests/remediation/f10/edge-runtime.deno.mts'],
  ]){
   const steps=f09.steps.filter(step=>step.name===name);assert.equal(steps.length,1,'Exactly one complete F09 contract gate');assert.equal(steps[0].run,command);assert.equal(steps[0].if,undefined);assert.equal(steps[0]['continue-on-error'],undefined);
  }
@@ -95,16 +98,16 @@ function validateEngineeringWorkflow(workflow){
   'set -euo pipefail',...requiredJobs.map(name=>`test '\${{ needs.${name}.result }}' = success`)
  ]);
 }
-test('workflow retains every original gate, adds F09 and pins all eleven executable jobs to candidate head',()=>{
+test('workflow retains every original gate, adds F09/F10 contracts and pins all eleven executable jobs to candidate head',()=>{
  const s=fs.readFileSync('.github/workflows/engineering.yml','utf8');
  validateEngineeringWorkflow(yaml.load(s));
  for(const key of ['  verify:','  lint:','  production-image:','npm test','npm run test:remediation','npm run security:dependencies','npm run lint','node tooling/testing/f06-linux-image-check.mjs','include-hidden-files: true'])assert.ok(s.includes(key));
  assert.doesNotMatch(s,/docker rm --force/);assert.ok(fs.readFileSync('.gitattributes','utf8').includes('/'+NATIVE+' text eol=lf'));
 });
-test('F09 Node and actual Deno contracts cannot be removed, substituted, filtered or waived',()=>{
+test('F09/F10 Node, type and actual Deno contracts cannot be removed, substituted, filtered or waived',()=>{
  const baseline=yaml.load(fs.readFileSync('.github/workflows/engineering.yml','utf8'));
- for(const name of ['F09 offline','Actual Deno'])for(const mutate of [
-  step=>{step.run='true';},step=>{step.if='false';},step=>{step['continue-on-error']=true;},
+ for(const name of ['F09 offline','Actual Deno','F10 offline','F10 test and adapter','F10 actual Edge'])for(const mutate of [
+  step=>{step.run='true';},step=>{step.if='false';},step=>{step['continue-on-error']=true;},step=>{step.run+=' --test-name-pattern=selected';},
  ]){
   const changed=structuredClone(baseline);const step=changed.jobs['f09-tests'].steps.find(s=>s.name?.startsWith(name));assert.ok(step);mutate(step);assert.throws(()=>validateEngineeringWorkflow(changed));
  }

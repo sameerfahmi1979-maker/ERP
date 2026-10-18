@@ -18,7 +18,7 @@ const delivery={id:1,run_id:1,delivery_type:"email",recipient_to:["test@example.
 const families=[
  {name:"logs",reader:readNotificationDeliveries,route:logsRoute,row:log,table:"perf_notification_delivery_read",columns:"id,notification_id,email_queue_id,delivery_channel,status,message,duration_ms,attempt_number,error_message,created_at"},
  {name:"templates",reader:readNotificationTemplates,route:templatesRoute,row:template,table:"erp_notification_templates",columns:"id,template_code,template_name,source_module,notification_type,default_severity,default_channel_in_app,default_channel_email,is_active"},
- {name:"dms",reader:readDmsNotifications,route:dmsRoute,row:dms,table:"perf_dms_notification_read",columns:"id,document_id,recipient_user_id,subject,message,channel,status,scheduled_for,read_at,bridge_status,global_notification_id,global_email_queue_id,visible_document_id,document_no"},
+ {name:"dms",reader:readDmsNotifications,route:dmsRoute,row:dms,table:"f10_dms_personal_notification_read",columns:"id,document_id,recipient_user_id,subject,message,channel,status,scheduled_for,read_at,bridge_status,global_notification_id,global_email_queue_id,visible_document_id,document_no"},
  {name:"report-deliveries",reader:readReportDeliveries,route:reportsRoute,row:delivery,table:"erp_report_delivery_logs",columns:"id,run_id,delivery_type,recipient_to,subject,attachment_format,attachment_filename,provider,delivery_status,sent_at,created_at,error_message"},
 ];
 const result=(rows:unknown[],count=rows.length)=>({data:rows,count,error:null});
@@ -45,7 +45,8 @@ it("DMS uses the current profile, masks wrong recipients and cannot accept calle
  expect((await readDmsNotifications({recipient_user_id:7})).success).toBe(false);
 });
 it("view-only DMS users cannot request all notifications",async()=>{s.permissions=["dms.notifications.view"];expect(await readDmsNotifications({audience:"all"})).toMatchObject({success:false,error:"Permission denied"});expect(s.calls).toEqual([]);});
-it("DMS unread filters and bridge filters stay native before range",async()=>{s.results=[result([])];await readDmsNotifications({unreadOnly:true,bridgeStatus:"not_bridged",channel:"email_ready"});expect(s.calls).toContainEqual(["is","read_at",null]);expect(s.calls).toContainEqual(["neq","status","dismissed"]);expect(s.calls).toContainEqual(["eq","channel","email_ready"]);});
+it("DMS unread filters use canonical pending state, excluding archived/failed operational rows",async()=>{s.results=[result([])];await readDmsNotifications({unreadOnly:true,bridgeStatus:"not_bridged",channel:"email_ready"});expect(s.calls).toContainEqual(["eq","status","pending"]);expect(s.calls).toContainEqual(["eq","channel","email_ready"]);});
+it('DMS admin operational view retains producer/bridge history, separate from personal delivery',async()=>{s.results=[result([])];await readDmsNotifications({audience:'all'});expect(s.calls).toContainEqual(['from','perf_dms_notification_read']);});
 it("template list does not load wording and detail requires view AND management",async()=>{
  s.permissions=["notifications.templates.view"];expect(await readNotificationTemplateDetail({id:1})).toMatchObject({success:false,error:"Permission denied"});expect(s.calls).toEqual([]);
  s.permissions=["notifications.templates.manage"];expect((await readNotificationTemplateDetail({id:1})).success).toBe(false);

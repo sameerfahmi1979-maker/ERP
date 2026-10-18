@@ -4,13 +4,15 @@ import { canBrowseEmployees, getEmployeeAccess } from "@/lib/rbac/employee-acces
 import { getEmployee } from "@/server/actions/hr/employees";
 import { EmployeeWorkspaceForm } from "@/features/hr/employees/employee-workspace-form";
 import Link from "next/link";
+import {NotificationArrival} from '@/features/notifications/notification-open';
+import {readNotificationTaskContext} from '@/server/notification-task-context';
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 interface EmployeeRecordPageProps {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ mode?: string }>;
+  searchParams: Promise<{ mode?: string; f10_open?:string;task?:string;task_id?:string }>;
 }
 
 export default async function EmployeeRecordPage({
@@ -18,7 +20,7 @@ export default async function EmployeeRecordPage({
   searchParams,
 }: EmployeeRecordPageProps) {
   const { id: idStr } = await params;
-  const { mode: modeParam } = await searchParams;
+  const { mode: modeParam,f10_open,task,task_id } = await searchParams;
 
   const id = Number(idStr);
   if (!Number.isSafeInteger(id) || id <= 0) {
@@ -51,6 +53,7 @@ export default async function EmployeeRecordPage({
 
   const access = await getEmployeeAccess(authContext,id);
   const canEdit = access.allows("hr.employees.update");
+  const taskContext=task===undefined?null:await readNotificationTaskContext(`/admin/hr/employees/record/${id}`,task,task_id,f10_open);
 
   let mode: "view" | "edit" = "view";
   if (modeParam === "edit" && canEdit) {
@@ -63,10 +66,12 @@ export default async function EmployeeRecordPage({
 
   return (
     <div className="h-full">
+      {task===undefined?<NotificationArrival token={f10_open} path={`/admin/hr/employees/record/${id}`}/>:!taskContext&&<p role="alert">The notified task is unavailable, changed or no longer permitted. Its alert has not been marked read.</p>}
       <EmployeeWorkspaceForm
         employee={result.data}
         mode={mode}
         authContext={access.scopedContext}
+        notificationTask={taskContext??undefined}
       />
     </div>
   );

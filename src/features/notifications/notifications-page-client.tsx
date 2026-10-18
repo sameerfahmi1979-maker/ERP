@@ -25,7 +25,7 @@ function NotificationsView(props: NotificationPageProps & {identity: string}) {
     flight.current = true;
     startTransition(async () => {
       try {
-        const result = await markAllMyNotificationsRead();
+        const result = await markAllMyNotificationsRead(props.identity);
         if (!alive.current) return;
         if (result.success) invalidateMyNotifications(qc);
         else toast.error(result.error ?? "The change could not be confirmed.");
@@ -43,7 +43,7 @@ function NotificationsView(props: NotificationPageProps & {identity: string}) {
     </div>
     <p className="text-xs text-muted-foreground">Search and filters cover all your permitted notifications. Mark all read applies to all your unread notifications, including other pages. Reading or dismissing an alert does not complete its business task.</p>
     {(read.failed || count.isError) && <p role="alert">Notifications or unread counts could not be verified. Use Refresh to retry. Unverified rows are hidden.</p>}
-    <div className="flex flex-wrap gap-2">{[["", "All"], ["unread", "Unread"], ["dismissed", "Dismissed"]].map(([value, label]) =>
+    <div className="flex flex-wrap gap-2">{[["", "All"], ["unread", "Unread"], ["read", "Read"], ["dismissed", "Dismissed"], ["archived", "Archived"]].map(([value, label]) =>
       <Button key={value} variant={read.status === value ? "default" : "outline"} aria-pressed={read.status === value} onClick={() => read.setStatus(value)}>{label}</Button>)}</div>
     <p>{read.totalCount === null ? "Count unavailable" : `${read.totalCount} matching notifications`}</p>
     <MyNotificationsTable notifications={read.rows} onRefresh={read.refresh} activeTab={read.status || "all"}

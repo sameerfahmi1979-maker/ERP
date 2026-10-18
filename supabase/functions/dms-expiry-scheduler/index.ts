@@ -2,7 +2,9 @@
  * DMS.1 — DMS Expiry Notification Scheduler
  *
  * Supabase Edge Function invoked daily by pg_cron to automate
- * the entire DMS expiry notification pipeline:
+ * DMS expiry sources. In the reviewed F10 durable mode this producer only
+ * creates per-person sources; the independent F10 worker qualifies recipients
+ * and F09 alone dispatches email. The following stages are legacy mode only:
  *
  *   1. generateDmsExpiryNotifications  — create dms_notification_queue rows from due reminders
  *   2. bridgeDueDmsNotificationsToGlobal — copy to erp_notifications (+ erp_email_queue if flag enabled)
@@ -19,7 +21,6 @@ import { schedulerGate } from "./auth.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SCHEDULER_SECRET = Deno.env.get("DMS_SCHEDULER_SECRET");
-const APP_URL = (Deno.env.get("APP_URL") ?? "https://erp.algt.net").replace(/\/$/, "");
 
 Deno.serve(async (req: Request) => {
   // This mandatory custom gate replaces the incompatible JWT gateway contract.
@@ -50,6 +51,7 @@ Deno.serve(async (req: Request) => {
   record(`DMS Expiry Scheduler started. runId=${runId}`);
 
   const producerDeadline=AbortSignal.timeout(25000);
+  const durableNotifications=Deno.env.get('F10_DURABLE_NOTIFICATIONS')==='true';
 
   // Service-role client bypasses RLS
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -70,16 +72,16 @@ Deno.serve(async (req: Request) => {
     // ── Step 1: Get global notification settings ─────────────────────────────
     const { data: settings,error:settingsError } = await supabase
       .from("dms_notification_settings")
-      // Preserve the existing producer's recipient projection. Enabling the
-      // dormant extra-recipient/role routing belongs to the separate F10 review.
-      .select("is_enabled, in_app_enabled, email_enabled")
+      // Additional candidate routes are admitted only with the matching F10
+      // canonical authority/receipt worker, never the legacy direct bridge.
+      .select('is_enabled,in_app_enabled,email_enabled,include_document_owner,include_document_creator,recipient_roles,recipient_user_ids')
       .eq("id", 1)
       .single();
 
     if(settingsError||!settings)throw Error('DMS settings unavailable; no delivery started.');
     const isEnabled = settings.is_enabled===true;
 
-    if (!isEnabled) {
+    if (!isEnabled||durableNotifications&&!settings.in_app_enabled&&!settings.email_enabled) {
       record("DMS notifications are disabled in settings. Skipping pipeline.");
       result.steps.disabled = true;
       result.success = true;
@@ -92,7 +94,7 @@ Deno.serve(async (req: Request) => {
 
     // ── Step 2: Generate expiry notifications from due reminders ─────────────
     record("Step 1: Generating expiry notifications...");
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 
     const { data: dueReminders, error: remError } = await supabase
       .from("dms_expiry_reminders")
@@ -140,7 +142,7 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
-        const isExpired = daysBefore === 0 || (expiryDate && new Date(expiryDate) < new Date());
+        const isExpired = !!expiryDate&&expiryDate<today;
 
         const subject = isExpired
           ? `DMS Document Expired: ${doc.document_no} — ${doc.title}`
@@ -151,8 +153,8 @@ Deno.serve(async (req: Request) => {
 
         // Resolve recipients from settings
         const recipientIds: number[] = [];
-        if (doc.owner_user_id) recipientIds.push(doc.owner_user_id as number);
-        if (doc.created_by && doc.created_by !== doc.owner_user_id) {
+        if (doc.owner_user_id&&(!durableNotifications||settings.include_document_owner===true)) recipientIds.push(doc.owner_user_id as number);
+        if (doc.created_by&&(!durableNotifications||settings.include_document_creator===true)) {
           recipientIds.push(doc.created_by as number);
         }
 
@@ -161,14 +163,14 @@ Deno.serve(async (req: Request) => {
         if (recipientRoles.length > 0) {
           const { data: roleUsers,error:roleError } = await supabase
             .from("user_roles")
-            .select("user_profile_id, role:roles!role_id(role_code)")
+            .select("user_profile_id, role:roles!role_id(role_code,is_active)")
             .eq("is_active", true).limit(1001);
           if(roleError||(roleUsers?.length??0)>1000)throw Error('Configured recipient inventory could not be completely verified.');
           for (const ru of roleUsers ?? []) {
             const rur = ru as Record<string, unknown>;
             const roleRow = rur.role as Record<string, unknown> | null;
             if (
-              roleRow?.role_code &&
+              roleRow?.role_code &&roleRow.is_active===true&&
               recipientRoles.includes(roleRow.role_code as string) &&
               rur.user_profile_id
             ) {
@@ -233,6 +235,15 @@ Deno.serve(async (req: Request) => {
       record(`Step 1 done: created=${created}, skipped=${skipped}`);
     }
 
+    if(durableNotifications){
+      // Each NEW per-person source captured a transactional F10 event. The
+      // existing authenticated Railway worker admits authorized personal/channel
+      // receipts and F09 delivers them. Do not run a second direct bridge/send.
+      result.steps.durableAdmission={queuedForCurrentRecipientAuthorization:true,deliveryConfirmed:false};
+      result.success=result.errors.length===0;result.completedAt=new Date().toISOString();
+      return Response.json(result,{status:result.success?200:503});
+    }
+
     // ── Step 3: Bridge pending DMS notifications to erp_notifications ─────────
     record("Step 2: Bridging DMS notifications to global...");
     const { data: pendingRows,error:pendingError } = await supabase
@@ -280,7 +291,7 @@ Deno.serve(async (req: Request) => {
             message: r.message as string,
             recipient_user_id: r.recipient_user_id as number | null,
             recipient_email: r.recipient_email as string | null,
-            channel_in_app: true,
+            channel_in_app: settings.in_app_enabled===true,
             channel_email: false, // Queue creation, not a supplied address, sets this marker.
             scheduled_for: r.scheduled_for as string ?? new Date().toISOString(),
             action_url: docId ? `/dms/documents/record/${docId}` : null,
@@ -300,14 +311,17 @@ Deno.serve(async (req: Request) => {
         }
         if (notifRow && !notifError) {
           const globalId = (notifRow as Record<string, unknown>).id as number;
-          await supabase.from("dms_notification_queue").update({
+          const linked=await supabase.from("dms_notification_queue").update({
             global_notification_id: globalId,
             bridge_status: "bridged",
             bridge_attempt_count: ((r.bridge_attempt_count as number) ?? 0) + 1,
             bridged_at: new Date().toISOString(),
             last_bridge_error: null,
             updated_at: new Date().toISOString(),
-          }).eq("id", dmsId);
+          }).eq("id", dmsId).eq("bridge_status",r.bridge_status).select('id');
+          if(linked.error||!Array.isArray(linked.data)||linked.data.length!==1){
+            bridgeFailed++;record(`Bridge tracking unconfirmed for dmsId=${dmsId}; original notification retained.`);continue;
+          }
           bridged++;
         } else {
           bridgeFailed++;
@@ -319,6 +333,7 @@ Deno.serve(async (req: Request) => {
     }
 
     result.steps.step2_bridge = { bridged, failed: bridgeFailed };
+    if(bridgeFailed>0)result.errors.push('One or more bridge outcomes remain unconfirmed.');
     record(`Step 2 done: bridged=${bridged}, failed=${bridgeFailed}`);
 
     // ── Step 3: Queue emails for bridged notifications (if email_enabled) ────────
@@ -466,8 +481,9 @@ Deno.serve(async (req: Request) => {
  * Update existing cron job 1 in place; do not create a second daily producer.
  * Coordinate INTERNAL_API_SECRET with Railway and the separate email cron job.
  * Authorized POST ?mode=health returns zero work; it cannot send mail or certify
- * business-delivery idempotency. Ordinary POST preserves the existing pipeline.
- * Keep the provider-owned net schema out of the Data API and expose no public
- * SQL bridge to its request/response rows; verify that boundary before cutover.
- * See the recorded F02 blocker-repair cutover plan for guards and exact targets.
+ * business-delivery idempotency. F10_DURABLE_NOTIFICATIONS=true bypasses the
+ * legacy bridge/direct-send stages even if an old follow-on flag remains set.
+ * Keep the provider-owned net schema out of the Data API; never expose raw
+ * request headers, secrets or response bodies through an operational projection.
+ * See docs/remediation/F10_NOTIFICATION_RELEASE.md for the coordinated cutover.
  */

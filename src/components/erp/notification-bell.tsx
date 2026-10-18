@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
-import { Bell, CheckCheck, ExternalLink, X } from "lucide-react";
+import { Bell, CheckCheck, X } from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition, useLayoutEffect, useRef } from "react";
 import { toast } from "sonner";
@@ -17,6 +17,7 @@ import {
 } from "@/server/actions/notifications/notifications";
 
 import {useNotificationUnread, useNotificationBellRows} from "@/hooks/use-notification-bell";
+import {NotificationOpenButton} from '@/features/notifications/notification-open';
 
 // ── Severity badge color mapping ─────────────────────────────────────────────
 
@@ -37,7 +38,8 @@ export function NotificationBell({identity}: {identity?: string}) {
   useLayoutEffect(() => {lifetime.current = true; return () => {lifetime.current = false;};}, []);
   const countRead = useNotificationUnread(identity), rowsRead = useNotificationBellRows(identity, open);
   const failed = countRead.isError || (open && rowsRead.isError) || !identity;
-  const unreadCount = failed || countRead.isFetching ? 0 : countRead.data ?? 0;
+  const unreadCount = countRead.data ?? 0;
+  const unverifiedCount=failed||countRead.isFetching||countRead.data===undefined;
   const notifsLoading = rowsRead.isFetching || rowsRead.isPending;
   const notifications = failed || notifsLoading ? [] : rowsRead.data ?? [];
 
@@ -71,7 +73,7 @@ export function NotificationBell({identity}: {identity?: string}) {
   function handleDismiss(id: number) {
     if (notifications.some(row => row.id === id)) perform(() => dismissNotification(id));
   }
-  function handleMarkAllRead() {perform(markAllMyNotificationsRead, true);}
+  function handleMarkAllRead() {if(identity)perform(()=>markAllMyNotificationsRead(identity), true);}
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -94,7 +96,7 @@ export function NotificationBell({identity}: {identity?: string}) {
                 "text-[10px] font-bold text-white leading-none",
                 badgeColor
               )}
-              aria-label={`${unreadCount} unread notifications`}
+              aria-label={unverifiedCount?`${unreadCount} last verified unread notifications; refresh pending`:`${unreadCount} unread notifications`}
             >
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
@@ -115,14 +117,14 @@ export function NotificationBell({identity}: {identity?: string}) {
             <span className="text-sm font-semibold">Notifications</span>
             {unreadCount > 0 && (
               <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                {unreadCount} unread
+                {unreadCount} {unverifiedCount?'last verified unread':'unread'}
               </span>
             )}
           </div>
           {unreadCount > 0 && (
             <button
               onClick={handleMarkAllRead}
-              disabled={isPending}
+              disabled={isPending||unverifiedCount}
               className="inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
               aria-label="Mark all notifications as read"
             >
@@ -161,13 +163,7 @@ export function NotificationBell({identity}: {identity?: string}) {
                     <p className="text-xs font-medium text-foreground line-clamp-1">{n.title}</p>
                     <p className="text-xs text-muted-foreground line-clamp-2">{n.message}</p>
                     {n.actionUrl && (
-                      <Link
-                        href={n.actionUrl}
-                        className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
-                        onClick={() => setOpen(false)}
-                      >
-                        {n.actionLabel ?? "View"} <ExternalLink className="h-3 w-3" />
-                      </Link>
+                      <NotificationOpenButton id={n.id} label={n.actionLabel??'Open record'} onNavigate={()=>setOpen(false)} disabled={isPending}/>
                     )}
                   </div>
 

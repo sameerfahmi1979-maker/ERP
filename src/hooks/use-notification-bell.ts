@@ -24,5 +24,6 @@ export function useNotificationBellRows(identity: string | undefined, open: bool
       const page = notificationPageSchema.parse(await bellRead(true, signal));
       if (page.page !== 1 || page.pageSize !== 10 || page.rows.some(row => row.status !== "unread")) throw Error("Notification preview could not be verified.");
       return page.rows;
-    }, gcTime: 0, staleTime: 10000, retry: retryAuthorizedRead});
+    }, gcTime: 0, staleTime: 10000, retry: retryAuthorizedRead,refetchOnWindowFocus:true,refetchOnReconnect:true,
+    refetchInterval:query=>!open||query.state.error instanceof ReadError&&[401,403].includes(query.state.error.status)?false:60000});
 }

@@ -9,7 +9,6 @@ import type {ReportTemplate,ReportTemplateEvent} from '@/lib/report-center/types
 import type {TemplateGovernanceReceipt} from '@/lib/report-center/template-governance-receipt';
 import type {SecurityReviewResult} from '@/lib/template-governance/security-review';
 import {listReportTemplates} from './templates';
-import {createNotification} from '@/server/actions/notifications/notifications';
 
 type ActionResult<T=unknown>={success:boolean;data?:T;error?:string;uncertain?:boolean;receipt?:TemplateGovernanceReceipt};
 
@@ -18,15 +17,7 @@ export async function submitTemplateForReview(id:number,contract?:WorkspaceSaveC
  if(!result.success)return result;
  const receipt=result.data!;
  if(receipt.review?.passed===false)return {success:false,receipt,error:'Template failed security review ('+receipt.review.findings.length+' findings). Correct the content before resubmitting.'};
- // Existing best-effort notification cannot falsify a committed governance receipt.
- // Durable F09 consumption of the transaction event remains an integration gate.
- if(!receipt.replayed)try{await createNotification({
-  source_module:'REPORTS',source_entity_type:'erp_report_templates',source_entity_id:id,
-  notification_type:'template_submitted_for_review',severity:'info',title:'Template Ready for Review',
-  message:'A report template has been submitted for approval review.',recipient_role_code:'system_admin',
-  channel_in_app:true,channel_email:false,action_url:'/admin/reports/templates/governance',action_label:'Open Governance Queue',
-  notification_code:'TEMPLATE_REVIEW_'+id+'_'+receipt.revision,metadata_json:{template_id:id,revision:receipt.revision},
- });}catch{/* Template transaction already committed; no repeat mutation. */}
+ // F10 captures the existing template event in its committing transaction.
  return {success:true,receipt};
 }
 export async function approveTemplate(input:{templateId:number;notes?:string},contract?:WorkspaceSaveContract):Promise<ActionResult>{

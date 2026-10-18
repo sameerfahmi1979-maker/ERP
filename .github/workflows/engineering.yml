@@ -101,7 +101,13 @@ jobs:
       - name: F09 offline delivery, permission, retry and UI-component contracts (no browser)
         run: node node_modules/vitest/vitest.mjs run --config tests/remediation/f09/vitest.config.mts
       - name: Actual Deno handler authentication, no-work and partial-failure contracts (no external delivery)
-        run: npm exec --yes --package=deno@2.9.6 -- deno test --no-lock --allow-env=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,DMS_SCHEDULER_SECRET,APP_URL,INTERNAL_API_SECRET tests/remediation/f09/edge-runtime.deno.mts
+        run: npm exec --yes --package=deno@2.9.6 -- deno test --no-lock --allow-env=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,DMS_SCHEDULER_SECRET,APP_URL,INTERNAL_API_SECRET,F10_DURABLE_NOTIFICATIONS,F09_EMAIL_TRIGGER_ENABLED tests/remediation/f09/edge-runtime.deno.mts
+      - name: F10 offline lifecycle, routing, recovery and component contracts (no browser)
+        run: node node_modules/vitest/vitest.mjs run --config tests/remediation/f10/vitest.config.mts
+      - name: F10 test and adapter type contracts
+        run: node node_modules/typescript/bin/tsc --project tests/remediation/f10/tsconfig.json --noEmit
+      - name: F10 actual Edge durable-mode contracts (controlled data, no delivery)
+        run: npm exec --yes --package=deno@2.9.6 -- deno test --no-lock --allow-env=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,DMS_SCHEDULER_SECRET,APP_URL,INTERNAL_API_SECRET,F10_DURABLE_NOTIFICATIONS,F09_EMAIL_TRIGGER_ENABLED tests/remediation/f10/edge-runtime.deno.mts
 
   performance-phases:
     needs: security

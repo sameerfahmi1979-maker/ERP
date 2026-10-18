@@ -11,8 +11,8 @@ export async function readDmsNotifications(input:unknown,context?:AuthContext,si
   if(!ctx.profile||!["dms.notifications.view","dms.notifications.manage","dms.admin"].some(c=>hasPermission(ctx,c)))return {success:false as const,error:"Permission denied"};
   if(p.audience==="all"&&!["dms.notifications.manage","dms.admin"].some(c=>hasPermission(ctx,c)))return {success:false as const,error:"Permission denied"};
   const db=await createClient();signal?.throwIfAborted();
-  const base=(head=false)=>{const q=db.from("perf_dms_notification_read").select(columns,{count:"exact",head});if(signal)q.abortSignal(signal);
-   if(p.audience==="my")q.eq("recipient_user_id",ctx.profile!.id);if(p.unreadOnly)q.is("read_at",null).neq("status","dismissed");
+  const base=(head=false)=>{const q=db.from(p.audience==="my"?"f10_dms_personal_notification_read":"perf_dms_notification_read").select(columns,{count:"exact",head});if(signal)q.abortSignal(signal);
+   if(p.audience==="my")q.eq("recipient_user_id",ctx.profile!.id);if(p.unreadOnly)q.eq('status','pending');
    if(p.status)q.ilike("status",literalLike(p.status));if(p.channel)q.eq("channel",p.channel);if(p.bridgeStatus)q.ilike("bridge_status",literalLike(p.bridgeStatus));
    if(p.search)q.or(["subject","message","document_no","channel","status","bridge_status"].map(f=>`${f}.ilike.${literalContains(p.search)}`).join(","));
    return q;};

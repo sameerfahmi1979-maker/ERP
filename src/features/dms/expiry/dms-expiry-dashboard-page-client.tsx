@@ -63,7 +63,7 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false, canRe
     try {
       const result = await generateDmsExpiryNotifications({ limit: 100 });
       if (result.success) {
-        toast.success(`${result.data?.created} notifications created`);
+        toast.success(`${result.data?.created??0} reminder sources recorded for authorized recipient processing. Delivery is not yet confirmed.`);
         invalidateDmsNotifications(queryClient);
       } else {
         toast.error(result.error ?? "Failed");

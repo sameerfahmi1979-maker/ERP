@@ -1,6 +1,8 @@
 "use client";
 import { reportWorkspaceFieldErrors } from "@/lib/workspace/field-errors";
 import {useWorkspaceSaveSession} from "@/hooks/use-workspace-save-session";
+import type {NotificationTaskContext} from '@/lib/notifications/task-context';
+import {NotificationTaskContextCard} from '@/features/notifications/notification-task-context';
 
 /**
  * EmployeeWorkspaceForm — HR.2
@@ -72,6 +74,7 @@ type Props = {
   employee?: EmployeeListRow | null;
   mode: "add" | "edit" | "view";
   authContext: AuthContext;
+  notificationTask?:NotificationTaskContext;
 };
 
 const SECTIONS: ERPRecordSection[] = [
@@ -180,7 +183,7 @@ export function EmployeeWorkspaceForm(props: Props) {
   return <EmployeeWorkspaceFormInstance key={`${props.employee?.id ?? "new"}:${props.mode}`} {...props} />;
 }
 
-function EmployeeWorkspaceFormInstance({ employee, mode, authContext }: Props) {
+function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificationTask }: Props) {
   const { closeTab, markDirty, updateTabRoute, isTabActive } = useWorkspace();
   const owner = useWorkspaceFormOwner();
   const router = useRouter();
@@ -323,6 +326,7 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext }: Props) {
       >
         {/* WS.3: visible signal that unsaved values from a previous visit were restored */}
         <DraftRestoredNotice visible={!isViewing && restoredFromDraft} className="mb-3" />
+        {notificationTask&&<NotificationTaskContextCard task={notificationTask} onSection={setActiveSection} blocked={isSubmitting||childDialogOpen||complianceChildLeases.size>0}/>}
 
         {/* Overview — one authorized read composition; retained after its first mount. */}
         <ERPRecordSectionPanel id="overview" activeId={activeSection} title="Overview" lazyMount>

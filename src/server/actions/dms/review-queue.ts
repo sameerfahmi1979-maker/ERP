@@ -17,7 +17,6 @@
  */
 
 import {
-  createDmsReviewQueueNotification,
   isDmsAiReviewEnabled,
   upsertDmsReviewQueueItem,
   type DmsReviewPriority
@@ -563,18 +562,7 @@ export async function assignDmsReviewQueueItem(
       new_values:       { review_queue_item_id: id, assigned_to: targetUserId },
     });
 
-    // Non-fatal notification — use targetUserId (never 0)
-    try {
-      const item = await getDmsReviewQueueItem(id);
-      await createDmsReviewQueueNotification({
-        itemId:     id,
-        priority:   item.data?.priority ?? "normal",
-        reviewType: item.data?.reviewType ?? "",
-        documentId: item.data?.documentId ?? null,
-        assignedTo: targetUserId,
-        eventType:  "assigned",
-      });
-    } catch { /* non-fatal */ }
+    // F10 assignment capture is durable in the original database write.
 
     revalidatePath("/dms/review-queue");
     return { success: true };

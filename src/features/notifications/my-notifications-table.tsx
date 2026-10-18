@@ -3,7 +3,7 @@
 import { useState, useTransition, useRef, useLayoutEffect } from "react";
 import type {ERPTableServerRead} from "@/components/erp/table/erp-table-types";
 import {TablePagination} from "@/components/erp/table/table-pagination";
-import Link from "next/link";
+import {NotificationOpenButton} from './notification-open';
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import type { ColumnDef } from "@tanstack/react-table";
 import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
@@ -12,7 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { invalidateMyNotifications } from "@/lib/query/invalidation";
 import { toast } from "sonner";
 import {
-  Bell, Check, X, Archive, ArrowRight,
+  Bell, Check, X, Archive,
   FileText, Users, Landmark, ShieldCheck, Clock, Settings, LayoutDashboard,
   AlertCircle, AlertTriangle,
 } from "lucide-react";
@@ -218,12 +218,7 @@ function NotificationCard({
             {isInternalActionUrlAllowed(n.actionUrl) && (
               <>
                 <span className="text-muted-foreground/40 text-[10px]">·</span>
-                <Link
-                  href={n.actionUrl}
-                  className="inline-flex items-center gap-0.5 text-[11px] text-primary font-medium hover:underline"
-                >
-                  {n.actionLabel ?? "View"} <ArrowRight className="h-3 w-3" />
-                </Link>
+                <NotificationOpenButton id={n.id} label={n.actionLabel??'Open record'} disabled={isBusy}/>
               </>
             )}
           </div>
@@ -404,7 +399,7 @@ export function MyNotificationsTable({ notifications, onRefresh, activeTab, disa
     {accessorKey:"createdAt",header:"Created",size:180,cell:({getValue})=>new Date(String(getValue())).toLocaleString()},
     {id:"actions",header:"Actions",size:260,enableSorting:false,enableHiding:false,meta:{exportable:false},cell:({row})=>{
       const n=row.original; return <div className="flex flex-wrap gap-1">
-        {isInternalActionUrlAllowed(n.actionUrl) && <Link href={n.actionUrl} className="text-primary underline p-2">{n.actionLabel??"Open record"}</Link>}
+        {isInternalActionUrlAllowed(n.actionUrl) && <NotificationOpenButton id={n.id} label={n.actionLabel??'Open record'} disabled={disabled||isPending}/>}
         {n.status==="unread" && <Button size="sm" variant="ghost" disabled={disabled||isPending} aria-label={`Mark notification ${n.id} as read`} onClick={()=>handleAction(n.id,()=>markNotificationRead(n.id),"Marked as read")}>Read</Button>}
         {!["dismissed","archived"].includes(n.status) && <Button size="sm" variant="ghost" disabled={disabled||isPending} aria-label={`Dismiss notification ${n.id}`} onClick={()=>handleAction(n.id,()=>dismissNotification(n.id),"Dismissed")}>Dismiss</Button>}
         <Button size="sm" variant="ghost" disabled={disabled||isPending} aria-label={`Archive notification ${n.id}`} onClick={()=>handleAction(n.id,()=>archiveNotification(n.id),"Archived")}>Archive</Button>

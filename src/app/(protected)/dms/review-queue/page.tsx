@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { getDmsReviewQueueItems, getDmsReviewQueueCounts } from "@/server/actions/dms/review-queue";
+import { getDmsReviewQueueItems, getDmsReviewQueueCounts,getDmsReviewQueueItem } from "@/server/actions/dms/review-queue";
 import { isDmsAiReviewEnabled } from "@/lib/dms/review-queue/review-queue-upsert";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { DmsReviewQueuePageClient } from "@/features/dms/review-queue/dms-review-queue-page-client";
@@ -8,7 +8,7 @@ import { DmsReviewQueuePageClient } from "@/features/dms/review-queue/dms-review
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function DmsReviewQueuePage() {
+export default async function DmsReviewQueuePage({searchParams}:{searchParams?:Promise<{item_id?:string;f10_open?:string}>}) {
   const authContext = await getAuthContext();
 
   const canView =
@@ -23,6 +23,7 @@ export default async function DmsReviewQueuePage() {
   }
 
   const reviewEnabled = await isDmsAiReviewEnabled();
+  const opening=await searchParams??{};
 
   if (!reviewEnabled) {
     return (
@@ -44,6 +45,8 @@ export default async function DmsReviewQueuePage() {
     getDmsReviewQueueItems({ pageSize: 25 }),
     getDmsReviewQueueCounts(),
   ]);
+  const requestedId=opening.item_id&&/^[1-9]\d*$/.test(opening.item_id)?Number(opening.item_id):null;
+  const target=requestedId&&Number.isSafeInteger(requestedId)?await getDmsReviewQueueItem(requestedId):null;
 
   const canAdmin =
     hasPermission(authContext, "dms.review_queue.admin") ||
@@ -69,6 +72,8 @@ export default async function DmsReviewQueuePage() {
         initialTotal={itemsResult.data?.total ?? 0}
         initialCounts={countsResult.data ?? null}
         initialLoadFailed={!itemsResult.success}
+        notificationTarget={target?.success&&target.data?{item:target.data,token:opening.f10_open}:undefined}
+        notificationTargetFailed={opening.item_id!==undefined&&(!target?.success||!target.data)}
         canManage={canManage}
         canAdmin={canAdmin}
       />

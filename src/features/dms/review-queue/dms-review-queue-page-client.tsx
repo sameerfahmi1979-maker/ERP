@@ -11,6 +11,7 @@ import { DmsReviewQueueTable } from "./dms-review-queue-table";
 import { DmsReviewQueueItemDrawer } from "./dms-review-queue-item-drawer";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import {NotificationArrival} from '@/features/notifications/notification-open';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -21,6 +22,8 @@ interface Props {
   initialLoadFailed?: boolean;
   canManage:     boolean;
   canAdmin:      boolean;
+  notificationTarget?:{item:ReviewQueueItem;token?:string};
+  notificationTargetFailed?:boolean;
 }
 
 // ── Page client ───────────────────────────────────────────────────────────────
@@ -31,6 +34,8 @@ export function DmsReviewQueuePageClient({
   initialCounts,
   initialLoadFailed = false,
   canManage,
+  notificationTarget,
+  notificationTargetFailed=false,
 }: Props) {
   const [items, setItems]       = useState<ReviewQueueItem[]>(initialItems);
   const [total, setTotal]       = useState(initialTotal);
@@ -40,8 +45,8 @@ export function DmsReviewQueuePageClient({
   const [pageSize]              = useState(25);
   const [isPending, startTransition] = useTransition();
 
-  const [selectedItem, setSelectedItem] = useState<ReviewQueueItem | null>(null);
-  const [drawerOpen, setDrawerOpen]     = useState(false);
+  const [selectedItem, setSelectedItem] = useState<ReviewQueueItem | null>(notificationTarget?.item??null);
+  const [drawerOpen, setDrawerOpen]     = useState(!!notificationTarget);
   const [loadFailed, setLoadFailed] = useState(initialLoadFailed);
   const [countsFailed, setCountsFailed] = useState(initialCounts === null);
   const [detailFailed, setDetailFailed] = useState(false);
@@ -52,6 +57,15 @@ export function DmsReviewQueuePageClient({
   const detailSequence = useRef(0);
   const returnFocus = useRef<HTMLElement | null>(null);
   const listAbort=useRef<AbortController|null>(null),detailAbort=useRef<AbortController|null>(null);
+  const notificationKey=notificationTarget?(notificationTarget.token??`item:${notificationTarget.item.id}`):null;
+  const [openedNotification,setOpenedNotification]=useState(notificationKey);
+  const notificationBlocked=notificationKey!==null&&openedNotification!==notificationKey&&(drawerBusy||drawerDirty);
+  // Explicit notification navigation opens the verified exact task, not its
+  // parent's overview. Never replace another dirty or saving review drawer.
+  if(notificationTarget&&openedNotification!==notificationKey&&!drawerBusy&&!drawerDirty){
+    setOpenedNotification(notificationKey);
+    setSelectedItem(notificationTarget.item);setDrawerOpen(true);setDetailFailed(false);setDetailPending(false);
+  }
   useEffect(()=>()=>{++listSequence.current;++detailSequence.current;listAbort.current?.abort();detailAbort.current?.abort();},[]);
 
   const refresh = useCallback((nextFilters?: ReviewQueueFilters, nextPage?: number) => {
@@ -140,6 +154,8 @@ export function DmsReviewQueuePageClient({
 
   return (
     <div className="space-y-4">
+      {notificationTargetFailed&&<p role="alert">The requested review item is unavailable or no longer permitted. Its notification has not been marked read.</p>}
+      {notificationBlocked&&<p role="status">Finish or close your current review before opening the notified item. Your unsaved entries are unchanged and the alert remains unread.</p>}
       {/* Dashboard cards */}
       {isPending ? <p role="status">Refreshing review summary…</p> : countsFailed ? <p role="status" className="text-sm text-muted-foreground">Review summary is unavailable. Refresh to retry; unavailable counts are not zero.</p> : <DmsReviewQueueDashboardCards counts={counts} />}
 
@@ -213,6 +229,8 @@ export function DmsReviewQueuePageClient({
           {detailPending && <p role="status" className="p-3">Loading review details…</p>}
           {detailFailed && selectedItem && <DmsLoadError subject="review details" retry={() => loadDetail(selectedItem.id)} pending={detailPending} />}
           {selectedItem && <div hidden={detailPending || detailFailed || loadFailed || isPending} className="flex min-h-0 flex-1 flex-col">
+            {drawerOpen&&!detailPending&&!detailFailed&&!loadFailed&&!isPending&&!notificationBlocked&&notificationTarget?.item.id===selectedItem.id&&
+             <NotificationArrival token={notificationTarget.token} path={`/dms/review-queue?item_id=${selectedItem.id}`}/>}
             <DmsReviewQueueItemDrawer
               key={selectedItem.id}
               item={selectedItem}

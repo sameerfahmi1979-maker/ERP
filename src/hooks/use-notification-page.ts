@@ -3,7 +3,7 @@ import {useEffect, useLayoutEffect, useMemo, useRef, useState} from "react";
 import {useQuery, useQueryClient} from "@tanstack/react-query";
 import type {ColumnFiltersState, PaginationState, SortingState, Updater} from "@tanstack/react-table";
 import type {AuthContext} from "@/lib/rbac/check";
-import {canUseApplication, hasPermission} from "@/lib/rbac/scope";
+import {canUseApplication, hasGlobalPermission} from "@/lib/rbac/scope";
 import {notificationCriteriaSchema, notificationPageSchema, NOTIFICATION_SEVERITIES, NOTIFICATION_STATUSES, type NotificationPage, type NotificationReadRow} from "@/lib/reads/notifications-schema";
 import {ReadError, readJson, retryAuthorizedRead} from "@/lib/reads/client";
 import type {ERPTableServerRead} from "@/components/erp/table/erp-table-types";
@@ -25,7 +25,7 @@ export function useNotificationPage(props: NotificationPageProps, identity: stri
   const owner = useMemo(() => ({identity, audience, qc}), [identity, audience, qc]);
   const liveOwner = useRef<typeof owner | null>(null);
   useLayoutEffect(() => {liveOwner.current = owner; return () => {if (liveOwner.current === owner) liveOwner.current = null;};}, [owner]);
-  const allowed = canUseApplication(props.authContext) && (audience === "my" || hasPermission(props.authContext, "notifications.admin") || hasPermission(props.authContext, "notifications.manage"));
+  const allowed = canUseApplication(props.authContext) && (audience === "my" || hasGlobalPermission(props.authContext, "notifications.admin") || hasGlobalPermission(props.authContext, "notifications.manage"));
   const parsed = notificationCriteriaSchema.safeParse({...Object.fromEntries(filters.map(f => [f.id, f.value])), audience, page: pagination.pageIndex + 1, pageSize: pagination.pageSize, sorting, search: debounced, ...(status ? {status} : {})});
   const params = parsed.success ? canonicalReadParams(parsed.data) : "null", initial = canonicalReadParams(notificationCriteriaSchema.parse({audience}));
   if (params !== initial && !retiredSeed) setRetiredSeed(true);
@@ -33,6 +33,8 @@ export function useNotificationPage(props: NotificationPageProps, identity: stri
   const q = useQuery({queryKey: [...prefix, "page", params], enabled: allowed && !denied && parsed.success,
     initialData: () => !retiredSeed && params === initial && props.initialIdentity === identity && seed.success && seed.data.page === 1 && seed.data.pageSize === 25 ? seed.data : undefined,
     initialDataUpdatedAt: props.initialUpdatedAt, staleTime: 30000, gcTime: 0, retry: retryAuthorizedRead,
+    refetchOnWindowFocus:true,refetchOnReconnect:true,
+    refetchInterval:query=>query.state.error instanceof ReadError&&[401,403].includes(query.state.error.status)?false:60000,
     queryFn: async ({signal}) => {
       if (liveOwner.current !== owner || !parsed.success) throw new DOMException("Read cancelled", "AbortError");
       const result = await readJson<{success: true; data: unknown}>("notifications", JSON.parse(params), signal);

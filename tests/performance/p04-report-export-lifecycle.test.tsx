@@ -35,7 +35,10 @@ beforeEach(() => {
 afterEach(() => {cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); [m.pdf, m.excel, m.csv, m.send, m.success, m.error].forEach(mock => mock.mockReset());});
 it("current CSV and print remain available with unchanged data", () => {
   const view = mount(); fireEvent.click(screen.getByRole("button", {name: "CSV"}));
-  expect(URL.createObjectURL).toHaveBeenCalledTimes(1); expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:synthetic");
+  // F08 uses the parent's shared, formula-neutral serializer for every export.
+  // The toolbar must not recreate its former independent CSV downloader.
+  expect(view.exportAction).toHaveBeenCalledExactlyOnceWith("csv");
+  expect(URL.createObjectURL).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", {name: "Print"})); expect(view.exportAction).toHaveBeenCalledWith("print");
 });
 it("retired output cannot initiate CSV, print or email", () => {

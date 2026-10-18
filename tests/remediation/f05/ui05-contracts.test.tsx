@@ -61,7 +61,12 @@ it('document selection ignores a late response for the previous employee',async(
 it('failed document reads clear the prior preview and offer a safe retry',async()=>{
  let failing=true;m.docs.mockImplementation((p:HrDocumentBrowserCriteria)=>p.operation==='documents'&&p.entityId===1?Promise.resolve(documents(p,'A document')):failing?Promise.reject(Error('PRIVATE')):Promise.resolve(documents(p)));
  render(<Wrap><HrDocBrowserPageClient authContext={browserAuth}/></Wrap>);fireEvent.click(screen.getByText('Employee A'));await waitFor(()=>expect(screen.getByLabelText('Synthetic preview').textContent).toBe('A document'));fireEvent.click(screen.getByText('Employee B'));
- await screen.findByRole('alert');expect(screen.queryByLabelText('Synthetic preview')).toBeNull();failing=false;fireEvent.click(screen.getByRole('button',{name:'Retry documents'}));await waitFor(()=>expect(screen.queryByRole('alert')).toBeNull());expect(m.docs).toHaveBeenCalledTimes(4);
+ const retry=await screen.findByRole('button',{name:'Retry documents'});
+ // The compact collection also reports unverified totals. Assert the actionable
+ // read error, not that the entire page has exactly one alert.
+ expect(retry.closest('[role="alert"]')?.textContent).toContain('could not be loaded');
+ expect(screen.queryByLabelText('Synthetic preview')).toBeNull();expect(screen.queryByText('PRIVATE')).toBeNull();
+ failing=false;fireEvent.click(retry);await waitFor(()=>expect(screen.queryAllByRole('alert')).toHaveLength(0));expect(m.docs).toHaveBeenCalledTimes(4);
 });
 it.each([['ArrowLeft',260],['ArrowRight',300],['Home',200],['End',420]])('panel resize supports keyboard %s', (key,value)=>{const resize=vi.fn();render(<HrDocBrowserResizeHandle label="Panel" value={280} min={200} max={420} onResize={resize} onMouseDown={vi.fn()}/>);fireEvent.keyDown(screen.getByRole('separator'),{key});expect(resize).toHaveBeenCalledWith(value);});
 it.each(['/admin/common-master-data/work-calendars','/admin/common-master-data/work-calendars/record/new','/admin/common-master-data/work-calendars/record/23','/admin/hr/settings/grades','/admin/settings/ai'])('registered workspace %s persists identity but no query payload',route=>{expect(safePersistedWorkspaceRoute(route+'?mode=edit&secret=PRIVATE#private')).toBe(route+'?mode=edit');expect(createTabFromRoute(route).title).not.toBe('Page');});

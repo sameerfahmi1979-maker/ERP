@@ -426,7 +426,7 @@ function canUserSeeItem(
   if (item.disabled) return isGlobalAdmin;
   if (item.publicToAllActive) return true;
   if (isGlobalAdmin) return true;
-  if (item.path === "/admin/notifications/email-queue") return globalPermissionCodes.includes("notifications.email_queue.view") || globalPermissionCodes.includes("notifications.admin");
+  if (item.path === "/admin/notifications/email-queue") return ["notifications.email_queue.view","notifications.email_queue.manage","notifications.admin"].some(code=>globalPermissionCodes.includes(code));
   if (item.requiresGlobalAdmin) return false;
   if (item.requiredPermission) return permissionCodes.includes(item.requiredPermission);
   if (item.requiredAnyPermissions) {

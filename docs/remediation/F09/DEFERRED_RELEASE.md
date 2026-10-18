@@ -1,5 +1,9 @@
 # F09 deferred until after F08 — owner decision, 1 October 2026
 
+**Historical record.** F08 has subsequently released and the owner authorized
+F09 resumption. Use [the current integration/cutover contract](INTEGRATED_RELEASE_20261018.md)
+for the new candidate; this record does not establish its merge/deployment status.
+
 The owner approved releasing the F05 appearance while deferring F09 and the tightly coupled Email Queue / Report Schedules redesign. This is a delivery-order decision, not a rejection or deletion of the completed F09 work.
 
 ## Preserved source

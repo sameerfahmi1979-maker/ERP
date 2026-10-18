@@ -36,7 +36,7 @@ test('unchanged explicit directory/file/symlink inventories are valid',()=>{cons
 for(const[name,change]of [['missing root',v=>delete v.files[TRUST_ROOTS[0]]],['introduced store',v=>v.files[TRUST_ROOTS[0]]={kind:'directory'}],['unknown root',v=>v.files['/unrelated']={kind:'absent'}],['contradictory absence',v=>v.files[TRUST_ROOTS[0]+'/ca']={kind:'file',sha256:'a'.repeat(64)}],['unknown fields',v=>v.files[TRUST_ROOTS[0]]={kind:'absent',ignored:true}]])test('trust inventory rejects '+name,()=>{const b=trust(),v=trust();change(v);assert.throws(()=>validateTrust(b,v));});
 test('cleanup identity binds exact image, container, name and CI owner',()=>{const ref={id:'b'.repeat(64),image:image().Id,name:'algt-f06-test'};const v={Id:ref.id,Image:ref.image,Name:'/'+ref.name,Config:{Image:ref.image,Labels:{'algt.f06.ci-owner':'1-1'}}};validateOwnership(v,ref,'1-1');for(const change of [v=>v.Image='sha256:'+'c'.repeat(64),v=>v.Id='c'.repeat(64),v=>v.Name='/foreign',v=>v.Config.Labels['algt.f06.ci-owner']='other']){const wrong=structuredClone(v);change(wrong);assert.throws(()=>validateOwnership(wrong,ref,'1-1'));}});
 test('native execution uses readonly source/fixture mounts, no network and UID1000',()=>{const a=nativeArguments('/checkout','/evidence/verification');assert.equal(a[a.indexOf('--network')+1],'none');assert.equal(a[a.indexOf('--user')+1],'1000');assert.ok(a.includes('--read-only'));assert.ok(a.includes('type=bind,src=/checkout/src,dst=/app/src,readonly'));assert.ok(a.includes('type=bind,src=/evidence/verification,dst=/app/verification,readonly'));assert.ok(!a.includes('--privileged')&&!a.includes('--publish'));assert.match(BASE,/@sha256:[a-f0-9]{64}$/);});
-const requiredJobs=['core-tests','remediation-tests','f06-tests','performance-phases','performance-compatibility','integration-tests','build-types','security','lint','production-image'];
+const requiredJobs=['core-tests','remediation-tests','f06-tests','f09-tests','performance-phases','performance-compatibility','integration-tests','build-types','security','lint','production-image'];
 const candidateRef='${{ github.event.pull_request.head.sha || github.sha }}';
 const offlineSchemaFiles=['migration-contract.test.cjs','native-fixture.test.cjs','schema-receipt.test.cjs','schema-rejection-witnesses.test.cjs','document-lineage.test.cjs','reconciled-receipt.test.cjs','branding-acl.test.cjs','template-set.test.cjs'].map(file=>'tests/integration/f00-f06/schema/'+file);
 const offlineAffordanceFiles=['employee-affordance.test.mjs','dms-affordance.test.mjs','report-permission-regression.test.mjs'].map(file=>'tests/integration/f00-f06/'+file);
@@ -67,6 +67,13 @@ function validateEngineeringWorkflow(workflow){
    assert.equal(step.env?.EXPECTED_CANDIDATE_SHA,undefined,name+' admission cannot replace candidate');
   }
  }
+ const f09=workflow.jobs['f09-tests'];
+ for(const [name,command]of [
+  ['F09 offline delivery, permission, retry and UI-component contracts (no browser)','node node_modules/vitest/vitest.mjs run --config tests/remediation/f09/vitest.config.mts'],
+  ['Actual Deno handler authentication, no-work and partial-failure contracts (no external delivery)','npm exec --yes --package=deno@2.9.6 -- deno test --no-lock --allow-env=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,DMS_SCHEDULER_SECRET,APP_URL,INTERNAL_API_SECRET tests/remediation/f09/edge-runtime.deno.mts'],
+ ]){
+  const steps=f09.steps.filter(step=>step.name===name);assert.equal(steps.length,1,'Exactly one complete F09 contract gate');assert.equal(steps[0].run,command);assert.equal(steps[0].if,undefined);assert.equal(steps[0]['continue-on-error'],undefined);
+ }
  const schemaSteps=workflow.jobs['integration-tests'].steps.filter(step=>step.name==='Composed migration, fixture identity and schema receipt guards (offline only)');
  assert.equal(schemaSteps.length,1,'Exactly one complete offline schema gate');
  assert.equal(schemaSteps[0].if,undefined,'Offline schema gate must not skip');
@@ -88,11 +95,19 @@ function validateEngineeringWorkflow(workflow){
   'set -euo pipefail',...requiredJobs.map(name=>`test '\${{ needs.${name}.result }}' = success`)
  ]);
 }
-test('workflow retains every original gate and pins all ten executable jobs to candidate head',()=>{
+test('workflow retains every original gate, adds F09 and pins all eleven executable jobs to candidate head',()=>{
  const s=fs.readFileSync('.github/workflows/engineering.yml','utf8');
  validateEngineeringWorkflow(yaml.load(s));
  for(const key of ['  verify:','  lint:','  production-image:','npm test','npm run test:remediation','npm run security:dependencies','npm run lint','node tooling/testing/f06-linux-image-check.mjs','include-hidden-files: true'])assert.ok(s.includes(key));
  assert.doesNotMatch(s,/docker rm --force/);assert.ok(fs.readFileSync('.gitattributes','utf8').includes('/'+NATIVE+' text eol=lf'));
+});
+test('F09 Node and actual Deno contracts cannot be removed, substituted, filtered or waived',()=>{
+ const baseline=yaml.load(fs.readFileSync('.github/workflows/engineering.yml','utf8'));
+ for(const name of ['F09 offline','Actual Deno'])for(const mutate of [
+  step=>{step.run='true';},step=>{step.if='false';},step=>{step['continue-on-error']=true;},
+ ]){
+  const changed=structuredClone(baseline);const step=changed.jobs['f09-tests'].steps.find(s=>s.name?.startsWith(name));assert.ok(step);mutate(step);assert.throws(()=>validateEngineeringWorkflow(changed));
+ }
 });
 test('each required workflow job rejects missing, mutable, bypassed or late candidate admission',()=>{
  const baseline=yaml.load(fs.readFileSync('.github/workflows/engineering.yml','utf8'));

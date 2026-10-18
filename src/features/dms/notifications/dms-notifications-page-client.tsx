@@ -6,6 +6,7 @@ import {useQueryClient} from "@tanstack/react-query";
 import {toast} from "sonner";
 import type {AuthContext} from "@/lib/rbac/check";
 import {hasPermission} from "@/lib/rbac/scope";
+import {canUseDmsEmailBridge} from '@/lib/email/queue/dms-policy';
 import {dmsNotificationIdentity} from "@/lib/reads/dms-notifications-schema";
 import {invalidateDmsNotifications,invalidateEmailQueue} from "@/lib/query/invalidation";
 import {bridgeDueDmsNotificationsToGlobal,processDmsExpiryEmailQueue} from "@/server/actions/dms/dms-email-bridge";
@@ -17,7 +18,7 @@ function DmsNotificationView({authContext}:Props){
  const qc=useQueryClient(),[tab,setTab]=useState<"my"|"all"|"unread"|"not_bridged">("my"),[busy,setBusy]=useState(false),owner=useRef(false),flight=useRef(false);
  useLayoutEffect(()=>{owner.current=true;return()=>{owner.current=false;};},[]);
  const isAdmin=hasPermission(authContext,"dms.admin")||hasPermission(authContext,"dms.notifications.manage");
- const canBridge=hasPermission(authContext,"dms.admin")||hasPermission(authContext,"dms.notifications.manage")&&hasPermission(authContext,"notifications.email_queue.manage");
+ const canBridge=canUseDmsEmailBridge(authContext);
  const allowed=["dms.notifications.view","dms.notifications.manage","dms.admin"].some(c=>hasPermission(authContext,c));
  async function perform(kind:"generate"|"bridge"|"process"){
   if(!owner.current||flight.current||!allowed||!(kind==="generate"?isAdmin:canBridge))return;

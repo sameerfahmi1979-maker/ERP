@@ -15,6 +15,8 @@ const embeddedTables = new Set([
   'features/common-master-data/work-calendars/work-calendar-workspace-form.tsx',
   'features/common-master-data/master-archive-panel.tsx',
   'features/hr/employees/employee-letters-forms.tsx',
+  // F09 attempt/review history lives inside the queue-row dialog, not a main list.
+  'features/notifications/admin/email-attempt-history.tsx',
   'features/dms/admin/dms-ai-metadata-suggestions-dialog.tsx',
   'features/dms/admin/dms-metadata-erp-mappings-dialog.tsx',
   'features/dms/apply-to-erp/dms-apply-to-erp-item-table.tsx',

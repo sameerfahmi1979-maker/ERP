@@ -9,7 +9,7 @@ vi.mock("sonner", () => ({ toast: { error: m.error, info: m.info, success: vi.fn
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 it("lost processing response reports uncertainty, unlocks and refreshes without replay", async () => {
   m.process.mockRejectedValue(Error("private error")); const refresh=vi.fn();
-  render(React.createElement(EmailQueueProcessPanel,{canManage:true,pendingCount:5,onRefresh:refresh}));
+  render(React.createElement(EmailQueueProcessPanel,{canQueue:true,pendingCount:5,onRefresh:refresh}));
   await act(async()=>fireEvent.click(screen.getByText("Process Queue")));
   expect(m.process).toHaveBeenCalledTimes(1);expect(refresh).toHaveBeenCalledTimes(1);
   expect(m.error).toHaveBeenCalledWith(expect.stringContaining("inspect delivery outcomes"));
@@ -17,7 +17,7 @@ it("lost processing response reports uncertainty, unlocks and refreshes without 
 });
 it("guards rapid duplicate processing clicks and labels pending items honestly", async () => {
   let resolve:(value:unknown)=>void=()=>{};m.process.mockImplementation(()=>new Promise(r=>{resolve=r;}));
-  render(React.createElement(EmailQueueProcessPanel,{canManage:true,pendingCount:5,onRefresh:vi.fn()}));
+  render(React.createElement(EmailQueueProcessPanel,{canQueue:true,pendingCount:5,onRefresh:vi.fn()}));
   expect(screen.getByText(/including paused and future items/)).toBeTruthy();
   fireEvent.click(screen.getByText("Process Queue"));fireEvent.click(screen.getByText("Process Queue"));
   expect(m.process).toHaveBeenCalledTimes(1);

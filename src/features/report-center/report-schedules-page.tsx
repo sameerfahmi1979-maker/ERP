@@ -7,11 +7,12 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   deleteReportSchedule,
-  listReportSchedules,
+  getReportSchedule,
   runReportScheduleNow,
   type ReportSchedule,
 } from "@/server/actions/reports/schedules";
-import { useQuery } from "@tanstack/react-query";
+import {useCountedTableRead} from '@/hooks/use-counted-table-read';
+import {reportSchedulesCriteriaSchema,reportSchedulesPageSchema,type ReportScheduleListRow} from '@/lib/reads/report-schedules-schema';
 import type { ColumnDef } from "@tanstack/react-table";
 import { format, formatDistanceToNow } from "date-fns";
 import {
@@ -25,59 +26,104 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ReportScheduleForm } from "./report-schedule-form";
+import { AlgtDialog } from "@/components/design-system/algt-dialog";
+import { canEditSchedule, type ScheduleUiAccess } from "@/lib/report-center/schedule-ui-access";
+import {scheduleSaveReceiptSchema} from '@/lib/report-center/schedule-save-contract';
+import type {WorkspaceSaveContract} from '@/lib/workspace/save-contract';
 
 const STATUS_CONFIG = {
-  success: { label: "Success", icon: CheckCircle2, color: "text-emerald-600" },
+  success: { label: "Success — not inbox confirmation", icon: CheckCircle2, color: "text-emerald-700 dark:text-emerald-300" },
   failed: { label: "Failed", icon: XCircle, color: "text-red-600" },
   skipped: { label: "Skipped", icon: AlertCircle, color: "text-amber-600" },
   cancelled: { label: "Cancelled", icon: AlertCircle, color: "text-slate-500" },
 };
 
-export function ReportSchedulesPage() {
+export function ReportSchedulesPage({ access,identity }: { access: ScheduleUiAccess;identity:string }) {
   const [showForm, setShowForm] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<ReportSchedule | null>(null);
   const [runningId, setRunningId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ReportScheduleListRow | null>(null);
+  const [editingId,setEditingId]=useState<number|null>(null);
+  const deleting = useRef(false);
+  const removal=useRef<{id:number;contract:WorkspaceSaveContract;unknown:boolean}|null>(null);
+  const [removalUnknown,setRemovalUnknown]=useState(false);
+  const owner=useRef(false),editingFlight=useRef(false);
+  useLayoutEffect(()=>{owner.current=true;return()=>{owner.current=false;};},[]);
 
-  const { data: schedules = [], isFetching: isLoading, refetch, error } = useQuery({
-    queryKey: ["report-schedules"],
-    queryFn: async () => {
-      const result = await listReportSchedules();
-      if (!result.success || !result.data) throw new Error(result.error ?? "Failed to load schedules.");
-      return result.data;
-    },
-    retry: false, gcTime: 0, refetchOnWindowFocus: false,
+  const read=useCountedTableRead({resource:'report-schedules',prefix:['reports','schedules'],identity,allowed:access.profileId!==null,
+    defaultSort:[{id:'schedule_name',desc:false}],parseCriteria:input=>{const p=reportSchedulesCriteriaSchema.safeParse(input);return p.success?p.data:null;},parsePage:input=>reportSchedulesPageSchema.parse(input),
+    filters:[{id:'frequency',label:'Frequency',type:'select',options:['daily','weekly','monthly'].map(value=>({value,label:value}))},
+      {id:'isActive',label:'Active state',type:'select',options:[{value:'active',label:'Active'},{value:'inactive',label:'Inactive'}]},
+      {id:'lastStatus',label:'Latest outcome',type:'select',options:[{value:'success',label:'Recorded success (not inbox receipt)'},{value:'failed',label:'Failed'},{value:'skipped',label:'Skipped'},{value:'cancelled',label:'Cancelled'}]}],
   });
-  const load = () => refetch();
-  useEffect(() => { if (error) toast.error(error.message); }, [error]);
+  const schedules=read.rows,isLoading=read.busy||editingId!==null,error=read.failed||read.denied;
+  const load = read.refresh;
+  useEffect(() => { if (error) toast.error("Schedules could not be refreshed. Actions are disabled until a successful refresh."); }, [error]);
 
+  async function handleEdit(row:ReportScheduleListRow){
+    if(!owner.current||editingFlight.current||!read.canAct()||!canEditSchedule(access,row))return;
+    editingFlight.current=true;setEditingId(row.id);
+    try{const r=await getReportSchedule(row.id);if(!owner.current)return;if(!r.success||!r.data||r.data.id!==row.id||!canEditSchedule(access,r.data)){toast.error('The selected schedule could not be verified. Refresh before editing.');return;}setEditingSchedule(r.data);setShowForm(true);}
+    catch{if(owner.current)toast.error('Schedule details could not be loaded. No edits were discarded.');}
+    finally{editingFlight.current=false;if(owner.current)setEditingId(null);}
+  }
+
+  const requestKeys = useRef(new Map<number, string>());
+  const runningRequests = useRef(new Set<number>());
   const handleRunNow = async (id: number) => {
+    const row = schedules.find(row => row.id === id);
+    if (!owner.current || !read.canAct() || error || isLoading || !row || !canEditSchedule(access, row) || runningRequests.current.has(id)) return;
+    runningRequests.current.add(id);
+    const requestKey = requestKeys.current.get(id) ?? crypto.randomUUID();
+    requestKeys.current.set(id, requestKey);
     setRunningId(id);
     try {
-      const result = await runReportScheduleNow(id);
-      if (result.success) toast.success("Schedule ran successfully. Email delivered.");
+      const result = await runReportScheduleNow(id, requestKey);
+      if(!owner.current)return;
+      if (result.success) {
+        requestKeys.current.delete(id);
+        toast.success("Report queued. Delivery permissions will be checked before sending.");
+      }
       else toast.error(result.error ?? "Run failed.");
+    } catch {
+      if(owner.current)toast.error("Queue response unavailable. Retry this run to check the same request; do not create a duplicate.");
     } finally {
-      setRunningId(null);
-      load();
+      runningRequests.current.delete(id);
+      if(owner.current){setRunningId(null);load();}
     }
   };
 
   const handleDelete = async (id: number) => {
+    const row = schedules.find(row => row.id === id);
+    const recovering=removal.current?.id===id;
+    if(!owner.current||deleting.current||(!recovering&&(!read.canAct()||error||isLoading||!row||!canEditSchedule(access,row))))return;
+    if(!removal.current){
+      const version=row?.workspace_revision,revision=typeof version==='number'?Number.isSafeInteger(version)&&version>0?String(version):null:typeof version==='string'&&/^[1-9]\d*$/.test(version)?version:null;
+      if(!revision){toast.error('Refresh the schedule revision before removing it.');return;}
+      removal.current={id,contract:{operationId:crypto.randomUUID(),revision},unknown:false};
+    }
+    const request=removal.current;if(request.id!==id)return;
+    deleting.current = true;
     setDeletingId(id);
     try {
-      const result = await deleteReportSchedule(id);
-      if (result.success) { toast.success("Schedule deleted."); load(); }
-      else toast.error(result.error ?? "Delete failed.");
+      const result = await deleteReportSchedule(id,request.contract);
+      if(!owner.current)return;
+      const receipt=scheduleSaveReceiptSchema.safeParse(result.data);
+      if(result.success&&receipt.success&&receipt.data.id===id){removal.current=null;setRemovalUnknown(false);setDeleteTarget(null);toast.success('Schedule removed. Delivery history is retained.');load();}
+      else{request.unknown ||= result.uncertain===true||result.success;setRemovalUnknown(request.unknown);if(!request.unknown)removal.current=null;toast.error(result.error??'Removal receipt incomplete. Retry the unchanged request.');}
+    } catch {
+      if(owner.current){request.unknown=true;setRemovalUnknown(true);toast.error('Removal unconfirmed. Retry this original operation; it cannot remove another schedule.');}
     } finally {
-      setDeletingId(null);
+      if(owner.current)setDeletingId(null);
+      deleting.current = false;
     }
   };
 
-  const columns: ColumnDef<ReportSchedule>[] = [
+  const columns: ColumnDef<ReportScheduleListRow>[] = [
     {
       id: "schedule_name",
       accessorKey: "schedule_name",
@@ -100,6 +146,7 @@ export function ReportSchedulesPage() {
     },
     {
       id: "report",
+      enableSorting:false,
       header: "Report",
       size: 170,
       accessorFn: (row) => (row.report as { report_name_en?: string } | undefined)?.report_name_en ?? "",
@@ -211,6 +258,7 @@ export function ReportSchedulesPage() {
       enableHiding: false,
       cell: ({ row }) => {
         const sched = row.original;
+        if (!canEditSchedule(access, sched)) return <span className="text-xs text-muted-foreground">View only</span>;
         return (
           <div className="flex items-center gap-1">
             <Button
@@ -218,8 +266,9 @@ export function ReportSchedulesPage() {
               size="icon"
               className="h-7 w-7"
               onClick={() => handleRunNow(sched.id)}
-              disabled={runningId === sched.id}
+              disabled={!!error || isLoading || runningId !== null || deletingId !== null}
               title="Run Now"
+              aria-label={`Queue ${sched.schedule_name} now`}
             >
               {runningId === sched.id ? (
                 <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -231,8 +280,10 @@ export function ReportSchedulesPage() {
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={() => { setEditingSchedule(sched); setShowForm(true); }}
+              onClick={() => void handleEdit(sched)}
               title="Edit"
+              aria-label={`Edit ${sched.schedule_name}`}
+              disabled={!!error || isLoading || deletingId !== null || runningId !== null}
             >
               <Pencil className="h-3.5 w-3.5" />
             </Button>
@@ -240,9 +291,10 @@ export function ReportSchedulesPage() {
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-destructive hover:text-destructive"
-              onClick={() => handleDelete(sched.id)}
-              disabled={deletingId === sched.id}
+              onClick={() => setDeleteTarget(sched)}
+              disabled={!!error || isLoading || deletingId !== null || runningId !== null}
               title="Delete"
+              aria-label={`Remove ${sched.schedule_name}`}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
@@ -266,29 +318,33 @@ export function ReportSchedulesPage() {
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-xs">{schedules.length}</Badge>
+            <Badge variant="secondary" className="text-xs">{read.totalCount??'—'} permitted schedules</Badge>
             <Button variant="outline" size="sm" onClick={load} disabled={isLoading}>
               <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", isLoading && "animate-spin")} />
               Refresh
             </Button>
-            <Button size="sm" onClick={() => { setEditingSchedule(null); setShowForm(true); }}>
+            {(access.globalDelivery || access.deliveryCompanyIds.length > 0) && <Button size="sm" disabled={!!error || isLoading} onClick={() => { setEditingSchedule(null); setShowForm(true); }}>
               <Plus className="h-3.5 w-3.5 mr-1.5" />
               New Schedule
-            </Button>
+            </Button>}
           </div>
         }
       />
 
       <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2 border border-border">
-        Scheduled reports require a cron trigger (Supabase Edge Function or pg_cron) to run automatically.
-        Use <strong>Run Now</strong> to trigger manually for testing.
+        Run now queues a request; it does not confirm inbox delivery. Automatic delivery requires the enabled backend service.
+        Times in the list use your browser timezone; each schedule retains its configured timezone.
+        Search by schedule name or code and filters cover all permitted records, with server paging. Full wording and filters are loaded only when you open a schedule to edit.
       </div>
+      {error && <div role="alert" className="border border-destructive rounded-sm p-3 text-sm">Schedules could not be refreshed. Previously loaded records may be outdated. Use Refresh before taking an action.</div>}
 
       <div className="rounded-md border border-border overflow-hidden">
         <ERPDataTable presentation="worklist"
           tableId="admin.reports.schedules"
           columns={columns}
           data={schedules}
+          serverRead={read.serverRead}
+          isLoading={read.busy||error}
           searchPlaceholder="Search schedules..."
           emptyMessage={isLoading ? "Loading schedules..." : "No report schedules configured yet."}
           enableSorting
@@ -308,6 +364,11 @@ export function ReportSchedulesPage() {
         editing={editingSchedule}
         onSaved={load}
       />
+      <AlgtDialog open={!!deleteTarget} onOpenChange={open => { if (!open && !deleting.current&&!removalUnknown) setDeleteTarget(null); }} title="Remove schedule?"
+        actions={<><Button variant="outline" disabled={deletingId !== null||removalUnknown} onClick={() => {removal.current=null;setDeleteTarget(null);}}>Keep schedule</Button>
+          <Button variant="destructive" disabled={deletingId !== null || (!removalUnknown&&(!!error || isLoading))} onClick={() => { if (deleteTarget) void handleDelete(deleteTarget.id); }}>{removalUnknown?'Reconcile original removal':'Remove schedule'}</Button></>}>
+        <p>Remove “{deleteTarget?.schedule_name}” from active schedules? Its delivery history will remain. This does not recall messages already sent or accepted by the provider.</p>
+      </AlgtDialog>
     </>
   );
 }

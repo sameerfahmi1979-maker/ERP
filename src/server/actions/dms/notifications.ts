@@ -123,6 +123,7 @@ export async function generateDmsExpiryNotifications(
   options: { limit?: number } = {}
 ): Promise<ActionResult<{ created: number; skipped: number }>> {
   try {
+    if(!Number.isSafeInteger(options.limit??100)||(options.limit??100)<1||(options.limit??100)>200)return {success:false,error:'Invalid notification batch limit.'};
     const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
@@ -188,10 +189,11 @@ export async function generateDmsExpiryNotifications(
       // Expand role recipients to user IDs
       // user_roles table uses user_profile_id + role_id (FK to roles.role_code)
       if (globalSettings?.recipient_roles?.length) {
-        const { data: roleUsers } = await supabase
+        const { data: roleUsers,error:roleError } = await supabase
           .from("user_roles")
           .select("user_profile_id, role:roles!role_id(role_code)")
-          .eq("is_active", true);
+          .eq("is_active", true).limit(1001);
+        if(roleError||(roleUsers?.length??0)>1000)return {success:false,error:'Configured recipients could not be completely verified. No reminder completion is assumed.'};
         for (const ru of roleUsers ?? []) {
           const rur = ru as Record<string, unknown>;
           const roleRow = rur.role as Record<string, unknown> | null;
@@ -209,7 +211,7 @@ export async function generateDmsExpiryNotifications(
       if (recipientIds.size === 0) recipientIds.add(ctx.profile.id);
 
       // ── Insert one notification per unique recipient ───────────────────────
-      let anyInserted = false;
+      let allEnsured = true;
       for (const rid of recipientIds) {
         const { error: insertErr } = await supabase.from("dms_notification_queue").insert({
           document_id: documentId,
@@ -225,10 +227,10 @@ export async function generateDmsExpiryNotifications(
           created_at: now,
           updated_at: now,
         });
-        if (!insertErr) anyInserted = true;
+        if (insertErr) allEnsured = false;
       }
 
-      if (anyInserted) {
+      if (allEnsured) {
         // Mark reminder notification_status = sent
         await supabase
           .from("dms_expiry_reminders")

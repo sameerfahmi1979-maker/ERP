@@ -1,13 +1,13 @@
 import "server-only";
 import {z} from "zod";
-import {getAuthContext, hasPermission, type AuthContext} from "@/lib/rbac/check";
+import {getAuthContext, hasGlobalPermission, type AuthContext} from "@/lib/rbac/check";
 import {createClient} from "@/lib/supabase/server";
 import {literalContains, literalLike} from "@/lib/reads/search";
 import {emailQueueCriteriaSchema, emailQueuePageSchema} from "@/lib/reads/email-queue-schema";
 import {unreadCountSchema} from "@/lib/reads/notifications-schema";
-const fields = ["id", "queue_code", "notification_id", "provider_config_id", "source_module", "source_entity_type", "source_entity_id", "priority", "status", "from_email", "to_emails", "subject", "template_code", "scheduled_for", "sent_at", "cancelled_at", "attempt_count", "max_attempts", "next_retry_at", "last_error", "external_message_id", "created_at"];
+const fields = ["id", "queue_code", "notification_id", "provider_config_id", "source_module", "source_entity_type", "source_entity_id", "priority", "status", "from_email", "to_emails", "subject", "template_code", "scheduled_for", "sent_at", "cancelled_at", "attempt_count", "max_attempts", "next_retry_at", "last_error", "external_message_id", "created_at", "delivery_state", "paused_at", "dispatch_started_at"];
 const sortColumns = {id: "id", status: "status", priority: "priority", sourceModule: "source_module", toEmails: "recipients_search", subject: "subject", attemptCount: "attempt_count", scheduledFor: "scheduled_for", lastError: "last_error"};
-const permitted = (ctx: AuthContext) => ["notifications.email_queue.view", "notifications.email_queue.manage", "notifications.admin"].some(code => hasPermission(ctx, code));
+const permitted = (ctx: AuthContext) => ["notifications.email_queue.view", "notifications.email_queue.manage", "notifications.admin"].some(code => hasGlobalPermission(ctx, code));
 export async function readEmailQueue(input: unknown, context?: AuthContext, signal?: AbortSignal) {
   const parsed = emailQueueCriteriaSchema.safeParse(input);
   if (!parsed.success) return {success: false as const, error: "Invalid email queue criteria"};
@@ -17,7 +17,9 @@ export async function readEmailQueue(input: unknown, context?: AuthContext, sign
     const p = parsed.data, db = await createClient(); signal?.throwIfAborted();
     const base = (head = false) => {
       const q = db.from("perf_email_queue_read").select(fields.join(","), {count: "exact", head}).is("deleted_at", null); if (signal) q.abortSignal(signal);
-      if (p.status) q.eq("status", p.status); if (p.priority) q.eq("priority", p.priority); if (p.sourceModule) q.ilike("source_module", literalLike(p.sourceModule));
+      if (p.status === 'provider_accepted') {q.eq('status','sent');q.eq('delivery_state','provider_accepted');}
+      else if (p.status) q.eq("status", p.status);
+      if (p.priority) q.eq("priority", p.priority); if (p.sourceModule) q.ilike("source_module", literalLike(p.sourceModule));
       if (p.search) q.or(["id_search", "status", "priority", "source_module", "recipients_search", "subject", "last_error"].map(field => `${field}.ilike.${literalContains(p.search)}`).join(","));
       return q;
     };

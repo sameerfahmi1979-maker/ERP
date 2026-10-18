@@ -3,6 +3,8 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { isSchedulesUiEnabled } from "@/lib/output/feature-flags";
 import { ReportSchedulesPage } from "@/features/report-center/report-schedules-page";
 import { CalendarClock } from "lucide-react";
+import { scheduleUiAccess } from "@/lib/report-center/schedule-ui-access";
+import {hrReadIdentity} from "@/lib/reads/hr-read-identity";
 
 export const metadata = { title: "Report Schedules" };
 
@@ -38,7 +40,7 @@ export default async function Page() {
 
   return (
     <div className="p-6 space-y-4">
-      <ReportSchedulesPage />
+      <ReportSchedulesPage key={hrReadIdentity(ctx)} identity={hrReadIdentity(ctx)} access={scheduleUiAccess(ctx)} />
     </div>
   );
 }

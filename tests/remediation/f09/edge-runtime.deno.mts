@@ -21,4 +21,24 @@ Deno.test("actual Edge handler rejects wrong credential",async()=>{eq((await han
 Deno.test("actual authenticated health is strictly no-work",async()=>{const r=await handler!(request("POST","health",secret));eq(r.status,200);eq(await r.json(),{ok:true,mode:"health",processed:0,sent:0});eq(calls,0);});
 Deno.test("actual Edge handler refuses unknown mode",async()=>{eq((await handler!(request("POST","unknown",secret))).status,400);eq(calls,0);});
 Deno.test("missing internal credential fails readiness closed",async()=>{Deno.env.delete("INTERNAL_API_SECRET");try{eq((await handler!(request("POST","health",secret))).status,503);eq(calls,0);}finally{Deno.env.set("INTERNAL_API_SECRET",secret);}});
+Deno.test('settings failure cannot default to enabled or report successful processing',async()=>{
+ const prior=globalThis.fetch;let writes=0;
+ globalThis.fetch=async(_input,init)=>{if(init?.method&&init.method!=='GET')writes++;return Response.json({message:'PRIVATE SETTINGS ERROR'},{status:503});};
+ try{const response=await handler!(request('POST','run',secret));eq(response.status,500);const body=await response.text();if(body.includes('PRIVATE SETTINGS ERROR'))throw Error('Private failure leaked');eq(writes,0);}
+ finally{globalThis.fetch=prior;}
+});
+Deno.test('partial recipient failure leaves source eligible and does not hide the failure',async()=>{
+ const prior=globalThis.fetch;let inserts=0,markers=0;
+ globalThis.fetch=async(input,init)=>{
+  const url=String(input),method=init?.method??'GET';
+  if(url.includes('/dms_notification_settings'))return Response.json({is_enabled:true,email_enabled:false,include_document_owner:true,include_document_creator:true});
+  if(url.includes('/dms_expiry_reminders')&&method==='GET')return Response.json([{id:1,document_id:2,reminder_days_before:7,document:{id:2,document_no:'SYNTHETIC',title:'Synthetic',status:'active',owner_user_id:3,created_by:4,expiry_date:'2099-01-01'}}]);
+  if(url.includes('/dms_expiry_reminders')&&method==='PATCH'){markers++;return Response.json(null);}
+  if(url.includes('/dms_notification_queue')&&method==='POST'){inserts++;return inserts===1?new Response(null,{status:201}):Response.json({message:'PRIVATE INSERT ERROR'},{status:400});}
+  if(url.includes('/dms_notification_queue')&&method==='GET')return Response.json([]);
+  throw Error('Unexpected synthetic request');
+ };
+ try{const response=await handler!(request('POST','run',secret));eq(response.status,500);eq(inserts,2);eq(markers,0);const body=await response.text();if(body.includes('PRIVATE INSERT ERROR'))throw Error('Private failure leaked');}
+ finally{globalThis.fetch=prior;}
+});
 globalThis.addEventListener("unload",()=>{Object.defineProperty(Deno,"serve",{value:originalServe});globalThis.fetch=originalFetch;});

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { DmsExpiryDashboardPageClient } from "@/features/dms/expiry/dms-expiry-dashboard-page-client";
+import {canUseDmsEmailBridge} from '@/lib/email/queue/dms-policy';
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -15,10 +16,7 @@ export default async function DmsExpiringPage() {
   if (!canView) redirect("/access-denied");
 
   const isAdmin = hasPermission(ctx, "dms.admin") || hasPermission(ctx, "dms.expiry.manage");
-  const canBridge =
-    hasPermission(ctx, "dms.admin") ||
-    (hasPermission(ctx, "dms.notifications.manage") &&
-      hasPermission(ctx, "notifications.email_queue.manage"));
+  const canBridge =canUseDmsEmailBridge(ctx);
 
   return <DmsExpiryDashboardPageClient isAdmin={isAdmin} canBridge={canBridge} canRenew={hasPermission(ctx, "dms.renewals.manage") || hasPermission(ctx, "dms.admin")} />;
 }

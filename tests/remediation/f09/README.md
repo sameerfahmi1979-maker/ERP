@@ -1,4 +1,17 @@
-# Deferred F09 test reference
+# F09 test entry point
+
+The current integrated candidate restores and adapts this suite after F08. Run
+`node node_modules/vitest/vitest.mjs run --config tests/remediation/f09/vitest.config.mts`
+for offline tests. Its setup rejects external requests. Run the separate pinned
+Deno handler suite as recorded in engineering CI; it uses synthetic requests and
+mocked I/O, not real delivery. Local database helpers from September are historical
+and must not be run blindly against a shared stack or production.
+
+The current source/cutover contract is [integrated release](../../../docs/remediation/F09/INTEGRATED_RELEASE_20261018.md).
+No browser automation or computer control is authorized. Do not execute the
+retained historical browser helpers. Physical/visual acceptance remains owner-performed.
+
+## Historical deferral — 1 October 2026
 
 The owner requested an F05 release without the incompatible F09 delivery cutover on 1 October 2026. These test sources are retained as a reference, **not an executable or passing suite on the F05-only release branch**. Their worker implementation and five migrations are deliberately absent here. The active CI suite tests the released F05 contract and guards the unchanged production delivery paths.
 

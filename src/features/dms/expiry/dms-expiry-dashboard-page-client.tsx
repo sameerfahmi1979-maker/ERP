@@ -100,7 +100,8 @@ export function DmsExpiryDashboardPageClient({ isAdmin, canBridge = false, canRe
     try {
       const result = await processDmsExpiryEmailQueue({ limit: 20 });
       if (result.success && result.data) {
-        toast.success(`Queue processed: ${result.data.sent} provider-accepted, ${result.data.failed} failed. Inbox delivery is not confirmed.`);
+        if(result.data.paused)toast.info('Delivery is paused; no email was sent.');
+        else toast.info(`Queue processed: ${result.data.sent} provider-accepted, ${result.data.failed} failed, ${result.data.unknown??0} uncertain. Inbox delivery is not confirmed.`);
         invalidateEmailQueue(queryClient);
         invalidateDmsNotifications(queryClient);
       } else {

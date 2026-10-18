@@ -7,7 +7,7 @@ const mocks=vi.hoisted(()=>({db:vi.fn(),actor:vi.fn(),run:vi.fn(),render:vi.fn()
 vi.mock("@/lib/supabase/admin",()=>({createAdminClient:mocks.db}));
 vi.mock("@/lib/rbac/check",async()=>({...await import("@/lib/rbac/scope"),getAuthContextForProfileId:mocks.actor}));
 vi.mock("@/lib/report-center/report-runner",()=>({runReport:mocks.run}));
-vi.mock("@/lib/export/generate-attachment",()=>({generateAttachmentByType:mocks.render}));
+vi.mock("@/lib/export/server-attachment",()=>({generateServerAttachmentByType:mocks.render}));
 vi.mock("@/lib/report-center/template-export",()=>({resolveTemplateForExport:mocks.brand}));
 function actor(codes=["reports.run","reports.export","reports.email","hr.employees.view"],company:number|null=1):AuthContext{
  return {profile:{id:7,must_change_password:false},isAccountActive:true,accountStatus:"active",email:null,

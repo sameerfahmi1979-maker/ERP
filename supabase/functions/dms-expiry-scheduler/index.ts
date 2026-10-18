@@ -49,9 +49,12 @@ Deno.serve(async (req: Request) => {
 
   record(`DMS Expiry Scheduler started. runId=${runId}`);
 
+  const producerDeadline=AbortSignal.timeout(25000);
+
   // Service-role client bypasses RLS
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false },
+    global:{fetch:(input,init)=>fetch(input,{...init,signal:AbortSignal.any([producerDeadline,AbortSignal.timeout(5000),...(init?.signal?[init.signal]:[])])})},
   });
 
   const result = {
@@ -65,13 +68,16 @@ Deno.serve(async (req: Request) => {
 
   try {
     // ── Step 1: Get global notification settings ─────────────────────────────
-    const { data: settings } = await supabase
+    const { data: settings,error:settingsError } = await supabase
       .from("dms_notification_settings")
+      // Preserve the existing producer's recipient projection. Enabling the
+      // dormant extra-recipient/role routing belongs to the separate F10 review.
       .select("is_enabled, in_app_enabled, email_enabled")
       .eq("id", 1)
       .single();
 
-    const isEnabled = (settings as Record<string, unknown> | null)?.is_enabled as boolean ?? true;
+    if(settingsError||!settings)throw Error('DMS settings unavailable; no delivery started.');
+    const isEnabled = settings.is_enabled===true;
 
     if (!isEnabled) {
       record("DMS notifications are disabled in settings. Skipping pipeline.");
@@ -100,14 +106,15 @@ Deno.serve(async (req: Request) => {
       .limit(200);
 
     if (remError) {
-      result.errors.push(`Reminder fetch error: ${remError.message}`);
-      record(`ERROR fetching reminders: ${remError.message}`);
+      result.errors.push('Reminder fetch failed.');
+      record('ERROR fetching reminders; reconcile the original sources.');
     } else {
       let created = 0;
       let skipped = 0;
       const now = new Date().toISOString();
 
       for (const reminder of dueReminders ?? []) {
+        producerDeadline.throwIfAborted();
         const rem = reminder as Record<string, unknown>;
         const doc = rem.document as Record<string, unknown> | null;
         if (!doc) { skipped++; continue; }
@@ -152,10 +159,11 @@ Deno.serve(async (req: Request) => {
         // Expand role recipients using user_roles + roles tables
         const recipientRoles = ((settings as Record<string, unknown> | null)?.recipient_roles as string[] | null) ?? [];
         if (recipientRoles.length > 0) {
-          const { data: roleUsers } = await supabase
+          const { data: roleUsers,error:roleError } = await supabase
             .from("user_roles")
             .select("user_profile_id, role:roles!role_id(role_code)")
-            .eq("is_active", true);
+            .eq("is_active", true).limit(1001);
+          if(roleError||(roleUsers?.length??0)>1000)throw Error('Configured recipient inventory could not be completely verified.');
           for (const ru of roleUsers ?? []) {
             const rur = ru as Record<string, unknown>;
             const roleRow = rur.role as Record<string, unknown> | null;
@@ -184,7 +192,9 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
+        let allEnsured=true;
         for (const recipientId of uniqueRecipients) {
+          producerDeadline.throwIfAborted();
           const { error: insertErr } = await supabase.from("dms_notification_queue").insert({
             document_id: documentId,
             reminder_id: remId,
@@ -203,16 +213,20 @@ Deno.serve(async (req: Request) => {
           if (!insertErr) {
             created++;
           } else {
+            allEnsured=false;
             skipped++;
-            record(`Insert error for doc ${documentId}: ${insertErr.message}`);
+            record(`Recipient creation unconfirmed for document ${documentId}.`);
           }
         }
 
-        // Mark reminder as sent (regardless of how many recipients)
-        await supabase
+        // Source generation, NOT email receipt. Partial failure stays eligible;
+        // the database fence reconciles already-created recipients on retry.
+        if(!allEnsured){result.errors.push('Reminder recipient creation incomplete.');continue;}
+        const marked=await supabase
           .from("dms_expiry_reminders")
           .update({ notification_status: "sent", last_notification_at: now, updated_at: now })
           .eq("id", remId);
+        if(marked.error)result.errors.push('Reminder completion marker unconfirmed.');
       }
 
       result.steps.step1_generate = { created, skipped };
@@ -221,17 +235,19 @@ Deno.serve(async (req: Request) => {
 
     // ── Step 3: Bridge pending DMS notifications to erp_notifications ─────────
     record("Step 2: Bridging DMS notifications to global...");
-    const { data: pendingRows } = await supabase
+    const { data: pendingRows,error:pendingError } = await supabase
       .from("dms_notification_queue")
       .select("id")
       .in("bridge_status", ["not_bridged", "failed"])
       .in("status", ["pending", "queued", "email_ready"])
       .limit(100);
+    if(pendingError)throw Error('Pending bridge sources unavailable.');
 
     let bridged = 0;
     let bridgeFailed = 0;
 
     for (const row of pendingRows ?? []) {
+      producerDeadline.throwIfAborted();
       const dmsId = (row as Record<string, unknown>).id as number;
       try {
         // Call the bridge RPC inline (simplified — direct DB writes)
@@ -251,10 +267,10 @@ Deno.serve(async (req: Request) => {
         const severity = r.notification_type === "document_expired" ? "urgent" : "warning";
         const docId = r.document_id as number | null;
 
-        const { data: notifRow } = await supabase
+        let { data: notifRow, error: notifError } = await supabase
           .from("erp_notifications")
           .insert({
-            notification_code: `DMS_SCHEDULER_${dmsId}_${runId.slice(0, 8)}`,
+            notification_code: `DMS_BRIDGE_${dmsId}`,
             source_module: "DMS",
             source_entity_type: "dms_documents",
             source_entity_id: docId,
@@ -265,7 +281,7 @@ Deno.serve(async (req: Request) => {
             recipient_user_id: r.recipient_user_id as number | null,
             recipient_email: r.recipient_email as string | null,
             channel_in_app: true,
-            channel_email: !!(r.recipient_email),
+            channel_email: false, // Queue creation, not a supplied address, sets this marker.
             scheduled_for: r.scheduled_for as string ?? new Date().toISOString(),
             action_url: docId ? `/dms/documents/record/${docId}` : null,
             action_label: "View Document",
@@ -276,7 +292,13 @@ Deno.serve(async (req: Request) => {
           .select("id")
           .single();
 
-        if (notifRow) {
+        if (notifError?.code === "23505") {
+          const existing = await supabase.from("erp_notifications").select("id")
+            .eq("notification_code", `DMS_BRIDGE_${dmsId}`).maybeSingle();
+          notifRow = existing.data;
+          notifError = existing.error;
+        }
+        if (notifRow && !notifError) {
           const globalId = (notifRow as Record<string, unknown>).id as number;
           await supabase.from("dms_notification_queue").update({
             global_notification_id: globalId,
@@ -292,7 +314,7 @@ Deno.serve(async (req: Request) => {
         }
       } catch (e) {
         bridgeFailed++;
-        record(`Bridge error for dmsId=${dmsId}: ${String(e)}`);
+        void e;record(`Bridge unconfirmed for dmsId=${dmsId}.`);
       }
     }
 
@@ -306,38 +328,39 @@ Deno.serve(async (req: Request) => {
       record("Step 3: Queuing emails for bridged DMS notifications...");
 
       // Fetch erp_notifications from DMS that haven't been emailed yet
-      const { data: pendingEmailNotifs } = await supabase
+      const { data: pendingEmailNotifs,error:pendingEmailError } = await supabase
         .from("erp_notifications")
-        .select("id, recipient_user_id, title, message, action_url")
+        .select("id, recipient_user_id, title, message, action_url, scheduled_for")
         .eq("source_module", "DMS")
         .eq("channel_email", false)
         .not("recipient_user_id", "is", null)
         .limit(200);
+      if(pendingEmailError)throw Error('Pending delivery intents unavailable.');
 
       let emailsQueued = 0;
       let emailsFailed = 0;
 
       for (const notif of pendingEmailNotifs ?? []) {
+        producerDeadline.throwIfAborted();
         const n = notif as Record<string, unknown>;
         const userId = n.recipient_user_id as number;
 
         // Resolve email: user_profiles.auth_user_id → auth.users.email
         const { data: profileRow } = await supabase
           .from("user_profiles")
-          .select("auth_user_id")
+          .select("auth_user_id,status,must_change_password")
           .eq("id", userId)
           .single();
 
         const authUserId = (profileRow as Record<string, unknown> | null)?.auth_user_id as string | null;
-        if (!authUserId) { emailsFailed++; continue; }
+        if (!authUserId||profileRow?.status!=='active'||profileRow?.must_change_password===true) { emailsFailed++; continue; }
 
         const { data: authData } = await supabase.auth.admin.getUserById(authUserId);
         const recipientEmail = authData?.user?.email ?? null;
-        if (!recipientEmail) { emailsFailed++; continue; }
+        if (!recipientEmail||!authData.user?.email_confirmed_at) { emailsFailed++; continue; }
 
-        const actionUrl = n.action_url as string | null;
-        const absoluteActionUrl = actionUrl ? `${APP_URL}${actionUrl}` : null;
-        const { error: emailErr } = await supabase.from("erp_email_queue").insert({
+        const { error: emailErr } = await supabase.from("erp_email_queue").upsert({
+          intent_key: `notification-${n.id}`,
           source_module: "DMS",
           source_entity_type: "dms_notification",
           source_entity_id: n.id as number,
@@ -345,14 +368,14 @@ Deno.serve(async (req: Request) => {
           priority: "normal",
           status: "pending",
           to_emails: [recipientEmail],
-          subject: n.title as string,
-          html_body: `<p>${n.message as string}</p>${absoluteActionUrl ? `<p><a href="${absoluteActionUrl}">View Document</a></p>` : ""}`,
-          text_body: `${n.message as string}${absoluteActionUrl ? `\n\nView: ${absoluteActionUrl}` : ""}`,
-          template_code: "DMS_EXPIRY_NOTIFICATION",
-          scheduled_for: new Date().toISOString(),
+          subject: 'ALGT ERP notification',
+          html_body: null,
+          text_body: 'Your ERP notifications are available. Sign in to ALGT ERP to review your notifications. Access to each record is checked in the application.',
+          template_code: null,
+          scheduled_for: n.scheduled_for as string ?? new Date().toISOString(),
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        });
+        }, {onConflict: "intent_key", ignoreDuplicates: true});
 
         if (!emailErr) {
           // Mark channel_email = true so we don't re-queue on next run
@@ -361,21 +384,22 @@ Deno.serve(async (req: Request) => {
             .eq("id", n.id as number);
           emailsQueued++;
         } else {
-          record(`Email queue error for notif ${n.id}: ${emailErr.message}`);
+          record(`Email intent unconfirmed for notif ${n.id}.`);
           emailsFailed++;
         }
       }
 
-      result.steps.step3_email = { queued: emailsQueued, failed: emailsFailed };
+      if(emailsFailed>0)result.errors.push('One or more email intents require reconciliation.');
+      result.steps.step3_email = { ensuredIntents: emailsQueued, failed: emailsFailed };
       record(`Step 3 done: queued=${emailsQueued}, failed=${emailsFailed}`);
 
       // ── Step 4: Trigger the Railway app to process (send) the queued emails ──
-      if (emailsQueued > 0) {
+      if (Deno.env.get("F09_EMAIL_TRIGGER_ENABLED") === "true") {
         record("Step 4: Triggering email queue processor on app server...");
         const appUrl = Deno.env.get("APP_URL") ?? "https://erp.algt.net";
         const internalSecret = Deno.env.get("INTERNAL_API_SECRET");
 
-        if (!internalSecret) {
+        if (!internalSecret || internalSecret.length < 32) {
           record("Step 4: SKIPPED — INTERNAL_API_SECRET not set on Edge Function.");
           result.steps.step4_send = { skipped: true, reason: "INTERNAL_API_SECRET not configured" };
         } else {
@@ -386,20 +410,25 @@ Deno.serve(async (req: Request) => {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${internalSecret}`,
               },
-              body: JSON.stringify({ module: "DMS", limit: 200 }),
+              body: JSON.stringify({ module: "DMS", limit: 20 }),
+      // F09 queue budget is <75s; leave transport headroom. Configure pg_net
+      // and the ERP host separately at cutover; a timeout never proves no send.
+      signal: AbortSignal.timeout(120000),
+              redirect: "error",
             });
             if (sendResp.ok) {
               const sendData = await sendResp.json() as Record<string, unknown>;
               result.steps.step4_send = sendData;
               record(`Step 4 done: sent=${sendData.sent}, failed=${sendData.failed}`);
             } else {
-              const errText = await sendResp.text();
-              record(`Step 4: App server returned ${sendResp.status}: ${errText}`);
-              result.steps.step4_send = { error: `HTTP ${sendResp.status}`, detail: errText.slice(0, 200) };
+              record(`Step 4: App server returned ${sendResp.status}; inspect durable attempts before retrying.`);
+              result.steps.step4_send = { error: `HTTP ${sendResp.status}` };
+              result.errors.push('Queue processing did not return a successful response.');
             }
           } catch (e) {
-            record(`Step 4: Fetch error — ${String(e)}`);
-            result.steps.step4_send = { error: String(e) };
+            void e;record('Step 4 response unavailable; reconcile durable attempts before retrying.');
+            result.steps.step4_send = { error: 'Processing response unconfirmed' };
+            result.errors.push('Processing response unconfirmed.');
           }
         }
       } else {
@@ -409,13 +438,14 @@ Deno.serve(async (req: Request) => {
       record("Step 3: Skipped (email_enabled=false).");
     }
 
-    result.success = true;
+    if(bridgeFailed>0)result.errors.push('One or more notification bridges require reconciliation.');
+    result.success = result.errors.length===0;
     result.completedAt = new Date().toISOString();
-    record(`Scheduler completed successfully. runId=${runId}`);
+    record(`Scheduler ${result.success?'completed':'completed with reconciliation required'}. runId=${runId}`);
   } catch (e) {
-    result.errors.push(String(e));
+    void e;result.errors.push('Scheduler processing failed; reconcile the original sources.');
     result.completedAt = new Date().toISOString();
-    record(`FATAL ERROR: ${String(e)}`);
+    record('Scheduler processing failed; no automatic replacement or resend is authorized.');
   }
 
   return new Response(JSON.stringify({ ...result, log }), {

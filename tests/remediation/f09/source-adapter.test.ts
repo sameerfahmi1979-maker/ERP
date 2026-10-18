@@ -37,6 +37,9 @@ it.each([{owning_company_id:2},{owning_branch_id:3},{confidentiality_level:"medi
 it("email settings changed after enqueue stop the source",async()=>{
  records.dms_notification_settings.email_enabled=false;await expect(prepareQueueMessage(base,new AbortController().signal)).rejects.toThrow();
 });
+it.each([{status:'archived'},{status:'superseded'},{is_archived:true},{expiry_tracking_override:'ignored'}])('document lifecycle changes stop a previously queued notice: %j',async patch=>{
+ Object.assign(records.dms_documents,patch);await expect(prepareQueueMessage(base,new AbortController().signal)).rejects.toThrow();
+});
 it("a stale or substituted mailbox is refused",async()=>{
  email="changed@example.invalid";await expect(prepareQueueMessage(base,new AbortController().signal)).rejects.toThrow();
 });

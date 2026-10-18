@@ -1,6 +1,6 @@
 import {afterEach, expect, it, vi} from "vitest";
-const state = vi.hoisted(() => ({active: true, permissions: ["notifications.email_queue.view"], calls: [] as unknown[][], results: [] as unknown[], authReads: 0}));
-vi.mock("@/lib/rbac/check", async () => ({...await import("@/lib/rbac/scope"), getAuthContext: async () => {state.authReads++; return {profile: {id: 6, must_change_password: false}, isAccountActive: state.active, permissionCodes: state.permissions, roleCodes: [], roleAssignments: []};}}));
+const state = vi.hoisted(() => ({active: true, scoped: false, permissions: ["notifications.email_queue.view"], calls: [] as unknown[][], results: [] as unknown[], authReads: 0}));
+vi.mock("@/lib/rbac/check", async () => ({...await import("@/lib/rbac/scope"), getAuthContext: async () => {state.authReads++; return {profile: {id: 6, must_change_password: false}, isAccountActive: state.active, permissionCodes: state.permissions, globalPermissionCodes:state.scoped?[]:state.permissions, roleCodes: [], roleAssignments: state.scoped?[{roleId:2,roleCode:'scoped',ownerCompanyId:1,branchId:null,permissionCodes:state.permissions}]:[]};}}));
 vi.mock("@/lib/supabase/server", () => ({createClient: async () => ({from: (...args: unknown[]) => {
   state.calls.push(["from", ...args]); const result = state.results.shift(); const query: Record<string, unknown> = {then: (resolve: (r: unknown) => unknown) => Promise.resolve(result).then(resolve)};
   for (const method of ["select", "or", "ilike", "eq", "is", "order", "range", "abortSignal"]) query[method] = (...args: unknown[]) => {state.calls.push([method, ...args]); return query;}; return query;
@@ -11,7 +11,13 @@ import {POST as pendingRoute} from "@/app/api/reads/email-pending-count/route";
 import {literalContains} from "@/lib/reads/search";
 const row = {id: 4, queue_code: "Q-4", notification_id: null, provider_config_id: null, source_module: "PERF", source_entity_type: null, source_entity_id: null, priority: "normal", status: "pending", from_email: null, to_emails: ["synthetic@example.invalid"], subject: "Synthetic queue item", template_code: null, scheduled_for: "2099-01-01T00:00:00Z", sent_at: null, cancelled_at: null, attempt_count: 0, max_attempts: 3, next_retry_at: null, last_error: null, external_message_id: null, created_at: "2026-10-14T00:00:00Z"};
 const result = (rows: unknown[] = [row], count = rows.length) => ({data: rows, count, error: null});
-afterEach(() => Object.assign(state, {active: true, permissions: ["notifications.email_queue.view"], calls: [], results: [], authReads: 0}));
+afterEach(() => Object.assign(state, {active: true, scoped:false, permissions: ["notifications.email_queue.view"], calls: [], results: [], authReads: 0}));
+it('a company-only queue grant cannot read global queue metadata or counts',async()=>{
+ state.scoped=true;expect((await readEmailQueue({})).success).toBe(false);expect((await readPendingEmailCount()).success).toBe(false);expect(state.calls).toEqual([]);
+});
+it('provider-accepted filtering uses the actual durable sent/acceptance columns',async()=>{
+ state.results=[result([],0)];await readEmailQueue({status:'provider_accepted'});expect(state.calls).toContainEqual(['eq','status','sent']);expect(state.calls).toContainEqual(['eq','delivery_state','provider_accepted']);
+});
 it("reads an exact complete queue page beyond the old ceiling without message bodies", async () => {
   state.results = [result([{...row, html_body: "PRIVATE_HTML", bcc_emails: ["PRIVATE"], template_variables_json: {secret: "PRIVATE"}}], 1101)];
   const response = await readEmailQueue({page: 12, pageSize: 100}); expect(response.success).toBe(true); expect(response.data?.totalCount).toBe(1101);

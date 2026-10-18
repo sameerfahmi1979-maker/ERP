@@ -7,6 +7,7 @@ export function requireQueuePermission(actor: AuthContext, action: "view" | "man
     // This queue has no trusted company/branch column. A scoped capability is not
     // global queue administration. Source-specific delivery has its own adapter.
     if (!canUseApplication(actor) || !(hasGlobalPermission(actor, "notifications.email_queue." + action)
+        || (action === 'view' && hasGlobalPermission(actor,'notifications.email_queue.manage'))
         || hasGlobalPermission(actor, "notifications.admin")))
         throw new DeliveryPolicyError();
 }

@@ -10,6 +10,7 @@ export const emailQueueRowSchema = z.object({id, queueCode: z.string().nullable(
   priority: z.string(), status: z.string(), fromEmail: z.string().nullable(), toEmails: z.array(z.string()), subject: z.string(), templateCode: z.string().nullable(),
   scheduledFor: z.string(), sentAt: z.string().nullable(), cancelledAt: z.string().nullable(), attemptCount: integer, maxAttempts: integer, nextRetryAt: z.string().nullable(),
   lastError: z.string().nullable(), externalMessageId: z.string().nullable(), createdAt: z.string(),
+  deliveryState: z.string().nullable().default(null), pausedAt: z.string().nullable().default(null), dispatchStartedAt: z.string().nullable().default(null),
 }).strip();
 export const emailQueuePageSchema = z.object({page: z.number().int().positive(), pageSize: z.number().int().min(1).max(100), totalCount: integer, rows: z.array(emailQueueRowSchema)})
   .strict().refine(v => v.rows.length === Math.min(v.pageSize, Math.max(0, v.totalCount - (v.page - 1) * v.pageSize)) && new Set(v.rows.map(r => r.id)).size === v.rows.length);

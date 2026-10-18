@@ -8,6 +8,7 @@ import {ERPDataTable} from "@/components/erp/table/erp-data-table";
 import type {ColumnDef} from "@tanstack/react-table";
 import type {AuthContext} from "@/lib/rbac/check";
 import {hasPermission} from "@/lib/rbac/scope";
+import {canUseDmsEmailBridge} from '@/lib/email/queue/dms-policy';
 import {useCountedTableRead} from "@/hooks/use-counted-table-read";
 import {dmsNotificationsCriteriaSchema,dmsNotificationPageSchema,dmsNotificationIdentity,type DmsNotificationReadRow} from "@/lib/reads/dms-notifications-schema";
 import {markDmsNotificationRead,dismissDmsNotification} from "@/server/actions/dms/notifications";
@@ -23,7 +24,7 @@ function DmsReadTable({authContext,tab,showBridgeStatus,identity}:Props&{identit
  const read=useCountedTableRead({resource:"dms-notifications",prefix:["dms","notifications",tab],identity,allowed,defaultSort:[{id:"scheduled_for",desc:true}],
  parseCriteria:input=>{const p=dmsNotificationsCriteriaSchema.safeParse({...input as Record<string,unknown>,audience:["all","not_bridged"].includes(tab)?"all":"my",unreadOnly:tab==="unread",...(tab==="not_bridged"?{bridgeStatus:"not_bridged"}:{})});return p.success?p.data:null;},
  parsePage:i=>dmsNotificationPageSchema.parse(i),filters:[{id:"status",label:"Status",type:"text"},{id:"channel",label:"Channel",type:"select",options:[{value:"in_app",label:"In-App"},{value:"email_ready",label:"Email Ready"}]},...(showBridgeStatus&&tab!=="not_bridged"?[{id:"bridgeStatus",label:"Bridge status",type:"text" as const}]:[])]});
- const canBridge=showBridgeStatus&&(hasPermission(authContext,"dms.admin")||hasPermission(authContext,"dms.notifications.manage")&&hasPermission(authContext,"notifications.email_queue.manage"));
+ const canBridge=showBridgeStatus&&canUseDmsEmailBridge(authContext);
  async function action(row:DmsNotificationReadRow,kind:"read"|"dismiss"|"bridge"){
   if(!owner.current||flight.current||!read.canAct()||kind==="bridge"&&!canBridge||!read.rows.some(r=>r.id===row.id))return;
   flight.current=true;setActing(true);

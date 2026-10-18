@@ -162,7 +162,10 @@ it('the complete source inventory explicitly separates every current shared-tabl
   const require=createRequire(import.meta.url);const {audit}=require('../../../tooling/quality/embedded-list-audit.cjs');
   const result=audit();expect(result.filesScanned).toBeGreaterThan(800);
   expect(result.entries.filter((e:{required:boolean;mode:string;actual:string})=>e.required&&e.mode!==e.actual)).toEqual([]);
-  for(const file of ['src/features/hr/employees/employee-letters-forms.tsx','src/features/dms/documents/sections/dms-document-ocr-section.tsx','src/features/master-data/parties/party-bank-details-tab.tsx']){
+  for(const file of ['src/features/hr/employees/employee-letters-forms.tsx','src/features/dms/documents/sections/dms-document-ocr-section.tsx','src/features/master-data/parties/party-bank-details-tab.tsx','src/features/notifications/admin/email-attempt-history.tsx']){
     const entries=result.entries.filter((e:{file:string})=>e.file===file);expect(entries.length).toBeGreaterThan(0);expect(entries.every((e:{mode:string})=>e.mode==='embedded')).toBe(true);
   }
+  const histories=result.entries.filter((e:{file:string})=>e.file==='src/features/notifications/admin/email-attempt-history.tsx');
+  expect(histories.map((e:{identity:string})=>e.identity).sort()).toEqual(['"email.attempt-history"','"email.delivery-reviews"']);
+  expect(histories.every((e:{mode:string;actual:string;required:boolean})=>e.required&&e.mode==='embedded'&&e.actual==='embedded')).toBe(true);
 });

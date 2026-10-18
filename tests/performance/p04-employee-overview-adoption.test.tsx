@@ -63,7 +63,9 @@ it.each([401, 403])("warm authorization denial %s retires every cached summary w
   await act(async () => {await view.client.invalidateQueries({queryKey: employeeOverviewPrefix(7)});});
   await waitFor(() => expect(screen.getAllByText("This information is restricted for this employee.")).toHaveLength(6));
   expect(screen.queryByText("OVERVIEW_CURRENT")).toBeNull(); expect(state.read).toHaveBeenCalledTimes(2);
-  expect(view.client.getQueryCache().getAll().some(q => q.queryKey.includes(employeeOverviewIdentity(context)) && q.state.data)).toBe(false);
+  // Rendering masks data immediately; cache retirement is a post-commit effect.
+  // Observe both contracts without assuming a CI runner's React scheduling order.
+  await waitFor(() => expect(view.client.getQueryCache().getAll().some(q => q.queryKey.includes(employeeOverviewIdentity(context)) && q.state.data)).toBe(false));
 });
 it("account switch aborts the old request and excludes its late result and cache", async () => {
   let finish!: (v: unknown) => void; let oldSignal!: AbortSignal;
@@ -111,7 +113,7 @@ it.each([401, 403])("section retry authorization rejection %s masks all cards an
   fireEvent.click(screen.getByRole("button", {name: /^Retry Recruitment/}));
   await waitFor(() => expect(screen.getAllByText("This information is restricted for this employee.")).toHaveLength(6));
   expect(screen.queryByText("OVERVIEW_CURRENT")).toBeNull(); expect(state.read).toHaveBeenCalledTimes(2);
-  expect(view.client.getQueryCache().getAll().some(q => q.queryKey.includes(employeeOverviewIdentity(context)) && q.state.data)).toBe(false);
+  await waitFor(() => expect(view.client.getQueryCache().getAll().some(q => q.queryKey.includes(employeeOverviewIdentity(context)) && q.state.data)).toBe(false));
 });
 it("an account switch prevents a late partial authorization rejection from locking the new account", async () => {
   const broken = overview(); broken.sections.recruitment = {status: "failed"}; let fail!: (v: unknown) => void;

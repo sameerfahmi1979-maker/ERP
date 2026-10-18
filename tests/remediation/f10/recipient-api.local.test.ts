@@ -243,3 +243,43 @@ it('populated recruitment and offer evidence never borrows payroll authority fro
   if(state!=='PASS')state='FAIL';save('EXACT_SYNTHETIC_RECRUITMENT_COMPANY_ROLES_AND_UNCLAIMED_EVENTS_REMOVED');
  }
 },90000);
+it('stored employee photos and medical leave certificates match actual native document permission',async()=>{
+ const marker=('F10_ATTACH_'+randomUUID().replaceAll('-','')).toUpperCase(),path='C:/dev/agt-erp-f10-lab-20261018/'+marker+'.json';
+ const f:Record<string,number>={},checks:string[]=[];let state='RUNNING';
+ const save=(cleanup?:string)=>fs.writeFileSync(path,JSON.stringify({state,database:'algt_f10_candidate_20261018',fixtures:f,checks,cleanup,production:false},null,2));save();
+ const add=(name:string,q:string)=>{f[name]=Number(native.sql(q+' returning id'));save();return f[name];};
+ async function parity(expected:boolean,label:string){
+  expect(await notificationDocumentSubjectsAllowed(await getAuthContextForProfileId(actors[0].profile),doc),label+' prospective').toBe(expected);
+  const response=await fetcher(url+'/rpc/f10_notification_target',{method:'POST',headers:{authorization:'Bearer '+actors[0].jwt,'content-type':'application/json'},body:JSON.stringify({source_type:'dms_documents',source_id:doc})});
+  expect(response.status,label+' native').toBe(200);expect(await response.json()).toBe(expected?'/dms/documents/record/'+doc:null);checks.push(label);save();
+ }
+ try{
+  add('employee',`insert into public.employees(employee_code,full_name_en,gender,date_of_birth,mobile_number,owner_company_id,joining_date,emergency_contact_name,emergency_contact_mobile,photo_dms_document_id) values('${marker}','Synthetic','male','1990-01-01','000',${company},'2020-01-01','Synthetic','000',${doc})`);
+  await parity(false,'PHOTO_WITHOUT_EMPLOYEE_ACCESS_DENIED');
+  add('role',`insert into public.roles(role_code,role_name,is_system_role) values('${marker}','Synthetic attachment boundary',false)`);
+  native.sql(`insert into public.permissions(permission_code,permission_name,module_code,action_code) values('hr.employees.view','Synthetic','HR','view'),('hr.medical.view','Synthetic','HR','view') on conflict(permission_code) do nothing;
+ insert into public.role_permissions(role_id,permission_id) select ${f.role},id from public.permissions where permission_code='hr.employees.view';
+ insert into public.user_roles(user_profile_id,role_id,owner_company_id) values(${actors[0].profile},${f.role},${company});`);
+  await parity(true,'PHOTO_WITH_CURRENT_EMPLOYEE_ACCESS_ALLOWED');
+  native.sql(`update public.employees set photo_dms_document_id=null where id=${f.employee}`);
+  add('leaveType',`insert into public.hr_leave_types(code,name_en) values('${marker}','Synthetic')`);
+  add('leave',`insert into public.employee_leave_requests(employee_id,leave_type_id,start_date,end_date,sick_cert_dms_id) values(${f.employee},${f.leaveType},'2099-01-01','2099-01-01',${doc})`);
+  await parity(false,'CERTIFICATE_WITH_EMPLOYEE_BUT_NO_MEDICAL_ACCESS_DENIED');
+  native.sql(`insert into public.role_permissions(role_id,permission_id) select ${f.role},id from public.permissions where permission_code='hr.medical.view'`);
+  await parity(true,'CERTIFICATE_WITH_CURRENT_EMPLOYEE_AND_MEDICAL_ACCESS_ALLOWED');
+  add('company',`insert into public.owner_companies(company_code,legal_name_en) values('${marker}','Synthetic')`);
+  add('sideRole',`insert into public.roles(role_code,role_name,is_system_role) values('${marker}_S','Synthetic medical other company',false)`);
+  native.sql(`delete from public.role_permissions where role_id=${f.role} and permission_id=(select id from public.permissions where permission_code='hr.medical.view');
+ insert into public.role_permissions(role_id,permission_id) select ${f.sideRole},id from public.permissions where permission_code='hr.medical.view';
+ insert into public.user_roles(user_profile_id,role_id,owner_company_id) values(${actors[0].profile},${f.sideRole},${f.company});`);
+  await parity(false,'MEDICAL_RIGHTS_FROM_OTHER_COMPANY_ROLE_CANNOT_WIDEN_CERTIFICATE_ACCESS');state='PASS';
+ }finally{
+  native.sql(`do $$begin if exists(select 1 from erp_private.notification_events e join erp_private.notification_event_recipients r on r.event_id=e.id where e.source_table='employee_leave_requests' and e.source_id=${f.leave??0}) then raise exception 'Unexpected receipt; retain fixture';end if;end $$;
+ delete from erp_private.notification_events where source_table='employee_leave_requests' and source_id=${f.leave??0};
+ delete from public.employee_leave_requests where id=${f.leave??0} and employee_id=${f.employee??0};
+ delete from public.employees where id=${f.employee??0} and employee_code='${marker}';delete from public.hr_leave_types where id=${f.leaveType??0} and code='${marker}';
+ delete from public.user_roles where user_profile_id=${actors[0].profile} and role_id in (${f.role??0},${f.sideRole??0});delete from public.role_permissions where role_id in (${f.role??0},${f.sideRole??0});delete from public.roles where id in (${f.role??0},${f.sideRole??0});
+ delete from public.owner_companies where id=${f.company??0} and company_code='${marker}';`);
+  if(state!=='PASS')state='FAIL';save('EXACT_SYNTHETIC_PHOTO_LEAVE_ROLE_AND_UNCLAIMED_EVENT_FIXTURES_REMOVED');
+ }
+},120000);

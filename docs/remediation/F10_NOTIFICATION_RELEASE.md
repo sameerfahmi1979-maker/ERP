@@ -13,6 +13,10 @@ acceptance remains owner-deferred, not passed. No F11 identity rollout is includ
   Missing or ambiguous links hold the event; never guess identities or grant roles.
   HR events are in-app-only by default. The approved HR expiry cadence is
   90/60/30/14/7/1/0 days before expiry and one overdue event per date cycle.
+- Stored employee-photo attachments require current employee access; medical
+  leave certificates additionally require medical access. The prospective
+  notification checks and authoritative file/document gate share those rules;
+  ordinary DMS access alone is insufficient. No role or employee mapping is added.
 - In-app-only events do not require an email provider. F09 remains the only
   email sender and retains its quotas, immutable intents and uncertain-outcome
   safeguards. Existing legacy messages are not replayed or backfilled.

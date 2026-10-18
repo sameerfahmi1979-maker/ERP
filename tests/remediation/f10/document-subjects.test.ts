@@ -49,3 +49,12 @@ it('offer evidence also requires scoped payroll rights',async()=>{
 it('inactive profile cannot query linked subject evidence',async()=>{
  expect(await notificationDocumentSubjectsAllowed({...ctx,isAccountActive:false},1)).toBe(false);expect(s.from).not.toHaveBeenCalled();
 });
+it('medical leave certificates require medical rights, not just ordinary employee access',async()=>{
+ s.rows.employee_leave_requests=[{employee_id:7}];expect(await notificationDocumentSubjectsAllowed(ctx,1)).toBe(false);
+ s.employee.mockResolvedValue({allows:(c:string)=>c==='hr.medical.view'});expect(await notificationDocumentSubjectsAllowed(ctx,1)).toBe(true);
+});
+it('stored employee-photo FK cannot bypass the employee subject boundary',async()=>{
+ s.rows.employees=[{employee_id:7}];s.employee.mockRejectedValueOnce(Error('Employee unavailable or access denied'));
+ expect(await notificationDocumentSubjectsAllowed(ctx,1)).toBe(false);
+ expect(await notificationDocumentSubjectsAllowed(ctx,1)).toBe(true);
+});

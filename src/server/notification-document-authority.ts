@@ -15,6 +15,7 @@ const evidence=[
  ['employee_eos_cases','dms_document_id',['hr.eos.view']],
  ['employee_hr_actions','dms_document_id',['hr.actions.view']],
  ['employee_identity_documents','dms_document_id',['hr.compliance.view']],
+ ['employee_leave_requests','sick_cert_dms_id',['hr.medical.view']],
  ['employee_medical_insurances','dms_document_id',['hr.medical.view']],
  ['employee_medical_records','dms_document_id',['hr.medical.view']],
  ['employee_performance_records','dms_document_id',['hr.actions.view','hr.confidential.view']],
@@ -37,17 +38,19 @@ export async function notificationDocumentSubjectsAllowed(ctx:AuthContext,docume
   if(r.error||!Array.isArray(r.data)||r.data.length>500)throw Error('Linked notification authority unavailable');
   return r.data;
  }
- const [direct,links,documentLinks,candidateDocuments,offers,onboarding]=await Promise.all([
+ const [direct,links,documentLinks,candidateDocuments,offers,onboarding,photos]=await Promise.all([
   Promise.all(evidence.map(async([table,column,caps])=>({rows:await rows(table,'employee_id',column),caps}))),
   rows('dms_document_links','entity_type,entity_id','document_id'),
   rows('employee_document_links','employee_id,related_record_type'),
   rows('hr_candidate_documents','candidate_id'),
   rows('hr_offers','candidate_id,owner_company_id,branch_id','offer_document_id'),
   rows('hr_onboarding_tasks','candidate_id,employee_id'),
+  rows('employees','employee_id:id','photo_dms_document_id'),
  ]);
  const requirements=new Map<number,Set<string>>();
  const add=(employee:number,caps:readonly string[])=>{const prior=requirements.get(employee)??new Set<string>();caps.forEach(c=>prior.add(c));requirements.set(employee,prior);};
  for(const group of direct)for(const row of group.rows)add(subject.parse(row).employee_id,group.caps);
+ for(const row of photos)add(subject.parse(row).employee_id,[]);
  for(const row of links){
   const link=z.object({entity_type:z.string(),entity_id:id}).parse(row);
   if(link.entity_type==='employee')add(link.entity_id,[]);

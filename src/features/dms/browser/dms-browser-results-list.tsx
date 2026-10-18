@@ -136,7 +136,7 @@ export function DmsBrowserResultsList({
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex min-w-0 flex-col h-full overflow-hidden" data-list-presentation="embedded">
       {/* Result count */}
       <div className="px-3 py-1.5 border-b border-border/40 shrink-0 flex items-center justify-between gap-2">
         <span className="text-[11px] text-muted-foreground">
@@ -158,10 +158,11 @@ export function DmsBrowserResultsList({
             <button
               key={doc.id}
               type="button"
+              aria-pressed={isSelected}
               onClick={() => onSelect(doc)}
               className={cn(
-                "w-full text-left px-3 py-2.5 border-b border-border/30 transition-colors",
-                "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                "w-full min-w-0 text-left px-3 py-2.5 border-b border-border/30 transition-colors",
+                "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                 isSelected && "bg-primary/8 border-l-2 border-l-primary"
               )}
             >
@@ -177,7 +178,7 @@ export function DmsBrowserResultsList({
               </div>
 
               {/* Title */}
-              <p className="text-sm font-medium leading-snug line-clamp-2">{doc.title}</p>
+              <p className="text-sm font-medium leading-snug line-clamp-2 [overflow-wrap:anywhere]">{doc.title}</p>
 
               {/* Type + expiry row */}
               <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">

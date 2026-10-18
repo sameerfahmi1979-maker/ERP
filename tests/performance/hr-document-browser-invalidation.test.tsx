@@ -24,6 +24,16 @@ vi.mock("@/components/workspace/workspace-provider", () => ({useWorkspaceContext
 vi.mock("@/components/workspace/workspace-draft-provider", () => ({useWorkspaceDraftStoreContext: () => m.store}));
 vi.mock("@/hooks/use-workspace", () => ({useWorkspace: () => ({closeTab: m.close, markDirty: m.dirty, updateTabRoute: m.route, isTabActive: (id: string) => id === m.active, openTab: m.openTab})}));
 vi.mock("@/lib/reads/client", async () => ({...await vi.importActual("@/lib/reads/client"), readJson: m.read}));
+// Fault injection only: the compact production picker intentionally has no search
+// toolbar. Keep exercising the real parent's invalid-criteria/cache retirement
+// boundary without reintroducing that toolbar into the shipped UI.
+vi.mock("@/features/hr/document-browser/hr-doc-browser-doc-list", async original => {
+  const actual = await original<typeof import("@/features/hr/document-browser/hr-doc-browser-doc-list")>();
+  return { HrDocBrowserDocList: (props: React.ComponentProps<typeof actual.HrDocBrowserDocList>) => <>
+    <input aria-label="Synthetic document criteria fault" value={props.serverRead.globalFilter} onChange={event => props.serverRead.onGlobalFilterChange(event.target.value)} />
+    <actual.HrDocBrowserDocList {...props} />
+  </> };
+});
 // The real document RecordCollection has no exportConfig; file generation is outside this boundary.
 vi.mock("@/components/erp/export/erp-export-menu", () => ({ERPExportMenu: () => null}));
 vi.mock("sonner", () => ({toast: {error: vi.fn(), success: vi.fn()}}));
@@ -333,7 +343,7 @@ function browserCompositionResponse(input: unknown, phase: "seed" | "old" | "fre
       typeNameEn: "Synthetic identity", status: "active", issueDate: null, expiryDate: null, source: "hr_identity"}))})};
 }
 type BrowserCompositionPending = {input: HrDocumentBrowserCriteria; signal: AbortSignal; finish: (value: ReturnType<typeof browserCompositionResponse>) => void};
-it.each([false, true])("actual employee edit retires same-default-key documents disabled by a 201-character search (seeded=%s)", async seeded => {
+it.each([false, true])("actual employee edit retires same-default-key documents disabled by an injected invalid criterion (seeded=%s)", async seeded => {
   const q = client(), context = {...auth, permissionCodes: ["hr.employees.manage", "hr.employees.view", "dms.documents.view"], roleAssignments: []};
   let confirmed = false, documentCalls = 0, old: BrowserCompositionPending | undefined, fresh: BrowserCompositionPending | undefined;
   m.read.mockImplementation((resource: string, input: HrDocumentBrowserCriteria, signal: AbortSignal) => {
@@ -361,7 +371,7 @@ it.each([false, true])("actual employee edit retires same-default-key documents 
   }
   await waitFor(() => expect(old).toBeDefined());
   const region = within(browserView.getByRole("region", {name: "Selected employee documents"}));
-  const search = region.getByRole("textbox", {name: "Search all permitted records…"});
+  const search = region.getByRole("textbox", {name: "Synthetic document criteria fault"});
   const key = browser(hrDocumentBrowserIdentity(context)), query = q.getQueryCache().find({queryKey: key, exact: true})!;
   expect(query).toBeDefined(); expect(query.state.fetchStatus).toBe("fetching");
   expect(search.hasAttribute("maxlength")).toBe(false); expect((search as HTMLInputElement).disabled).toBe(false);

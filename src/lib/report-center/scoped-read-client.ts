@@ -2,6 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertAccountActive, hasGlobalPermission, hasPermissionInScope, isGlobalAdmin, type AuthContext } from "@/lib/rbac/check";
 import { getAuthorizedReportEmployees, getLinkedEmployeeId, hasEmployeePermission } from "@/lib/rbac/employee-access";
+import { completeReportRead } from "./complete-read";
 
 export type ReportReadClient = Pick<ReturnType<typeof createAdminClient>, "from">;
 const childCapabilities: Record<string,string[]> = {
@@ -14,19 +15,6 @@ const childCapabilities: Record<string,string[]> = {
  employee_pro_processes:["hr.actions.view"],employee_disciplinary_records:["hr.actions.view","hr.confidential.view"],
  employee_eos_cases:["hr.eos.view"],employee_clearance_items:["hr.eos.view"],
 };
-/** Query failures must not silently become empty/zero-valued official reports. */
-function checkedRead<T extends object>(query:T):T {
- return new Proxy(query,{get(target,key,receiver){
-  if(key==='then')return (fulfilled:((value:unknown)=>unknown)|undefined,rejected:((reason:unknown)=>unknown)|undefined)=>
-   Promise.resolve(target as unknown as PromiseLike<{error:{message:string}|null}>).then(result=>{
-    if(result.error)throw new Error(`Report data query failed: ${result.error.message}`);
-    return result;
-   }).then(fulfilled,rejected);
-  const value=Reflect.get(target,key,receiver);
-  if(typeof value!=='function')return value;
-  return (...args:unknown[])=>{const next=value.apply(target,args);return next&&typeof next==='object'&&'then' in next?checkedRead(next):next;};
- }});
-}
 /** Read-only, closed-table facade. All report queries receive immutable AND row-ID filters.
  * Both interactive and scheduled reports use the current actor's individual assignments.
  * The underlying service client is not exposed to a fetcher.
@@ -80,9 +68,9 @@ export async function createScopedReportReadClient(ctx:AuthContext, reportCode:s
       // filter. Fetch approved child tables separately through this facade.
       if(/(?:^|[,(]|:)\s*employee_[a-z_]+\s*(?:![\w]+\s*)?\(/.test(args[0]??'')) throw new Error('Employee relation embeds require separately scoped queries');
       if(/\bemployees\s*(?:![\w]+\s*)?\(/.test(args[0]??'') && /\*|\bblood_group\b/.test(args[0]??'')) throw new Error('Sensitive employee columns require separate authorization');
-      const query=target.select(...args);
+      const query=target.select(args[0],{...args[1],count:'exact'});
       // postgrest-js appends filters, so additional caller filters can only narrow this result.
-      return checkedRead(scope?query.in(scope.column,scope.ids.length?scope.ids:[-1]):query);
+      return completeReportRead(scope?query.in(scope.column,scope.ids.length?scope.ids:[-1]):query);
     };
    }});
   },

@@ -14,7 +14,10 @@ import { loadedListValue } from "@/components/erp/table/loaded-list-view";
  * preview dialog). Analytical reports (Class E) remain in the Report Center.
  */
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useReadCacheOwner } from "@/components/layout/read-cache-boundary";
+import { getOutputRequestIntent, settleOutputRequestIntent, settleRecoveredOutputIntent } from "@/lib/output/client-request-intent";
+import { recoverOfficialDocument } from "@/server/actions/output/recover-official-document";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +54,8 @@ import {
 import { toast } from "sonner";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { LetterPreviewDialog } from "@/features/report-center/letter-preview-dialog";
+import { OfficialDraftPreviewDialog } from "@/features/report-center/official-draft-preview-dialog";
+import { ReportTemplateSelectDialog } from "@/components/report-center/report-template-select-dialog";
 import {
   listEmployeeOutputCatalog,
   type EmployeeOutputCatalogItem,
@@ -145,6 +150,10 @@ export function EmployeeLettersForms(props: EmployeeLettersFormsProps) {
   return <EmployeeLettersFormsSession key={JSON.stringify([props.employeeId,reportTemplateSelectionIdentity(props.authContext)])} {...props} />;
 }
 function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: EmployeeLettersFormsProps) {
+  const owner = useReadCacheOwner(), activation = useRef<{ live: boolean } | null>(null), issueFlight = useRef(false);
+  useLayoutEffect(() => { const token = { live: true }; activation.current = token; return () => { token.live = false; }; }, [owner]);
+  const capture = useCallback(() => { const token = activation.current; return () => !!token?.live && activation.current === token && owner?.isLive() !== false; }, [owner]);
+  const requestOwner = reportTemplateSelectionIdentity(authContext);
   const [historyError, setHistoryError] = useState(false);
   const [catalog, setCatalog] = useState<EmployeeOutputCatalogItem[]>([]);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -168,6 +177,9 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
   const [generateTarget, setGenerateTarget] = useState<EmployeeOutputCatalogItem | null>(null);
   const [genLanguage, setGenLanguage] = useState<OfficialDocumentLanguage>("en");
   const [genInputs, setGenInputs] = useState<Record<string, string>>({});
+  const [genAuthorizeReissue, setGenAuthorizeReissue] = useState(false);
+  const [genTemplate, setGenTemplate] = useState<{ id: number; name: string } | null>(null);
+  const [chooseLetterhead, setChooseLetterhead] = useState(false);
 
   // Inline result banner — official-generation outcomes must stay visible
   // (blocked reasons are actionable, e.g. "complete the disciplinary record"),
@@ -191,6 +203,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
     item: EmployeeOutputCatalogItem;
     language: OfficialDocumentLanguage;
     inputs: Record<string, string>;
+    templateId?: number;
   } | null>(null);
 
   // Lookup map: outputCode → catalog item (for Generate New in history table)
@@ -201,8 +214,10 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
   }, [catalog]);
 
   const refreshHistory = useCallback(async () => {
+    const current = capture();
     try {
     const res = await listRecordIssuances({ sourceRecordType: "employee", recordId: employeeId });
+    if (!current()) return;
     if (res.success && res.data) {
       setHistoryError(false);
       setHistory(res.data.items);
@@ -210,22 +225,24 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
       setCanReissue(res.data.canReissue);
       setCanDelete(res.data.canDelete);
     } else setHistoryError(true);
-    } catch { setHistoryError(true); }
-  }, [employeeId]);
+    } catch { if (current()) setHistoryError(true); }
+  }, [employeeId, capture]);
 
   useEffect(() => {
+    const current = capture();
     startLoading(async () => {
       try {
-      const [catRes] = await Promise.all([listEmployeeOutputCatalog(), refreshHistory()]);
+      const [catRes] = await Promise.all([listEmployeeOutputCatalog(employeeId), refreshHistory()]);
+      if (!current()) return;
       if (catRes.success && catRes.data) {
         setCatalog(catRes.data);
         setCatalogError(null);
       } else {
         setCatalogError(catRes.error ?? "Failed to load the document catalog.");
       }
-      } catch { setCatalogError("The document catalog could not be loaded. Reload this section to try again."); }
+      } catch { if (current()) setCatalogError("The document catalog could not be loaded. Reload this section to try again."); }
     });
-  }, [employeeId, refreshHistory]);
+  }, [employeeId, refreshHistory, capture]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -252,9 +269,12 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
   const handleGenerateClick = (item: EmployeeOutputCatalogItem, autoAuthorizeReissue = false) => {
     setGenerateResult(null);
     setRepeatTarget(null);
-    if (item.languages.length > 1 || item.optionalInputs.length > 0) {
+    if (item.languages.length > 1 || item.optionalInputs.length > 0 || item.canBrandingOverride) {
+      setGenTemplate(null);
+      setChooseLetterhead(false);
       setGenLanguage(item.languages[0] ?? "en");
       setGenInputs({});
+      setGenAuthorizeReissue(autoAuthorizeReissue);
       setGenerateTarget(item);
     } else {
       void handleOfficialIssue(item, "en", {}, autoAuthorizeReissue);
@@ -277,30 +297,39 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
     item: EmployeeOutputCatalogItem,
     language: OfficialDocumentLanguage = "en",
     inputs: Record<string, string> = {},
-    authorizeReissue = false
+    authorizeReissue = false,
+    templateId?: number
   ) => {
-    if (issuingCode) return;
+    if (issueFlight.current) return;
+    issueFlight.current = true;
+    const current = capture();
     setIssuingCode(item.outputCode);
     setGenerateResult(null);
     setRepeatTarget(null);
     try {
+      const intent = await getOutputRequestIntent(requestOwner, employeeId, item.outputCode,
+        { language, inputs, authorizeReissue, issueQr: item.qrPolicy !== "none", ...(templateId ? { templateId } : {}) }, current);
+      if (!current()) return;
       const outcome = await generateOfficialDocument(item.outputCode, employeeId, {
         issueQr: item.qrPolicy !== "none",
-        clientRequestToken: crypto.randomUUID(),
+        clientRequestToken: intent.token,
         language,
         inputs,
         authorizeReissue,
+        ...(templateId ? { templateId } : {}),
       });
+      if (!current()) return;
       if (outcome.success) {
+        settleOutputRequestIntent(intent.key, intent.token);
         toast.success(`${item.name} issued`, {
-          description: outcome.qr
+          description: outcome.qr.status === "activated"
             ? "The document was issued with a verification QR. Opening download…"
             : "The document was issued and stored. Opening download…",
         });
         setGenerateResult({
           kind: "success",
           title: `${item.name} issued${outcome.serialNo ? ` — ${outcome.serialNo}` : ""}`,
-          message: outcome.qr
+          message: outcome.qr.status === "activated"
             ? "The document was issued with a verification QR and stored. The download opened in a new tab; it is also available in Issued Documents below."
             : "The document was issued and stored. The download opened in a new tab; it is also available in Issued Documents below.",
         });
@@ -308,10 +337,11 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
         if (outcome.downloadUrl) window.open(outcome.downloadUrl, "_blank");
         await refreshHistory();
       } else if (outcome.blocked === "duplicate_content_warning") {
+        settleOutputRequestIntent(intent.key, intent.token);
         // The exact same content was already issued. Present a deliberate repeat-
         // generation confirmation — a new issuance with a new serial and new hash.
         // This is separate from Reissue/Supersede which marks the old copy superseded.
-        setRepeatTarget({ item, language, inputs });
+        setRepeatTarget({ item, language, inputs, templateId });
         setGenerateTarget(null);
         setGenerateResult({
           kind: "warning",
@@ -323,6 +353,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
         });
         await refreshHistory();
       } else if (outcome.blocked === "approval_required") {
+        if (!outcome.issuanceId) settleOutputRequestIntent(intent.key, intent.token);
         toast.error("Approval required", {
           description: `${item.name} needs an approver to issue it. Ask a user with document approval rights.`,
         });
@@ -332,6 +363,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
           message: `${item.name} needs an approver to issue it. Ask a user with document approval rights.`,
         });
       } else {
+        if (!outcome.issuanceId && ["permission_denied", "validation_failed", "not_registered", "company_isolation_violation"].includes(outcome.blocked)) settleOutputRequestIntent(intent.key, intent.token);
         toast.error("Official issue failed", { description: outcome.error });
         setGenerateResult({
           kind: "error",
@@ -339,30 +371,54 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
           message: outcome.error ?? "Generation failed. Please try again or contact an administrator.",
         });
       }
+    } catch (error) {
+      if (current()) setGenerateResult({ kind: "error", title: "Original request retained", message: error instanceof Error ? error.message : "Response unconfirmed. Retry the unchanged entries or recover the original from its history." });
     } finally {
-      setIssuingCode(null);
+      issueFlight.current = false;
+      if (current()) setIssuingCode(null);
     }
   };
 
+  const handleRecover = async (item: IssuanceHistoryItem) => {
+    if (issueFlight.current) return;
+    issueFlight.current = true; const current = capture(); setIssuingCode(item.output_code ?? "recovery");
+    try {
+      const outcome = await recoverOfficialDocument(item.id); if (!current()) return;
+      if (outcome.success) {
+        if (item.output_code && outcome.requestKey && authContext.profile) await settleRecoveredOutputIntent(requestOwner, employeeId, item.output_code, authContext.profile.id, outcome.requestKey);
+        if (!current()) return;
+        setGenerateResult({ kind: "success", title: "Original request recovered", message: outcome.qr.status === "activation_failed_retryable" ? "Original is issued. Verification activation remains pending; no replacement was created." : "The original issuance, file and serial were retained. Use Download original below." });
+      } else setGenerateResult({ kind: "error", title: "Original request retained", message: outcome.error });
+      await refreshHistory();
+    } catch { if (current()) setGenerateResult({ kind: "error", title: "Recovery unconfirmed", message: "Refresh the original history and retry recovery. Do not create a replacement." }); }
+    finally { issueFlight.current = false; if (current()) setIssuingCode(null); }
+  };
+
   const handleDownload = async (item: IssuanceHistoryItem) => {
+    const current = capture();
     setDownloadingId(item.id);
     try {
       const res = await getIssuanceDownloadUrl(item.id);
+      if (!current()) return;
       if (res.success && res.data) {
         window.open(res.data.url, "_blank");
       } else {
         toast.error("Download failed", { description: res.error });
       }
+    } catch {
+      if (current()) toast.error("Download unavailable", { description: "No original was changed. Refresh history and try again." });
     } finally {
-      setDownloadingId(null);
+      if (current()) setDownloadingId(null);
     }
   };
 
   const handleRevokeSubmit = async () => {
     if (!revokeTarget) return;
+    const current = capture();
     setActionPending(true);
     try {
       const res = await revokeIssuance({ issuanceId: revokeTarget.id, reason: actionReason });
+      if (!current()) return;
       if (res.success) {
         toast.success("Document revoked", {
           description: "The document and its verification link are no longer valid.",
@@ -373,16 +429,20 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
       } else {
         toast.error("Revoke failed", { description: res.error });
       }
+    } catch {
+      if (current()) toast.error("Revocation unconfirmed", { description: "Refresh the original history before retrying. No replacement was requested." });
     } finally {
-      setActionPending(false);
+      if (current()) setActionPending(false);
     }
   };
 
   const handleDeleteSubmit = async () => {
     if (!deleteTarget) return;
+    const current = capture();
     setActionPending(true);
     try {
       const res = await deleteIssuance({ issuanceId: deleteTarget.id });
+      if (!current()) return;
       if (res.success) {
         toast.success("Failed artifact removed", {
           description: "The failed generation record has been cleaned up.",
@@ -392,13 +452,16 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
       } else {
         toast.error("Remove failed", { description: res.error });
       }
+    } catch {
+      if (current()) toast.error("Removal unconfirmed", { description: "Refresh history before retrying." });
     } finally {
-      setActionPending(false);
+      if (current()) setActionPending(false);
     }
   };
 
   const handleReissueSubmit = async () => {
     if (!reissueTarget) return;
+    const current = capture();
     setActionPending(true);
     try {
       const outcome = await reissueOfficialDocument({
@@ -406,6 +469,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
         reason: actionReason,
         issueQr: false,
       });
+      if (!current()) return;
       if (outcome.success) {
         toast.success("Document reissued", {
           description: "A superseding copy was issued. The previous copy is marked superseded.",
@@ -417,8 +481,10 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
       } else {
         toast.error("Reissue failed", { description: outcome.error });
       }
+    } catch {
+      if (current()) toast.error("Reissue unconfirmed", { description: "Refresh history or retry the same reason to recover the original replacement request." });
     } finally {
-      setActionPending(false);
+      if (current()) setActionPending(false);
     }
   };
 
@@ -505,7 +571,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                   onClick={() => {
                     const t = repeatTarget;
                     setRepeatTarget(null);
-                    void handleOfficialIssue(t.item, t.language, t.inputs, true);
+                    void handleOfficialIssue(t.item, t.language, t.inputs, true, t.templateId);
                   }}
                 >
                   {issuingCode ? <Loader2 className="h-3 w-3 animate-spin" /> : <Stamp className="h-3 w-3" />}
@@ -635,12 +701,9 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                       )}
                     </div>
                   </div>
-                  {item.canGenerate && item.generatable && (
+                  {(item.canPreview || (item.canGenerate && item.generatable)) && (
                     <div className="flex items-center gap-1.5 mt-2.5 justify-end">
-                      {/* Preview stays only for legacy (non-catalog) outputs —
-                          catalog documents open the real issued PDF, so a
-                          divergent draft preview would break parity. */}
-                      {item.wordingStatus === "legacy" && (
+                      {(item.canPreview || item.wordingStatus === "legacy") && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -648,10 +711,10 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                           onClick={() => setPreview({ outputCode: item.outputCode, label: item.name })}
                         >
                           <Eye className="h-3 w-3" />
-                          Preview
+                          Preview draft
                         </Button>
                       )}
-                      {item.official && (
+                      {item.official && item.canGenerate && item.generatable && (
                         <Button
                           size="sm"
                           className="h-7 text-xs gap-1"
@@ -734,10 +797,11 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                         <div className="text-[11px] text-destructive truncate">
                           {item.failure_reason}
                         </div>
-                      )}</>},{id:"serial_no",header:"Serial",accessorFn:item=>loadedListValue(item,"serial_no"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{statusBadge(item)}</>},{id:"status",header:"Status",accessorFn:item=>loadedListValue(item,"status"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{formatDate(item.issued_at ?? item.generated_at)}</>},{id:"issued_at",header:"Issued",accessorFn:item=>loadedListValue(item,"issued_at"),enableHiding:true,size:160,cell:({row:{original:item}})=><><span className="block truncate font-mono text-[10px] text-muted-foreground" title={item.serial_no ?? ""}>
-                        {item.serial_no ?? "—"}
+                      )}</>},{id:"serial_no",header:"Serial",accessorFn:item=>loadedListValue(item,"serial_no"),enableHiding:true,size:160,cell:({row:{original:item}})=><span className="font-mono text-xs">{item.serial_no ?? "—"}</span>},{id:"status",header:"Status",accessorFn:item=>loadedListValue(item,"status"),enableHiding:true,size:160,cell:({row:{original:item}})=><>{statusBadge(item)}</>},{id:"issued_at",header:"Issued",accessorFn:item=>loadedListValue(item,"issued_at"),enableHiding:true,size:160,cell:({row:{original:item}})=><><span className="block truncate font-mono text-[10px] text-muted-foreground" title={item.issued_at ?? item.generated_at ?? ""}>
+                        {formatDate(item.issued_at ?? item.generated_at)}
                       </span></>},{id:"actions",header:"Actions",enableHiding:true,size:200,enableSorting:false,meta:{exportable:false},cell:({row:{original:item}})=><><div className="flex items-center gap-0.5 justify-end flex-nowrap">
                         {/* Download — any status with a stored file */}
+                        {item.can_recover && <Button type="button" variant="outline" size="sm" disabled={issuingCode !== null} onClick={() => void handleRecover(item)} title="Resume the same original request, file and serial">Recover original</Button>}
                         <Button aria-label="Download / Reprint Original PDF"
                           variant="ghost"
                           size="icon"
@@ -828,7 +892,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
       <ERPChildDialogForm
         open={!!generateTarget}
         onOpenChange={(open) => {
-          if (!open) setGenerateTarget(null);
+          if (!open) { setGenerateTarget(null); setChooseLetterhead(false); }
         }}
         title={generateTarget ? `Generate ${generateTarget.name}` : "Generate Document"}
         subtitle="The document is generated from verified ERP data using the fixed approved template."
@@ -837,7 +901,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
         size="md"
         isSubmitting={issuingCode !== null}
         onSubmit={() => {
-          if (generateTarget) void handleOfficialIssue(generateTarget, genLanguage, genInputs);
+          if (generateTarget) void handleOfficialIssue(generateTarget, genLanguage, genInputs, genAuthorizeReissue, genTemplate?.id);
         }}
         submitLabel="Generate Official"
       >
@@ -865,15 +929,20 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                 <span>
                   Company letterhead:{" "}
                   <span className="text-foreground font-medium">
-                    Employee&apos;s company (auto-resolved)
+                    {genTemplate?.name ?? "Employee's company default"}
                   </span>
                   {generateTarget.canBrandingOverride && (
                     <span className="ml-1.5 text-[10px] text-blue-600 dark:text-blue-400 font-normal">
-                      · Override available — select a template when prompted
+                      · Choose a permitted company letterhead below
                     </span>
                   )}
                 </span>
               </div>
+
+              {generateTarget.canBrandingOverride && <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" disabled={issuingCode !== null} onClick={() => setChooseLetterhead(true)}>Choose letterhead</Button>
+                {genTemplate && <Button type="button" variant="ghost" disabled={issuingCode !== null} onClick={() => setGenTemplate(null)}>Use company default</Button>}
+              </div>}
 
               {/* QR verification — locked on/off by policy */}
               <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
@@ -899,7 +968,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                   Stamp / signature:{" "}
                   {generateTarget.userCanSign ? (
                     <span className="text-emerald-700 dark:text-emerald-400 font-medium">
-                      Will be applied — you hold the stamp/signature permission (reports.sign)
+                      Applied only when enabled in the selected letterhead and currently permitted
                     </span>
                   ) : (
                     <span className="text-foreground font-medium">
@@ -947,6 +1016,9 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                 {field.required && <span className="text-destructive"> *</span>}
               </label>
               <Input
+                id={`official-input-${field.key}`}
+                aria-label={field.labelEn}
+                required={field.required}
                 value={genInputs[field.key] ?? ""}
                 maxLength={field.maxLength}
                 placeholder={field.placeholder}
@@ -963,10 +1035,16 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
         </div>
       </ERPChildDialogForm>
 
+      <ReportTemplateSelectDialog authContext={authContext} open={chooseLetterhead && !!generateTarget} onOpenChange={setChooseLetterhead}
+        ownerCompanyIds={generateTarget?.ownerCompanyId ? [generateTarget.ownerCompanyId] : undefined} selectedTemplateId={genTemplate?.id} issuableOnly
+        readGeneration={JSON.stringify([employeeId, generateTarget?.outputCode, genLanguage])} dialogTitle="Choose company letterhead"
+        onSelect={(id, selected) => { const current = capture(); if (current()) setGenTemplate({ id, name: selected.template_name }); }} />
+
       {/* ── Preview dialog (quick print = watermarked draft) ────────────── */}
+      <OfficialDraftPreviewDialog authContext={authContext} employeeId={employeeId} item={previewItem ?? null} open={!!preview && previewItem?.wordingStatus !== "legacy"} onOpenChange={open => { if (!open) setPreview(null); }} />
       <LetterPreviewDialog
         authContext={authContext}
-        open={!!preview}
+        open={!!preview && previewItem?.wordingStatus === "legacy"}
         onOpenChange={(open) => !open && setPreview(null)}
         reportCode={preview?.outputCode ?? ""}
         reportLabel={preview?.label ?? ""}

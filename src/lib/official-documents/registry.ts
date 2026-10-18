@@ -148,6 +148,7 @@ export function buildInputsSchema(def: OfficialDocumentDefinition) {
     // Plain printable text only — no control chars; trimmed server-side.
     const field = z
       .string()
+      .trim()
       .max(input.maxLength)
       .regex(/^[^\u0000-\u001F\u007F]*$/, "Contains invalid control characters");
     shape[input.key] = input.required
@@ -165,19 +166,30 @@ export function findMissingDataError(
   def: OfficialDocumentDefinition,
   row: Record<string, unknown>
 ): string | null {
+  const errors = findMissingDataErrors(def, row);
+  return errors.length ? errors.join("\n") : null;
+}
+
+/** All missing fields in one response, so users can correct a record once. */
+export function findMissingDataErrors(
+  def: OfficialDocumentDefinition,
+  row: Record<string, unknown>
+): string[] {
+  const errors: string[] = [];
   for (const field of def.requiredSourceFields) {
     const v = row[field];
     const empty =
       v === null ||
       v === undefined ||
       (typeof v === "string" && v.trim() === "") ||
-      (typeof v === "number" && field.includes("salary") && v <= 0);
+      (typeof v === "number" && !Number.isFinite(v)) ||
+      (field.includes("salary") && (!Number.isFinite(Number(v)) || Number(v) <= 0));
     if (empty) {
-      return (
+      errors.push(
         def.missingFieldMessages?.[field] ??
         `${def.titleEn} cannot be generated because required data '${field.replace(/_/g, " ")}' is missing on the employee record.`
       );
     }
   }
-  return null;
+  return errors;
 }

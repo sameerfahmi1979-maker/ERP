@@ -6,7 +6,7 @@
 
 import ExcelJS from "exceljs";
 import type { ERPExportOptions, ERPExportResult } from "./export-types";
-import { getColumnValue, generateFilename, formatFilters } from "./format-export-data";
+import { getTypedExportValue, generateFilename, formatFilters } from "./format-export-data";
 import { format } from "date-fns";
 
 /** Trigger a browser file download from a Uint8Array buffer */
@@ -30,6 +30,7 @@ function triggerDownload(buffer: ArrayBuffer, filename: string) {
  */
 export async function exportToExcel<T>(options: ERPExportOptions<T>): Promise<ERPExportResult> {
   try {
+    if(options.canCommit?.()===false)throw Error('This report is no longer current. Run it again before exporting.');
     const { columns, data, filename, title, subtitle, generatedBy, generatedAt, filters, branding } = options;
 
     const workbook = new ExcelJS.Workbook();
@@ -81,14 +82,7 @@ export async function exportToExcel<T>(options: ERPExportOptions<T>): Promise<ER
 
     // ── Data rows ─────────────────────────────────────────────────────────
     for (const row of data) {
-      const values = columns.map((col) => {
-        const value = getColumnValue(row, col);
-        const num = Number(value);
-        if (!isNaN(num) && typeof value === "string" && value.trim() !== "") {
-          return num;
-        }
-        return value;
-      });
+      const values = columns.map((col) => getTypedExportValue(row, col));
       worksheet.addRow(values);
     }
 
@@ -103,6 +97,7 @@ export async function exportToExcel<T>(options: ERPExportOptions<T>): Promise<ER
       (buffer as Buffer).byteOffset,
       (buffer as Buffer).byteOffset + (buffer as Buffer).byteLength
     );
+    if(options.canCommit?.()===false)throw Error('This report is no longer current. No file was downloaded.');
     triggerDownload(ab as ArrayBuffer, downloadFilename);
 
     return { success: true, filename: downloadFilename };

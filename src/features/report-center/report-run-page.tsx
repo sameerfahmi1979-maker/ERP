@@ -1,5 +1,6 @@
 "use client";
 import {reportCriteriaIdentity} from "@/lib/reads/report-criteria-schema";
+import {reportFilterKeys} from "@/lib/report-center/filter-contract";
 import {useReportViewState} from "./use-report-view-state";
 import {useReportSavedFilters} from "@/hooks/use-report-saved-filters";
 import type {ReportSavedFilterRow} from "@/lib/reads/report-saved-filters-schema";
@@ -21,6 +22,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { exportToExcel } from "@/lib/export/excel";
+import { exportToCSV } from "@/lib/export/csv";
+import {usesOfficialDocumentSurface} from '@/lib/report-center/output-surface';
 import { exportToPDF } from "@/lib/export/pdf";
 import { exportToPrint } from "@/lib/export/print";
 import type { ReportRegistryEntry, ReportRunResult } from "@/lib/report-center/types";
@@ -88,8 +91,8 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
     priorFilters.current = {principal, setFilters};
   }, [principal, setFilters]);
 
-  const schema = registryEntry.filter_schema_json as { filters?: string[] };
-  const entityKeys = ENTITY_FILTER_KEYS.filter(k => (schema.filters ?? []).includes(k)) as FilterLookupKey[];
+  const configuredFilterKeys = reportFilterKeys(registryEntry.report_code, registryEntry.filter_schema_json);
+  const entityKeys = ENTITY_FILTER_KEYS.filter(k => configuredFilterKeys.includes(k)) as FilterLookupKey[];
   const filterRevision = useRef(0), savedApplySequence = useRef(0);
   const handleFilterChange = useCallback((key: string, value: string) => {
     filterRevision.current++;
@@ -110,8 +113,10 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
   const {values: reportView, setField: setViewField, isCurrent} = useReportViewState(readIdentity);
   const {isRunning, isExporting, runResult, error, showTemplateDialog, pendingExportFormat, selectedTemplateId, resolvedBranding, showSaveFilterDialog, saveFilterName, isSavingFilter, isApplyingFilter} = reportView;
   const runSequence = useRef(0);
+  const acceptedFilterRevision = useRef<number | null>(null);
   const outputSequence = runSequence.current;
-  const canUseOutput = () => isCurrent() && !ownerDenied && !!runResult?.data && runSequence.current === outputSequence;
+  const canUseOutput = () => isCurrent() && !ownerDenied && !!runResult?.data && runSequence.current === outputSequence && acceptedFilterRevision.current===filterRevision.current &&
+    (!(runResult.resolvedTemplateId??selectedTemplateId)||!!resolvedBranding);
 
   // Column visibility
   const [visibleColumns, setVisibleColumns] = usePersistentUiState<string[] | null>(stateKey ? `${stateKey}:columns` : undefined, null);
@@ -201,8 +206,9 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
 
   const runReport = async (templateIdForRun = selectedTemplateId) => {
     if (!isCurrent() || ownerDenied || !criteria.canRunNow()) return;
-    const sequence = ++runSequence.current;
-    const latest = () => isCurrent() && runSequence.current === sequence;
+    const sequence = ++runSequence.current, revision=filterRevision.current;
+    acceptedFilterRevision.current=null;
+    const latest = () => isCurrent() && runSequence.current === sequence && filterRevision.current===revision;
     setViewField("runResult", null); setViewField("resolvedBranding", undefined);
     setViewField("isRunning", true);
     setViewField("error", null);
@@ -237,6 +243,7 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
 
       const runResult = result.data as ReportRunResult;
 
+      acceptedFilterRevision.current=revision;
       setViewField("runResult", runResult);
       setVisibleColumns(previous => previous?.filter(column => runResult.data?.columns.includes(column)) ?? null);
 
@@ -257,12 +264,13 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
     } catch (err) {
       if (latest()) setViewField("error", err instanceof Error ? err.message : "Unexpected error");
     } finally {
-      if (latest()) setViewField("isRunning", false);
+      if (isCurrent() && runSequence.current === sequence) setViewField("isRunning", false);
     }
   };
 
   const handleExport = async (format: "pdf" | "excel" | "csv" | "print") => {
     if (!canUseOutput()) return;
+    if(usesOfficialDocumentSurface(registryEntry)){toast.error('Use the employee Letters & Forms section for governed document previews and originals.');return;}
     if (!runResult?.data) {
       toast.error("Run the report first before exporting.");
       return;
@@ -300,35 +308,44 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
       );
       const dateStr = new Date().toISOString().split("T")[0];
 
-      if (format === "excel") {
-        await exportToExcel({
+      if(format==='csv'){
+        const result=exportToCSV({title:registryEntry.report_name_en,filename:`${registryEntry.report_code}_${dateStr}`,columns:exportColumns,data:exportData,canCommit:canUseOutput});
+        if(!result.success)throw Error(result.error??'CSV export failed');
+      } else if (format === "excel") {
+        const result=await exportToExcel({
           title: registryEntry.report_name_en,
           filename: `${registryEntry.report_code}_${dateStr}`,
           columns: exportColumns,
           data: exportData,
           orientation: registryEntry.default_orientation,
           branding: resolvedBranding,
+          canCommit:canUseOutput,
         });
+        if(!result.success)throw Error(result.error??'Excel export failed');
       } else if (format === "pdf") {
-        await exportToPDF({
+        const result=await exportToPDF({
           title: registryEntry.report_name_en,
           filename: `${registryEntry.report_code}_${dateStr}`,
           columns: exportColumns,
           data: exportData,
           orientation: registryEntry.default_orientation,
           branding: resolvedBranding,
+          canCommit:canUseOutput,
         });
+        if(!result.success)throw Error(result.error??'PDF export failed');
       } else if (format === "print") {
-        exportToPrint({
+        const result=exportToPrint({
           title: registryEntry.report_name_en,
           filename: `${registryEntry.report_code}_${dateStr}`,
           columns: exportColumns,
           data: exportData,
           orientation: registryEntry.default_orientation,
           branding: resolvedBranding,
+          canCommit:canUseOutput,
         });
+        if(!result.success)throw Error(result.error??'Print export failed');
       }
-      if (canUseOutput() && format !== "csv") {
+      if (canUseOutput()) {
         toast.success(`Exporting ${format.toUpperCase()}...`);
       }
     } catch (err) {
@@ -342,31 +359,18 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
     if (!isCurrent() || ownerDenied || (!pendingExportFormat && !criteria.canRunNow())) return;
     setViewField("selectedTemplateId", templateId);
     setViewField("showTemplateDialog", false);
-    // Pre-resolve branding for the manually selected template
-    resolveTemplatePreview({
-      templateId,
-      reportCode: registryEntry.report_code,
-    }).then((brandingResult) => {
-      if (!isCurrent()) return;
-      if (brandingResult.success && brandingResult.data) {
-        setViewField("resolvedBranding", brandingResult.data);
-      } else setViewField("error", "Report branding is unavailable. Try selecting the template again.");
-    }).catch(() => {
-      if (isCurrent()) setViewField("error", "Report branding is unavailable. Try selecting the template again.");
-    });
-    if (pendingExportFormat) {
-      handleExport(pendingExportFormat);
-    } else {
-      // React state is not updated synchronously; continue with the chosen ID.
-      runReport(templateId);
-    }
+    // The chosen identity is not accepted until the server reruns its scoped
+    // data and the matching branding response passes the same result fence.
+    // Never export immediately using the previous render's template/assets.
+    if(pendingExportFormat)toast.info('Refreshing the report with the selected letterhead. Export after it is ready.');
+    setViewField('pendingExportFormat',null);
+    runReport(templateId);
   };
 
   // Build filter fields from registry schema
   const filterFields = (() => {
     try {
-      const schema = registryEntry.filter_schema_json as { filters?: string[] };
-      return (schema.filters ?? []).map((key) => ({
+      return configuredFilterKeys.map((key) => ({
         key,
         label: key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
         type: key.includes("date") || key === "expiry_from" || key === "expiry_to"

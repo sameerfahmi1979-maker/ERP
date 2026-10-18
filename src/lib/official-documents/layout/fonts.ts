@@ -30,7 +30,7 @@ export function getArabicFontBase64(): string | null {
 /** @font-face CSS block (empty string when the font file is unavailable). */
 export function buildArabicFontFaceCss(): string {
   const b64 = getArabicFontBase64();
-  if (!b64) return "";
+  if (!b64) throw new Error("The bundled Arabic font is unavailable. Restore the required font before generating Arabic output.");
   return `@font-face {
       font-family: "Noto Sans Arabic Embedded";
       src: url(data:font/ttf;base64,${b64}) format("truetype");

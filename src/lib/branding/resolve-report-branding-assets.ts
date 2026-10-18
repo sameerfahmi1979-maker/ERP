@@ -2,11 +2,12 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AuthContext } from "@/lib/rbac/check";
-import { BRANDING_SIGNED_URL_TTL_SECONDS, BRANDING_STORAGE_BUCKET } from "./constants";
+import { BRANDING_SIGNED_URL_TTL_SECONDS, BRANDING_STORAGE_BUCKET, MAX_BRANDING_FILE_SIZE_BYTES } from "./constants";
 import { canAccessBrandingAssetUrl, canViewReportBrandingAssets } from "./asset-permissions";
 import { hasCanonicalBrandingStorageIdentity } from "./storage-paths";
 import type { BrandingAsset, ReportBrandingAssetType } from "./types";
 import { requireBrandingRevision } from "./issuance-provenance";
+import { verifyBrandingImage } from "@/server/branding-image";
 
 export type ReportBrandingAssetUrlMap = Partial<Record<ReportBrandingAssetType, string>>;
 
@@ -22,7 +23,8 @@ export async function resolveReportBrandingProfileAssetUrls(
 export async function resolveReportBrandingProfileAssets(
   brandingProfileId: number,
   ctx: AuthContext | null,
-  expectedRevision?: string
+  expectedRevision?: string,
+  inlineTypes?: ReportBrandingAssetType[]
 ): Promise<{ urls: ReportBrandingAssetUrlMap; assets: BrandingAsset[] }> {
   if (!ctx || !Number.isSafeInteger(brandingProfileId) || brandingProfileId < 1) {
     throw new Error("Branding authority is unavailable.");
@@ -55,8 +57,23 @@ export async function resolveReportBrandingProfileAssets(
   const permitted: BrandingAsset[] = [];
   for (const asset of assets) {
     if (!canAccessBrandingAssetUrl(ctx, asset)) continue;
+    if (inlineTypes !== undefined && !inlineTypes.includes(asset.asset_type as ReportBrandingAssetType)) continue;
     if (expectedRevision !== undefined) requireBrandingRevision(asset.workspace_revision);
     try {
+      if (inlineTypes?.includes(asset.asset_type as ReportBrandingAssetType)) {
+        const storage = admin.storage.from(BRANDING_STORAGE_BUCKET);
+        const before = await storage.info(asset.storage_path);
+        if (before.error || !before.data?.id || !before.data.version || !before.data.lastModified ||
+            typeof before.data.size !== "number" || !Number.isSafeInteger(before.data.size) || before.data.size <= 0 || before.data.size > MAX_BRANDING_FILE_SIZE_BYTES) throw new Error("Unavailable or oversized");
+        const downloaded = await storage.download(asset.storage_path);
+        if (downloaded.error || !downloaded.data || downloaded.data.size !== before.data.size) throw new Error("Unavailable");
+        const verified = await verifyBrandingImage(new File([await downloaded.data.arrayBuffer()], "retained-brand", { type: asset.mime_type }));
+        const after = await storage.info(asset.storage_path);
+        if (after.error || !after.data || before.data.id !== after.data.id || before.data.version !== after.data.version || before.data.lastModified !== after.data.lastModified) throw new Error("Asset changed");
+        urls[asset.asset_type as ReportBrandingAssetType] = `data:image/png;base64,${verified.bytes.toString("base64")}`;
+        permitted.push(asset);
+        continue;
+      }
       const signed = await admin.storage.from(BRANDING_STORAGE_BUCKET)
         .createSignedUrl(asset.storage_path, BRANDING_SIGNED_URL_TTL_SECONDS);
       if (signed.error || !signed.data?.signedUrl) throw new Error("Unavailable");

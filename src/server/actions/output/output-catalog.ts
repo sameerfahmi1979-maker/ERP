@@ -27,6 +27,8 @@ import type {
   OfficialDocumentLanguage,
   OfficialDocumentStatus,
 } from "@/lib/official-documents/types";
+import { officialWordingBlockers } from "@/lib/official-documents/catalogue";
+import { getEmployeeAccess } from "@/lib/rbac/employee-access";
 
 type ActionResult<T = unknown> = { success: boolean; data?: T; error?: string };
 
@@ -41,6 +43,10 @@ export interface CatalogInputField {
 }
 
 export interface EmployeeOutputCatalogItem {
+  /** Verified selected subject context, never selected by the caller's brand. */
+  ownerCompanyId?: number;
+  previewLanguages?: OfficialDocumentLanguage[];
+  canPreview?: boolean;
   outputCode: string;
   name: string;
   description: string | null;
@@ -87,11 +93,18 @@ export interface EmployeeOutputCatalogItem {
  * List all onboarded HR outputs (classes A–D) for the employee workspace.
  * Class E analytical reports stay in the Report Center and are excluded here.
  */
-export async function listEmployeeOutputCatalog(): Promise<
+export async function listEmployeeOutputCatalog(employeeId?: number): Promise<
   ActionResult<EmployeeOutputCatalogItem[]>
 > {
   const ctx = await getAuthContext();
   if (!ctx?.profile?.id || !canUseApplication(ctx)) return { success: false, error: "Not authenticated." };
+
+  let subjectAccess: Awaited<ReturnType<typeof getEmployeeAccess>> | undefined;
+  if (employeeId !== undefined) {
+    try { subjectAccess = await getEmployeeAccess(ctx, employeeId); }
+    catch { return { success: false, error: "Employee document access could not be verified. Refresh and try again." }; }
+  }
+  const allows = (permission: string) => subjectAccess ? subjectAccess.allows(permission) : hasPermission(ctx, permission);
 
   const db = createAdminClient();
 
@@ -126,13 +139,18 @@ export async function listEmployeeOutputCatalog(): Promise<
     if (!classDefault) continue;
 
     const policy = resolveEffectivePolicy(row as unknown as RegistryPolicyOverrides, classDefault);
-    const required = (row.required_permissions ?? []) as string[];
-    const missing = required.filter((p) => !hasPermission(ctx, p));
+    const required = [...new Set(['reports.run','reports.pdf.generate',...(row.required_permissions ?? []) as string[]])];
+    const missing = required.filter((p) => !allows(p));
 
     const definition = getOfficialDocumentDefinition(row.report_code as string);
-    const generatable = definition ? isGeneratable(definition) : true;
+    const languages = definition ? definition.supportedLanguages.filter(language =>
+      !policy.official || officialWordingBlockers(definition, language).length === 0) : [];
+    const generatable = definition ? isGeneratable(definition) && (!policy.official || languages.length > 0) : !policy.official;
 
     items.push({
+      ownerCompanyId: subjectAccess?.subject.owner_company_id,
+      previewLanguages: definition && isGeneratable(definition) ? [...definition.supportedLanguages] : [],
+      canPreview: !!definition && isGeneratable(definition) && ["reports.run", "reports.pdf.generate", ...required].every(allows),
       outputCode: row.report_code as string,
       name: row.report_name_en as string,
       description: (row.description_en as string | null) ?? null,
@@ -149,7 +167,7 @@ export async function listEmployeeOutputCatalog(): Promise<
       sensitive: (row.sensitive_profile as string) !== "normal",
       wordingStatus: definition ? definition.status : "legacy",
       generatable,
-      languages: definition ? [...definition.supportedLanguages] : ["en"],
+      languages: definition ? (policy.official ? languages : [...definition.supportedLanguages]) : ["en"],
       optionalInputs: (definition?.optionalInputs ?? []).map((f) => ({
         key: f.key,
         labelEn: f.labelEn,
@@ -158,8 +176,8 @@ export async function listEmployeeOutputCatalog(): Promise<
         placeholder: f.placeholder,
         helpText: f.helpText,
       })),
-      canBrandingOverride: hasPermission(ctx, "reports.branding.override"),
-      userCanSign: hasPermission(ctx, "reports.sign"),
+      canBrandingOverride: allows("reports.branding.override"),
+      userCanSign: allows("reports.sign"),
     });
   }
 

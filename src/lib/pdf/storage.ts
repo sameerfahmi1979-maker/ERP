@@ -7,6 +7,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { randomUUID } from "node:crypto";
 
 const PDF_BUCKET = "erp-generated-pdfs";
 
@@ -32,7 +33,7 @@ export function buildPdfStoragePath(params: {
     params.sourceRecordType.toLowerCase(),
     String(params.ownerCompanyId),
     String(params.sourceRecordId),
-    `${ts}_${label}.pdf`,
+    `${ts}_${randomUUID()}_${label}.pdf`,
   ].join("/");
 }
 

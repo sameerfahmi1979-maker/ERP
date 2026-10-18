@@ -151,12 +151,14 @@ export interface OfficialDocumentModel {
   /** Closing block, e.g. issuer sign-off lines above the signature zone. */
   closingEn?: string;
   closingAr?: string;
-  /** Render the signature/stamp zone (default true). */
+  /** Render signature lines (default true). A separately authorized stamp is independent. */
   showSignature?: boolean;
 }
 
 /** Everything the layout engine needs to render one issuance. */
 export interface OfficialDocumentRenderContext {
+  /** Draft review omits the official/manual signature zone; body wording is unchanged. */
+  draft?: boolean;
   /** Server-resolved data row from the registered output fetcher (first row). */
   row: Record<string, unknown>;
   /** All fetched rows — used by multi-row forms (checklists, clearance, PPE). */

@@ -45,6 +45,10 @@ function containsArabic(text: string): boolean {
 function exportDataHasArabic<T>(options: ERPExportOptions<T>): boolean {
   if (containsArabic(options.title ?? "")) return true;
   if (containsArabic(options.subtitle ?? "")) return true;
+  if (options.columns.some(col => containsArabic(col.header))) return true;
+  if ([options.branding?.companyNameEn, options.branding?.footerTextEn, options.branding?.signatoryName,
+    options.branding?.signatoryTitleEn, options.generatedBy, options.filters ? formatFilters(options.filters) : ""]
+    .some(text => containsArabic(text ?? ""))) return true;
   return options.data.some((row) =>
     options.columns.some((col) => {
       const val = getColumnValue(row, col);
@@ -82,7 +86,7 @@ async function loadArabicFont(): Promise<string | null> {
     } catch {
       return null;
     }
-  })();
+  })().finally(() => { _arabicFontPromise = null; });
 
   return _arabicFontPromise;
 }
@@ -97,6 +101,11 @@ async function registerArabicFont(doc: jsPDF): Promise<boolean> {
   doc.addFileToVFS("NotoSansArabic.ttf", data);
   doc.addFont("NotoSansArabic.ttf", "NotoSansArabic", "normal");
   return true;
+}
+
+function setExportFont(doc: jsPDF, style: "normal" | "bold") {
+  const hasArabicFont = !!doc.getFontList().NotoSansArabic;
+  doc.setFont(hasArabicFont ? "NotoSansArabic" : "helvetica", hasArabicFont ? "normal" : style);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -188,18 +197,18 @@ function renderBrandedHeader(
     } catch {
       // Image embedding failed — fall back to text
       doc.setFontSize(10);
-      doc.setFont("helvetica", "bold");
+      setExportFont(doc, "bold");
       doc.setTextColor(...headerText);
       doc.text(companyName, 15, 13);
     }
     // Company name to the right of the logo
     doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
+    setExportFont(doc, "bold");
     doc.setTextColor(...headerText);
     doc.text(companyName, 38, 13);
   } else {
     doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
+    setExportFont(doc, "bold");
     doc.setTextColor(...headerText);
     doc.text(companyName, 15, 13);
   }
@@ -208,14 +217,14 @@ function renderBrandedHeader(
   // Report title
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
+  setExportFont(doc, "bold");
   doc.text(title, pageWidth / 2, currentY, { align: "center" });
   currentY += 7;
 
   // Report subtitle
   if (subtitle) {
     doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
+    setExportFont(doc, "normal");
     doc.setTextColor(80, 80, 80);
     doc.text(subtitle, pageWidth / 2, currentY, { align: "center" });
     currentY += 6;
@@ -223,7 +232,7 @@ function renderBrandedHeader(
 
   // Address / TRN / License block
   doc.setFontSize(7.5);
-  doc.setFont("helvetica", "normal");
+  setExportFont(doc, "normal");
   doc.setTextColor(100, 100, 100);
   const infoLines: string[] = [];
   if (branding.showAddress && branding.addressBlockEn) infoLines.push(branding.addressBlockEn);
@@ -260,14 +269,14 @@ function renderNeutralHeader(
 
   // Neutral title
   doc.setFontSize(16);
-  doc.setFont("helvetica", "bold");
+  setExportFont(doc, "bold");
   doc.setTextColor(0, 0, 0);
   doc.text(title, pageWidth / 2, currentY, { align: "center" });
   currentY += 8;
 
   if (subtitle) {
     doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
+    setExportFont(doc, "normal");
     doc.text(subtitle, pageWidth / 2, currentY, { align: "center" });
     currentY += 7;
   }
@@ -293,6 +302,7 @@ function renderNeutralHeader(
  */
 export async function exportToPDF<T>(options: ERPExportOptions<T>): Promise<ERPExportResult> {
   try {
+    if(options.canCommit?.()===false)throw Error('This report is no longer current. Run it again before exporting.');
     const {
       columns,
       data,
@@ -325,7 +335,8 @@ export async function exportToPDF<T>(options: ERPExportOptions<T>): Promise<ERPE
     let bodyFont = "helvetica";
     if (hasArabic) {
       const ok = await registerArabicFont(doc);
-      if (ok) bodyFont = "NotoSansArabic";
+      if (!ok) throw new Error("The required Arabic font could not be loaded. No PDF was generated.");
+      bodyFont = "NotoSansArabic";
     }
 
     const pageWidth  = doc.internal.pageSize.getWidth();
@@ -341,7 +352,7 @@ export async function exportToPDF<T>(options: ERPExportOptions<T>): Promise<ERPE
 
     // ── Metadata ──────────────────────────────────────────────────────────────
     doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
+    setExportFont(doc, "normal");
     doc.setTextColor(80, 80, 80);
 
     if (generatedBy) {
@@ -387,64 +398,30 @@ export async function exportToPDF<T>(options: ERPExportOptions<T>): Promise<ERPE
       headStyles: {
         fillColor: headerFillColor,
         textColor: [255, 255, 255],
-        fontStyle: "bold",
-        font: "helvetica", // header labels are always Latin
+        fontStyle: hasArabic ? "normal" : "bold",
+        font: bodyFont,
       },
       alternateRowStyles: { fillColor: [245, 245, 245] },
-      margin: { left: 15, right: 15 },
-      didDrawPage: (pageData) => {
-        const pageCount = doc.getNumberOfPages();
-
-        // Watermark
-        if (watermarkText) {
-          doc.saveGraphicsState?.();
-          doc.setFontSize(40);
-          doc.setTextColor(200, 200, 200);
-          doc.setFont("helvetica", "bold");
-          doc.text(watermarkText, pageWidth / 2, pageHeight / 2, {
-            align: "center",
-            angle: 45,
-          });
-          doc.setFontSize(8);
-          doc.setTextColor(80, 80, 80);
-        }
-
-        // Page number
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(80, 80, 80);
-        doc.text(
-          `Page ${pageData.pageNumber} of ${pageCount}`,
-          pageWidth / 2,
-          pageHeight - 10,
-          { align: "center" }
-        );
-
-        // Footer text
-        doc.setFontSize(7);
-        doc.setTextColor(150, 150, 150);
-        doc.text(footerText, pageWidth / 2, pageHeight - 5, { align: "center" });
-
-        // Report code in footer (right side)
-        if (branding?.reportCode) {
-          doc.text(branding.reportCode, pageWidth - 15, pageHeight - 5, { align: "right" });
-        }
-      },
+      margin: { left: 15, right: 15, bottom: 20 },
     });
 
     // ── Signatory block (last page) ────────────────────────────────────────
-    if (showSignatory && branding?.signatoryName) {
+    if ((showSignatory && branding?.signatoryName) || (branding?.showStamp && stampDataUrl)) {
       const finalY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? currentY;
-      const sigY = Math.min(finalY + 15, pageHeight - 40);
+      // Never clamp upwards into the final table row. Reserve the whole block
+      // or move it to a new page; stamp and signatory policies are independent.
+      const needsPage = finalY + 65 > pageHeight - 20;
+      if (needsPage) doc.addPage();
+      const sigY = needsPage ? 25 : finalY + 15;
       doc.setFontSize(8);
-      doc.setFont("helvetica", "normal");
+      doc.setFont(bodyFont, "normal");
       doc.setTextColor(60, 60, 60);
-      doc.text("Authorized by:", 15, sigY);
+      if (showSignatory) doc.text("Authorized by:", 15, sigY);
 
       let sigLineY = sigY + 5;
 
       // Embed signature image if available
-      if (signatureDataUrl) {
+      if (showSignatory && signatureDataUrl) {
         try {
           doc.addImage(signatureDataUrl, 15, sigLineY, 40, 0); // 40mm wide, auto height
           sigLineY += 14;
@@ -453,16 +430,16 @@ export async function exportToPDF<T>(options: ERPExportOptions<T>): Promise<ERPE
         }
       }
 
-      doc.setFont("helvetica", "bold");
-      doc.text(branding.signatoryName, 15, sigLineY);
-      if (branding.signatoryTitleEn) {
-        doc.setFont("helvetica", "normal");
+      doc.setFont(bodyFont, hasArabic ? "normal" : "bold");
+      if (showSignatory && branding?.signatoryName) doc.text(branding.signatoryName, 15, sigLineY);
+      if (showSignatory && branding?.signatoryTitleEn) {
+        doc.setFont(bodyFont, "normal");
         doc.text(branding.signatoryTitleEn, 15, sigLineY + 5);
       }
-      doc.line(15, sigLineY + 10, 70, sigLineY + 10);
+      if (showSignatory) doc.line(15, sigLineY + 10, 70, sigLineY + 10);
 
       // Embed stamp image if available, to the right of signatory
-      if (branding.showStamp && stampDataUrl) {
+      if (branding?.showStamp && stampDataUrl) {
         try {
           doc.addImage(stampDataUrl, pageWidth - 50, sigY, 30, 30); // 30×30mm at right
         } catch {
@@ -471,7 +448,25 @@ export async function exportToPDF<T>(options: ERPExportOptions<T>): Promise<ERPE
       }
     }
 
+    // Pagination is final only after the sign-off page has been added.
+    const pageCount = doc.getNumberOfPages();
+    for (let page = 1; page <= pageCount; page++) {
+      doc.setPage(page);
+      if (watermarkText) {
+        doc.saveGraphicsState();
+        doc.setFontSize(40); doc.setTextColor(200, 200, 200); doc.setFont(bodyFont, "normal");
+        doc.text(watermarkText, pageWidth / 2, pageHeight / 2, { align: "center", angle: 45 });
+        doc.restoreGraphicsState();
+      }
+      doc.setFontSize(8); doc.setFont(bodyFont, "normal"); doc.setTextColor(80, 80, 80);
+      doc.text(`Page ${page} of ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: "center" });
+      doc.setFontSize(7); doc.setTextColor(150, 150, 150);
+      doc.text(footerText, pageWidth / 2, pageHeight - 5, { align: "center" });
+      if (branding?.reportCode) doc.text(branding.reportCode, pageWidth - 15, pageHeight - 5, { align: "right" });
+    }
+
     const downloadFilename = generateFilename(filename, "pdf");
+    if(options.canCommit?.()===false)throw Error('This report is no longer current. No file was downloaded.');
     doc.save(downloadFilename);
 
     return { success: true, filename: downloadFilename };

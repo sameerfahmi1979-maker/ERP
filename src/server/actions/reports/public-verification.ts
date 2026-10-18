@@ -26,6 +26,7 @@ import {
   buildVerificationSummary,
 } from "@/lib/public-verification";
 import { checkTemplateIsIssuable } from "@/server/actions/reports/template-governance";
+import { sanitizeVerificationFields } from "@/lib/public-verification/sanitizer";
 import type {
   CreateOutputPublicLinkInput,
   OutputPublicLink,
@@ -61,6 +62,9 @@ export async function createOutputPublicLink(
     !hasPermission(ctx, "reports.manage")
   ) {
     return { success: false, error: "Permission denied: reports.publish required." };
+  }
+  if (["letter", "certificate", "form"].includes(input.output_type)) {
+    return { success: false, error: "Issue the approved official document first. A standalone verification link cannot establish an issued original's authenticity." };
   }
 
   const token = generateVerificationToken();
@@ -174,7 +178,7 @@ export async function createOutputPublicLink(
 export async function getPublicVerificationByToken(
   token: string
 ): Promise<ActionResult<PublicVerificationResult | null>> {
-  if (!token || token.length < 32) {
+  if (!token || !/^[A-Za-z0-9_-]{32,256}$/.test(token)) {
     return { success: true, data: null };
   }
 
@@ -185,7 +189,7 @@ export async function getPublicVerificationByToken(
   });
 
   if (error) {
-    return { success: true, data: null };
+    return { success: false, error: "Verification is temporarily unavailable. Please try again later or contact the issuing organization." };
   }
 
   if (!data) {
@@ -193,6 +197,10 @@ export async function getPublicVerificationByToken(
   }
 
   const result = data as Record<string, unknown>;
+  if (!["valid", "expired", "cancelled", "superseded", "legacy_metadata"].includes(String(result.status))) {
+    return { success: false, error: "Verification is temporarily unavailable. No authenticity claim can be made." };
+  }
+  const isValid = result.status === "valid";
 
   return {
     success: true,
@@ -207,11 +215,11 @@ export async function getPublicVerificationByToken(
       issued_at: (result.issued_at as string) ?? "",
       expires_at: (result.expires_at as string) ?? null,
       cancelled_at: (result.cancelled_at as string) ?? null,
-      cancel_reason: (result.cancel_reason as string) ?? null,
-      verification_summary: (result.verification_summary as Record<string, unknown>) ?? {},
-      public_payload: (result.public_payload as Record<string, unknown>) ?? {},
-      download_enabled: Boolean(result.download_enabled),
-      superseded_by_token: (result.superseded_by_token as string) ?? null,
+      cancel_reason: null,
+      verification_summary: isValid ? sanitizeVerificationFields(result.verification_summary, String(result.output_type)) : {},
+      public_payload: isValid ? sanitizeVerificationFields(result.public_payload, String(result.output_type)) : {},
+      download_enabled: false,
+      superseded_by_token: null,
     } satisfies PublicVerificationResult,
   };
 }

@@ -12,7 +12,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContextForProfileId } from "@/lib/rbac/check";
 import { runReport } from "@/lib/report-center/report-runner";
 import { getDefaultEmailProviderSystem } from "@/lib/email/providers/factory";
-import { generateAttachmentByType } from "@/lib/export/generate-attachment";
+import { generateServerAttachmentByType } from "@/lib/export/server-attachment";
 import { resolveTemplateForExport } from "@/lib/report-center/template-export";
 import type { ERPExportOptions } from "@/lib/export/export-types";
 import type { EmailAttachment } from "@/lib/email/email-types";
@@ -111,7 +111,7 @@ export async function executeScheduleRun(
 
   let attachment;
   try {
-    attachment = await generateAttachmentByType(sched.output_format, exportOptions);
+    attachment = await generateServerAttachmentByType(sched.output_format, exportOptions);
   } catch (err) {
     return {
       success: false,

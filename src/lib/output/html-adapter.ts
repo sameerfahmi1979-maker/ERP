@@ -60,6 +60,8 @@ export async function renderOfficialHtmlToPdf(input: {
   paperHeightMm?: number;
   timeoutMs?: number;
   marginsMm?: { top: number; bottom: number; left: number; right: number };
+  headerHtml?: string;
+  footerHtml?: string;
 }): Promise<OfficialHtmlRenderResult> {
   const healthy = await isGotenbergHealthy();
   if (!healthy) {
@@ -78,6 +80,8 @@ export async function renderOfficialHtmlToPdf(input: {
       printBackground: true,
       waitForExpression: WAIT_FOR_FONTS,
       timeout: input.timeoutMs,
+      headerHtml: input.headerHtml,
+      footerHtml: input.footerHtml,
     });
     const rendererVersion = await getGotenbergVersion();
     return { buffer, sha256: checksum, fileSizeBytes, rendererVersion };

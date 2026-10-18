@@ -1,0 +1,41 @@
+import { beforeEach, expect, it, vi } from "vitest";
+const m = vi.hoisted(() => ({ scope: true, active: true, changedActor: false, revokedBrand: false, renderer: vi.fn(), runner: vi.fn(), brand: vi.fn(), selected: vi.fn(), from: vi.fn(), registry: {} as Record<string, unknown> }));
+vi.mock("@/lib/rbac/check", () => ({ getAuthContext: async () => ({ profile: { id: m.changedActor ? 12 : 11 } }), canUseApplication: () => m.active }));
+vi.mock("@/lib/rbac/employee-access", () => ({ getEmployeeAccess: async () => ({ subject: { id: 1, owner_company_id: 1 }, allows: () => m.scope }) }));
+vi.mock("@/lib/report-center/report-runner", () => ({ runReport: m.runner }));
+vi.mock("@/lib/report-center/template-export", () => ({ resolveTemplateForExport: m.brand }));
+vi.mock("@/lib/output/letterhead-selection", () => ({ requirePermittedLetterhead: m.selected }));
+vi.mock("@/lib/output/html-adapter", () => ({ renderOfficialHtmlToPdf: m.renderer }));
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ from: m.from }) }));
+import { previewOfficialDocument } from "@/server/actions/output/preview-official-document";
+const request = { outputCode: "HR_EMPLOYMENT_CONFIRMATION", employeeId: 1, language: "bilingual" as const, inputs: {} };
+const branding = () => ({ companyNameEn: "SYNTHETIC EMPLOYER", companyNameAr: "شركة اختبار", provenance: { schemaVersion: 1, templateId: 2, ownerCompanyId: 1, templateRevision: "1", templateVersion: 1, brandingProfileId: 3, brandingRevision: "1", assets: [] } });
+const data = () => ({ success: true, resolvedTemplateId: 2, data: { columns: [], rows: [{ employee_name: "SYNTHETIC EMPLOYEE", employee_name_ar: "موظف اختبار", employee_code: "SYN-1", designation: "Synthetic role", designation_ar: "وظيفة", joining_date: "2024-01-01", company_name: "SYNTHETIC EMPLOYER", owner_company_id: 1 }], meta: { sourceRecordId: 1 } } });
+beforeEach(() => {
+  vi.resetAllMocks(); m.scope = true; m.active = true; m.changedActor = false;
+  m.registry = { report_code: request.outputCode, module_code: "HR", document_class: "A", required_permissions: [] };
+  m.from.mockImplementation((table: string) => { expect(table).toBe("erp_report_registry"); const query = { select: () => query, eq: () => query, is: () => query, maybeSingle: async () => ({ data: m.registry, error: null }) }; return query; });
+  m.runner.mockResolvedValue(data()); m.brand.mockImplementation(async () => branding());
+  m.renderer.mockResolvedValue({ buffer: Buffer.from("%PDF-synthetic-unit-only"), sha256: "a".repeat(64) });
+});
+it("uses canonical bilingual draft layout, exact employee/company and no official writer", async () => {
+  const result = await previewOfficialDocument(request); expect(result.success).toBe(true);
+  expect(m.runner).toHaveBeenCalledWith(expect.objectContaining({ filters: { employee_id: "1" }, ownerCompanyIds: [1] }), expect.anything());
+  expect(m.brand).toHaveBeenCalledWith(expect.objectContaining({ templateId: 2, forIssuance: true, omitOfficialMarks: true }));
+  const plan = m.renderer.mock.calls[0][0]; expect(plan.html).toContain("Draft — Not Officially Issued"); expect(plan.html).toContain("SYNTHETIC EMPLOYEE");expect(plan.html).not.toContain('<div class="od-signature">');
+  expect(plan.footerHtml).toContain('class="totalPages"'); expect(plan.html).not.toContain("/verify/");
+  expect(m.from.mock.calls.every(([table]) => table === "erp_report_registry")).toBe(true);
+});
+it("permits clearly labelled drafts without inventing business wording approval", async () => { expect(await previewOfficialDocument(request)).toMatchObject({ success: true, notice: expect.stringContaining("No signature, stamp, serial or active verification link") }); });
+it("keeps missing-wording definitions unavailable", async () => { expect(await previewOfficialDocument({ ...request, outputCode: "HR_EMBASSY_LETTER" })).toMatchObject({ success: false }); expect(m.renderer).not.toHaveBeenCalled(); });
+it("rejects undeclared inputs and invalid languages before rendering", async () => { expect(await previewOfficialDocument({ ...request, inputs: { html: "<script>" } })).toMatchObject({ success: false }); expect(await previewOfficialDocument({ ...request, language: "xx" as "en" })).toMatchObject({ success: false }); expect(m.renderer).not.toHaveBeenCalled(); });
+it("gives a useful missing-field list instead of rendering blank personal data", async () => { const report = data(); report.data.rows[0].employee_name = ""; m.runner.mockResolvedValue(report); const result = await previewOfficialDocument(request); expect(result).toMatchObject({ success: false, error: expect.stringMatching(/name/i) }); expect(m.renderer).not.toHaveBeenCalled(); });
+it.each(["subject", "company"])("rejects mismatched %s data", async mode => { const report = data(); if (mode === "subject") report.data.meta.sourceRecordId = 9; else report.data.rows[0].owner_company_id = 9; m.runner.mockResolvedValue(report); expect(await previewOfficialDocument(request)).toMatchObject({ success: false }); expect(m.renderer).not.toHaveBeenCalled(); });
+it("does not substitute an unrelated company's letterhead", async () => { m.brand.mockResolvedValue({ ...branding(), provenance: { ...branding().provenance, ownerCompanyId: 9 } }); expect(await previewOfficialDocument(request)).toMatchObject({ success: false }); expect(m.renderer).not.toHaveBeenCalled(); });
+it("fails closed on inactive/missing current permissions", async () => { m.scope = false; expect(await previewOfficialDocument(request)).toMatchObject({ success: false }); expect(m.runner).not.toHaveBeenCalled(); m.active = false; expect(await previewOfficialDocument(request)).toMatchObject({ success: false }); });
+it.each(["actor", "scope", "brand"])("discards completed bytes after a concurrent %s change", async mode => {
+  m.renderer.mockImplementation(async () => { if (mode === "actor") m.changedActor = true; if (mode === "scope") m.scope = false; if (mode === "brand") m.brand.mockResolvedValue(null); return { buffer: Buffer.from("%PDF-unit"), sha256: "a".repeat(64) }; });
+  const result = await previewOfficialDocument(request); expect(result.success).toBe(false); expect(result).not.toHaveProperty("pdfBase64");
+});
+it("fails closed on renderer errors without returning private error text", async () => { m.renderer.mockRejectedValue(Error("PRIVATE_DATA_FAILURE")); const result = await previewOfficialDocument(request); expect(result).toMatchObject({ success: false }); expect(JSON.stringify(result)).not.toContain("PRIVATE_DATA"); });
+it("bounds serialized draft bytes", async () => { m.renderer.mockResolvedValue({ buffer: Buffer.alloc(8 * 1024 * 1024 + 1), sha256: "a".repeat(64) }); expect(await previewOfficialDocument(request)).toMatchObject({ success: false, error: expect.stringContaining("too large") }); });

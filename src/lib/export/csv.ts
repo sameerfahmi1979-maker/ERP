@@ -7,13 +7,14 @@
 
 import type { ERPExportOptions, ERPExportResult } from "./export-types";
 import { logger } from "@/lib/logger";
-import { getColumnValue, escapeCsvField, generateFilename } from "./format-export-data";
+import { getTypedExportValue, escapeCsvField, generateFilename } from "./format-export-data";
 
 /**
  * Export data to CSV format and trigger download
  */
 export function exportToCSV<T>(options: ERPExportOptions<T>): ERPExportResult {
   try {
+    if(options.canCommit?.()===false)throw Error('This report is no longer current. No file was downloaded.');
     const { columns, data, filename } = options;
 
     // Generate header row
@@ -23,7 +24,7 @@ export function exportToCSV<T>(options: ERPExportOptions<T>): ERPExportResult {
     // Generate data rows
     const dataRows = data.map((row) => {
       const values = columns.map((col) => {
-        const value = getColumnValue(row, col);
+        const value = getTypedExportValue(row, col);
         return escapeCsvField(value);
       });
       return values.join(",");

@@ -20,6 +20,7 @@ function load(path, mocks = {}) {
   return compiledModule.exports;
 }
 const scope = load('src/lib/rbac/scope.ts');
+const filterContract = load('src/lib/report-center/filter-contract.ts');
 const employee = load('src/lib/rbac/employee-access.ts', {
   'server-only': {}, '@/lib/supabase/admin': {createAdminClient() {throw Error('No native I/O permitted');}},
   './check': {...scope, assertAccountActive(ctx) {assert.equal(scope.canUseApplication(ctx), true);}},
@@ -67,6 +68,10 @@ async function catalog(context, required = ['hr.employees.view', 'reports.pdf.ge
     '@/lib/output/class-policy': {resolveEffectivePolicy: () => ({approvalRequired: false, allowQuickPrint: false, qrPolicy: 'none', qrValidityDays: null, official: false})},
     '@/lib/output/issuance-status': {groupForClass: () => 'source-probe'},
     '@/lib/official-documents/registry': {getOfficialDocumentDefinition: () => null, isGeneratable() {throw Error('Unused');}},
+    // This admission fixture deliberately has no fixed definition; never
+    // invent wording approval to make a real official template pass.
+    '@/lib/official-documents/catalogue': {officialWordingBlockers() {throw Error('No definition in this fixture');}},
+    '@/lib/rbac/employee-access': employee,
   });
   return {result: await mod.listEmployeeOutputCatalog(), calls};
 }
@@ -196,6 +201,7 @@ async function reportRead(context, mode = 'criteria', options = {}) {
     '@/lib/supabase/server': {createClient: async () => {ordinaryClients++; return ordinary;}},
     '@/lib/reads/search': search, '@/lib/reads/report-criteria-schema': criteriaDto,
     '@/lib/reads/report-saved-filters-schema': savedDto,
+    '@/lib/report-center/filter-contract': filterContract,
   });
   const input = mode === 'criteria' ? {reportCode: 'HR_SOURCE_ONLY', key, ...(options.criteria ?? {})}
     : mode === 'saved-detail' ? {reportCode: 'HR_SOURCE_ONLY', mode: 'detail', id: 7}

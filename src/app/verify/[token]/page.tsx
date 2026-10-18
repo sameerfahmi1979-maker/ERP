@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     title: doc
       ? `Verify: ${doc.document_title}`
       : "Document Verification",
-    description: doc
+    description: doc?.status === "valid"
       ? `Verify the authenticity of ${doc.document_title}`
       : "Document verification page",
     robots: { index: false, follow: false },
@@ -30,6 +30,7 @@ export default async function VerifyTokenPage({ params }: PageProps) {
     <VerifyPageContent
       token={token}
       result={result.data ?? null}
+      unavailable={!result.success}
     />
   );
 }

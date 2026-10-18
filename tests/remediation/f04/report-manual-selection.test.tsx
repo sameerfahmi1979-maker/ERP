@@ -11,7 +11,7 @@ import type {AuthContext} from "@/lib/rbac/check";
 import type {ReportDataResult, ReportRegistryEntry} from "@/lib/report-center/types";
 
 const m = vi.hoisted(() => ({
-  run: vi.fn(), read: vi.fn(), branding: vi.fn(), write: vi.fn(), output: vi.fn(), network: vi.fn(), picker: vi.fn(),
+  run: vi.fn(), read: vi.fn(), branding: vi.fn(), write: vi.fn(), output: vi.fn(), network: vi.fn(), picker: vi.fn(), toolbar:vi.fn(),
 }));
 vi.mock("@/lib/reads/client", async () => ({...await vi.importActual("@/lib/reads/client"), readJson: m.read}));
 vi.mock("@/server/actions/reports/runner", () => ({runReportAction: m.run}));
@@ -21,7 +21,7 @@ vi.mock("@/lib/export/excel", () => ({exportToExcel: m.output}));
 vi.mock("@/lib/export/pdf", () => ({exportToPDF: m.output}));
 vi.mock("@/lib/export/print", () => ({exportToPrint: m.output}));
 vi.mock("@/components/report-center/report-preview-header", () => ({ReportPreviewHeader: () => null}));
-vi.mock("@/features/report-center/report-export-toolbar", () => ({ReportExportToolbar: () => null}));
+vi.mock("@/features/report-center/report-export-toolbar", () => ({ReportExportToolbar: (props:unknown) => {m.toolbar(props);return null;}}));
 vi.mock("@/features/report-center/report-results-table", () => ({ReportResultsTable: ({data}: {data: ReportDataResult}) => <div data-testid="results">{JSON.stringify(data)}</div>}));
 vi.mock("@/components/report-center/report-template-select-dialog", () => ({
   ReportTemplateSelectDialog: (props: {open: boolean; onSelect: (id: number) => void}) => {
@@ -153,8 +153,9 @@ it("picker callback continues once with the newly chosen ID and unchanged reques
   expect(screen.getByTestId("results").textContent).toContain("SELECTED_SUCCESS_CONTROL");
   expect(screen.queryByRole("dialog", {name: "Select Report Template"})).toBeNull();
   expect(screen.queryByText(manualMessage)).toBeNull();
-  // The existing pre-preview and accepted-run fallback must both use the chosen ID.
-  expect(m.branding).toHaveBeenCalledTimes(2);
+  // Resolve branding only for the accepted selected run; no speculative
+  // pre-preview may race and overwrite the final result's identity.
+  expect(m.branding).toHaveBeenCalledTimes(1);
 });
 
 it("server denial of the selected template remains an error with no automatic rerun or reopened picker", async () => {
@@ -166,7 +167,7 @@ it("server denial of the selected template remains an error with no automatic re
   expect(screen.getByText(error)).toBeDefined();
   expect(screen.queryByTestId("results")).toBeNull();
   expect(screen.queryByRole("dialog", {name: "Select Report Template"})).toBeNull();
-  expect(m.branding).toHaveBeenCalledTimes(1);
+  expect(m.branding).not.toHaveBeenCalled();
 });
 
 it.each(["account change", "permission retirement", "unmount", "read denial", "changed filters"])(
@@ -206,6 +207,13 @@ it.each(["account change", "permission retirement", "unmount"])(
     expect(screen.queryByRole("dialog", {name: "Select Report Template"})).toBeNull();
     expect(screen.queryByTestId("results")).toBeNull();
     expect(screen.queryByText(manualMessage)).toBeNull();
-    expect(m.branding).toHaveBeenCalledTimes(1);
+    expect(m.branding).not.toHaveBeenCalled();
   }
 );
+it('export stays fenced until matching branding arrives, and a changed filter retires the accepted output',async()=>{
+ allowBranding=true;let resolve!:(value:unknown)=>void;m.branding.mockReturnValue(new Promise(r=>{resolve=r;}));
+ await mountAndRun({success:true,data:{...selectedSuccess().data,resolvedTemplateId:701}});
+ const get=()=>m.toolbar.mock.calls.at(-1)![0] as {canUseData:()=>boolean};expect(get().canUseData()).toBe(false);
+ await act(async()=>resolve({success:true,data:{name:'CURRENT_SYNTHETIC_BRAND'}}));expect(get().canUseData()).toBe(true);
+ const previous=get();fireEvent.change(screen.getByLabelText('Date From'),{target:{value:'2026-10-03'}});expect(previous.canUseData()).toBe(false);expect(get().canUseData()).toBe(false);
+});

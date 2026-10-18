@@ -42,6 +42,7 @@ function escapeAttr(url: string | null | undefined): string {
  */
 export function exportToPrint<T>(options: ERPExportOptions<T>, reservedWindow?: Window | null): ERPExportResult {
   try {
+    if(options.canCommit?.()===false)throw Error('This report is no longer current. No print view was opened.');
     const html = generatePrintHTML(options);
     const printWindow = reservedWindow === undefined ? window.open("", "_blank", "width=900,height=700") : reservedWindow;
 

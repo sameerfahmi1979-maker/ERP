@@ -11,10 +11,10 @@
  */
 
 import { z } from "zod";
+import { createHash } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
-import { logAudit } from "@/server/actions/audit";
 import { canAccessIssuedFile, issuedFileUrl } from "@/lib/output/issued-file-access";
 import { getEmployeeAccess } from "@/lib/rbac/employee-access";
 import { generateOfficialDocument } from "@/server/actions/output/generate-official-document";
@@ -29,6 +29,7 @@ import {
 } from "@/lib/output/issuance-status";
 
 export interface IssuanceHistoryItem {
+  can_recover?: boolean;
   id: number;
   output_code: string | null;
   document_class: string | null;
@@ -58,7 +59,7 @@ export interface RecordIssuanceHistory {
   canRevoke: boolean;
   /** Current user may authorize a superseding reissue. */
   canReissue: boolean;
-  /** Current user may permanently delete any document record (system_admin only). */
+  /** Permanent disposal stays disabled pending approved retention governance. */
   canDelete: boolean;
 }
 
@@ -75,7 +76,7 @@ export async function listRecordIssuances(input: {
   const { data, error } = await db
     .from("erp_generated_pdf_documents")
     .select(
-      "id, output_code, document_class, file_name, lifecycle_state, generated_at, issued_at, revoked_at, revoke_reason, expires_at, superseded_by_id, supersedes_issuance_id, serial_no, file_size_bytes, checksum, failure_reason, owner_company_id"
+      "id, output_code, document_class, file_name, lifecycle_state, generated_at, issued_at, revoked_at, revoke_reason, expires_at, superseded_by_id, supersedes_issuance_id, serial_no, file_size_bytes, checksum, failure_reason, owner_company_id, generated_by"
     )
     .eq("source_record_type", input.sourceRecordType)
     .eq("source_record_id", input.recordId)
@@ -89,6 +90,7 @@ export async function listRecordIssuances(input: {
   const items = (data ?? [])
     .map((r) => ({
       id: r.id as number,
+      can_recover: r.generated_by === ctx.profile?.id && access.allows("reports.pdf.generate") && access.allows("reports.run") && ["pending", "rendering", "uploaded", "failed_retryable", "reconciliation_required"].includes(r.lifecycle_state ?? ""),
       output_code: r.output_code,
       document_class: r.document_class,
       file_name: r.file_name,
@@ -113,8 +115,7 @@ export async function listRecordIssuances(input: {
       items,
       canRevoke: access.allows("outputs.ops.revoke") || access.allows("reports.pdf.approve"),
       canReissue: access.allows("reports.pdf.approve") || access.allows("outputs.ops.retry"),
-      /** canDelete = may remove FAILED generation artifacts only — never issued documents. */
-      canDelete: isGlobalAdmin(ctx),
+      canDelete: false,
     },
   };
 }
@@ -155,7 +156,7 @@ export async function getIssuanceDownloadUrl(
 
 const revokeSchema = z.object({
   issuanceId: z.number().int().positive(),
-  reason: z.string().min(5).max(1000),
+  reason: z.string().trim().min(5).max(1000),
 });
 
 export async function revokeIssuance(
@@ -169,47 +170,13 @@ export async function revokeIssuance(
   if (!parsed.success) return { success: false, error: "A revoke reason (min 5 characters) is required." };
   if (!(await canAccessIssuedFile(parsed.data.issuanceId, "outputs.ops.revoke")) && !(await canAccessIssuedFile(parsed.data.issuanceId, "reports.pdf.approve"))) return { success: false, error: "Document unavailable or access denied." };
 
-  const db = createAdminClient();
-  const { data: doc, error } = await db
-    .from("erp_generated_pdf_documents")
-    .select("id, owner_company_id, lifecycle_state, revoked_at, output_code, file_name")
-    .eq("id", parsed.data.issuanceId)
-    .single();
-  if (error || !doc) return { success: false, error: "Document not found." };
-  if (doc.lifecycle_state !== "issued") {
-    return { success: false, error: "Only issued documents can be revoked." };
-  }
-  if (doc.revoked_at) return { success: false, error: "Document is already revoked." };
-
-  const now = new Date().toISOString();
-  const { data: updated, error: updateError } = await db
-    .from("erp_generated_pdf_documents")
-    .update({
-      revoked_at: now,
-      revoked_by: ctx.profile?.id ?? null,
-      revoke_reason: parsed.data.reason,
-    })
-    .eq("id", doc.id)
-    .is("revoked_at", null).eq("lifecycle_state", "issued").select("id");
-  if (updateError) return { success: false, error: updateError.message };
-  if (!updated?.length) return { success: false, error: "Document changed concurrently. Refresh its history." };
-
-  // Cancel the linked public verification link(s) — a revoked document must not verify.
-  await db
-    .from("erp_output_public_links")
-    .update({ status: "cancelled", updated_at: now, updated_by: ctx.profile?.id ?? null })
-    .eq("generated_pdf_document_id", doc.id)
-    .in("status", ["valid", "pending_activation"]);
-
-  await logAudit({
-    module_code: "reports",
-    entity_name: "erp_generated_pdf_documents",
-    entity_id: doc.id,
-    entity_reference: doc.output_code ?? String(doc.id),
-    action: "update",
-    new_values: { event: "output_revoked", reason: parsed.data.reason, file_name: doc.file_name },
-  }).catch(() => {});
-
+  // Parent, public links and mandatory audit commit (or roll back) together.
+  const result = await (await createClient()).rpc("f08_revoke_output", {
+    p_id: parsed.data.issuanceId, p_reason: parsed.data.reason,
+  });
+  if (result.error || result.data?.id !== parsed.data.issuanceId) return {
+    success: false, error: "Revocation was not confirmed. Refresh the original history before retrying.",
+  };
   return { success: true };
 }
 
@@ -219,7 +186,7 @@ export async function revokeIssuance(
 
 const reissueSchema = z.object({
   issuanceId: z.number().int().positive(),
-  reason: z.string().min(5).max(1000),
+  reason: z.string().trim().min(5).max(1000),
   issueQr: z.boolean().default(false),
 });
 
@@ -268,125 +235,34 @@ export async function reissueOfficialDocument(
     issueQr: parsed.data.issueQr,
     authorizeReissue: true,
     supersedesIssuanceId: doc.id as number,
-    clientRequestToken: `reissue-${doc.id}-${Date.now()}`,
+    reissueReason: parsed.data.reason,
+    // A response-loss retry must keep the original command identity.
+    clientRequestToken: `reissue-${createHash("sha256").update(JSON.stringify([
+      ctx.profile?.id, doc.id, parsed.data.reason, parsed.data.issueQr,
+    ])).digest("hex")}`,
     language: snapshot.language,
     inputs: snapshot.inputs,
   });
 
   if (outcome.success && outcome.issuanceId) {
-    // Mark the old issuance as superseded by the new one.
-    await db
-      .from("erp_generated_pdf_documents")
-      .update({ superseded_by_id: outcome.issuanceId })
-      .eq("id", doc.id)
-      .is("superseded_by_id", null);
-
-    await logAudit({
-      module_code: "reports",
-      entity_name: "erp_generated_pdf_documents",
-      entity_id: doc.id,
-      entity_reference: doc.output_code as string,
-      action: "update",
-      new_values: {
-        event: "output_superseded",
-        reason: parsed.data.reason,
-        superseded_by_id: outcome.issuanceId,
-      },
-    }).catch(() => {});
+    // Finalization owns both graph edges and audit. Never repair half a graph here.
+    const original = await db.from("erp_generated_pdf_documents").select("superseded_by_id").eq("id", doc.id).single();
+    const replacement = await db.from("erp_generated_pdf_documents").select("supersedes_issuance_id,lifecycle_state").eq("id", outcome.issuanceId).single();
+    if (original.error || replacement.error || original.data?.superseded_by_id !== outcome.issuanceId ||
+      replacement.data?.supersedes_issuance_id !== doc.id || replacement.data?.lifecycle_state !== "issued") {
+      return { success: false, blocked: "reconciliation_required", error: "Replacement was not confirmed. Reconcile this request; do not create another issuance." };
+    }
   }
 
   return outcome;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Cleanup of failed generation artifacts (system_admin only)
-//
-// GOVERNANCE: Issued official documents are immutable records. Hard deletion is
-// NEVER permitted for any document in the `issued` lifecycle state. Use
-// revokeIssuance to invalidate a document — the DB row, PDF, hash, audit trail,
-// and supersession links are all retained. Serial numbers are never reused.
-//
-// This action is ONLY permitted for documents that failed before reaching the
-// `issued` state (failed_retryable, failed_terminal, cancelled, pending orphans)
-// and have no associated official issuance record.
-// ─────────────────────────────────────────────────────────────────────────────
-
-const DELETABLE_LIFECYCLE_STATES = new Set([
-  "failed_retryable",
-  "failed_terminal",
-  "cancelled",
-  "pending",
-]);
-
-export async function deleteIssuance(input: { issuanceId: number }): Promise<ActionResult<void>> {
+/** Failed artifacts may still contain committed bytes, serials and recovery evidence.
+ * No permanent removal is permitted until retention/provenance policy is approved.
+ */
+export async function deleteIssuance(_input: { issuanceId: number }): Promise<ActionResult<void>> {
+  void _input;
   const ctx = await getAuthContext();
-  if (!isGlobalAdmin(ctx)) {
-    return { success: false, error: "Only System Administrators can remove failed document artifacts." };
-  }
-
-  const db = createAdminClient();
-  const { data: doc, error: fetchErr } = await db
-    .from("erp_generated_pdf_documents")
-    .select("id, storage_path, file_name, output_code, lifecycle_state, serial_no, issued_at")
-    .eq("id", input.issuanceId)
-    .single();
-
-  if (fetchErr || !doc) return { success: false, error: "Document not found." };
-
-  // IMMUTABILITY GUARD — issued documents can NEVER be hard-deleted.
-  // `uploaded` is also protected: it reached storage before the issued transition.
-  if (
-    doc.lifecycle_state === "issued" ||
-    doc.lifecycle_state === "uploaded" ||
-    doc.lifecycle_state === "rendering"
-  ) {
-    return {
-      success: false,
-      error:
-        `Official document '${doc.file_name}' is in state '${doc.lifecycle_state}' and cannot be permanently deleted. ` +
-        "Issued documents are immutable records. Use Revoke to invalidate the document while retaining the compliance record, " +
-        "or Generate New to create a fresh issuance.",
-    };
-  }
-
-  if (!DELETABLE_LIFECYCLE_STATES.has(doc.lifecycle_state as string)) {
-    return {
-      success: false,
-      error: `Document lifecycle state '${doc.lifecycle_state}' does not permit deletion.`,
-    };
-  }
-
-  // For failed artifacts, remove any orphan storage object (these were never
-  // officially issued and may not exist — best-effort only).
-  if (doc.storage_path) {
-    await db.storage.from("erp-generated-pdfs").remove([doc.storage_path as string]).catch(() => {});
-  }
-
-  // Clear self-referencing FK columns on rows that supersede/were superseded by this one
-  await db
-    .from("erp_generated_pdf_documents")
-    .update({ superseded_by_id: null })
-    .eq("superseded_by_id", input.issuanceId);
-  await db
-    .from("erp_generated_pdf_documents")
-    .update({ supersedes_issuance_id: null })
-    .eq("supersedes_issuance_id", input.issuanceId);
-
-  const { error: delErr } = await db
-    .from("erp_generated_pdf_documents")
-    .delete()
-    .eq("id", input.issuanceId);
-
-  if (delErr) return { success: false, error: delErr.message };
-
-  await logAudit({
-    module_code: "reports",
-    action: "delete",
-    entity_name: "erp_generated_pdf_documents",
-    entity_id: input.issuanceId,
-    entity_reference: (doc.output_code as string | null) ?? String(input.issuanceId),
-    new_values: { event: "output_failed_artifact_removed", file_name: doc.file_name, lifecycle_state: doc.lifecycle_state },
-  }).catch(() => {});
-
-  return { success: true };
+  if (!isGlobalAdmin(ctx)) return { success: false, error: "Only System Administrators may review retained document artifacts." };
+  return { success: false, error: "Permanent removal is disabled pending approved retention governance. Original files, serials and recovery history are retained." };
 }

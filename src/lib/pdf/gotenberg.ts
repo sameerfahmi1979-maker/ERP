@@ -42,6 +42,7 @@
 
 import { assertConfiguredPrintUrl, getPdfTransportConfig } from "@/lib/config/server-features";
 import { createHash } from "crypto";
+import { readValidatedPdfResponse } from "./validate-response";
 
 /**
  * Health-check: returns true if Gotenberg is reachable.
@@ -154,8 +155,7 @@ export async function gotenbergConvertUrl(options: GotenbergUrlOptions): Promise
     throw new Error(`[Gotenberg] HTTP ${res.status}: ${errorText.substring(0, 200)}`);
   }
 
-  const arrayBuffer = await res.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
+  const buffer = await readValidatedPdfResponse(res);
   const checksum = createHash("sha256").update(buffer).digest("hex");
 
   return { buffer, checksum, fileSizeBytes: buffer.byteLength };
@@ -176,6 +176,8 @@ export interface GotenbergHtmlOptions {
   scale?: number;
   waitForExpression?: string;
   timeout?: number;
+  headerHtml?: string;
+  footerHtml?: string;
 }
 
 /**
@@ -219,6 +221,9 @@ export async function gotenbergConvertHtml(options: GotenbergHtmlOptions): Promi
     form.append("waitForExpression", options.waitForExpression);
   }
 
+  if (options.headerHtml) form.append("header.html", new Blob([options.headerHtml], { type: "text/html" }), "header.html");
+  if (options.footerHtml) form.append("footer.html", new Blob([options.footerHtml], { type: "text/html" }), "footer.html");
+
   const res = await fetch(`${GOTENBERG_URL}/forms/chromium/convert/html`, {
     method: "POST",
     body: form,
@@ -230,8 +235,7 @@ export async function gotenbergConvertHtml(options: GotenbergHtmlOptions): Promi
     throw new Error(`[Gotenberg] HTTP ${res.status}: ${errorText.substring(0, 200)}`);
   }
 
-  const arrayBuffer = await res.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
+  const buffer = await readValidatedPdfResponse(res);
   const checksum = createHash("sha256").update(buffer).digest("hex");
 
   return { buffer, checksum, fileSizeBytes: buffer.byteLength };

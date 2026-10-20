@@ -1,12 +1,12 @@
 "use server";
 
-import { calculateEmployeeReadiness } from "@/lib/hr/operations/readiness";
 import { isActiveBlock } from "@/lib/hr/operations/status";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
-import { logAudit } from "@/server/actions/audit";
-import { revalidatePath } from "next/cache";
-import { z } from "zod";
+import{childSaveContract,type ChildSaveContract,type ChildSaveResult}from "@/lib/hr/child-save-contract";
+import{canUseHrChild}from "@/lib/hr/child-authority";
+import{mutateHrChild}from "./child-mutation";
+import{OPERATION_ITEM_TABLES,type OperationItemKind}from '@/lib/hr/operation-item-contract';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -16,86 +16,8 @@ type ActionResult<T = undefined> =
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-import { getEmployeeCtx as getEmployeeContext } from "./_shared/employee-context";
 
 // ── Zod Schemas ────────────────────────────────────────────────────────────
-
-const assignmentSchema = z.object({
-  owner_company_id: z.number().int().positive().nullable().optional(),
-  branch_id: z.number().int().positive().nullable().optional(),
-  department_id: z.number().int().positive().nullable().optional(),
-  designation_id: z.number().int().positive().nullable().optional(),
-  work_site_id: z.number().int().positive().nullable().optional(),
-  assignment_type: z.enum(["primary", "temporary", "project", "site", "department", "relief"]).default("primary"),
-  assignment_status: z.enum(["active", "planned", "completed", "cancelled"]).default("active"),
-  effective_from: z.string().min(1),
-  effective_to: z.string().nullable().optional(),
-  reporting_manager_id: z.number().int().positive().nullable().optional(),
-  supervisor_id: z.number().int().positive().nullable().optional(),
-  notes: z.string().max(2000).nullable().optional(),
-});
-
-const roleRequirementSchema = z.object({
-  designation_id: z.number().int().positive().nullable().optional(),
-  requirement_type: z.enum(["document", "training", "medical", "access_card", "license", "other"]),
-  requirement_source: z.string().max(500).nullable().optional(),
-  required_reference_id: z.number().int().positive().nullable().optional(),
-  requirement_name: z.string().min(1).max(500),
-  is_required: z.boolean().default(true),
-  is_met: z.boolean().default(false),
-  met_record_type: z.string().max(100).nullable().optional(),
-  met_record_id: z.number().int().positive().nullable().optional(),
-  expiry_date: z.string().nullable().optional(),
-  status: z.enum(["met", "missing", "expired", "expiring_soon", "waived", "not_required"]).default("missing"),
-  notes: z.string().max(2000).nullable().optional(),
-});
-
-const operationalBlockSchema = z.object({
-  block_type: z.enum(["compliance", "medical", "training", "access", "payroll", "hr_hold", "operations", "safety", "other"]),
-  block_reason: z.string().min(1).max(2000),
-  block_status: z.enum(["active", "released", "expired", "cancelled"]).default("active"),
-  effective_from: z.string().min(1),
-  effective_to: z.string().nullable().optional(),
-  related_record_type: z.string().max(100).nullable().optional(),
-  related_record_id: z.number().int().positive().nullable().optional(),
-  notes: z.string().max(2000).nullable().optional(),
-});
-
-const assetSchema = z.object({
-  asset_type: z.enum(["id_card", "phone", "sim", "laptop", "vehicle", "tool", "key", "other"]),
-  asset_reference: z.string().max(200).nullable().optional(),
-  asset_description: z.string().min(1).max(1000),
-  issued_date: z.string().min(1),
-  return_due_date: z.string().nullable().optional(),
-  returned_date: z.string().nullable().optional(),
-  status: z.enum(["issued", "returned", "lost", "damaged", "cancelled"]).default("issued"),
-  condition_on_issue: z.string().max(500).nullable().optional(),
-  condition_on_return: z.string().max(500).nullable().optional(),
-  dms_document_id: z.number().int().positive().nullable().optional(),
-  notes: z.string().max(2000).nullable().optional(),
-});
-
-const ppeIssueSchema = z.object({
-  ppe_item: z.string().min(1).max(500),
-  standard_or_size: z.string().max(200).nullable().optional(),
-  quantity: z.number().positive().default(1),
-  issued_date: z.string().min(1),
-  expiry_or_replacement_date: z.string().nullable().optional(),
-  returned_date: z.string().nullable().optional(),
-  status: z.enum(["issued", "returned", "expired", "lost", "damaged", "cancelled"]).default("issued"),
-  dms_document_id: z.number().int().positive().nullable().optional(),
-  notes: z.string().max(2000).nullable().optional(),
-});
-
-const accommodationSchema = z.object({
-  accommodation_type: z.enum(["company_camp", "rented_room", "allowance", "other"]).nullable().optional(),
-  accommodation_location: z.string().max(500).nullable().optional(),
-  room_or_bed_no: z.string().max(100).nullable().optional(),
-  assigned_from: z.string().min(1),
-  assigned_to: z.string().nullable().optional(),
-  status: z.enum(["active", "ended", "cancelled"]).default("active"),
-  notes: z.string().max(2000).nullable().optional(),
-});
 
 // ══════════════════════════════════════════════════════════════════════
 // ASSIGNMENTS
@@ -207,126 +129,19 @@ export async function listGlobalEmployeeAssignments(params?: {
   return { success: true, data: { data: data ?? [], count: count ?? 0 } };
 }
 
-export async function createEmployeeAssignment(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const parsed = assignmentSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-
-  const emp = await getEmployeeContext(employeeId);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const admin = await createClient();
-  const { data: inserted, error } = await admin
-    .from("employee_assignments")
-    .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id })
-    .select("id")
-    .single();
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_assignments",
-    entity_id: inserted.id,
-    entity_reference: `${emp.employee_code}-assignment`,
-    action: "assignment_created",
-    new_values: {
-      parent_employee_id: employeeId,
-      employee_code: emp.employee_code,
-      employee_name: emp.full_name_en,
-      related_record_type: "employee_assignment",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${employeeId}`);
-  return { success: true, data: { id: inserted.id } };
+export async function createEmployeeAssignment(employeeId:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ return mutateHrChild({kind:'assignment',employeeId,id:null,revision:null,action:'create',values:input},contract);
 }
-
-export async function updateEmployeeAssignment(
-  id: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const parsed = assignmentSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-
-  const admin = await createClient();
-  const { data: existing, error: fetchError } = await admin
-    .from("employee_assignments")
-    .select("id, employee_id, employees(employee_code, full_name_en)")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-  if (fetchError || !existing) return { success: false, error: "Assignment not found" };
-
-  const { error } = await admin
-    .from("employee_assignments")
-    .update({ ...parsed.data, updated_by: ctx.profile?.id })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  const emp = existing.employees as unknown as { employee_code: string; full_name_en: string } | null;
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_assignments",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-assignment`,
-    action: "assignment_updated",
-    new_values: {
-      parent_employee_id: existing.employee_id,
-      employee_code: emp?.employee_code,
-      employee_name: emp?.full_name_en,
-      related_record_type: "employee_assignment",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${existing.employee_id}`);
-  return { success: true, data: { id } };
+async function changeAssignment(id:number,action:'update'|'archive',values:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ const checked=childSaveContract.safeParse(contract);
+ if(!Number.isSafeInteger(id)||id<1||!checked.success||checked.data.revision===null)return{success:false,error:'The original assignment opening revision and operation identity are required.'};
+ if(!canUseHrChild(await getAuthContext(),'assignment'))return{success:false,error:'Current assignment access is unavailable.',accessDenied:true};
+ const row=await(await createClient()).from('employee_assignments').select('employee_id').eq('id',id).is('deleted_at',null).maybeSingle();
+ if(row.error||!row.data||!Number.isSafeInteger(row.data.employee_id))return{success:false,error:'Current assignment scope could not be verified.'};
+ return mutateHrChild({kind:'assignment',employeeId:row.data.employee_id,id,revision:checked.data.revision,action,values},checked.data);
 }
-
-export async function archiveEmployeeAssignment(id: number): Promise<ActionResult<undefined>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const admin = await createClient();
-  const { data: existing, error: fetchError } = await admin
-    .from("employee_assignments")
-    .select("id, employee_id, employees(employee_code, full_name_en)")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-  if (fetchError || !existing) return { success: false, error: "Assignment not found" };
-
-  const { error } = await admin
-    .from("employee_assignments")
-    .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  const emp = existing.employees as unknown as { employee_code: string; full_name_en: string } | null;
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_assignments",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-assignment`,
-    action: "assignment_archived",
-    new_values: {
-      parent_employee_id: existing.employee_id,
-      employee_code: emp?.employee_code,
-      employee_name: emp?.full_name_en,
-      related_record_type: "employee_assignment",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${existing.employee_id}`);
-  return { success: true, data: undefined };
-}
+export async function updateEmployeeAssignment(id:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeAssignment(id,'update',input,contract);}
+export async function archiveEmployeeAssignment(id:number,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeAssignment(id,'archive',{},contract);}
 
 // ══════════════════════════════════════════════════════════════════════
 // ROLE REQUIREMENTS
@@ -360,213 +175,20 @@ export async function listEmployeeRoleRequirements(
   return { success: true, data: data ?? [] };
 }
 
-export async function createEmployeeRoleRequirement(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const parsed = roleRequirementSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-
-  const emp = await getEmployeeContext(employeeId);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const admin = await createClient();
-  const { data: inserted, error } = await admin
-    .from("employee_role_requirements")
-    .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id })
-    .select("id")
-    .single();
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_role_requirements",
-    entity_id: inserted.id,
-    entity_reference: `${emp.employee_code}-role-req`,
-    action: "role_requirement_created",
-    new_values: {
-      parent_employee_id: employeeId,
-      employee_code: emp.employee_code,
-      employee_name: emp.full_name_en,
-      related_record_type: "employee_role_requirement",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${employeeId}`);
-  return { success: true, data: { id: inserted.id } };
+export async function createEmployeeRoleRequirement(employeeId:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{return mutateHrChild({kind:'role-requirement',employeeId,id:null,revision:null,action:'create',values:input},contract);}
+async function changeRoleRequirement(id:number,action:'update'|'waive'|'archive',values:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ if(!Number.isSafeInteger(id)||id<1||!childSaveContract.safeParse(contract).success||!contract?.revision)return{success:false,error:'Reopen the original requirement and preserve its operation identity.'};
+ try{
+  if(!canUseHrChild(await getAuthContext(),'role-requirement'))return{success:false,error:'Permission denied',accessDenied:true};
+  const r=await(await createClient()).from('employee_role_requirements').select('employee_id').eq('id',id).is('deleted_at',null).maybeSingle();
+  if(r.error||!r.data||!Number.isSafeInteger(r.data.employee_id)||r.data.employee_id<1)return{success:false,error:'Current original requirement access is unavailable.'};
+  return mutateHrChild({kind:'role-requirement',employeeId:r.data.employee_id,id,revision:contract.revision,action,values},contract);
+ }catch{return{success:false,error:'The original requirement could not be verified. No request was sent.'};}
 }
-
-export async function updateEmployeeRoleRequirement(
-  id: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const parsed = roleRequirementSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-
-  const admin = await createClient();
-  const { data: existing, error: fetchError } = await admin
-    .from("employee_role_requirements")
-    .select("id, employee_id, employees(employee_code, full_name_en)")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-  if (fetchError || !existing) return { success: false, error: "Requirement not found" };
-
-  const { error } = await admin
-    .from("employee_role_requirements")
-    .update({ ...parsed.data, updated_by: ctx.profile?.id })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  const emp = existing.employees as unknown as { employee_code: string; full_name_en: string } | null;
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_role_requirements",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-role-req`,
-    action: "role_requirement_updated",
-    new_values: {
-      parent_employee_id: existing.employee_id,
-      employee_code: emp?.employee_code,
-      employee_name: emp?.full_name_en,
-      related_record_type: "employee_role_requirement",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${existing.employee_id}`);
-  return { success: true, data: { id } };
-}
-
-export async function archiveEmployeeRoleRequirement(id: number): Promise<ActionResult<undefined>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const admin = await createClient();
-  const { data: existing, error: fetchError } = await admin
-    .from("employee_role_requirements")
-    .select("id, employee_id, employees(employee_code, full_name_en)")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-  if (fetchError || !existing) return { success: false, error: "Requirement not found" };
-
-  const { error } = await admin
-    .from("employee_role_requirements")
-    .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  const emp = existing.employees as unknown as { employee_code: string; full_name_en: string } | null;
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_role_requirements",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-role-req`,
-    action: "role_requirement_archived",
-    new_values: {
-      parent_employee_id: existing.employee_id,
-      employee_code: emp?.employee_code,
-      employee_name: emp?.full_name_en,
-      related_record_type: "employee_role_requirement",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${existing.employee_id}`);
-  return { success: true, data: undefined };
-}
-
-export async function waiveEmployeeRoleRequirement(
-  id: number,
-  reason: string
-): Promise<ActionResult<undefined>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  if (!reason?.trim()) return { success: false, error: "Waiver reason is required" };
-
-  const admin = await createClient();
-  const { data: existing, error: fetchError } = await admin
-    .from("employee_role_requirements")
-    .select("id, employee_id, requirement_name, employees(employee_code, full_name_en)")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-  if (fetchError || !existing) return { success: false, error: "Requirement not found" };
-
-  const { error } = await admin
-    .from("employee_role_requirements")
-    .update({
-      status: "waived",
-      is_met: true,
-      waived_by: ctx.profile?.id,
-      waived_at: new Date().toISOString(),
-      waiver_reason: reason,
-      updated_by: ctx.profile?.id,
-    })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  const emp = existing.employees as unknown as { employee_code: string; full_name_en: string } | null;
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_role_requirements",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-role-req-waiver`,
-    action: "role_requirement_waived",
-    new_values: {
-      parent_employee_id: existing.employee_id,
-      employee_code: emp?.employee_code,
-      employee_name: emp?.full_name_en,
-      related_record_type: "employee_role_requirement",
-      waiver_reason: reason,
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${existing.employee_id}`);
-  return { success: true, data: undefined };
-}
-
-export async function recalculateEmployeeRoleRequirements(
-  employeeId: number
-): Promise<ActionResult<undefined>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const supabase = await createClient();
-  const today = new Date().toISOString().slice(0, 10);
-
-  const { data: reqs } = await supabase
-    .from("employee_role_requirements")
-    .select("id, status, expiry_date, is_met")
-    .eq("employee_id", employeeId)
-    .is("deleted_at", null);
-
-  if (!reqs) return { success: true, data: undefined };
-
-  const admin = await createClient();
-  for (const req of reqs) {
-    let newStatus = req.status;
-    if (req.status === "waived") continue;
-    if (req.expiry_date && req.expiry_date < today) {
-      newStatus = "expired";
-    } else if (req.is_met) {
-      newStatus = "met";
-    }
-    if (newStatus !== req.status) {
-      await admin.from("employee_role_requirements").update({ status: newStatus }).eq("id", req.id);
-    }
-  }
-
-  revalidatePath(`/admin/hr/employees/${employeeId}`);
-  return { success: true, data: undefined };
-}
+export async function updateEmployeeRoleRequirement(id:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeRoleRequirement(id,'update',input,contract);}
+export async function archiveEmployeeRoleRequirement(id:number,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeRoleRequirement(id,'archive',{},contract);}
+export async function waiveEmployeeRoleRequirement(id:number,reason:string,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeRoleRequirement(id,'waive',{waiver_reason:reason},contract);}
+export async function recalculateEmployeeRoleRequirements(employeeId:number,fingerprint:string,contract?:ChildSaveContract):Promise<ChildSaveResult>{return mutateHrChild({kind:'requirements-refresh',employeeId,id:null,revision:null,action:'create',values:{fingerprint}},contract);}
 
 // ══════════════════════════════════════════════════════════════════════
 // SITE READINESS
@@ -627,169 +249,22 @@ export async function listGlobalSiteReadiness(params?: {
   return { success: true, data: { data: data ?? [], count: count ?? 0 } };
 }
 
-export async function recalculateEmployeeSiteReadiness(
-  employeeId: number,
-  workSiteId: number
-): Promise<ActionResult<{ status: string; missingCount: number }>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-
-  const supabase = await createClient();
-  const today = new Date().toISOString().slice(0, 10);
-
-  const [empResult, blocksResult, identityResult, accessResult, medicalResult, insuranceResult, trainingResult] =
-    await Promise.all([
-      supabase
-        .from("employees")
-        .select("id, employee_code, full_name_en")
-        .eq("id", employeeId)
-        .single(),
-      supabase
-        .from("employee_operational_blocks")
-        .select("id, block_status, effective_from, effective_to")
-        .eq("employee_id", employeeId)
-        .eq("block_status", "active")
-        .is("deleted_at", null),
-      supabase
-        .from("employee_identity_documents")
-        .select("id, expiry_date")
-        .eq("employee_id", employeeId)
-        .is("deleted_at", null)
-        .limit(1),
-      supabase
-        .from("employee_access_cards")
-        .select("id, expiry_date, work_site_id")
-        .eq("employee_id", employeeId)
-        .is("deleted_at", null)
-        .eq("work_site_id", workSiteId)
-        .limit(1),
-      supabase
-        .from("employee_medical_records")
-        .select("id, expiry_date, record_type")
-        .eq("employee_id", employeeId)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false })
-        .limit(1),
-      supabase
-        .from("employee_medical_insurances")
-        .select("id, expiry_date")
-        .eq("employee_id", employeeId)
-        .is("deleted_at", null)
-        .limit(1),
-      supabase
-        .from("employee_training_certificates")
-        .select("id, expiry_date, training_type_id")
-        .eq("employee_id", employeeId)
-        .is("deleted_at", null),
-    ]);
-
-  const emp = empResult.data;
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const activeBlocks = (blocksResult.data ?? []).filter(isActiveBlock);
-  const identityDoc = identityResult.data?.[0];
-  const accessCard = accessResult.data?.[0];
-  const medicalRecord = medicalResult.data?.[0];
-  const insurance = insuranceResult.data?.[0];
-  const trainings = trainingResult.data ?? [];
-
-  const readinessInput = {
-    employeeId,
-    hasCurrentAssignment: true,
-    activeBlockCount: activeBlocks.length,
-    hasValidIdentityDoc: !!identityDoc,
-    identityDocExpired: identityDoc ? (identityDoc.expiry_date ? identityDoc.expiry_date < today : false) : false,
-    requiredAccessCardTypeId: null,
-    hasValidAccessCard: !!accessCard,
-    accessCardExpired: accessCard ? (accessCard.expiry_date ? accessCard.expiry_date < today : false) : false,
-    hasMedicalFitness: !!medicalRecord,
-    medicalFitnessExpired: medicalRecord
-      ? (medicalRecord.expiry_date ? medicalRecord.expiry_date < today : false)
-      : false,
-    medicalRestricted: false,
-    hasValidInsurance: !!insurance,
-    insuranceExpired: insurance ? (insurance.expiry_date ? insurance.expiry_date < today : false) : false,
-    trainingRequirements: trainings.map((t) => ({
-      met: true,
-      expired: t.expiry_date ? t.expiry_date < today : false,
-      required: false,
-      name: "Training",
-    })),
-    roleRequirementsMissingCritical: 0,
-    roleRequirementsExpired: 0,
-  };
-
-  const result = calculateEmployeeReadiness(readinessInput);
-
-  const admin = await createClient();
-  await admin.from("employee_site_readiness").upsert(
-    {
-      employee_id: employeeId,
-      work_site_id: workSiteId,
-      readiness_status: result.status,
-      missing_requirements_json: result.missingRequirements.length > 0 ? result.missingRequirements : null,
-      checked_at: new Date().toISOString(),
-      checked_by: ctx.profile?.id,
-      updated_by: ctx.profile?.id,
-    },
-    { onConflict: "employee_id,work_site_id" }
-  );
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_site_readiness",
-    entity_id: employeeId,
-    entity_reference: `${emp.employee_code}-readiness-site-${workSiteId}`,
-    action: "site_readiness_recalculated",
-    new_values: {
-      parent_employee_id: employeeId,
-      employee_code: emp.employee_code,
-      employee_name: emp.full_name_en,
-      related_record_type: "employee_site_readiness",
-      readiness_status: result.status,
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${employeeId}`);
-  return { success: true, data: { status: result.status, missingCount: result.missingRequirements.length } };
+export async function recalculateEmployeeSiteReadiness(employeeId:number,workSiteId:number,fingerprint:string,contract:ChildSaveContract):Promise<ChildSaveResult>{
+ return mutateHrChild({kind:'site-readiness',employeeId,id:null,revision:null,action:'create',values:{work_site_id:workSiteId,fingerprint}},contract);
 }
-
-export async function recalculateAllEmployeeSiteReadiness(
-  employeeId: number
-): Promise<ActionResult<undefined>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const supabase = await createClient();
-  const { data: sites } = await supabase
-    .from("employee_site_readiness")
-    .select("work_site_id")
-    .eq("employee_id", employeeId)
-    .is("deleted_at", null);
-
-  for (const row of sites ?? []) {
-    await recalculateEmployeeSiteReadiness(employeeId, row.work_site_id);
-  }
-  return { success: true, data: undefined };
+/** No implicit bulk writes. Each reviewed site keeps its original operation and
+ * outcome; stop at the first unconfirmed/failed command without claiming rollback. */
+export async function recalculateAllEmployeeSiteReadiness(employeeId:number,commands:readonly{workSiteId:number;fingerprint:string;contract:ChildSaveContract}[]):Promise<{success:boolean;results:ChildSaveResult[];error?:string}>{
+ if(!Array.isArray(commands)||commands.length===0||commands.length>100||new Set(commands.map(c=>c.workSiteId)).size!==commands.length)return{success:false,results:[],error:'Review a finite, unique set of site operations first.'};
+ const results:ChildSaveResult[]=[];
+ for(const command of commands){const result=await recalculateEmployeeSiteReadiness(employeeId,command.workSiteId,command.fingerprint,command.contract);results.push(result);if(!result.success)return{success:false,results,error:'The batch stopped. Check each earlier receipt; no rollback is inferred.'};}
+ return{success:true,results};
 }
-
-export async function updateEmployeeSiteReadinessNotes(
-  id: number,
-  notes: string
-): Promise<ActionResult<undefined>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const admin = await createClient();
-  const { error } = await admin
-    .from("employee_site_readiness")
-    .update({ notes, updated_by: ctx.profile?.id })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-  return { success: true, data: undefined };
+export async function updateEmployeeSiteReadinessNotes(id:number,notes:string|null,contract:ChildSaveContract):Promise<ChildSaveResult>{
+ const ctx=await getAuthContext();if(!ctx||!canUseHrChild(ctx,'site-readiness')||!childSaveContract.safeParse(contract).success)return{success:false,error:'The original readiness revision and current authority are required.'};
+ const row=await(await createClient()).from('employee_site_readiness').select('id,employee_id').eq('id',id).is('deleted_at',null).maybeSingle();
+ if(row.error||!row.data)return{success:false,error:'Original readiness unavailable.'};
+ return mutateHrChild({kind:'site-readiness',employeeId:row.data.employee_id,id,revision:contract.revision,action:'update',values:{notes}},contract);
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -872,132 +347,20 @@ export async function listGlobalOperationalBlocks(params?: {
   return { success: true, data: { data: data ?? [], count: count ?? 0 } };
 }
 
-export async function createEmployeeOperationalBlock(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const parsed = operationalBlockSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-
-  const emp = await getEmployeeContext(employeeId);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const admin = await createClient();
-  const { data: inserted, error } = await admin
-    .from("employee_operational_blocks")
-    .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id })
-    .select("id")
-    .single();
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_operational_blocks",
-    entity_id: inserted.id,
-    entity_reference: `${emp.employee_code}-op-block`,
-    action: "operational_block_created",
-    new_values: {
-      parent_employee_id: employeeId,
-      employee_code: emp.employee_code,
-      employee_name: emp.full_name_en,
-      related_record_type: "employee_operational_block",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${employeeId}`);
-  return { success: true, data: { id: inserted.id } };
+export async function createEmployeeOperationalBlock(employeeId:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ return mutateHrChild({kind:'operational-block',employeeId,id:null,revision:null,action:'create',values:input},contract);
 }
-
-export async function releaseEmployeeOperationalBlock(
-  id: number,
-  releaseReason: string
-): Promise<ActionResult<undefined>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  if (!releaseReason?.trim()) return { success: false, error: "Release reason is required" };
-
-  const admin = await createClient();
-  const { data: existing, error: fetchError } = await admin
-    .from("employee_operational_blocks")
-    .select("id, employee_id, employees(employee_code, full_name_en)")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-  if (fetchError || !existing) return { success: false, error: "Block not found" };
-
-  const { error } = await admin
-    .from("employee_operational_blocks")
-    .update({
-      block_status: "released",
-      released_by: ctx.profile?.id,
-      released_at: new Date().toISOString(),
-      release_reason: releaseReason,
-      updated_by: ctx.profile?.id,
-    })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  const emp = existing.employees as unknown as { employee_code: string; full_name_en: string } | null;
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_operational_blocks",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-op-block`,
-    action: "operational_block_released",
-    new_values: {
-      parent_employee_id: existing.employee_id,
-      employee_code: emp?.employee_code,
-      employee_name: emp?.full_name_en,
-      related_record_type: "employee_operational_block",
-      release_reason: releaseReason,
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${existing.employee_id}`);
-  return { success: true, data: undefined };
+async function changeOperationalBlock(id:number,action:'release'|'archive',values:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ if(!Number.isSafeInteger(id)||id<1||!childSaveContract.safeParse(contract).success||!contract?.revision)return{success:false,error:'Reopen the original block and preserve its operation identity.'};
+ try{
+  if(!canUseHrChild(await getAuthContext(),'operational-block'))return{success:false,error:'Permission denied',accessDenied:true};
+  const row=await(await createClient()).from('employee_operational_blocks').select('employee_id').eq('id',id).is('deleted_at',null).maybeSingle();
+  if(row.error||!row.data||!Number.isSafeInteger(row.data.employee_id)||row.data.employee_id<1)return{success:false,error:'Current original block access is unavailable.'};
+  return mutateHrChild({kind:'operational-block',employeeId:row.data.employee_id,id,revision:contract.revision,action,values},contract);
+ }catch{return{success:false,error:'The original block could not be verified. No request was sent.'};}
 }
-
-export async function archiveEmployeeOperationalBlock(id: number): Promise<ActionResult<undefined>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const admin = await createClient();
-  const { data: existing, error: fetchError } = await admin
-    .from("employee_operational_blocks")
-    .select("id, employee_id, employees(employee_code, full_name_en)")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-  if (fetchError || !existing) return { success: false, error: "Block not found" };
-
-  const { error } = await admin
-    .from("employee_operational_blocks")
-    .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  const emp = existing.employees as unknown as { employee_code: string; full_name_en: string } | null;
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_operational_blocks",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-op-block`,
-    action: "operational_block_archived",
-    new_values: {
-      parent_employee_id: existing.employee_id,
-      employee_code: emp?.employee_code,
-      employee_name: emp?.full_name_en,
-      related_record_type: "employee_operational_block",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${existing.employee_id}`);
-  return { success: true, data: undefined };
-}
+export async function releaseEmployeeOperationalBlock(id:number,releaseReason:string,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeOperationalBlock(id,'release',{release_reason:releaseReason},contract);}
+export async function archiveEmployeeOperationalBlock(id:number,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeOperationalBlock(id,'archive',{},contract);}
 
 // ══════════════════════════════════════════════════════════════════════
 // ASSETS
@@ -1028,172 +391,18 @@ export async function listEmployeeAssets(
   return { success: true, data: data ?? [] };
 }
 
-export async function createEmployeeAsset(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const parsed = assetSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-
-  const emp = await getEmployeeContext(employeeId);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const admin = await createClient();
-  const { data: inserted, error } = await admin
-    .from("employee_assets")
-    .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id })
-    .select("id")
-    .single();
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_assets",
-    entity_id: inserted.id,
-    entity_reference: `${emp.employee_code}-asset`,
-    action: "asset_created",
-    new_values: {
-      parent_employee_id: employeeId,
-      employee_code: emp.employee_code,
-      employee_name: emp.full_name_en,
-      related_record_type: "employee_asset",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${employeeId}`);
-  return { success: true, data: { id: inserted.id } };
+async function changeOperationItem(kind:OperationItemKind,id:number,action:'update'|'archive'|'return'|'end',values:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ const checked=childSaveContract.safeParse(contract);if(!Number.isSafeInteger(id)||id<1||!checked.success||checked.data.revision===null)return{success:false,error:'The original operational opening revision and operation identity are required.'};
+ if(!canUseHrChild(await getAuthContext(),kind))return{success:false,error:'Current operational access is unavailable.',accessDenied:true};
+ const row=await(await createClient()).from(OPERATION_ITEM_TABLES[kind]).select('employee_id').eq('id',id).is('deleted_at',null).maybeSingle();
+ if(row.error||!row.data||!Number.isSafeInteger(row.data.employee_id))return{success:false,error:'Current operational scope could not be verified.'};
+ return mutateHrChild({kind,employeeId:row.data.employee_id,id,revision:checked.data.revision,action,values},checked.data);
 }
 
-export async function updateEmployeeAsset(
-  id: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const parsed = assetSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-
-  const admin = await createClient();
-  const { data: existing, error: fetchError } = await admin
-    .from("employee_assets")
-    .select("id, employee_id, employees(employee_code, full_name_en)")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-  if (fetchError || !existing) return { success: false, error: "Asset not found" };
-
-  const { error } = await admin
-    .from("employee_assets")
-    .update({ ...parsed.data, updated_by: ctx.profile?.id })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  const emp = existing.employees as unknown as { employee_code: string; full_name_en: string } | null;
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_assets",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-asset`,
-    action: "asset_updated",
-    new_values: {
-      parent_employee_id: existing.employee_id,
-      employee_code: emp?.employee_code,
-      employee_name: emp?.full_name_en,
-      related_record_type: "employee_asset",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${existing.employee_id}`);
-  return { success: true, data: { id } };
-}
-
-export async function returnEmployeeAsset(
-  id: number,
-  input: { returned_date: string; condition_on_return?: string }
-): Promise<ActionResult<undefined>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const admin = await createClient();
-  const { data: existing, error: fetchError } = await admin
-    .from("employee_assets")
-    .select("id, employee_id, employees(employee_code, full_name_en)")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-  if (fetchError || !existing) return { success: false, error: "Asset not found" };
-
-  const { error } = await admin
-    .from("employee_assets")
-    .update({
-      status: "returned",
-      returned_date: input.returned_date,
-      condition_on_return: input.condition_on_return ?? null,
-      updated_by: ctx.profile?.id,
-    })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  const emp = existing.employees as unknown as { employee_code: string; full_name_en: string } | null;
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_assets",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-asset-return`,
-    action: "asset_returned",
-    new_values: {
-      parent_employee_id: existing.employee_id,
-      employee_code: emp?.employee_code,
-      employee_name: emp?.full_name_en,
-      related_record_type: "employee_asset",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${existing.employee_id}`);
-  return { success: true, data: undefined };
-}
-
-export async function archiveEmployeeAsset(id: number): Promise<ActionResult<undefined>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const admin = await createClient();
-  const { data: existing, error: fetchError } = await admin
-    .from("employee_assets")
-    .select("id, employee_id, employees(employee_code, full_name_en)")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-  if (fetchError || !existing) return { success: false, error: "Asset not found" };
-
-  const { error } = await admin
-    .from("employee_assets")
-    .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  const emp = existing.employees as unknown as { employee_code: string; full_name_en: string } | null;
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_assets",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-asset`,
-    action: "asset_archived",
-    new_values: {
-      parent_employee_id: existing.employee_id,
-      employee_code: emp?.employee_code,
-      employee_name: emp?.full_name_en,
-      related_record_type: "employee_asset",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${existing.employee_id}`);
-  return { success: true, data: undefined };
-}
+export async function createEmployeeAsset(employeeId:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{return mutateHrChild({kind:'asset',employeeId,id:null,revision:null,action:'create',values:input},contract);}
+export async function updateEmployeeAsset(id:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeOperationItem('asset',id,'update',input,contract);}
+export async function returnEmployeeAsset(id:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeOperationItem('asset',id,'return',input,contract);}
+export async function archiveEmployeeAsset(id:number,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeOperationItem('asset',id,'archive',{},contract);}
 
 // ══════════════════════════════════════════════════════════════════════
 // PPE ISSUES
@@ -1224,167 +433,11 @@ export async function listEmployeePpeIssues(
   return { success: true, data: data ?? [] };
 }
 
-export async function createEmployeePpeIssue(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const parsed = ppeIssueSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
 
-  const emp = await getEmployeeContext(employeeId);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const admin = await createClient();
-  const { data: inserted, error } = await admin
-    .from("employee_ppe_issues")
-    .insert({ employee_id: employeeId, ...parsed.data, issued_by: ctx.profile?.id, created_by: ctx.profile?.id })
-    .select("id")
-    .single();
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_ppe_issues",
-    entity_id: inserted.id,
-    entity_reference: `${emp.employee_code}-ppe`,
-    action: "ppe_issued",
-    new_values: {
-      parent_employee_id: employeeId,
-      employee_code: emp.employee_code,
-      employee_name: emp.full_name_en,
-      related_record_type: "employee_ppe_issue",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${employeeId}`);
-  return { success: true, data: { id: inserted.id } };
-}
-
-export async function updateEmployeePpeIssue(
-  id: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const parsed = ppeIssueSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-
-  const admin = await createClient();
-  const { data: existing, error: fetchError } = await admin
-    .from("employee_ppe_issues")
-    .select("id, employee_id, employees(employee_code, full_name_en)")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-  if (fetchError || !existing) return { success: false, error: "PPE issue not found" };
-
-  const { error } = await admin
-    .from("employee_ppe_issues")
-    .update({ ...parsed.data, updated_by: ctx.profile?.id })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  const emp = existing.employees as unknown as { employee_code: string; full_name_en: string } | null;
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_ppe_issues",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-ppe`,
-    action: "ppe_updated",
-    new_values: {
-      parent_employee_id: existing.employee_id,
-      employee_code: emp?.employee_code,
-      employee_name: emp?.full_name_en,
-      related_record_type: "employee_ppe_issue",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${existing.employee_id}`);
-  return { success: true, data: { id } };
-}
-
-export async function returnEmployeePpeIssue(
-  id: number,
-  input: { returned_date: string }
-): Promise<ActionResult<undefined>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const admin = await createClient();
-  const { data: existing, error: fetchError } = await admin
-    .from("employee_ppe_issues")
-    .select("id, employee_id, employees(employee_code, full_name_en)")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-  if (fetchError || !existing) return { success: false, error: "PPE issue not found" };
-
-  const { error } = await admin
-    .from("employee_ppe_issues")
-    .update({ status: "returned", returned_date: input.returned_date, updated_by: ctx.profile?.id })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  const emp = existing.employees as unknown as { employee_code: string; full_name_en: string } | null;
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_ppe_issues",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-ppe-return`,
-    action: "ppe_returned",
-    new_values: {
-      parent_employee_id: existing.employee_id,
-      employee_code: emp?.employee_code,
-      employee_name: emp?.full_name_en,
-      related_record_type: "employee_ppe_issue",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${existing.employee_id}`);
-  return { success: true, data: undefined };
-}
-
-export async function archiveEmployeePpeIssue(id: number): Promise<ActionResult<undefined>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const admin = await createClient();
-  const { data: existing, error: fetchError } = await admin
-    .from("employee_ppe_issues")
-    .select("id, employee_id, employees(employee_code, full_name_en)")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-  if (fetchError || !existing) return { success: false, error: "PPE issue not found" };
-
-  const { error } = await admin
-    .from("employee_ppe_issues")
-    .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  const emp = existing.employees as unknown as { employee_code: string; full_name_en: string } | null;
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_ppe_issues",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-ppe`,
-    action: "ppe_archived",
-    new_values: {
-      parent_employee_id: existing.employee_id,
-      employee_code: emp?.employee_code,
-      employee_name: emp?.full_name_en,
-      related_record_type: "employee_ppe_issue",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${existing.employee_id}`);
-  return { success: true, data: undefined };
-}
+export async function createEmployeePpeIssue(employeeId:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{return mutateHrChild({kind:'ppe',employeeId,id:null,revision:null,action:'create',values:input},contract);}
+export async function updateEmployeePpeIssue(id:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeOperationItem('ppe',id,'update',input,contract);}
+export async function returnEmployeePpeIssue(id:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeOperationItem('ppe',id,'return',input,contract);}
+export async function archiveEmployeePpeIssue(id:number,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeOperationItem('ppe',id,'archive',{},contract);}
 
 // ══════════════════════════════════════════════════════════════════════
 // ACCOMMODATION
@@ -1415,167 +468,11 @@ export async function listEmployeeAccommodationRecords(
   return { success: true, data: data ?? [] };
 }
 
-export async function createEmployeeAccommodationRecord(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const parsed = accommodationSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
 
-  const emp = await getEmployeeContext(employeeId);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const admin = await createClient();
-  const { data: inserted, error } = await admin
-    .from("employee_accommodation_records")
-    .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id })
-    .select("id")
-    .single();
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_accommodation_records",
-    entity_id: inserted.id,
-    entity_reference: `${emp.employee_code}-accommodation`,
-    action: "accommodation_created",
-    new_values: {
-      parent_employee_id: employeeId,
-      employee_code: emp.employee_code,
-      employee_name: emp.full_name_en,
-      related_record_type: "employee_accommodation",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${employeeId}`);
-  return { success: true, data: { id: inserted.id } };
-}
-
-export async function updateEmployeeAccommodationRecord(
-  id: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const parsed = accommodationSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-
-  const admin = await createClient();
-  const { data: existing, error: fetchError } = await admin
-    .from("employee_accommodation_records")
-    .select("id, employee_id, employees(employee_code, full_name_en)")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-  if (fetchError || !existing) return { success: false, error: "Accommodation record not found" };
-
-  const { error } = await admin
-    .from("employee_accommodation_records")
-    .update({ ...parsed.data, updated_by: ctx.profile?.id })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  const emp = existing.employees as unknown as { employee_code: string; full_name_en: string } | null;
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_accommodation_records",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-accommodation`,
-    action: "accommodation_updated",
-    new_values: {
-      parent_employee_id: existing.employee_id,
-      employee_code: emp?.employee_code,
-      employee_name: emp?.full_name_en,
-      related_record_type: "employee_accommodation",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${existing.employee_id}`);
-  return { success: true, data: { id } };
-}
-
-export async function endEmployeeAccommodationRecord(
-  id: number,
-  input: { assigned_to: string }
-): Promise<ActionResult<undefined>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const admin = await createClient();
-  const { data: existing, error: fetchError } = await admin
-    .from("employee_accommodation_records")
-    .select("id, employee_id, employees(employee_code, full_name_en)")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-  if (fetchError || !existing) return { success: false, error: "Accommodation record not found" };
-
-  const { error } = await admin
-    .from("employee_accommodation_records")
-    .update({ status: "ended", assigned_to: input.assigned_to, updated_by: ctx.profile?.id })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  const emp = existing.employees as unknown as { employee_code: string; full_name_en: string } | null;
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_accommodation_records",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-accommodation`,
-    action: "accommodation_ended",
-    new_values: {
-      parent_employee_id: existing.employee_id,
-      employee_code: emp?.employee_code,
-      employee_name: emp?.full_name_en,
-      related_record_type: "employee_accommodation",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${existing.employee_id}`);
-  return { success: true, data: undefined };
-}
-
-export async function archiveEmployeeAccommodationRecord(id: number): Promise<ActionResult<undefined>> {
-  const ctx = await getAuthContext();
-  if (!ctx || !hasPermission(ctx, "hr.assignments.manage")) {
-    return { success: false, error: "Unauthorized" };
-  }
-  const admin = await createClient();
-  const { data: existing, error: fetchError } = await admin
-    .from("employee_accommodation_records")
-    .select("id, employee_id, employees(employee_code, full_name_en)")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-  if (fetchError || !existing) return { success: false, error: "Accommodation record not found" };
-
-  const { error } = await admin
-    .from("employee_accommodation_records")
-    .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  const emp = existing.employees as unknown as { employee_code: string; full_name_en: string } | null;
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_accommodation_records",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-accommodation`,
-    action: "accommodation_archived",
-    new_values: {
-      parent_employee_id: existing.employee_id,
-      employee_code: emp?.employee_code,
-      employee_name: emp?.full_name_en,
-      related_record_type: "employee_accommodation",
-    },
-  });
-  revalidatePath(`/admin/hr/employees/${existing.employee_id}`);
-  return { success: true, data: undefined };
-}
+export async function createEmployeeAccommodationRecord(employeeId:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{return mutateHrChild({kind:'accommodation',employeeId,id:null,revision:null,action:'create',values:input},contract);}
+export async function updateEmployeeAccommodationRecord(id:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeOperationItem('accommodation',id,'update',input,contract);}
+export async function endEmployeeAccommodationRecord(id:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeOperationItem('accommodation',id,'end',input,contract);}
+export async function archiveEmployeeAccommodationRecord(id:number,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeOperationItem('accommodation',id,'archive',{},contract);}
 
 // ══════════════════════════════════════════════════════════════════════
 // SUMMARY

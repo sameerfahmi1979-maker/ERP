@@ -1,0 +1,17 @@
+import {describe,it,expect} from 'vitest';
+import {employeeCreateSchema,employeeUpdateSchema} from '@/lib/hr/employee-contract';
+import {documentEmployeeInputSchema} from '@/lib/hr/numbered-document-employee-contract';
+const valid={full_name_en:'Synthetic Employee',gender:'male',date_of_birth:'1990-02-15',mobile_number:'TEST-100',owner_company_id:1,employee_category_id:2,joining_date:'2026-10-18',emergency_contact_name:'Synthetic Contact',emergency_contact_mobile:'TEST-101'};
+const document=(value:Record<string,unknown>)=>({...value,selectedDocumentIds:[3],totalDocumentsSelected:1});
+describe('shared employee creation contract',()=>{
+ it('manual and document-assisted entries normalize the same required facts',()=>{const input={...valid,full_name_en:'  Synthetic Employee  '};expect(employeeCreateSchema.parse(input).full_name_en).toBe('Synthetic Employee');expect(documentEmployeeInputSchema.parse(document(input)).full_name_en).toBe('Synthetic Employee');});
+ it.each([undefined,null,0,-1])('both entry points reject missing/invalid category %s',category=>{const input={...valid,employee_category_id:category};expect(employeeCreateSchema.safeParse(input).success).toBe(false);expect(documentEmployeeInputSchema.safeParse(document(input)).success).toBe(false);});
+ it.each(['full_name_en','mobile_number','emergency_contact_name','emergency_contact_mobile'])('both paths reject blank %s',field=>{const input={...valid,[field]:'   '};expect(employeeCreateSchema.safeParse(input).success).toBe(false);expect(documentEmployeeInputSchema.safeParse(document(input)).success).toBe(false);});
+ it.each(['2026-02-30','not-a-date','2026-1-1',''])('both paths reject impossible/incomplete date %s',date=>{const input={...valid,date_of_birth:date};expect(employeeCreateSchema.safeParse(input).success).toBe(false);expect(documentEmployeeInputSchema.safeParse(document(input)).success).toBe(false);});
+ it('does not invent age, gender, nationality or contacts',()=>{expect(employeeCreateSchema.safeParse({full_name_en:'Same name',owner_company_id:1,employee_category_id:2}).success).toBe(false);expect(employeeCreateSchema.parse(valid).nationality_id).toBeUndefined();});
+ it('same-name people are not declared duplicate identities by this schema',()=>{expect(employeeCreateSchema.safeParse(valid).success).toBe(true);expect(employeeCreateSchema.safeParse({...valid,mobile_number:'OTHER'}).success).toBe(true);});
+ it('retains legitimate legacy partial/null-category updates for native current-row checks',()=>{expect(employeeUpdateSchema.safeParse({known_name:'New name',employee_category_id:null}).success).toBe(true);expect(employeeUpdateSchema.safeParse({known_name:'New name'}).success).toBe(true);});
+ it.each([['contract_start_date','contract_end_date'],['probation_start_date','probation_end_date']])('rejects inverted %s/%s', (start,end)=>{expect(employeeCreateSchema.safeParse({...valid,[start]:'2026-10-18',[end]:'2026-10-17'}).success).toBe(false);expect(employeeUpdateSchema.safeParse({[start]:'2026-10-18',[end]:'2026-10-17'}).success).toBe(false);});
+ it('rejects joining before birth without guessing a statutory minimum age',()=>{expect(employeeCreateSchema.safeParse({...valid,joining_date:'1989-01-01'}).success).toBe(false);expect(employeeCreateSchema.safeParse({...valid,joining_date:'1990-02-15'}).success).toBe(true);});
+ it('rejects unsafe numeric IDs',()=>{expect(employeeCreateSchema.safeParse({...valid,owner_company_id:Number.MAX_SAFE_INTEGER+1}).success).toBe(false);});
+});

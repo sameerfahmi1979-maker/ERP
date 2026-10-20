@@ -6,6 +6,9 @@ import {act, cleanup, fireEvent, render, screen, waitFor, within} from "@testing
 import {QueryClient, QueryClientProvider, QueryObserver} from "@tanstack/react-query";
 import {RecordReadActivity} from "@/hooks/use-record-read-active";
 import {WorkspaceUiMemoryProvider} from "@/hooks/use-persistent-ui-state";
+import{createWorkspaceDraftStore}from'@/lib/workspace/workspace-draft-store';
+import{PAYROLL_CHILD_COLUMNS,payrollOpeningValues,type PayrollChildKind}from'@/lib/hr/payroll-child-contract';
+import type{ChildMutation,ChildSaveContract}from'@/lib/hr/child-save-contract';
 import type {AuthContext} from "@/lib/rbac/check";
 import {hrPayrollReadIdentity, type PayrollRecordKind} from "@/lib/reads/hr-payroll-records-schema";
 import {EmployeePayrollTab} from "@/features/hr/employees/tabs/employee-payroll-tab";
@@ -36,10 +39,35 @@ function controller(fragment: string) {
 }
 beforeEach(() => embeddedAdapters.clear());
 
-const state = vi.hoisted(() => ({transport: vi.fn(), page: vi.fn(), point: vi.fn(), choices: vi.fn(), inquiry: vi.fn(), success: vi.fn(), error: vi.fn(), mutations: Object.fromEntries(["archiveEmployeePayrollHold", "archiveEmployeeSalaryComponent", "createEmployeeSalaryComponent", "createEmployeeSalaryRevision", "createOrUpdateEmployeePayrollProfile", "createOrUpdateEmployeeWpsProfile", "placeEmployeePayrollHold", "releaseEmployeePayrollHold", "updateEmployeeSalaryComponent"].map(k => [k, vi.fn()]))}));
+const state = vi.hoisted(() => ({store:null as ReturnType<typeof createWorkspaceDraftStore>|null,transport: vi.fn(), page: vi.fn(), point: vi.fn(), choices: vi.fn(), inquiry: vi.fn(), success: vi.fn(), error: vi.fn(), mutations: Object.fromEntries(["archiveEmployeePayrollHold", "archiveEmployeeSalaryComponent", "createEmployeeSalaryComponent", "createEmployeeSalaryRevision", "createOrUpdateEmployeePayrollProfile", "createOrUpdateEmployeeWpsProfile", "placeEmployeePayrollHold", "releaseEmployeePayrollHold", "updateEmployeeSalaryComponent"].map(k => [k, vi.fn()]))}));
 vi.mock("sonner", () => ({toast: {success: state.success, error: state.error}}));
 vi.mock("next/navigation", () => ({usePathname: () => "/admin/hr/employees/record/880301"}));
 vi.mock("@/server/actions/hr/payroll", () => state.mutations);
+vi.mock('@/components/workspace/workspace-draft-provider',()=>({useWorkspaceDraftStoreContext:()=>state.store}));
+vi.mock('@/hooks/lookups',()=>({useBanksQuery:()=>({isLoading:false,error:null})}));
+// Boundary spies below retain the original inquiry-consumer assertions. The
+// actual new server/native contract is independently tested in F11, not inferred
+// from this mounted parent harness. No real account or bank values are used.
+vi.mock('@/server/actions/hr/child-mutation',()=>({
+ readPayrollChildOpening:async(kind:PayrollChildKind,employeeId:number,id:number|null)=>{
+  try{
+   if(kind==='salary-revision')return{success:true,id:null,revision:null,values:{fingerprint:'a'.repeat(64)}};
+   let row:Record<string,unknown>|null;
+   if(kind==='payroll-hold')row=payrollRecordFixture('holds',id??undefined)as unknown as Record<string,unknown>;
+   else{const point=await state.point({kind:kind==='payroll-profile'?'profile':kind==='salary-component'?'component-detail':'wps',employeeId,...(kind==='salary-component'?{recordId:id}:{})});row=kind==='wps-profile'?point?.profile:point;}
+   if(!row)return{success:false,error:'The complete original payroll record could not be verified.'};
+   const values=Object.fromEntries(PAYROLL_CHILD_COLUMNS[kind].split(',').map(key=>[key,row![key]])),parsed=payrollOpeningValues(kind).safeParse(values);
+   if(!parsed.success)return{success:false,error:'The complete original payroll record could not be verified.'};
+   return{success:true,id:id??null,revision:id?'4':null,values:id?parsed.data:{}};
+  }catch{return{success:false,error:'The complete original payroll record could not be verified.'};}
+ },
+ mutateHrChild:async(request:ChildMutation,contract:ChildSaveContract)=>{
+  const kind=request.kind,name=kind==='payroll-profile'?'createOrUpdateEmployeePayrollProfile':kind==='wps-profile'?'createOrUpdateEmployeeWpsProfile':kind==='salary-revision'?'createEmployeeSalaryRevision':kind==='salary-component'?request.action==='archive'?'archiveEmployeeSalaryComponent':request.action==='update'?'updateEmployeeSalaryComponent':'createEmployeeSalaryComponent':request.action==='release'?'releaseEmployeePayrollHold':request.action==='archive'?'archiveEmployeePayrollHold':'placeEmployeePayrollHold';
+  const employeeTarget=['payroll-profile','wps-profile','salary-revision'].includes(kind)||request.action==='create';
+  const result=await state.mutations[name](employeeTarget?request.employeeId:request.id,request.values,contract);
+  return result?.success?{success:true,data:{kind,employee_id:request.employeeId,id:request.id??51,revision:String(Number(request.revision??0)+1),operation_id:contract.operationId,replayed:false}}:result;
+ },reconcileHrChild:()=>{throw Error('No automatic recovery dispatch');},listRecentHrChildReceipts:()=>{throw Error('No automatic receipt read');},
+}));
 vi.mock("@/hooks/realtime/use-realtime-sync", () => ({useRealtimeSync: () => {}}));
 vi.mock("@/components/erp/finance-basics/bank-select", () => ({BankSelect: () => <span>Shared bank selector outside payroll adoption scope</span>}));
 vi.mock("@/lib/reads/client", async () => ({...await vi.importActual<typeof import("@/lib/reads/client")>("@/lib/reads/client"), readJson: async (resource: string, input: Record<string, unknown>, signal?: AbortSignal) => {
@@ -63,6 +91,7 @@ type PageInput = {kind: PayrollRecordKind; employeeId: number; page: number; pag
 type PointInput = {kind: string; employeeId: number; recordId?: number};
 type ChoiceInput = {kind: string; employeeId: number; page: number; pageSize: number; search: string; selectedId: number | null};
 beforeEach(() => {
+  state.store=createWorkspaceDraftStore();
   for (const key of ["localStorage", "sessionStorage"] as const) {
     Object.defineProperty(globalThis, key, {configurable: true, writable: true, value: browserWindow[key]});
     browserWindow[key].clear();
@@ -99,7 +128,7 @@ it("hidden payroll sections pause background refresh without unmounting local dr
  view.pause();const calls=state.transport.mock.calls.length;
  await act(async()=>{await view.client.invalidateQueries({queryKey:["hr"]});});
  expect(state.transport).toHaveBeenCalledTimes(calls);
- expect((screen.getByLabelText("Notes") as HTMLTextAreaElement).value).toBe("Retained synthetic draft");
+ expect(screen.queryByLabelText("Notes")).toBeNull();
  view.restore();await waitFor(()=>expect(state.transport.mock.calls.length).toBeGreaterThan(calls));
  expect((screen.getByLabelText("Notes") as HTMLTextAreaElement).value).toBe("Retained synthetic draft");
  expect(Object.values(state.mutations).every(m=>m.mock.calls.length===0)).toBe(true);
@@ -167,7 +196,7 @@ it("component editor waits for fresh complete detail and preserves a selected in
 });
 it("detail failure never opens a partial component editor", async () => {
   mount(); await screen.findAllByText(token("salary-components")); state.point.mockRejectedValue(new ReadError("Controlled detail failure", 400));
-  fireEvent.click(section("salary-components").getByRole("button", {name: "Edit record"})); await screen.findByText(/no partial editor was opened/); expect(screen.queryByRole("dialog")).toBeNull();
+  fireEvent.click(section("salary-components").getByRole("button", {name: "Edit record"})); await screen.findByText("The complete original payroll record could not be verified."); expect(screen.queryByLabelText("Amount (AED)")).toBeNull(); expect(screen.getByRole("button",{name:"Retry payroll opening"})).toBeTruthy();
 });
 it("bounded salary totals coalesce between profile and revision editor and retain prior invalidation", async () => {
   const view = mount(); await screen.findAllByText(token("salary-revisions")); expect(state.point.mock.calls.filter(c => c[0].kind === "salary-totals")).toHaveLength(1);
@@ -204,9 +233,9 @@ it("failed choice loading keeps the payroll draft and blocks saving until explic
   state.choices.mockRejectedValue(new ReadError("Choice failure", 400));
   fireEvent.click(within(dialog).getByRole("combobox", {name: "Component Type"}));
   fireEvent.change(await screen.findByPlaceholderText("Search..."), {target: {value: "test"}});
-  await screen.findByText(/Choices could not be loaded. Your entries are retained/); expect((within(dialog).getByRole("button", {name: "Save"}) as HTMLButtonElement).disabled).toBe(true); expect((within(dialog).getByLabelText("Notes") as HTMLTextAreaElement).value).toBe("Unsaved synthetic payroll draft");
+  await screen.findByText(/Choices could not be loaded. Your entries are retained/); expect((within(dialog).getByRole("button", {name: /^Save /}) as HTMLButtonElement).disabled).toBe(true); expect((within(dialog).getByLabelText("Notes") as HTMLTextAreaElement).value).toBe("Unsaved synthetic payroll draft");
   state.choices.mockImplementation(async (input: ChoiceInput) => ({kind: input.kind, employeeId: input.employeeId, page: input.page, pageSize: input.pageSize, rows: [], selected: {id: 100, code: "SYNTH", name_en: "Selected synthetic legacy value", name_ar: null, is_active: false}, totalCount: 0}));
-  fireEvent.click(screen.getByRole("button", {name: "Retry component type choices"})); await waitFor(() => expect((within(dialog).getByRole("button", {name: "Save"}) as HTMLButtonElement).disabled).toBe(false)); expect((within(dialog).getByLabelText("Notes") as HTMLTextAreaElement).value).toBe("Unsaved synthetic payroll draft");
+  fireEvent.click(screen.getByRole("button", {name: "Retry component type choices"})); await waitFor(() => expect((within(dialog).getByRole("button", {name: /^Save /}) as HTMLButtonElement).disabled).toBe(false)); expect((within(dialog).getByLabelText("Notes") as HTMLTextAreaElement).value).toBe("Unsaved synthetic payroll draft");
 });
 it("account change closes a private editor, cancels the old choice request and clears its cache", async () => {
   const view = mount(); await screen.findAllByText(token("salary-components")); fireEvent.click(section("salary-components").getByRole("button", {name: "Edit record"})); await screen.findByRole("dialog", {name: "Edit Salary Component"}); await screen.findByText("Selected synthetic legacy value");
@@ -214,12 +243,12 @@ it("account change closes a private editor, cancels the old choice request and c
   view.replace({...context, profile: {...context.profile!, id: 7, auth_user_id: "other-actor"}});
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull()); expect(view.onChildOpen).toHaveBeenLastCalledWith(false); expect(view.client.getQueryCache().getAll().some(q => q.queryKey.includes(hrPayrollReadIdentity(context)))).toBe(false); expect(screen.queryByDisplayValue("Private unsaved notes")).toBeNull();
 });
-it("double Save submits one existing guarded mutation and response loss retains the draft without automatic mutation retry", async () => {
-  let reject!: (reason: unknown) => void; state.mutations.updateEmployeeSalaryComponent.mockImplementation(() => new Promise((_, no) => {reject = no;}));
-  mount(); await screen.findAllByText(token("salary-components")); fireEvent.click(section("salary-components").getByRole("button", {name: "Edit record"})); const dialog = await screen.findByRole("dialog", {name: "Edit Salary Component"}); await screen.findByText("Selected synthetic legacy value");
-  const save = within(dialog).getByRole("button", {name: "Save"}); fireEvent.click(save); fireEvent.click(save); await waitFor(() => expect(state.mutations.updateEmployeeSalaryComponent).toHaveBeenCalledTimes(1));
-  await act(async () => reject(Error("Synthetic response lost after mock commit"))); expect(screen.getByRole("dialog", {name: "Edit Salary Component"})).toBeTruthy();
-  fireEvent.click(within(dialog).getByRole("button", {name: "Save"})); expect(state.mutations.updateEmployeeSalaryComponent).toHaveBeenCalledTimes(1); expect(state.error).toHaveBeenCalledWith(expect.stringContaining("unconfirmed"));
+it("double Save dispatches once and explicit uncertain retry preserves the original operation",async()=>{
+ let reject!:(reason:unknown)=>void;state.mutations.updateEmployeeSalaryComponent.mockImplementation(()=>new Promise((_,no)=>{reject=no;}));
+ mount();await screen.findAllByText(token("salary-components"));fireEvent.click(section("salary-components").getByRole("button",{name:"Edit record"}));const dialog=await screen.findByRole("dialog",{name:"Edit Salary Component"});await screen.findByText("Selected synthetic legacy value");
+ const save=within(dialog).getByRole("button",{name:/^Save /});fireEvent.click(save);fireEvent.click(save);await waitFor(()=>expect(state.mutations.updateEmployeeSalaryComponent).toHaveBeenCalledOnce());
+ await act(async()=>reject(Error("Synthetic response lost after mock commit")));await screen.findByText(/The result is unconfirmed/);expect(state.success).not.toHaveBeenCalled();expect(state.mutations.updateEmployeeSalaryComponent).toHaveBeenCalledOnce();
+ fireEvent.click(within(dialog).getByRole("button",{name:"Retry unchanged payroll change"}));await waitFor(()=>expect(state.mutations.updateEmployeeSalaryComponent).toHaveBeenCalledTimes(2));expect(state.mutations.updateEmployeeSalaryComponent.mock.calls[1]).toEqual(state.mutations.updateEmployeeSalaryComponent.mock.calls[0]);
 });
 it("injected legacy search is not sent, exposes correction feedback and cannot claim an empty payroll result", async () => {
   mount(); await screen.findAllByText(token("holds")); const count = state.transport.mock.calls.filter(c => c[0] === "hr-payroll-records" && c[1].kind === "holds").length;
@@ -250,13 +279,13 @@ type MutationJourney = {name: string; mutation: string; affected: Array<"salary"
 const mutationJourneys: MutationJourney[] = [
   {name: "payroll profile save", mutation: "createOrUpdateEmployeePayrollProfile", affected: ["salary", "wps"], button: "Edit Profile", dialog: "Edit Salary Profile"},
   {name: "component save", mutation: "updateEmployeeSalaryComponent", affected: ["salary", "wps"], button: "Edit record", section: "salary-components", dialog: "Edit Salary Component"},
-  {name: "component archive", mutation: "archiveEmployeeSalaryComponent", affected: ["salary", "wps"], button: "Archive record", section: "salary-components"},
-  {name: "applied salary revision", mutation: "createEmployeeSalaryRevision", affected: ["salary", "wps"], button: "Record Revision", dialog: "Record Salary Revision", submit: "Record"},
-  {name: "history-only salary revision", mutation: "createEmployeeSalaryRevision", affected: [], button: "Record Revision", dialog: "Record Salary Revision", submit: "Record", revisionHistoryOnly: true},
+  {name: "component archive", mutation: "archiveEmployeeSalaryComponent", affected: ["salary", "wps"], button: "Archive record", section: "salary-components", dialog:"Archive Salary Component",submit:"Archive salary component"},
+  {name: "applied salary revision", mutation: "createEmployeeSalaryRevision", affected: ["salary", "wps"], button: "Record Revision", dialog: "Record Salary Revision", submit: "Save salary revision"},
+  {name: "history-only salary revision", mutation: "createEmployeeSalaryRevision", affected: [], button: "Record Revision", dialog: "Record Salary Revision", submit: "Save salary revision", revisionHistoryOnly: true},
   {name: "WPS profile save", mutation: "createOrUpdateEmployeeWpsProfile", affected: ["wps"], button: "Edit WPS Profile", dialog: "Edit WPS / Bank Details"},
-  {name: "hold placement", mutation: "placeEmployeePayrollHold", affected: ["salary", "wps"], button: "Place Hold", dialog: "Place Payroll Hold", submit: "Place Hold"},
-  {name: "hold release", mutation: "releaseEmployeePayrollHold", affected: ["salary", "wps"], button: "Release", section: "holds"},
-  {name: "hold archive", mutation: "archiveEmployeePayrollHold", affected: ["wps"], button: "Archive record", section: "holds"},
+  {name: "hold placement", mutation: "placeEmployeePayrollHold", affected: ["salary", "wps"], button: "Place Hold", dialog: "Place Payroll Hold", submit: "Save payroll hold"},
+  {name: "hold release", mutation: "releaseEmployeePayrollHold", affected: ["salary", "wps"], button: "Release", section: "holds",dialog:"Release Payroll Hold",submit:"Release payroll hold"},
+  {name: "hold archive", mutation: "archiveEmployeePayrollHold", affected: ["wps"], button: "Archive record", section: "holds",dialog:"Archive Payroll Hold",submit:"Archive payroll hold"},
 ];
 it.each(mutationJourneys.flatMap(journey => [true, false].map(success => ({...journey, success}))))("$name (confirmed success=$success) refreshes active inquiry consumers only after success", async journey => {
   // The real UI permits archiving a released hold, not an active hold.
@@ -283,12 +312,13 @@ it.each(mutationJourneys.flatMap(journey => [true, false].map(success => ({...jo
         if (journey.revisionHistoryOnly) fireEvent.click(within(dialog).getByRole("switch"));
       }
       if (journey.mutation === "placeEmployeePayrollHold") fireEvent.change(within(dialog).getByLabelText("Hold Reason"), {target: {value: "Synthetic cache refresh check"}});
-      const save = within(dialog).getByRole("button", {name: journey.submit ?? "Save"});
+      const save = within(dialog).getByRole("button", {name: journey.submit ?? /^Save /});
       await waitFor(() => expect((save as HTMLButtonElement).disabled).toBe(false));
       fireEvent.click(save);
     }
     await waitFor(() => expect(state.mutations[journey.mutation]).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(journey.success ? state.success : state.error).toHaveBeenCalled());
+    if(journey.success)await waitFor(()=>expect(state.success).toHaveBeenCalled());
+    else{await screen.findByText('Controlled mutation rejection');expect(state.success).not.toHaveBeenCalled();}
     await act(async () => {await new Promise(resolve => setTimeout(resolve, 0));});
     for (const consumer of observed) {
       const refreshed = journey.success && journey.affected.includes(consumer.kind);
@@ -319,7 +349,7 @@ async function readyInquiries() {
 }
 async function openPayrollSave(journey: MutationJourney) {
   fireEvent.click((journey.section ? section(journey.section) : screen).getByRole("button", {name: journey.button}));
-  const dialog = await screen.findByRole("dialog", {name: journey.dialog!}), save = within(dialog).getByRole("button", {name: "Save"});
+  const dialog = await screen.findByRole("dialog", {name: journey.dialog!}), save = within(dialog).getByRole("button", {name: /^Save /});
   await waitFor(() => expect((save as HTMLButtonElement).disabled).toBe(false));
   return {dialog, save};
 }
@@ -353,7 +383,7 @@ it.each(inquirySaveJourneys)("$name reaches the actual inquiry A→B→A debounc
     // modal. Its sibling controls stay inaccessible until confirmed save closes it.
     fireEvent.click((journey.section ? section(journey.section) : screen).getByRole("button", {name: journey.button}));
     await act(async () => {await vi.advanceTimersByTimeAsync(5);});
-    const dialog = screen.getByRole("dialog", {name: journey.dialog!}), save = within(dialog).getByRole("button", {name: "Save"});
+    const dialog = screen.getByRole("dialog", {name: journey.dialog!}), save = within(dialog).getByRole("button", {name: /^Save /});
     // Component detail opens the dialog asynchronously; allow the subsequently
     // mounted choice reader's notification before using its enabled Save control.
     await act(async () => {await vi.advanceTimersByTimeAsync(5);});
@@ -436,13 +466,15 @@ it.each(["rejected", "unknown"] as const)("%s component write retains its draft 
   const original = (["salary", "wps"] as const).map(kind => ({kind, query: view.client.getQueryCache().find({queryKey: [...payrollInquiryPrefix(kind), payrollInquiryIdentity(context)], exact: false})!}));
   if (outcome === "unknown") state.mutations[journey.mutation].mockRejectedValue(Error("SYNTHETIC_PRIVATE_RESPONSE_LOSS"));
   else state.mutations[journey.mutation].mockResolvedValue({success: false, error: "Controlled rejection"});
-  fireEvent.click(save); await waitFor(() => expect(state.error).toHaveBeenCalledOnce());
+  fireEvent.click(save);
+  await screen.findByText(outcome==='unknown'?/The result is unconfirmed/:"Controlled rejection");
+  expect(state.error).not.toHaveBeenCalled();
   expect(screen.getByRole("dialog", {name: journey.dialog!})).toBeTruthy();
   expect((within(dialog).getByLabelText("Notes") as HTMLTextAreaElement).value).toBe("Unsaved inquiry isolation draft");
   if (outcome === "unknown") {
-    await waitFor(() => expect((save as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(save); expect(state.error).toHaveBeenCalledWith(expect.stringContaining("unconfirmed"));
-    expect(JSON.stringify(state.error.mock.calls)).not.toContain("SYNTHETIC_PRIVATE_RESPONSE_LOSS");
+    const retry=within(dialog).getByRole('button',{name:'Retry unchanged payroll change'});
+    expect((retry as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText('SYNTHETIC_PRIVATE_RESPONSE_LOSS')).toBeNull();
   }
   expect(state.mutations[journey.mutation]).toHaveBeenCalledTimes(1); expect(state.success).not.toHaveBeenCalled();
   for (const {kind, query} of original) {

@@ -20,13 +20,23 @@
  *   - No payroll/WPS/AI implementation
  */
 
-import { calculateLeaveDays } from "@/lib/hr/time/date-utils";
+
 import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
 
 import { createClient } from "@/lib/supabase/server";
-import { logAudit } from "@/server/actions/audit";
-import { revalidatePath } from "next/cache";
-import { z } from "zod";
+
+
+import{childSaveContract,type ChildSaveContract,type ChildSaveResult,type ChildMutation}from'@/lib/hr/child-save-contract';
+import{employeeId as timeEmployeeId}from'@/lib/hr/employee-contract';
+import{canUseHrChild}from'@/lib/hr/child-authority';
+import{TIME_CHILD_TABLES,type TimeChildKind}from'@/lib/hr/time-child-contract';
+import{mutateHrChild}from'./child-mutation';
+async function mutateOriginalTime(kind:TimeChildKind,id:number,action:ChildMutation['action'],input:unknown,contract:ChildSaveContract):Promise<ChildSaveResult>{
+ if(!timeEmployeeId.safeParse(id).success||!childSaveContract.safeParse(contract).success||contract.revision===null||!canUseHrChild(await getAuthContext(),kind))return{success:false,error:'Original Time revision and current access required.'};
+ let query=(await createClient()).from(TIME_CHILD_TABLES[kind]).select('id,employee_id').eq('id',id);if(['shift-assignment','leave-request','overtime'].includes(kind))query=query.is('deleted_at',null);
+ const r=await query.maybeSingle();if(r.error||!r.data)return{success:false,error:'Original Time record unavailable.'};
+ return mutateHrChild({kind,employeeId:r.data.employee_id,id,revision:contract.revision,action,values:input},contract);
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -169,102 +179,9 @@ export type EmployeeTimeSummary = {
 
 // ── Zod Schemas ────────────────────────────────────────────────────────────────
 
-const attendancePunchCreateSchema = z.object({
-  punch_datetime: z.string().min(1, "Punch datetime is required"),
-  punch_type: z.enum(["in", "out", "break_start", "break_end"]),
-  work_site_id: z.number().int().positive().nullable().optional(),
-  punch_source: z.enum(["biometric", "mobile", "manual", "import"]).optional(),
-  device_reference: z.string().max(100).nullable().optional(),
-  external_reference: z.string().max(100).nullable().optional(),
-  notes: z.string().max(500).nullable().optional(),
-});
-
-const attendanceDailySummaryUpsertSchema = z.object({
-  attendance_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
-  attendance_type: z.enum(["site", "office", "yard", "workshop", "remote", "on_leave", "absent", "holiday"]),
-  work_site_id: z.number().int().positive().nullable().optional(),
-  first_in_at: z.string().nullable().optional(),
-  last_out_at: z.string().nullable().optional(),
-  total_hours: z.number().min(0).max(24).nullable().optional(),
-  overtime_hours: z.number().min(0).max(24).default(0),
-  late_minutes: z.number().int().min(0).default(0),
-  early_out_minutes: z.number().int().min(0).default(0),
-  is_missing_punch: z.boolean().default(false),
-  notes: z.string().max(500).nullable().optional(),
-});
-
-const attendanceCorrectionSchema = z.object({
-  correction_reason: z.string().min(1, "Correction reason is required").max(500),
-  attendance_type: z.enum(["site", "office", "yard", "workshop", "remote", "on_leave", "absent", "holiday"]).optional(),
-  work_site_id: z.number().int().positive().nullable().optional(),
-  first_in_at: z.string().nullable().optional(),
-  last_out_at: z.string().nullable().optional(),
-  total_hours: z.number().min(0).max(24).nullable().optional(),
-  overtime_hours: z.number().min(0).max(24).optional(),
-  late_minutes: z.number().int().min(0).optional(),
-  early_out_minutes: z.number().int().min(0).optional(),
-  is_missing_punch: z.boolean().optional(),
-  notes: z.string().max(500).nullable().optional(),
-});
-
-const shiftAssignmentCreateSchema = z.object({
-  work_calendar_id: z.number().int().positive().nullable().optional(),
-  work_shift_id: z.number().int().positive().nullable().optional(),
-  weekly_off_day: z.string().max(50).nullable().optional(),
-  overtime_eligible: z.boolean().default(false),
-  attendance_required: z.boolean().default(true),
-  effective_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
-  effective_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-  notes: z.string().max(500).nullable().optional(),
-});
-
-const shiftAssignmentUpdateSchema = shiftAssignmentCreateSchema.partial();
-
-const leaveRequestBaseSchema = z.object({
-  leave_type_id: z.number().int().positive(),
-  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  reason: z.string().max(1000).nullable().optional(),
-  sick_cert_dms_id: z.number().int().positive().nullable().optional(),
-  return_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-  notes: z.string().max(500).nullable().optional(),
-});
-
-const leaveRequestCreateSchema = leaveRequestBaseSchema.refine(
-  (d) => new Date(d.start_date) <= new Date(d.end_date),
-  { message: "Start date must be on or before end date", path: ["end_date"] }
-);
-
-const leaveRequestUpdateSchema = leaveRequestBaseSchema.partial();
-
-const leaveDecisionSchema = z.object({
-  reason: z.string().max(500).nullable().optional(),
-});
-
-const leaveBalanceUpsertSchema = z.object({
-  leave_type_id: z.number().int().positive(),
-  leave_year: z.number().int().min(2000).max(2100),
-  entitled_days: z.number().min(0).max(365),
-  used_days: z.number().min(0).max(365).default(0),
-  carry_forward: z.number().min(0).max(365).default(0),
-});
-
-const overtimeCreateSchema = z.object({
-  overtime_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  hours: z.number().min(0).max(24),
-  reason: z.string().max(500).nullable().optional(),
-  notes: z.string().max(500).nullable().optional(),
-});
-
-const overtimeUpdateSchema = overtimeCreateSchema.partial();
-
-const overtimeDecisionSchema = z.object({
-  reason: z.string().max(500).nullable().optional(),
-});
-
 // ── Internal Helpers ───────────────────────────────────────────────────────────
 
-import { getEmployeeCtxAdmin as getEmployeeCtx, getEmployeeCtx as getEmployeeCtxRls } from "./_shared/employee-context";
+import { getEmployeeCtx as getEmployeeCtxRls } from "./_shared/employee-context";
 
 const LEAVE_REQUEST_LIST_SELECT =
   "*, leave_type:hr_leave_types!employee_leave_requests_leave_type_id_fkey(name_en,code), approver:user_profiles!employee_leave_requests_approved_by_fkey(display_name), employee:employees!employee_leave_requests_employee_id_fkey(full_name_en,employee_code)";
@@ -289,12 +206,7 @@ async function getAccessibleEmployeeIdsForLeave(
   return (data ?? []).map((row) => row.id as number);
 }
 
-function empRevalidate(employeeId: number) {
-  revalidatePath(`/admin/hr/employees/record/${employeeId}`);
-  revalidatePath("/admin/hr/time/attendance");
-  revalidatePath("/admin/hr/time/leave");
-  revalidatePath("/admin/hr/time/shifts");
-}
+
 
 // ── Attendance Punches ─────────────────────────────────────────────────────────
 
@@ -322,42 +234,7 @@ export async function listEmployeeAttendancePunches(
   return { success: true, data: { data: (data ?? []) as AttendancePunchRow[], count: count ?? 0 } };
 }
 
-export async function createEmployeeAttendancePunch(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.attendance.manage"))
-    return { success: false, error: "Permission denied: hr.attendance.manage required" };
-
-  const parsed = attendancePunchCreateSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-  const admin = await createClient();
-  const emp = await getEmployeeCtx(employeeId);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const { data, error } = await admin
-    .from("employee_attendance_punches")
-    .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id })
-    .select("id")
-    .single();
-
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_attendance_punches",
-    entity_id: data.id,
-    entity_reference: `${emp.employee_code}-PUNCH-${data.id}`,
-    action: "create",
-    new_values: { ...parsed.data, parent_employee_id: employeeId, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "attendance_punch" },
-    owner_company_id: emp.owner_company_id,
-  });
-
-  empRevalidate(employeeId);
-  return { success: true, data: { id: data.id } };
-}
+export async function createEmployeeAttendancePunch(employeeId:number,input:unknown,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateHrChild({kind:'attendance-punch',employeeId,id:null,revision:contract?.revision,action:'create',values:input},contract);}
 
 // ── Attendance Daily Summary ───────────────────────────────────────────────────
 
@@ -423,140 +300,11 @@ export async function listDailyAttendance(params?: {
   return { success: true, data: { data: (data ?? []) as AttendanceDailySummaryRow[], count: count ?? 0 } };
 }
 
-export async function createOrUpdateAttendanceDailySummary(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.attendance.manage"))
-    return { success: false, error: "Permission denied: hr.attendance.manage required" };
+export async function createOrUpdateAttendanceDailySummary(employeeId:number,input:unknown,contract:ChildSaveContract,originalId:number|null):Promise<ChildSaveResult>{return mutateHrChild({kind:'attendance-summary',employeeId,id:originalId,revision:contract?.revision,action:originalId===null?'create':'update',values:input},contract);}
 
-  const parsed = attendanceDailySummaryUpsertSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
+export async function approveAttendanceDailySummary(id:number,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalTime('attendance-summary',id,'approve',{},contract);}
 
-  const admin = await createClient();
-  const emp = await getEmployeeCtx(employeeId);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const payload = {
-    employee_id: employeeId,
-    ...parsed.data,
-    updated_by: ctx.profile?.id,
-  };
-
-  const { data, error } = await admin
-    .from("employee_attendance_daily_summary")
-    .upsert(payload, { onConflict: "employee_id,attendance_date" })
-    .select("id")
-    .single();
-
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_attendance_daily_summary",
-    entity_id: data.id,
-    entity_reference: `${emp.employee_code}-ATT-${parsed.data.attendance_date}`,
-    action: "upsert",
-    new_values: { parent_employee_id: employeeId, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "attendance_summary", ...parsed.data },
-    owner_company_id: emp.owner_company_id,
-  });
-
-  empRevalidate(employeeId);
-  return { success: true, data: { id: data.id } };
-}
-
-export async function approveAttendanceDailySummary(
-  summaryId: number
-): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.attendance.manage"))
-    return { success: false, error: "Permission denied: hr.attendance.manage required" };
-
-  const admin = await createClient();
-
-  const { data: summary, error: fetchErr } = await admin
-    .from("employee_attendance_daily_summary")
-    .select("id, employee_id, attendance_date")
-    .eq("id", summaryId)
-    .single();
-
-  if (fetchErr || !summary) return { success: false, error: "Attendance record not found" };
-
-  const emp = await getEmployeeCtx(summary.employee_id);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const { error } = await admin
-    .from("employee_attendance_daily_summary")
-    .update({
-      approval_status: "approved",
-      approved_by: ctx.profile?.id,
-      approved_at: new Date().toISOString(),
-      updated_by: ctx.profile?.id,
-    })
-    .eq("id", summaryId);
-
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_attendance_daily_summary",
-    entity_id: summaryId,
-    entity_reference: `${emp.employee_code}-ATT-${summary.attendance_date}`,
-    action: "approve",
-    new_values: { parent_employee_id: summary.employee_id, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "attendance_summary", approval_status: "approved" },
-    owner_company_id: emp.owner_company_id,
-  });
-
-  empRevalidate(summary.employee_id);
-  return { success: true };
-}
-
-export async function queryAttendanceDailySummary(
-  summaryId: number,
-  reason: string
-): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.attendance.manage"))
-    return { success: false, error: "Permission denied: hr.attendance.manage required" };
-
-  const admin = await createClient();
-
-  const { data: summary, error: fetchErr } = await admin
-    .from("employee_attendance_daily_summary")
-    .select("id, employee_id, attendance_date")
-    .eq("id", summaryId)
-    .single();
-
-  if (fetchErr || !summary) return { success: false, error: "Attendance record not found" };
-
-  const emp = await getEmployeeCtx(summary.employee_id);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const { error } = await admin
-    .from("employee_attendance_daily_summary")
-    .update({
-      approval_status: "queried",
-      notes: reason,
-      updated_by: ctx.profile?.id,
-    })
-    .eq("id", summaryId);
-
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_attendance_daily_summary",
-    entity_id: summaryId,
-    entity_reference: `${emp.employee_code}-ATT-${summary.attendance_date}`,
-    action: "query",
-    new_values: { parent_employee_id: summary.employee_id, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "attendance_summary", approval_status: "queried", reason },
-    owner_company_id: emp.owner_company_id,
-  });
-
-  empRevalidate(summary.employee_id);
-  return { success: true };
-}
+export async function queryAttendanceDailySummary(id:number,reason:string,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalTime('attendance-summary',id,'query',{reason},contract);}
 
 // ── Attendance Corrections (Append-Only) ──────────────────────────────────────
 
@@ -574,88 +322,7 @@ export async function listAttendanceCorrections(
   return { success: true, data: { data: (data ?? []) as AttendanceCorrectionRow[] } };
 }
 
-export async function correctAttendanceDailySummary(
-  summaryId: number,
-  input: unknown
-): Promise<ActionResult<{ correctionId: number }>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.attendance.manage"))
-    return { success: false, error: "Permission denied: hr.attendance.manage required" };
-
-  const parsed = attendanceCorrectionSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-  const admin = await createClient();
-
-  const { data: oldSummary, error: fetchErr } = await admin
-    .from("employee_attendance_daily_summary")
-    .select("*")
-    .eq("id", summaryId)
-    .single();
-
-  if (fetchErr || !oldSummary) return { success: false, error: "Attendance record not found" };
-
-  const emp = await getEmployeeCtx(oldSummary.employee_id);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const { correction_reason, ...updateFields } = parsed.data;
-  const cleanUpdate: Record<string, unknown> = { updated_by: ctx.profile?.id };
-
-  const allowedUpdateFields = [
-    "attendance_type", "work_site_id", "first_in_at", "last_out_at",
-    "total_hours", "overtime_hours", "late_minutes", "early_out_minutes",
-    "is_missing_punch", "notes",
-  ] as const;
-
-  for (const key of allowedUpdateFields) {
-    if (updateFields[key as keyof typeof updateFields] !== undefined) {
-      cleanUpdate[key] = updateFields[key as keyof typeof updateFields];
-    }
-  }
-
-  const oldValuesJson: Record<string, unknown> = {};
-  for (const key of allowedUpdateFields) {
-    if (key in cleanUpdate) {
-      oldValuesJson[key] = oldSummary[key as keyof typeof oldSummary];
-    }
-  }
-
-  const { error: updateErr } = await admin
-    .from("employee_attendance_daily_summary")
-    .update(cleanUpdate)
-    .eq("id", summaryId);
-
-  if (updateErr) return { success: false, error: updateErr.message };
-
-  const { data: correctionData, error: corrErr } = await admin
-    .from("employee_attendance_corrections")
-    .insert({
-      summary_id: summaryId,
-      employee_id: oldSummary.employee_id,
-      correction_reason,
-      old_values_json: oldValuesJson,
-      new_values_json: { ...cleanUpdate },
-      corrected_by: ctx.profile?.id as number,
-    })
-    .select("id")
-    .single();
-
-  if (corrErr) return { success: false, error: corrErr.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_attendance_corrections",
-    entity_id: correctionData.id,
-    entity_reference: `${emp.employee_code}-CORR-${correctionData.id}`,
-    action: "correct",
-    old_values: oldValuesJson,
-    new_values: { parent_employee_id: oldSummary.employee_id, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "attendance_correction", correction_reason, ...cleanUpdate },
-    owner_company_id: emp.owner_company_id,
-  });
-
-  empRevalidate(oldSummary.employee_id);
-  return { success: true, data: { correctionId: correctionData.id } };
-}
+export async function correctAttendanceDailySummary(id:number,input:unknown,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalTime('attendance-summary',id,'correct',input,contract);}
 
 // ── Shift Assignments ──────────────────────────────────────────────────────────
 
@@ -705,128 +372,11 @@ export async function listGlobalShiftAssignments(params?: {
   return { success: true, data: { data: (data ?? []) as ShiftAssignmentRow[], count: count ?? 0 } };
 }
 
-export async function createEmployeeShiftAssignment(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.attendance.manage"))
-    return { success: false, error: "Permission denied: hr.attendance.manage required" };
+export async function createEmployeeShiftAssignment(employeeId:number,input:unknown,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateHrChild({kind:'shift-assignment',employeeId,id:null,revision:contract?.revision,action:'create',values:input},contract);}
 
-  const parsed = shiftAssignmentCreateSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
+export async function updateEmployeeShiftAssignment(id:number,input:unknown,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalTime('shift-assignment',id,'update',input,contract);}
 
-  const admin = await createClient();
-  const emp = await getEmployeeCtx(employeeId);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const { data, error } = await admin
-    .from("employee_shift_assignments")
-    .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
-    .select("id")
-    .single();
-
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_shift_assignments",
-    entity_id: data.id,
-    entity_reference: `${emp.employee_code}-SHIFT-${data.id}`,
-    action: "create",
-    new_values: { parent_employee_id: employeeId, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "shift_assignment", ...parsed.data },
-    owner_company_id: emp.owner_company_id,
-  });
-
-  empRevalidate(employeeId);
-  return { success: true, data: { id: data.id } };
-}
-
-export async function updateEmployeeShiftAssignment(
-  id: number,
-  input: unknown
-): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.attendance.manage"))
-    return { success: false, error: "Permission denied: hr.attendance.manage required" };
-
-  const parsed = shiftAssignmentUpdateSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-  const admin = await createClient();
-
-  const { data: existing, error: fetchErr } = await admin
-    .from("employee_shift_assignments")
-    .select("employee_id")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-
-  if (fetchErr || !existing) return { success: false, error: "Shift assignment not found" };
-
-  const emp = await getEmployeeCtx(existing.employee_id);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const { error } = await admin
-    .from("employee_shift_assignments")
-    .update({ ...parsed.data, updated_by: ctx.profile?.id })
-    .eq("id", id);
-
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_shift_assignments",
-    entity_id: id,
-    entity_reference: `${emp.employee_code}-SHIFT-${id}`,
-    action: "update",
-    new_values: { parent_employee_id: existing.employee_id, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "shift_assignment", ...parsed.data },
-    owner_company_id: emp.owner_company_id,
-  });
-
-  empRevalidate(existing.employee_id);
-  return { success: true };
-}
-
-export async function archiveEmployeeShiftAssignment(id: number): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.attendance.manage"))
-    return { success: false, error: "Permission denied: hr.attendance.manage required" };
-
-  const admin = await createClient();
-
-  const { data: existing, error: fetchErr } = await admin
-    .from("employee_shift_assignments")
-    .select("employee_id")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-
-  if (fetchErr || !existing) return { success: false, error: "Shift assignment not found" };
-
-  const emp = await getEmployeeCtx(existing.employee_id);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const { error } = await admin
-    .from("employee_shift_assignments")
-    .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id })
-    .eq("id", id);
-
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_shift_assignments",
-    entity_id: id,
-    entity_reference: `${emp.employee_code}-SHIFT-${id}`,
-    action: "archive",
-    new_values: { parent_employee_id: existing.employee_id, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "shift_assignment" },
-    owner_company_id: emp.owner_company_id,
-  });
-
-  empRevalidate(existing.employee_id);
-  return { success: true };
-}
+export async function archiveEmployeeShiftAssignment(id:number,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalTime('shift-assignment',id,'archive',{},contract);}
 
 // ── Leave Requests ─────────────────────────────────────────────────────────────
 
@@ -908,253 +458,15 @@ export async function listLeaveRequests(params?: {
   return { success: true, data: { data: (data ?? []) as LeaveRequestRow[], count: count ?? 0 } };
 }
 
-export async function createLeaveRequest(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.leave.manage"))
-    return { success: false, error: "Permission denied: hr.leave.manage required" };
+export async function createLeaveRequest(employeeId:number,input:unknown,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateHrChild({kind:'leave-request',employeeId,id:null,revision:contract?.revision,action:'create',values:input},contract);}
 
-  const parsed = leaveRequestCreateSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
+export async function approveLeaveRequest(id:number,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalTime('leave-request',id,'approve',{},contract);}
 
-  const admin = await createClient();
-  const emp = await getEmployeeCtx(employeeId);
-  if (!emp) return { success: false, error: "Employee not found" };
+export async function rejectLeaveRequest(id:number,reason:string,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalTime('leave-request',id,'reject',{reason},contract);}
 
-  const totalDays = calculateLeaveDays(parsed.data.start_date, parsed.data.end_date);
+export async function cancelLeaveRequest(id:number,reason:string,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalTime('leave-request',id,'cancel',{reason},contract);}
 
-  const { data, error } = await admin
-    .from("employee_leave_requests")
-    .insert({
-      employee_id: employeeId,
-      ...parsed.data,
-      total_days: totalDays,
-      approval_status: "pending",
-      created_by: ctx.profile?.id,
-      updated_by: ctx.profile?.id,
-    })
-    .select("id")
-    .single();
-
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_leave_requests",
-    entity_id: data.id,
-    entity_reference: `${emp.employee_code}-LEAVE-${data.id}`,
-    action: "create",
-    new_values: { parent_employee_id: employeeId, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "leave_request", ...parsed.data, total_days: totalDays },
-    owner_company_id: emp.owner_company_id,
-  });
-
-  revalidatePath(`/admin/hr/employees/record/${employeeId}`);
-  revalidatePath("/admin/hr/time/leave");
-  return { success: true, data: { id: data.id } };
-}
-
-export async function approveLeaveRequest(id: number): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.leave.manage"))
-    return { success: false, error: "Permission denied: hr.leave.manage required" };
-
-  const admin = await createClient();
-
-  const { data: req, error: fetchErr } = await admin
-    .from("employee_leave_requests")
-    .select("id, employee_id, leave_type_id, total_days, approval_status, start_date")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-
-  if (fetchErr || !req) return { success: false, error: "Leave request not found" };
-  if (req.approval_status !== "pending")
-    return { success: false, error: `Cannot approve leave in '${req.approval_status}' status` };
-
-  const emp = await getEmployeeCtx(req.employee_id);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const { error } = await admin
-    .from("employee_leave_requests")
-    .update({
-      approval_status: "approved",
-      approved_by: ctx.profile?.id,
-      approved_at: new Date().toISOString(),
-      updated_by: ctx.profile?.id,
-    })
-    .eq("id", id);
-
-  if (error) return { success: false, error: error.message };
-
-  if (req.total_days && req.total_days > 0) {
-    const leaveYear = new Date(req.start_date).getFullYear();
-    const { data: balance } = await admin
-      .from("employee_leave_balances")
-      .select("id, used_days")
-      .eq("employee_id", req.employee_id)
-      .eq("leave_type_id", req.leave_type_id)
-      .eq("leave_year", leaveYear)
-      .single();
-
-    if (balance) {
-      await admin
-        .from("employee_leave_balances")
-        .update({
-          used_days: Number(balance.used_days) + Number(req.total_days),
-          updated_by: ctx.profile?.id,
-        })
-        .eq("id", balance.id);
-    }
-  }
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_leave_requests",
-    entity_id: id,
-    entity_reference: `${emp.employee_code}-LEAVE-${id}`,
-    action: "approve",
-    new_values: { parent_employee_id: req.employee_id, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "leave_request", approval_status: "approved" },
-    owner_company_id: emp.owner_company_id,
-  });
-
-  revalidatePath(`/admin/hr/employees/record/${req.employee_id}`);
-  revalidatePath("/admin/hr/time/leave");
-  return { success: true };
-}
-
-export async function rejectLeaveRequest(id: number, reason?: string): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.leave.manage"))
-    return { success: false, error: "Permission denied: hr.leave.manage required" };
-
-  const admin = await createClient();
-
-  const { data: req, error: fetchErr } = await admin
-    .from("employee_leave_requests")
-    .select("id, employee_id, approval_status")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-
-  if (fetchErr || !req) return { success: false, error: "Leave request not found" };
-  if (req.approval_status !== "pending")
-    return { success: false, error: `Cannot reject leave in '${req.approval_status}' status` };
-
-  const emp = await getEmployeeCtx(req.employee_id);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const { error } = await admin
-    .from("employee_leave_requests")
-    .update({
-      approval_status: "rejected",
-      rejected_by: ctx.profile?.id,
-      rejected_at: new Date().toISOString(),
-      notes: reason ?? null,
-      updated_by: ctx.profile?.id,
-    })
-    .eq("id", id);
-
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_leave_requests",
-    entity_id: id,
-    entity_reference: `${emp.employee_code}-LEAVE-${id}`,
-    action: "reject",
-    new_values: { parent_employee_id: req.employee_id, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "leave_request", approval_status: "rejected", reason },
-    owner_company_id: emp.owner_company_id,
-  });
-
-  revalidatePath(`/admin/hr/employees/record/${req.employee_id}`);
-  revalidatePath("/admin/hr/time/leave");
-  return { success: true };
-}
-
-export async function cancelLeaveRequest(id: number, reason?: string): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.leave.manage"))
-    return { success: false, error: "Permission denied: hr.leave.manage required" };
-
-  const admin = await createClient();
-
-  const { data: req, error: fetchErr } = await admin
-    .from("employee_leave_requests")
-    .select("id, employee_id, approval_status")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-
-  if (fetchErr || !req) return { success: false, error: "Leave request not found" };
-
-  if (!["pending", "approved"].includes(req.approval_status))
-    return { success: false, error: `Cannot cancel leave in '${req.approval_status}' status` };
-
-  const emp = await getEmployeeCtx(req.employee_id);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  if (req.approval_status === "approved") {
-    // HR.4 limitation: cancelling an approved leave does not reverse used_days.
-    // Balance reversal must be done manually via updateLeaveBalance.
-  }
-
-  const { error } = await admin
-    .from("employee_leave_requests")
-    .update({
-      approval_status: "cancelled",
-      cancelled_by: ctx.profile?.id,
-      cancelled_at: new Date().toISOString(),
-      notes: reason ?? null,
-      updated_by: ctx.profile?.id,
-    })
-    .eq("id", id);
-
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_leave_requests",
-    entity_id: id,
-    entity_reference: `${emp.employee_code}-LEAVE-${id}`,
-    action: "cancel",
-    new_values: { parent_employee_id: req.employee_id, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "leave_request", approval_status: "cancelled", reason },
-    owner_company_id: emp.owner_company_id,
-  });
-
-  revalidatePath(`/admin/hr/employees/record/${req.employee_id}`);
-  revalidatePath("/admin/hr/time/leave");
-  return { success: true };
-}
-
-export async function archiveLeaveRequest(id: number): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.leave.manage"))
-    return { success: false, error: "Permission denied: hr.leave.manage required" };
-
-  const admin = await createClient();
-
-  const { data: req, error: fetchErr } = await admin
-    .from("employee_leave_requests")
-    .select("id, employee_id")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-
-  if (fetchErr || !req) return { success: false, error: "Leave request not found" };
-
-  const { error } = await admin
-    .from("employee_leave_requests")
-    .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id })
-    .eq("id", id);
-
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath(`/admin/hr/employees/record/${req.employee_id}`);
-  revalidatePath("/admin/hr/time/leave");
-  return { success: true };
-}
+export async function archiveLeaveRequest(id:number,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalTime('leave-request',id,'archive',{},contract);}
 
 // ── Leave Balances ─────────────────────────────────────────────────────────────
 
@@ -1211,91 +523,9 @@ export async function listEmployeeLeaveBalances(
   return { success: true, data: { data: (data ?? []) as LeaveBalanceRow[] } };
 }
 
-export async function createOrUpdateLeaveBalance(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.leave.manage"))
-    return { success: false, error: "Permission denied: hr.leave.manage required" };
+export async function createOrUpdateLeaveBalance(employeeId:number,input:unknown,contract:ChildSaveContract,originalId:number|null):Promise<ChildSaveResult>{return mutateHrChild({kind:'leave-balance',employeeId,id:originalId,revision:contract?.revision,action:originalId===null?'create':'update',values:input},contract);}
 
-  const parsed = leaveBalanceUpsertSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-  const admin = await createClient();
-  const emp = await getEmployeeCtx(employeeId);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const { data, error } = await admin
-    .from("employee_leave_balances")
-    .upsert(
-      {
-        employee_id: employeeId,
-        leave_type_id: parsed.data.leave_type_id,
-        leave_year: parsed.data.leave_year,
-        entitled_days: parsed.data.entitled_days,
-        used_days: parsed.data.used_days,
-        carry_forward: parsed.data.carry_forward,
-        updated_by: ctx.profile?.id,
-      },
-      { onConflict: "employee_id,leave_type_id,leave_year" }
-    )
-    .select("id")
-    .single();
-
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_leave_balances",
-    entity_id: data.id,
-    entity_reference: `${emp.employee_code}-BAL-${data.id}`,
-    action: "upsert",
-    new_values: { parent_employee_id: employeeId, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "leave_balance", ...parsed.data },
-    owner_company_id: emp.owner_company_id,
-  });
-
-  revalidatePath(`/admin/hr/employees/record/${employeeId}`);
-  return { success: true, data: { id: data.id } };
-}
-
-export async function recalculateEmployeeLeaveBalance(
-  employeeId: number,
-  leaveTypeId: number,
-  year: number
-): Promise<ActionResult<{ used_days: number }>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.leave.manage"))
-    return { success: false, error: "Permission denied: hr.leave.manage required" };
-
-  const admin = await createClient();
-
-  const { data: approvedLeaves, error: fetchErr } = await admin
-    .from("employee_leave_requests")
-    .select("total_days, start_date")
-    .eq("employee_id", employeeId)
-    .eq("leave_type_id", leaveTypeId)
-    .eq("approval_status", "approved")
-    .is("deleted_at", null);
-
-  if (fetchErr) return { success: false, error: fetchErr.message };
-
-  const usedDays = (approvedLeaves ?? [])
-    .filter((r) => new Date(r.start_date).getFullYear() === year)
-    .reduce((sum, r) => sum + Number(r.total_days ?? 0), 0);
-
-  const { error } = await admin
-    .from("employee_leave_balances")
-    .update({ used_days: usedDays, updated_by: ctx.profile?.id })
-    .eq("employee_id", employeeId)
-    .eq("leave_type_id", leaveTypeId)
-    .eq("leave_year", year);
-
-  if (error) return { success: false, error: error.message };
-
-  revalidatePath(`/admin/hr/employees/record/${employeeId}`);
-  return { success: true, data: { used_days: usedDays } };
-}
+export async function recalculateEmployeeLeaveBalance(id:number,fingerprint:string,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalTime('leave-balance',id,'recalculate',{fingerprint},contract);}
 
 // ── Overtime Records ───────────────────────────────────────────────────────────
 
@@ -1328,207 +558,15 @@ export async function listEmployeeOvertimeRecords(
   return { success: true, data: { data: (data ?? []) as OvertimeRecordRow[], count: count ?? 0 } };
 }
 
-export async function createOvertimeRecord(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.attendance.manage"))
-    return { success: false, error: "Permission denied: hr.attendance.manage required" };
+export async function createOvertimeRecord(employeeId:number,input:unknown,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateHrChild({kind:'overtime',employeeId,id:null,revision:contract?.revision,action:'create',values:input},contract);}
 
-  const parsed = overtimeCreateSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
+export async function updateOvertimeRecord(id:number,input:unknown,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalTime('overtime',id,'update',input,contract);}
 
-  const admin = await createClient();
-  const emp = await getEmployeeCtx(employeeId);
-  if (!emp) return { success: false, error: "Employee not found" };
+export async function approveOvertimeRecord(id:number,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalTime('overtime',id,'approve',{},contract);}
 
-  const { data, error } = await admin
-    .from("employee_overtime_records")
-    .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
-    .select("id")
-    .single();
+export async function rejectOvertimeRecord(id:number,reason:string,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalTime('overtime',id,'reject',{reason},contract);}
 
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_overtime_records",
-    entity_id: data.id,
-    entity_reference: `${emp.employee_code}-OT-${data.id}`,
-    action: "create",
-    new_values: { parent_employee_id: employeeId, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "overtime", ...parsed.data },
-    owner_company_id: emp.owner_company_id,
-  });
-
-  empRevalidate(employeeId);
-  return { success: true, data: { id: data.id } };
-}
-
-export async function updateOvertimeRecord(id: number, input: unknown): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.attendance.manage"))
-    return { success: false, error: "Permission denied: hr.attendance.manage required" };
-
-  const parsed = overtimeUpdateSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-  const admin = await createClient();
-
-  const { data: existing, error: fetchErr } = await admin
-    .from("employee_overtime_records")
-    .select("employee_id, approval_status")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-
-  if (fetchErr || !existing) return { success: false, error: "Overtime record not found" };
-  if (existing.approval_status !== "pending")
-    return { success: false, error: "Only pending overtime records can be edited" };
-
-  const emp = await getEmployeeCtx(existing.employee_id);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const { error } = await admin
-    .from("employee_overtime_records")
-    .update({ ...parsed.data, updated_by: ctx.profile?.id })
-    .eq("id", id);
-
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_overtime_records",
-    entity_id: id,
-    entity_reference: `${emp.employee_code}-OT-${id}`,
-    action: "update",
-    new_values: { parent_employee_id: existing.employee_id, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "overtime", ...parsed.data },
-    owner_company_id: emp.owner_company_id,
-  });
-
-  empRevalidate(existing.employee_id);
-  return { success: true };
-}
-
-export async function approveOvertimeRecord(id: number): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.attendance.manage"))
-    return { success: false, error: "Permission denied: hr.attendance.manage required" };
-
-  const admin = await createClient();
-
-  const { data: existing, error: fetchErr } = await admin
-    .from("employee_overtime_records")
-    .select("employee_id, approval_status, overtime_date")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-
-  if (fetchErr || !existing) return { success: false, error: "Overtime record not found" };
-  if (existing.approval_status !== "pending")
-    return { success: false, error: `Cannot approve overtime in '${existing.approval_status}' status` };
-
-  const emp = await getEmployeeCtx(existing.employee_id);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const { error } = await admin
-    .from("employee_overtime_records")
-    .update({
-      approval_status: "approved",
-      approved_by: ctx.profile?.id,
-      approved_at: new Date().toISOString(),
-      updated_by: ctx.profile?.id,
-    })
-    .eq("id", id);
-
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_overtime_records",
-    entity_id: id,
-    entity_reference: `${emp.employee_code}-OT-${id}`,
-    action: "approve",
-    new_values: { parent_employee_id: existing.employee_id, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "overtime", approval_status: "approved" },
-    owner_company_id: emp.owner_company_id,
-  });
-
-  empRevalidate(existing.employee_id);
-  return { success: true };
-}
-
-export async function rejectOvertimeRecord(id: number, reason?: string): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.attendance.manage"))
-    return { success: false, error: "Permission denied: hr.attendance.manage required" };
-
-  const admin = await createClient();
-
-  const { data: existing, error: fetchErr } = await admin
-    .from("employee_overtime_records")
-    .select("employee_id, approval_status")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-
-  if (fetchErr || !existing) return { success: false, error: "Overtime record not found" };
-  if (existing.approval_status !== "pending")
-    return { success: false, error: `Cannot reject overtime in '${existing.approval_status}' status` };
-
-  const emp = await getEmployeeCtx(existing.employee_id);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const { error } = await admin
-    .from("employee_overtime_records")
-    .update({
-      approval_status: "rejected",
-      notes: reason ?? null,
-      updated_by: ctx.profile?.id,
-    })
-    .eq("id", id);
-
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_overtime_records",
-    entity_id: id,
-    entity_reference: `${emp.employee_code}-OT-${id}`,
-    action: "reject",
-    new_values: { parent_employee_id: existing.employee_id, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "overtime", approval_status: "rejected", reason },
-    owner_company_id: emp.owner_company_id,
-  });
-
-  empRevalidate(existing.employee_id);
-  return { success: true };
-}
-
-export async function archiveOvertimeRecord(id: number): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.attendance.manage"))
-    return { success: false, error: "Permission denied: hr.attendance.manage required" };
-
-  const admin = await createClient();
-
-  const { data: existing, error: fetchErr } = await admin
-    .from("employee_overtime_records")
-    .select("employee_id")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .single();
-
-  if (fetchErr || !existing) return { success: false, error: "Overtime record not found" };
-
-  const { error } = await admin
-    .from("employee_overtime_records")
-    .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id })
-    .eq("id", id);
-
-  if (error) return { success: false, error: error.message };
-
-  empRevalidate(existing.employee_id);
-  return { success: true };
-}
+export async function archiveOvertimeRecord(id:number,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalTime('overtime',id,'archive',{},contract);}
 
 // ── Time Summary ───────────────────────────────────────────────────────────────
 

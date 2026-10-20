@@ -8,10 +8,9 @@ import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import type { HrDmsDocumentSelection, HrComplianceRecordSuggestion, HrDocumentConflict } from "@/lib/hr/document-to-record/types";
 import type { DuplicateCheckResult } from "@/lib/hr/document-to-record/duplicate-checks";
 import type {AuthContext} from '@/lib/rbac/check';
-import {canSaveDocumentEmployee,documentEmployeeInputSchema,type DocumentEmployeeReview,type DocumentEmployeeReceipt} from '@/lib/hr/numbered-document-employee-contract';
+import {canSaveDocumentEmployee,documentEmployeeInputSchema,type DocumentEmployeeInput,type DocumentEmployeeReview,type DocumentEmployeeReceipt} from '@/lib/hr/numbered-document-employee-contract';
 import {useDocumentEmployeeSession} from './use-document-employee-session';
 import {Button} from '@/components/ui/button';
-import type { ComplianceChildInput } from "@/lib/hr/document-to-record/types";
 import { HrDocumentPickerStep } from "./hr-document-picker-step";
 import { HrDocumentEmployeeReviewStep } from "./hr-document-employee-review-step";
 import type { EmployeeFormState } from "./hr-document-employee-review-step";
@@ -166,7 +165,7 @@ export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen
       return;
     }
 
-      const includedRecords: ComplianceChildInput[] = complianceSuggestions
+      const includedRecords: DocumentEmployeeInput['complianceRecords'] = complianceSuggestions
         .filter((s) => s.included)
         .map((s) => {
           if (s.kind === "identity_document") {
@@ -226,11 +225,12 @@ export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen
               training_category_id: null,
               provider: (s.fields.provider as string) ?? null,
               certificate_number: (s.fields.certificate_number as string) ?? null,
-              issue_date: (s.fields.issue_date as string) ?? null,
+              // Issuance is not proof of completion. Only an explicitly reviewed
+              // completion value belongs to the actual training record.
+              completion_date: (s.fields.completion_date as string) || null,
               expiry_date: (s.fields.expiry_date as string) ?? null,
               status: "valid" as const,
               verification_status: "unverified" as const,
-              renewal_status: "not_required" as const,
               notes: null,
               dms_document_id: s.sourceDocumentId,
             };

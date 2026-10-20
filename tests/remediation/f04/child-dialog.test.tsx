@@ -35,3 +35,16 @@ it('native reload listener is active for editable child and removed when it unmo
 it('read-only view does not acquire an unsaved reload warning',()=>{
  child({mode:'view'});const event=new Event('beforeunload',{cancelable:true});window.dispatchEvent(event);expect(event.defaultPrevented).toBe(false);
 });
+it('only the explicit recovery slot stays outside the inert pending edit body',async()=>{
+ let finish!:()=>void;const detach=vi.fn(),save=vi.fn(()=>new Promise<void>(resolve=>{finish=resolve;}));
+ const ui=child({onSubmit:save,recoveryActions:<button type="button" onClick={detach}>Close and check later</button>});
+ fireEvent.change(ui.getByLabelText('Full name'),{target:{value:'Synthetic'}});fireEvent.click(ui.getByRole('button',{name:'Add'}));
+ const recovery=ui.getByRole('button',{name:'Close and check later'});expect(recovery.closest('[inert]')).toBeNull();expect(ui.getByLabelText('Full name').closest('[inert]')).not.toBeNull();expect((ui.getByRole('button',{name:'Cancel'})as HTMLButtonElement).disabled).toBe(true);
+ fireEvent.click(recovery);expect(detach).toHaveBeenCalledOnce();expect(save).toHaveBeenCalledOnce();await act(async()=>finish());
+});
+it('a discarded opening cannot leave confirmation or validation state disabling the next opening',()=>{
+ const close=vi.fn(),save=vi.fn();
+ const tree=(open:boolean)=><ERPChildDialogForm open={open} title="Synthetic child" onOpenChange={close} onSubmit={save}><label htmlFor="reopen-name">Full name</label><input id="reopen-name" required defaultValue="Synthetic"/></ERPChildDialogForm>;
+ const ui=render(tree(true));fireEvent.change(ui.getByLabelText('Full name'),{target:{value:'Discarded draft'}});fireEvent.click(ui.getByRole('button',{name:'Cancel'}));fireEvent.click(ui.getByRole('button',{name:'Discard changes'}));expect(close).toHaveBeenCalledWith(false);
+ ui.rerender(tree(false));ui.rerender(tree(true));expect(ui.queryByRole('button',{name:'Discard changes'})).toBeNull();expect((ui.getByRole('button',{name:'Add'}) as HTMLButtonElement).disabled).toBe(false);fireEvent.click(ui.getByRole('button',{name:'Add'}));expect(save).toHaveBeenCalledOnce();
+});

@@ -1,6 +1,5 @@
 "use client";
 import {hasHrReadCapability} from "@/lib/reads/hr-read-identity";
-import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
@@ -17,12 +16,7 @@ import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
  *   7. EOS & Clearance
  */
 
-import { ERPCombobox } from "@/components/erp/combobox";
-import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   invalidateHrEmployeeActions,
   invalidateHrEmployeeApprovals,
@@ -40,39 +34,10 @@ import { hrReadIdentity as hrActionsReadIdentity } from "@/lib/reads/hr-read-ide
 import {HR_ACTION_RECORD_CONFIG, type HrActionRecordKind} from "@/lib/reads/hr-action-records-schema";
 import {useHrActionRecords} from "@/hooks/use-hr-action-records";
 import {usePersistentUiState} from "@/hooks/use-persistent-ui-state";
-import {
-  acknowledgeEmployeeDisciplinaryRecord,
-  approveEmployeeApprovalRequest,
-  approveEmployeePerformanceRecord,
-  archiveEmployeeDisciplinaryRecord,
-  archiveEmployeeHrAction,
-  archiveEmployeeHrNote,
-  archiveEmployeePerformanceRecord,
-  archiveEmployeeProProcess,
-  blockEmployeeClearanceItem,
-  cancelEmployeeApprovalRequest,
-  clearEmployeeClearanceItem,
-  closeEmployeeHrAction,
-  createEmployeeApprovalRequest,
-  createEmployeeClearanceItem,
-  createEmployeeDisciplinaryRecord,
-  createEmployeeEosCase,
-  createEmployeeHrAction,
-  createEmployeeHrNote,
-  createEmployeePerformanceRecord,
-  createEmployeeProProcess,
-  rejectEmployeeApprovalRequest,
-  submitEmployeePerformanceRecord,
-  updateEmployeeDisciplinaryRecord,
-  updateEmployeeEosCase,
-  updateEmployeeHrAction,
-  updateEmployeePerformanceRecord,
-  updateEmployeeProProcess,
-  type DisciplinaryRow,
-  type EosCaseRow,
-  type HrActionRow, type PerformanceRow,
-  type ProProcessRow
-} from "@/server/actions/hr/actions";
+import{HrNoteEditor}from '../hr-note-editor';
+import{ProProcessEditor}from '../pro-process-editor';
+import{HrRecordEditor}from '../hr-record-editor';
+import{ClearanceEditor}from '../clearance-editor';
 import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -217,9 +182,11 @@ export function EmployeeHrActionsTab(props: Props) {
   const canView = deniedIdentity !== identity && (hasHrReadCapability(props.authContext, "hr.actions.view") || hasHrReadCapability(props.authContext, "hr.eos.view"));
   useEffect(() => {
     const retired = previous.current;
-    const predicate = (query: {queryKey: readonly unknown[]}) => query.queryKey[0] === "hr" && query.queryKey[1] === "actions"
-      && privateRecordKinds.has(String(query.queryKey[2])) && (typeof query.queryKey[3] === "number" || (query.queryKey[2] === "clearance-items" && query.queryKey[3] === "none"))
-      && (query.queryKey.length === 4 || ((identity !== retired || !canView) && query.queryKey.at(-1) === retired));
+    const predicate = (query: {queryKey: readonly unknown[]}) => query.queryKey[0] === "hr" && (
+      query.queryKey[1] === "actions" && privateRecordKinds.has(String(query.queryKey[2]))
+      && (typeof query.queryKey[3] === "number" || (query.queryKey[2] === "clearance-items" && query.queryKey[3] === "none"))
+      && (query.queryKey.length === 4 || ((identity !== retired || !canView) && query.queryKey.at(-1) === retired))
+      || ['f11-pro-opening','f11-action-opening','f11-note-opening','f11-performance-opening','f11-disciplinary-opening','f11-approval-opening','f11-eos-opening'].includes(String(query.queryKey[1])) && (identity !== retired || !canView) && query.queryKey[2] === retired);
     void qc.cancelQueries({predicate});
     qc.removeQueries({predicate});
     if (identity !== retired || !canView) onChildOpen?.(false);
@@ -243,13 +210,13 @@ function EmployeeHrActionsTabContent({ employeeId, authContext, onChildOpen }: P
 
   return (
     <div className="space-y-8 pb-8">
-      {canViewActions && <ProProcessesSection employeeId={employeeId} canManage={canManage} qc={qc} onChildOpen={setDialogOpen} />}
-      {canViewActions && <HrActionsSection employeeId={employeeId} canManage={canManage} qc={qc} onChildOpen={setDialogOpen} />}
-      {canViewConfidential && <PerformanceSection employeeId={employeeId} canManage={canManage} qc={qc} onChildOpen={setDialogOpen} />}
-      {canViewConfidential && <DisciplinarySection employeeId={employeeId} canManage={canManage} qc={qc} onChildOpen={setDialogOpen} />}
-      {canViewConfidential && <HrNotesSection employeeId={employeeId} canManage={canManage} qc={qc} onChildOpen={setDialogOpen} />}
-      {canViewActions && <ApprovalsSection employeeId={employeeId} canManage={canManage} qc={qc} onChildOpen={setDialogOpen} />}
-      <EosSection employeeId={employeeId} canManage={canManage} qc={qc} onChildOpen={setDialogOpen} />
+      {canViewActions && <ProProcessesSection employeeId={employeeId} authContext={authContext} canManage={canManage} qc={qc} onChildOpen={setDialogOpen} />}
+      {canViewActions && <HrActionsSection employeeId={employeeId} authContext={authContext} canManage={canManage} qc={qc} onChildOpen={setDialogOpen} />}
+      {canViewConfidential && <PerformanceSection employeeId={employeeId} authContext={authContext} canManage={canManage&&hasPermission(authContext,'hr.confidential.manage')} qc={qc} onChildOpen={setDialogOpen} />}
+      {canViewConfidential && <DisciplinarySection employeeId={employeeId} authContext={authContext} canManage={canManage&&hasPermission(authContext,'hr.confidential.manage')} qc={qc} onChildOpen={setDialogOpen} />}
+      {canViewConfidential && <HrNotesSection employeeId={employeeId} authContext={authContext} canManage={canManage&&hasPermission(authContext,'hr.confidential.manage')} qc={qc} onChildOpen={setDialogOpen} />}
+      {canViewActions && <ApprovalsSection employeeId={employeeId} authContext={authContext} canManage={canManage} qc={qc} onChildOpen={setDialogOpen} />}
+      <EosSection employeeId={employeeId} authContext={authContext} canManage={canManage||hasPermission(authContext,'hr.eos.manage')} qc={qc} onChildOpen={setDialogOpen} />
     </div>
   );
 }
@@ -258,64 +225,18 @@ function EmployeeHrActionsTabContent({ employeeId, authContext, onChildOpen }: P
 // 1. PRO PROCESSES
 // =============================================================================
 
-function ProProcessesSection({ employeeId, canManage, qc, onChildOpen }: {
-  employeeId: number; canManage: boolean; qc: ReturnType<typeof useQueryClient>; onChildOpen: (open: boolean) => void;
+function ProProcessesSection({ employeeId, authContext, canManage, qc, onChildOpen }: {
+  employeeId: number; authContext: AuthContext; canManage: boolean; qc: ReturnType<typeof useQueryClient>; onChildOpen: (open: boolean) => void;
 }) {
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<ProProcessRow | null>(null);
-  const [isPending, startTransition] = useTransition();
-  const [form, setForm] = useState({ process_title: "", process_status: "draft", priority: "normal", request_date: new Date().toISOString().split("T")[0], target_date: "", notes: "" });
-
-  const uiRead1 = useHrActionQuery("pro", employeeId);
-  const { data: items = [] } = uiRead1;
-
-  const openDialog = async (selected?: {id: number}) => {
-    const detail = selected ? await uiRead1.loadDetail(selected.id) : null;
-    if (selected && !detail) return;
-    const item = detail as ProProcessRow | null;
-    setEditing(item ?? null);
-    if (item) {
-      setForm({ process_title: item.process_title, process_status: item.process_status, priority: item.priority, request_date: item.request_date, target_date: item.target_date ?? "", notes: item.notes ?? "" });
-    } else {
-      setForm({ process_title: "", process_status: "draft", priority: "normal", request_date: new Date().toISOString().split("T")[0], target_date: "", notes: "" });
-    }
-    setDialogOpen(true);
-    onChildOpen(true);
+  const [opening,setOpening]=useState<{target:{id:number;action:'update'|'archive'}|null}|null>(null);
+  const {onDenied}=useContext(HrActionsReadIdentity);
+  const uiRead1=useHrActionQuery("pro",employeeId),{data:items=[]}=uiRead1;
+  const openDialog=(selected?:{id:number},action:'update'|'archive'='update')=>{
+    if(!canManage||!uiRead1.canDispatch())return;
+    setOpening({target:selected?{id:selected.id,action}:null});onChildOpen(true);
   };
-
-  const handleClose = () => { setDialogOpen(false); onChildOpen(false); };
-
-  const handleSubmit = () => {
-    startTransition(async () => {
-      if (!canManage || !uiRead1.canDispatch()) return;
-      const input = { ...form, target_date: form.target_date || null, notes: form.notes || null };
-      const result = editing
-        ? await updateEmployeeProProcess(editing.id, input)
-        : await createEmployeeProProcess(employeeId, input);
-      if (result.success) {
-        toast.success(editing ? "PRO process updated" : "PRO process created");
-        invalidateHrEmployeeProProcesses(qc, employeeId);
-        invalidateHrEmployeeActions(qc, employeeId);
-        handleClose();
-      } else {
-        toast.error(result.error);
-      }
-    });
-  };
-
-  const handleArchive = (id: number) => {
-    startTransition(async () => {
-      if (!canManage || !uiRead1.canDispatch()) return;
-      const result = await archiveEmployeeProProcess(id);
-      if (result.success) { toast.success("Archived"); invalidateHrEmployeeProProcesses(qc, employeeId); }
-      else toast.error(result.error);
-    });
-  };
-
-  const PRO_STATUSES = ["draft","requested","in_progress","waiting_for_document","submitted","approved","rejected","cancelled","completed"].map(s => ({ value: s, label: s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) }));
-  const PRIORITIES = ["low","normal","high","urgent"].map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }));
-
-  return (
+  const handleClose=()=>{setOpening(null);onChildOpen(false);};
+  return (<>
     <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border bg-card p-4">
       <SectionHeader icon={Globe} title="PRO Processes" count={uiRead1.collection.serverRead.totalCount ?? undefined} onAdd={canManage ? () => {void openDialog();} : undefined} addLabel="Add Process" />
       {
@@ -334,7 +255,7 @@ function ProProcessesSection({ employeeId, canManage, qc, onChildOpen }: {
               {canManage && (
                 <div className="flex gap-1 ml-2 shrink-0">
                   <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog(item)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={() => handleArchive(item.id)}><Archive className="h-3.5 w-3.5" /></Button>
+                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={() => openDialog(item,'archive')}><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
             </div>
@@ -342,44 +263,14 @@ function ProProcessesSection({ employeeId, canManage, qc, onChildOpen }: {
         </div>
       }
 
-      <ERPChildDialogForm
-        open={dialogOpen}
-        onOpenChange={handleClose}
-        title={editing ? "Edit PRO Process" : "Add PRO Process"}
-        icon={<Globe className="h-5 w-5" />}
-        mode={editing ? "edit" : "add"}
-        isSubmitting={isPending}
-        onSubmit={handleSubmit}
-        size="lg"
-      >
-        <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-12">
-            <Label>Process Title <span className="text-red-500 dark:text-red-300">*</span></Label>
-            <Input aria-label="Process Title" required value={form.process_title} onChange={e => setForm(f => ({ ...f, process_title: e.target.value }))} placeholder="e.g. Visa Renewal" />
-          </div>
-          <div className="col-span-6">
-            <Label>Status</Label>
-            <ERPCombobox ariaLabel="Status" value={form.process_status} onValueChange={v => setForm(f => ({ ...f, process_status: String(v ?? "") }))} options={PRO_STATUSES} placeholder="Select status" />
-          </div>
-          <div className="col-span-6">
-            <Label>Priority</Label>
-            <ERPCombobox ariaLabel="Priority" value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: String(v ?? "") }))} options={PRIORITIES} placeholder="Select priority" />
-          </div>
-          <div className="col-span-6">
-            <Label>Request Date <span className="text-red-500 dark:text-red-300">*</span></Label>
-            <Input aria-label="Request Date" required type="date" value={form.request_date} onChange={e => setForm(f => ({ ...f, request_date: e.target.value }))} />
-          </div>
-          <div className="col-span-6">
-            <Label>Target Date</Label>
-            <Input aria-label="Target Date" type="date" value={form.target_date} onChange={e => setForm(f => ({ ...f, target_date: e.target.value }))} />
-          </div>
-          <div className="col-span-12">
-            <Label>Notes</Label>
-            <Textarea aria-label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} />
-          </div>
-        </div>
-      </ERPChildDialogForm>
+
+
     </div></QueryReadBoundary>
+      {opening&&<ProProcessEditor employeeId={employeeId} authContext={authContext} target={opening.target} canDispatch={()=>canManage&&uiRead1.canDispatch()} onDenied={onDenied} onClose={handleClose} onSaved={(_receipt,action)=>{
+        toast.success(action==='archive'?'PRO process archived':action==='update'?'PRO process updated':'PRO process created');
+        invalidateHrEmployeeProProcesses(qc,employeeId);invalidateHrEmployeeActions(qc,employeeId);
+      }}/>}
+    </>
   );
 }
 
@@ -387,60 +278,18 @@ function ProProcessesSection({ employeeId, canManage, qc, onChildOpen }: {
 // 2. HR ACTIONS
 // =============================================================================
 
-function HrActionsSection({ employeeId, canManage, qc, onChildOpen }: {
-  employeeId: number; canManage: boolean; qc: ReturnType<typeof useQueryClient>; onChildOpen: (open: boolean) => void;
+function HrActionsSection({ employeeId, authContext, canManage, qc, onChildOpen }: {
+  employeeId: number; authContext:AuthContext; canManage: boolean; qc: ReturnType<typeof useQueryClient>; onChildOpen: (open: boolean) => void;
 }) {
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<HrActionRow | null>(null);
-  const [isPending, startTransition] = useTransition();
-  const [form, setForm] = useState({ action_type: "general", action_title: "", action_status: "open", action_date: new Date().toISOString().split("T")[0], due_date: "", notes: "" });
-
-  const uiRead1 = useHrActionQuery("actions", employeeId);
-  const { data: items = [] } = uiRead1;
-
-  const openDialog = async (selected?: {id: number}) => {
-    const detail = selected ? await uiRead1.loadDetail(selected.id) : null;
-    if (selected && !detail) return;
-    const item = detail as HrActionRow | null;
-    setEditing(item ?? null);
-    if (item) {
-      setForm({ action_type: item.action_type, action_title: item.action_title, action_status: item.action_status, action_date: item.action_date, due_date: item.due_date ?? "", notes: item.notes ?? "" });
-    } else {
-      setForm({ action_type: "general", action_title: "", action_status: "open", action_date: new Date().toISOString().split("T")[0], due_date: "", notes: "" });
-    }
-    setDialogOpen(true);
-    onChildOpen(true);
+  const [opening,setOpening]=useState<{target:{id:number;action:'update'|'archive'|'close'}|null}|null>(null);
+  const {onDenied}=useContext(HrActionsReadIdentity);
+  const uiRead1=useHrActionQuery("actions",employeeId),{data:items=[]}=uiRead1;
+  const openDialog=(selected?:{id:number},action:'update'|'archive'|'close'='update')=>{
+    if(!canManage||!uiRead1.canDispatch())return;
+    setOpening({target:selected?{id:selected.id,action}:null});onChildOpen(true);
   };
-
-  const handleClose = () => { setDialogOpen(false); onChildOpen(false); };
-
-  const handleSubmit = () => {
-    startTransition(async () => {
-      if (!canManage || !uiRead1.canDispatch()) return;
-      const input = { ...form, due_date: form.due_date || null, notes: form.notes || null };
-      const result = editing ? await updateEmployeeHrAction(editing.id, input) : await createEmployeeHrAction(employeeId, input);
-      if (result.success) {
-        toast.success(editing ? "HR action updated" : "HR action created");
-        invalidateHrEmployeeHrActions(qc, employeeId);
-        invalidateHrEmployeeActions(qc, employeeId);
-        handleClose();
-      } else toast.error(result.error);
-    });
-  };
-
-  const handleClose2 = (id: number, notes?: string) => {
-    startTransition(async () => {
-      if (!canManage || !uiRead1.canDispatch()) return;
-      const result = await closeEmployeeHrAction(id, notes);
-      if (result.success) { toast.success("Action closed"); invalidateHrEmployeeHrActions(qc, employeeId); }
-      else toast.error(result.error);
-    });
-  };
-
-  const ACTION_TYPES = ["general","probation_review","transfer","promotion","increment_recommendation","status_change","warning","memo","other"].map(s => ({ value: s, label: s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) }));
-  const ACTION_STATUSES = ["open","in_progress","closed","cancelled"].map(s => ({ value: s, label: s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) }));
-
-  return (
+  const handleClose=()=>{setOpening(null);onChildOpen(false);};
+  return (<>
     <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border bg-card p-4">
       <SectionHeader icon={Zap} title="HR Actions" count={uiRead1.collection.serverRead.totalCount ?? undefined} onAdd={canManage ? () => {void openDialog();} : undefined} addLabel="Add Action" />
       {
@@ -460,9 +309,9 @@ function HrActionsSection({ employeeId, canManage, qc, onChildOpen }: {
                 <div className="flex gap-1 ml-2 shrink-0">
                   <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog(item)}><Edit2 className="h-3.5 w-3.5" /></Button>
                   {item.action_status === "open" || item.action_status === "in_progress" ? (
-                    <Button aria-label="Close" size="icon" variant="ghost" className="h-7 w-7 text-green-600 dark:text-green-300" title="Close" onClick={() => handleClose2(item.id)}><CheckCircle className="h-3.5 w-3.5" /></Button>
+                    <Button aria-label="Close" size="icon" variant="ghost" className="h-7 w-7 text-green-600 dark:text-green-300" title="Close" onClick={() => openDialog(item,'close')}><CheckCircle className="h-3.5 w-3.5" /></Button>
                   ) : null}
-                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={async () => { if (!canManage || !uiRead1.canDispatch()) return; const r = await archiveEmployeeHrAction(item.id); if (r.success) { toast.success("Archived"); invalidateHrEmployeeHrActions(qc, employeeId); } else toast.error(r.error); }}><Archive className="h-3.5 w-3.5" /></Button>
+                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={() => openDialog(item,'archive')}><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
             </div>
@@ -470,35 +319,13 @@ function HrActionsSection({ employeeId, canManage, qc, onChildOpen }: {
         </div>
       }
 
-      <ERPChildDialogForm open={dialogOpen} onOpenChange={handleClose} title={editing ? "Edit HR Action" : "Add HR Action"} icon={<Zap className="h-5 w-5" />} mode={editing ? "edit" : "add"} isSubmitting={isPending} submitDisabled={!canManage || !uiRead1.ready} onSubmit={handleSubmit} size="lg">
-        <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-8">
-            <Label>Action Title <span className="text-red-500 dark:text-red-300">*</span></Label>
-            <Input aria-label="Action Title" required value={form.action_title} onChange={e => setForm(f => ({ ...f, action_title: e.target.value }))} placeholder="e.g. Probation Review" />
-          </div>
-          <div className="col-span-4">
-            <Label>Type</Label>
-            <ERPCombobox ariaLabel="Type" value={form.action_type} onValueChange={v => setForm(f => ({ ...f, action_type: String(v ?? "") }))} options={ACTION_TYPES} placeholder="Select type" />
-          </div>
-          <div className="col-span-4">
-            <Label>Status</Label>
-            <ERPCombobox ariaLabel="Status" value={form.action_status} onValueChange={v => setForm(f => ({ ...f, action_status: String(v ?? "") }))} options={ACTION_STATUSES} placeholder="Select status" />
-          </div>
-          <div className="col-span-4">
-            <Label>Action Date <span className="text-red-500 dark:text-red-300">*</span></Label>
-            <Input aria-label="Action Date" required type="date" value={form.action_date} onChange={e => setForm(f => ({ ...f, action_date: e.target.value }))} />
-          </div>
-          <div className="col-span-4">
-            <Label>Due Date</Label>
-            <Input aria-label="Due Date" type="date" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} />
-          </div>
-          <div className="col-span-12">
-            <Label>Notes</Label>
-            <Textarea aria-label="Notes" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} />
-          </div>
-        </div>
-      </ERPChildDialogForm>
+
     </div></QueryReadBoundary>
+    {opening&&<HrRecordEditor kind="hr-action" employeeId={employeeId} authContext={authContext} target={opening.target} canDispatch={()=>canManage&&uiRead1.canDispatch()} onDenied={onDenied} onClose={handleClose} onSaved={(_receipt,action)=>{
+      toast.success(action==='archive'?'HR action archived':action==='close'?'HR action closed':action==='update'?'HR action updated':'HR action created');
+      invalidateHrEmployeeHrActions(qc,employeeId);invalidateHrEmployeeActions(qc,employeeId);
+    }}/>}
+  </>
   );
 }
 
@@ -506,52 +333,18 @@ function HrActionsSection({ employeeId, canManage, qc, onChildOpen }: {
 // 3. PERFORMANCE
 // =============================================================================
 
-function PerformanceSection({ employeeId, canManage, qc, onChildOpen }: {
-  employeeId: number; canManage: boolean; qc: ReturnType<typeof useQueryClient>; onChildOpen: (open: boolean) => void;
+function PerformanceSection({ employeeId, authContext, canManage, qc, onChildOpen }: {
+ employeeId:number;authContext:AuthContext;canManage:boolean;qc:ReturnType<typeof useQueryClient>;onChildOpen:(open:boolean)=>void;
 }) {
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<PerformanceRow | null>(null);
-  const [isPending, startTransition] = useTransition();
-  const [form, setForm] = useState({ review_type: "annual", review_date: new Date().toISOString().split("T")[0], rating: "", summary: "", status: "draft" });
-
-  const uiRead1 = useHrActionQuery("performance", employeeId);
-  const { data: items = [] } = uiRead1;
-
-  const openDialog = async (selected?: {id: number}) => {
-    const detail = selected ? await uiRead1.loadDetail(selected.id) : null;
-    if (selected && !detail) return;
-    const item = detail as PerformanceRow | null;
-    setEditing(item ?? null);
-    if (item) {
-      setForm({ review_type: item.review_type, review_date: item.review_date, rating: item.rating ?? "", summary: item.summary ?? "", status: item.status });
-    } else {
-      setForm({ review_type: "annual", review_date: new Date().toISOString().split("T")[0], rating: "", summary: "", status: "draft" });
-    }
-    setDialogOpen(true);
-    onChildOpen(true);
-  };
-
-  const handleClose = () => { setDialogOpen(false); onChildOpen(false); };
-
-  const handleSubmit = () => {
-    startTransition(async () => {
-      if (!canManage || !uiRead1.canDispatch()) return;
-      const input = { ...form, rating: form.rating || null, summary: form.summary || null };
-      const result = editing ? await updateEmployeePerformanceRecord(editing.id, input) : await createEmployeePerformanceRecord(employeeId, input);
-      if (result.success) {
-        toast.success(editing ? "Review updated" : "Review created");
-        invalidateHrEmployeePerformance(qc, employeeId);
-        invalidateHrEmployeeActions(qc, employeeId);
-        handleClose();
-      } else toast.error(result.error);
-    });
-  };
-
-  const REVIEW_TYPES = ["probation","annual","project","incident_followup","other"].map(s => ({ value: s, label: s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) }));
-  const RATINGS = ["excellent","good","satisfactory","needs_improvement","unsatisfactory"].map(s => ({ value: s, label: s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) }));
-  const PERF_STATUSES = ["draft","submitted","approved","closed","cancelled"].map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }));
-
-  return (
+ const [opening,setOpening]=useState<{target:{id:number;action:'update'|'archive'|'submit'|'approve'|'close'}|null}|null>(null);
+ const {onDenied}=useContext(HrActionsReadIdentity);
+ const uiRead1=useHrActionQuery("performance",employeeId),{data:items=[]}=uiRead1;
+ const openDialog=(selected?:{id:number},action:'update'|'archive'|'submit'|'approve'|'close'='update')=>{
+  if(!canManage||!uiRead1.canDispatch())return;
+  setOpening({target:selected?{id:selected.id,action}:null});onChildOpen(true);
+ };
+ const handleClose=()=>{setOpening(null);onChildOpen(false);};
+  return (<>
     <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border bg-card p-4">
       <SectionHeader icon={TrendingUp} title="Performance Reviews" count={uiRead1.collection.serverRead.totalCount ?? undefined} onAdd={canManage ? () => {void openDialog();} : undefined} addLabel="Add Review" />
       {
@@ -570,9 +363,10 @@ function PerformanceSection({ employeeId, canManage, qc, onChildOpen }: {
               {canManage && (
                 <div className="flex gap-1 ml-2 shrink-0">
                   {item.status === "draft" && <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog(item)}><Edit2 className="h-3.5 w-3.5" /></Button>}
-                  {item.status === "draft" && <Button aria-label="Submit" size="icon" variant="ghost" className="h-7 w-7 text-blue-500 dark:text-blue-300" title="Submit" onClick={async () => { if (!canManage || !uiRead1.canDispatch()) return; const r = await submitEmployeePerformanceRecord(item.id); if (r.success) { toast.success("Submitted"); invalidateHrEmployeePerformance(qc, employeeId); } else toast.error(r.error); }}><CheckSquare className="h-3.5 w-3.5" /></Button>}
-                  {item.status === "submitted" && <Button aria-label="Approve" size="icon" variant="ghost" className="h-7 w-7 text-green-600 dark:text-green-300" title="Approve" onClick={async () => { if (!canManage || !uiRead1.canDispatch()) return; const r = await approveEmployeePerformanceRecord(item.id); if (r.success) { toast.success("Approved"); invalidateHrEmployeePerformance(qc, employeeId); } else toast.error(r.error); }}><CheckCircle className="h-3.5 w-3.5" /></Button>}
-                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={async () => { if (!canManage || !uiRead1.canDispatch()) return; const r = await archiveEmployeePerformanceRecord(item.id); if (r.success) { toast.success("Archived"); invalidateHrEmployeePerformance(qc, employeeId); } else toast.error(r.error); }}><Archive className="h-3.5 w-3.5" /></Button>
+                  {item.status === "draft" && <Button aria-label="Submit" size="icon" variant="ghost" className="h-7 w-7 text-blue-500 dark:text-blue-300" title="Submit" onClick={() => openDialog(item,'submit')}><CheckSquare className="h-3.5 w-3.5" /></Button>}
+                  {item.status === "submitted" && <Button aria-label="Approve" size="icon" variant="ghost" className="h-7 w-7 text-green-600 dark:text-green-300" title="Approve" onClick={() => openDialog(item,'approve')}><CheckCircle className="h-3.5 w-3.5" /></Button>}
+                  {item.status === "approved" && <Button aria-label="Close review" size="icon" variant="ghost" className="h-7 w-7" title="Close review" onClick={() => openDialog(item,'close')}><CheckCircle className="h-3.5 w-3.5" /></Button>}
+                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={() => openDialog(item,'archive')}><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
             </div>
@@ -580,31 +374,13 @@ function PerformanceSection({ employeeId, canManage, qc, onChildOpen }: {
         </div>
       }
 
-      <ERPChildDialogForm open={dialogOpen} onOpenChange={handleClose} title={editing ? "Edit Performance Review" : "Add Performance Review"} icon={<TrendingUp className="h-5 w-5" />} mode={editing ? "edit" : "add"} isSubmitting={isPending} submitDisabled={!canManage || !uiRead1.ready} onSubmit={handleSubmit} size="lg">
-        <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-6">
-            <Label>Review Type <span className="text-red-500 dark:text-red-300">*</span></Label>
-            <ERPCombobox ariaLabel="Review Type" required value={form.review_type} onValueChange={v => setForm(f => ({ ...f, review_type: String(v ?? "") }))} options={REVIEW_TYPES} placeholder="Select type" />
-          </div>
-          <div className="col-span-6">
-            <Label>Review Date <span className="text-red-500 dark:text-red-300">*</span></Label>
-            <Input aria-label="Review Date" required type="date" value={form.review_date} onChange={e => setForm(f => ({ ...f, review_date: e.target.value }))} />
-          </div>
-          <div className="col-span-6">
-            <Label>Rating</Label>
-            <ERPCombobox ariaLabel="Rating" value={form.rating} onValueChange={v => setForm(f => ({ ...f, rating: String(v ?? "") }))} options={RATINGS} placeholder="Select rating" />
-          </div>
-          <div className="col-span-6">
-            <Label>Status</Label>
-            <ERPCombobox ariaLabel="Status" value={form.status} onValueChange={v => setForm(f => ({ ...f, status: String(v ?? "") }))} options={PERF_STATUSES} placeholder="Select status" />
-          </div>
-          <div className="col-span-12">
-            <Label>Summary</Label>
-            <Textarea aria-label="Summary" value={form.summary} onChange={e => setForm(f => ({ ...f, summary: e.target.value }))} rows={3} />
-          </div>
-        </div>
-      </ERPChildDialogForm>
+
     </div></QueryReadBoundary>
+    {opening&&<HrRecordEditor kind="performance" employeeId={employeeId} authContext={authContext} target={opening.target} canDispatch={()=>canManage&&uiRead1.canDispatch()} onDenied={onDenied} onClose={handleClose} onSaved={(_receipt,action)=>{
+     toast.success(action==='archive'?'Review archived':action==='submit'?'Review submitted':action==='approve'?'Review approved':'Review saved');
+     invalidateHrEmployeePerformance(qc,employeeId);invalidateHrEmployeeActions(qc,employeeId);
+    }}/>}
+    </>
   );
 }
 
@@ -612,52 +388,18 @@ function PerformanceSection({ employeeId, canManage, qc, onChildOpen }: {
 // 4. DISCIPLINARY
 // =============================================================================
 
-function DisciplinarySection({ employeeId, canManage, qc, onChildOpen }: {
-  employeeId: number; canManage: boolean; qc: ReturnType<typeof useQueryClient>; onChildOpen: (open: boolean) => void;
+function DisciplinarySection({ employeeId, authContext, canManage, qc, onChildOpen }: {
+ employeeId:number;authContext:AuthContext;canManage:boolean;qc:ReturnType<typeof useQueryClient>;onChildOpen:(open:boolean)=>void;
 }) {
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<DisciplinaryRow | null>(null);
-  const [isPending, startTransition] = useTransition();
-  const [form, setForm] = useState({ disciplinary_type: "verbal_warning", record_date: new Date().toISOString().split("T")[0], severity: "medium", subject: "", description: "", status: "open" });
-
-  const uiRead1 = useHrActionQuery("disciplinary", employeeId);
-  const { data: items = [] } = uiRead1;
-
-  const openDialog = async (selected?: {id: number}) => {
-    const detail = selected ? await uiRead1.loadDetail(selected.id) : null;
-    if (selected && !detail) return;
-    const item = detail as DisciplinaryRow | null;
-    setEditing(item ?? null);
-    if (item) {
-      setForm({ disciplinary_type: item.disciplinary_type, record_date: item.record_date, severity: item.severity, subject: item.subject, description: item.description ?? "", status: item.status });
-    } else {
-      setForm({ disciplinary_type: "verbal_warning", record_date: new Date().toISOString().split("T")[0], severity: "medium", subject: "", description: "", status: "open" });
-    }
-    setDialogOpen(true);
-    onChildOpen(true);
-  };
-
-  const handleClose = () => { setDialogOpen(false); onChildOpen(false); };
-
-  const handleSubmit = () => {
-    startTransition(async () => {
-      if (!canManage || !uiRead1.canDispatch()) return;
-      const input = { ...form, description: form.description || null };
-      const result = editing ? await updateEmployeeDisciplinaryRecord(editing.id, input) : await createEmployeeDisciplinaryRecord(employeeId, input);
-      if (result.success) {
-        toast.success(editing ? "Record updated" : "Disciplinary record created");
-        invalidateHrEmployeeDisciplinary(qc, employeeId);
-        invalidateHrEmployeeActions(qc, employeeId);
-        handleClose();
-      } else toast.error(result.error);
-    });
-  };
-
-  const DISC_TYPES = ["verbal_warning","written_warning","final_warning","suspension_notice","incident","other"].map(s => ({ value: s, label: s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) }));
-  const SEVERITIES = ["low","medium","high","critical"].map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }));
-  const DISC_STATUSES = ["open","under_review","closed","cancelled"].map(s => ({ value: s, label: s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) }));
-
-  return (
+ const [opening,setOpening]=useState<{target:{id:number;action:'update'|'archive'|'acknowledge'|'correct-acknowledgement'|'close'}|null}|null>(null);
+ const {onDenied}=useContext(HrActionsReadIdentity);
+ const uiRead1=useHrActionQuery("disciplinary",employeeId),{data:items=[]}=uiRead1;
+ const openDialog=(selected?:{id:number},action:'update'|'archive'|'acknowledge'|'correct-acknowledgement'|'close'='update')=>{
+  if(!canManage||!uiRead1.canDispatch())return;
+  setOpening({target:selected?{id:selected.id,action}:null});onChildOpen(true);
+ };
+ const handleClose=()=>{setOpening(null);onChildOpen(false);};
+  return (<>
     <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border bg-card p-4">
       <SectionHeader icon={AlertTriangle} title="Disciplinary & Warnings" count={uiRead1.collection.serverRead.totalCount ?? undefined} onAdd={canManage ? () => {void openDialog();} : undefined} addLabel="Add Record" />
       {
@@ -678,9 +420,11 @@ function DisciplinarySection({ employeeId, canManage, qc, onChildOpen }: {
                 <div className="flex gap-1 ml-2 shrink-0">
                   <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog(item)}><Edit2 className="h-3.5 w-3.5" /></Button>
                   {!item.acknowledged_by_employee && (
-                    <Button aria-label="Mark acknowledged" size="icon" variant="ghost" className="h-7 w-7 text-blue-500 dark:text-blue-300" title="Mark acknowledged" onClick={async () => { if (!canManage || !uiRead1.canDispatch()) return; const r = await acknowledgeEmployeeDisciplinaryRecord(item.id); if (r.success) { toast.success("Acknowledged"); invalidateHrEmployeeDisciplinary(qc, employeeId); } else toast.error(r.error); }}><CheckCircle className="h-3.5 w-3.5" /></Button>
+                    <Button aria-label="Mark acknowledged" size="icon" variant="ghost" className="h-7 w-7 text-blue-500 dark:text-blue-300" title="Mark acknowledged" onClick={() => openDialog(item,'acknowledge')}><CheckCircle className="h-3.5 w-3.5" /></Button>
                   )}
-                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={async () => { if (!canManage || !uiRead1.canDispatch()) return; const r = await archiveEmployeeDisciplinaryRecord(item.id); if (r.success) { toast.success("Archived"); invalidateHrEmployeeDisciplinary(qc, employeeId); } else toast.error(r.error); }}><Archive className="h-3.5 w-3.5" /></Button>
+                  {item.acknowledged_by_employee&&<Button aria-label="Correct acknowledgement" size="icon" variant="ghost" className="h-7 w-7" onClick={()=>openDialog(item,'correct-acknowledgement')}><Edit2 className="h-3.5 w-3.5"/></Button>}
+                  {['open','under_review'].includes(item.status)&&<Button aria-label="Close record" size="icon" variant="ghost" className="h-7 w-7" onClick={()=>openDialog(item,'close')}><CheckCircle className="h-3.5 w-3.5"/></Button>}
+                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={() => openDialog(item,'archive')}><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
             </div>
@@ -688,35 +432,13 @@ function DisciplinarySection({ employeeId, canManage, qc, onChildOpen }: {
         </div>
       }
 
-      <ERPChildDialogForm open={dialogOpen} onOpenChange={handleClose} title={editing ? "Edit Disciplinary Record" : "Add Disciplinary Record"} icon={<AlertTriangle className="h-5 w-5" />} mode={editing ? "edit" : "add"} isSubmitting={isPending} submitDisabled={!canManage || !uiRead1.ready} onSubmit={handleSubmit} size="lg">
-        <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-8">
-            <Label>Subject <span className="text-red-500 dark:text-red-300">*</span></Label>
-            <Input aria-label="Subject" required value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} placeholder="Brief description of the issue" />
-          </div>
-          <div className="col-span-4">
-            <Label>Record Date <span className="text-red-500 dark:text-red-300">*</span></Label>
-            <Input aria-label="Record Date" required type="date" value={form.record_date} onChange={e => setForm(f => ({ ...f, record_date: e.target.value }))} />
-          </div>
-          <div className="col-span-4">
-            <Label>Type <span className="text-red-500 dark:text-red-300">*</span></Label>
-            <ERPCombobox ariaLabel="Type" required value={form.disciplinary_type} onValueChange={v => setForm(f => ({ ...f, disciplinary_type: String(v ?? "") }))} options={DISC_TYPES} placeholder="Select type" />
-          </div>
-          <div className="col-span-4">
-            <Label>Severity</Label>
-            <ERPCombobox ariaLabel="Severity" value={form.severity} onValueChange={v => setForm(f => ({ ...f, severity: String(v ?? "") }))} options={SEVERITIES} placeholder="Select severity" />
-          </div>
-          <div className="col-span-4">
-            <Label>Status</Label>
-            <ERPCombobox ariaLabel="Status" value={form.status} onValueChange={v => setForm(f => ({ ...f, status: String(v ?? "") }))} options={DISC_STATUSES} placeholder="Select status" />
-          </div>
-          <div className="col-span-12">
-            <Label>Description</Label>
-            <Textarea aria-label="Description" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} />
-          </div>
-        </div>
-      </ERPChildDialogForm>
+
     </div></QueryReadBoundary>
+    {opening&&<HrRecordEditor kind="disciplinary" employeeId={employeeId} authContext={authContext} target={opening.target} canDispatch={()=>canManage&&uiRead1.canDispatch()} onDenied={onDenied} onClose={handleClose} onSaved={(_receipt,action)=>{
+     toast.success(action==='archive'?'Record archived':action==='acknowledge'?'Acknowledgement recorded':action==='correct-acknowledgement'?'Acknowledgement corrected':'Record saved');
+     invalidateHrEmployeeDisciplinary(qc,employeeId);invalidateHrEmployeeActions(qc,employeeId);
+    }}/>}
+    </>
   );
 }
 
@@ -724,43 +446,23 @@ function DisciplinarySection({ employeeId, canManage, qc, onChildOpen }: {
 // 5. HR NOTES
 // =============================================================================
 
-function HrNotesSection({ employeeId, canManage, qc, onChildOpen }: {
-  employeeId: number; canManage: boolean; qc: ReturnType<typeof useQueryClient>; onChildOpen: (open: boolean) => void;
+function HrNotesSection({ employeeId, authContext, canManage, qc, onChildOpen }: {
+  employeeId: number; authContext:AuthContext; canManage: boolean; qc: ReturnType<typeof useQueryClient>; onChildOpen: (open: boolean) => void;
 }) {
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [isPending, startTransition] = useTransition();
-  const [form, setForm] = useState({ note_type: "general", note_text: "", visibility: "hr_only" });
+  const {onDenied}=useContext(HrActionsReadIdentity);
+  const [dialog,setDialog]=useState<{target:{id:number}|null}|null>(null);
 
   const uiRead1 = useHrActionQuery("notes", employeeId);
   const { data: items = [] } = uiRead1;
 
   const openDialog = () => {
-    setForm({ note_type: "general", note_text: "", visibility: "hr_only" });
-    setDialogOpen(true);
+    if(!canManage||!uiRead1.canDispatch())return;
+    setDialog({target:null});
     onChildOpen(true);
   };
-  const handleClose = () => { setDialogOpen(false); onChildOpen(false); };
+  const handleClose = () => {setDialog(null);onChildOpen(false);};
 
-  const handleSubmit = () => {
-    startTransition(async () => {
-      if (!canManage || !uiRead1.canDispatch()) return;
-      const result = await createEmployeeHrNote(employeeId, form);
-      if (result.success) {
-        toast.success("Note added");
-        invalidateHrEmployeeNotes(qc, employeeId);
-        handleClose();
-      } else toast.error(result.error);
-    });
-  };
-
-  const NOTE_TYPES = ["general","confidential","management","legal","other"].map(s => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }));
-  const VISIBILITIES = [
-    { value: "hr_only", label: "HR Only" },
-    { value: "management", label: "Management" },
-    { value: "restricted", label: "Restricted" },
-  ];
-
-  return (
+  return (<>
     <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border bg-card p-4">
       <SectionHeader icon={StickyNote} title="HR Notes" count={uiRead1.collection.serverRead.totalCount ?? undefined} onAdd={canManage ? openDialog : undefined} addLabel="Add Note" />
       <p className="text-xs text-amber-600 mb-3 flex items-center gap-1 dark:text-amber-300"><AlertCircle className="h-3 w-3" /> Restricted visibility. Contents not shown in overview.</p>
@@ -776,7 +478,7 @@ function HrNotesSection({ employeeId, canManage, qc, onChildOpen }: {
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleDateString()}</span>
                   {canManage && (
-                    <Button aria-label="Archive record" size="icon" variant="ghost" className="h-6 w-6 text-red-500 dark:text-red-300" onClick={async () => { if (!canManage || !uiRead1.canDispatch()) return; const r = await archiveEmployeeHrNote(item.id); if (r.success) { toast.success("Deleted"); invalidateHrEmployeeNotes(qc, employeeId); } else toast.error(r.error); }}><Archive className="h-3 w-3" /></Button>
+                    <Button aria-label="Archive record" size="icon" variant="ghost" className="h-6 w-6 text-red-500 dark:text-red-300" onClick={()=>{if(canManage&&uiRead1.canDispatch()){setDialog({target:{id:item.id}});onChildOpen(true);}}}><Archive className="h-3 w-3" /></Button>
                   )}
                 </div>
               </div>
@@ -786,23 +488,10 @@ function HrNotesSection({ employeeId, canManage, qc, onChildOpen }: {
         </div>
       }
 
-      <ERPChildDialogForm open={dialogOpen} onOpenChange={handleClose} title="Add HR Note" icon={<StickyNote className="h-5 w-5" />} mode="add" isSubmitting={isPending} submitDisabled={!canManage || !uiRead1.ready} onSubmit={handleSubmit} size="md">
-        <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-6">
-            <Label>Note Type</Label>
-            <ERPCombobox ariaLabel="Note Type" value={form.note_type} onValueChange={v => setForm(f => ({ ...f, note_type: String(v ?? "") }))} options={NOTE_TYPES} placeholder="Select type" />
-          </div>
-          <div className="col-span-6">
-            <Label>Visibility</Label>
-            <ERPCombobox ariaLabel="Visibility" value={form.visibility} onValueChange={v => setForm(f => ({ ...f, visibility: String(v ?? "") }))} options={VISIBILITIES} placeholder="Select visibility" />
-          </div>
-          <div className="col-span-12">
-            <Label>Note <span className="text-red-500 dark:text-red-300">*</span></Label>
-            <Textarea aria-label="Note" required value={form.note_text} onChange={e => setForm(f => ({ ...f, note_text: e.target.value }))} rows={5} placeholder="Enter note text..." />
-          </div>
-        </div>
-      </ERPChildDialogForm>
+
     </div></QueryReadBoundary>
+      {dialog&&<HrNoteEditor employeeId={employeeId} authContext={authContext} target={dialog.target} canDispatch={uiRead1.canDispatch} onDenied={onDenied} onClose={handleClose} onSaved={(_receipt,action)=>{toast.success(action==='archive'?'Note archived':'Note added');invalidateHrEmployeeNotes(qc,employeeId);}}/>}
+    </>
   );
 }
 
@@ -810,59 +499,15 @@ function HrNotesSection({ employeeId, canManage, qc, onChildOpen }: {
 // 6. APPROVAL REQUESTS
 // =============================================================================
 
-function ApprovalsSection({ employeeId, canManage, qc, onChildOpen }: {
-  employeeId: number; canManage: boolean; qc: ReturnType<typeof useQueryClient>; onChildOpen: (open: boolean) => void;
+function ApprovalsSection({ employeeId, authContext, canManage, qc, onChildOpen }: {
+  employeeId: number; authContext:AuthContext; canManage: boolean; qc: ReturnType<typeof useQueryClient>; onChildOpen: (open: boolean) => void;
 }) {
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [decisionDialog, setDecisionDialog] = useState<{ id: number; action: "approve" | "reject" | "cancel" } | null>(null);
-  const [isPending, startTransition] = useTransition();
-  const [form, setForm] = useState({ approval_type: "hr_action", request_title: "" });
-  const [decisionReason, setDecisionReason] = useState("");
-
-  const uiRead1 = useHrActionQuery("approvals", employeeId);
-  const { data: items = [] } = uiRead1;
-
-  const openDialog = () => {
-    setForm({ approval_type: "hr_action", request_title: "" });
-    setDialogOpen(true);
-    onChildOpen(true);
-  };
-  const handleClose = () => { setDialogOpen(false); onChildOpen(false); };
-  const handleDecisionClose = () => { setDecisionDialog(null); setDecisionReason(""); onChildOpen(false); };
-
-  const handleSubmit = () => {
-    startTransition(async () => {
-      if (!canManage || !uiRead1.canDispatch()) return;
-      const result = await createEmployeeApprovalRequest(employeeId, form);
-      if (result.success) {
-        toast.success("Approval request created");
-        invalidateHrEmployeeApprovals(qc, employeeId);
-        invalidateHrEmployeeActions(qc, employeeId);
-        handleClose();
-      } else toast.error(result.error);
-    });
-  };
-
-  const handleDecision = () => {
-    if (!decisionDialog) return;
-    startTransition(async () => {
-      if (!canManage || !uiRead1.canDispatch()) return;
-      let result;
-      if (decisionDialog.action === "approve") result = await approveEmployeeApprovalRequest(decisionDialog.id, decisionReason);
-      else if (decisionDialog.action === "reject") result = await rejectEmployeeApprovalRequest(decisionDialog.id, decisionReason);
-      else result = await cancelEmployeeApprovalRequest(decisionDialog.id, decisionReason);
-      if (result.success) {
-        toast.success(`Request ${decisionDialog.action}d`);
-        invalidateHrEmployeeApprovals(qc, employeeId);
-        invalidateHrEmployeeActions(qc, employeeId);
-        handleDecisionClose();
-      } else toast.error(result.error);
-    });
-  };
-
-  const APPROVAL_TYPES = ["hr_action","pro_process","performance","disciplinary","eos","clearance","other"].map(s => ({ value: s, label: s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) }));
-
-  return (
+  const [opening,setOpening]=useState<{target:{id:number;action:'approve'|'reject'|'cancel'}|null}|null>(null);
+  const {onDenied}=useContext(HrActionsReadIdentity);
+  const uiRead1=useHrActionQuery("approvals",employeeId),{data:items=[]}=uiRead1;
+  const openDialog=()=>{if(!canManage||!uiRead1.canDispatch())return;setOpening({target:null});onChildOpen(true);};
+  const handleClose=()=>{setOpening(null);onChildOpen(false);};
+  return <>
     <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border bg-card p-4">
       <SectionHeader icon={CheckSquare} title="Approval Requests" count={uiRead1.collection.serverRead.totalCount ?? undefined} onAdd={canManage ? openDialog : undefined} addLabel="New Request" />
       {
@@ -880,9 +525,9 @@ function ApprovalsSection({ employeeId, canManage, qc, onChildOpen }: {
               </div>
               {canManage && item.request_status === "pending" && (
                 <div className="flex gap-1 ml-2 shrink-0">
-                  <Button size="sm" variant="outline" className="h-7 text-xs text-green-700 border-green-300 dark:text-green-200 dark:border-green-800" onClick={() => { setDecisionDialog({ id: item.id, action: "approve" }); onChildOpen(true); }}>Approve</Button>
-                  <Button size="sm" variant="outline" className="h-7 text-xs text-red-700 border-red-300 dark:text-red-200 dark:border-red-800" onClick={() => { setDecisionDialog({ id: item.id, action: "reject" }); onChildOpen(true); }}>Reject</Button>
-                  <Button aria-label="Reject" size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground" onClick={() => { setDecisionDialog({ id: item.id, action: "cancel" }); onChildOpen(true); }}><XCircle className="h-3.5 w-3.5" /></Button>
+                  <Button size="sm" variant="outline" className="h-7 text-xs text-green-700 border-green-300 dark:text-green-200 dark:border-green-800" onClick={() => { setOpening({target:{ id: item.id, action: "approve" }}); onChildOpen(true); }}>Approve</Button>
+                  <Button size="sm" variant="outline" className="h-7 text-xs text-red-700 border-red-300 dark:text-red-200 dark:border-red-800" onClick={() => { setOpening({target:{ id: item.id, action: "reject" }}); onChildOpen(true); }}>Reject</Button>
+                  <Button aria-label="Cancel request" size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground" onClick={() => { setOpening({target:{ id: item.id, action: "cancel" }}); onChildOpen(true); }}><XCircle className="h-3.5 w-3.5" /></Button>
                 </div>
               )}
             </div>
@@ -890,61 +535,29 @@ function ApprovalsSection({ employeeId, canManage, qc, onChildOpen }: {
         </div>
       }
 
-      <ERPChildDialogForm open={dialogOpen} onOpenChange={handleClose} title="New Approval Request" icon={<CheckSquare className="h-5 w-5" />} mode="add" isSubmitting={isPending} submitDisabled={!canManage || !uiRead1.ready} onSubmit={handleSubmit} size="md">
-        <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-6">
-            <Label>Type <span className="text-red-500 dark:text-red-300">*</span></Label>
-            <ERPCombobox ariaLabel="Type" required value={form.approval_type} onValueChange={v => setForm(f => ({ ...f, approval_type: String(v ?? "") }))} options={APPROVAL_TYPES} placeholder="Select type" />
-          </div>
-          <div className="col-span-12">
-            <Label>Request Title <span className="text-red-500 dark:text-red-300">*</span></Label>
-            <Input aria-label="Request Title" required value={form.request_title} onChange={e => setForm(f => ({ ...f, request_title: e.target.value }))} placeholder="e.g. Approve Transfer to Dubai Branch" />
-          </div>
-        </div>
-      </ERPChildDialogForm>
 
-      {decisionDialog && (
-        <ERPChildDialogForm
-          open={!!decisionDialog}
-          onOpenChange={handleDecisionClose}
-          title={decisionDialog.action === "approve" ? "Approve Request" : decisionDialog.action === "reject" ? "Reject Request" : "Cancel Request"}
-          mode={decisionDialog.action === "approve" ? "edit" : "add"}
-          submitLabel={decisionDialog.action === "approve" ? "Approve" : decisionDialog.action === "reject" ? "Reject" : "Cancel Request"}
-          isSubmitting={isPending}
-          onSubmit={handleDecision}
-          size="sm"
-        >
-          <div className="space-y-3">
-            <Label>{decisionDialog.action === "approve" ? "Decision Notes (optional)" : "Reason *"}</Label>
-            <Textarea value={decisionReason} onChange={e => setDecisionReason(e.target.value)} rows={3} placeholder="Enter reason..." />
-          </div>
-        </ERPChildDialogForm>
-      )}
     </div></QueryReadBoundary>
-  );
+    {opening&&<HrRecordEditor kind="approval" employeeId={employeeId} authContext={authContext} target={opening.target} canDispatch={()=>canManage&&uiRead1.canDispatch()} admission={{blocked:!canManage||!uiRead1.ready,message:'Current approval list is unavailable. Your draft is retained; retry the list before saving.',retry:()=>void uiRead1.refetch()}} onDenied={onDenied} onClose={handleClose} onSaved={(_receipt,action)=>{toast.success(action==='approve'?'Request approved':action==='reject'?'Request rejected':action==='cancel'?'Request cancelled':'Approval request created');invalidateHrEmployeeApprovals(qc,employeeId);invalidateHrEmployeeActions(qc,employeeId);void qc.invalidateQueries({queryKey:['hr','actions','global-approvals'],refetchType:'none'});}}/>}
+  </>;
 }
 
 // =============================================================================
 // 7. EOS & CLEARANCE
 // =============================================================================
 
-function EosSection({ employeeId, canManage, qc, onChildOpen }: {
-  employeeId: number; canManage: boolean; qc: ReturnType<typeof useQueryClient>; onChildOpen: (open: boolean) => void;
+function EosSection({ employeeId, authContext, canManage, qc, onChildOpen }: {
+  employeeId: number; authContext:AuthContext; canManage: boolean; qc: ReturnType<typeof useQueryClient>; onChildOpen: (open: boolean) => void;
 }) {
-  type ClearanceTarget = { employeeId: number; caseId: number; identity: string };
-  const [eosDialogOpen, setEosDialogOpen] = useState(false);
+  type ClearanceTarget = { employeeId: number; caseId: number; identity: string; item?:{id:number;action:'clear'|'block'} };
+  const [eosOpening,setEosOpening]=useState<{target:{id:number;action:'update'|'archive'}|null}|null>(null);
   const [clearanceDialogOpen, setClearanceDialogOpen] = useState(false);
   const [clearanceTarget, setClearanceTarget] = useState<ClearanceTarget | null>(null);
   const clearanceOwner = useRef<{
     active: boolean; target: ClearanceTarget | null;
     mayOpen: (caseId: number) => boolean; maySubmit: (target: ClearanceTarget) => boolean;
   }>({active: false, target: null, mayOpen: () => false, maySubmit: () => false});
-  const [editingEos, setEditingEos] = useState<EosCaseRow | null>(null);
-  const {identity} = useContext(HrActionsReadIdentity);
+  const {identity,onDenied} = useContext(HrActionsReadIdentity);
   const [selectedEosId, setSelectedEosId] = usePersistentUiState<number | null>(`hr:action-records:${identity}:${employeeId}:selected-eos`, null);
-  const [isPending, startTransition] = useTransition();
-  const [eosForm, setEosForm] = useState({ eos_type: "resignation", case_status: "draft", notice_date: "", last_working_date: "", reason: "" });
-  const [clearanceForm, setClearanceForm] = useState({ clearance_area: "hr", item_title: "", item_status: "pending" });
 
   const uiRead1 = useHrActionQuery("eos", employeeId);
   const { data: eosCases = [] } = uiRead1;
@@ -958,8 +571,8 @@ function EosSection({ employeeId, canManage, qc, onChildOpen }: {
   const checklistReady = uiRead2.data !== undefined && !uiRead2.isLoading && !uiRead2.isFetching && !uiRead2.isError;
   const clearanceAdmitted = canManage && clearanceDialogOpen && clearanceTarget !== null
     && clearanceTarget.employeeId === employeeId && clearanceTarget.identity === identity
-    && eosReady && eosCases.some(eos => eos.id === clearanceTarget.caseId)
-    && activeCaseId === clearanceTarget.caseId && checklistReady;
+    && eosReady && eosCases.some(eos => eos.id === clearanceTarget.caseId&&!['closed','cancelled'].includes(eos.case_status))
+    && activeCaseId === clearanceTarget.caseId && checklistReady && (!clearanceTarget.item||clearanceItems.some(item=>item.id===clearanceTarget.item!.id));
   useLayoutEffect(() => {
     const owner = clearanceOwner.current;
     owner.active = true;
@@ -967,49 +580,22 @@ function EosSection({ employeeId, canManage, qc, onChildOpen }: {
   }, []);
   useLayoutEffect(() => {
     const owner = clearanceOwner.current;
-    owner.mayOpen = caseId => canManage && eosReady && eosCases.some(eos => eos.id === caseId);
+    owner.mayOpen = caseId => canManage && eosReady && eosCases.some(eos => eos.id === caseId&&!['closed','cancelled'].includes(eos.case_status));
     owner.maySubmit = target => clearanceAdmitted && target === clearanceTarget;
     return () => { owner.mayOpen = () => false; owner.maySubmit = () => false; };
   }, [canManage, eosReady, eosCases, clearanceAdmitted, clearanceTarget]);
 
-  const openEosDialog = async (selected?: {id: number}) => {
-    const detail = selected ? await uiRead1.loadDetail(selected.id) : null;
-    if (selected && !detail) return;
-    const item = detail as EosCaseRow | null;
-    setEditingEos(item ?? null);
-    if (item) {
-      setEosForm({ eos_type: item.eos_type, case_status: item.case_status, notice_date: item.notice_date ?? "", last_working_date: item.last_working_date ?? "", reason: item.reason ?? "" });
-    } else {
-      setEosForm({ eos_type: "resignation", case_status: "draft", notice_date: "", last_working_date: "", reason: "" });
-    }
-    setEosDialogOpen(true);
-    onChildOpen(true);
-  };
-  const handleEosClose = () => { setEosDialogOpen(false); onChildOpen(false); };
+  const openEosDialog=(selected?:{id:number})=>{if(!canManage||!uiRead1.canDispatch())return;setEosOpening({target:selected?{id:selected.id,action:'update'}:null});onChildOpen(true);};
+  const handleEosClose=()=>{setEosOpening(null);onChildOpen(false);};
 
-  const handleEosSubmit = () => {
-    startTransition(async () => {
-      if (!canManage || !uiRead1.canDispatch()) return;
-      const input = { ...eosForm, notice_date: eosForm.notice_date || null, last_working_date: eosForm.last_working_date || null, reason: eosForm.reason || null };
-      const result = editingEos ? await updateEmployeeEosCase(editingEos.id, input) : await createEmployeeEosCase(employeeId, input);
-      if (result.success) {
-        toast.success(editingEos ? "EOS case updated" : "EOS case created");
-        invalidateHrEmployeeEos(qc, employeeId);
-        invalidateHrEmployeeActions(qc, employeeId);
-        handleEosClose();
-      } else toast.error(result.error);
-    });
-  };
-
-  const openClearanceDialog = (eosId: number) => {
+  const openClearanceDialog = (eosId: number,item?:{id:number;action:'clear'|'block'}) => {
     const owner = clearanceOwner.current;
     if (!owner.active || !owner.mayOpen(eosId)) return;
     // This object identifies one opening, independently of the browsing selection.
-    const target = {employeeId, caseId: eosId, identity};
+    const target = {employeeId, caseId: eosId, identity,...(item?{item}:{})};
     owner.target = target;
     setClearanceTarget(target);
     setSelectedEosId(eosId);
-    setClearanceForm({ clearance_area: "hr", item_title: "", item_status: "pending" });
     setClearanceDialogOpen(true);
     onChildOpen(true);
   };
@@ -1022,30 +608,8 @@ function EosSection({ employeeId, canManage, qc, onChildOpen }: {
     onChildOpen(false);
   };
 
-  const handleClearanceSubmit = () => {
-    const owner = clearanceOwner.current, target = clearanceTarget;
-    if (!target || !owner.active || owner.target !== target || !owner.maySubmit(target)) return;
-    const input = {...clearanceForm};
-    startTransition(async () => {
-      if (!canManage || !uiRead1.canDispatch()) return;
-      if (!owner.active || owner.target !== target || !owner.maySubmit(target)) return;
-      const result = await createEmployeeClearanceItem(target.caseId, input);
-      if (result.success) {
-        // A confirmed write still belongs to its original case after read/owner retirement.
-        invalidateHrEmployeeClearance(qc, target.caseId, target.employeeId);
-        if (!owner.active || owner.target !== target) return;
-        toast.success("Clearance item added");
-        handleClearanceClose();
-      } else if (owner.active && owner.target === target) toast.error(result.error);
-    });
-  };
-
-  const EOS_TYPES = ["resignation","termination","contract_end","absconding","death","other"].map(s => ({ value: s, label: s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) }));
-  const EOS_STATUSES = ["draft","notice_served","clearance_in_progress","pending_final_settlement","closed","cancelled"].map(s => ({ value: s, label: s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) }));
-  const CLEARANCE_AREAS = ["hr","operations","it","finance","camp","workshop","store","hse","other"].map(s => ({ value: s, label: s.toUpperCase() }));
-
   return (
-    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="rounded-lg border bg-card p-4">
+    <><QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="rounded-lg border bg-card p-4">
       <SectionHeader icon={UserMinus} title="EOS & Clearance" count={uiRead1.collection.serverRead.totalCount ?? undefined} onAdd={canManage ? () => {void openEosDialog();} : undefined} addLabel="Open EOS Case" />
       <p className="text-xs text-muted-foreground mb-3">End-of-service process shell. Financial settlement handled by Finance.</p>
 
@@ -1069,7 +633,7 @@ function EosSection({ employeeId, canManage, qc, onChildOpen }: {
                   {canManage && (
                     <div className="flex gap-1 ml-2 shrink-0">
                       <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEosDialog(eos)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => openClearanceDialog(eos.id)}><Plus className="h-3 w-3" />Clearance</Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" disabled={['closed','cancelled'].includes(eos.case_status)} onClick={() => openClearanceDialog(eos.id)}><Plus className="h-3 w-3" />Clearance</Button>
                     </div>
                   )}
                 </div>
@@ -1089,10 +653,8 @@ function EosSection({ employeeId, canManage, qc, onChildOpen }: {
                             {statusBadge(ci.item_status, "clearance")}
                             {canManage && ci.item_status === "pending" && (
                               <>
-                                <Button aria-label="Clear" disabled={isPending} size="icon" variant="ghost" className="h-5 w-5 text-green-600 dark:text-green-300" title="Clear" onClick={() => startTransition(async () => {
-      if (!canManage || !uiRead1.canDispatch()) return; if (!uiRead2.canDispatch()) return; const r = await clearEmployeeClearanceItem(ci.id); if (r.success) { toast.success("Cleared"); invalidateHrEmployeeClearance(qc, eos.id, employeeId); } else toast.error(r.error); })}><CheckCircle className="h-3 w-3" /></Button>
-                                <Button aria-label="Block" disabled={isPending} size="icon" variant="ghost" className="h-5 w-5 text-red-500 dark:text-red-300" title="Block" onClick={() => startTransition(async () => {
-      if (!canManage || !uiRead1.canDispatch()) return; if (!uiRead2.canDispatch()) return; const r = await blockEmployeeClearanceItem(ci.id); if (r.success) { toast.success("Blocked"); invalidateHrEmployeeClearance(qc, eos.id, employeeId); } else toast.error(r.error); })}><XCircle className="h-3 w-3" /></Button>
+                                <Button aria-label="Clear" disabled={!uiRead1.ready||!uiRead2.ready||['closed','cancelled'].includes(eos.case_status)} size="icon" variant="ghost" className="h-5 w-5 text-green-600 dark:text-green-300" title="Clear" onClick={()=>openClearanceDialog(eos.id,{id:ci.id,action:'clear'})}><CheckCircle className="h-3 w-3" /></Button>
+                                <Button aria-label="Block" disabled={!uiRead1.ready||!uiRead2.ready||['closed','cancelled'].includes(eos.case_status)} size="icon" variant="ghost" className="h-5 w-5 text-red-500 dark:text-red-300" title="Block" onClick={()=>openClearanceDialog(eos.id,{id:ci.id,action:'block'})}><XCircle className="h-3 w-3" /></Button>
                               </>
                             )}
                           </div>
@@ -1107,46 +669,9 @@ function EosSection({ employeeId, canManage, qc, onChildOpen }: {
         </div>
       }
 
-      <ERPChildDialogForm open={eosDialogOpen} onOpenChange={handleEosClose} title={editingEos ? "Edit EOS Case" : "Open EOS Case"} icon={<UserMinus className="h-5 w-5" />} mode={editingEos ? "edit" : "add"} isSubmitting={isPending} submitDisabled={!canManage || !uiRead1.ready} onSubmit={handleEosSubmit} size="lg">
-        <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-6">
-            <Label>EOS Type <span className="text-red-500 dark:text-red-300">*</span></Label>
-            <ERPCombobox ariaLabel="EOS Type" required value={eosForm.eos_type} onValueChange={v => setEosForm(f => ({ ...f, eos_type: String(v ?? "") }))} options={EOS_TYPES} placeholder="Select type" />
-          </div>
-          <div className="col-span-6">
-            <Label>Status</Label>
-            <ERPCombobox ariaLabel="Status" value={eosForm.case_status} onValueChange={v => setEosForm(f => ({ ...f, case_status: String(v ?? "") }))} options={EOS_STATUSES} placeholder="Select status" />
-          </div>
-          <div className="col-span-6">
-            <Label>Notice Date</Label>
-            <Input aria-label="Notice Date" type="date" value={eosForm.notice_date} onChange={e => setEosForm(f => ({ ...f, notice_date: e.target.value }))} />
-          </div>
-          <div className="col-span-6">
-            <Label>Last Working Date</Label>
-            <Input aria-label="Last Working Date" type="date" value={eosForm.last_working_date} onChange={e => setEosForm(f => ({ ...f, last_working_date: e.target.value }))} />
-          </div>
-          <div className="col-span-12">
-            <Label>Reason</Label>
-            <Textarea aria-label="Reason" value={eosForm.reason} onChange={e => setEosForm(f => ({ ...f, reason: e.target.value }))} rows={3} />
-          </div>
-          <div className="col-span-12 bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-700 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-200">
-            Financial / gratuity settlement is handled by the Finance module. EOS case here is a process shell only.
-          </div>
-        </div>
-      </ERPChildDialogForm>
-
-      <ERPChildDialogForm open={clearanceDialogOpen} onOpenChange={handleClearanceClose} title="Add Clearance Item" subtitle={clearanceAdmitted ? undefined : "The original case and its checklist must be available before adding this item. Your draft is retained."} icon={<CheckSquare className="h-5 w-5" />} mode="add" isSubmitting={isPending} submitDisabled={!clearanceAdmitted} onSubmit={handleClearanceSubmit} size="md">
-        <div className="grid grid-cols-12 gap-4">
-          <div className="col-span-6">
-            <Label>Clearance Area <span className="text-red-500 dark:text-red-300">*</span></Label>
-            <ERPCombobox ariaLabel="Clearance Area" required value={clearanceForm.clearance_area} onValueChange={v => setClearanceForm(f => ({ ...f, clearance_area: String(v ?? "") }))} options={CLEARANCE_AREAS} placeholder="Select area" />
-          </div>
-          <div className="col-span-12">
-            <Label>Item Title <span className="text-red-500 dark:text-red-300">*</span></Label>
-            <Input aria-label="Item Title" required value={clearanceForm.item_title} onChange={e => setClearanceForm(f => ({ ...f, item_title: e.target.value }))} placeholder="e.g. Return company laptop" />
-          </div>
-        </div>
-      </ERPChildDialogForm>
     </div></QueryReadBoundary>
+    {clearanceDialogOpen&&clearanceTarget&&<ClearanceEditor employeeId={employeeId}caseId={clearanceTarget.caseId}authContext={authContext}target={clearanceTarget.item??null}admitted={clearanceAdmitted}canDispatch={()=>{const owner=clearanceOwner.current;return owner.active&&owner.target===clearanceTarget&&owner.maySubmit(clearanceTarget)&&uiRead1.canDispatch()&&uiRead2.canDispatch();}}retry={()=>{void uiRead1.refetch();if(activeCaseId===clearanceTarget.caseId)void uiRead2.refetch();}}onDenied={onDenied}onClose={handleClearanceClose}onSaved={(_receipt,action)=>{invalidateHrEmployeeClearance(qc,clearanceTarget.caseId,clearanceTarget.employeeId);if(clearanceOwner.current.active&&clearanceOwner.current.target===clearanceTarget)toast.success(action==='clear'?'Clearance recorded':action==='block'?'Clearance blocked':'Clearance item added');}}/>}
+    {eosOpening&&<HrRecordEditor kind="eos-case" employeeId={employeeId} authContext={authContext} target={eosOpening.target} canDispatch={()=>canManage&&uiRead1.canDispatch()} admission={{blocked:!canManage||!uiRead1.ready,message:'Current EOS cases are unavailable. Your draft is retained; retry before saving.',retry:()=>void uiRead1.refetch()}} onDenied={onDenied} onClose={handleEosClose} onSaved={(_receipt,action)=>{toast.success(action==='archive'?'EOS case archived':eosOpening.target?'EOS case updated':'EOS case created');invalidateHrEmployeeEos(qc,employeeId);invalidateHrEmployeeActions(qc,employeeId);void qc.invalidateQueries({queryKey:['hr','actions','global-eos-cases'],refetchType:'none'});}}/>}
+    </>
   );
 }

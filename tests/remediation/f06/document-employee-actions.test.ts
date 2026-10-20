@@ -6,7 +6,7 @@ vi.mock('@/lib/supabase/admin',()=>({createAdminClient:m.admin}));
 vi.mock('@/server/actions/audit',()=>({logAudit:m.audit}));
 vi.mock('next/cache',()=>({revalidatePath:m.cache}));
 import {createEmployeeFromDmsDocuments} from '@/server/actions/hr/document-to-employee';
-const input={selectedDocumentIds:[2],full_name_en:'Synthetic',gender:'male',date_of_birth:'1990-01-01',mobile_number:'000',owner_company_id:3,joining_date:'2026-10-04',emergency_contact_name:'Contact',emergency_contact_mobile:'000',complianceRecords:[],totalDocumentsSelected:1};
+const input={selectedDocumentIds:[2],full_name_en:'Synthetic',gender:'male',date_of_birth:'1990-01-01',mobile_number:'000',owner_company_id:3,employee_category_id:4,joining_date:'2026-10-04',emergency_contact_name:'Contact',emergency_contact_mobile:'000',complianceRecords:[],totalDocumentsSelected:1};
 const contract={operationId:'5e6a4fad-ad32-4c77-9774-78411fbdb954',reviewedSources:[{documentId:2,fingerprint:'a'.repeat(64)}]};
 const receipt={employeeId:11,employeeCode:'SYN',employeeRevision:'1',referenceId:12,operationId:contract.operationId,sourceDocumentIds:[2],linkIds:[13],childRecords:[],complianceRecordsCreated:0,documentsLinked:1,warnings:[],replayed:false};
 const codes=['hr.employees.create','hr.employees.view','hr.employees.update','dms.documents.view','dms.documents.preview','dms.documents.edit','numbering.rules.generate'];

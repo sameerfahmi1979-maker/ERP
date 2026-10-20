@@ -1,8 +1,11 @@
 import fs from 'node:fs';
 import {expect,it} from 'vitest';
 import {documentEmployeeInputSchema,documentEmployeeContractSchema,canSaveDocumentEmployee} from '@/lib/hr/numbered-document-employee-contract';
-const valid={selectedDocumentIds:[2],full_name_en:'Synthetic',gender:'male',date_of_birth:'1990-01-01',mobile_number:'000',owner_company_id:3,joining_date:'2026-10-04',emergency_contact_name:'Contact',emergency_contact_mobile:'000',complianceRecords:[],totalDocumentsSelected:1};
+const valid={selectedDocumentIds:[2],full_name_en:'Synthetic',gender:'male',date_of_birth:'1990-01-01',mobile_number:'000',owner_company_id:3,employee_category_id:4,joining_date:'2026-10-04',emergency_contact_name:'Contact',emergency_contact_mobile:'000',complianceRecords:[],totalDocumentsSelected:1};
 const identity={kind:'identity_document',tempId:'one',sourceDocumentId:2,dms_document_id:2,document_type_id:5,document_number:'SYN'};
+const training={kind:'training_certificate',tempId:'training',sourceDocumentId:2,dms_document_id:2,training_type_id:6,completion_date:'2026-01-01',expiry_date:'2027-01-01'};
+it('training creation keeps reviewed completion and never injects nonexistent issue or renewal columns',()=>{const child=documentEmployeeInputSchema.parse({...valid,complianceRecords:[training]}).complianceRecords[0];expect(child).toMatchObject({completion_date:'2026-01-01'});expect(child).not.toHaveProperty('issue_date');expect(child).not.toHaveProperty('renewal_status');});
+it.each([{issue_date:'2026-01-01'},{renewal_status:'not_required'},{completion_date:'2027-01-02'},{completion_date:'2026-02-30'}])('rejects unsupported or invalid training dates/fields %j',patch=>{expect(documentEmployeeInputSchema.safeParse({...valid,complianceRecords:[{...training,...patch}]}).success).toBe(false);});
 it('accepts an exact reviewed source contract and required employee input',()=>{expect(documentEmployeeInputSchema.safeParse(valid).success).toBe(true);expect(documentEmployeeContractSchema.safeParse({operationId:crypto.randomUUID(),reviewedSources:[{documentId:2,fingerprint:'a'.repeat(64)}]}).success).toBe(true);});
 it.each([0,-1,1.5,Number.MAX_SAFE_INTEGER+1,'3'])('rejects unsafe employee identity %s',id=>{expect(documentEmployeeInputSchema.safeParse({...valid,owner_company_id:id}).success).toBe(false);});
 it.each(['2026-02-30','2026-2-01','bad',''])('rejects malformed dates %s',value=>{expect(documentEmployeeInputSchema.safeParse({...valid,date_of_birth:value}).success).toBe(false);});

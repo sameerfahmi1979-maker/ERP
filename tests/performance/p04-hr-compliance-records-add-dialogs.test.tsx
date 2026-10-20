@@ -48,7 +48,7 @@ function ReviewProbe({form, setForm}: {form: Form; setForm: React.Dispatch<React
 }
 function Harness({kind, ready = true, owner = "A", retired = false, revision = 0, withAdmission = true}: Props) {
   const [open, setOpen] = useState(true); const admission = useComplianceReadAdmission(ready, [], owner);
-  return kind === "identity" ? <IdentityDocumentAddDialog open={open} onOpenChange={setOpen} employeeId={7} admission={withAdmission ? admission : undefined}
+  return kind === "identity" ? <IdentityDocumentAddDialog save={state.identitySave} open={open} onOpenChange={setOpen} employeeId={7} admission={withAdmission ? admission : undefined}
     docTypes={[{id: 1, name_en: "Synthetic type"}] as HrIdentityDocTypeRow[]} onSaved={state.saved} /> :
     <ComplianceDmsAddDialog open={open} onOpenChange={setOpen} employeeId={7} admission={withAdmission ? admission : undefined}
       recordKind="dependent" recordLabel="Dependent" submitLabel="Save dependent" icon={<span />} createEmptyForm={empty} validate={f => !f.name ? "Name required" : null}
@@ -188,5 +188,52 @@ it.each(["identity", "generic"] as const)("%s actual manual uncertainty survives
   fireEvent.click(within(next).getByRole("button", {name: /^Save/}));
   view.replace({ready: false}); fireEvent.click(screen.getByRole("button", {name: "Retry required checks"})); view.replace({ready: true});
   await act(async () => {state.submits.get(kind === "identity" ? "Review & Save Legal Document" : "Review & Save Dependent")?.();});
+  expect(save(kind)).toHaveBeenCalledTimes(1); expect(state.saved).not.toHaveBeenCalled();
+});
+
+it.each(["identity", "generic"] as const)("%s a thrown batch save stops subsequent writes and reports uncertainty without private diagnostics", async kind => {
+  mount({kind}); save(kind).mockRejectedValueOnce(Error("PRIVATE_BATCH_DIAGNOSTIC"));
+  const {button} = await pick(2); fireEvent.click(button);
+  await screen.findByRole("button", {name: "Done"});
+  expect(save(kind)).toHaveBeenCalledTimes(1);
+  expect(pf(kind)).toHaveBeenCalledTimes(1);
+  expect(screen.getByText(/0 created.*0 failed.*1 unconfirmed.*1 not submitted/)).toBeTruthy();
+  expect(document.body.textContent).not.toContain("PRIVATE_BATCH_DIAGNOSTIC");
+  expect(state.saved).not.toHaveBeenCalled();
+});
+
+it.each(["identity", "generic"] as const)("%s a returned unknown batch outcome is not reported as a rejection", async kind => {
+  mount({kind}); save(kind).mockResolvedValueOnce({success:false,uncertain:true,error:"Original outcome unconfirmed"});
+  const {button} = await pick(2); fireEvent.click(button);
+  await screen.findByRole("button", {name:"Done"});
+  expect(save(kind)).toHaveBeenCalledTimes(1);
+  expect(screen.getByText(/0 created.*0 failed.*1 unconfirmed.*1 not submitted/)).toBeTruthy();
+  expect(state.saved).not.toHaveBeenCalled();
+});
+
+it.each(["identity", "generic"] as const)("%s batch close remains blocked until the dispatched operation settles", async kind => {
+  mount({kind}); const pending=deferred<{success:true;data:{id:number}}>(); save(kind).mockReturnValue(pending.promise);
+  const {button}=await pick(2); fireEvent.click(button); await waitFor(()=>expect(save(kind)).toHaveBeenCalledTimes(1));
+  const close=within(screen.getByRole("dialog")).getByRole("button",{name:"Close"});
+  expect((close as HTMLButtonElement).disabled).toBe(true);
+  await act(async()=>pending.resolve({success:true,data:{id:17}}));
+  await screen.findByRole("button",{name:"Done"});
+  expect((close as HTMLButtonElement).disabled).toBe(false);
+});
+
+it.each(["identity", "generic"] as const)("%s preserves an earlier confirmed batch commit when the next save response is lost", async kind => {
+  mount({kind}); save(kind).mockResolvedValueOnce({success:true,data:{id:17,dmsLinkCreated:true}}).mockRejectedValueOnce(Error("PRIVATE_SECOND_BATCH_DIAGNOSTIC"));
+  const {button}=await pick(2); fireEvent.click(button); await screen.findByRole("button",{name:"Done"});
+  expect(save(kind)).toHaveBeenCalledTimes(2); expect(state.saved).toHaveBeenCalledTimes(1);
+  expect(screen.getByText(/1 created.*0 failed.*1 unconfirmed.*0 not submitted/)).toBeTruthy();
+  expect(document.body.textContent).not.toContain("PRIVATE_SECOND_BATCH_DIAGNOSTIC");
+  expect(screen.getByText("Synthetic document 2")).toBeTruthy();
+});
+
+it.each(["identity", "generic"] as const)("%s closing an unknown batch cannot admit a replacement save or retained callback", async kind => {
+  const view=mount({kind}); save(kind).mockRejectedValueOnce(Error("Synthetic response lost"));
+  const {button}=await pick(2); const retained=state.submits.get("Choose DMS Documents")!; fireEvent.click(button);
+  fireEvent.click(await screen.findByRole("button",{name:"Done"})); await waitFor(()=>expect(screen.queryByRole("dialog")).toBeNull());
+  await act(async()=>{retained();}); view.replace({ready:false}); view.replace({ready:true});
   expect(save(kind)).toHaveBeenCalledTimes(1); expect(state.saved).not.toHaveBeenCalled();
 });

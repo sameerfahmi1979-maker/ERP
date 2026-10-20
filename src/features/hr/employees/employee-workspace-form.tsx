@@ -1,6 +1,9 @@
 "use client";
 import { reportWorkspaceFieldErrors } from "@/lib/workspace/field-errors";
-import {useWorkspaceSaveSession} from "@/hooks/use-workspace-save-session";
+import {useEmployeeSaveSession} from './use-employee-save-session';
+import {useReadLifetime} from '@/hooks/use-read-lifetime';
+import {hasHrReadCapability,hrReadIdentity} from '@/lib/reads/hr-read-identity';
+import {EmployeeSaveRecovery} from './employee-save-recovery';
 import type {NotificationTaskContext} from '@/lib/notifications/task-context';
 import {NotificationTaskContextCard} from '@/features/notifications/notification-task-context';
 
@@ -51,7 +54,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateHrEmployee, invalidateHrEmployees } from "@/lib/query/invalidation";
 import { toast } from "sonner";
@@ -59,8 +62,8 @@ import { EmployeeComplianceTab } from "./tabs/employee-compliance-tab";
 import { EmployeeHrActionsTab } from "./tabs/employee-hr-actions-tab";
 import { EmployeeOperationsTab } from "./tabs/employee-operations-tab";
 import { EmployeeOverviewTab } from "./tabs/employee-overview-tab";
+import {EmployeeEmploymentHistory} from './employee-employment-history';
 import { EmployeePayrollTab } from "./tabs/employee-payroll-tab";
-import { EmployeePlaceholderTab } from "./tabs/employee-placeholder-tab";
 import { EmployeeProfileTab, type EmployeeProfileFormState } from "./tabs/employee-profile-tab";
 import { EmployeeTimeTab } from "./tabs/employee-time-tab";
 
@@ -141,6 +144,8 @@ const employeeCodec: WorkspaceDraftCodec<EmployeeProfileFormState> = {
 
 function buildInitialFormState(employee: EmployeeListRow | null | undefined): EmployeeProfileFormState {
   return {
+    employment_change_reason: '',
+    employment_effective_date: '',
     full_name_en: employee?.full_name_en ?? "",
     full_name_ar: employee?.full_name_ar ?? "",
     known_name: employee?.known_name ?? "",
@@ -180,7 +185,7 @@ function buildInitialFormState(employee: EmployeeListRow | null | undefined): Em
 }
 
 export function EmployeeWorkspaceForm(props: Props) {
-  return <EmployeeWorkspaceFormInstance key={`${props.employee?.id ?? "new"}:${props.mode}`} {...props} />;
+  return <EmployeeWorkspaceFormInstance key={`${props.authContext.profile?.id ?? 'none'}:${props.authContext.profile?.auth_user_id ?? 'none'}:${props.employee?.id ?? "new"}:${props.mode}`} {...props} />;
 }
 
 function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificationTask }: Props) {
@@ -189,7 +194,7 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, "overview", SECTION_IDS);
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, employee ? "overview" : "profile", SECTION_IDS);
   const [childDialogOpen, setChildDialogOpen] = useState(false);
   const [complianceChildLeases, setComplianceChildLeases] = useState<Set<object>>(() => new Set());
   const handleComplianceChildLease = useCallback((token: object, open: boolean) => {
@@ -201,27 +206,64 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
     });
   }, []);
   const [admission] = useState(createSaveAdmission);
-  const saveSession = useWorkspaceSaveSession(FORM_ID, employee?.id ?? null, employee?.workspace_revision);
+  const actor = `${authContext.profile?.id ?? 'none'}:${authContext.profile?.auth_user_id ?? 'none'}`;
+  const formId = `${FORM_ID}:actor:${actor}`;
+  const recoveryScope = `f11-employee:${actor}:record:${employee?.id ?? owner?.id ?? 'new'}`;
+  const saveSession = useEmployeeSaveSession(formId, employee?.id ?? null, employee?.workspace_revision, actor, {
+    retirementScope: recoveryScope, recordScope: id => `f11-employee:${actor}:record:${id}`,
+  });
+  const identity = hrReadIdentity(authContext), lifetime = useReadLifetime(identity);
+  const mounted = useRef(false);
+  const openingIdentity = useRef(identity);
+  const [, showRetirement] = useState(0);
+  const canRead = authContext.isAccountActive && !authContext.profile?.must_change_password && (employee
+    ? hasHrReadCapability(authContext, 'hr.employees.view') || hasHrReadCapability(authContext, 'hr.employee_profile.view')
+    : checkPermission(authContext, 'hr.employees.create'));
+  const canEdit = canRead && (employee
+    ? checkPermission(authContext, 'hr.employees.update') || checkPermission(authContext, 'hr.employee_profile.manage')
+    : checkPermission(authContext, 'hr.employees.create'));
   const recordId = useRef(saveSession.id);
   const [savedId, setSavedId] = useState(employee?.id ?? null);
   const isViewing = mode === "view";
   const isAdding = savedId === null;
   const isEditing = !isViewing && !isAdding;
-  const {value: form, setValue: setForm, isDirty, acceptSaved, getCurrent, restoredFromDraft} = useWorkspaceControlledDraft({
-    formId: FORM_ID, initialValue: buildInitialFormState(employee), codec: employeeCodec, enabled: !isViewing,
+  const {value: form, setValue: setForm, isDirty, acceptSaved, getCurrent, restoredFromDraft, retire, redact} = useWorkspaceControlledDraft({
+    formId, initialValue: buildInitialFormState(employee), codec: employeeCodec, enabled: !isViewing,
   });
+  useLayoutEffect(() => {
+    if (openingIdentity.current !== identity) {
+      openingIdentity.current = identity;
+      if (saveSession.hasPending) {
+        saveSession.retireForAccessLoss();
+        // This external memory session has no subscription. Publish its opaque
+        // retirement after commit so the receipt-only recovery action appears.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        showRetirement(version => version + 1);
+      }
+    }
+    if (!canRead) {saveSession.retireForAccessLoss(); retire(buildInitialFormState(null));}
+    else if (!checkPermission(authContext, 'hr.medical.view') || employee?.medical_field_unavailable) redact({blood_group: ''});
+  }, [identity, canRead, authContext, employee?.medical_field_unavailable, saveSession, retire, redact]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (saveSession.hasPending) {saveSession.retireForAccessLoss(); retire(buildInitialFormState(null));}
+    };
+  }, [saveSession, retire]);
 
   const handleRequestClose = () => { if (owner) closeTab(owner.id); };
 
   const handleSave = async (closeAfter = false): Promise<boolean> => {
-    if (isViewing || !admission.enter()) return false;
+    if (isViewing || !canEdit || !lifetime.active || saveSession.isRetired || saveSession.requiresReconciliation || !admission.enter()) return false;
     setIsSubmitting(true);
     const submitted = getCurrent();
+    let confirmed = false;
     try {
-      const formElement = document.getElementById(FORM_ID) as HTMLFormElement | null;
+      const formElement = document.getElementById(formId) as HTMLFormElement | null;
       const missingSelection = !submitted.gender ? "gender"
         : !submitted.owner_company_id ? "owner_company_id"
-        : !submitted.employee_category_id ? "employee_category_id" : null;
+        : !submitted.employee_category_id && (isAdding || employee?.employee_category_id != null) ? "employee_category_id" : null;
       if (!formElement || !formElement.checkValidity() || missingSelection) {
         setActiveSection("profile");
         if (missingSelection) reportWorkspaceFieldErrors(formElement, { [missingSelection]: "Select a value before saving." });
@@ -231,13 +273,17 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
       }
       const data = {
         ...submitted,
+        employment_change_reason: submitted.employment_change_reason || undefined,
+        employment_effective_date: submitted.employment_effective_date || undefined,
         full_name_ar: submitted.full_name_ar || null,
         known_name: submitted.known_name || null,
         marital_status: submitted.marital_status || null,
         personal_email: submitted.personal_email || null,
         uae_address: submitted.uae_address || null,
         home_country_address: submitted.home_country_address || null,
-        blood_group: submitted.blood_group || null,
+        // A masked/unavailable unchanged value is not a request to clear a
+        // medical fact while saving unrelated profile fields.
+        blood_group: employee?.medical_field_unavailable || !checkPermission(authContext,'hr.medical.manage') || submitted.blood_group === (employee?.blood_group ?? '') ? undefined : submitted.blood_group || null,
         actual_joining_date: submitted.actual_joining_date || null,
         contract_type: submitted.contract_type || null,
         contract_start_date: submitted.contract_start_date || null,
@@ -247,11 +293,14 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
         notice_period_days: submitted.notice_period_days ? Number(submitted.notice_period_days) : null,
       };
       const wasNew = recordId.current === null;
+      const wasPending = saveSession.hasPending;
       const result = wasNew
         ? await createEmployee(data as EmployeeCreateInput, saveSession.begin(data))
         : await updateEmployee(recordId.current!, data as EmployeeUpdateInput, saveSession.begin(data));
-      if (!result.success) { if (!result.uncertain) saveSession.rejected(); reportWorkspaceFieldErrors(formElement, result.fieldErrors); toast.error(result.error ?? "Failed to save employee"); return false; }
-      if (!result.data?.revision) { toast.error("Save response incomplete. Retry the same values to reconcile it."); return false; }
+      if (!lifetime.active || saveSession.isRetired) return false;
+      if (!result.success) { if (!wasPending && !result.uncertain) saveSession.rejected(); reportWorkspaceFieldErrors(formElement, result.fieldErrors); toast.error(result.error ?? "Failed to save employee"); return false; }
+      if (!result.data || !Number.isSafeInteger(result.data.id) || result.data.id <= 0 || (recordId.current !== null && result.data.id !== recordId.current) || !/^[1-9]\d*$/.test(result.data.revision) || typeof result.data.replayed !== 'boolean') { toast.error("Save response incomplete. Retry the same values to reconcile it."); return false; }
+      confirmed = true;
       saveSession.accept(result.data);
       if (wasNew) {
         const id = (result as {data?: {id: number}}).data?.id;
@@ -259,8 +308,11 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
         recordId.current = id;
         setSavedId(id);
       }
-      invalidateHrEmployees(queryClient);
-      invalidateHrEmployee(queryClient, recordId.current!);
+      try {
+        invalidateHrEmployees(queryClient);
+        invalidateHrEmployee(queryClient, recordId.current!);
+        void queryClient.invalidateQueries({queryKey:['hr','employment-history',identity,recordId.current!]});
+      } catch {toast.error('Employee saved, but related views could not refresh. Reopen them to see the latest values.');}
       const unchanged = acceptSaved(submitted);
       const route = `/admin/hr/employees/record/${recordId.current}?mode=edit`;
       if (owner) { markDirty(owner.id, !unchanged); updateTabRoute(owner.id, route, recordId.current!, "edit"); }
@@ -271,9 +323,11 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
       else if (unchanged && owner && isTabActive(owner.id)) router.refresh();
       return true;
     } catch (error) {
+      if (!lifetime.active || saveSession.isRetired) return false;
+      if (confirmed) {toast.error('Employee saved, but this workspace could not finish refreshing. Reopen the latest record before another change.'); return true;}
       toast.error(error instanceof Error ? error.message : "The save could not be confirmed. Your input is retained; check the employee list before retrying.");
       return false;
-    } finally { admission.leave(); setIsSubmitting(false); }
+    } finally { admission.leave(); if (mounted.current) setIsSubmitting(false); }
   };
 
   const employeeStatus = employee?.employee_status;
@@ -282,11 +336,12 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
 
   const profileTabProps = {
     employee: employee ?? null,
-    mode,
+    mode: canEdit ? mode : 'view' as const,
     form,
     setForm,
   };
 
+  if (!canRead) return <p role="alert">Employee access is no longer available. Private drafts have been retired; reopen with current authorization.</p>;
   return (
     <ERPRecordWorkspaceForm
       mode={isViewing ? "view" : isAdding ? "add" : "edit"}
@@ -311,14 +366,14 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
       activeSection={activeSection}
       onSectionChange={setActiveSection}
       isDirty={isDirty}
-      onSave={isViewing ? undefined : () => handleSave()}
-      onSaveAndClose={isViewing ? undefined : () => handleSave(true)}
+      onSave={isViewing || !canEdit ? undefined : () => handleSave()}
+      onSaveAndClose={isViewing || !canEdit ? undefined : () => handleSave(true)}
       onRequestClose={handleRequestClose}
       isSubmitting={isSubmitting}
       isChildDialogOpen={childDialogOpen || complianceChildLeases.size > 0}
     >
       <form
-        id={FORM_ID}
+        id={formId}
         onSubmit={(e) => {
           e.preventDefault();
           void handleSave();
@@ -326,6 +381,7 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
       >
         {/* WS.3: visible signal that unsaved values from a previous visit were restored */}
         <DraftRestoredNotice visible={!isViewing && restoredFromDraft} className="mb-3" />
+        <EmployeeSaveRecovery key={identity} session={saveSession} scope={saveSession.id === null ? recoveryScope : `f11-employee:${actor}:record:${saveSession.id}`}/>
         {notificationTask&&<NotificationTaskContextCard task={notificationTask} onSection={setActiveSection} blocked={isSubmitting||childDialogOpen||complianceChildLeases.size>0}/>}
 
         {/* Overview — one authorized read composition; retained after its first mount. */}
@@ -336,15 +392,17 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
               authContext={authContext}
             />
           ) : (
-            <div className="flex items-center justify-center py-24 text-muted-foreground text-sm">
-              Save the employee first to view the overview.
+            <div className="space-y-3 p-6 text-sm">
+              <h3 className="font-semibold">Start with the employee profile</h3>
+              <p className="text-muted-foreground">Enter the verified personal, employment and emergency contact details. After saving, return here to review related work and records.</p>
+              <button type="button" className="text-primary underline focus-visible:outline-2" onClick={()=>setActiveSection('profile')}>Complete employee profile</button>
             </div>
           )}
         </ERPRecordSectionPanel>
 
         {/* Profile */}
         <ERPRecordSectionPanel id="profile" activeId={activeSection} title="Employee Profile">
-          <EmployeeProfileTab {...profileTabProps} canManageMedical={checkPermission(authContext,"hr.medical.manage")} />
+          <EmployeeProfileTab {...profileTabProps} authContext={authContext} canManageMedical={checkPermission(authContext,"hr.medical.manage")} />
         </ERPRecordSectionPanel>
 
         {/* Compliance — HR.3 */}
@@ -474,11 +532,7 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
 
         {/* Audit */}
         <ERPRecordSectionPanel id="audit" activeId={activeSection} title="Audit" lazyMount>
-          <EmployeePlaceholderTab
-            title="Employee Audit Timeline"
-            description="Employee audit timeline will be expanded in later phases. HR.2 logs employee create/update/archive/status events."
-            availableIn="HR.3+"
-          />
+          {employee?<EmployeeEmploymentHistory employeeId={employee.id} authContext={authContext}/>:<p>Complete the employee profile first. Employment history begins when the employee is saved.</p>}
         </ERPRecordSectionPanel>
       </form>
     </ERPRecordWorkspaceForm>

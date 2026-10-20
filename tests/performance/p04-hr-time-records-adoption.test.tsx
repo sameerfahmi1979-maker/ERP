@@ -6,6 +6,9 @@ import {act, cleanup, fireEvent, render, renderHook, screen, waitFor, within} fr
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
 import type {AuthContext} from "@/lib/rbac/check";
 import {WorkspaceUiMemoryProvider} from "@/hooks/use-persistent-ui-state";
+import{createWorkspaceDraftStore}from'@/lib/workspace/workspace-draft-store';
+import{TIME_CHILD_COLUMNS,type TimeChildKind}from'@/lib/hr/time-child-contract';
+import type{ChildMutation,ChildSaveContract}from'@/lib/hr/child-save-contract';
 import {EmployeeTimeTab} from "@/features/hr/employees/tabs/employee-time-tab";
 import {useHrTimeRecords} from "@/hooks/use-hr-time-records";
 import {ReadError} from "@/lib/reads/client";
@@ -30,7 +33,7 @@ function controller(fragment: string) {
 }
 beforeEach(() => embeddedAdapters.clear());
 
-const state = vi.hoisted(() => ({read: vi.fn(), list: vi.fn(), mutate: vi.fn(), failed: false, error: vi.fn(), success: vi.fn(), submits: new Map<string, (() => unknown) | undefined>()}));
+const state = vi.hoisted(() => ({store:null as ReturnType<typeof createWorkspaceDraftStore>|null,commands:vi.fn(),read: vi.fn(), list: vi.fn(), mutate: vi.fn(), failed: false, error: vi.fn(), success: vi.fn(), submits: new Map<string, (() => unknown) | undefined>()}));
 vi.mock("@/components/erp/erp-child-dialog-form", async original => {
   const actual = await original<typeof import("@/components/erp/erp-child-dialog-form")>();
   return {...actual, ERPChildDialogForm: (props: React.ComponentProps<typeof actual.ERPChildDialogForm>) => {
@@ -38,13 +41,29 @@ vi.mock("@/components/erp/erp-child-dialog-form", async original => {
   }};
 });
 vi.mock("@/lib/reads/client", async original => ({...await original<typeof import("@/lib/reads/client")>(), readJson: state.read}));
+
+vi.mock('@/components/workspace/workspace-draft-provider',()=>({useWorkspaceDraftStoreContext:()=>state.store}));
+vi.mock('@/server/actions/hr/child-mutation',()=>({
+ readTimeChildOpening:async(kind:TimeChildKind,employeeId:number,id:number|null,action:string,seed?:Record<string,unknown>)=>{
+  if(id===null)return{success:true,id:null,revision:null,values:seed??{}};
+  const readKind=kind==='attendance-summary'?'daily':kind==='attendance-punch'?'punches':kind==='shift-assignment'?'shifts':kind==='leave-request'?'leave':kind==='leave-balance'?'balances':'overtime';
+  try{const r=await state.read('hr-time-records',{kind:readKind,employeeId,operation:'detail',recordId:id}),row=r.data.row;if(!row)return{success:false,denied:true,error:'Original Time record unavailable.'};
+   return{success:true,id,revision:'4',values:action==='correct'?{correction_reason:'',notes:row.notes}:['query','reject','cancel'].includes(action)?{reason:''}:['approve','archive'].includes(action)?{}:Object.fromEntries(TIME_CHILD_COLUMNS[kind].split(',').map(k=>[k,row[k]]))};
+  }catch{return{success:false,error:'Complete original Time record unavailable.'};}
+ },
+ mutateHrChild:async(r:ChildMutation,c:ChildSaveContract)=>{state.commands(r,c);
+  const name=r.kind==='attendance-summary'?r.action==='approve'?'approveAttendanceDailySummary':r.action==='query'?'queryAttendanceDailySummary':r.action==='correct'?'correctAttendanceDailySummary':'createOrUpdateAttendanceDailySummary':r.kind==='attendance-punch'?'createEmployeeAttendancePunch':r.kind==='shift-assignment'?r.action==='archive'?'archiveEmployeeShiftAssignment':r.action==='update'?'updateEmployeeShiftAssignment':'createEmployeeShiftAssignment':r.kind==='leave-request'?r.action==='approve'?'approveLeaveRequest':r.action==='reject'?'rejectLeaveRequest':r.action==='cancel'?'cancelLeaveRequest':'createLeaveRequest':r.kind==='leave-balance'?'createOrUpdateLeaveBalance':r.action==='approve'?'approveOvertimeRecord':r.action==='reject'?'rejectOvertimeRecord':r.action==='archive'?'archiveOvertimeRecord':r.action==='update'?'updateOvertimeRecord':'createOvertimeRecord';
+  const result=await state.mutate(name,[r.action==='create'||['attendance-summary','leave-balance'].includes(r.kind)&&['create','update'].includes(r.action)?r.employeeId:r.id,['approve','archive'].includes(r.action)?undefined:['reject','cancel','query'].includes(r.action)?r.values.reason:r.values].filter(v=>v!==undefined));
+  return result?.success?{success:true,data:{kind:r.kind,employee_id:r.employeeId,id:r.id??17,revision:String(Number(r.revision??0)+1),operation_id:c.operationId,replayed:false}}:result;
+ },reconcileHrChild:vi.fn(),listRecentHrChildReceipts:vi.fn()
+}));
 vi.mock("sonner", () => ({toast: {error: state.error, success: state.success}}));
 vi.mock("@/server/actions/hr/time", () => Object.fromEntries([
   "listEmployeeAttendanceDailySummary", "listEmployeeAttendancePunches", "listAttendanceCorrections", "listEmployeeShiftAssignments", "listEmployeeLeaveRequests", "listEmployeeLeaveBalances", "listEmployeeOvertimeRecords", "listActiveLeaveTypesForForm", "listWorkShiftsForTimeTab",
   "approveAttendanceDailySummary", "queryAttendanceDailySummary", "createOrUpdateAttendanceDailySummary", "createEmployeeAttendancePunch", "correctAttendanceDailySummary", "createEmployeeShiftAssignment", "updateEmployeeShiftAssignment", "archiveEmployeeShiftAssignment",
   "createLeaveRequest", "approveLeaveRequest", "rejectLeaveRequest", "cancelLeaveRequest", "createOrUpdateLeaveBalance", "createOvertimeRecord", "updateOvertimeRecord", "approveOvertimeRecord", "rejectOvertimeRecord", "archiveOvertimeRecord",
 ].map(name => [name, (...args: unknown[]) => name.startsWith("list") ? state.list(name, args) : state.mutate(name, args)])));
-vi.mock("@/lib/reads/hr-time-choice-client", () => ({getWorkCalendarComboboxOptions: async () => ({success: true, data: [{value: 1, label: "Synthetic calendar"}]}),
+vi.mock("@/lib/reads/hr-time-choice-client", () => ({getWorkCalendarComboboxOptions: async () => ({success: true, data: [{value: "1", label: "Synthetic calendar"}]}),
   listWorkShiftsForTimeTab: (...args: unknown[]) => state.list("listWorkShiftsForTimeTab",args),listActiveLeaveTypesForForm: (...args: unknown[]) => state.list("listActiveLeaveTypesForForm",args)}));
 
 const auth = {profile: {id: 7, auth_user_id: "time-synthetic-a", must_change_password: false}, accountStatus: "active", isAccountActive: true,
@@ -53,7 +72,7 @@ const clients: QueryClient[] = [];
 const legacyKinds: Record<string, TimeFixtureKind> = {listEmployeeAttendanceDailySummary: "daily", listEmployeeAttendancePunches: "punches", listAttendanceCorrections: "corrections",
   listEmployeeShiftAssignments: "shifts", listEmployeeLeaveRequests: "leave", listEmployeeLeaveBalances: "balances", listEmployeeOvertimeRecords: "overtime"};
 beforeEach(() => {
-  state.failed = false;
+  state.store=createWorkspaceDraftStore();state.commands.mockReset();state.failed = false;
   state.list.mockImplementation(async (name: string) => {
     if (state.failed) return {success: false, error: "Synthetic read unavailable"};
     if (name === "listWorkShiftsForTimeTab") return {success: true, data: [{id: 1, shift_name: "Synthetic shift", shift_code: "SYNTH", calendar_id: 1}]};
@@ -92,7 +111,7 @@ it("uses a counted employee-bound read page instead of fixed first-page actions"
 });
 it("requests full selected daily detail before admitting the actual edit form", async () => {
   mount(); const dialog = await editDaily();
-  expect(state.read.mock.calls.filter(([, p]) => p.operation === "detail" && p.kind === "daily" && p.recordId === 17)).toHaveLength(1);
+  expect(state.read.mock.calls.filter(([, p]) => p.operation === "detail" && p.kind === "daily" && p.recordId === 17)).toHaveLength(2);
   expect((within(dialog).getByLabelText("Notes") as HTMLInputElement).value).toBe("INITIAL_PRIVATE_NOTE");
 });
 it("retains an open draft but blocks portaled dispatch after an ordinary read failure", async () => {
@@ -104,7 +123,7 @@ it("retains an open draft but blocks portaled dispatch after an ordinary read fa
   expect((within(dialog).getByLabelText("Notes") as HTMLInputElement).value).toBe("UNSAVED_TIME_DRAFT");
   fireEvent.click(within(dialog).getByRole("button", {name: /^Save/}));
   expect(state.mutate).not.toHaveBeenCalled();
-  expect(within(dialog).getByRole("button", {name: /Retry.*checks/})).toBeTruthy();
+  expect(within(dialog).getByRole("button", {name: /Retry current Time list/})).toBeTruthy();
 });
 it("preserves the permitted daily save action and payload", async () => {
   mount(); const dialog = await editDaily();
@@ -148,7 +167,7 @@ it("an already-dispatched daily save keeps the actual guarded single-dispatch be
   // This control records the existing guarded wrapper's in-flight behavior;
   // it must not permit a second request or claim the first was canceled.
   await act(async () => {finish({success: true, data: {id: 17}});});
-  await waitFor(() => expect(state.success).toHaveBeenCalledWith("Attendance updated"));
+  await waitFor(() => expect(state.success).toHaveBeenCalledWith("Time change saved"));
   expect(state.mutate).toHaveBeenCalledTimes(1);
 });
 
@@ -188,31 +207,31 @@ it("parent layout-before-passive unmount cannot dispatch a retired read callback
 
 const portals = [
   {kind: "daily", section: "Attendance", button: "Edit record", title: "Edit Daily Attendance", field: "Notes", action: "createOrUpdateAttendanceDailySummary"},
-  {kind: "daily", section: "Attendance", button: "Correct", title: "Record Attendance Correction", field: "Correction Reason", action: "correctAttendanceDailySummary"},
-  {kind: "daily", section: "Attendance", button: "Query", title: "Query attendance record", field: "Reason", action: "queryAttendanceDailySummary"},
+  {kind: "daily", section: "Attendance", button: "Correct", title: "Correct Daily Attendance", field: "Correction Reason", action: "correctAttendanceDailySummary"},
+  {kind: "daily", section: "Attendance", button: "Query", title: "Query Daily Attendance", field: "Reason", action: "queryAttendanceDailySummary"},
   {kind: "shifts", section: "Shift & Calendar", button: "Edit record", title: "Edit Shift Assignment", field: "Notes", action: "updateEmployeeShiftAssignment"},
   {kind: "leave", section: "Leave Requests & Balances", button: "Reject", title: "Reject Leave Request", field: "Reason", action: "rejectLeaveRequest"},
   {kind: "leave", section: "Leave Requests & Balances", button: "Cancel", title: "Cancel Leave Request", field: "Reason", action: "cancelLeaveRequest"},
-  {kind: "overtime", section: "Overtime", button: "Edit record", title: "Edit Overtime", field: "Notes", action: "updateOvertimeRecord"},
+  {kind: "overtime", section: "Overtime", button: "Edit record", title: "Edit Overtime Record", field: "Notes", action: "updateOvertimeRecord"},
   {kind: "overtime", section: "Overtime", button: "Reject", title: "Reject Overtime Record", field: "Reason", action: "rejectOvertimeRecord"},
 ] as const;
 async function openPortal(test: typeof portals[number]) {
   await ready(); const button = within(section(test.section)).getByRole("button", {name: test.button});
   await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false)); fireEvent.click(button);
   const dialog = await screen.findByRole("dialog", {name: test.title});
-  await waitFor(() => expect(within(dialog).queryByRole("button", {name: /Retry required checks/})).toBeNull()); return dialog;
+  await waitFor(() => expect(within(dialog).queryByRole("button", {name: /Retry current Time list/})).toBeNull()); return dialog;
 }
 it.each(portals)("$title verifies selected detail, pauses actual portal and retained callback on 503, then retries without discarding", async test => {
   const {client} = mount(); const dialog = await openPortal(test);
-  expect(state.read.mock.calls.filter(([, p]) => p.operation === "detail" && p.kind === test.kind)).toHaveLength(1);
+  expect(state.read.mock.calls.filter(([, p]) => p.operation === "detail" && p.kind === test.kind)).toHaveLength(2);
   fireEvent.change(within(dialog).getByLabelText(test.field), {target: {value: "PRESERVED_DIALOG_ENTRY"}});
   const submit = state.submits.get(test.title)!; state.failed = true;
   await act(async () => {await client.invalidateQueries({queryKey: ["hr", "time-records", 7, test.kind]});});
-  const retry = await within(dialog).findByRole("button", {name: "Retry required checks"});
+  const retry = await within(dialog).findByRole("button", {name: "Retry current Time list"});
   await act(async () => {await submit();}); expect(state.mutate).not.toHaveBeenCalled();
   expect((within(dialog).getByLabelText(test.field) as HTMLInputElement).value).toBe("PRESERVED_DIALOG_ENTRY");
   state.failed = false; fireEvent.click(retry);
-  await waitFor(() => expect(within(dialog).queryByRole("button", {name: /Retry required checks|Retrying required checks/})).toBeNull());
+  await waitFor(() => expect(within(dialog).queryByRole("button", {name: /Retry current Time list/})).toBeNull());
   await act(async () => {await state.submits.get(test.title)!();});
   await waitFor(() => expect(state.mutate).toHaveBeenCalledTimes(1)); expect(state.mutate.mock.calls[0][0]).toBe(test.action);
 });
@@ -241,7 +260,7 @@ it("same-owner manage-only loss preserves a readable draft but prevents a retain
   const submit = state.submits.get("Edit Daily Attendance")!;
   state.read.mockImplementation(async (_resource: string, input: Record<string, unknown>) => timeFixtureReply(input, undefined, {canManage: false}));
   await act(async () => {await client.invalidateQueries({queryKey: ["hr", "time-records", 7, "daily"]});});
-  await waitFor(() => expect(within(dialog).getByRole("button", {name: "Retry required checks"})).toBeTruthy());
+  await waitFor(() => expect(within(dialog).getByRole("button", {name: "Retry current Time list"})).toBeTruthy());
   expect((within(dialog).getByLabelText("Notes") as HTMLInputElement).value).toBe("READABLE_DRAFT");
   await act(async () => {await submit();}); expect(state.mutate).not.toHaveBeenCalled(); await closeDialog(dialog);
 });
@@ -256,8 +275,8 @@ it.each(["account", "permissions", "employee"])("a changed %s retires private Ti
 it("lookup failure inside an open shift dialog pauses dispatch and Cancel remains usable", async () => {
   mount(); const dialog = await openPortal(portals[3]); fireEvent.change(within(dialog).getByLabelText("Notes"), {target: {value: "SHIFT_DRAFT"}});
   const submit = state.submits.get("Edit Shift Assignment")!; state.failed = true;
-  await act(async () => {await clients.at(-1)!.invalidateQueries({queryKey: ["hr", "time-records-options"]});});
-  await within(dialog).findByRole("button", {name: "Retry required checks"}); await act(async () => {await submit();});
+  await act(async () => {await clients.at(-1)!.invalidateQueries({queryKey: ["hr", "f11-time-choice"]});});
+  await within(dialog).findAllByText('Time choices could not be verified; this is not an empty catalogue.'); await act(async () => {await submit();});
   expect(state.mutate).not.toHaveBeenCalled(); await closeDialog(dialog);
 });
 it("all six tables and current-year balances use real page controls beyond their old caps", async () => {
@@ -330,7 +349,7 @@ it.each(["rejected", "thrown"])("a %s business save retains the existing draft a
   else state.mutate.mockRejectedValue(new Error("Synthetic response lost"));
   mount(); const dialog = await editDaily(); fireEvent.change(within(dialog).getByLabelText("Notes"), {target: {value: "UNCERTAIN_OR_REJECTED_DRAFT"}});
   await act(async () => {await state.submits.get("Edit Daily Attendance")!();});
-  await waitFor(() => expect(state.error).toHaveBeenCalled()); expect(state.success).not.toHaveBeenCalled();
+  await screen.findByText(mode==='rejected'?'Synthetic rejected save':/The result is unconfirmed/);expect(state.error).not.toHaveBeenCalled();expect(state.success).not.toHaveBeenCalled();
   expect((within(dialog).getByLabelText("Notes") as HTMLInputElement).value).toBe("UNCERTAIN_OR_REJECTED_DRAFT");
-  if (mode === "thrown") {await act(async () => {await state.submits.get("Edit Daily Attendance")!();}); expect(state.mutate).toHaveBeenCalledTimes(1);}
+  if (mode === "thrown") {const original=state.commands.mock.calls[0];await act(async () => {await state.submits.get("Edit Daily Attendance")!();});expect(state.mutate).toHaveBeenCalledTimes(2);expect(state.commands.mock.calls[1]).toEqual(original);}
 });

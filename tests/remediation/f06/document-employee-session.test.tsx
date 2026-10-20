@@ -8,7 +8,7 @@ vi.mock('@/components/workspace/workspace-draft-provider',()=>({useWorkspaceDraf
 vi.mock('@/hooks/use-workspace-form-owner',()=>({useWorkspaceFormOwner:()=>m.owner?{id:m.owner}:null}));
 vi.mock('@/server/actions/hr/document-to-employee',()=>({createEmployeeFromDmsDocuments:m.save}));
 import {useDocumentEmployeeSession} from '@/features/hr/employees/document-create/use-document-employee-session';
-const input={selectedDocumentIds:[2],full_name_en:'Synthetic',gender:'male' as const,date_of_birth:'1990-01-01',mobile_number:'000',owner_company_id:3,joining_date:'2026-10-04',emergency_contact_name:'Contact',emergency_contact_mobile:'000',complianceRecords:[],totalDocumentsSelected:1};
+const input={selectedDocumentIds:[2],full_name_en:'Synthetic',gender:'male' as const,date_of_birth:'1990-01-01',mobile_number:'000',owner_company_id:3,employee_category_id:4,joining_date:'2026-10-04',emergency_contact_name:'Contact',emergency_contact_mobile:'000',complianceRecords:[],totalDocumentsSelected:1};
 const sources=[{documentId:2,fingerprint:'a'.repeat(64)}];
 const response=(operationId:string)=>({success:true,data:{employeeId:11,employeeCode:'SYN',employeeRevision:'1',referenceId:12,operationId,sourceDocumentIds:[2],linkIds:[13],childRecords:[],complianceRecordsCreated:0,documentsLinked:1,warnings:[],replayed:false}});
 const mount=()=>renderHook(({actor})=>useDocumentEmployeeSession(actor),{initialProps:{actor:8}});

@@ -1,7 +1,11 @@
 "use client";
-import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
-import { ERPCombobox } from "@/components/erp/combobox";
+import { ERPCombobox,type ERPComboboxOption } from "@/components/erp/combobox";
+import {Button} from '@/components/ui/button';
+import type {AuthContext} from '@/lib/rbac/check';
+import {hrReadIdentity} from '@/lib/reads/hr-read-identity';
+import {readJson,retryAuthorizedRead} from '@/lib/reads/client';
+import {employeeProfileChoices,type EmployeeChoiceKind} from '@/lib/hr/employee-profile-choices';
 import { CountrySelect } from "@/components/erp/geography/country-select";
 import { BranchSelect } from "@/components/erp/organizations/branch-select";
 import { OwnerCompanySelect } from "@/components/erp/organizations/owner-company-select";
@@ -9,20 +13,12 @@ import { RequiredLabel } from "@/components/erp/required-label";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { listDepartments } from "@/server/actions/common-master-data/departments";
-import { listDesignations } from "@/server/actions/common-master-data/designations";
-import { listWorkSites } from "@/server/actions/common-master-data/work-sites";
 import type { EmployeeListRow } from "@/server/actions/hr/employees";
-import {
-  listHrEmployeeCategories,
-  listHrEmploymentTypes,
-  listHrMohreEstablishments,
-  listHrRelationshipTypes,
-} from "@/server/actions/hr/settings";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import {EMPLOYMENT_FIELDS} from '@/lib/hr/employee-contract';
 
 type Props = {
+  authContext:AuthContext;
   employee: EmployeeListRow | null;
   mode: "add" | "edit" | "view";
   canManageMedical?: boolean;
@@ -32,6 +28,8 @@ type Props = {
 };
 
 export type EmployeeProfileFormState = {
+  employment_change_reason: string;
+  employment_effective_date: string;
   full_name_en: string;
   full_name_ar: string;
   known_name: string;
@@ -107,6 +105,7 @@ const CONTRACT_TYPE_OPTIONS = [
 ];
 
 export function EmployeeProfileTab({
+  authContext,
   employee,
   mode,
   form,
@@ -114,101 +113,30 @@ export function EmployeeProfileTab({
   canManageMedical = false,
 }: Props) {
   const disabled = mode === "view";
+  const employmentChanged=!!employee&&EMPLOYMENT_FIELDS.some(key=>String(form[key]??'')!==String(employee[key]??''));
 
-  // ── Lookup Queries ──────────────────────────────────────────────────────────
-
-  const uiRead1 = useQuery({
-    queryKey: ["departments", "list"],
-    queryFn: async () => {
-      const r = await listDepartments({ is_active: true });
-      return r.data ?? [];
-    },
-  });
-  const { data: departments } = uiRead1;
-
-  const uiRead2 = useQuery({
-    queryKey: ["designations", "list"],
-    queryFn: async () => {
-      const r = await listDesignations({ is_active: true });
-      return r.data ?? [];
-    },
-  });
-  const { data: designations } = uiRead2;
-
-  const uiRead3 = useQuery({
-    queryKey: ["work-sites", "list"],
-    queryFn: async () => {
-      const r = await listWorkSites({ status: "active" });
-      return r.data ?? [];
-    },
-  });
-  const { data: workSites } = uiRead3;
-
-  const uiRead4 = useQuery({
-    queryKey: ["hr", "settings", "employee-categories"],
-    queryFn: async () => {
-      const r = await listHrEmployeeCategories({ is_active: true });
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data : [];
-    },
-  });
-  const { data: employeeCategories } = uiRead4;
-
-  const uiRead5 = useQuery({
-    queryKey: ["hr", "settings", "employment-types"],
-    queryFn: async () => {
-      const r = await listHrEmploymentTypes({ is_active: true });
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data : [];
-    },
-  });
-  const { data: employmentTypes } = uiRead5;
-
-  const uiRead6 = useQuery({
-    queryKey: ["hr", "settings", "mohre-establishments", form.owner_company_id],
-    queryFn: async () => {
-      const r = await listHrMohreEstablishments({
-        status: "active",
-        owner_company_id: form.owner_company_id ?? undefined,
-        page_size: 200,
-      });
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data : [];
-    },
-    enabled: !!form.owner_company_id,
-  });
-  const { data: mohreEstablishments } = uiRead6;
-
-  /** Always include the employee's currently linked establishment (even if inactive or filtered out). */
-  const mohreEstablishmentOptions = useMemo(() => {
-    const fromList = (mohreEstablishments ?? []).map((m) => ({
-      value: m.id,
-      label: m.establishment_name,
-      code: m.establishment_number,
-      description: m.establishment_number,
-    }));
-
-    const linked = employee?.mohre_establishment;
-    if (linked && !fromList.some((o) => o.value === linked.id)) {
-      fromList.unshift({
-        value: linked.id,
-        label: linked.establishment_name,
-        code: linked.establishment_number,
-        description: linked.establishment_number,
-      });
-    }
-
-    return fromList;
-  }, [mohreEstablishments, employee?.mohre_establishment]);
-
-  const uiRead7 = useQuery({
-    queryKey: ["hr", "settings", "relationship-types"],
-    queryFn: async () => {
-      const r = await listHrRelationshipTypes({ is_active: true });
-      if (!r.success) throw new Error("Records or choices could not be loaded."); return r.success && r.data ? r.data.data : [];
-    },
-  });
-  const { data: relationshipTypes } = uiRead7;
+  const params={companyId:form.owner_company_id,branchId:form.branch_id,departmentId:form.department_id,selected:{departments:form.department_id,designations:form.designation_id,sites:form.primary_work_site_id,categories:form.employee_category_id,employment:form.employment_type_id,mohre:form.mohre_establishment_id,relationships:form.emergency_contact_relationship_type_id}};
+  const choices=useQuery({queryKey:['hr','profile-choices',hrReadIdentity(authContext),params],enabled:!disabled,staleTime:0,gcTime:0,retry:retryAuthorizedRead,queryFn:async({signal})=>{
+    const result=await readJson<{success:true;data:unknown}>('employee-profile-choices',params,signal);return employeeProfileChoices.parse(result.data);
+  }});
+  const available=(kind:EmployeeChoiceKind)=>disabled||choices.data?.[kind].status==='ready';
+  const options=(kind:EmployeeChoiceKind,id:number|null,saved:{id:number;label:string}|null|undefined)=>{
+    const group=choices.data?.[kind],values:ERPComboboxOption[]=group?.status==='ready'?[...group.options]:[];
+    if(id!==null&&!values.some(v=>v.value===id))values.unshift({value:id,label:saved?.id===id?saved.label:`Saved reference #${id} (unavailable)`,disabled:true});
+    return values;
+  };
+  const departmentOptions=options('departments',form.department_id,employee?.department?{id:employee.department.id,label:employee.department.department_name_en}:null);
+  const designationOptions=options('designations',form.designation_id,employee?.designation?{id:employee.designation.id,label:employee.designation.designation_name_en}:null);
+  const siteOptions=options('sites',form.primary_work_site_id,employee?.primary_work_site?{id:employee.primary_work_site.id,label:employee.primary_work_site.site_name}:null);
+  const categoryOptions=options('categories',form.employee_category_id,employee?.employee_category?{id:employee.employee_category.id,label:employee.employee_category.name_en}:null);
+  const employmentOptions=options('employment',form.employment_type_id,employee?.employment_type?{id:employee.employment_type.id,label:employee.employment_type.name_en}:null);
+  const mohreEstablishmentOptions=options('mohre',form.mohre_establishment_id,employee?.mohre_establishment?{id:employee.mohre_establishment.id,label:employee.mohre_establishment.establishment_name}:null);
+  const relationshipOptions=options('relationships',form.emergency_contact_relationship_type_id,null);
+  const choiceProblems=!disabled&&(choices.isError||Object.values(choices.data??{}).some(group=>group.status!=='ready'));
 
   return (
-    <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3,uiRead4,uiRead5,uiRead6,uiRead7]}><div className="space-y-8 p-0 md:p-2">
+    <div className="space-y-8 p-0 md:p-2">
+      {choiceProblems&&<div role="alert" className="rounded border p-3 text-sm"><p>Some choice lists are unavailable or restricted. Saved references are retained; permitted personal fields remain editable. Unavailable choices cannot be changed.</p><Button type="button" variant="outline" disabled={choices.isFetching} onClick={()=>void choices.refetch()}>Retry choices</Button></div>}
       {/* ── Personal Information ─────────────────────────────────────────────── */}
       <section>
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
@@ -285,12 +213,12 @@ export function EmployeeProfileTab({
           </div>
           <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label htmlFor="nationality_id">Nationality</Label>
-            <CountrySelect name="nationality_id"
+            {disabled?<Input aria-label="Nationality" readOnly disabled value={employee?.nationality?.name_en ?? (form.nationality_id?`Saved reference #${form.nationality_id}`:'—')}/>:<CountrySelect name="nationality_id"
               value={form.nationality_id}
               onValueChange={(v) => setForm((p) => ({ ...p, nationality_id: v })) }
               disabled={disabled}
               allowClear
-            />
+            />}
           </div>
           <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <RequiredLabel htmlFor="date_of_birth">Date of Birth</RequiredLabel>
@@ -307,14 +235,15 @@ export function EmployeeProfileTab({
           <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label htmlFor="blood_group">Blood Group</Label>
             <ERPCombobox ariaLabel="Blood Group" name="blood_group"
-              value={form.blood_group}
+              value={employee?.medical_field_unavailable?'':form.blood_group}
               onValueChange={(v) => setForm((p) => ({ ...p, blood_group: v as string }))}
               options={BLOOD_GROUP_OPTIONS}
               placeholder="Select..."
-              disabled={disabled || !canManageMedical}
+              disabled={disabled || !canManageMedical || employee?.medical_field_unavailable}
               allowClear
             />
             {!canManageMedical && <p className="text-xs text-muted-foreground">Separate medical access is required to change this field.</p>}
+            {employee?.medical_field_unavailable&&<p role="alert" className="text-sm text-destructive">This medical field could not be verified. Other profile details remain available; reload to retry it.</p>}
           </div>
           <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <RequiredLabel htmlFor="mobile_number">Mobile Number</RequiredLabel>
@@ -371,37 +300,37 @@ export function EmployeeProfileTab({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12 sm:col-span-6 space-y-1.5">
             <RequiredLabel htmlFor="owner_company_id">Employer Company</RequiredLabel>
-            <OwnerCompanySelect name="owner_company_id" ariaLabel="Employer Company"
+            {disabled?<Input aria-label="Employer Company" readOnly disabled value={employee?.owner_company?.legal_name_en ?? (form.owner_company_id?`Saved reference #${form.owner_company_id}`:'—')}/>:<OwnerCompanySelect name="owner_company_id" ariaLabel="Employer Company"
               value={form.owner_company_id}
               onValueChange={(v) =>
                 setForm((p) => ({
                   ...p,
                   owner_company_id: v,
-                  // MOHRE establishment is company-scoped — clear when employer changes
-                  mohre_establishment_id: null,
+                  // Clear dependent assignments; never carry an old employer’s references.
+                  branch_id:null,department_id:null,designation_id:null,primary_work_site_id:null,reporting_manager_id:null,supervisor_id:null,mohre_establishment_id: null,
                 }))
               }
               disabled={disabled}
               required
-            />
+            />}
           </div>
           <div className="col-span-12 sm:col-span-6 space-y-1.5">
             <Label htmlFor="branch_id">Branch</Label>
-            <BranchSelect name="branch_id"
+            {disabled?<Input aria-label="Branch" readOnly disabled value={employee?.branch?.branch_name_en ?? (form.branch_id?`Saved reference #${form.branch_id}`:'—')}/>:<BranchSelect ownerCompanyId={form.owner_company_id} name="branch_id"
               value={form.branch_id}
-              onValueChange={(v) => setForm((p) => ({ ...p, branch_id: v }))}
+              onValueChange={(v) => setForm((p) => p.branch_id===v?p:({ ...p, branch_id: v,department_id:null,designation_id:null,primary_work_site_id:null }))}
               disabled={disabled}
               allowClear
-            />
+            />}
           </div>
           <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label>Department</Label>
             <ERPCombobox ariaLabel="Department" name="department_id"
               value={form.department_id}
-              onValueChange={(v) => setForm((p) => ({ ...p, department_id: Number(v) || null }))}
-              options={(departments ?? []).map((d) => ({ value: d.id, label: d.department_name_en }))}
+              onValueChange={(v) => setForm((p) => ({ ...p, department_id: Number(v) || null,designation_id:null }))}
+              options={departmentOptions}
               placeholder="Select department..."
-              disabled={disabled}
+              disabled={disabled||!available('departments')}
               allowClear
             />
           </div>
@@ -410,21 +339,21 @@ export function EmployeeProfileTab({
             <ERPCombobox ariaLabel="Designation" name="designation_id"
               value={form.designation_id}
               onValueChange={(v) => setForm((p) => ({ ...p, designation_id: Number(v) || null }))}
-              options={(designations ?? []).map((d) => ({ value: d.id, label: d.designation_name_en }))}
+              options={designationOptions}
               placeholder="Select designation..."
-              disabled={disabled}
+              disabled={disabled||!available('designations')}
               allowClear
             />
           </div>
           <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
-            <RequiredLabel>Employee Category</RequiredLabel>
+            {mode==='add'||employee?.employee_category_id!=null?<RequiredLabel>Employee Category</RequiredLabel>:<Label>Employee Category (legacy unassigned)</Label>}
             <ERPCombobox name="employee_category_id" ariaLabel="Employee Category"
               value={form.employee_category_id}
               onValueChange={(v) => setForm((p) => ({ ...p, employee_category_id: Number(v) || null }))}
-              options={(employeeCategories ?? []).map((c) => ({ value: c.id, label: c.name_en }))}
+              options={categoryOptions}
               placeholder="Select category..."
-              disabled={disabled}
-              required
+              disabled={disabled||!available('categories')}
+              required={mode === 'add' || employee?.employee_category_id != null}
             />
           </div>
           <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
@@ -432,9 +361,9 @@ export function EmployeeProfileTab({
             <ERPCombobox ariaLabel="Employment Type" name="employment_type_id"
               value={form.employment_type_id}
               onValueChange={(v) => setForm((p) => ({ ...p, employment_type_id: Number(v) || null }))}
-              options={(employmentTypes ?? []).map((t) => ({ value: t.id, label: t.name_en }))}
+              options={employmentOptions}
               placeholder="Select type..."
-              disabled={disabled}
+              disabled={disabled||!available('employment')}
               allowClear
             />
           </div>
@@ -477,20 +406,20 @@ export function EmployeeProfileTab({
             <ERPCombobox ariaLabel="Primary Work Site" name="primary_work_site_id"
               value={form.primary_work_site_id}
               onValueChange={(v) => setForm((p) => ({ ...p, primary_work_site_id: Number(v) || null }))}
-              options={(workSites ?? []).map((s) => ({ value: s.id, label: s.site_name }))}
+              options={siteOptions}
               placeholder="Select work site..."
-              disabled={disabled}
+              disabled={disabled||!available('sites')}
               allowClear
             />
           </div>
           <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label>Sponsor Company</Label>
-            <OwnerCompanySelect name="sponsor_company_id" ariaLabel="Sponsor Company"
+            {disabled?<Input aria-label="Sponsor Company" readOnly disabled value={form.sponsor_company_id?`Saved reference #${form.sponsor_company_id}`:'—'}/>:<OwnerCompanySelect name="sponsor_company_id" ariaLabel="Sponsor Company"
               value={form.sponsor_company_id}
               onValueChange={(v) => setForm((p) => ({ ...p, sponsor_company_id: v }))}
               disabled={disabled}
               allowClear
-            />
+            />}
           </div>
           <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label>MOHRE Establishment</Label>
@@ -508,7 +437,7 @@ export function EmployeeProfileTab({
                   ? "Select MOHRE establishment..."
                   : "Select employer company first"
               }
-              disabled={disabled || !form.owner_company_id}
+              disabled={disabled || !form.owner_company_id || !available('mohre')}
               allowClear
               showCode
             />
@@ -603,6 +532,14 @@ export function EmployeeProfileTab({
       </section>
 
       {/* ── Emergency Contact ────────────────────────────────────────────────── */}
+      {mode==='edit'&&<section className="space-y-3 rounded border p-4">
+        <h3 className="text-sm font-semibold">Employment change history</h3>
+        <p className="text-sm text-muted-foreground">Changes to employer, assignment, status or contract facts require a reason and effective date. Future-dated changes cannot replace current facts.</p>
+        <Label htmlFor="employment_change_reason">Reason{employmentChanged?' *':''}</Label>
+        <Textarea id="employment_change_reason" name="employment_change_reason" value={form.employment_change_reason} onChange={e=>setForm(p=>({...p,employment_change_reason:e.target.value}))} required={employmentChanged} maxLength={2000} disabled={disabled}/>
+        <Label htmlFor="employment_effective_date">Effective date{employmentChanged?' *':''}</Label>
+        <Input id="employment_effective_date" name="employment_effective_date" type="date" value={form.employment_effective_date} onChange={e=>setForm(p=>({...p,employment_effective_date:e.target.value}))} required={employmentChanged} disabled={disabled}/>
+      </section>}
       <section>
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
           Emergency Contact
@@ -635,14 +572,14 @@ export function EmployeeProfileTab({
             <ERPCombobox ariaLabel="Relationship" name="emergency_contact_relationship_type_id"
               value={form.emergency_contact_relationship_type_id}
               onValueChange={(v) => setForm((p) => ({ ...p, emergency_contact_relationship_type_id: Number(v) || null }))}
-              options={(relationshipTypes ?? []).map((r) => ({ value: r.id, label: r.name_en }))}
+              options={relationshipOptions}
               placeholder="Select relationship..."
-              disabled={disabled}
+              disabled={disabled||!available('relationships')}
               allowClear
             />
           </div>
         </div>
       </section>
-    </div></QueryReadBoundary>
+    </div>
   );
 }

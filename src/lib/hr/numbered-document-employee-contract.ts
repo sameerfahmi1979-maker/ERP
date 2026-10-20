@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {employeeCreateShape,employeeChronology,employeeDate} from '@/lib/hr/employee-contract';
 import type {AuthContext} from '@/lib/rbac/check';
 import {hasGlobalPermission,hasPermission,hasPermissionInScope} from '@/lib/rbac/scope';
 import type {HrDocumentToEmployeeReviewPayload} from '@/lib/hr/document-to-record/types';
@@ -8,7 +9,7 @@ export const documentEmployeeId=z.number().int().positive().max(Number.MAX_SAFE_
 const optionalId=documentEmployeeId.nullish();
 const text=z.string().nullish();
 const requiredText=z.string().trim().min(1,'A required field is blank.');
-const date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value=>!Number.isNaN(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value,'Enter a valid date.');
+const date=employeeDate;
 const optionalDate=date.nullish();
 const commonChild={tempId:requiredText,sourceDocumentId:documentEmployeeId,dms_document_id:documentEmployeeId,
  verification_status:z.enum(['unverified','verified','failed']).default('unverified'),
@@ -21,19 +22,19 @@ const identity=z.object({...commonChild,kind:z.literal('identity_document'),docu
 const medical=z.object({...commonChild,kind:z.literal('medical_insurance'),insurance_provider:requiredText,policy_number:requiredText,tpa:text,
  insurance_card_number:text,network_class:text,issue_date:optionalDate,expiry_date:date,employee_covered:z.boolean(),dependent_coverage_included:z.boolean(),
  status:z.enum(['active','expired','cancelled','pending']).default('active'),renewal_status:commonChild.renewal_status.default('pending')}).strict();
-const training=z.object({...commonChild,kind:z.literal('training_certificate'),training_type_id:documentEmployeeId,training_category_id:optionalId,
- provider:text,certificate_number:text,issue_date:optionalDate,expiry_date:optionalDate,status:z.enum(['valid','expired','pending','in_progress']).default('valid'),
- renewal_status:commonChild.renewal_status.default('not_required')}).strict();
+const training=z.object({...z.object(commonChild).omit({renewal_status:true}).shape,kind:z.literal('training_certificate'),training_type_id:documentEmployeeId,training_category_id:optionalId,
+ provider:text,certificate_number:text,completion_date:optionalDate,expiry_date:optionalDate,status:z.enum(['valid','expired','pending','in_progress']).default('valid')}).strict();
 export const documentEmployeeChildSchema=z.discriminatedUnion('kind',[identity,medical,training]);
 export const documentEmployeeInputSchema=z.object({
- selectedDocumentIds:z.array(documentEmployeeId).min(1).max(200),full_name_en:requiredText,full_name_ar:text,gender:z.enum(['male','female']),
- date_of_birth:date,nationality_id:optionalId,mobile_number:requiredText,personal_email:z.string().email().nullish().or(z.literal('').transform(()=>null)),
- owner_company_id:documentEmployeeId,branch_id:optionalId,department_id:optionalId,designation_id:optionalId,employee_category_id:optionalId,employment_type_id:optionalId,
- joining_date:date,employee_status:z.enum(['active','inactive','on_leave','probation','suspended','terminated','archived']).default('active'),reporting_manager_id:optionalId,
- emergency_contact_name:requiredText,emergency_contact_mobile:requiredText,emergency_contact_relationship_type_id:optionalId,
+ selectedDocumentIds:z.array(documentEmployeeId).min(1).max(200),full_name_en:employeeCreateShape.full_name_en,full_name_ar:text,gender:employeeCreateShape.gender,
+ date_of_birth:date,nationality_id:optionalId,mobile_number:employeeCreateShape.mobile_number,personal_email:employeeCreateShape.personal_email,
+ owner_company_id:documentEmployeeId,branch_id:optionalId,department_id:optionalId,designation_id:optionalId,employee_category_id:employeeCreateShape.employee_category_id,employment_type_id:optionalId,
+ joining_date:date,employee_status:employeeCreateShape.employee_status,reporting_manager_id:optionalId,
+ emergency_contact_name:employeeCreateShape.emergency_contact_name,emergency_contact_mobile:employeeCreateShape.emergency_contact_mobile,emergency_contact_relationship_type_id:optionalId,
  complianceRecords:z.array(documentEmployeeChildSchema).max(200).default([]),conflictsReviewed:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).default(0),
  totalDocumentsSelected:z.number().int().min(1).max(200),
 }).strict().superRefine((value,ctx)=>{
+ employeeChronology(value,ctx);
  const selected=new Set(value.selectedDocumentIds);
  if(selected.size!==value.selectedDocumentIds.length||value.totalDocumentsSelected!==selected.size)ctx.addIssue({code:'custom',path:['selectedDocumentIds'],message:'Select each source document once; its count must match.'});
  const tempIds=new Set<string>();
@@ -41,6 +42,7 @@ export const documentEmployeeInputSchema=z.object({
   if(!selected.has(child.sourceDocumentId)||child.dms_document_id!==child.sourceDocumentId)ctx.addIssue({code:'custom',path:['complianceRecords',index],message:'Every included record must use its selected source document.'});
   if(tempIds.has(child.tempId))ctx.addIssue({code:'custom',path:['complianceRecords',index,'tempId'],message:'Each reviewed record must have a distinct identity.'});
   tempIds.add(child.tempId);
+  if(child.kind==='training_certificate'&&child.completion_date&&child.expiry_date&&child.expiry_date<child.completion_date)ctx.addIssue({code:'custom',path:['complianceRecords',index,'expiry_date'],message:'Expiry must not precede the reviewed completion date.'});
  });
 });
 export const documentEmployeeSourcesSchema=z.array(z.object({documentId:documentEmployeeId,fingerprint:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).min(1).max(200)

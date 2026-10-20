@@ -7,6 +7,7 @@ import {literalLike} from "@/lib/reads/search";
 
 type Row = Record<string, unknown>;
 type Call = {table: string; steps: [string, ...unknown[]][]};
+type RpcArgs={employee_id?:number;permission_code?:string;p_employee?:number;p_dependent?:number;p_revision?:number};
 const state = vi.hoisted(() => ({subject: {id: 7} as unknown, subjectError: false, context: {} as unknown, rows: [] as Row[], calls: [] as Call[],
   grants: {} as Record<string, unknown>, rpcError: false, error: false, partial: false, duplicate: false, noCount: false, forcedCount: null as number | null,
   abortAfter: null as AbortController | null, range416: false, headError: false, authCalls: 0, changeProjected: false}));
@@ -14,14 +15,15 @@ vi.mock("@/lib/rbac/check", async () => ({...await import("@/lib/rbac/scope"), g
 vi.mock("@/lib/logger", () => ({logger: {warn: vi.fn()}}));
 vi.mock("@/lib/supabase/admin", () => ({createAdminClient: () => {throw Error("Privileged access forbidden");}}));
 vi.mock("@/lib/supabase/server", () => ({createClient: async () => ({
-  rpc: (name: string, args: {employee_id: number; permission_code: string}) => builder(name, args),
+  rpc: (name: string, args: RpcArgs) => builder(name, args),
   from: (table: string) => builder(table),
 })}));
-function builder(table: string, args?: {employee_id: number; permission_code: string}) {
+function builder(table: string, args?: RpcArgs) {
   const call: Call = {table, steps: args ? [["args", args]] : []}; state.calls.push(call);
   const q: Record<string, unknown> = {then: (resolve: (value: unknown) => unknown) => {
     const head = (call.steps.find(s => s[0] === "select")?.[2] as {head?: boolean} | undefined)?.head;
-    if (args) return Promise.resolve({data: state.grants[args.permission_code] ?? true, error: state.rpcError ? {message: "PRIVATE ERROR"} : null}).then(resolve);
+    if(table==='f11_dependent_medical'&&args){const found=state.rows.find(r=>r.id===args.p_dependent&&r.employee_id===args.p_employee&&r.workspace_revision===args.p_revision);return Promise.resolve({data:found?{id:found.id,employee_id:found.employee_id,revision:found.workspace_revision,...Object.fromEntries(DEPENDENT_MEDICAL_FIELDS.map(field=>[field,found[field]]))}:null,error:state.rpcError?{message:'PRIVATE ERROR'}:null}).then(resolve);}
+    if (args) return Promise.resolve({data: state.grants[args.permission_code??''] ?? true, error: state.rpcError ? {message: "PRIVATE ERROR"} : null}).then(resolve);
     if (table === "employees") return Promise.resolve({data: state.subject, error: state.subjectError ? {message: "PRIVATE ERROR"} : null}).then(resolve);
     let rows = [...state.rows];
     for (const [method, key, value] of call.steps) {
@@ -82,7 +84,12 @@ describe.each(COMPLIANCE_KINDS)("%s scoped read", kind => {
     const absent = await readHrComplianceRecords(detail(kind)); expect(absent.success && absent.data).toEqual({...detail(kind), availability: "unavailable"});
     state.rows = [complianceFixture(kind)]; const full = await readHrComplianceRecords(detail(kind));
     expect(full.success && "row" in full.data && full.data.row.notes).toBe("INITIAL_PRIVATE_NOTE");
-    expect(state.calls.at(-1)?.steps).toContainEqual(["eq", "id", 17]);
+    const ordinary=state.calls.findLast(c=>c.table===COMPLIANCE_CONFIG[kind].table);
+    expect(ordinary?.steps).toContainEqual(["eq", "id", 17]);
+    if(kind==='dependents'){
+      for(const field of DEPENDENT_MEDICAL_FIELDS)expect(ordinary?.steps.find(s=>s[0]==='select')?.[1]).not.toContain(field);
+      expect(state.calls.at(-1)).toEqual({table:'f11_dependent_medical',steps:[['args',{p_employee:7,p_dependent:17,p_revision:1}]]});
+    }
     delete state.rows[0].notes; expect((await POST(request(detail(kind)))).status).toBe(503);
   });
   it("returns row-free restricted kind access, never a fabricated zero or entire-employee denial", async () => {

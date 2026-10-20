@@ -41,7 +41,9 @@ vi.mock("@/server/actions/hr/employees", () => ({createEmployee: m.create, updat
 vi.mock("@/components/workspace/erp-record-workspace-form", () => ({ERPRecordWorkspaceForm: (props: ERPRecordWorkspaceFormProps) => {m.shell = props; return <div>{props.children}</div>;}, ERPRecordSectionPanel: ({children}: {children: React.ReactNode}) => <div>{children}</div>}));
 vi.mock("@/features/hr/employees/tabs/employee-profile-tab", () => ({EmployeeProfileTab: ({form, setForm}: {form: {full_name_en: string}; setForm: (fn: (old: typeof form) => typeof form) => void}) =>
   <><input aria-label="Synthetic employee name" required name="full_name_en" value={form.full_name_en} onChange={e => setForm(old => ({...old, full_name_en: e.target.value}))} />
-    <button type="button" onClick={() => setForm(old => ({...old, owner_company_id: 1, gender: "female", employee_category_id: 1}))}>Fill synthetic selections</button></>}));
+    <button type="button" onClick={() => setForm(old => ({...old, owner_company_id: 1, gender: "female", employee_category_id: 1,
+      date_of_birth: "1990-01-01", mobile_number: "synthetic-mobile", joining_date: "2026-01-01",
+      emergency_contact_name: "Synthetic contact", emergency_contact_mobile: "synthetic-contact-mobile"}))}>Fill synthetic selections</button></>}));
 vi.mock("@/features/dms/entity-documents", () => ({DmsEntityDocumentsTab: (props: NonNullable<typeof m.documents>) => {m.documents = props; return null;}}));
 vi.mock("@/features/hr/ai/hr-ai-review-tab", () => ({HrAiReviewTab: () => null}));
 vi.mock("@/features/hr/employees/employee-letters-forms", () => ({EmployeeLettersForms: () => null}));
@@ -52,6 +54,9 @@ vi.mock("@/features/hr/employees/tabs/employee-overview-tab", () => ({EmployeeOv
 vi.mock("@/features/hr/employees/tabs/employee-payroll-tab", () => ({EmployeePayrollTab: () => null}));
 vi.mock("@/features/hr/employees/tabs/employee-placeholder-tab", () => ({EmployeePlaceholderTab: () => null}));
 vi.mock("@/features/hr/employees/tabs/employee-time-tab", () => ({EmployeeTimeTab: () => null}));
+// Employment-history transport is independently covered by F11. This suite
+// isolates the real parent save and query-invalidation boundary, not that tab.
+vi.mock("@/features/hr/employees/employee-employment-history", () => ({EmployeeEmploymentHistory: () => null}));
 import {EmployeeWorkspaceForm} from "@/features/hr/employees/employee-workspace-form";
 import {HrDocBrowserPageClient} from "@/features/hr/document-browser/hr-doc-browser-page-client";
 
@@ -257,7 +262,7 @@ it.each(["clear", "remove"] as const)("queued browser notification after origina
   } finally {stop();}
 });
 
-const auth = {profile: {id: 1, auth_user_id: "synthetic-employee", must_change_password: false}, permissionCodes: ["hr.employees.manage"], roleCodes: [], isAccountActive: true, email: null, accountStatus: "active"} as unknown as AuthContext;
+const auth = {profile: {id: 1, auth_user_id: "synthetic-employee", must_change_password: false}, permissionCodes: ["hr.employees.create", "hr.employees.view", "hr.employees.update"], roleCodes: [], isAccountActive: true, email: null, accountStatus: "active"} as unknown as AuthContext;
 const reportEmployeeCriteria = ["reports", "criteria", "owner-a", "SYNTHETIC_REPORT", "employee_id", "{}"];
 function mountEmployee(mode: "add" | "edit" = "add") {
   const q = client(), key = browser("owner-a"), oldList = ["hr", "employees", "list"], oldDetail = ["hr", "employees", "detail", mode === "add" ? 7001 : 7];
@@ -268,6 +273,15 @@ function mountEmployee(mode: "add" | "edit" = "add") {
   return {q, key, oldList, oldDetail};
 }
 async function save(close = false) {await act(async () => {await (close ? m.shell?.onSaveAndClose?.() : m.shell?.onSave?.());});}
+it.each(["add", "edit"] as const)("actual %s employee rejects the legacy coarse permission without current capabilities", mode => {
+  const q = client();
+  render(<QueryClientProvider client={q}><EmployeeWorkspaceForm mode={mode}
+    authContext={{...auth, permissionCodes: ["hr.employees.manage"]}}
+    employee={mode === "add" ? null : {id: 7, workspace_revision: 1, full_name_en: "Private synthetic name"} as EmployeeListRow} /></QueryClientProvider>);
+  expect(screen.getByRole("alert").textContent).toContain("Employee access is no longer available");
+  expect(screen.queryByRole("textbox", {name: "Synthetic employee name"})).toBeNull();
+  expect(m.shell).toBeNull(); expect(m.create).not.toHaveBeenCalled(); expect(m.update).not.toHaveBeenCalled();
+});
 it("the employee parent binds the existing authorization to its document tab", () => {
   m.documents = null; mountEmployee("edit"); expect(m.documents).toMatchObject({entityType: "employee", entityId: 7});
   expect((m.documents as {authContext: AuthContext} | null)?.authContext).toBe(auth); expect(m.create).not.toHaveBeenCalled(); expect(m.update).not.toHaveBeenCalled();
@@ -344,7 +358,7 @@ function browserCompositionResponse(input: unknown, phase: "seed" | "old" | "fre
 }
 type BrowserCompositionPending = {input: HrDocumentBrowserCriteria; signal: AbortSignal; finish: (value: ReturnType<typeof browserCompositionResponse>) => void};
 it.each([false, true])("actual employee edit retires same-default-key documents disabled by an injected invalid criterion (seeded=%s)", async seeded => {
-  const q = client(), context = {...auth, permissionCodes: ["hr.employees.manage", "hr.employees.view", "dms.documents.view"], roleAssignments: []};
+  const q = client(), context = {...auth, permissionCodes: [...auth.permissionCodes, "dms.documents.view"], roleAssignments: []};
   let confirmed = false, documentCalls = 0, old: BrowserCompositionPending | undefined, fresh: BrowserCompositionPending | undefined;
   m.read.mockImplementation((resource: string, input: HrDocumentBrowserCriteria, signal: AbortSignal) => {
     if (resource !== "hr-document-browser") throw Error("Unexpected composition read resource");

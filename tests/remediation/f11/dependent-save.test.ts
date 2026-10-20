@@ -1,0 +1,17 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const m=vi.hoisted(()=>({rpc:vi.fn(),from:vi.fn()}));
+vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({rpc:m.rpc,from:m.from})}));
+import {saveDependentRecord} from '@/server/dependent-save';
+import {dependentSchema,dependentSaveContract} from '@/lib/hr/dependent-contract';
+const contract={operationId:'5baaf991-a493-4c77-ae2b-673a92fcc249',revision:null,addDocumentIds:[9],removeDocumentIds:[]};
+const receipt={id:7,employee_id:3,operation_id:contract.operationId,revision:'1',replayed:false};
+beforeEach(()=>{vi.resetAllMocks();m.rpc.mockResolvedValue({data:receipt,error:null});});
+it('creates child and staged evidence in one caller RPC with the same operation',async()=>{expect(await saveDependentRecord(3,null,'save',{dependent_name_en:'Synthetic'},contract)).toMatchObject({success:true,data:receipt});expect(m.rpc).toHaveBeenCalledWith('f11_save_dependent',{p_operation:contract.operationId,p_employee:3,p_id:null,p_revision:null,p_kind:'save',p_data:{dependent_name_en:'Synthetic'},p_add:[9],p_remove:[]});expect(m.from).not.toHaveBeenCalled();});
+it('fails closed when legacy caller has no contract; never falls back to direct writes',async()=>{expect((await saveDependentRecord(3,null,'save',{},undefined)).success).toBe(false);expect(m.rpc).not.toHaveBeenCalled();expect(m.from).not.toHaveBeenCalled();});
+it('update must supply the original revision, not a newly fetched one',async()=>{expect((await saveDependentRecord(3,7,'save',{},contract)).success).toBe(false);expect(m.rpc).not.toHaveBeenCalled();});
+it.each([null,{}, {...receipt,id:8}, {...receipt,employee_id:4},{...receipt,operation_id:'bcb7dd30-8cff-44b4-aeba-e1e76e07d7d1'}])('rejects malformed or mismatched receipt %j',async data=>{m.rpc.mockResolvedValue({data,error:null});expect(await saveDependentRecord(3,7,'save',{}, {...contract,revision:'1'})).toMatchObject({success:false,uncertain:true});});
+it.each(['40003','55P03','PGRST000','42501\n',null])('retains uncertain request after %j',async code=>{m.rpc.mockResolvedValue({error:{code,message:'PRIVATE'}});const result=await saveDependentRecord(3,null,'save',{},contract);expect(result).toMatchObject({success:false,uncertain:true});expect(JSON.stringify(result)).not.toContain('PRIVATE');});
+it.each(['23514','P0409','42501','22023'])('known rejection %s is rolled back',async code=>{m.rpc.mockResolvedValue({error:{code}});expect(await saveDependentRecord(3,null,'save',{},contract)).toMatchObject({success:false,uncertain:false});});
+it('transport loss is not reported as rejection or success',async()=>{m.rpc.mockRejectedValue(Error('PRIVATE'));expect(await saveDependentRecord(3,null,'save',{},contract)).toMatchObject({success:false,uncertain:true});});
+it.each([{addDocumentIds:[0]},{addDocumentIds:[9,9]},{removeDocumentIds:[9]},{addDocumentIds:[Number.MAX_SAFE_INTEGER+1]}])('does not silently discard conflicting or unsafe link identities %j',patch=>{expect(dependentSaveContract.safeParse({...contract,...patch}).success).toBe(false);});
+it.each(['2026-02-30','bad','2026-1-01'])('requires a real dependent date %s',date=>{expect(dependentSchema.safeParse({dependent_name_en:'Synthetic',relationship_type_id:1,date_of_birth:date}).success).toBe(false);});

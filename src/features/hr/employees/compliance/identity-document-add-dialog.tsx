@@ -31,7 +31,7 @@ import {type HrLinkedDocument} from "@/lib/reads/hr-linked-documents-schema";
 import {
   type AvailableDmsDocumentOption,
 } from "@/server/actions/dms/entity-documents";
-import { createEmployeeIdentityDocument } from "@/server/actions/hr/compliance";
+import type {ChildSaveResult,ChildReceipt} from "@/lib/hr/child-save-contract";
 import { prefillIdentityDocumentFromDms } from "@/server/actions/hr/ai/identity-document-ai-fill";
 import {
   createEmptyIdentityDocumentForm,
@@ -48,12 +48,15 @@ type PickMode = "employee" | "dms";
 type BatchResultItem = {
   documentNo: string;
   title: string;
-  status: "ok" | "error";
+  status: "ok" | "error" | "unconfirmed";
   error?: string;
 };
 
 type Props = {
   open: boolean;
+  save: (payload:Record<string,unknown>)=>Promise<ChildSaveResult & {data?:ChildReceipt & {dmsLinkCreated?:boolean}}>;
+  closeDisabled?:boolean;
+  recovery?:React.ReactNode;
   admission?: ComplianceMutationAdmission;
   onOpenChange: (open: boolean) => void;
   employeeId: number;
@@ -68,6 +71,7 @@ export function IdentityDocumentAddDialog({
   docTypes,
   onSaved,
   admission: parentAdmission,
+  save,closeDisabled,recovery,
 }: Props) {
   const [step, setStep] = useState<Step>("source");
   const [pickMode, setPickMode] = useState<PickMode>("employee");
@@ -217,6 +221,7 @@ export function IdentityDocumentAddDialog({
         const results: BatchResultItem[] = [];
         let savedCount = 0;
         let dmsLinked = false;
+        let unconfirmed = false;
 
         try {
           for (let i = 0; i < ids.length; i++) {
@@ -227,6 +232,7 @@ export function IdentityDocumentAddDialog({
             const docInfo = allDocs.find((d) => d.id === docId);
             const docLabel = docInfo?.title ?? `Document ${docId}`;
             const docNo = docInfo?.no ?? `#${docId}`;
+            let saveDispatched = false;
 
             try {
               const prefillRes = await prefillIdentityDocumentFromDms(employeeId, docId);
@@ -250,17 +256,22 @@ export function IdentityDocumentAddDialog({
 
               const payload = identityDocumentFormToPayload(filledForm);
               if (!admission.canDispatch()) break;
-              const saveRes = await createEmployeeIdentityDocument(employeeId, payload);
+              saveDispatched = true;
+              const saveRes = await save(payload);
               if (!saveRes.success) {
-                results.push({ documentNo: docNo, title: docLabel, status: "error", error: saveRes.error ?? "Save failed" });
+                unconfirmed = "uncertain" in saveRes && saveRes.uncertain === true;
+                results.push({ documentNo: docNo, title: docLabel, status: unconfirmed ? "unconfirmed" : "error", error: unconfirmed ? "The save outcome is unconfirmed. Check the original operation before another change." : saveRes.error ?? "Save rejected" });
+                if (unconfirmed) break;
                 continue;
               }
 
               if (saveRes.data?.dmsLinkCreated) dmsLinked = true;
               savedCount++;
               results.push({ documentNo: docNo, title: docLabel, status: "ok" });
-            } catch (err) {
-              results.push({ documentNo: docNo, title: docLabel, status: "error", error: String(err) });
+            } catch {
+              unconfirmed = saveDispatched;
+              results.push({ documentNo: docNo, title: docLabel, status: unconfirmed ? "unconfirmed" : "error", error: unconfirmed ? "The save outcome is unconfirmed. Check the original operation before another change." : "Document checks could not be completed. No save was sent." });
+              if (unconfirmed) break;
             }
           }
         } finally {
@@ -269,9 +280,16 @@ export function IdentityDocumentAddDialog({
           if (savedCount > 0) notifySaved({dmsLinkCreated: dmsLinked, hasDmsDocument: true});
         }
 
-        if (!admission.isCurrent()) return;
+        if (!admission.isCurrent()) {
+          if (unconfirmed) throw Error("Batch save outcome unconfirmed");
+          return;
+        }
         setBatchResults(results);
         setBatchDone(true);
+
+        // Keep the mounted legacy transition fenced after a lost response.
+        // This is not a substitute for the durable native recovery adapter.
+        if (unconfirmed) throw Error("Batch save outcome unconfirmed");
 
         if (savedCount > 0) {
           toast.success(
@@ -298,7 +316,7 @@ export function IdentityDocumentAddDialog({
       if (!admission.canDispatch()) return;
       const payload = identityDocumentFormToPayload(form);
       const notifySaved = savedCallback.current;
-      const result = await createEmployeeIdentityDocument(employeeId, payload);
+      const result = await save(payload);
       if (result.success) notifySaved({dmsLinkCreated: result.data?.dmsLinkCreated, hasDmsDocument: !!payload.dms_document_id});
       if (!admission.isCurrent()) return;
       if (result.success) {
@@ -344,12 +362,14 @@ export function IdentityDocumentAddDialog({
     <QueryReadBoundary queries={[uiRead1,uiRead2]}><ERPChildDialogForm
       open={open}
       onOpenChange={handleOpenChange}
+      recoveryActions={recovery}
       title={title}
       subtitle={subtitle}
       icon={<FileText className="h-5 w-5" />}
       mode="add"
       size="xl"
       isSubmitting={(isSubmitting && step !== "batch") || isPrefilling}
+      closeDisabled={closeDisabled||isSubmitting || isPrefilling}
       submitDisabled={!showClose && !admission.ready}
       onSubmit={
         showSubmit ? handleSave
@@ -571,7 +591,7 @@ export function IdentityDocumentAddDialog({
                   <div className="min-w-0 flex-1">
                     <span className="font-medium truncate block">{r.title}</span>
                     <span className="text-xs text-muted-foreground">{r.documentNo}</span>
-                    {r.status === "error" && (
+                    {r.status !== "ok" && (
                       <div className="flex items-start gap-1 mt-1 text-xs text-red-600">
                         <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
                         {r.error}
@@ -585,7 +605,7 @@ export function IdentityDocumentAddDialog({
 
           {batchDone && (
             <p className="text-xs text-muted-foreground">
-              {batchResults.filter((r) => r.status === "ok").length} created · {batchResults.filter((r) => r.status === "error").length} failed · {selectedCount - batchResults.length} not submitted.
+              {batchResults.filter((r) => r.status === "ok").length} created · {batchResults.filter((r) => r.status === "error").length} failed · {batchResults.filter((r) => r.status === "unconfirmed").length} unconfirmed · {selectedCount - batchResults.length} not submitted.
               {batchResults.length < selectedCount && " No further records were submitted after required checks paused. Check the recorded results before starting a new batch."}
               {batchResults.some((r) => r.status === "error") && " Failed records could not be auto-filled — add them manually using the single-document flow."}
             </p>

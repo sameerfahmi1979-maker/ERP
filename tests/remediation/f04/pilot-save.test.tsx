@@ -89,6 +89,7 @@ vi.mock("@/features/hr/employees/tabs/employee-compliance-tab", () => ({Employee
 vi.mock("@/features/hr/employees/tabs/employee-hr-actions-tab", () => ({EmployeeHrActionsTab: () => null}));
 vi.mock("@/features/hr/employees/tabs/employee-operations-tab", () => ({EmployeeOperationsTab: () => null}));
 vi.mock("@/features/hr/employees/tabs/employee-overview-tab", () => ({EmployeeOverviewTab: () => null}));
+vi.mock("@/features/hr/employees/employee-employment-history", () => ({EmployeeEmploymentHistory: () => null}));
 vi.mock("@/features/hr/employees/tabs/employee-payroll-tab", () => ({EmployeePayrollTab: () => null}));
 vi.mock("@/features/hr/employees/tabs/employee-placeholder-tab", () => ({EmployeePlaceholderTab: () => null}));
 vi.mock("@/features/hr/employees/tabs/employee-time-tab", () => ({EmployeeTimeTab: () => null}));
@@ -163,7 +164,7 @@ for (const pilot of ["candidate","employee"] as const) {
   function mount(mode:"add"|"edit"|"view"="add") {
     mock.pathname=pilot==="candidate"?"/admin/hr/recruitment/candidates/record/new":"/admin/hr/employees/record/new";
     return pilot==="candidate" ? render(<CandidateWorkspaceForm mode={mode} authContext={auth} candidate={mode==="add"?null:{id:31,workspace_revision:1,full_name_en:"Saved",candidate_status:"new"} as CandidateRow}/>)
-      : render(<EmployeeWorkspaceForm mode={mode} authContext={auth} employee={mode==="add"?null:{id:31,workspace_revision:1,full_name_en:"Saved",gender:"female",owner_company_id:1,employee_category_id:1} as EmployeeListRow}/>);
+      : render(<EmployeeWorkspaceForm mode={mode} authContext={{...auth,permissionCodes:['hr.employees.create','hr.employees.view','hr.employees.update']}} employee={mode==="add"?null:{id:31,workspace_revision:1,full_name_en:"Saved",gender:"female",owner_company_id:1,employee_category_id:1} as EmployeeListRow}/>);
   }
   function fill() {fireEvent.change(screen.getByLabelText("Pilot name"),{target:{value:"Synthetic Person"}});if(pilot==="employee")fireEvent.click(screen.getByText("Fill selections"));}
   describe(pilot+" pilot",()=>{

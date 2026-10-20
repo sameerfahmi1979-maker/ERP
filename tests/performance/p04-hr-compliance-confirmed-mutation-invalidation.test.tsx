@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import "../remediation/f05/setup";
 import React from "react";
+import {createWorkspaceDraftStore} from "@/lib/workspace/workspace-draft-store";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import {act, cleanup, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import {QueryClient, QueryClientProvider, QueryObserver} from "@tanstack/react-query";
@@ -13,7 +14,28 @@ import {syntheticAuthContext} from "./fixtures/auth-context";
 import {complianceFixture, complianceFixtureReply} from "./fixtures/compliance-record-fixture";
 import {type ComplianceKind} from "@/lib/reads/hr-compliance-records-schema";
 
-const state = vi.hoisted(() => ({read: vi.fn(), list: vi.fn(), mutate: vi.fn(), settings: vi.fn(), failed: false, error: vi.fn(), success: vi.fn(), submits: new Map<string, (() => unknown) | undefined>()}));
+const state = vi.hoisted(() => ({read: vi.fn(), list: vi.fn(), mutate: vi.fn(), settings: vi.fn(), failed: false, store: null as ReturnType<typeof createWorkspaceDraftStore>|null, error: vi.fn(), success: vi.fn(), submits: new Map<string, (() => unknown) | undefined>()}));
+// Model the new atomic dependent transport at the existing synthetic mutation
+// sink. The real owned-memory session, operation/revision and parent handlers run.
+vi.mock("@/server/actions/hr/child-mutation",()=>({
+ readComplianceChildRevision:async()=>({success:true,revision:"1"}),
+ mutateHrChild:async(request:import("@/lib/hr/child-save-contract").ChildMutation,contract:import("@/lib/hr/child-save-contract").ChildSaveContract)=>{
+  const names:Record<string,string>={"identity-document":"IdentityDocument","medical-insurance":"MedicalInsurance","access-card":"AccessCard","training-certificate":"TrainingCertificate","medical-record":"MedicalRecord"};
+  const action=request.action==='create'?'create':request.action==='archive'?'archive':request.action==='verify'?'verify':'update';
+  const args=action==='archive'||action==='verify'?[request.id,contract,request.employeeId]:[request.id??request.employeeId,request.values,contract];
+  const r=await state.mutate(action+"Employee"+names[request.kind],args);
+  return r.success?{...r,data:{kind:request.kind,id:r.data.id,employee_id:request.employeeId,operation_id:contract.operationId,revision:String(Number(request.revision??0)+1),replayed:false}}:r;
+ },reconcileHrChild:vi.fn(),
+}));
+vi.mock("@/components/workspace/workspace-draft-provider",()=>({useWorkspaceDraftStoreContext:()=>state.store}));
+vi.mock("@/hooks/use-workspace-form-owner",()=>({useWorkspaceFormOwner:()=>({id:"owner"})}));
+vi.mock("@/server/actions/hr/dependent-mutation",()=>({
+ mutateEmployeeDependent:async(request:import("@/lib/hr/dependent-contract").DependentMutation,contract:import("@/lib/hr/dependent-contract").DependentSaveContract)=>{
+  const name=request.kind==="archive"?"archiveEmployeeDependent":request.id===null?"createEmployeeDependent":"updateEmployeeDependent";
+  const result=await state.mutate(name,request.kind==="archive"?[request.id,contract,request.employeeId]:[request.id??request.employeeId,request.values,contract]);
+  return result.success?{success:true,data:{id:result.data.id,employee_id:request.employeeId,operation_id:contract.operationId,revision:String(Number(request.revision??0)+1),replayed:false}}:result;
+ },reconcileDependentMutation:vi.fn(),
+}));
 vi.mock("@/components/erp/erp-child-dialog-form", async original => {
   const actual = await original<typeof import("@/components/erp/erp-child-dialog-form")>();
   return {...actual, ERPChildDialogForm: (props: React.ComponentProps<typeof actual.ERPChildDialogForm>) => {
@@ -51,7 +73,7 @@ vi.mock("@/features/hr/employees/compliance/identity-document-form-fields", () =
 
 const auth = syntheticAuthContext(["hr.employees.view", "hr.compliance.view", "hr.compliance.manage", "hr.medical.view", "hr.medical.manage"], {id: 7, auth_user_id: "compliance-synthetic-a"});
 const clients: QueryClient[] = [];
-const identity = {id: 17, employee_id: 7, document_type_id: 1, document_number: "SYNTHETIC-ID-001", issue_date: null, expiry_date: "2027-01-01", issuing_authority: null,
+const identity = {workspace_revision:1,id: 17, employee_id: 7, document_type_id: 1, document_number: "SYNTHETIC-ID-001", issue_date: null, expiry_date: "2027-01-01", issuing_authority: null,
   issuing_authority_party_id: null, issue_country_id: null, issuing_emirate_id: null, issue_city_id: null, status: "active", verification_status: "unverified", verified_by: null, verified_at: null,
   dms_document_id: null, renewal_status: "not_required", emirates_id_application_no: null, visa_file_number: null, uid_number: null, labour_card_number: null, work_permit_number: null,
   mohre_person_code: null, profession_on_document: null, sponsor_company_id: null, place_of_issue: null, notes: "INITIAL_PRIVATE_NOTE", created_at: "2026-10-04T00:00:00Z", updated_at: "2026-10-04T00:00:00Z",
@@ -62,7 +84,7 @@ function page(input: Record<string, unknown>) {
   return complianceFixtureReply(input, rows, access);
 }
 beforeEach(() => {
-  state.failed = false;
+  state.failed = false; state.store=createWorkspaceDraftStore();
   state.list.mockImplementation(async (name: string) => state.failed ? {success: false, error: "Synthetic read unavailable"} : {success: true, data: name === "listEmployeeIdentityDocuments" ? [identity] : []});
   state.read.mockImplementation(async (_resource: string, input: Record<string, unknown>) => {
     if (state.failed) throw new ReadError("Synthetic read unavailable", 503);
@@ -111,6 +133,12 @@ it.each(operations)("$item.0 $verb actual confirmed handler reaches its kind/det
     const spy = vi.spyOn(client, "invalidateQueries");
     if (verb === "edit") {const dialog = await openKind(item); fireEvent.click(within(dialog).getByRole("button", {name: /^Save/}));}
     else {await waitFor(() => expect((within(collection(item[1])).getByRole("button", {name: "Add"}) as HTMLButtonElement).disabled).toBe(false)); fireEvent.click(within(collection(item[1])).getByRole("button", {name: verb === "verify" ? /^Verify( record)?$/ : /^Archive( record)?$/}));}
+    if(item[0]==='dependents'&&verb==='archive'){
+      const dialog=await screen.findByRole('dialog',{name:'Archive Dependent'});
+      const confirm=within(dialog).getByRole('button',{name:'Archive dependent'});
+      await waitFor(()=>expect((confirm as HTMLButtonElement).disabled).toBe(false));
+      expect(state.mutate).not.toHaveBeenCalled();fireEvent.click(confirm);
+    }
     await waitFor(() => expect(state.mutate).toHaveBeenCalledTimes(1));
     expect(state.mutate.mock.calls[0][0]).toBe(`${verb === "edit" ? "update" : verb}Employee${item[3]}`);
     await waitFor(() => expect(client.getQueryState(key)?.isInvalidated).toBe(true));

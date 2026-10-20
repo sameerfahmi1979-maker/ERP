@@ -41,9 +41,6 @@ import {
   aggregateDependentFromDms,
   aggregateIdentityDocumentFromDms,
   aggregateMedicalInsuranceFromDms,
-  createDependentFromDms,
-  createIdentityDocumentFromDms,
-  createMedicalInsuranceFromDms,
 } from "@/server/actions/hr/document-to-record";
 import type { HrIdentityDocTypeRow, HrSettingsRow } from "@/server/actions/hr/settings";
 import {
@@ -63,6 +60,9 @@ import {
   Users
 } from "lucide-react";
 import { useCallback, useState} from "react";
+import type {AuthContext} from '@/lib/rbac/check';
+import {hrReadIdentity} from '@/lib/reads/hr-read-identity';
+import {useDependentSaveSession} from '../compliance/use-dependent-save-session';
 import { toast } from "sonner";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -70,6 +70,10 @@ import { toast } from "sonner";
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Props = {
+  authContext?:AuthContext;
+  saveCompliance?: (values:Record<string,unknown>)=>Promise<import("@/lib/hr/child-save-contract").ChildSaveResult>;
+  compliancePending?:boolean;
+  complianceRecovery?:React.ReactNode;
   admission?: ComplianceMutationAdmission;
   employeeId: number;
   targetType: Hr14bTargetType;
@@ -633,6 +637,8 @@ export function HrDocumentToRecordWizard(props:Props){
   return <HrDocumentToRecordWizardSession key={owner} {...props} owner={owner}/>;
 }
 function HrDocumentToRecordWizardSession({
+  authContext,
+  saveCompliance,compliancePending,complianceRecovery,
   employeeId,
   targetType,
   open,
@@ -643,6 +649,7 @@ function HrDocumentToRecordWizardSession({
   owner,
 }: Props & {owner:string}) {
   const admission = useComplianceReadAdmission(open, [], String(employeeId), parentAdmission);
+  const dependentSession=useDependentSaveSession(employeeId,authContext?.profile?.id,authContext?hrReadIdentity(authContext):'no-dependent-authority',admission.generation,'document-wizard');
   const opening = useReadLifetime(JSON.stringify([employeeId, targetType, open]));
   const isParentCurrent=admission.isCurrent;
   const current = useCallback(() => opening.active && isParentCurrent(), [opening, isParentCurrent]);
@@ -658,6 +665,7 @@ function HrDocumentToRecordWizardSession({
 
   const handleOpenChange = useCallback((next: boolean) => {
     if (!current()) return;
+    if(!next&&(compliancePending||targetType==='dependent'&&dependentSession.hasPending))return;
     if (!next) {
       setStep("pick");
       setSelectedIds([]);
@@ -667,8 +675,9 @@ function HrDocumentToRecordWizardSession({
     }
     onOpenChange(next);
     onChildOpen?.(next);
-  }, [onOpenChange, onChildOpen, current]);
+  }, [onOpenChange, onChildOpen, current,targetType,dependentSession,compliancePending]);
 
+  const closeConfirmedCompliance=()=>{if(!current())return;setStep('pick');setSelectedIds([]);setIdentityDraft(null);setInsuranceDraft(null);onOpenChange(false);onChildOpen?.(false);};
   const toggleDoc = (doc: HrDmsDocForRecord) => {
     if (targetType === "dependent") {
       setSelectedIds((prev) =>
@@ -681,6 +690,7 @@ function HrDocumentToRecordWizardSession({
 
   const handleNext = () => {
     if (selectedIds.length === 0 || !canDispatch()) return;
+    if(targetType==='dependent'&&!dependentSession.startNew()){toast.error('Reconcile the original dependent save before choosing another source.');return;}
 
     startAggregate(async () => {
       if (!canDispatch()) return;
@@ -719,8 +729,7 @@ function HrDocumentToRecordWizardSession({
     if (!canDispatch()) return;
     startSubmit(async () => {
       if (!canDispatch()) return;
-      const r = await createIdentityDocumentFromDms({
-        employee_id: employeeId,
+      const r = saveCompliance ? await saveCompliance({
         dms_document_id: form.documentId,
         document_type_id: form.document_type_id!,
         document_number: form.document_number,
@@ -738,8 +747,8 @@ function HrDocumentToRecordWizardSession({
         emirates_id_application_no: form.emirates_id_application_no || undefined,
         status: "active",
         notes: form.notes || undefined,
-        totalDocumentsSelected: 1,
-      });
+        source_document_ids: [form.documentId],
+      }) : {success:false,error:'Current atomic compliance save is unavailable.'};
 
       if (r.success) {
         void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.identityDocuments(employeeId) });
@@ -747,7 +756,9 @@ function HrDocumentToRecordWizardSession({
         onSaved();
         if (!current()) return;
         toast.success("Identity document created from DMS document");
-        handleOpenChange(false);
+        // The verified save has settled. Do not use a render's earlier
+        // pending-prop snapshot to reject this successful own-opening close.
+        closeConfirmedCompliance();
       } else if (current()) {
         toast.error(r.error ?? "Failed to save");
       }
@@ -758,8 +769,7 @@ function HrDocumentToRecordWizardSession({
     if (!canDispatch()) return;
     startSubmit(async () => {
       if (!canDispatch()) return;
-      const r = await createMedicalInsuranceFromDms({
-        employee_id: employeeId,
+      const r = saveCompliance ? await saveCompliance({
         dms_document_id: form.documentId,
         insurance_provider: form.insurance_provider,
         tpa: form.tpa || undefined,
@@ -773,8 +783,8 @@ function HrDocumentToRecordWizardSession({
         dependent_count_covered: form.dependent_count_covered,
         status: "active",
         notes: form.notes || undefined,
-        totalDocumentsSelected: 1,
-      });
+        source_document_ids: [form.documentId],
+      }) : {success:false,error:'Current atomic compliance save is unavailable.'};
 
       if (r.success) {
         void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.medicalInsurances(employeeId) });
@@ -782,51 +792,28 @@ function HrDocumentToRecordWizardSession({
         onSaved();
         if (!current()) return;
         toast.success("Medical insurance created from DMS document");
-        handleOpenChange(false);
+        closeConfirmedCompliance();
       } else if (current()) {
         toast.error(r.error ?? "Failed to save");
       }
     });
   };
 
-  const handleDependentSubmit = (form: HrDependentDraft) => {
-    if (!canDispatch()) return;
-    startSubmit(async () => {
-      if (!canDispatch()) return;
-      const r = await createDependentFromDms({
-        employee_id: employeeId,
-        dms_document_ids: form.documentIds,
-        dependent_name_en: form.dependent_name_en,
-        dependent_name_ar: form.dependent_name_ar || undefined,
-        relationship_type_id: form.relationship_type_id!,
-        date_of_birth: form.date_of_birth || undefined,
-        nationality_id: form.nationality_id ?? undefined,
-        passport_number: form.passport_number || undefined,
-        passport_expiry: form.passport_expiry || undefined,
-        emirates_id_number: form.emirates_id_number || undefined,
-        emirates_id_expiry: form.emirates_id_expiry || undefined,
-        residence_visa_number: form.residence_visa_number || undefined,
-        residence_visa_expiry: form.residence_visa_expiry || undefined,
-        medical_insurance_provider: form.medical_insurance_provider || undefined,
-        medical_insurance_policy: form.medical_insurance_policy || undefined,
-        medical_insurance_card: form.medical_insurance_card || undefined,
-        medical_insurance_expiry: form.medical_insurance_expiry || undefined,
-        sponsored_by: form.sponsored_by || undefined,
-        is_active: true,
-        notes: form.notes || undefined,
-        totalDocumentsSelected: form.documentIds.length,
-      });
-
-      if (r.success) {
-        void qc.invalidateQueries({ queryKey: queryKeys.hr.compliance.dependents(employeeId) });
-        invalidateDmsEntityDocuments(qc, "employee", employeeId);
-        onSaved();
-        if (!current()) return;
-        toast.success("Dependent created from DMS documents");
-        handleOpenChange(false);
-      } else if (current()) {
-        toast.error(r.error ?? "Failed to save");
-      }
+  const acceptDependentResult=()=>{
+    void qc.invalidateQueries({queryKey:queryKeys.hr.compliance.dependents(employeeId)});
+    void qc.invalidateQueries({queryKey:['hr','dependent-doc-links']});
+    invalidateDmsEntityDocuments(qc,'employee',employeeId);onSaved();
+    if(current()){toast.success('Dependent and evidence saved together');handleOpenChange(false);}
+  };
+  const handleDependentSubmit=(form:HrDependentDraft)=>{
+    if(!canDispatch())return;
+    startSubmit(async()=>{
+      if(!canDispatch())return;
+      const result=await dependentSession.submit({employeeId,id:null,kind:'save',entry:'document',revision:null,
+        values:{dependent_name_en:form.dependent_name_en,dependent_name_ar:form.dependent_name_ar||null,relationship_type_id:form.relationship_type_id,
+          date_of_birth:form.date_of_birth||null,nationality_id:form.nationality_id??null,passport_number:form.passport_number||null,passport_expiry:form.passport_expiry||null,emirates_id_number:form.emirates_id_number||null,emirates_id_expiry:form.emirates_id_expiry||null,residence_visa_number:form.residence_visa_number||null,residence_visa_expiry:form.residence_visa_expiry||null,sponsored_by:form.sponsored_by||null,is_active:true,notes:form.notes||null},
+        addDocumentIds:form.documentIds,removeDocumentIds:[]});
+      if(result.success)acceptDependentResult();else if(current())toast.error(result.error??'Dependent save unconfirmed');
     });
   };
 
@@ -838,6 +825,8 @@ function HrDocumentToRecordWizardSession({
     <ERPChildDialogForm
       open={open}
       onOpenChange={handleOpenChange}
+      recoveryActions={complianceRecovery}
+      closeDisabled={!!compliancePending||targetType==='dependent'&&!!dependentSession.pending}
       title={wizardTitle(targetType)}
       subtitle={stepLabel}
       icon={wizardIcon(targetType)}
@@ -848,6 +837,7 @@ function HrDocumentToRecordWizardSession({
       submitLabel={undefined}
       onSubmit={undefined}
     >
+      {targetType==='dependent'&&(dependentSession.pending||dependentSession.error||dependentSession.retired)&&<div role="alert" className="mb-3 rounded border p-3 text-sm"><p>{dependentSession.error??'The original save needs reconciliation before changing sources or fields.'}</p>{dependentSession.pending&&<Button type="button" variant="outline" disabled={!canDispatch()||dependentSession.saving} onClick={async()=>{const result=await dependentSession.retry();if(result.success)acceptDependentResult();else if(current())toast.error(result.error??'Original save remains unconfirmed');}}>Retry original dependent save</Button>}{dependentSession.retired&&<Button type="button" variant="outline" disabled={!canDispatch()||dependentSession.saving} onClick={async()=>{const result=await dependentSession.reconcileRetired();if(result.success)acceptDependentResult();else if(current())toast.error(result.error??'Earlier save remains unresolved');}}>Check earlier saved result</Button>}</div>}
       <ComplianceReadPause admission={admission} />
       {step === "pick" && (
         <PickerStep

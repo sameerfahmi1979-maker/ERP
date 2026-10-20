@@ -53,6 +53,8 @@ jobs:
       - run: npm install --global npm@10.9.8
       - run: npm ci
       - run: npm run test:remediation
+      - name: F11 employee adoption and recovery type contracts (no browser)
+        run: node node_modules/typescript/bin/tsc --project tests/remediation/f11/tsconfig.json --noEmit
 
   f06-tests:
     needs: security

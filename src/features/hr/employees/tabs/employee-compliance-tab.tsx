@@ -5,6 +5,8 @@ import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import {useHrComplianceRecords} from "@/hooks/use-hr-compliance-records";
 import {complianceReadIdentity, DEPENDENT_MEDICAL_FIELDS} from "@/lib/reads/hr-compliance-records-schema";
 import {ComplianceReadPause, useComplianceReadAdmission, type ComplianceMutationAdmission} from "../compliance/compliance-read-admission";
+import {useComplianceSave,ComplianceSaveRecovery} from '../compliance/use-compliance-save';
+import {useDependentSaveSession} from '../compliance/use-dependent-save-session';
 
 /**
  * ERP HR.3 — Employee Compliance Tab
@@ -62,27 +64,6 @@ import {
 import { queryKeys } from "@/lib/query/query-keys";
 import type { AuthContext } from "@/lib/rbac/check";
 import {
-  applyEmployeeDependentDocumentLinks,
-  archiveEmployeeAccessCard,
-  archiveEmployeeDependent,
-  archiveEmployeeIdentityDocument,
-  archiveEmployeeMedicalInsurance,
-  archiveEmployeeMedicalRecord,
-  archiveEmployeeTrainingCertificate,
-  createEmployeeAccessCard,
-  createEmployeeDependent,
-  createEmployeeMedicalInsurance,
-  createEmployeeMedicalRecord,
-  createEmployeeTrainingCertificate,
-  updateEmployeeAccessCard,
-  updateEmployeeDependent,
-  updateEmployeeIdentityDocument,
-  updateEmployeeMedicalInsurance,
-  updateEmployeeMedicalRecord,
-  updateEmployeeTrainingCertificate,
-  verifyEmployeeIdentityDocument,
-  verifyEmployeeMedicalInsurance,
-  verifyEmployeeTrainingCertificate,
   type EmployeeAccessCardRow,
   type EmployeeDependentRow,
   type EmployeeIdentityDocumentRow,
@@ -284,6 +265,7 @@ function IdentityDocumentsSection({ authContext, onSubjectDenied, employeeId, ca
   const { data: docTypes } = uiRead2;
 
   const admission = useComplianceReadAdmission(canManageDoc && recordRead.access.canManage, [...recordRead.reads, uiRead2], JSON.stringify([recordRead.owner, recordRead.denied, recordRead.restricted]));
+  const complianceSave=useComplianceSave(authContext,employeeId,'identity-document',admission,recordRead.denied||recordRead.restricted);
   const notifyChildOpen = useComplianceChildLease(admission, onChildOpen);
   const setAddDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setAddDialogOpenRaw);
   const setEditDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setEditDialogOpenRaw);
@@ -306,12 +288,12 @@ function IdentityDocumentsSection({ authContext, onSubjectDenied, employeeId, ca
   }, [retireEditor, closeRetiredDetail, notifyChildOpen]);
 
   const openAdd = () => {
-    if (!admission.canDispatch()) return;
+    if (!admission.canDispatch() || complianceSave.pending || complianceSave.retired) return;
     setAddDialogOpen(true);
   };
 
   const openEdit = async (selected: {id: number}) => {
-    if (!admission.canDispatch()) return;
+    if (!admission.canDispatch() || !!complianceSave.pending || !!complianceSave.retired) return;
     const doc = await recordRead.loadDetail(selected.id);
     if (!doc || !admission.isCurrent()) return;
     setEditing(doc);
@@ -345,8 +327,9 @@ function IdentityDocumentsSection({ authContext, onSubjectDenied, employeeId, ca
     if (!editing || !admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
     startTransition(async () => {
       if (!admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
-      const payload = identityDocumentFormToPayload(form);
-      const result = await updateEmployeeIdentityDocument(editing.id, payload);
+      const {issuing_authority:legacyAuthority,place_of_issue:legacyPlace,...payload} = identityDocumentFormToPayload(form);
+      void legacyAuthority;void legacyPlace; // Not rendered: preserve the original native facts.
+      const result = await complianceSave.send(editing.id,'update',payload,String(editing.workspace_revision));
       if (result.success) handleAddSaved({hasDmsDocument: !!payload.dms_document_id});
       if (!admission.isCurrent() || !recordRead.isDetailCurrent(editing.id)) return;
       if (result.success) {
@@ -364,7 +347,7 @@ function IdentityDocumentsSection({ authContext, onSubjectDenied, employeeId, ca
 
   const handleArchive = async (id: number) => {
     if (!admission.canDispatch()) return;
-    const result = await archiveEmployeeIdentityDocument(id);
+    const result = await complianceSave.act(id,'archive');
     if (result.success) handleAddSaved();
     if (!admission.isCurrent()) return;
     if (result.success) {
@@ -374,7 +357,7 @@ function IdentityDocumentsSection({ authContext, onSubjectDenied, employeeId, ca
 
   const handleVerify = async (id: number) => {
     if (!admission.canDispatch()) return;
-    const result = await verifyEmployeeIdentityDocument(id);
+    const result = await complianceSave.act(id,'verify');
     if (result.success) handleAddSaved();
     if (!admission.isCurrent()) return;
     if (result.success) {
@@ -387,7 +370,7 @@ function IdentityDocumentsSection({ authContext, onSubjectDenied, employeeId, ca
   if (recordRead.restricted || recordRead.denied) return <div role="alert" className="mb-8 rounded border p-4">This compliance collection is not available with your current access.</div>;
 
   return (
-    <QueryReadBoundary queries={[...recordRead.reads,uiRead2]}><div className="mb-8">
+    <><ComplianceSaveRecovery session={complianceSave} onConfirmed={handleAddSaved}/><QueryReadBoundary queries={[...recordRead.reads,uiRead2]}><div className="mb-8">
       <SectionHeader icon={FileText} title="Legal Documents" count={recordRead.serverRead.totalCount ?? undefined} onAdd={openAdd} canAdd={admission.ready} onAddFromDocs={() => { if (admission.canDispatch()) setDmsWizardOpen(true); }} canAddFromDocs={admission.ready && documentWizardEnabled} />
 
       {isLoading && <Skeleton className="h-20 w-full" />}
@@ -439,6 +422,9 @@ function IdentityDocumentsSection({ authContext, onSubjectDenied, employeeId, ca
       )}
 
       <IdentityDocumentAddDialog
+        save={(payload)=>complianceSave.send(null,'create',payload,null)}
+        closeDisabled={complianceSave.busy||!!complianceSave.pending}
+        recovery={<ComplianceSaveRecovery session={complianceSave} onConfirmed={handleAddSaved}/>}
         admission={admission}
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
@@ -454,9 +440,11 @@ function IdentityDocumentsSection({ authContext, onSubjectDenied, employeeId, ca
         subtitle="Legal and identity documents for this employee"
         icon={<FileText className="h-5 w-5" />}
         mode="edit"
+        recoveryActions={<ComplianceSaveRecovery session={complianceSave} onConfirmed={handleAddSaved}/>}
         size="xl"
-        isSubmitting={isSubmitting}
-        submitDisabled={!admission.ready} onSubmit={handleEditSubmit}
+        isSubmitting={isSubmitting||complianceSave.busy}
+        closeDisabled={complianceSave.busy||!!complianceSave.pending}
+        submitDisabled={!admission.ready||complianceSave.blocked} onSubmit={handleEditSubmit}
       >
         <ComplianceReadPause admission={admission} />
         <IdentityDocumentFormFields
@@ -467,15 +455,19 @@ function IdentityDocumentsSection({ authContext, onSubjectDenied, employeeId, ca
       </ERPChildDialogForm>
 
       {(admission.ready || dmsWizardOpen) && <HrDocumentToRecordWizard
+        authContext={authContext}
         employeeId={employeeId}
         targetType="identity_document"
+        saveCompliance={(values)=>complianceSave.send(null,'create',{...values,entry_source:'document'},null)}
+        compliancePending={complianceSave.busy||!!complianceSave.pending}
+        complianceRecovery={<ComplianceSaveRecovery session={complianceSave} onConfirmed={handleAddSaved}/>}
         admission={admission}
         open={dmsWizardOpen}
         onOpenChange={setDmsWizardOpen}
         onSaved={() => handleAddSaved()}
         onChildOpen={onChildOpen}
       />}
-    </div></QueryReadBoundary>
+    </div></QueryReadBoundary></>
   );
 }
 
@@ -534,6 +526,7 @@ function MedicalInsurancesSection({ authContext, onSubjectDenied, employeeId, ca
 
 
   const admission = useComplianceReadAdmission(canManageDoc && recordRead.access.canManage, [...recordRead.reads], JSON.stringify([recordRead.owner, recordRead.denied, recordRead.restricted]));
+  const complianceSave=useComplianceSave(authContext,employeeId,'medical-insurance',admission,recordRead.denied||recordRead.restricted);
   const notifyChildOpen = useComplianceChildLease(admission, onChildOpen);
   const setAddDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setAddDialogOpenRaw);
   const setEditDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setEditDialogOpenRaw);
@@ -555,9 +548,9 @@ function MedicalInsurancesSection({ authContext, onSubjectDenied, employeeId, ca
     if (retireEditor) {notifyChildOpen(false); closeRetiredDetail();}
   }, [retireEditor, closeRetiredDetail, notifyChildOpen]);
   const openAdd = () => {
-    if (admission.canDispatch()) setAddDialogOpen(true); };
+    if (admission.canDispatch() && !complianceSave.pending && !complianceSave.retired) setAddDialogOpen(true); };
   const openEdit = async (selected: {id: number}) => {
-    if (!admission.canDispatch()) return;
+    if (!admission.canDispatch() || !!complianceSave.pending || !!complianceSave.retired) return;
     const r = await recordRead.loadDetail(selected.id);
     if (!r || !admission.isCurrent()) return;
     setEditing(r);
@@ -605,7 +598,7 @@ function MedicalInsurancesSection({ authContext, onSubjectDenied, employeeId, ca
     startTransition(async () => {
       if (!admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
       const payload = buildPayload(form);
-      const result = await updateEmployeeMedicalInsurance(editing.id, payload);
+      const result = await complianceSave.send(editing.id,'update',payload,String(editing.workspace_revision));
       if (result.success) handleAddSaved({hasDmsDocument: !!payload.dms_document_id});
       if (!admission.isCurrent() || !recordRead.isDetailCurrent(editing.id)) return;
       if (result.success) {
@@ -621,7 +614,7 @@ function MedicalInsurancesSection({ authContext, onSubjectDenied, employeeId, ca
 
   const handleArchive = async (id: number) => {
     if (!admission.canDispatch()) return;
-    const result = await archiveEmployeeMedicalInsurance(id);
+    const result = await complianceSave.act(id,'archive');
     if (result.success) handleAddSaved();
     if (!admission.isCurrent()) return;
     if (result.success) { toast.success("Insurance archived"); }
@@ -630,7 +623,7 @@ function MedicalInsurancesSection({ authContext, onSubjectDenied, employeeId, ca
 
   const handleVerify = async (id: number) => {
     if (!admission.canDispatch()) return;
-    const result = await verifyEmployeeMedicalInsurance(id);
+    const result = await complianceSave.act(id,'verify');
     if (result.success) handleAddSaved();
     if (!admission.isCurrent()) return;
     if (result.success) { toast.success("Verified"); }
@@ -640,7 +633,7 @@ function MedicalInsurancesSection({ authContext, onSubjectDenied, employeeId, ca
   if (recordRead.restricted || recordRead.denied) return <div role="alert" className="mb-8 rounded border p-4">This compliance collection is not available with your current access.</div>;
 
   return (
-    <QueryReadBoundary queries={[...recordRead.reads]}><div className="mb-8">
+    <><ComplianceSaveRecovery session={complianceSave} onConfirmed={handleAddSaved}/><QueryReadBoundary queries={[...recordRead.reads]}><div className="mb-8">
       <SectionHeader icon={Heart} title="Medical Insurance" count={recordRead.serverRead.totalCount ?? undefined} onAdd={openAdd} canAdd={admission.ready} onAddFromDocs={() => { if (admission.canDispatch()) setDmsWizardOpen(true); }} canAddFromDocs={admission.ready && documentWizardEnabled} />
       {isLoading && <Skeleton className="h-16 w-full" />}
       {uiRead1.isSuccess && recordRead.serverRead.totalCount === 0 && !recordRead.invalid && <EmptyState message="No medical insurance records added yet." />}
@@ -670,6 +663,8 @@ function MedicalInsurancesSection({ authContext, onSubjectDenied, employeeId, ca
       )}
 
       <ComplianceDmsAddDialog
+        closeDisabled={complianceSave.busy||!!complianceSave.pending}
+        recovery={<ComplianceSaveRecovery session={complianceSave} onConfirmed={handleAddSaved}/>}
         admission={admission}
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
@@ -680,7 +675,7 @@ function MedicalInsurancesSection({ authContext, onSubjectDenied, employeeId, ca
         submitLabel="Save Medical Insurance"
         createEmptyForm={initialForm}
         validate={validateMedicalInsurance}
-        save={async (f) => admission.canDispatch() ? createEmployeeMedicalInsurance(employeeId, buildPayload(f)) : {success: false, error: "Required record checks are not ready"}}
+        save={async (f) => admission.canDispatch() ? complianceSave.send(null,'create',buildPayload(f),null) : {success: false, error: "Required record checks are not ready"}}
         onSaved={handleAddSaved}
         renderReview={({ form: addForm, setForm: setAddForm, prefillMeta }) => (
           <div className="grid grid-cols-12 gap-4">
@@ -703,7 +698,8 @@ function MedicalInsurancesSection({ authContext, onSubjectDenied, employeeId, ca
         )}
       />
 
-      <ERPChildDialogForm open={editDialogOpen} onOpenChange={(open) => { if (!admission.isCurrent()) return; if (!open) recordRead.closeDetail(); setEditDialogOpen(open); }} title="Edit Medical Insurance" icon={<Heart className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} submitDisabled={!admission.ready} onSubmit={handleEditSubmit}>
+      <ERPChildDialogForm open={editDialogOpen} onOpenChange={(open) => { if (!admission.isCurrent()) return; if (!open) recordRead.closeDetail(); setEditDialogOpen(open); }} title="Edit Medical Insurance" icon={<Heart className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting||complianceSave.busy}
+        closeDisabled={complianceSave.busy||!!complianceSave.pending} submitDisabled={!admission.ready||complianceSave.blocked} onSubmit={handleEditSubmit}>
         <ComplianceReadPause admission={admission} />
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-6"><Label>Insurance Provider <span className="text-destructive">*</span></Label><Input aria-label="Insurance Provider" required value={form.insurance_provider} onChange={(e) => setForm((p) => ({ ...p, insurance_provider: e.target.value }))} /></div>
@@ -724,15 +720,19 @@ function MedicalInsurancesSection({ authContext, onSubjectDenied, employeeId, ca
       </ERPChildDialogForm>
 
       {(admission.ready || dmsWizardOpen) && <HrDocumentToRecordWizard
+        authContext={authContext}
         employeeId={employeeId}
         targetType="medical_insurance"
+        saveCompliance={(values)=>complianceSave.send(null,'create',{...values,entry_source:'document'},null)}
+        compliancePending={complianceSave.busy||!!complianceSave.pending}
+        complianceRecovery={<ComplianceSaveRecovery session={complianceSave} onConfirmed={handleAddSaved}/>}
         admission={admission}
         open={dmsWizardOpen}
         onOpenChange={setDmsWizardOpen}
         onSaved={() => handleAddSaved()}
         onChildOpen={onChildOpen}
       />}
-    </div></QueryReadBoundary>
+    </div></QueryReadBoundary></>
   );
 }
 
@@ -779,7 +779,11 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
   const { data: relTypes } = uiRead2;
 
   const admission = useComplianceReadAdmission(canManageDoc && recordRead.access.canManage, [...recordRead.reads, uiRead2], JSON.stringify([recordRead.owner, recordRead.denied, recordRead.restricted]));
+  const dependentSession=useDependentSaveSession(employeeId,authContext.profile?.id,JSON.stringify([recordRead.identity,recordRead.medicalViewRetired,recordRead.denied,recordRead.restricted]),admission.generation,'editor');
+  const [archiveCandidate,setArchiveCandidate]=useState<{id:number;revision:string;name:string}|null>(null);
+  const [archiveDialogOpen,setArchiveDialogOpenRaw]=useState(false);
   const notifyChildOpen = useComplianceChildLease(admission, onChildOpen);
+  const setArchiveDialogOpen=useComplianceDialogOpen(admission,notifyChildOpen,setArchiveDialogOpenRaw);
   const setAddDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setAddDialogOpenRaw);
   const setEditDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setEditDialogOpenRaw);
   const setDmsWizardOpen = useComplianceDialogOpen(admission, notifyChildOpen, setDmsWizardOpenRaw);
@@ -791,6 +795,7 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
     setEditorGeneration(admission.generation);
     setEditorRetired(retireEditor);
     setEditing(null); setForm(initialForm()); setEditDialogOpenRaw(false);
+    setArchiveCandidate(null);setArchiveDialogOpenRaw(false);
     if (generationChanged || recordRead.restricted || recordRead.denied) setAddDialogOpenRaw(false);
     if (generationChanged || recordRead.restricted || recordRead.denied) setDmsWizardOpenRaw(false);
   }
@@ -829,7 +834,7 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
     medical_insurance_expiry: f.medical_insurance_expiry || null, sponsored_by: f.sponsored_by || null,
     notes: f.notes || null, dependent_name_ar: f.dependent_name_ar || null,
   });
-    if (!medicalAccess.current.manage) for (const key of DEPENDENT_MEDICAL_FIELDS) delete (payload as Partial<typeof payload>)[key];
+    if (!medicalAccess.current.view || !medicalAccess.current.manage || medicalAccess.current.retired) for (const key of DEPENDENT_MEDICAL_FIELDS) delete (payload as Partial<typeof payload>)[key];
     return payload;
   };
 
@@ -883,29 +888,15 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
     depLinkChangesRef.current = c;
   }, [isCurrentDependent]);
 
-  const applyStagedDocumentLinks = async (dependentId: number, isCurrentOpening: () => boolean = () => true) => {
-    if (!admission.isCurrent() || !isCurrentOpening()) return;
-    const changes = depLinkChangesRef.current;
-    if (changes.addDocumentIds.length === 0 && changes.removeDocumentIds.length === 0) return;
-    if (!admission.canDispatch()) {
-      toast.error("Dependent saved, but document links were not submitted because required checks are no longer ready");
-      return;
-    }
-    const res = await applyEmployeeDependentDocumentLinks(dependentId, changes);
-    if (res.success) {
-      qc.invalidateQueries({ queryKey: ["hr", "dependent-doc-links"] });
-    } else if (admission.isCurrent() && isCurrentOpening()) {
-      toast.error(res.error ?? "Dependent saved, but document links could not be updated");
-    }
-  };
-
   const openAdd = () => {
     if (!admission.canDispatch()) return;
+    if(!dependentSession.startNew()){toast.error("Reconcile the previous dependent save before opening another record.");return;}
     depLinkChangesRef.current = EMPTY_DEP_LINK_CHANGES;
     setAddDialogOpen(true);
   };
   const openEdit = async (selected: {id: number}) => {
     if (!admission.canDispatch()) return;
+    if(!dependentSession.startNew()){toast.error("Reconcile the previous dependent save first.");return;}
     const r = await recordRead.loadDetail(selected.id);
     if (!r || !admission.isCurrent()) return;
     depLinkChangesRef.current = EMPTY_DEP_LINK_CHANGES;
@@ -926,26 +917,15 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
   };
 
   const handleEditSubmit = () => {
-    if (!editing || !admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
-    const err = validateDependent(currentDependentForm.current);
-    if (err) { toast.error(err); return; }
-    startTransition(async () => {
-      if (!admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
-      const payload = buildPayload(currentDependentForm.current);
-      const result = await updateEmployeeDependent(editing.id, payload);
-      if (result.success) {
-        try {
-          // Do not start a secondary write with a replacement opening's links.
-          await applyStagedDocumentLinks(editing.id, () => recordRead.isDetailCurrent(editing.id));
-        } finally {
-          // The primary commit is known even if the later link stage throws.
-          // Notify only at settlement, so refetch cannot pause our own link step.
-          handleAddSaved({hasDmsDocument: !!payload.dms_document_id});
-        }
-        if (!admission.isCurrent() || !recordRead.isDetailCurrent(editing.id)) return;
-        toast.success("Dependent updated");
-        recordRead.closeDetail(); setEditDialogOpen(false);
-      } else if (admission.isCurrent() && recordRead.isDetailCurrent(editing.id)) toast.error(result.error ?? "Failed to save");
+    if(!editing||!admission.canDispatch()||!recordRead.isDetailCurrent(editing.id))return;
+    const err=validateDependent(currentDependentForm.current);if(err){toast.error(err);return;}
+    startTransition(async()=>{
+      if(!admission.canDispatch()||!recordRead.isDetailCurrent(editing.id))return;
+      const values=buildPayload(currentDependentForm.current),changes=depLinkChangesRef.current;
+      const result=await dependentSession.submit({employeeId,id:editing.id,kind:'save',revision:String(editing.workspace_revision),values,addDocumentIds:changes.addDocumentIds,removeDocumentIds:changes.removeDocumentIds});
+      if(result.success){handleAddSaved({hasDmsDocument:!!values.dms_document_id});void qc.invalidateQueries({queryKey:['hr','dependent-doc-links']});}
+      if(!admission.isCurrent()||!recordRead.isDetailCurrent(editing.id))return;
+      if(result.success){toast.success('Dependent and document links saved together');recordRead.closeDetail();setEditDialogOpen(false);}else toast.error(result.error??'Dependent save unconfirmed');
     });
   };
 
@@ -953,19 +933,35 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
     notifyComplianceWrite(qc, employeeId, invalidateHrEmployeeDependents, opts);
   };
 
-  const handleArchive = async (id: number) => {
-    if (!admission.canDispatch()) return;
-    const result = await archiveEmployeeDependent(id);
-    if (result.success) handleAddSaved();
-    if (!admission.isCurrent()) return;
-    if (result.success) { toast.success("Archived"); }
-    else toast.error(result.error);
+  const handleArchive = async(id:number)=>{
+    if(!admission.canDispatch()||!dependentSession.startNew())return;
+    const current=await recordRead.loadDetail(id);if(!current||!admission.isCurrent())return;
+    // The fresh detail query settles before React commits its admission state.
+    // Review the exact revision in a guarded dialog; never dispatch from that
+    // render-timing gap or silently drop the user's archive request.
+    setArchiveCandidate({id,revision:String(current.workspace_revision),name:current.dependent_name_en});setArchiveDialogOpen(true);
   };
+  const confirmArchive=async()=>{
+    if(!archiveCandidate||!admission.canDispatch()||!recordRead.isDetailCurrent(archiveCandidate.id))return;
+    const result=await dependentSession.submit({employeeId,id:archiveCandidate.id,kind:'archive',revision:archiveCandidate.revision,values:{},addDocumentIds:[],removeDocumentIds:[]});
+    if(result.success)handleAddSaved();
+    if(admission.isCurrent()){if(result.success){toast.success('Dependent archived');setArchiveDialogOpen(false);recordRead.closeDetail();}else toast.error(result.error??'Archive unconfirmed');}
+  };
+  const recovery=(dependentSession.pending||dependentSession.error||dependentSession.blocked)&&<div role="alert" className="mb-3 rounded border p-3 text-sm">
+    <p>{dependentSession.error??'An earlier dependent save needs reconciliation before another change.'}</p>
+    {dependentSession.pending&&<Button type="button" variant="outline" disabled={!admission.ready||dependentSession.saving} onClick={async()=>{
+      const result=await dependentSession.retry();
+      if(result.success){handleAddSaved();void qc.invalidateQueries({queryKey:['hr','dependent-doc-links']});if(admission.isCurrent()){toast.success('Original dependent save confirmed');recordRead.closeDetail();setEditDialogOpen(false);setAddDialogOpen(false);}}
+      else if(admission.isCurrent())toast.error(result.error??'Original request remains unconfirmed');
+    }}>Retry original dependent save</Button>}
+    {dependentSession.retired&&<Button type="button" variant="outline" disabled={!admission.ready||dependentSession.saving} onClick={async()=>{const result=await dependentSession.reconcileRetired();if(result.success){handleAddSaved();toast.success('Earlier dependent save confirmed without replaying private fields');}else toast.error(result.error??'Earlier save remains unresolved');}}>Check earlier saved result</Button>}
+  </div>;
 
   if (recordRead.restricted || recordRead.denied) return <div role="alert" className="mb-8 rounded border p-4">This compliance collection is not available with your current access.</div>;
 
   return (
     <QueryReadBoundary queries={[...recordRead.reads,uiRead2]}><div className="mb-8">
+      {recovery}
       <SectionHeader icon={Users} title="Dependents" count={recordRead.serverRead.totalCount ?? undefined} onAdd={openAdd} canAdd={admission.ready} onAddFromDocs={() => { if (admission.canDispatch()) setDmsWizardOpen(true); }} canAddFromDocs={admission.ready && documentWizardEnabled} />
       {isLoading && <Skeleton className="h-16 w-full" />}
       {uiRead1.isSuccess && recordRead.serverRead.totalCount === 0 && !recordRead.invalid && <EmptyState message="No dependents added yet." />}
@@ -1014,15 +1010,13 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
         size="xl"
         createEmptyForm={initialForm}
         validate={validateDependent}
-        save={async (f, observePrimary) => {
-          if (!admission.canDispatch()) return {success: false, error: "Required record checks are not ready"};
-          const result = await createEmployeeDependent(employeeId, buildPayload(f));
-          if (result.success) observePrimary?.(result);
-          // HR.DOCLINK.1B — link the staged documents to the new dependent
-          if (result.success && result.data?.id) {
-            await applyStagedDocumentLinks(result.data.id);
-          }
-          return result;
+        closeDisabled={!!dependentSession.pending}
+        recovery={recovery}
+        save={async(f)=>{
+          if(!admission.canDispatch())return {success:false,error:'Required record checks are not ready'};
+          if(dependentSession.receipt&&!dependentSession.startNew())return {success:false,error:'Prior result needs reconciliation'};
+          const changes=depLinkChangesRef.current;
+          return dependentSession.submit({employeeId,id:null,kind:'save',revision:null,values:buildPayload(f),addDocumentIds:changes.addDocumentIds,removeDocumentIds:changes.removeDocumentIds});
         }}
         onSaved={handleAddSaved}
         renderReview={({ form: addForm, setForm: setAddForm, prefillMeta }) => (
@@ -1037,8 +1031,13 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
         )}
       />
 
-      <ERPChildDialogForm open={editDialogOpen} onOpenChange={(open) => { if (!admission.isCurrent()) return; if (!open) recordRead.closeDetail(); setEditDialogOpen(open); }} title="Edit Dependent" icon={<Users className="h-5 w-5" />} mode="edit" size="xl" isSubmitting={isSubmitting} submitDisabled={!admission.ready} onSubmit={handleEditSubmit}>
+      <ERPChildDialogForm open={archiveDialogOpen} onOpenChange={open=>{if(!admission.isCurrent()||dependentSession.hasPending)return;if(!open)recordRead.closeDetail();setArchiveDialogOpen(open);}} closeDisabled={!!dependentSession.pending} title="Archive Dependent" mode="edit" size="sm" submitLabel="Archive dependent" isSubmitting={dependentSession.saving} submitDisabled={!admission.ready||!archiveCandidate} onSubmit={confirmArchive}>
+        <ComplianceReadPause admission={admission}/>{recovery}
+        <p>Archive {archiveCandidate?.name}? The saved revision will be checked. Linked documents and their history will not be deleted.</p>
+      </ERPChildDialogForm>
+      <ERPChildDialogForm open={editDialogOpen} onOpenChange={(open) => { if (!admission.isCurrent()) return; if (!open) recordRead.closeDetail(); setEditDialogOpen(open); }} closeDisabled={!!dependentSession.pending} title="Edit Dependent" icon={<Users className="h-5 w-5" />} mode="edit" size="xl" isSubmitting={isSubmitting} submitDisabled={!admission.ready} onSubmit={handleEditSubmit}>
         <ComplianceReadPause admission={admission} />
+        {recovery}
         {renderDependentFields(form, setForm, null)}
         <DependentDocumentLinksSection
               employeeId={employeeId} admission={admission}
@@ -1051,6 +1050,7 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
       {(admission.ready || dmsWizardOpen) && <HrDocumentToRecordWizard
         employeeId={employeeId}
         targetType="dependent"
+        authContext={authContext}
         admission={admission}
         open={dmsWizardOpen}
         onOpenChange={setDmsWizardOpen}
@@ -1100,6 +1100,7 @@ function AccessCardsSection({ authContext, onSubjectDenied, employeeId, canManag
   const { data: cardTypes } = uiRead2;
 
   const admission = useComplianceReadAdmission(canManageDoc && recordRead.access.canManage, [...recordRead.reads, uiRead2], JSON.stringify([recordRead.owner, recordRead.denied, recordRead.restricted]));
+  const complianceSave=useComplianceSave(authContext,employeeId,'access-card',admission,recordRead.denied||recordRead.restricted);
   const notifyChildOpen = useComplianceChildLease(admission, onChildOpen);
   const setAddDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setAddDialogOpenRaw);
   const setEditDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setEditDialogOpenRaw);
@@ -1162,9 +1163,9 @@ function AccessCardsSection({ authContext, onSubjectDenied, employeeId, canManag
   );
 
   const openAdd = () => {
-    if (admission.canDispatch()) setAddDialogOpen(true); };
+    if (admission.canDispatch() && !complianceSave.pending && !complianceSave.retired) setAddDialogOpen(true); };
   const openEdit = async (selected: {id: number}) => {
-    if (!admission.canDispatch()) return;
+    if (!admission.canDispatch() || !!complianceSave.pending || !!complianceSave.retired) return;
     const r = await recordRead.loadDetail(selected.id);
     if (!r || !admission.isCurrent()) return;
     setEditing(r);
@@ -1185,7 +1186,7 @@ function AccessCardsSection({ authContext, onSubjectDenied, employeeId, canManag
     startTransition(async () => {
       if (!admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
       const payload = buildPayload(form);
-      const result = await updateEmployeeAccessCard(editing.id, payload);
+      const result = await complianceSave.send(editing.id,'update',payload,String(editing.workspace_revision));
       if (result.success) handleAddSaved({hasDmsDocument: !!payload.dms_document_id});
       if (!admission.isCurrent() || !recordRead.isDetailCurrent(editing.id)) return;
       if (result.success) {
@@ -1201,7 +1202,7 @@ function AccessCardsSection({ authContext, onSubjectDenied, employeeId, canManag
 
   const handleArchive = async (id: number) => {
     if (!admission.canDispatch()) return;
-    const r = await archiveEmployeeAccessCard(id);
+    const r = await complianceSave.act(id,'archive');
     if (r.success) handleAddSaved();
     if (!admission.isCurrent()) return;
     if (r.success) { toast.success("Archived"); }
@@ -1211,7 +1212,7 @@ function AccessCardsSection({ authContext, onSubjectDenied, employeeId, canManag
   if (recordRead.restricted || recordRead.denied) return <div role="alert" className="mb-8 rounded border p-4">This compliance collection is not available with your current access.</div>;
 
   return (
-    <QueryReadBoundary queries={[...recordRead.reads,uiRead2]}><div className="mb-8">
+    <><ComplianceSaveRecovery session={complianceSave} onConfirmed={handleAddSaved}/><QueryReadBoundary queries={[...recordRead.reads,uiRead2]}><div className="mb-8">
       <SectionHeader icon={CreditCard} title="Access Cards & Passes" count={recordRead.serverRead.totalCount ?? undefined} onAdd={openAdd} canAdd={admission.ready} />
       {isLoading && <Skeleton className="h-16 w-full" />}
       {uiRead1.isSuccess && recordRead.serverRead.totalCount === 0 && !recordRead.invalid && <EmptyState message="No access cards or passes added yet." />}
@@ -1243,6 +1244,8 @@ function AccessCardsSection({ authContext, onSubjectDenied, employeeId, canManag
       )}
 
       <ComplianceDmsAddDialog
+        closeDisabled={complianceSave.busy||!!complianceSave.pending}
+        recovery={<ComplianceSaveRecovery session={complianceSave} onConfirmed={handleAddSaved}/>}
         admission={admission}
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
@@ -1253,16 +1256,17 @@ function AccessCardsSection({ authContext, onSubjectDenied, employeeId, canManag
         submitLabel="Save Access Card"
         createEmptyForm={initialForm}
         validate={validateAccessCard}
-        save={async (f) => admission.canDispatch() ? createEmployeeAccessCard(employeeId, buildPayload(f)) : {success: false, error: "Required record checks are not ready"}}
+        save={async (f) => admission.canDispatch() ? complianceSave.send(null,'create',buildPayload(f),null) : {success: false, error: "Required record checks are not ready"}}
         onSaved={handleAddSaved}
         renderReview={({ form: addForm, setForm: setAddForm, prefillMeta }) => renderAccessCardFields(addForm, setAddForm, prefillMeta)}
       />
 
-      <ERPChildDialogForm open={editDialogOpen} onOpenChange={(open) => { if (!admission.isCurrent()) return; if (!open) recordRead.closeDetail(); setEditDialogOpen(open); }} title="Edit Access Card" icon={<CreditCard className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} submitDisabled={!admission.ready} onSubmit={handleEditSubmit}>
+      <ERPChildDialogForm open={editDialogOpen} onOpenChange={(open) => { if (!admission.isCurrent()) return; if (!open) recordRead.closeDetail(); setEditDialogOpen(open); }} title="Edit Access Card" icon={<CreditCard className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting||complianceSave.busy}
+        closeDisabled={complianceSave.busy||!!complianceSave.pending} submitDisabled={!admission.ready||complianceSave.blocked} onSubmit={handleEditSubmit}>
         <ComplianceReadPause admission={admission} />
         {renderAccessCardFields(form, setForm, null)}
       </ERPChildDialogForm>
-    </div></QueryReadBoundary>
+    </div></QueryReadBoundary></>
   );
 }
 
@@ -1316,6 +1320,7 @@ function TrainingCertificatesSection({ authContext, onSubjectDenied, employeeId,
   const { data: trainTypes } = uiRead3;
 
   const admission = useComplianceReadAdmission(canManageDoc && recordRead.access.canManage, [...recordRead.reads, uiRead2, uiRead3], JSON.stringify([recordRead.owner, recordRead.denied, recordRead.restricted]));
+  const complianceSave=useComplianceSave(authContext,employeeId,'training-certificate',admission,recordRead.denied||recordRead.restricted);
   const notifyChildOpen = useComplianceChildLease(admission, onChildOpen);
   const setAddDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setAddDialogOpenRaw);
   const setEditDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setEditDialogOpenRaw);
@@ -1379,9 +1384,9 @@ function TrainingCertificatesSection({ authContext, onSubjectDenied, employeeId,
   );
 
   const openAdd = () => {
-    if (admission.canDispatch()) setAddDialogOpen(true); };
+    if (admission.canDispatch() && !complianceSave.pending && !complianceSave.retired) setAddDialogOpen(true); };
   const openEdit = async (selected: {id: number}) => {
-    if (!admission.canDispatch()) return;
+    if (!admission.canDispatch() || !!complianceSave.pending || !!complianceSave.retired) return;
     const r = await recordRead.loadDetail(selected.id);
     if (!r || !admission.isCurrent()) return;
     setEditing(r);
@@ -1404,7 +1409,7 @@ function TrainingCertificatesSection({ authContext, onSubjectDenied, employeeId,
     startTransition(async () => {
       if (!admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
       const payload = buildPayload(form);
-      const result = await updateEmployeeTrainingCertificate(editing.id, payload);
+      const result = await complianceSave.send(editing.id,'update',payload,String(editing.workspace_revision));
       if (result.success) handleAddSaved({hasDmsDocument: !!payload.dms_document_id});
       if (!admission.isCurrent() || !recordRead.isDetailCurrent(editing.id)) return;
       if (result.success) {
@@ -1420,7 +1425,7 @@ function TrainingCertificatesSection({ authContext, onSubjectDenied, employeeId,
 
   const handleArchive = async (id: number) => {
     if (!admission.canDispatch()) return;
-    const r = await archiveEmployeeTrainingCertificate(id);
+    const r = await complianceSave.act(id,'archive');
     if (r.success) handleAddSaved();
     if (!admission.isCurrent()) return;
     if (r.success) { toast.success("Archived"); }
@@ -1429,7 +1434,7 @@ function TrainingCertificatesSection({ authContext, onSubjectDenied, employeeId,
 
   const handleVerify = async (id: number) => {
     if (!admission.canDispatch()) return;
-    const r = await verifyEmployeeTrainingCertificate(id);
+    const r = await complianceSave.act(id,'verify');
     if (r.success) handleAddSaved();
     if (!admission.isCurrent()) return;
     if (r.success) { toast.success("Verified"); }
@@ -1439,7 +1444,7 @@ function TrainingCertificatesSection({ authContext, onSubjectDenied, employeeId,
   if (recordRead.restricted || recordRead.denied) return <div role="alert" className="mb-8 rounded border p-4">This compliance collection is not available with your current access.</div>;
 
   return (
-    <QueryReadBoundary queries={[...recordRead.reads,uiRead2,uiRead3]}><div className="mb-8">
+    <><ComplianceSaveRecovery session={complianceSave} onConfirmed={handleAddSaved}/><QueryReadBoundary queries={[...recordRead.reads,uiRead2,uiRead3]}><div className="mb-8">
       <SectionHeader icon={GraduationCap} title="Training & Certifications" count={recordRead.serverRead.totalCount ?? undefined} onAdd={openAdd} canAdd={admission.ready} />
       {isLoading && <Skeleton className="h-16 w-full" />}
       {uiRead1.isSuccess && recordRead.serverRead.totalCount === 0 && !recordRead.invalid && <EmptyState message="No training certificates added yet." />}
@@ -1473,6 +1478,8 @@ function TrainingCertificatesSection({ authContext, onSubjectDenied, employeeId,
       )}
 
       <ComplianceDmsAddDialog
+        closeDisabled={complianceSave.busy||!!complianceSave.pending}
+        recovery={<ComplianceSaveRecovery session={complianceSave} onConfirmed={handleAddSaved}/>}
         admission={admission}
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
@@ -1483,16 +1490,17 @@ function TrainingCertificatesSection({ authContext, onSubjectDenied, employeeId,
         submitLabel="Save Certificate"
         createEmptyForm={initialForm}
         validate={validateTraining}
-        save={async (f) => admission.canDispatch() ? createEmployeeTrainingCertificate(employeeId, buildPayload(f)) : {success: false, error: "Required record checks are not ready"}}
+        save={async (f) => admission.canDispatch() ? complianceSave.send(null,'create',buildPayload(f),null) : {success: false, error: "Required record checks are not ready"}}
         onSaved={handleAddSaved}
         renderReview={({ form: addForm, setForm: setAddForm, prefillMeta }) => renderTrainingFields(addForm, setAddForm, prefillMeta)}
       />
 
-      <ERPChildDialogForm open={editDialogOpen} onOpenChange={(open) => { if (!admission.isCurrent()) return; if (!open) recordRead.closeDetail(); setEditDialogOpen(open); }} title="Edit Certificate" icon={<GraduationCap className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} submitDisabled={!admission.ready} onSubmit={handleEditSubmit}>
+      <ERPChildDialogForm open={editDialogOpen} onOpenChange={(open) => { if (!admission.isCurrent()) return; if (!open) recordRead.closeDetail(); setEditDialogOpen(open); }} title="Edit Certificate" icon={<GraduationCap className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting||complianceSave.busy}
+        closeDisabled={complianceSave.busy||!!complianceSave.pending} submitDisabled={!admission.ready||complianceSave.blocked} onSubmit={handleEditSubmit}>
         <ComplianceReadPause admission={admission} />
         {renderTrainingFields(form, setForm, null)}
       </ERPChildDialogForm>
-    </div></QueryReadBoundary>
+    </div></QueryReadBoundary></>
   );
 }
 
@@ -1537,6 +1545,7 @@ function MedicalRecordsSection({ authContext, onSubjectDenied, employeeId, canMe
   const { data: recTypes } = uiRead2;
 
   const admission = useComplianceReadAdmission(canMedManage && recordRead.access.canManage, [...recordRead.reads, uiRead2], JSON.stringify([recordRead.owner, recordRead.denied, recordRead.restricted]));
+  const complianceSave=useComplianceSave(authContext,employeeId,'medical-record',admission,recordRead.denied||recordRead.restricted);
   const notifyChildOpen = useComplianceChildLease(admission, onChildOpen);
   const setAddDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setAddDialogOpenRaw);
   const setEditDialogOpen = useComplianceDialogOpen(admission, notifyChildOpen, setEditDialogOpenRaw);
@@ -1569,9 +1578,9 @@ function MedicalRecordsSection({ authContext, onSubjectDenied, employeeId, canMe
   }
 
   const openAdd = () => {
-    if (admission.canDispatch()) setAddDialogOpen(true); };
+    if (admission.canDispatch() && !complianceSave.pending && !complianceSave.retired) setAddDialogOpen(true); };
   const openEdit = async (selected: {id: number}) => {
-    if (!admission.canDispatch()) return;
+    if (!admission.canDispatch() || !!complianceSave.pending || !!complianceSave.retired) return;
     const r = await recordRead.loadDetail(selected.id);
     if (!r || !admission.isCurrent()) return;
     setEditing(r);
@@ -1613,7 +1622,7 @@ function MedicalRecordsSection({ authContext, onSubjectDenied, employeeId, canMe
     startTransition(async () => {
       if (!admission.canDispatch() || !recordRead.isDetailCurrent(editing.id)) return;
       const payload = buildPayload(form);
-      const result = await updateEmployeeMedicalRecord(editing.id, payload);
+      const result = await complianceSave.send(editing.id,'update',payload,String(editing.workspace_revision));
       if (result.success) handleAddSaved({hasDmsDocument: !!payload.dms_document_id});
       if (!admission.isCurrent() || !recordRead.isDetailCurrent(editing.id)) return;
       if (result.success) {
@@ -1629,7 +1638,7 @@ function MedicalRecordsSection({ authContext, onSubjectDenied, employeeId, canMe
 
   const handleArchive = async (id: number) => {
     if (!admission.canDispatch()) return;
-    const r = await archiveEmployeeMedicalRecord(id);
+    const r = await complianceSave.act(id,'archive');
     if (r.success) handleAddSaved();
     if (!admission.isCurrent()) return;
     if (r.success) { toast.success("Archived"); }
@@ -1665,7 +1674,7 @@ function MedicalRecordsSection({ authContext, onSubjectDenied, employeeId, canMe
   if (recordRead.restricted || recordRead.denied) return <div role="alert" className="mb-8 rounded border p-4">This compliance collection is not available with your current access.</div>;
 
   return (
-    <QueryReadBoundary queries={[...recordRead.reads,uiRead2]}><div className="mb-8">
+    <><ComplianceSaveRecovery session={complianceSave} onConfirmed={handleAddSaved}/><QueryReadBoundary queries={[...recordRead.reads,uiRead2]}><div className="mb-8">
       <SectionHeader icon={Activity} title="Medical & Health Records" count={recordRead.serverRead.totalCount ?? undefined} onAdd={canMedManage ? openAdd : undefined} canAdd={admission.ready} />
       {isLoading && <Skeleton className="h-16 w-full" />}
       {uiRead1.isSuccess && recordRead.serverRead.totalCount === 0 && !recordRead.invalid && <EmptyState message="No medical records added yet." />}
@@ -1702,6 +1711,8 @@ function MedicalRecordsSection({ authContext, onSubjectDenied, employeeId, canMe
       {(canMedManage || editDialogOpen || addDialogOpen) && (
         <>
           <ComplianceDmsAddDialog
+        closeDisabled={complianceSave.busy||!!complianceSave.pending}
+        recovery={<ComplianceSaveRecovery session={complianceSave} onConfirmed={handleAddSaved}/>}
         admission={admission}
             open={addDialogOpen}
             onOpenChange={setAddDialogOpen}
@@ -1712,18 +1723,19 @@ function MedicalRecordsSection({ authContext, onSubjectDenied, employeeId, canMe
             submitLabel="Save Medical Record"
             createEmptyForm={initialForm}
             validate={validateMedicalRecord}
-            save={async (f) => admission.canDispatch() ? createEmployeeMedicalRecord(employeeId, buildPayload(f)) : {success: false, error: "Required record checks are not ready"}}
+            save={async (f) => admission.canDispatch() ? complianceSave.send(null,'create',buildPayload(f),null) : {success: false, error: "Required record checks are not ready"}}
             onSaved={handleAddSaved}
             renderReview={({ form: addForm, setForm: setAddForm, prefillMeta }) => renderMedicalRecordFields(addForm, setAddForm, prefillMeta)}
           />
 
-          <ERPChildDialogForm open={editDialogOpen} onOpenChange={(open) => { if (!admission.isCurrent()) return; if (!open) recordRead.closeDetail(); setEditDialogOpen(open); }} title="Edit Medical Record" icon={<Activity className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting} submitDisabled={!admission.ready} onSubmit={handleEditSubmit}>
+          <ERPChildDialogForm open={editDialogOpen} onOpenChange={(open) => { if (!admission.isCurrent()) return; if (!open) recordRead.closeDetail(); setEditDialogOpen(open); }} title="Edit Medical Record" icon={<Activity className="h-5 w-5" />} mode="edit" size="lg" isSubmitting={isSubmitting||complianceSave.busy}
+        closeDisabled={complianceSave.busy||!!complianceSave.pending} submitDisabled={!admission.ready||complianceSave.blocked} onSubmit={handleEditSubmit}>
         <ComplianceReadPause admission={admission} />
             {renderMedicalRecordFields(form, setForm, null)}
           </ERPChildDialogForm>
         </>
       )}
-    </div></QueryReadBoundary>
+    </div></QueryReadBoundary></>
   );
 }
 

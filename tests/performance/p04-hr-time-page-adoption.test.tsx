@@ -10,12 +10,21 @@ import {HR_TIME_KINDS, hrTimeReadIdentity, type HrTimeAttendanceRow, type HrTime
 import {HrAttendancePageClient} from "@/features/hr/time/attendance/hr-attendance-page-client";
 import {HrShiftsPageClient} from "@/features/hr/time/shifts/hr-shifts-page-client";
 import {HrLeavePageClient} from "@/features/hr/time/leave/hr-leave-page-client";
+import{createWorkspaceDraftStore}from'@/lib/workspace/workspace-draft-store';
+import type{ChildMutation,ChildSaveContract}from'@/lib/hr/child-save-contract';
+import{timeValues}from'../remediation/f11/time-child-fixtures';
 import {ReadError} from "@/lib/reads/client";
-const state = vi.hoisted(() => ({read: vi.fn(), approveAttendance: vi.fn(), approveLeave: vi.fn(), rejectLeave: vi.fn(), success: vi.fn(), error: vi.fn()}));
+const state = vi.hoisted(() => ({commands:vi.fn(),store:null as ReturnType<typeof createWorkspaceDraftStore>|null,read: vi.fn(), approveAttendance: vi.fn(), approveLeave: vi.fn(), rejectLeave: vi.fn(), success: vi.fn(), error: vi.fn()}));
 vi.mock("@/lib/reads/client", async original => ({...await original<typeof import("@/lib/reads/client")>(), readJson: state.read}));
 vi.mock("@/server/actions/hr/time", () => ({approveAttendanceDailySummary: state.approveAttendance, approveLeaveRequest: state.approveLeave, rejectLeaveRequest: state.rejectLeave}));
 vi.mock("@/hooks/realtime/use-realtime-sync", () => ({useRealtimeSync: vi.fn()}));
 vi.mock("next/navigation", () => ({usePathname: () => "/admin/hr/time"}));
+
+vi.mock('@/components/workspace/workspace-draft-provider',()=>({useWorkspaceDraftStoreContext:()=>state.store}));
+vi.mock('@/server/actions/hr/child-mutation',()=>({
+ readTimeChildOpening:async(kind:keyof typeof timeValues,_employee:number,id:number,action:string)=>({success:true,id,revision:'4',values:action==='reject'?{reason:''}:action==='approve'?{}:timeValues[kind]}),
+ mutateHrChild:async(r:ChildMutation,c:ChildSaveContract)=>{state.commands(r,c);const fn=r.kind==='attendance-summary'?state.approveAttendance:r.action==='reject'?state.rejectLeave:state.approveLeave,result=await fn(r.id,...(r.action==='reject'?[r.values.reason]:[]));return result?.success?{success:true,data:{kind:r.kind,employee_id:r.employeeId,id:r.id,revision:'5',operation_id:c.operationId,replayed:false}}:result;},reconcileHrChild:vi.fn(),listRecentHrChildReceipts:vi.fn()
+}));
 vi.mock("sonner", () => ({toast: {success: state.success, error: state.error}}));
 const context = {profile: {id: 1, auth_user_id: "owned-synthetic-admin", must_change_password: false}, accountStatus: "active", isAccountActive: true, permissionCodes: [], roleCodes: ["system_admin"], roleAssignments: [{roleId: 880101, roleCode: "system_admin", ownerCompanyId: null, branchId: null, permissionCodes: []}]} as unknown as AuthContext;
 const attendance = (id: number): HrTimeAttendanceRow => ({id, employee_id: id, attendance_date: "2026-02-01", attendance_type: "office", total_hours: 8, overtime_hours: 0, late_minutes: 0, is_missing_punch: false, approval_status: "pending"});
@@ -31,7 +40,7 @@ function page(kind: HrTimeKind, options: {context?: AuthContext; seedIdentity?: 
 }
 const clients: QueryClient[] = [];
 function mount(children: React.ReactNode) {
- const client = new QueryClient({defaultOptions: {queries: {retry: false, retryDelay: 0}}}); clients.push(client);
+ state.store=createWorkspaceDraftStore(); const client = new QueryClient({defaultOptions: {queries: {retry: false, retryDelay: 0}}}); clients.push(client);
  const wrap = (node: React.ReactNode) => <QueryClientProvider client={client}><WorkspaceUiMemoryProvider>{node}</WorkspaceUiMemoryProvider></QueryClientProvider>;
  const view = render(wrap(children)); return {...view, client, replace: (node: React.ReactNode) => view.rerender(wrap(node))};
 }
@@ -139,12 +148,14 @@ it("returning to an in-memory workspace retains page criteria instead of reseedi
 it.each(["attendance", "leave"] as const)("%s duplicate approval admission is synchronous and remains a mutation action", async kind => {
  let complete!: (v: unknown) => void; const action = kind === "attendance" ? state.approveAttendance : state.approveLeave; action.mockImplementation(() => new Promise(r => {complete = r;}));
  mount(page(kind, {count: 1})); await readyRow(kind, 1); const approve = screen.getByRole("button", {name: /^Approve$/});
- act(() => {fireEvent.click(approve); fireEvent.click(approve);}); expect(action).toHaveBeenCalledTimes(1); expect(action).toHaveBeenCalledWith(1);
+ act(() => {fireEvent.click(approve); fireEvent.click(approve);});expect(action).not.toHaveBeenCalled();
+ const dialog=await screen.findByRole('dialog',{name:kind==='attendance'?'Approve Daily Attendance':'Approve Leave Request'}),confirm=within(dialog).getByRole('button',{name:kind==='attendance'?'Approve attendance':'Approve leave request'});
+ act(()=>{fireEvent.click(confirm);fireEvent.click(confirm);});await waitFor(()=>expect(action).toHaveBeenCalledTimes(1));expect(action).toHaveBeenCalledWith(1);
  state.read.mockImplementation((_resource, p) => Promise.resolve(envelope(p, 1, 1))); await act(async () => complete({success: true})); expect(state.success).toHaveBeenCalledTimes(1);
 });
 it("an open rejection reason is retired on account switch and cannot execute under the new account", async () => {
  const view = mount(page("leave", {count: 1})); await readyRow("leave", 1); fireEvent.click(screen.getByRole("button", {name: /^Reject$/}));
- await screen.findByRole("dialog"); fireEvent.change(screen.getByLabelText("Reason"), {target: {value: "PRIVATE SYNTHETIC REASON"}});
+ fireEvent.change(await screen.findByLabelText("Reason"), {target: {value: "PRIVATE SYNTHETIC REASON"}});
  state.read.mockImplementation((_resource, p) => Promise.resolve(envelope(p, 51, 1)));
  const changed = {...context, profile: {...context.profile!, id: 2, auth_user_id: "owned-new"}} as AuthContext; view.replace(page("leave", {count: 1, context: changed}));
  await readyRow("leave", 51); expect(screen.queryByRole("dialog")).toBeNull(); expect(screen.queryByDisplayValue("PRIVATE SYNTHETIC REASON")).toBeNull(); expect(state.rejectLeave).not.toHaveBeenCalled();
@@ -154,9 +165,10 @@ it("a same-criteria refresh pauses the rejection portal without losing its draft
  state.read.mockImplementation(() => new Promise(resolve => {complete = resolve;}));
  mount(page("leave", {count: 1})); await readyRow("leave", 1);
  fireEvent.click(screen.getByRole("button", {name: /^Reject$/}));
- await screen.findByRole("dialog"); fireEvent.change(screen.getByLabelText("Reason"), {target: {value: "SYNTHETIC RETAINED REASON"}});
+ fireEvent.change(await screen.findByLabelText("Reason"), {target: {value: "SYNTHETIC RETAINED REASON"}});
  fireEvent.click(screen.getByRole("button", {name: "Refresh records", hidden: true}));
- await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Reject leave request'})).toHaveProperty('disabled',true));
+ expect(screen.getByLabelText('Reason')).toHaveProperty('value','SYNTHETIC RETAINED REASON');
  expect(state.rejectLeave).not.toHaveBeenCalled();
  await act(async () => complete(envelope(lastParams(), 1, 1)));
  await screen.findByRole("dialog"); expect(screen.getByDisplayValue("SYNTHETIC RETAINED REASON")).toBeTruthy();
@@ -172,14 +184,15 @@ it("changing leave criteria retires the previous rejection target and permits a 
 it.each(["attendance", "leave"] as const)("%s mutation response loss stays uncertain, does not auto-repeat, and requires review", async kind => {
  const action = kind === "attendance" ? state.approveAttendance : state.approveLeave; action.mockRejectedValue(new Error("Synthetic lost response"));
  mount(page(kind, {count: 1})); await readyRow(kind, 1); fireEvent.click(screen.getByRole("button", {name: /^Approve$/}));
- await waitFor(() => expect(state.error).toHaveBeenCalledWith(expect.stringContaining("could not be confirmed"))); expect(state.success).not.toHaveBeenCalled();
- await waitFor(() => expect((screen.getByRole("button", {name: /^Approve$/}) as HTMLButtonElement).disabled).toBe(false));
- fireEvent.click(screen.getByRole("button", {name: /^Approve$/})); expect(action).toHaveBeenCalledTimes(1); expect(state.error).toHaveBeenCalledWith(expect.stringContaining("previous operation is unconfirmed"));
+ const confirm=await screen.findByRole('button',{name:kind==='attendance'?'Approve attendance':'Approve leave request'});fireEvent.click(confirm);
+ await screen.findByText(/The result is unconfirmed/);expect(state.success).not.toHaveBeenCalled();expect(state.error).not.toHaveBeenCalled();expect(action).toHaveBeenCalledTimes(1);
+ const original=state.commands.mock.calls[0];fireEvent.click(screen.getByRole('button',{name:'Retry unchanged Time change'}));await waitFor(()=>expect(action).toHaveBeenCalledTimes(2));expect(state.commands.mock.calls[1]).toEqual(original);
 });
 it.each(["attendance", "leave"] as const)("%s late approval completion is not accepted after an account switch", async kind => {
  let complete!: (v: unknown) => void; const action = kind === "attendance" ? state.approveAttendance : state.approveLeave;
  action.mockImplementation(() => new Promise(r => {complete = r;})); state.read.mockImplementation((_resource, p) => Promise.resolve(envelope(p, 51, 1)));
  const view = mount(page(kind, {count: 1})); await readyRow(kind, 1); fireEvent.click(screen.getByRole("button", {name: /^Approve$/}));
+ const confirm=await screen.findByRole('button',{name:kind==='attendance'?'Approve attendance':'Approve leave request'});fireEvent.click(confirm);await waitFor(()=>expect(action).toHaveBeenCalledOnce());
  const changed = {...context, profile: {...context.profile!, id: 2, auth_user_id: "owned-new"}} as AuthContext; view.replace(page(kind, {count: 1, context: changed})); await readyRow(kind, 51);
  await act(async () => complete({success: true})); expect(state.success).not.toHaveBeenCalled(); expect(action).toHaveBeenCalledTimes(1); expect(absentRow(kind, 1)).toHaveLength(0);
 });

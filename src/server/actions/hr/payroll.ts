@@ -27,9 +27,18 @@
 import { createClient } from "@/lib/supabase/server";
 
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
-import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
+import{childSaveContract,type ChildSaveContract,type ChildSaveResult}from'@/lib/hr/child-save-contract';
+import{employeeId as payrollEmployeeId}from'@/lib/hr/employee-contract';
+import{canUseHrChild}from'@/lib/hr/child-authority';
+import{PAYROLL_CHILD_TABLES,type PayrollChildKind}from'@/lib/hr/payroll-child-contract';
+import{mutateHrChild}from'./child-mutation';
+async function mutateOriginalPayroll(kind:PayrollChildKind,id:number,action:'update'|'archive'|'release',input:unknown,contract:ChildSaveContract):Promise<ChildSaveResult>{
+ if(!payrollEmployeeId.safeParse(id).success||!childSaveContract.safeParse(contract).success||contract.revision===null||!canUseHrChild(await getAuthContext(),kind))return{success:false,error:'Original payroll revision and current access required.'};
+ const r=await(await createClient()).from(PAYROLL_CHILD_TABLES[kind]).select('id,employee_id').eq('id',id).is('deleted_at',null).maybeSingle();
+ if(r.error||!r.data)return{success:false,error:'Original payroll record unavailable.'};
+ return mutateHrChild({kind,employeeId:r.data.employee_id,id,revision:contract.revision,action,values:input},contract);
+}
 import {
   redactWpsProfile,
   redactSalaryComponent,
@@ -168,72 +177,6 @@ export type MohreEstablishmentOption = {
 
 // ── Zod Schemas ────────────────────────────────────────────────────────────────
 
-const payrollProfileSchema = z.object({
-  payroll_group_id: z.number().int().positive().nullable().optional(),
-  effective_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
-  currency: z.string().min(1).max(10).default("AED"),
-  payroll_status: z.enum(["active", "hold", "inactive", "not_configured"]).default("active"),
-  notes: z.string().max(2000).nullable().optional(),
-});
-
-const salaryComponentBaseSchema = z.object({
-  component_type_id: z.number().int().positive(),
-  amount: z.number().min(0),
-  effective_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  effective_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-  is_active: z.boolean().default(true),
-  notes: z.string().max(1000).nullable().optional(),
-});
-
-const salaryComponentCreateSchema = salaryComponentBaseSchema.refine(
-  (d) => !d.effective_to || new Date(d.effective_from) <= new Date(d.effective_to),
-  { message: "effective_from must be on or before effective_to", path: ["effective_to"] }
-);
-
-const salaryComponentUpdateSchema = salaryComponentBaseSchema.partial();
-
-const salaryRevisionCreateSchema = z.object({
-  effective_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  revision_reason: z.string().max(1000).nullable().optional(),
-  /** Stored in old_gross column — current basic salary snapshot from system */
-  old_gross: z.number().min(0).nullable().optional(),
-  /** Stored in new_gross column — new basic salary entered by user */
-  new_gross: z.number().min(0, "New basic salary is required"),
-  approved_by: z.number().int().positive().nullable().optional(),
-  /** When true (default), supersede active basic component and insert new row at effective_date */
-  apply_to_components: z.boolean().default(true),
-});
-
-const payrollHoldCreateSchema = z.object({
-  hold_reason: z.string().min(1).max(500),
-  hold_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).default(
-    () => new Date().toISOString().slice(0, 10)
-  ),
-  notes: z.string().max(1000).nullable().optional(),
-});
-
-const wpsProfileSchema = z.object({
-  wps_applicable: z.boolean().default(true),
-  wps_status: z.enum(["active", "hold", "exempt", "not_enrolled"]).default("active"),
-  bank_id: z.number().int().positive().nullable().optional(),
-  account_holder_name: z.string().max(200).nullable().optional(),
-  account_number: z.string().max(50).nullable().optional(),
-  iban: z
-    .string()
-    .max(34)
-    .nullable()
-    .optional()
-    .refine(
-      (v) => !v || v.startsWith("AE") ? (v?.length ?? 0) === 23 || !v?.startsWith("AE") : true,
-      { message: "UAE IBAN must be 23 characters starting with AE" }
-    ),
-  exchange_house: z.string().max(200).nullable().optional(),
-  salary_payment_method: z.enum(["bank_transfer", "exchange_house", "cheque"]).default("bank_transfer"),
-  labour_card_number: z.string().max(100).nullable().optional(),
-  mohre_person_code: z.string().max(100).nullable().optional(),
-  mohre_establishment_id: z.number().int().positive().nullable().optional(),
-  salary_effective_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-});
 
 const wpsReadinessParamsSchema = z.object({
   page: z.number().int().min(1).default(1),
@@ -247,140 +190,11 @@ const wpsReadinessParamsSchema = z.object({
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-import { getEmployeeCtxAdmin as getEmployeeCtx } from "./_shared/employee-context";
 
-function empRevalidate(employeeId: number) {
-  revalidatePath(`/admin/hr/employees/record/${employeeId}`);
-  revalidatePath("/admin/hr/payroll/salaries");
-  revalidatePath("/admin/hr/payroll/wps");
-}
 
-function subtractOneDay(dateStr: string): string {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const date = new Date(Date.UTC(y, m - 1, d));
-  date.setUTCDate(date.getUTCDate() - 1);
-  return date.toISOString().slice(0, 10);
-}
 
-type EmployeeCtxRow = NonNullable<Awaited<ReturnType<typeof getEmployeeCtx>>>;
 
 /** End-date active basic component(s) and insert a new basic row from revision effective date. */
-async function applyRevisionToBasicSalaryComponent(
-  admin: Awaited<ReturnType<typeof createClient>>,
-  employeeId: number,
-  effectiveDate: string,
-  newAmount: number,
-  userId: number | undefined,
-  emp: EmployeeCtxRow
-): Promise<ActionResult> {
-  const { data: rows, error } = await admin
-    .from("employee_salary_components")
-    .select(
-      "id, effective_from, effective_to, component_type_id, component_type:hr_salary_component_types!employee_salary_components_component_type_id_fkey(id, is_basic)"
-    )
-    .eq("employee_id", employeeId)
-    .eq("is_active", true)
-    .is("deleted_at", null);
-
-  if (error) return { success: false, error: error.message };
-
-  const basicRows = (rows ?? []).filter(
-    (r) => (r.component_type as { is_basic?: boolean } | null)?.is_basic === true
-  );
-
-  const endDate = subtractOneDay(effectiveDate);
-
-  for (const row of basicRows) {
-    const rowEffectiveFrom = row.effective_from as string;
-    const effectiveTo =
-      endDate >= rowEffectiveFrom ? endDate : rowEffectiveFrom;
-
-    const { error: updErr } = await admin
-      .from("employee_salary_components")
-      .update({
-        is_active: false,
-        effective_to: effectiveTo,
-        updated_by: userId,
-      })
-      .eq("id", row.id);
-
-    if (updErr) return { success: false, error: updErr.message };
-
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employee_salary_components",
-      entity_id: row.id,
-      entity_reference: `${emp.employee_code}-comp-${row.id}`,
-      action: "salary_component_updated",
-      new_values: {
-        parent_employee_id: employeeId,
-        employee_code: emp.employee_code,
-        employee_name: emp.full_name_en,
-        related_record_type: "salary_component",
-        superseded_by_revision: true,
-        effective_to: effectiveTo,
-      },
-    });
-  }
-
-  let componentTypeId = basicRows[0]?.component_type_id as number | undefined;
-
-  if (!componentTypeId) {
-    const { data: basicType, error: typeErr } = await admin
-      .from("hr_salary_component_types")
-      .select("id")
-      .eq("is_basic", true)
-      .eq("is_active", true)
-      .is("deleted_at", null)
-      .order("sort_order")
-      .limit(1)
-      .maybeSingle();
-
-    if (typeErr) return { success: false, error: typeErr.message };
-    if (!basicType) {
-      return {
-        success: false,
-        error: "No Basic Salary component type found in HR Settings",
-      };
-    }
-    componentTypeId = basicType.id;
-  }
-
-  const { data: inserted, error: insErr } = await admin
-    .from("employee_salary_components")
-    .insert({
-      employee_id: employeeId,
-      component_type_id: componentTypeId,
-      amount: newAmount,
-      effective_from: effectiveDate,
-      effective_to: null,
-      is_active: true,
-      notes: "Applied from salary revision",
-      created_by: userId,
-    })
-    .select("id")
-    .single();
-
-  if (insErr) return { success: false, error: insErr.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_salary_components",
-    entity_id: inserted.id,
-    entity_reference: `${emp.employee_code}-comp-${inserted.id}`,
-    action: "salary_component_created",
-    new_values: {
-      parent_employee_id: employeeId,
-      employee_code: emp.employee_code,
-      employee_name: emp.full_name_en,
-      related_record_type: "salary_component",
-      applied_from_revision: true,
-      effective_from: effectiveDate,
-    },
-  });
-
-  return { success: true };
-}
 
 // ── Payroll Profile ────────────────────────────────────────────────────────────
 
@@ -403,101 +217,9 @@ export async function getEmployeePayrollProfile(
   return { success: true, data: (data as PayrollProfileRow) ?? null };
 }
 
-export async function createOrUpdateEmployeePayrollProfile(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.payroll.manage"))
-    return { success: false, error: "Permission denied: hr.payroll.manage required" };
+export async function createOrUpdateEmployeePayrollProfile(employeeId:number,input:unknown,contract:ChildSaveContract,originalId:number|null):Promise<ChildSaveResult>{return mutateHrChild({kind:'payroll-profile',employeeId,id:originalId,revision:contract?.revision,action:originalId===null?'create':'update',values:input},contract);}
 
-  const parsed = payrollProfileSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-  const admin = await createClient();
-  const emp = await getEmployeeCtx(employeeId);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  // Check for existing profile
-  const { data: existing } = await admin
-    .from("employee_payroll_profiles")
-    .select("id")
-    .eq("employee_id", employeeId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  let id: number;
-
-  if (existing) {
-    const { error } = await admin
-      .from("employee_payroll_profiles")
-      .update({ ...parsed.data, updated_by: ctx.profile?.id })
-      .eq("id", existing.id);
-    if (error) return { success: false, error: error.message };
-    id = existing.id;
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employee_payroll_profiles",
-      entity_id: id,
-      entity_reference: `${emp.employee_code}-payroll`,
-      action: "payroll_profile_updated",
-      new_values: { parent_employee_id: employeeId, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "payroll_profile" },
-    });
-  } else {
-    const { data: inserted, error } = await admin
-      .from("employee_payroll_profiles")
-      .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id })
-      .select("id")
-      .single();
-    if (error) return { success: false, error: error.message };
-    id = inserted.id;
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employee_payroll_profiles",
-      entity_id: id,
-      entity_reference: `${emp.employee_code}-payroll`,
-      action: "payroll_profile_created",
-      new_values: { parent_employee_id: employeeId, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "payroll_profile" },
-    });
-  }
-
-  empRevalidate(employeeId);
-  return { success: true, data: { id } };
-}
-
-export async function archiveEmployeePayrollProfile(
-  id: number
-): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.payroll.manage"))
-    return { success: false, error: "Permission denied: hr.payroll.manage required" };
-
-  const admin = await createClient();
-  const { data: row } = await admin
-    .from("employee_payroll_profiles")
-    .select("employee_id")
-    .eq("id", id)
-    .single();
-  if (!row) return { success: false, error: "Payroll profile not found" };
-
-  const emp = await getEmployeeCtx(row.employee_id);
-  const { error } = await admin
-    .from("employee_payroll_profiles")
-    .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_payroll_profiles",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-payroll`,
-    action: "payroll_profile_archived",
-    new_values: { parent_employee_id: row.employee_id, employee_code: emp?.employee_code, employee_name: emp?.full_name_en, related_record_type: "payroll_profile" },
-  });
-  empRevalidate(row.employee_id);
-  return { success: true };
-}
+export async function archiveEmployeePayrollProfile(id:number,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalPayroll('payroll-profile',id,'archive',{},contract);}
 
 // ── Salary Components ──────────────────────────────────────────────────────────
 
@@ -527,109 +249,11 @@ export async function listEmployeeSalaryComponents(
   return { success: true, data: rows };
 }
 
-export async function createEmployeeSalaryComponent(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.payroll.manage"))
-    return { success: false, error: "Permission denied: hr.payroll.manage required" };
+export async function createEmployeeSalaryComponent(employeeId:number,input:unknown,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateHrChild({kind:'salary-component',employeeId,id:null,revision:null,action:'create',values:input},contract);}
 
-  const parsed = salaryComponentCreateSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
+export async function updateEmployeeSalaryComponent(id:number,input:unknown,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalPayroll('salary-component',id,'update',input,contract);}
 
-  const admin = await createClient();
-  const emp = await getEmployeeCtx(employeeId);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const { data, error } = await admin
-    .from("employee_salary_components")
-    .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id })
-    .select("id")
-    .single();
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_salary_components",
-    entity_id: data.id,
-    entity_reference: `${emp.employee_code}-comp-${data.id}`,
-    action: "salary_component_created",
-    new_values: { parent_employee_id: employeeId, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "salary_component", component_type_id: parsed.data.component_type_id },
-  });
-  empRevalidate(employeeId);
-  return { success: true, data: { id: data.id } };
-}
-
-export async function updateEmployeeSalaryComponent(
-  id: number,
-  input: unknown
-): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.payroll.manage"))
-    return { success: false, error: "Permission denied: hr.payroll.manage required" };
-
-  const parsed = salaryComponentUpdateSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-  const admin = await createClient();
-  const { data: row } = await admin
-    .from("employee_salary_components")
-    .select("employee_id")
-    .eq("id", id)
-    .single();
-  if (!row) return { success: false, error: "Salary component not found" };
-
-  const emp = await getEmployeeCtx(row.employee_id);
-  const { error } = await admin
-    .from("employee_salary_components")
-    .update({ ...parsed.data, updated_by: ctx.profile?.id })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_salary_components",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-comp-${id}`,
-    action: "salary_component_updated",
-    new_values: { parent_employee_id: row.employee_id, employee_code: emp?.employee_code, employee_name: emp?.full_name_en, related_record_type: "salary_component" },
-  });
-  empRevalidate(row.employee_id);
-  return { success: true };
-}
-
-export async function archiveEmployeeSalaryComponent(id: number): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.payroll.manage"))
-    return { success: false, error: "Permission denied: hr.payroll.manage required" };
-
-  const admin = await createClient();
-  const { data: row } = await admin
-    .from("employee_salary_components")
-    .select("employee_id")
-    .eq("id", id)
-    .single();
-  if (!row) return { success: false, error: "Salary component not found" };
-
-  const emp = await getEmployeeCtx(row.employee_id);
-  const { error } = await admin
-    .from("employee_salary_components")
-    .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id, is_active: false })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_salary_components",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-comp-${id}`,
-    action: "salary_component_archived",
-    new_values: { parent_employee_id: row.employee_id, employee_code: emp?.employee_code, employee_name: emp?.full_name_en, related_record_type: "salary_component" },
-  });
-  empRevalidate(row.employee_id);
-  return { success: true };
-}
+export async function archiveEmployeeSalaryComponent(id:number,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalPayroll('salary-component',id,'archive',{},contract);}
 
 export async function calculateEmployeeGrossSalary(
   employeeId: number
@@ -710,88 +334,7 @@ export async function listEmployeeSalaryRevisions(
   return { success: true, data: rows };
 }
 
-export async function createEmployeeSalaryRevision(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.payroll.manage"))
-    return { success: false, error: "Permission denied: hr.payroll.manage required" };
-
-  const parsed = salaryRevisionCreateSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-  const admin = await createClient();
-  const emp = await getEmployeeCtx(employeeId);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const { data: componentRows, error: componentError } = await admin
-    .from("employee_salary_components")
-    .select("amount, is_active, deleted_at, component_type:hr_salary_component_types!employee_salary_components_component_type_id_fkey(is_basic)")
-    .eq("employee_id", employeeId)
-    .is("deleted_at", null);
-
-  if (componentError) return { success: false, error: componentError.message };
-
-  const currentBasic = calculateBasicSalary(
-    (componentRows ?? []).map((c) => ({
-      amount: Number(c.amount) || 0,
-      is_active: c.is_active,
-      deleted_at: c.deleted_at,
-      component_type: c.component_type as unknown as { is_basic?: boolean } | null,
-    }))
-  );
-
-  const applyToComponents = parsed.data.apply_to_components ?? true;
-
-  if (applyToComponents && parsed.data.new_gross !== currentBasic) {
-    const applyResult = await applyRevisionToBasicSalaryComponent(
-      admin,
-      employeeId,
-      parsed.data.effective_date,
-      parsed.data.new_gross,
-      ctx.profile?.id,
-      emp
-    );
-    if (!applyResult.success) {
-      return { success: false, error: applyResult.error };
-    }
-  }
-
-  const { data, error } = await admin
-    .from("employee_salary_revisions")
-    .insert({
-      employee_id: employeeId,
-      effective_date: parsed.data.effective_date,
-      revision_reason: parsed.data.revision_reason ?? null,
-      old_gross: currentBasic,
-      new_gross: parsed.data.new_gross,
-      approved_by: parsed.data.approved_by ?? null,
-      created_by: ctx.profile?.id,
-    })
-    .select("id")
-    .single();
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_salary_revisions",
-    entity_id: data.id,
-    entity_reference: `${emp.employee_code}-rev-${data.id}`,
-    action: "salary_revision_created",
-    new_values: {
-      parent_employee_id: employeeId,
-      employee_code: emp.employee_code,
-      employee_name: emp.full_name_en,
-      related_record_type: "salary_revision",
-      effective_date: parsed.data.effective_date,
-      revision_reason: parsed.data.revision_reason,
-      apply_to_components: applyToComponents,
-    },
-  });
-  empRevalidate(employeeId);
-  return { success: true, data: { id: data.id } };
-}
+export async function createEmployeeSalaryRevision(employeeId:number,input:unknown,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateHrChild({kind:'salary-revision',employeeId,id:null,revision:null,action:'create',values:input},contract);}
 
 // ── Payroll Holds ──────────────────────────────────────────────────────────────
 
@@ -834,132 +377,11 @@ export async function getEmployeeActivePayrollHold(
   return { success: true, data: (data as PayrollHoldRow) ?? null };
 }
 
-export async function placeEmployeePayrollHold(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.payroll.manage"))
-    return { success: false, error: "Permission denied: hr.payroll.manage required" };
+export async function placeEmployeePayrollHold(employeeId:number,input:unknown,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateHrChild({kind:'payroll-hold',employeeId,id:null,revision:null,action:'create',values:input},contract);}
 
-  const parsed = payrollHoldCreateSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
+export async function releaseEmployeePayrollHold(id:number,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalPayroll('payroll-hold',id,'release',{},contract);}
 
-  const admin = await createClient();
-  const emp = await getEmployeeCtx(employeeId);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const { data, error } = await admin
-    .from("employee_payroll_holds")
-    .insert({ employee_id: employeeId, ...parsed.data, is_active: true, created_by: ctx.profile?.id })
-    .select("id")
-    .single();
-  if (error) return { success: false, error: error.message };
-
-  // Sync payroll profile status to 'hold'
-  await admin
-    .from("employee_payroll_profiles")
-    .update({ payroll_status: "hold", updated_by: ctx.profile?.id })
-    .eq("employee_id", employeeId)
-    .is("deleted_at", null);
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_payroll_holds",
-    entity_id: data.id,
-    entity_reference: `${emp.employee_code}-hold-${data.id}`,
-    action: "payroll_hold_placed",
-    new_values: { parent_employee_id: employeeId, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "payroll_hold", hold_reason: parsed.data.hold_reason },
-  });
-  empRevalidate(employeeId);
-  return { success: true, data: { id: data.id } };
-}
-
-export async function releaseEmployeePayrollHold(id: number): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.payroll.manage"))
-    return { success: false, error: "Permission denied: hr.payroll.manage required" };
-
-  const admin = await createClient();
-  const { data: row } = await admin
-    .from("employee_payroll_holds")
-    .select("employee_id")
-    .eq("id", id)
-    .single();
-  if (!row) return { success: false, error: "Payroll hold not found" };
-
-  const emp = await getEmployeeCtx(row.employee_id);
-  const { error } = await admin
-    .from("employee_payroll_holds")
-    .update({
-      is_active: false,
-      release_date: new Date().toISOString().slice(0, 10),
-      released_by: ctx.profile?.id,
-      updated_by: ctx.profile?.id,
-    })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  // Check if there are still active holds; if not, restore payroll status
-  const { data: activeHolds } = await admin
-    .from("employee_payroll_holds")
-    .select("id")
-    .eq("employee_id", row.employee_id)
-    .eq("is_active", true)
-    .is("deleted_at", null);
-
-  if (!activeHolds || activeHolds.length === 0) {
-    await admin
-      .from("employee_payroll_profiles")
-      .update({ payroll_status: "active", updated_by: ctx.profile?.id })
-      .eq("employee_id", row.employee_id)
-      .eq("payroll_status", "hold")
-      .is("deleted_at", null);
-  }
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_payroll_holds",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-hold-${id}`,
-    action: "payroll_hold_released",
-    new_values: { parent_employee_id: row.employee_id, employee_code: emp?.employee_code, employee_name: emp?.full_name_en, related_record_type: "payroll_hold" },
-  });
-  empRevalidate(row.employee_id);
-  return { success: true };
-}
-
-export async function archiveEmployeePayrollHold(id: number): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.payroll.manage"))
-    return { success: false, error: "Permission denied: hr.payroll.manage required" };
-
-  const admin = await createClient();
-  const { data: row } = await admin
-    .from("employee_payroll_holds")
-    .select("employee_id")
-    .eq("id", id)
-    .single();
-  if (!row) return { success: false, error: "Payroll hold not found" };
-
-  const emp = await getEmployeeCtx(row.employee_id);
-  const { error } = await admin
-    .from("employee_payroll_holds")
-    .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id, is_active: false })
-    .eq("id", id);
-  if (error) return { success: false, error: error.message };
-
-  await logAudit({
-    module_code: "HR",
-    entity_name: "employee_payroll_holds",
-    entity_id: id,
-    entity_reference: `${emp?.employee_code ?? ""}-hold-${id}`,
-    action: "payroll_hold_archived",
-    new_values: { parent_employee_id: row.employee_id, employee_code: emp?.employee_code, employee_name: emp?.full_name_en, related_record_type: "payroll_hold" },
-  });
-  empRevalidate(row.employee_id);
-  return { success: true };
-}
+export async function archiveEmployeePayrollHold(id:number,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateOriginalPayroll('payroll-hold',id,'archive',{},contract);}
 
 // ── WPS Profile ────────────────────────────────────────────────────────────────
 
@@ -987,66 +409,7 @@ export async function getEmployeeWpsProfile(
   return { success: true, data: redacted as WpsProfileRow };
 }
 
-export async function createOrUpdateEmployeeWpsProfile(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number }>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.payroll.manage"))
-    return { success: false, error: "Permission denied: hr.payroll.manage required" };
-
-  const parsed = wpsProfileSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-  const admin = await createClient();
-  const emp = await getEmployeeCtx(employeeId);
-  if (!emp) return { success: false, error: "Employee not found" };
-
-  const { data: existing } = await admin
-    .from("employee_wps_profiles")
-    .select("id")
-    .eq("employee_id", employeeId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  let id: number;
-
-  if (existing) {
-    const { error } = await admin
-      .from("employee_wps_profiles")
-      .update({ ...parsed.data, updated_by: ctx.profile?.id })
-      .eq("id", existing.id);
-    if (error) return { success: false, error: error.message };
-    id = existing.id;
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employee_wps_profiles",
-      entity_id: id,
-      entity_reference: `${emp.employee_code}-wps`,
-      action: "wps_profile_updated",
-      new_values: { parent_employee_id: employeeId, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "wps_profile", wps_status: parsed.data.wps_status, salary_payment_method: parsed.data.salary_payment_method },
-    });
-  } else {
-    const { data: inserted, error } = await admin
-      .from("employee_wps_profiles")
-      .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id })
-      .select("id")
-      .single();
-    if (error) return { success: false, error: error.message };
-    id = inserted.id;
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employee_wps_profiles",
-      entity_id: id,
-      entity_reference: `${emp.employee_code}-wps`,
-      action: "wps_profile_created",
-      new_values: { parent_employee_id: employeeId, employee_code: emp.employee_code, employee_name: emp.full_name_en, related_record_type: "wps_profile", wps_status: parsed.data.wps_status },
-    });
-  }
-
-  empRevalidate(employeeId);
-  return { success: true, data: { id } };
-}
+export async function createOrUpdateEmployeeWpsProfile(employeeId:number,input:unknown,contract:ChildSaveContract,originalId:number|null):Promise<ChildSaveResult>{return mutateHrChild({kind:'wps-profile',employeeId,id:originalId,revision:contract?.revision,action:originalId===null?'create':'update',values:input},contract);}
 
 export async function getEmployeeWpsReadiness(
   employeeId: number

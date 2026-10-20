@@ -188,6 +188,7 @@ export function HrDocumentEmployeeReviewStep({
     form.date_of_birth.trim() &&
     form.mobile_number.trim() &&
     form.owner_company_id &&
+    form.employee_category_id &&
     form.joining_date.trim() &&
     form.emergency_contact_name.trim() &&
     form.emergency_contact_mobile.trim() &&

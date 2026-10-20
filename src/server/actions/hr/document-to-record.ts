@@ -14,7 +14,7 @@
  * Security:
  *   - All actions require hr.compliance.manage + dms.documents.view
  *   - Feature flag ERP_AI_HR_DOCUMENT_TO_RECORD must be enabled (system_admin bypasses)
- *   - All reads use RLS-scoped client; writes use adminClient with permission check
+ *   - All reads use RLS-scoped client; writes use an ordinary scoped atomic transaction
  *   - Passport / EID duplicate numbers block identity document save
  *   - No direct AI provider calls; reads existing DMS extraction results only
  *   - Audit metadata never contains full passport/EID numbers
@@ -22,6 +22,9 @@
  */
 
 import { isHrAiFeatureEnabled } from "@/lib/hr/ai/feature-flags";
+import type {DependentSaveContract} from '@/lib/hr/dependent-contract';
+import type {DependentSaveResult} from '@/server/dependent-save';
+import {mutateEmployeeDependent} from './dependent-mutation';
 import { loadLatestDmsExtraction } from "@/lib/hr/compliance/compliance-dms-ocr";
 import {
   EMPTY_DEPENDENT_PREFILL,
@@ -38,10 +41,6 @@ import {
   normalizeMedicalInsuranceAiFields,
 } from "@/lib/hr/compliance/medical-insurance-dms-map";
 import {
-  runIdentityDocumentDuplicateChecks,
-  type IdentityDocCheckInput
-} from "@/lib/hr/document-to-record/duplicate-checks";
-import {
   createDependentFromDmsInputSchema,
   createIdentityDocFromDmsInputSchema,
   createInsuranceFromDmsInputSchema,
@@ -54,11 +53,11 @@ import {
   type HrIdentityDocDraft,
   type HrInsuranceDraft,
 } from "@/lib/hr/document-to-record/types";
+import {mutateHrChild} from "./child-mutation";
+import type {ChildSaveContract,ChildSaveResult} from "@/lib/hr/child-save-contract";
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
-import { logAudit } from "@/server/actions/audit";
-import { revalidatePath } from "next/cache";
 
 type ActionResult<T = unknown> = {
   success: boolean;
@@ -308,117 +307,11 @@ export async function aggregateIdentityDocumentFromDms(
 // Saves the reviewed identity document, links DMS doc, logs audit.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function createIdentityDocumentFromDms(
-  input: CreateIdentityDocFromDmsInput
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const { ctx, error: accessError } = await checkHr14bAccess();
-    if (accessError) return { success: false, error: accessError };
-
-    const parsed = createIdentityDocFromDmsInputSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const adminClient = await createClient();
-    const supabase = await createClient();
-
-    // Verify employee exists
-    const { data: emp } = await adminClient
-      .from("employees")
-      .select("id, employee_code, full_name_en")
-      .eq("id", parsed.data.employee_id)
-      .is("deleted_at", null)
-      .maybeSingle();
-    if (!emp) return { success: false, error: "Employee not found" };
-
-    // Get identity document type code for duplicate check
-    const { data: identityType } = await adminClient
-      .from("hr_identity_document_types")
-      .select("id, code")
-      .eq("id", parsed.data.document_type_id)
-      .maybeSingle();
-
-    const typeCode = (identityType?.code as string | undefined)?.toUpperCase() ?? "";
-
-    // Passport / EID duplicate check
-    if ((typeCode === "PASSPORT" || typeCode === "EMIRATES_ID") && parsed.data.document_number) {
-      const identityDocInputs: IdentityDocCheckInput[] = [{
-        classification: typeCode as "PASSPORT" | "EMIRATES_ID",
-        documentNumber: parsed.data.document_number,
-        documentTypeId: parsed.data.document_type_id,
-      }];
-      const identityDuplicates = await runIdentityDocumentDuplicateChecks(supabase, identityDocInputs);
-      const blockingDup = identityDuplicates.find((d) => d.severity === "block");
-      if (blockingDup) {
-        return {
-          success: false,
-          error: "Identity document creation blocked: duplicate document number found. " + (blockingDup.reason ?? ""),
-        };
-      }
-    }
-
-    // Insert identity document record
-    const { data: inserted, error: insertError } = await adminClient
-      .from("employee_identity_documents")
-      .insert({
-        employee_id: parsed.data.employee_id,
-        document_type_id: parsed.data.document_type_id,
-        document_number: parsed.data.document_number,
-        issue_date: parsed.data.issue_date ?? null,
-        expiry_date: parsed.data.expiry_date ?? null,
-        issuing_authority: parsed.data.issuing_authority ?? null,
-        issue_country_id: parsed.data.issue_country_id ?? null,
-        issuing_emirate_id: parsed.data.issuing_emirate_id ?? null,
-        uid_number: parsed.data.uid_number ?? null,
-        visa_file_number: parsed.data.visa_file_number ?? null,
-        labour_card_number: parsed.data.labour_card_number ?? null,
-        work_permit_number: parsed.data.work_permit_number ?? null,
-        mohre_person_code: parsed.data.mohre_person_code ?? null,
-        profession_on_document: parsed.data.profession_on_document ?? null,
-        emirates_id_application_no: parsed.data.emirates_id_application_no ?? null,
-        status: parsed.data.status,
-        verification_status: "unverified",
-        renewal_status: "not_required",
-        dms_document_id: parsed.data.dms_document_id,
-        notes: parsed.data.notes ?? null,
-      })
-      .select("id")
-      .single();
-
-    if (insertError || !inserted) {
-      return { success: false, error: insertError?.message ?? "Failed to save identity document" };
-    }
-
-    // Link DMS document to employee (hr14b_source role)
-    await adminClient.from("dms_document_links").upsert({
-      document_id: parsed.data.dms_document_id,
-      entity_type: "employee",
-      entity_id: parsed.data.employee_id,
-      link_role: "hr14b_source",
-    }, { onConflict: "document_id,entity_type,entity_id" });
-
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employee_identity_documents",
-      entity_id: inserted.id,
-      entity_reference: emp.employee_code as string,
-      action: "hr14b.create_identity_document_from_dms",
-      new_values: {
-        employee_id: parsed.data.employee_id,
-        document_type_id: parsed.data.document_type_id,
-        dms_document_id: parsed.data.dms_document_id,
-        // document_number deliberately omitted from audit to avoid sensitive data logging
-        status: parsed.data.status,
-        created_by_profile_id: ctx.profile?.id ?? null,
-      },
-    });
-
-    revalidatePath(`/admin/hr/employees/record/${parsed.data.employee_id}`);
-
-    return { success: true, data: { id: inserted.id } };
-  } catch (err) {
-    logger.error("createIdentityDocumentFromDms error", err);
-    return { success: false, error: "Failed to save identity document" };
-  }
+export async function createIdentityDocumentFromDms(input:CreateIdentityDocFromDmsInput,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ const access=await checkHr14bAccess();if(access.error)return{success:false,error:access.error};
+ const parsed=createIdentityDocFromDmsInputSchema.safeParse(input);if(!parsed.success)return{success:false,error:parsed.error.issues[0]?.message};
+ const {employee_id,totalDocumentsSelected,...values}=parsed.data;void totalDocumentsSelected;
+ return mutateHrChild({kind:'identity-document',employeeId:employee_id,id:null,revision:null,action:'create',values:{...values,entry_source:'document',source_document_ids:[values.dms_document_id]}},contract);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -494,85 +387,11 @@ export async function aggregateMedicalInsuranceFromDms(
 // Saves medical insurance record, links DMS doc, logs audit.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function createMedicalInsuranceFromDms(
-  input: CreateInsuranceFromDmsInput
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const { ctx, error: accessError } = await checkHr14bAccess();
-    if (accessError) return { success: false, error: accessError };
-
-    const parsed = createInsuranceFromDmsInputSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const adminClient = await createClient();
-    const supabase = await createClient();
-
-    const { data: emp } = await adminClient
-      .from("employees")
-      .select("id, employee_code")
-      .eq("id", parsed.data.employee_id)
-      .is("deleted_at", null)
-      .maybeSingle();
-    if (!emp) return { success: false, error: "Employee not found" };
-
-    const { data: inserted, error: insertError } = await adminClient
-      .from("employee_medical_insurances")
-      .insert({
-        employee_id: parsed.data.employee_id,
-        insurance_provider: parsed.data.insurance_provider,
-        tpa: parsed.data.tpa ?? null,
-        policy_number: parsed.data.policy_number,
-        insurance_card_number: parsed.data.insurance_card_number ?? null,
-        network_class: parsed.data.network_class ?? null,
-        issue_date: parsed.data.issue_date ?? null,
-        expiry_date: parsed.data.expiry_date,
-        employee_covered: parsed.data.employee_covered,
-        dependent_coverage_included: parsed.data.dependent_coverage_included,
-        dependent_count_covered: parsed.data.dependent_count_covered ?? null,
-        status: parsed.data.status,
-        verification_status: "unverified",
-        renewal_status: "not_required",
-        dms_document_id: parsed.data.dms_document_id,
-        notes: parsed.data.notes ?? null,
-      })
-      .select("id")
-      .single();
-
-    if (insertError || !inserted) {
-      return { success: false, error: insertError?.message ?? "Failed to save insurance record" };
-    }
-
-    // Link DMS document
-    await adminClient.from("dms_document_links").upsert({
-      document_id: parsed.data.dms_document_id,
-      entity_type: "employee",
-      entity_id: parsed.data.employee_id,
-      link_role: "hr14b_source",
-    }, { onConflict: "document_id,entity_type,entity_id" });
-
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employee_medical_insurances",
-      entity_id: inserted.id,
-      entity_reference: emp.employee_code as string,
-      action: "hr14b.create_medical_insurance_from_dms",
-      new_values: {
-        employee_id: parsed.data.employee_id,
-        dms_document_id: parsed.data.dms_document_id,
-        policy_number: parsed.data.policy_number,
-        insurance_provider: parsed.data.insurance_provider,
-        expiry_date: parsed.data.expiry_date,
-        created_by_profile_id: ctx.profile?.id ?? null,
-      },
-    });
-
-    revalidatePath(`/admin/hr/employees/record/${parsed.data.employee_id}`);
-
-    return { success: true, data: { id: inserted.id } };
-  } catch (err) {
-    logger.error("createMedicalInsuranceFromDms error", err);
-    return { success: false, error: "Failed to save medical insurance record" };
-  }
+export async function createMedicalInsuranceFromDms(input:CreateInsuranceFromDmsInput,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ const access=await checkHr14bAccess();if(access.error)return{success:false,error:access.error};
+ const parsed=createInsuranceFromDmsInputSchema.safeParse(input);if(!parsed.success)return{success:false,error:parsed.error.issues[0]?.message};
+ const {employee_id,totalDocumentsSelected,...values}=parsed.data;void totalDocumentsSelected;
+ return mutateHrChild({kind:'medical-insurance',employeeId:employee_id,id:null,revision:null,action:'create',values:{...values,entry_source:'document',source_document_ids:[values.dms_document_id]}},contract);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -668,89 +487,10 @@ export async function aggregateDependentFromDms(
 // Saves dependent record, links DMS docs, logs audit.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function createDependentFromDms(
-  input: CreateDependentFromDmsInput
-): Promise<ActionResult<{ id: number }>> {
-  try {
-    const { ctx, error: accessError } = await checkHr14bAccess();
-    if (accessError) return { success: false, error: accessError };
-
-    const parsed = createDependentFromDmsInputSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const adminClient = await createClient();
-    const supabase = await createClient();
-
-    const { data: emp } = await adminClient
-      .from("employees")
-      .select("id, employee_code")
-      .eq("id", parsed.data.employee_id)
-      .is("deleted_at", null)
-      .maybeSingle();
-    if (!emp) return { success: false, error: "Employee not found" };
-
-    const { data: inserted, error: insertError } = await adminClient
-      .from("employee_dependents")
-      .insert({
-        employee_id: parsed.data.employee_id,
-        dependent_name_en: parsed.data.dependent_name_en,
-        dependent_name_ar: parsed.data.dependent_name_ar ?? null,
-        relationship_type_id: parsed.data.relationship_type_id,
-        date_of_birth: parsed.data.date_of_birth ?? null,
-        nationality_id: parsed.data.nationality_id ?? null,
-        passport_number: parsed.data.passport_number ?? null,
-        passport_expiry: parsed.data.passport_expiry ?? null,
-        emirates_id_number: parsed.data.emirates_id_number ?? null,
-        emirates_id_expiry: parsed.data.emirates_id_expiry ?? null,
-        residence_visa_number: parsed.data.residence_visa_number ?? null,
-        residence_visa_expiry: parsed.data.residence_visa_expiry ?? null,
-        medical_insurance_provider: parsed.data.medical_insurance_provider ?? null,
-        medical_insurance_policy: parsed.data.medical_insurance_policy ?? null,
-        medical_insurance_card: parsed.data.medical_insurance_card ?? null,
-        medical_insurance_expiry: parsed.data.medical_insurance_expiry ?? null,
-        sponsored_by: parsed.data.sponsored_by ?? null,
-        is_active: parsed.data.is_active,
-        notes: parsed.data.notes ?? null,
-      })
-      .select("id")
-      .single();
-
-    if (insertError || !inserted) {
-      return { success: false, error: insertError?.message ?? "Failed to save dependent record" };
-    }
-
-    // HR.DOCLINK.1C fix (D1): link each DMS document to the NEW DEPENDENT.
-    // Previously these were linked to the parent employee, so dependent
-    // documents never appeared under the dependent anywhere in the ERP.
-    for (const docId of parsed.data.dms_document_ids) {
-      await adminClient.from("dms_document_links").upsert({
-        document_id: docId,
-        entity_type: "employee_dependent",
-        entity_id: inserted.id,
-        link_role: "hr14b_source",
-      }, { onConflict: "document_id,entity_type,entity_id" });
-    }
-
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employee_dependents",
-      entity_id: inserted.id,
-      entity_reference: emp.employee_code as string,
-      action: "hr14b.create_dependent_from_dms",
-      new_values: {
-        employee_id: parsed.data.employee_id,
-        dms_document_ids: parsed.data.dms_document_ids,
-        dependent_name_en: parsed.data.dependent_name_en,
-        relationship_type_id: parsed.data.relationship_type_id,
-        created_by_profile_id: ctx.profile?.id ?? null,
-      },
-    });
-
-    revalidatePath(`/admin/hr/employees/record/${parsed.data.employee_id}`);
-
-    return { success: true, data: { id: inserted.id } };
-  } catch (err) {
-    logger.error("createDependentFromDms error", err);
-    return { success: false, error: "Failed to save dependent record" };
-  }
+export async function createDependentFromDms(input:CreateDependentFromDmsInput,contract?:DependentSaveContract):Promise<DependentSaveResult>{
+ const access=await checkHr14bAccess();if(access.error)return {success:false,error:access.error};
+ const parsed=createDependentFromDmsInputSchema.safeParse(input);if(!parsed.success)return {success:false,error:parsed.error.issues[0]?.message};
+ if(!contract||contract.revision!==null||JSON.stringify(contract.addDocumentIds)!==JSON.stringify(parsed.data.dms_document_ids)||(contract.removeDocumentIds?.length??0)>0)return {success:false,error:'Reopen the reviewed source selection before saving this dependent.'};
+ const values=Object.fromEntries(Object.entries(parsed.data).filter(([key])=>!['employee_id','dms_document_ids','totalDocumentsSelected'].includes(key)));
+ return mutateEmployeeDependent({employeeId:parsed.data.employee_id,id:null,kind:'save',entry:'document',revision:null,values,addDocumentIds:parsed.data.dms_document_ids,removeDocumentIds:[]},contract);
 }

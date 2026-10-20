@@ -10,51 +10,12 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { revalidatePath } from "next/cache";
-import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
+import{childSaveContract,clearanceValues,type ChildSaveContract,type ChildSaveResult}from '@/lib/hr/child-save-contract';
+import{canUseHrChild}from '@/lib/hr/child-authority';
+import{mutateHrChild,readProProcessOpening}from './child-mutation';
 
 // ── Types ──────────────────────────────────────────────────────────────────
-
-type ActionResult<T = undefined> =
-  | { success: true; data: T }
-  | { success: false; error: string };
-
-// ── Local audit helper ─────────────────────────────────────────────────────
-
-type HrAuditParams = {
-  action: string;
-  entity_type: string;
-  entity_id: number;
-  parent_entity_type?: string;
-  parent_entity_id?: number;
-  description: string;
-  metadata?: Record<string, unknown>;
-};
-
-async function hrAuditLog(params: HrAuditParams): Promise<void> {
-  try {
-    await logAudit({
-      module_code: "HR",
-      entity_name: params.entity_type,
-      entity_id: params.entity_id,
-      entity_reference: `${params.entity_type}-${params.entity_id}`,
-      action: params.action.toLowerCase(),
-      new_values: {
-        description: params.description,
-        parent_entity_type: params.parent_entity_type,
-        parent_entity_id: params.parent_entity_id,
-        ...params.metadata,
-      },
-    });
-  } catch {
-    // Non-critical: log audit failure should not break the mutation
-  }
-}
-
-// ── Employee context helper ────────────────────────────────────────────────
-
-import { getEmployeeCtx as getEmployeeContext } from "./_shared/employee-context";
 
 // ── Row types ──────────────────────────────────────────────────────────────
 
@@ -246,104 +207,7 @@ export type HrActionsSummary = {
 
 // ── Zod Schemas ────────────────────────────────────────────────────────────
 
-const proProcessSchema = z.object({
-  process_type_id: z.number().int().positive().nullable().optional(),
-  process_title: z.string().min(1).max(500),
-  process_status: z.enum(["draft","requested","in_progress","waiting_for_document","submitted","approved","rejected","cancelled","completed"]).default("draft"),
-  priority: z.enum(["low","normal","high","urgent"]).default("normal"),
-  request_date: z.string().min(1),
-  target_date: z.string().nullable().optional(),
-  submitted_date: z.string().nullable().optional(),
-  completed_date: z.string().nullable().optional(),
-  assigned_to: z.number().int().positive().nullable().optional(),
-  related_document_id: z.number().int().positive().nullable().optional(),
-  related_record_type: z.string().max(100).nullable().optional(),
-  related_record_id: z.number().int().positive().nullable().optional(),
-  notes: z.string().max(5000).nullable().optional(),
-});
 
-const hrActionSchema = z.object({
-  action_type: z.enum(["general","probation_review","transfer","promotion","increment_recommendation","status_change","warning","memo","other"]),
-  action_title: z.string().min(1).max(500),
-  action_status: z.enum(["open","in_progress","closed","cancelled"]).default("open"),
-  action_date: z.string().min(1),
-  due_date: z.string().nullable().optional(),
-  assigned_to: z.number().int().positive().nullable().optional(),
-  related_record_type: z.string().max(100).nullable().optional(),
-  related_record_id: z.number().int().positive().nullable().optional(),
-  dms_document_id: z.number().int().positive().nullable().optional(),
-  requires_approval: z.boolean().default(false),
-  approval_request_id: z.number().int().positive().nullable().optional(),
-  notes: z.string().max(5000).nullable().optional(),
-});
-
-const performanceSchema = z.object({
-  review_type: z.enum(["probation","annual","project","incident_followup","other"]),
-  review_period_start: z.string().nullable().optional(),
-  review_period_end: z.string().nullable().optional(),
-  review_date: z.string().min(1),
-  reviewer_id: z.number().int().positive().nullable().optional(),
-  rating: z.enum(["excellent","good","satisfactory","needs_improvement","unsatisfactory"]).nullable().optional(),
-  summary: z.string().max(5000).nullable().optional(),
-  strengths: z.string().max(5000).nullable().optional(),
-  improvement_areas: z.string().max(5000).nullable().optional(),
-  next_review_date: z.string().nullable().optional(),
-  status: z.enum(["draft","submitted","approved","closed","cancelled"]).default("draft"),
-  dms_document_id: z.number().int().positive().nullable().optional(),
-});
-
-const disciplinarySchema = z.object({
-  disciplinary_type: z.enum(["verbal_warning","written_warning","final_warning","suspension_notice","incident","other"]),
-  incident_date: z.string().nullable().optional(),
-  record_date: z.string().min(1),
-  severity: z.enum(["low","medium","high","critical"]).default("medium"),
-  subject: z.string().min(1).max(500),
-  description: z.string().max(5000).nullable().optional(),
-  action_taken: z.string().max(5000).nullable().optional(),
-  status: z.enum(["open","under_review","closed","cancelled"]).default("open"),
-  issued_by: z.number().int().positive().nullable().optional(),
-  acknowledged_by_employee: z.boolean().default(false),
-  acknowledged_at: z.string().nullable().optional(),
-  dms_document_id: z.number().int().positive().nullable().optional(),
-  creates_operational_block: z.boolean().default(false),
-  operational_block_id: z.number().int().positive().nullable().optional(),
-});
-
-const hrNoteSchema = z.object({
-  note_type: z.enum(["general","confidential","management","legal","other"]).default("general"),
-  note_text: z.string().min(1).max(10000),
-  visibility: z.enum(["hr_only","management","restricted"]).default("hr_only"),
-  related_record_type: z.string().max(100).nullable().optional(),
-  related_record_id: z.number().int().positive().nullable().optional(),
-});
-
-const approvalRequestSchema = z.object({
-  approval_type: z.enum(["hr_action","pro_process","performance","disciplinary","eos","clearance","other"]),
-  request_title: z.string().min(1).max(500),
-  approval_role_id: z.number().int().positive().nullable().optional(),
-  related_record_type: z.string().max(100).nullable().optional(),
-  related_record_id: z.number().int().positive().nullable().optional(),
-});
-
-const eosSchema = z.object({
-  eos_type: z.enum(["resignation","termination","contract_end","absconding","death","other"]),
-  case_status: z.enum(["draft","notice_served","clearance_in_progress","pending_final_settlement","closed","cancelled"]).default("draft"),
-  notice_date: z.string().nullable().optional(),
-  last_working_date: z.string().nullable().optional(),
-  reason: z.string().max(5000).nullable().optional(),
-  final_settlement_status: z.enum(["not_started","pending_finance","completed"]).default("not_started"),
-  clearance_completed: z.boolean().default(false),
-  dms_document_id: z.number().int().positive().nullable().optional(),
-  notes: z.string().max(5000).nullable().optional(),
-});
-
-const clearanceItemSchema = z.object({
-  clearance_area: z.enum(["hr","operations","it","finance","camp","workshop","store","hse","other"]),
-  item_title: z.string().min(1).max(500),
-  item_status: z.enum(["pending","cleared","not_applicable","blocked"]).default("pending"),
-  responsible_user_id: z.number().int().positive().nullable().optional(),
-  notes: z.string().max(2000).nullable().optional(),
-});
 
 // =============================================================================
 // PRO PROCESSES
@@ -386,110 +250,37 @@ export async function listGlobalProProcesses(
   return (data ?? []) as unknown as ProProcessRow[];
 }
 
-export async function createEmployeeProProcess(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<ProProcessRow>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const parsed = proProcessSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-  const empCtx = await getEmployeeContext(employeeId);
-  if (!empCtx) return { success: false, error: "Employee not found" };
-  const adminClient = await createClient();
-  const { data, error } = await adminClient
-    .from("employee_pro_processes")
-    .insert({ ...parsed.data, employee_id: employeeId, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
-    .select()
-    .single();
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "CREATE", entity_type: "employee_pro_processes", entity_id: data.id,
-    parent_entity_type: "employees", parent_entity_id: employeeId,
-    description: `Created PRO process: ${parsed.data.process_title}`,
-    metadata: { employee_code: empCtx.employee_code, employee_name: empCtx.full_name_en },
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: data as ProProcessRow };
+export async function createEmployeeProProcess(employeeId:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ return mutateHrChild({kind:'pro-process',employeeId,id:null,revision:null,action:'create',values:input},contract);
 }
-
-export async function updateEmployeeProProcess(
-  id: number,
-  input: unknown
-): Promise<ActionResult<ProProcessRow>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const parsed = proProcessSchema.partial().safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_pro_processes").select("employee_id").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "PRO process not found" };
-  const empCtx = await getEmployeeContext(existing.employee_id);
-  const adminClient = await createClient();
-  const { data, error } = await adminClient
-    .from("employee_pro_processes")
-    .update({ ...parsed.data, updated_by: ctx.profile?.id })
-    .eq("id", id)
-    .select()
-    .single();
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "UPDATE", entity_type: "employee_pro_processes", entity_id: id,
-    parent_entity_type: "employees", parent_entity_id: existing.employee_id,
-    description: `Updated PRO process`,
-    metadata: { employee_code: empCtx?.employee_code, employee_name: empCtx?.full_name_en },
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: data as ProProcessRow };
+async function proOpeningForChange(id:number,contract?:ChildSaveContract){
+ const c=childSaveContract.safeParse(contract);
+ if(!c.success||c.data.revision===null)return null;
+ const ctx=await getAuthContext();
+ if(!ctx.profile||!ctx.isAccountActive||ctx.profile.must_change_password||!hasPermission(ctx,'hr.actions.view')||!hasPermission(ctx,'hr.actions.manage'))return null;
+ const r=await(await createClient()).from('employee_pro_processes').select('employee_id').eq('id',id).is('deleted_at',null).maybeSingle();
+ return!r.error&&r.data?{employeeId:r.data.employee_id,contract:c.data}:null;
 }
-
-export async function archiveEmployeeProProcess(id: number): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_pro_processes").select("employee_id, process_title").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "PRO process not found" };
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_pro_processes").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id }).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "ARCHIVE", entity_type: "employee_pro_processes", entity_id: id,
-    parent_entity_type: "employees", parent_entity_id: existing.employee_id,
-    description: `Archived PRO process: ${existing.process_title}`,
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
+export async function updateEmployeeProProcess(id:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ const opening=await proOpeningForChange(id,contract);
+ if(!opening)return{success:false,error:'Current access and an original opening contract are required.'};
+ return mutateHrChild({kind:'pro-process',employeeId:opening.employeeId,id,revision:opening.contract.revision,action:'update',values:input},opening.contract);
 }
-
-export async function changeEmployeeProProcessStatus(
-  id: number,
-  status: string,
-  notes?: string
-): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const validStatuses = ["draft","requested","in_progress","waiting_for_document","submitted","approved","rejected","cancelled","completed"];
-  if (!validStatuses.includes(status)) return { success: false, error: "Invalid status" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_pro_processes").select("employee_id, process_title").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "PRO process not found" };
-  const updates: Record<string, unknown> = { process_status: status, updated_by: ctx.profile?.id };
-  if (status === "submitted") updates.submitted_date = new Date().toISOString().split("T")[0];
-  if (status === "completed") updates.completed_date = new Date().toISOString().split("T")[0];
-  if (notes) updates.notes = notes;
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_pro_processes").update(updates).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "STATUS_CHANGE", entity_type: "employee_pro_processes", entity_id: id,
-    parent_entity_type: "employees", parent_entity_id: existing.employee_id,
-    description: `PRO process status changed to ${status}`,
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
+export async function archiveEmployeeProProcess(id:number,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ const opening=await proOpeningForChange(id,contract);
+ if(!opening)return{success:false,error:'Current access and an original opening contract are required.'};
+ return mutateHrChild({kind:'pro-process',employeeId:opening.employeeId,id,revision:opening.contract.revision,action:'archive',values:{}},opening.contract);
+}
+export async function changeEmployeeProProcessStatus(id:number,status:string,notes?:string,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ const opening=await proOpeningForChange(id,contract);
+ if(!opening)return{success:false,error:'Current access and an original opening contract are required.'};
+ const current=await readProProcessOpening(opening.employeeId,id);
+ if(!current.success||!current.values)return{success:false,error:'The current process could not be verified.'};
+ return mutateHrChild({kind:'pro-process',employeeId:opening.employeeId,id,revision:opening.contract.revision,action:'update',values:{...current.values,process_status:status,...(notes!==undefined?{notes}:{})}},opening.contract);
 }
 
 // =============================================================================
+//
 // HR ACTIONS
 // =============================================================================
 
@@ -528,118 +319,40 @@ export async function listGlobalHrActions(params?: Record<string, unknown>): Pro
   return (data ?? []) as HrActionRow[];
 }
 
-export async function createEmployeeHrAction(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<HrActionRow>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const parsed = hrActionSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-  const empCtx = await getEmployeeContext(employeeId);
-  if (!empCtx) return { success: false, error: "Employee not found" };
-  const adminClient = await createClient();
-  const { data, error } = await adminClient
-    .from("employee_hr_actions")
-    .insert({ ...parsed.data, employee_id: employeeId, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
-    .select()
-    .single();
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "CREATE", entity_type: "employee_hr_actions", entity_id: data.id,
-    parent_entity_type: "employees", parent_entity_id: employeeId,
-    description: `Created HR action: ${parsed.data.action_title}`,
-    metadata: { employee_code: empCtx.employee_code, employee_name: empCtx.full_name_en },
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: data as HrActionRow };
+export async function createEmployeeHrAction(employeeId:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ return mutateHrChild({kind:'hr-action',employeeId,id:null,revision:null,action:'create',values:input},contract);
 }
-
-export async function updateEmployeeHrAction(
-  id: number,
-  input: unknown
-): Promise<ActionResult<HrActionRow>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const parsed = hrActionSchema.partial().safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_hr_actions").select("employee_id").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "HR action not found" };
-  const adminClient = await createClient();
-  const { data, error } = await adminClient
-    .from("employee_hr_actions")
-    .update({ ...parsed.data, updated_by: ctx.profile?.id })
-    .eq("id", id)
-    .select()
-    .single();
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "UPDATE", entity_type: "employee_hr_actions", entity_id: id,
-    parent_entity_type: "employees", parent_entity_id: existing.employee_id,
-    description: `Updated HR action`,
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: data as HrActionRow };
+async function hrOpeningForChange(id:number,contract?:ChildSaveContract){
+ const c=childSaveContract.safeParse(contract);
+ if(!c.success||c.data.revision===null)return null;
+ const ctx=await getAuthContext();
+ if(!ctx.profile||!ctx.isAccountActive||ctx.profile.must_change_password||!hasPermission(ctx,'hr.actions.view')||!hasPermission(ctx,'hr.actions.manage'))return null;
+ const r=await(await createClient()).from('employee_hr_actions').select('employee_id').eq('id',id).is('deleted_at',null).maybeSingle();
+ return!r.error&&r.data?{employeeId:r.data.employee_id,contract:c.data}:null;
 }
-
-export async function archiveEmployeeHrAction(id: number): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_hr_actions").select("employee_id, action_title").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "HR action not found" };
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_hr_actions").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id }).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "ARCHIVE", entity_type: "employee_hr_actions", entity_id: id,
-    parent_entity_type: "employees", parent_entity_id: existing.employee_id,
-    description: `Archived HR action: ${existing.action_title}`,
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
+export async function updateEmployeeHrAction(id:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ const opening=await hrOpeningForChange(id,contract);
+ if(!opening)return{success:false,error:'Current access and an original opening contract are required.'};
+ return mutateHrChild({kind:'hr-action',employeeId:opening.employeeId,id,revision:opening.contract.revision,action:'update',values:input},opening.contract);
 }
-
-export async function closeEmployeeHrAction(id: number, notes?: string): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_hr_actions").select("employee_id").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "HR action not found" };
-  const adminClient = await createClient();
-  const updates: Record<string, unknown> = { action_status: "closed", updated_by: ctx.profile?.id };
-  if (notes) updates.notes = notes;
-  const { error } = await adminClient.from("employee_hr_actions").update(updates).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "STATUS_CHANGE", entity_type: "employee_hr_actions", entity_id: id,
-    parent_entity_type: "employees", parent_entity_id: existing.employee_id,
-    description: "HR action closed",
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
+export async function archiveEmployeeHrAction(id:number,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ const opening=await hrOpeningForChange(id,contract);
+ if(!opening)return{success:false,error:'Current access and an original opening contract are required.'};
+ return mutateHrChild({kind:'hr-action',employeeId:opening.employeeId,id,revision:opening.contract.revision,action:'archive',values:{}},opening.contract);
 }
-
-export async function cancelEmployeeHrAction(id: number, reason: string): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_hr_actions").select("employee_id").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "HR action not found" };
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_hr_actions").update({ action_status: "cancelled", notes: reason, updated_by: ctx.profile?.id }).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "STATUS_CHANGE", entity_type: "employee_hr_actions", entity_id: id,
-    parent_entity_type: "employees", parent_entity_id: existing.employee_id,
-    description: `HR action cancelled`,
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
+export async function closeEmployeeHrAction(id:number,notes?:string,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ const opening=await hrOpeningForChange(id,contract);
+ if(!opening)return{success:false,error:'Current access and an original opening contract are required.'};
+ return mutateHrChild({kind:'hr-action',employeeId:opening.employeeId,id,revision:opening.contract.revision,action:'close',values:notes?{notes}:{}},opening.contract);
+}
+export async function cancelEmployeeHrAction(id:number,reason:string,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ const opening=await hrOpeningForChange(id,contract);
+ if(!opening)return{success:false,error:'Current access and an original opening contract are required.'};
+ return mutateHrChild({kind:'hr-action',employeeId:opening.employeeId,id,revision:opening.contract.revision,action:'cancel',values:{reason}},opening.contract);
 }
 
 // =============================================================================
+//
 // PERFORMANCE
 // =============================================================================
 
@@ -662,107 +375,31 @@ export async function listEmployeePerformanceRecords(
   return (data ?? []) as unknown as PerformanceRow[];
 }
 
-export async function createEmployeePerformanceRecord(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<PerformanceRow>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const parsed = performanceSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-  const empCtx = await getEmployeeContext(employeeId);
-  if (!empCtx) return { success: false, error: "Employee not found" };
-  const adminClient = await createClient();
-  const { data, error } = await adminClient
-    .from("employee_performance_records")
-    .insert({ ...parsed.data, employee_id: employeeId, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
-    .select()
-    .single();
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "CREATE", entity_type: "employee_performance_records", entity_id: data.id,
-    parent_entity_type: "employees", parent_entity_id: employeeId,
-    description: `Created ${parsed.data.review_type} performance review`,
-    metadata: { employee_code: empCtx.employee_code, employee_name: empCtx.full_name_en },
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: data as PerformanceRow };
-}
 
-export async function updateEmployeePerformanceRecord(
-  id: number,
-  input: unknown
-): Promise<ActionResult<PerformanceRow>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const parsed = performanceSchema.partial().safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_performance_records").select("employee_id, status").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "Performance record not found" };
-  if (existing.status === "closed" || existing.status === "approved") return { success: false, error: "Cannot modify a closed/approved review" };
-  const adminClient = await createClient();
-  const { data, error } = await adminClient
-    .from("employee_performance_records")
-    .update({ ...parsed.data, updated_by: ctx.profile?.id })
-    .eq("id", id)
-    .select()
-    .single();
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "UPDATE", entity_type: "employee_performance_records", entity_id: id,
-    parent_entity_type: "employees", parent_entity_id: existing.employee_id,
-    description: "Updated performance record",
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: data as PerformanceRow };
+export async function createEmployeePerformanceRecord(employeeId:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ return mutateHrChild({kind:'performance',employeeId,id:null,revision:null,action:'create',values:input},contract);
 }
-
-export async function archiveEmployeePerformanceRecord(id: number): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_performance_records").select("employee_id").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "Record not found" };
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_performance_records").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id }).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
+async function performanceOpeningForChange(id:number,contract?:ChildSaveContract){
+ const checked=childSaveContract.safeParse(contract);
+ if(!checked.success||checked.data.revision===null||!Number.isSafeInteger(id)||id<1)return null;
+ const ctx=await getAuthContext();
+ if(!ctx.profile||!ctx.isAccountActive||ctx.profile.must_change_password||!['hr.actions.view','hr.actions.manage','hr.confidential.view','hr.confidential.manage'].every(code=>hasPermission(ctx,code)))return null;
+ const row=await(await createClient()).from('employee_performance_records').select('employee_id').eq('id',id).is('deleted_at',null).maybeSingle();
+ return !row.error&&row.data&&Number.isSafeInteger(row.data.employee_id)?{employeeId:row.data.employee_id,contract:checked.data}:null;
 }
-
-export async function submitEmployeePerformanceRecord(id: number): Promise<ActionResult> {
-  return changePerformanceStatus(id, "submitted");
+async function changePerformance(id:number,action:'update'|'archive'|'submit'|'approve'|'close',values:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ const opening=await performanceOpeningForChange(id,contract);
+ if(!opening)return{success:false,error:'Current confidential access and the original opening contract are required.'};
+ return mutateHrChild({kind:'performance',employeeId:opening.employeeId,id,revision:opening.contract.revision,action,values},opening.contract);
 }
-
-export async function approveEmployeePerformanceRecord(id: number): Promise<ActionResult> {
-  return changePerformanceStatus(id, "approved");
-}
-
-export async function closeEmployeePerformanceRecord(id: number): Promise<ActionResult> {
-  return changePerformanceStatus(id, "closed");
-}
-
-async function changePerformanceStatus(id: number, status: string): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_performance_records").select("employee_id").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "Record not found" };
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_performance_records").update({ status, updated_by: ctx.profile?.id }).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "STATUS_CHANGE", entity_type: "employee_performance_records", entity_id: id,
-    parent_entity_type: "employees", parent_entity_id: existing.employee_id,
-    description: `Performance record status → ${status}`,
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
-}
+export async function updateEmployeePerformanceRecord(id:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changePerformance(id,'update',input,contract);}
+export async function archiveEmployeePerformanceRecord(id:number,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changePerformance(id,'archive',{},contract);}
+export async function submitEmployeePerformanceRecord(id:number,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changePerformance(id,'submit',{},contract);}
+export async function approveEmployeePerformanceRecord(id:number,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changePerformance(id,'approve',{},contract);}
+export async function closeEmployeePerformanceRecord(id:number,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changePerformance(id,'close',{},contract);}
 
 // =============================================================================
-// DISCIPLINARY
+// // DISCIPLINARY
 // =============================================================================
 
 export async function listEmployeeDisciplinaryRecords(
@@ -800,109 +437,24 @@ export async function listGlobalDisciplinaryRecords(params?: Record<string, unkn
   return (data ?? []) as unknown as DisciplinaryRow[];
 }
 
-export async function createEmployeeDisciplinaryRecord(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<DisciplinaryRow>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const parsed = disciplinarySchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-  const empCtx = await getEmployeeContext(employeeId);
-  if (!empCtx) return { success: false, error: "Employee not found" };
-  const adminClient = await createClient();
-  const { data, error } = await adminClient
-    .from("employee_disciplinary_records")
-    .insert({ ...parsed.data, employee_id: employeeId, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
-    .select()
-    .single();
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "CREATE", entity_type: "employee_disciplinary_records", entity_id: data.id,
-    parent_entity_type: "employees", parent_entity_id: employeeId,
-    description: `Created disciplinary record: ${parsed.data.subject}`,
-    metadata: { employee_code: empCtx.employee_code, employee_name: empCtx.full_name_en, severity: parsed.data.severity },
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: data as DisciplinaryRow };
-}
 
-export async function updateEmployeeDisciplinaryRecord(
-  id: number,
-  input: unknown
-): Promise<ActionResult<DisciplinaryRow>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const parsed = disciplinarySchema.partial().safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_disciplinary_records").select("employee_id").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "Disciplinary record not found" };
-  const adminClient = await createClient();
-  const { data, error } = await adminClient
-    .from("employee_disciplinary_records")
-    .update({ ...parsed.data, updated_by: ctx.profile?.id })
-    .eq("id", id)
-    .select()
-    .single();
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "UPDATE", entity_type: "employee_disciplinary_records", entity_id: id,
-    parent_entity_type: "employees", parent_entity_id: existing.employee_id,
-    description: "Updated disciplinary record",
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: data as DisciplinaryRow };
+export async function createEmployeeDisciplinaryRecord(employeeId:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ return mutateHrChild({kind:'disciplinary',employeeId,id:null,revision:null,action:'create',values:input},contract);
 }
-
-export async function archiveEmployeeDisciplinaryRecord(id: number): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_disciplinary_records").select("employee_id, subject").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "Record not found" };
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_disciplinary_records").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id }).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
+async function changeDisciplinary(id:number,action:'update'|'archive'|'acknowledge'|'close',values:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ const checked=childSaveContract.safeParse(contract);if(!checked.success||checked.data.revision===null||!Number.isSafeInteger(id)||id<1)return{success:false,error:'The original opening contract is required.'};
+ const ctx=await getAuthContext();if(!ctx.profile||!ctx.isAccountActive||ctx.profile.must_change_password||!['hr.actions.view','hr.actions.manage','hr.confidential.view','hr.confidential.manage'].every(code=>hasPermission(ctx,code)))return{success:false,error:'Current confidential access is unavailable.',accessDenied:true};
+ const row=await(await createClient()).from('employee_disciplinary_records').select('employee_id').eq('id',id).is('deleted_at',null).maybeSingle();
+ if(row.error||!row.data||!Number.isSafeInteger(row.data.employee_id))return{success:false,error:'Current disciplinary scope could not be verified.'};
+ return mutateHrChild({kind:'disciplinary',employeeId:row.data.employee_id,id,revision:checked.data.revision,action,values},checked.data);
 }
-
-export async function acknowledgeEmployeeDisciplinaryRecord(id: number): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_disciplinary_records").select("employee_id").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "Record not found" };
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_disciplinary_records").update({ acknowledged_by_employee: true, acknowledged_at: new Date().toISOString(), updated_by: ctx.profile?.id }).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "ACKNOWLEDGE", entity_type: "employee_disciplinary_records", entity_id: id,
-    parent_entity_type: "employees", parent_entity_id: existing.employee_id,
-    description: "Disciplinary record acknowledged by employee",
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
-}
-
-export async function closeEmployeeDisciplinaryRecord(id: number, notes?: string): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_disciplinary_records").select("employee_id").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "Record not found" };
-  const updates: Record<string, unknown> = { status: "closed", updated_by: ctx.profile?.id };
-  if (notes) updates.action_taken = notes;
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_disciplinary_records").update(updates).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
-}
+export async function updateEmployeeDisciplinaryRecord(id:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeDisciplinary(id,'update',input,contract);}
+export async function archiveEmployeeDisciplinaryRecord(id:number,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeDisciplinary(id,'archive',{},contract);}
+export async function acknowledgeEmployeeDisciplinaryRecord(id:number,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeDisciplinary(id,'acknowledge',{},contract);}
+export async function closeEmployeeDisciplinaryRecord(id:number,notes?:string,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeDisciplinary(id,'close',notes?{notes}:{},contract);}
 
 // =============================================================================
-// HR NOTES
+// // HR NOTES
 // =============================================================================
 
 export async function listEmployeeHrNotes(
@@ -926,42 +478,20 @@ export async function listEmployeeHrNotes(
 
 export async function createEmployeeHrNote(
   employeeId: number,
-  input: unknown
-): Promise<ActionResult<HrNoteRow>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const parsed = hrNoteSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-  const empCtx = await getEmployeeContext(employeeId);
-  if (!empCtx) return { success: false, error: "Employee not found" };
-  const adminClient = await createClient();
-  const { data, error } = await adminClient
-    .from("employee_hr_notes")
-    .insert({ ...parsed.data, employee_id: employeeId, created_by: ctx.profile?.id })
-    .select()
-    .single();
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "CREATE", entity_type: "employee_hr_notes", entity_id: data.id,
-    parent_entity_type: "employees", parent_entity_id: employeeId,
-    description: `Added ${parsed.data.note_type} HR note`,
-    metadata: { employee_code: empCtx.employee_code, employee_name: empCtx.full_name_en },
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: data as HrNoteRow };
+  input: unknown,
+  contract?:ChildSaveContract
+): Promise<ChildSaveResult> {
+  return mutateHrChild({kind:'hr-note',employeeId,id:null,revision:null,action:'create',values:input},contract);
 }
 
-export async function archiveEmployeeHrNote(id: number): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_hr_notes").select("employee_id").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "Note not found" };
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_hr_notes").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id }).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
+export async function archiveEmployeeHrNote(id: number,contract?:ChildSaveContract): Promise<ChildSaveResult> {
+  const c=childSaveContract.safeParse(contract);
+  if(!c.success||c.data.revision===null)return{success:false,error:'Reopen the note with its current revision before archiving.'};
+  try{
+    const r=await(await createClient()).from('employee_hr_notes').select('employee_id').eq('id',id).is('deleted_at',null).maybeSingle();
+    if(r.error||!r.data)return{success:false,error:'The note is unavailable with current access.'};
+    return mutateHrChild({kind:'hr-note',employeeId:r.data.employee_id,id,revision:c.data.revision,action:'archive',values:{}},c.data);
+  }catch{return{success:false,error:'Required note access could not be verified. No archive request was sent.'};}
 }
 
 // =============================================================================
@@ -1003,124 +533,23 @@ export async function listGlobalApprovalRequests(params?: Record<string, unknown
   return (data ?? []) as unknown as ApprovalRequestRow[];
 }
 
-export async function createEmployeeApprovalRequest(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<ApprovalRequestRow>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const parsed = approvalRequestSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-  const empCtx = await getEmployeeContext(employeeId);
-  if (!empCtx) return { success: false, error: "Employee not found" };
-  const adminClient = await createClient();
-  const { data, error } = await adminClient
-    .from("employee_approval_requests")
-    .insert({
-      ...parsed.data,
-      employee_id: employeeId,
-      request_status: "pending",
-      requested_by: ctx.profile?.id,
-      requested_at: new Date().toISOString(),
-      created_by: ctx.profile?.id,
-      updated_by: ctx.profile?.id,
-    })
-    .select()
-    .single();
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "CREATE", entity_type: "employee_approval_requests", entity_id: data.id,
-    parent_entity_type: "employees", parent_entity_id: employeeId,
-    description: `Created approval request: ${parsed.data.request_title}`,
-    metadata: { employee_code: empCtx.employee_code, employee_name: empCtx.full_name_en },
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: data as ApprovalRequestRow };
+export async function createEmployeeApprovalRequest(employeeId:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ if(!contract)return{success:false,error:'The original save identity is required. Reopen the request.'};
+ return mutateHrChild({kind:'approval',employeeId,id:null,revision:null,action:'create',values:input},contract);
 }
-
-export async function approveEmployeeApprovalRequest(id: number, reason?: string): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_approval_requests").select("employee_id, request_title, request_status").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "Approval request not found" };
-  if (existing.request_status !== "pending") return { success: false, error: "Only pending requests can be approved" };
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_approval_requests").update({
-    request_status: "approved",
-    approved_by: ctx.profile?.id,
-    approved_at: new Date().toISOString(),
-    decision_reason: reason ?? null,
-    updated_by: ctx.profile?.id,
-  }).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "APPROVE", entity_type: "employee_approval_requests", entity_id: id,
-    parent_entity_type: "employees", parent_entity_id: existing.employee_id,
-    description: `Approved: ${existing.request_title}`,
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
+async function changeApproval(id:number,action:'approve'|'reject'|'cancel'|'archive',values:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ const checked=childSaveContract.safeParse(contract);
+ if(!Number.isSafeInteger(id)||id<1||!checked.success||!checked.data.revision)return{success:false,error:'The original opening identity and revision are required.'};
+ const ctx=await getAuthContext();
+ if(!ctx.profile||!ctx.isAccountActive||ctx.profile.must_change_password||!['hr.actions.view','hr.actions.manage'].every(code=>hasPermission(ctx,code)))return{success:false,error:'Current access is unavailable.',accessDenied:true};
+ const row=await(await createClient()).from('employee_approval_requests').select('employee_id').eq('id',id).is('deleted_at',null).maybeSingle();
+ if(row.error||!row.data||!Number.isSafeInteger(row.data.employee_id))return{success:false,error:'The current request is unavailable.'};
+ return mutateHrChild({kind:'approval',employeeId:row.data.employee_id,id,revision:checked.data.revision,action,values},checked.data);
 }
-
-export async function rejectEmployeeApprovalRequest(id: number, reason: string): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  if (!reason?.trim()) return { success: false, error: "Rejection reason is required" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_approval_requests").select("employee_id, request_title, request_status").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "Approval request not found" };
-  if (existing.request_status !== "pending") return { success: false, error: "Only pending requests can be rejected" };
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_approval_requests").update({
-    request_status: "rejected",
-    rejected_by: ctx.profile?.id,
-    rejected_at: new Date().toISOString(),
-    decision_reason: reason,
-    updated_by: ctx.profile?.id,
-  }).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "REJECT", entity_type: "employee_approval_requests", entity_id: id,
-    parent_entity_type: "employees", parent_entity_id: existing.employee_id,
-    description: `Rejected: ${existing.request_title}`,
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
-}
-
-export async function cancelEmployeeApprovalRequest(id: number, reason: string): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_approval_requests").select("employee_id, request_status").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "Approval request not found" };
-  if (existing.request_status !== "pending") return { success: false, error: "Only pending requests can be cancelled" };
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_approval_requests").update({
-    request_status: "cancelled",
-    cancelled_by: ctx.profile?.id,
-    cancelled_at: new Date().toISOString(),
-    decision_reason: reason,
-    updated_by: ctx.profile?.id,
-  }).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
-}
-
-export async function archiveEmployeeApprovalRequest(id: number): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage")) return { success: false, error: "No permission" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_approval_requests").select("employee_id").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "Request not found" };
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_approval_requests").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id }).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
-}
+export async function approveEmployeeApprovalRequest(id:number,reason?:string,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeApproval(id,'approve',{reason:reason??''},contract);}
+export async function rejectEmployeeApprovalRequest(id:number,reason:string,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeApproval(id,'reject',{reason},contract);}
+export async function cancelEmployeeApprovalRequest(id:number,reason:string,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeApproval(id,'cancel',{reason},contract);}
+export async function archiveEmployeeApprovalRequest(id:number,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeApproval(id,'archive',{},contract);}
 
 // =============================================================================
 // EOS CASES
@@ -1161,100 +590,21 @@ export async function listGlobalEosCases(params?: Record<string, unknown>): Prom
   return (data ?? []) as EosCaseRow[];
 }
 
-export async function createEmployeeEosCase(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<EosCaseRow>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage") && !hasPermission(ctx, "hr.eos.manage")) return { success: false, error: "No permission" };
-  const parsed = eosSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-  const empCtx = await getEmployeeContext(employeeId);
-  if (!empCtx) return { success: false, error: "Employee not found" };
-  const adminClient = await createClient();
-  const { data, error } = await adminClient
-    .from("employee_eos_cases")
-    .insert({ ...parsed.data, employee_id: employeeId, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
-    .select()
-    .single();
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "CREATE", entity_type: "employee_eos_cases", entity_id: data.id,
-    parent_entity_type: "employees", parent_entity_id: employeeId,
-    description: `Created EOS case: ${parsed.data.eos_type}`,
-    metadata: { employee_code: empCtx.employee_code, employee_name: empCtx.full_name_en },
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: data as EosCaseRow };
+export async function createEmployeeEosCase(employeeId:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ if(!contract)return{success:false,error:'The original case save identity is required.'};
+ return mutateHrChild({kind:'eos-case',employeeId,id:null,revision:null,action:'create',values:input},contract);
 }
-
-export async function updateEmployeeEosCase(
-  id: number,
-  input: unknown
-): Promise<ActionResult<EosCaseRow>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage") && !hasPermission(ctx, "hr.eos.manage")) return { success: false, error: "No permission" };
-  const parsed = eosSchema.partial().safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_eos_cases").select("employee_id, case_status").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "EOS case not found" };
-  if (existing.case_status === "closed") return { success: false, error: "Cannot modify a closed EOS case" };
-  const adminClient = await createClient();
-  const { data, error } = await adminClient
-    .from("employee_eos_cases")
-    .update({ ...parsed.data, updated_by: ctx.profile?.id })
-    .eq("id", id)
-    .select()
-    .single();
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "UPDATE", entity_type: "employee_eos_cases", entity_id: id,
-    parent_entity_type: "employees", parent_entity_id: existing.employee_id,
-    description: "Updated EOS case",
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: data as EosCaseRow };
+async function changeEosCase(id:number,action:'update'|'archive'|'set-status',values:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ const checked=childSaveContract.safeParse(contract);
+ if(!Number.isSafeInteger(id)||id<1||!checked.success||!checked.data.revision)return{success:false,error:'The original case opening identity and revision are required.'};
+ if(!canUseHrChild(await getAuthContext(),'eos-case'))return{success:false,error:'Current case access is unavailable.',accessDenied:true};
+ const row=await(await createClient()).from('employee_eos_cases').select('employee_id').eq('id',id).is('deleted_at',null).maybeSingle();
+ if(row.error||!row.data||!Number.isSafeInteger(row.data.employee_id))return{success:false,error:'The current case is unavailable.'};
+ return mutateHrChild({kind:'eos-case',employeeId:row.data.employee_id,id,revision:checked.data.revision,action,values},checked.data);
 }
-
-export async function archiveEmployeeEosCase(id: number): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage") && !hasPermission(ctx, "hr.eos.manage")) return { success: false, error: "No permission" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_eos_cases").select("employee_id").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "EOS case not found" };
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_eos_cases").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id }).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
-}
-
-export async function changeEmployeeEosCaseStatus(
-  id: number,
-  status: string,
-  notes?: string
-): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage") && !hasPermission(ctx, "hr.eos.manage")) return { success: false, error: "No permission" };
-  const validStatuses = ["draft","notice_served","clearance_in_progress","pending_final_settlement","closed","cancelled"];
-  if (!validStatuses.includes(status)) return { success: false, error: "Invalid status" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_eos_cases").select("employee_id, eos_type").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "EOS case not found" };
-  const updates: Record<string, unknown> = { case_status: status, updated_by: ctx.profile?.id };
-  if (notes) updates.notes = notes;
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_eos_cases").update(updates).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "STATUS_CHANGE", entity_type: "employee_eos_cases", entity_id: id,
-    parent_entity_type: "employees", parent_entity_id: existing.employee_id,
-    description: `EOS case status → ${status}`,
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
-}
+export async function updateEmployeeEosCase(id:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeEosCase(id,'update',input,contract);}
+export async function archiveEmployeeEosCase(id:number,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeEosCase(id,'archive',{},contract);}
+export async function changeEmployeeEosCaseStatus(id:number,status:string,notes?:string,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeEosCase(id,'set-status',{case_status:status,...(notes===undefined?{}:{notes})},contract);}
 
 // =============================================================================
 // CLEARANCE ITEMS
@@ -1275,105 +625,26 @@ export async function listEmployeeClearanceItems(eosCaseId: number): Promise<Cle
   return (data ?? []) as ClearanceItemRow[];
 }
 
-export async function createEmployeeClearanceItem(
-  eosCaseId: number,
-  input: unknown
-): Promise<ActionResult<ClearanceItemRow>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage") && !hasPermission(ctx, "hr.eos.manage")) return { success: false, error: "No permission" };
-  const parsed = clearanceItemSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-  const supabase = await createClient();
-  const { data: eosCase } = await supabase.from("employee_eos_cases").select("employee_id").eq("id", eosCaseId).is("deleted_at", null).single();
-  if (!eosCase) return { success: false, error: "EOS case not found" };
-  const adminClient = await createClient();
-  const { data, error } = await adminClient
-    .from("employee_clearance_items")
-    .insert({ ...parsed.data, eos_case_id: eosCaseId, employee_id: eosCase.employee_id, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
-    .select()
-    .single();
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "CREATE", entity_type: "employee_clearance_items", entity_id: data.id,
-    parent_entity_type: "employee_eos_cases", parent_entity_id: eosCaseId,
-    description: `Added clearance item: ${parsed.data.item_title} (${parsed.data.clearance_area})`,
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: data as ClearanceItemRow };
+export async function createEmployeeClearanceItem(caseId:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ const checked=childSaveContract.safeParse(contract),fields=clearanceValues.omit({eos_case_id:true}).safeParse(input);
+ if(!checked.success||checked.data.revision!==null||!fields.success||!Number.isSafeInteger(caseId)||caseId<1)return{success:false,error:'Original case/save identity and valid clearance fields are required.'};
+ if(!canUseHrChild(await getAuthContext(),'clearance'))return{success:false,error:'Current clearance access is unavailable.',accessDenied:true};
+ const parent=await(await createClient()).from('employee_eos_cases').select('employee_id').eq('id',caseId).is('deleted_at',null).maybeSingle();
+ if(parent.error||!parent.data||!Number.isSafeInteger(parent.data.employee_id))return{success:false,error:'The original case could not be verified.'};
+ return mutateHrChild({kind:'clearance',employeeId:parent.data.employee_id,id:null,revision:null,action:'create',values:{...fields.data,eos_case_id:caseId}},checked.data);
 }
-
-export async function updateEmployeeClearanceItem(
-  id: number,
-  input: unknown
-): Promise<ActionResult<ClearanceItemRow>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage") && !hasPermission(ctx, "hr.eos.manage")) return { success: false, error: "No permission" };
-  const parsed = clearanceItemSchema.partial().safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_clearance_items").select("eos_case_id, employee_id").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "Clearance item not found" };
-  const adminClient = await createClient();
-  const { data, error } = await adminClient
-    .from("employee_clearance_items")
-    .update({ ...parsed.data, updated_by: ctx.profile?.id })
-    .eq("id", id)
-    .select()
-    .single();
-  if (error) return { success: false, error: error.message };
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: data as ClearanceItemRow };
+async function changeClearance(id:number,action:'update'|'clear'|'block'|'archive',values:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
+ const checked=childSaveContract.safeParse(contract),fields=z.record(z.string(),z.unknown()).safeParse(values);
+ if(!Number.isSafeInteger(id)||id<1||!checked.success||!checked.data.revision||!fields.success||'eos_case_id'in fields.data)return{success:false,error:'Original clearance opening/revision and case-bound fields are required.'};
+ if(!canUseHrChild(await getAuthContext(),'clearance'))return{success:false,error:'Current clearance access is unavailable.',accessDenied:true};
+ const row=await(await createClient()).from('employee_clearance_items').select('employee_id,eos_case_id').eq('id',id).is('deleted_at',null).maybeSingle();
+ if(row.error||!row.data||!Number.isSafeInteger(row.data.employee_id)||!Number.isSafeInteger(row.data.eos_case_id))return{success:false,error:'The current clearance item is unavailable.'};
+ return mutateHrChild({kind:'clearance',employeeId:row.data.employee_id,id,revision:checked.data.revision,action,values:{...fields.data,eos_case_id:row.data.eos_case_id}},checked.data);
 }
-
-export async function clearEmployeeClearanceItem(id: number, notes?: string): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage") && !hasPermission(ctx, "hr.eos.manage")) return { success: false, error: "No permission" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_clearance_items").select("eos_case_id, employee_id").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "Item not found" };
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_clearance_items").update({
-    item_status: "cleared",
-    cleared_by: ctx.profile?.id,
-    cleared_at: new Date().toISOString(),
-    notes: notes ?? null,
-    updated_by: ctx.profile?.id,
-  }).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  await hrAuditLog({
-    action: "CLEAR", entity_type: "employee_clearance_items", entity_id: id,
-    parent_entity_type: "employee_eos_cases", parent_entity_id: existing.eos_case_id,
-    description: "Clearance item marked cleared",
-  });
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
-}
-
-export async function blockEmployeeClearanceItem(id: number, notes?: string): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage") && !hasPermission(ctx, "hr.eos.manage")) return { success: false, error: "No permission" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_clearance_items").select("eos_case_id").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "Item not found" };
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_clearance_items").update({ item_status: "blocked", notes: notes ?? null, updated_by: ctx.profile?.id }).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
-}
-
-export async function archiveEmployeeClearanceItem(id: number): Promise<ActionResult> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.actions.manage") && !hasPermission(ctx, "hr.eos.manage")) return { success: false, error: "No permission" };
-  const supabase = await createClient();
-  const { data: existing } = await supabase.from("employee_clearance_items").select("eos_case_id").eq("id", id).is("deleted_at", null).single();
-  if (!existing) return { success: false, error: "Item not found" };
-  const adminClient = await createClient();
-  const { error } = await adminClient.from("employee_clearance_items").update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id }).eq("id", id);
-  if (error) return { success: false, error: error.message };
-  revalidatePath(`/admin/hr/employees`);
-  return { success: true, data: undefined };
-}
+export async function updateEmployeeClearanceItem(id:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeClearance(id,'update',input,contract);}
+export async function clearEmployeeClearanceItem(id:number,notes?:string,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeClearance(id,'clear',notes===undefined?{}:{notes},contract);}
+export async function blockEmployeeClearanceItem(id:number,notes?:string,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeClearance(id,'block',notes===undefined?{}:{notes},contract);}
+export async function archiveEmployeeClearanceItem(id:number,contract?:ChildSaveContract):Promise<ChildSaveResult>{return changeClearance(id,'archive',{},contract);}
 
 // =============================================================================
 // SUMMARY

@@ -51,6 +51,7 @@ type PickMode = "employee" | "dms";
 
 type SaveResult = {
   success: boolean;
+  uncertain?: boolean;
   error?: string;
   data?: { dmsLinkCreated?: boolean };
 };
@@ -58,7 +59,7 @@ type SaveResult = {
 type BatchResultItem = {
   documentNo: string;
   title: string;
-  status: "ok" | "error";
+  status: "ok" | "error" | "unconfirmed";
   error?: string;
 };
 
@@ -75,6 +76,8 @@ type Props<TForm extends { dms_document_id?: number | null }> = {
   recordLabel: string;
   submitLabel: string;
   size?: "lg" | "xl";
+  closeDisabled?: boolean;
+  recovery?: ReactNode;
   createEmptyForm: () => TForm;
   validate: (form: TForm) => string | null;
   /** A composite save may confirm its primary write before a later link stage fails. */
@@ -104,6 +107,8 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
   admission: parentAdmission,
   privacyRevision,
   redactForm,
+  closeDisabled=false,
+  recovery,
 }: Props<TForm>) {
   const [step, setStep] = useState<Step>("source");
   const [pickMode, setPickMode] = useState<PickMode>("employee");
@@ -120,10 +125,6 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
   const [batchResults, setBatchResults] = useState<BatchResultItem[]>([]);
   const [batchDone, setBatchDone] = useState(false);
 
-  // Snapshot of employee/library docs used during batch (for labels)
-  const [employeeDocsSnapshot, setEmployeeDocsSnapshot] = useState<HrLinkedDocument[]>([]);
-  const [libraryDocsSnapshot, setLibraryDocsSnapshot] = useState<AvailableDmsDocumentOption[]>([]);
-
   const resetState = useCallback(() => {
     setStep("source");
     setPickMode("employee");
@@ -134,8 +135,6 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
     setBatchProgress(null);
     setBatchResults([]);
     setBatchDone(false);
-    setEmployeeDocsSnapshot([]);
-    setLibraryDocsSnapshot([]);
   }, [createEmptyForm]);
 
   const uiRead1=useHrLinkedDocuments(employeeId,null,open && step === "pick-dms" && pickMode === "employee" && (parentAdmission?.ready ?? true),parentAdmission?.generation);
@@ -229,8 +228,10 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
       });
     } else {
       // Multi-document batch flow
-      setEmployeeDocsSnapshot(employeeDocs ?? []);
-      setLibraryDocsSnapshot(libraryDocs ?? []);
+      // Capture this dispatch's labels directly. State set here would still
+      // expose the previous render's snapshot inside the async closure.
+      const employeeDocsSnapshot = employeeDocs ?? [];
+      const libraryDocsSnapshot = libraryDocs ?? [];
       setStep("batch");
       setBatchProgress({ current: 0, total: ids.length });
       setBatchResults([]);
@@ -241,6 +242,7 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
         const results: BatchResultItem[] = [];
         let savedCount = 0, confirmedCount = 0;
         let dmsLinked = false;
+        let unconfirmed = false;
 
         try {
           for (let i = 0; i < ids.length; i++) {
@@ -253,6 +255,7 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
             const libMatch = libraryDocsSnapshot.find((d) => d.id === docId);
             const docLabel = empMatch?.title ?? libMatch?.title ?? `Document ${docId}`;
             const docNo = empMatch?.document_no ?? libMatch?.document_no ?? `#${docId}`;
+            let saveDispatched = false;
 
             try {
               const prefillRes = await prefillComplianceRecordFromDms(employeeId, docId, recordKind);
@@ -276,18 +279,23 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
                 confirmed = true; confirmedCount++;
                 if (result.data?.dmsLinkCreated) dmsLinked = true;
               };
+              saveDispatched = true;
               const saveRes = await dispatchSave(sanitize(filledForm), observePrimary);
               observePrimary(saveRes);
               if (!saveRes.success) {
-                results.push({ documentNo: docNo, title: docLabel, status: "error", error: saveRes.error ?? "Save failed" });
+                unconfirmed = saveRes.uncertain === true;
+                results.push({ documentNo: docNo, title: docLabel, status: unconfirmed ? "unconfirmed" : "error", error: unconfirmed ? "The save outcome is unconfirmed. Check the original operation before another change." : saveRes.error ?? "Save rejected" });
+                if (unconfirmed) break;
                 continue;
               }
 
               if (saveRes.data?.dmsLinkCreated) dmsLinked = true;
               savedCount++;
               results.push({ documentNo: docNo, title: docLabel, status: "ok" });
-            } catch (err) {
-              results.push({ documentNo: docNo, title: docLabel, status: "error", error: String(err) });
+            } catch {
+              unconfirmed = saveDispatched;
+              results.push({ documentNo: docNo, title: docLabel, status: unconfirmed ? "unconfirmed" : "error", error: unconfirmed ? "The save outcome is unconfirmed. Check the original operation before another change." : "Document checks could not be completed. No save was sent." });
+              if (unconfirmed) break;
             }
           }
         } finally {
@@ -296,9 +304,16 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
           if (confirmedCount > 0) notifySaved({dmsLinkCreated: dmsLinked, hasDmsDocument: true});
         }
 
-        if (!admission.isCurrent()) return;
+        if (!admission.isCurrent()) {
+          if (unconfirmed) throw Error("Batch save outcome unconfirmed");
+          return;
+        }
         setBatchResults(results);
         setBatchDone(true);
+
+        // Never admit another legacy batch after an unknown write outcome.
+        // Native receipt/recovery adoption remains separately accountable.
+        if (unconfirmed) throw Error("Batch save outcome unconfirmed");
 
         if (savedCount > 0) {
           toast.success(
@@ -378,6 +393,7 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
     <QueryReadBoundary queries={[uiRead1,uiRead2]}><ERPChildDialogForm
       open={open}
       onOpenChange={handleOpenChange}
+      recoveryActions={recovery}
       title={title}
       subtitle={subtitle}
       icon={icon}
@@ -385,6 +401,7 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
       size={size}
       isSubmitting={(isSubmitting && step !== "batch") || isPrefilling}
       submitDisabled={!showClose && !admission.ready}
+      closeDisabled={closeDisabled || isSubmitting || isPrefilling}
       onSubmit={
         showSubmit ? handleSave
         : showContinue ? handleContinueFromDms
@@ -597,7 +614,7 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
                   <div className="min-w-0 flex-1">
                     <span className="font-medium truncate block">{r.title}</span>
                     <span className="text-xs text-muted-foreground">{r.documentNo}</span>
-                    {r.status === "error" && (
+                    {r.status !== "ok" && (
                       <div className="flex items-start gap-1 mt-1 text-xs text-red-600">
                         <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
                         {r.error}
@@ -611,7 +628,7 @@ export function ComplianceDmsAddDialog<TForm extends { dms_document_id?: number 
 
           {batchDone && (
             <p className="text-xs text-muted-foreground">
-              {batchResults.filter((r) => r.status === "ok").length} created · {batchResults.filter((r) => r.status === "error").length} failed · {selectedCount - batchResults.length} not submitted.
+              {batchResults.filter((r) => r.status === "ok").length} created · {batchResults.filter((r) => r.status === "error").length} failed · {batchResults.filter((r) => r.status === "unconfirmed").length} unconfirmed · {selectedCount - batchResults.length} not submitted.
               {batchResults.length < selectedCount && " No further records were submitted after required checks paused. Check the recorded results before starting a new batch."}
               {batchResults.some((r) => r.status === "error") && " Failed records may need missing required fields — try adding them manually."}
             </p>

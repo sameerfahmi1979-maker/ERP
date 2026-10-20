@@ -47,6 +47,9 @@ export type ERPChildDialogFormProps = {
   isDirty?: boolean;
   submitLabel?: string;
   cancelLabel?: string;
+  /** Explicit receipt-preserving recovery only; stays reachable while ordinary
+   * editing/save/cancel controls are inert. Caller owns retirement/reconciliation. */
+  recoveryActions?: ReactNode;
   children: ReactNode;
 };
 
@@ -82,6 +85,7 @@ function ChildDialogSession({
   onSubmit,
   submitLabel,
   cancelLabel = "Cancel",
+  recoveryActions,
   children,
 }: ERPChildDialogFormProps) {
   // Track programmatic closes (Cancel/X/Save) to block outside-click and Esc.
@@ -92,6 +96,11 @@ function ChildDialogSession({
   const [edited, setEdited] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [issues, setIssues] = useState<WorkspaceFieldIssue[]>([]);
+  const [observedOpen,setObservedOpen]=useState(open);
+  if(observedOpen!==open){
+    setObservedOpen(open);
+    if(!open){setEdited(false);setConfirmDiscard(false);setIssues([]);}
+  }
   const busy = isSubmitting || pending;
   useInlineFieldFeedback(issues);
   useWorkspaceNavigationLock(mode !== "view");
@@ -218,6 +227,8 @@ function ChildDialogSession({
           <FormErrorSummary issues={issues} onReveal={issue => issue.control?.focus()} />
           {children}
         </div>
+
+        {recoveryActions && <div className="border-t px-6 py-3 text-sm">{recoveryActions}</div>}
 
         {confirmDiscard && <div role="alert" className="border-t border-amber-500/40 bg-amber-500/10 px-6 py-3 text-sm">
           <p className="font-medium">Discard unsaved changes?</p><p>Your entries in this dialog have not been saved.</p>

@@ -18,13 +18,16 @@
  *   - Medical records require hr.medical.view/manage separately from hr.compliance.view/manage
  */
 
+import {mutateHrChild} from "./child-mutation";
+import type {ChildSaveContract,ChildSaveResult,ChildReceipt} from "@/lib/hr/child-save-contract";
+type ComplianceSaveResult=ChildSaveResult & {data?:ChildReceipt & {dmsLinkCreated?:boolean}};
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 
 import { createClient } from "@/lib/supabase/server";
-import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
+import {dependentSchema,type DependentSaveContract} from '@/lib/hr/dependent-contract';
+import {saveDependentRecord,type DependentSaveResult} from '@/server/dependent-save';
 
 // ── Shared ────────────────────────────────────────────────────────────────────
 
@@ -38,6 +41,7 @@ type ActionResult<T = unknown> = {
 
 export type EmployeeIdentityDocumentRow = {
   id: number;
+  workspace_revision: number;
   employee_id: number;
   document_type_id: number;
   document_number: string;
@@ -76,6 +80,7 @@ export type EmployeeIdentityDocumentRow = {
 
 export type EmployeeMedicalInsuranceRow = {
   id: number;
+  workspace_revision: number;
   employee_id: number;
   insurance_provider: string;
   tpa: string | null;
@@ -98,6 +103,7 @@ export type EmployeeMedicalInsuranceRow = {
 
 export type EmployeeDependentRow = {
   id: number;
+  workspace_revision: number;
   employee_id: number;
   dependent_name_en: string;
   dependent_name_ar: string | null;
@@ -126,6 +132,7 @@ export type EmployeeDependentRow = {
 
 export type EmployeeAccessCardRow = {
   id: number;
+  workspace_revision: number;
   employee_id: number;
   access_type_id: number;
   client_authority: string | null;
@@ -146,6 +153,7 @@ export type EmployeeAccessCardRow = {
 
 export type EmployeeTrainingCertificateRow = {
   id: number;
+  workspace_revision: number;
   employee_id: number;
   training_category_id: number | null;
   training_type_id: number;
@@ -168,6 +176,7 @@ export type EmployeeTrainingCertificateRow = {
 
 export type EmployeeMedicalRecordRow = {
   id: number;
+  workspace_revision: number;
   employee_id: number;
   medical_record_type_id: number;
   medical_center: string | null;
@@ -200,117 +209,14 @@ export type EmployeeComplianceSummary = {
 
 // ── Helper: load employee for audit context ───────────────────────────────────
 
-import { ensureDmsDocumentLinkedToEntity } from "@/server/actions/dms/entity-documents";
-import { getEmployeeCtxAdmin as loadEmployeeForAudit } from "./_shared/employee-context";
 
 function revalidateEmployeePath(employeeId: number) {
   revalidatePath(`/admin/hr/employees/record/${employeeId}`);
   revalidatePath("/admin/hr/employees");
 }
 
-type ComplianceDmsLinkKind =
-  | "legal_document"
-  | "medical_insurance"
-  | "dependent"
-  | "access_card"
-  | "training_certificate"
-  | "medical_record";
-
-const COMPLIANCE_DMS_LINK_NOTES: Record<ComplianceDmsLinkKind, string> = {
-  legal_document: "Auto-linked from HR legal document (compliance)",
-  medical_insurance: "Auto-linked from HR medical insurance (compliance)",
-  dependent: "Auto-linked from HR dependent record (compliance)",
-  access_card: "Auto-linked from HR access card (compliance)",
-  training_certificate: "Auto-linked from HR training certificate (compliance)",
-  medical_record: "Auto-linked from HR medical record (compliance)",
-};
-
-async function linkComplianceDmsDocument(
-  employeeId: number,
-  dmsDocumentId: number,
-  kind: ComplianceDmsLinkKind
-): Promise<ActionResult<{ created: boolean }>> {
-  const linkResult = await ensureDmsDocumentLinkedToEntity(
-    dmsDocumentId,
-    "employee",
-    employeeId,
-    {
-      link_role: "compliance",
-      notes: COMPLIANCE_DMS_LINK_NOTES[kind],
-    }
-  );
-  if (!linkResult.success) return { success: false, error: linkResult.error };
-  return { success: true, data: { created: linkResult.data?.created ?? false } };
-}
-
-async function validateIdentityDocumentGeography(input: {
-  issue_country_id?: number | null;
-  issuing_emirate_id?: number | null;
-  issue_city_id?: number | null;
-}): Promise<string | null> {
-  const admin = await createClient();
-
-  if (input.issue_city_id && !input.issuing_emirate_id) {
-    return "Place of issue (city) requires an issuing region to be selected";
-  }
-  if (input.issuing_emirate_id && !input.issue_country_id) {
-    return "Issuing region requires an issue country to be selected";
-  }
-
-  if (input.issuing_emirate_id && input.issue_country_id) {
-    const { data: emirate } = await admin
-      .from("emirates")
-      .select("id, country_id")
-      .eq("id", input.issuing_emirate_id)
-      .maybeSingle();
-    if (!emirate) return "Selected issuing region was not found";
-    if (emirate.country_id !== input.issue_country_id) {
-      return "Issuing region does not belong to the selected issue country";
-    }
-  }
-
-  if (input.issue_city_id && input.issuing_emirate_id) {
-    const { data: city } = await admin
-      .from("cities")
-      .select("id, emirate_id")
-      .eq("id", input.issue_city_id)
-      .maybeSingle();
-    if (!city) return "Selected place of issue (city) was not found";
-    if (city.emirate_id !== input.issuing_emirate_id) {
-      return "Place of issue does not belong to the selected issuing region";
-    }
-  }
-
-  return null;
-}
-
 // ── IDENTITY DOCUMENTS ────────────────────────────────────────────────────────
 
-const identityDocumentSchema = z.object({
-  document_type_id: z.number().int().positive({ message: "Document type is required" }),
-  document_number: z.string().min(1, "Document number is required"),
-  issue_date: z.string().nullish(),
-  expiry_date: z.string().nullish(),
-  issuing_authority: z.string().nullish(),
-  issuing_authority_party_id: z.number().int().positive().nullish(),
-  issue_country_id: z.number().int().positive().nullish(),
-  issuing_emirate_id: z.number().int().positive().nullish(),
-  issue_city_id: z.number().int().positive().nullish(),
-  status: z.enum(["active", "expired", "cancelled", "pending"]).default("active"),
-  verification_status: z.enum(["unverified", "verified", "failed"]).default("unverified"),
-  renewal_status: z.enum(["not_required", "pending", "in_progress", "complete"]).default("not_required"),
-  emirates_id_application_no: z.string().nullish(),
-  visa_file_number: z.string().nullish(),
-  uid_number: z.string().nullish(),
-  labour_card_number: z.string().nullish(),
-  work_permit_number: z.string().nullish(),
-  mohre_person_code: z.string().nullish(),
-  profession_on_document: z.string().nullish(),
-  sponsor_company_id: z.number().int().positive().nullish(),
-  place_of_issue: z.string().nullish(),
-  notes: z.string().nullish(),
-  dms_document_id: z.number().int().positive().nullish(),
-});
 
 export async function listEmployeeIdentityDocuments(
   employeeId: number
@@ -336,242 +242,28 @@ export async function listEmployeeIdentityDocuments(
   }
 }
 
-export async function createEmployeeIdentityDocument(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number; dmsLinkCreated?: boolean }>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const parsed = identityDocumentSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const geoError = await validateIdentityDocumentGeography(parsed.data);
-    if (geoError) return { success: false, error: geoError };
-
-    const emp = await loadEmployeeForAudit(employeeId);
-    if (!emp) return { success: false, error: "Employee not found" };
-
-    let dmsLinkCreated = false;
-    if (parsed.data.dms_document_id) {
-      const linkResult = await ensureDmsDocumentLinkedToEntity(
-        parsed.data.dms_document_id,
-        "employee",
-        employeeId,
-        {
-          link_role: "compliance",
-          notes: "Auto-linked from HR legal document (compliance)",
-        }
-      );
-      if (!linkResult.success) return { success: false, error: linkResult.error };
-      dmsLinkCreated = linkResult.data?.created ?? false;
-    }
-
-    const admin = await createClient();
-    const { data, error } = await admin
-      .from("employee_identity_documents")
-      .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
-      .select("id")
-      .single();
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employee_identity_documents",
-      entity_id: data.id,
-      entity_reference: parsed.data.document_number,
-      action: "create",
-      new_values: { document_type_id: parsed.data.document_type_id, status: parsed.data.status },
-    });
-    revalidateEmployeePath(employeeId);
-    return { success: true, data: { id: data.id, dmsLinkCreated } };
-  } catch {
-    return { success: false, error: "Failed to create identity document" };
-  }
+export async function createEmployeeIdentityDocument(employeeId:number,input:unknown,contract?:ChildSaveContract):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'identity-document',employeeId,id:null,action:'create',revision:null,values:input},contract);
 }
 
-export async function updateEmployeeIdentityDocument(
-  id: number,
-  input: unknown
-): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const parsed = identityDocumentSchema.partial().safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_identity_documents")
-      .select("id, employee_id, document_number, issue_country_id, issuing_emirate_id, issue_city_id")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    const mergedGeo = {
-      issue_country_id: parsed.data.issue_country_id ?? existing.issue_country_id,
-      issuing_emirate_id: parsed.data.issuing_emirate_id ?? existing.issuing_emirate_id,
-      issue_city_id: parsed.data.issue_city_id ?? existing.issue_city_id,
-    };
-    const geoError = await validateIdentityDocumentGeography(mergedGeo);
-    if (geoError) return { success: false, error: geoError };
-
-    let dmsLinkCreated = false;
-    if (parsed.data.dms_document_id) {
-      const linkResult = await ensureDmsDocumentLinkedToEntity(
-        parsed.data.dms_document_id,
-        "employee",
-        existing.employee_id,
-        {
-          link_role: "compliance",
-          notes: "Auto-linked from HR legal document (compliance)",
-        }
-      );
-      if (!linkResult.success) return { success: false, error: linkResult.error };
-      dmsLinkCreated = linkResult.data?.created ?? false;
-    }
-
-    const emp = await loadEmployeeForAudit(existing.employee_id);
-    const { error } = await admin
-      .from("employee_identity_documents")
-      .update({ ...parsed.data, updated_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employee_identity_documents",
-      entity_id: id,
-      entity_reference: existing.document_number,
-      action: "update",
-      new_values: parsed.data,
-    });
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to update identity document" };
-  }
+export async function updateEmployeeIdentityDocument(id:number,input:unknown,contract?:ChildSaveContract,employeeId?:number):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'identity-document',employeeId,id,action:'update',revision:contract?.revision,values:input},contract);
 }
 
-export async function archiveEmployeeIdentityDocument(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_identity_documents")
-      .select("id, employee_id, document_number")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    const emp = await loadEmployeeForAudit(existing.employee_id);
-    const { error } = await admin
-      .from("employee_identity_documents")
-      .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employee_identity_documents",
-      entity_id: id,
-      entity_reference: existing.document_number,
-      action: "archive",
-    });
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to archive identity document" };
-  }
+export async function archiveEmployeeIdentityDocument(id:number,contract?:ChildSaveContract,employeeId?:number):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'identity-document',employeeId,id,action:'archive',revision:contract?.revision,values:{}},contract);
 }
 
-export async function verifyEmployeeIdentityDocument(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_identity_documents")
-      .select("id, employee_id, document_number")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    const { error } = await admin
-      .from("employee_identity_documents")
-      .update({ verification_status: "verified", verified_by: ctx.profile?.id, verified_at: new Date().toISOString(), updated_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to verify identity document" };
-  }
+export async function verifyEmployeeIdentityDocument(id:number,contract?:ChildSaveContract,employeeId?:number):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'identity-document',employeeId,id,action:'verify',revision:contract?.revision,values:{}},contract);
 }
 
-export async function updateIdentityDocumentRenewalStatus(
-  id: number,
-  renewalStatus: "not_required" | "pending" | "in_progress" | "complete"
-): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_identity_documents")
-      .select("id, employee_id")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    const { error } = await admin
-      .from("employee_identity_documents")
-      .update({ renewal_status: renewalStatus, updated_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to update renewal status" };
-  }
+export async function updateIdentityDocumentRenewalStatus(id:number,renewalStatus:string,contract?:ChildSaveContract,employeeId?:number):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'identity-document',employeeId,id,action:'renewal',revision:contract?.revision,values:{renewal_status:renewalStatus}},contract);
 }
 
 // ── MEDICAL INSURANCE ─────────────────────────────────────────────────────────
 
-const medicalInsuranceSchema = z.object({
-  insurance_provider: z.string().min(1, "Insurance provider is required"),
-  tpa: z.string().nullish(),
-  policy_number: z.string().min(1, "Policy number is required"),
-  insurance_card_number: z.string().nullish(),
-  network_class: z.string().nullish(),
-  issue_date: z.string().nullish(),
-  expiry_date: z.string().min(1, "Expiry date is required"),
-  employee_covered: z.boolean().default(true),
-  dependent_coverage_included: z.boolean().default(false),
-  dependent_count_covered: z.number().int().min(0).nullish(),
-  status: z.enum(["active", "expired", "cancelled", "pending"]).default("active"),
-  verification_status: z.enum(["unverified", "verified", "failed"]).default("unverified"),
-  renewal_status: z.enum(["not_required", "pending", "in_progress", "complete"]).default("pending"),
-  dms_document_id: z.number().int().positive().nullish(),
-  notes: z.string().nullish(),
-});
 
 export async function listEmployeeMedicalInsurances(
   employeeId: number
@@ -595,208 +287,29 @@ export async function listEmployeeMedicalInsurances(
   }
 }
 
-export async function createEmployeeMedicalInsurance(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number; dmsLinkCreated?: boolean }>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.medical.manage")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const parsed = medicalInsuranceSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const emp = await loadEmployeeForAudit(employeeId);
-    if (!emp) return { success: false, error: "Employee not found" };
-
-    let dmsLinkCreated = false;
-    if (parsed.data.dms_document_id) {
-      const linkResult = await linkComplianceDmsDocument(
-        employeeId,
-        parsed.data.dms_document_id,
-        "medical_insurance"
-      );
-      if (!linkResult.success) return { success: false, error: linkResult.error };
-      dmsLinkCreated = linkResult.data?.created ?? false;
-    }
-
-    const admin = await createClient();
-    const { data, error } = await admin
-      .from("employee_medical_insurances")
-      .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
-      .select("id")
-      .single();
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employee_medical_insurances",
-      entity_id: data.id,
-      entity_reference: parsed.data.policy_number,
-      action: "create",
-      new_values: { insurance_provider: parsed.data.insurance_provider, status: parsed.data.status, expiry_date: parsed.data.expiry_date },
-    });
-    revalidateEmployeePath(employeeId);
-    return { success: true, data: { id: data.id, dmsLinkCreated } };
-  } catch {
-    return { success: false, error: "Failed to create medical insurance" };
-  }
+export async function createEmployeeMedicalInsurance(employeeId:number,input:unknown,contract?:ChildSaveContract):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'medical-insurance',employeeId,id:null,action:'create',revision:null,values:input},contract);
 }
 
-export async function updateEmployeeMedicalInsurance(
-  id: number,
-  input: unknown
-): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.medical.manage")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const parsed = medicalInsuranceSchema.partial().safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_medical_insurances")
-      .select("id, employee_id, policy_number")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    if (parsed.data.dms_document_id) {
-      const linkResult = await linkComplianceDmsDocument(
-        existing.employee_id,
-        parsed.data.dms_document_id,
-        "medical_insurance"
-      );
-      if (!linkResult.success) return { success: false, error: linkResult.error };
-    }
-
-    const { error } = await admin
-      .from("employee_medical_insurances")
-      .update({ ...parsed.data, updated_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to update medical insurance" };
-  }
+export async function updateEmployeeMedicalInsurance(id:number,input:unknown,contract?:ChildSaveContract,employeeId?:number):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'medical-insurance',employeeId,id,action:'update',revision:contract?.revision,values:input},contract);
 }
 
-export async function archiveEmployeeMedicalInsurance(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.medical.manage")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_medical_insurances")
-      .select("id, employee_id")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    const { error } = await admin
-      .from("employee_medical_insurances")
-      .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to archive medical insurance" };
-  }
+export async function archiveEmployeeMedicalInsurance(id:number,contract?:ChildSaveContract,employeeId?:number):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'medical-insurance',employeeId,id,action:'archive',revision:contract?.revision,values:{}},contract);
 }
 
-export async function verifyEmployeeMedicalInsurance(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.medical.manage")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_medical_insurances")
-      .select("id, employee_id")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    const { error } = await admin
-      .from("employee_medical_insurances")
-      .update({ verification_status: "verified", updated_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to verify medical insurance" };
-  }
+export async function verifyEmployeeMedicalInsurance(id:number,contract?:ChildSaveContract,employeeId?:number):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'medical-insurance',employeeId,id,action:'verify',revision:contract?.revision,values:{}},contract);
 }
 
-export async function updateMedicalInsuranceRenewalStatus(
-  id: number,
-  renewalStatus: "not_required" | "pending" | "in_progress" | "complete"
-): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.medical.manage")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_medical_insurances")
-      .select("id, employee_id")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    const { error } = await admin
-      .from("employee_medical_insurances")
-      .update({ renewal_status: renewalStatus, updated_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to update renewal status" };
-  }
+export async function updateMedicalInsuranceRenewalStatus(id:number,renewalStatus:string,contract?:ChildSaveContract,employeeId?:number):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'medical-insurance',employeeId,id,action:'renewal',revision:contract?.revision,values:{renewal_status:renewalStatus}},contract);
 }
 
 // ── DEPENDENTS ────────────────────────────────────────────────────────────────
 
-const dependentSchema = z.object({
-  dependent_name_en: z.string().min(1, "Dependent name is required"),
-  dependent_name_ar: z.string().nullish(),
-  relationship_type_id: z.number().int().positive({ message: "Relationship type is required" }),
-  date_of_birth: z.string().nullish(),
-  nationality_id: z.number().int().positive().nullish(),
-  passport_number: z.string().nullish(),
-  passport_expiry: z.string().nullish(),
-  emirates_id_number: z.string().nullish(),
-  emirates_id_expiry: z.string().nullish(),
-  residence_visa_number: z.string().nullish(),
-  residence_visa_expiry: z.string().nullish(),
-  medical_insurance_provider: z.string().nullish(),
-  medical_insurance_policy: z.string().nullish(),
-  medical_insurance_card: z.string().nullish(),
-  medical_insurance_expiry: z.string().nullish(),
-  sponsored_by: z.enum(["employee", "company"]).nullish(),
-  is_active: z.boolean().default(true),
-  dms_document_id: z.number().int().positive().nullish(),
-  notes: z.string().nullish(),
-});
+
 
 export async function listEmployeeDependents(
   employeeId: number
@@ -808,7 +321,7 @@ export async function listEmployeeDependents(
     }
     const supabase = await createClient();
     const { data, error } = await supabase
-      .from("employee_dependents")
+      .rpc("f03_read_employee_dependents")
       .select("*,relationship_type:hr_relationship_types(id,name_en),nationality:countries(id,name_en)")
       .eq("employee_id", employeeId)
       .is("deleted_at", null)
@@ -820,124 +333,30 @@ export async function listEmployeeDependents(
   }
 }
 
-export async function createEmployeeDependent(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number; dmsLinkCreated?: boolean }>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const parsed = dependentSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const emp = await loadEmployeeForAudit(employeeId);
-    if (!emp) return { success: false, error: "Employee not found" };
-
-    let dmsLinkCreated = false;
-    if (parsed.data.dms_document_id) {
-      const linkResult = await linkComplianceDmsDocument(
-        employeeId,
-        parsed.data.dms_document_id,
-        "dependent"
-      );
-      if (!linkResult.success) return { success: false, error: linkResult.error };
-      dmsLinkCreated = linkResult.data?.created ?? false;
-    }
-
-    const admin = await createClient();
-    const { data, error } = await admin
-      .from("employee_dependents")
-      .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
-      .select("id")
-      .single();
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employee_dependents",
-      entity_id: data.id,
-      entity_reference: parsed.data.dependent_name_en,
-      action: "create",
-      new_values: { relationship_type_id: parsed.data.relationship_type_id },
-    });
-    revalidateEmployeePath(employeeId);
-    return { success: true, data: { id: data.id, dmsLinkCreated } };
-  } catch {
-    return { success: false, error: "Failed to create dependent" };
-  }
+export async function createEmployeeDependent(employeeId:number,input:unknown,contract?:DependentSaveContract):Promise<DependentSaveResult>{
+ const ctx=await getAuthContext();
+ if(!hasPermission(ctx,'hr.compliance.manage')&&!hasPermission(ctx,'hr.admin'))return {success:false,error:'Permission denied'};
+ const parsed=dependentSchema.safeParse(input);if(!parsed.success)return {success:false,error:parsed.error.issues[0]?.message};
+ const result=await saveDependentRecord(employeeId,null,'save',parsed.data,contract);
+ if(result.success){try{revalidateEmployeePath(employeeId);}catch{logger.warn('Dependent saved; refresh unavailable');}}
+ return result;
 }
-
-export async function updateEmployeeDependent(
-  id: number,
-  input: unknown
-): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const parsed = dependentSchema.partial().safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_dependents")
-      .select("id, employee_id")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    if (parsed.data.dms_document_id) {
-      const linkResult = await linkComplianceDmsDocument(
-        existing.employee_id,
-        parsed.data.dms_document_id,
-        "dependent"
-      );
-      if (!linkResult.success) return { success: false, error: linkResult.error };
-    }
-
-    const { error } = await admin
-      .from("employee_dependents")
-      .update({ ...parsed.data, updated_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to update dependent" };
-  }
+export async function updateEmployeeDependent(id:number,input:unknown,contract?:DependentSaveContract,employeeId?:number):Promise<DependentSaveResult>{
+ const ctx=await getAuthContext();
+ if(!hasPermission(ctx,'hr.compliance.manage')&&!hasPermission(ctx,'hr.admin'))return {success:false,error:'Permission denied'};
+ const parsed=dependentSchema.partial().safeParse(input);if(!parsed.success)return {success:false,error:parsed.error.issues[0]?.message};
+ if(employeeId===undefined)return {success:false,error:'Reopen the employee and dependent before saving.'};
+ const result=await saveDependentRecord(employeeId,id,'save',parsed.data,contract);
+ if(result.success){try{revalidateEmployeePath(employeeId);}catch{logger.warn('Dependent saved; refresh unavailable');}}
+ return result;
 }
-
-export async function archiveEmployeeDependent(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_dependents")
-      .select("id, employee_id")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    const { error } = await admin
-      .from("employee_dependents")
-      .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to archive dependent" };
-  }
+export async function archiveEmployeeDependent(id:number,contract?:DependentSaveContract,employeeId?:number):Promise<DependentSaveResult>{
+ const ctx=await getAuthContext();
+ if(!hasPermission(ctx,'hr.compliance.manage')&&!hasPermission(ctx,'hr.admin'))return {success:false,error:'Permission denied'};
+ if(employeeId===undefined)return {success:false,error:'Reopen the employee and dependent before archiving.'};
+ const result=await saveDependentRecord(employeeId,id,'archive',{},contract);
+ if(result.success){try{revalidateEmployeePath(employeeId);}catch{logger.warn('Dependent archived; refresh unavailable');}}
+ return result;
 }
 
 // ── DEPENDENT DOCUMENT LINKS (HR.DOCLINK.1B) ─────────────────────────────────
@@ -1007,120 +426,14 @@ export async function listEmployeeDependentDocumentLinks(
   }
 }
 
-export async function applyEmployeeDependentDocumentLinks(
-  dependentId: number,
-  changes: { addDocumentIds: number[]; removeDocumentIds: number[] }
-): Promise<ActionResult<{ added: number; removed: number }>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-
-    const addIds = [...new Set(changes.addDocumentIds ?? [])].filter(
-      (n) => Number.isInteger(n) && n > 0
-    );
-    const removeIds = [...new Set(changes.removeDocumentIds ?? [])].filter(
-      (n) => Number.isInteger(n) && n > 0
-    );
-    if (addIds.length === 0 && removeIds.length === 0) {
-      return { success: true, data: { added: 0, removed: 0 } };
-    }
-
-    const admin = await createClient();
-    const { data: dependent } = await admin
-      .from("employee_dependents")
-      .select("id, employee_id, dependent_name_en")
-      .eq("id", dependentId)
-      .is("deleted_at", null)
-      .single();
-    if (!dependent) return { success: false, error: "Dependent not found" };
-
-    let added = 0;
-    let removed = 0;
-    const errors: string[] = [];
-
-    for (const docId of addIds) {
-      // Revive a soft-deleted link if one exists, otherwise insert (idempotent)
-      const { data: existing } = await admin
-        .from("dms_document_links")
-        .select("id, deleted_at")
-        .eq("document_id", docId)
-        .eq("entity_type", "employee_dependent")
-        .eq("entity_id", dependentId)
-        .maybeSingle();
-
-      if (existing && existing.deleted_at == null) continue;
-
-      if (existing) {
-        const { error } = await admin
-          .from("dms_document_links")
-          .update({ deleted_at: null, link_role: "dependent_form" })
-          .eq("id", existing.id);
-        if (error) errors.push(`Document ${docId}: ${error.message}`);
-        else added++;
-      } else {
-        const { error } = await admin.from("dms_document_links").insert({
-          document_id: docId,
-          entity_type: "employee_dependent",
-          entity_id: dependentId,
-          is_primary: false,
-          link_role: "dependent_form",
-          linked_by: ctx.profile?.id ?? null,
-        });
-        if (error) errors.push(`Document ${docId}: ${error.message}`);
-        else added++;
-      }
-    }
-
-    if (removeIds.length > 0) {
-      const { error, count } = await admin
-        .from("dms_document_links")
-        .update({ deleted_at: new Date().toISOString() }, { count: "exact" })
-        .eq("entity_type", "employee_dependent")
-        .eq("entity_id", dependentId)
-        .in("document_id", removeIds)
-        .is("deleted_at", null);
-      if (error) errors.push(`Unlink failed: ${error.message}`);
-      else removed = count ?? removeIds.length;
-    }
-
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employee_dependents",
-      entity_id: dependentId,
-      entity_reference: dependent.dependent_name_en as string,
-      action: "dependent_document_links.apply",
-      new_values: { added_document_ids: addIds, removed_document_ids: removeIds, added, removed },
-    });
-
-    revalidateEmployeePath(dependent.employee_id as number);
-
-    if (errors.length > 0 && added === 0 && removed === 0) {
-      return { success: false, error: errors[0] };
-    }
-    return { success: true, data: { added, removed } };
-  } catch (err) {
-    logger.error("applyEmployeeDependentDocumentLinks error", err);
-    return { success: false, error: "Failed to update linked documents" };
-  }
+/** Legacy callers must now supply one atomic revision/operation contract. No partial writes. */
+export async function applyEmployeeDependentDocumentLinks(dependentId:number,changes:{addDocumentIds?:number[];removeDocumentIds?:number[]},contract?:DependentSaveContract,employeeId?:number):Promise<DependentSaveResult>{
+ if(!contract||employeeId===undefined)return {success:false,error:'Reopen the dependent to apply documents with an atomic save.'};
+ return updateEmployeeDependent(dependentId,{}, {...contract,addDocumentIds:changes.addDocumentIds??[],removeDocumentIds:changes.removeDocumentIds??[]},employeeId);
 }
 
 // ── ACCESS CARDS ──────────────────────────────────────────────────────────────
 
-const accessCardSchema = z.object({
-  access_type_id: z.number().int().positive({ message: "Access type is required" }),
-  client_authority: z.string().nullish(),
-  work_site_id: z.number().int().positive().nullish(),
-  card_number: z.string().nullish(),
-  application_reference: z.string().nullish(),
-  issue_date: z.string().nullish(),
-  expiry_date: z.string().nullish(),
-  status: z.enum(["active", "expired", "cancelled", "suspended", "pending", "in_application"]).default("pending"),
-  renewal_status: z.enum(["not_required", "pending", "in_progress", "complete"]).default("not_required"),
-  dms_document_id: z.number().int().positive().nullish(),
-  notes: z.string().nullish(),
-});
 
 export async function listEmployeeAccessCards(
   employeeId: number
@@ -1144,174 +457,24 @@ export async function listEmployeeAccessCards(
   }
 }
 
-export async function createEmployeeAccessCard(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number; dmsLinkCreated?: boolean }>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const parsed = accessCardSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const emp = await loadEmployeeForAudit(employeeId);
-    if (!emp) return { success: false, error: "Employee not found" };
-
-    let dmsLinkCreated = false;
-    if (parsed.data.dms_document_id) {
-      const linkResult = await linkComplianceDmsDocument(
-        employeeId,
-        parsed.data.dms_document_id,
-        "access_card"
-      );
-      if (!linkResult.success) return { success: false, error: linkResult.error };
-      dmsLinkCreated = linkResult.data?.created ?? false;
-    }
-
-    const admin = await createClient();
-    const { data, error } = await admin
-      .from("employee_access_cards")
-      .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
-      .select("id")
-      .single();
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employee_access_cards",
-      entity_id: data.id,
-      entity_reference: parsed.data.card_number ?? `access_type:${parsed.data.access_type_id}`,
-      action: "create",
-      new_values: { access_type_id: parsed.data.access_type_id, status: parsed.data.status },
-    });
-    revalidateEmployeePath(employeeId);
-    return { success: true, data: { id: data.id, dmsLinkCreated } };
-  } catch {
-    return { success: false, error: "Failed to create access card" };
-  }
+export async function createEmployeeAccessCard(employeeId:number,input:unknown,contract?:ChildSaveContract):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'access-card',employeeId,id:null,action:'create',revision:null,values:input},contract);
 }
 
-export async function updateEmployeeAccessCard(
-  id: number,
-  input: unknown
-): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const parsed = accessCardSchema.partial().safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_access_cards")
-      .select("id, employee_id")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    if (parsed.data.dms_document_id) {
-      const linkResult = await linkComplianceDmsDocument(
-        existing.employee_id,
-        parsed.data.dms_document_id,
-        "access_card"
-      );
-      if (!linkResult.success) return { success: false, error: linkResult.error };
-    }
-
-    const { error } = await admin
-      .from("employee_access_cards")
-      .update({ ...parsed.data, updated_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to update access card" };
-  }
+export async function updateEmployeeAccessCard(id:number,input:unknown,contract?:ChildSaveContract,employeeId?:number):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'access-card',employeeId,id,action:'update',revision:contract?.revision,values:input},contract);
 }
 
-export async function archiveEmployeeAccessCard(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_access_cards")
-      .select("id, employee_id")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    const { error } = await admin
-      .from("employee_access_cards")
-      .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to archive access card" };
-  }
+export async function archiveEmployeeAccessCard(id:number,contract?:ChildSaveContract,employeeId?:number):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'access-card',employeeId,id,action:'archive',revision:contract?.revision,values:{}},contract);
 }
 
-export async function updateAccessCardRenewalStatus(
-  id: number,
-  renewalStatus: "not_required" | "pending" | "in_progress" | "complete"
-): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_access_cards")
-      .select("id, employee_id")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    const { error } = await admin
-      .from("employee_access_cards")
-      .update({ renewal_status: renewalStatus, updated_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to update renewal status" };
-  }
+export async function updateAccessCardRenewalStatus(id:number,renewalStatus:string,contract?:ChildSaveContract,employeeId?:number):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'access-card',employeeId,id,action:'renewal',revision:contract?.revision,values:{renewal_status:renewalStatus}},contract);
 }
 
 // ── TRAINING CERTIFICATES ─────────────────────────────────────────────────────
 
-const trainingCertificateSchema = z.object({
-  training_category_id: z.number().int().positive().nullish(),
-  training_type_id: z.number().int().positive({ message: "Training type is required" }),
-  provider: z.string().nullish(),
-  approval_body: z.string().nullish(),
-  certificate_number: z.string().nullish(),
-  completion_date: z.string().nullish(),
-  expiry_date: z.string().nullish(),
-  required_for_designation: z.boolean().default(false),
-  required_for_site: z.boolean().default(false),
-  status: z.enum(["valid", "expired", "pending", "in_progress"]).default("valid"),
-  verification_status: z.enum(["unverified", "verified", "failed"]).default("unverified"),
-  dms_document_id: z.number().int().positive().nullish(),
-  notes: z.string().nullish(),
-});
 
 export async function listEmployeeTrainingCertificates(
   employeeId: number
@@ -1335,201 +498,28 @@ export async function listEmployeeTrainingCertificates(
   }
 }
 
-export async function createEmployeeTrainingCertificate(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number; dmsLinkCreated?: boolean }>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const parsed = trainingCertificateSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const emp = await loadEmployeeForAudit(employeeId);
-    if (!emp) return { success: false, error: "Employee not found" };
-
-    let dmsLinkCreated = false;
-    if (parsed.data.dms_document_id) {
-      const linkResult = await linkComplianceDmsDocument(
-        employeeId,
-        parsed.data.dms_document_id,
-        "training_certificate"
-      );
-      if (!linkResult.success) return { success: false, error: linkResult.error };
-      dmsLinkCreated = linkResult.data?.created ?? false;
-    }
-
-    const admin = await createClient();
-    const { data, error } = await admin
-      .from("employee_training_certificates")
-      .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
-      .select("id")
-      .single();
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employee_training_certificates",
-      entity_id: data.id,
-      entity_reference: parsed.data.certificate_number ?? `training_type:${parsed.data.training_type_id}`,
-      action: "create",
-      new_values: { training_type_id: parsed.data.training_type_id, status: parsed.data.status },
-    });
-    revalidateEmployeePath(employeeId);
-    return { success: true, data: { id: data.id, dmsLinkCreated } };
-  } catch {
-    return { success: false, error: "Failed to create training certificate" };
-  }
+export async function createEmployeeTrainingCertificate(employeeId:number,input:unknown,contract?:ChildSaveContract):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'training-certificate',employeeId,id:null,action:'create',revision:null,values:input},contract);
 }
 
-export async function updateEmployeeTrainingCertificate(
-  id: number,
-  input: unknown
-): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const parsed = trainingCertificateSchema.partial().safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_training_certificates")
-      .select("id, employee_id")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    if (parsed.data.dms_document_id) {
-      const linkResult = await linkComplianceDmsDocument(
-        existing.employee_id,
-        parsed.data.dms_document_id,
-        "training_certificate"
-      );
-      if (!linkResult.success) return { success: false, error: linkResult.error };
-    }
-
-    const { error } = await admin
-      .from("employee_training_certificates")
-      .update({ ...parsed.data, updated_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to update training certificate" };
-  }
+export async function updateEmployeeTrainingCertificate(id:number,input:unknown,contract?:ChildSaveContract,employeeId?:number):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'training-certificate',employeeId,id,action:'update',revision:contract?.revision,values:input},contract);
 }
 
-export async function archiveEmployeeTrainingCertificate(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_training_certificates")
-      .select("id, employee_id")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    const { error } = await admin
-      .from("employee_training_certificates")
-      .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to archive training certificate" };
-  }
+export async function archiveEmployeeTrainingCertificate(id:number,contract?:ChildSaveContract,employeeId?:number):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'training-certificate',employeeId,id,action:'archive',revision:contract?.revision,values:{}},contract);
 }
 
-export async function verifyEmployeeTrainingCertificate(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_training_certificates")
-      .select("id, employee_id")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    const { error } = await admin
-      .from("employee_training_certificates")
-      .update({ verification_status: "verified", updated_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to verify training certificate" };
-  }
+export async function verifyEmployeeTrainingCertificate(id:number,contract?:ChildSaveContract,employeeId?:number):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'training-certificate',employeeId,id,action:'verify',revision:contract?.revision,values:{}},contract);
 }
 
-export async function updateTrainingCertificateRenewalStatus(
-  id: number,
-  renewalStatus: "not_required" | "pending" | "in_progress" | "complete"
-): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.compliance.manage") && !hasPermission(ctx, "hr.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_training_certificates")
-      .select("id, employee_id")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    // renewal_status column does not exist on employee_training_certificates
-    // This function is a no-op kept for backward compatibility
-    void (renewalStatus);
-
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to update renewal status" };
-  }
+export async function updateTrainingCertificateRenewalStatus(id:number,renewalStatus:string,contract?:ChildSaveContract,employeeId?:number):Promise<ComplianceSaveResult>{
+ void id;void renewalStatus;void contract;void employeeId;return {success:false,error:'Training certificates have no renewal-status field. Update the actual certificate instead.'};
 }
 
 // ── MEDICAL RECORDS (RESTRICTED) ──────────────────────────────────────────────
 
-const medicalRecordSchema = z.object({
-  medical_record_type_id: z.number().int().positive({ message: "Medical record type is required" }),
-  medical_center: z.string().nullish(),
-  report_number: z.string().nullish(),
-  examination_date: z.string().min(1, "Examination date is required"),
-  result: z.enum(["fit", "unfit", "conditionally_fit", "under_review"]),
-  fit_for_work: z.boolean().default(false),
-  work_restrictions: z.boolean().default(false),
-  restriction_details: z.string().nullish(),
-  next_examination_date: z.string().nullish(),
-  required_for_visa: z.boolean().default(false),
-  required_for_site: z.boolean().default(false),
-  required_for_noc: z.boolean().default(false),
-  dms_document_id: z.number().int().positive().nullish(),
-  notes: z.string().nullish(),
-});
 
 export async function listEmployeeMedicalRecords(
   employeeId: number
@@ -1553,128 +543,16 @@ export async function listEmployeeMedicalRecords(
   }
 }
 
-export async function createEmployeeMedicalRecord(
-  employeeId: number,
-  input: unknown
-): Promise<ActionResult<{ id: number; dmsLinkCreated?: boolean }>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.medical.manage")) {
-      return { success: false, error: "Medical record management permission required" };
-    }
-    const parsed = medicalRecordSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const emp = await loadEmployeeForAudit(employeeId);
-    if (!emp) return { success: false, error: "Employee not found" };
-
-    let dmsLinkCreated = false;
-    if (parsed.data.dms_document_id) {
-      const linkResult = await linkComplianceDmsDocument(
-        employeeId,
-        parsed.data.dms_document_id,
-        "medical_record"
-      );
-      if (!linkResult.success) return { success: false, error: linkResult.error };
-      dmsLinkCreated = linkResult.data?.created ?? false;
-    }
-
-    const admin = await createClient();
-    const { data, error } = await admin
-      .from("employee_medical_records")
-      .insert({ employee_id: employeeId, ...parsed.data, created_by: ctx.profile?.id, updated_by: ctx.profile?.id })
-      .select("id")
-      .single();
-    if (error) return { success: false, error: error.message };
-
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employee_medical_records",
-      entity_id: data.id,
-      entity_reference: parsed.data.report_number ?? parsed.data.examination_date,
-      action: "create",
-      new_values: {
-        medical_record_type_id: parsed.data.medical_record_type_id,
-        result: parsed.data.result,
-        examination_date: parsed.data.examination_date,
-      },
-    });
-    revalidateEmployeePath(employeeId);
-    return { success: true, data: { id: data.id, dmsLinkCreated } };
-  } catch {
-    return { success: false, error: "Failed to create medical record" };
-  }
+export async function createEmployeeMedicalRecord(employeeId:number,input:unknown,contract?:ChildSaveContract):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'medical-record',employeeId,id:null,action:'create',revision:null,values:input},contract);
 }
 
-export async function updateEmployeeMedicalRecord(
-  id: number,
-  input: unknown
-): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.medical.manage")) {
-      return { success: false, error: "Medical record management permission required" };
-    }
-    const parsed = medicalRecordSchema.partial().safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_medical_records")
-      .select("id, employee_id")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    if (parsed.data.dms_document_id) {
-      const linkResult = await linkComplianceDmsDocument(
-        existing.employee_id,
-        parsed.data.dms_document_id,
-        "medical_record"
-      );
-      if (!linkResult.success) return { success: false, error: linkResult.error };
-    }
-
-    const { error } = await admin
-      .from("employee_medical_records")
-      .update({ ...parsed.data, updated_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to update medical record" };
-  }
+export async function updateEmployeeMedicalRecord(id:number,input:unknown,contract?:ChildSaveContract,employeeId?:number):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'medical-record',employeeId,id,action:'update',revision:contract?.revision,values:input},contract);
 }
 
-export async function archiveEmployeeMedicalRecord(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.medical.manage")) {
-      return { success: false, error: "Medical record management permission required" };
-    }
-    const admin = await createClient();
-    const { data: existing } = await admin
-      .from("employee_medical_records")
-      .select("id, employee_id")
-      .eq("id", id)
-      .is("deleted_at", null)
-      .single();
-    if (!existing) return { success: false, error: "Record not found" };
-
-    const { error } = await admin
-      .from("employee_medical_records")
-      .update({ deleted_at: new Date().toISOString(), deleted_by: ctx.profile?.id })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-
-    revalidateEmployeePath(existing.employee_id);
-    return { success: true };
-  } catch {
-    return { success: false, error: "Failed to archive medical record" };
-  }
+export async function archiveEmployeeMedicalRecord(id:number,contract?:ChildSaveContract,employeeId?:number):Promise<ComplianceSaveResult>{
+ return mutateHrChild({kind:'medical-record',employeeId,id,action:'archive',revision:contract?.revision,values:{}},contract);
 }
 
 // ── COMPLIANCE SUMMARY ────────────────────────────────────────────────────────

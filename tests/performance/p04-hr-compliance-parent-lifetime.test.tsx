@@ -15,16 +15,35 @@ import {complianceReadIdentity, type ComplianceKind} from "@/lib/reads/hr-compli
 import {syntheticAuthContext} from "./fixtures/auth-context";
 import {complianceFixture, complianceFixtureReply} from "./fixtures/compliance-record-fixture";
 
-const state = vi.hoisted(() => ({read: vi.fn(), mutate: vi.fn(), settings: vi.fn(), prefill: vi.fn(), genericPrefill: vi.fn(), docs: vi.fn(), error: vi.fn(), success: vi.fn(), dispatch: vi.fn(), markDirty: vi.fn(), profileSave: vi.fn(),
+const state = vi.hoisted(() => ({read: vi.fn(), mutate: vi.fn(), settings: vi.fn(), prefill: vi.fn(), genericPrefill: vi.fn(), docs: vi.fn(), error: vi.fn(), success: vi.fn(), dispatch: vi.fn(), markDirty: vi.fn(), profileSave: vi.fn(), reconcile:vi.fn(),
   store: null as ReturnType<typeof createWorkspaceDraftStore> | null, mounts: 0, dialogs: new Map<string, {submit?: () => unknown; close: (open: boolean) => void}>(),
   legacy: undefined as ((open: boolean) => void) | undefined, leases: undefined as ((token: object, open: boolean) => void) | undefined}));
 vi.mock("next/navigation", () => ({usePathname: () => "/admin/hr/employees/record/7", useRouter: () => ({replace: vi.fn(), refresh: vi.fn()})}));
 vi.mock("@/components/workspace/workspace-provider", () => ({useWorkspaceContext: () => ({state: {activeTabId: "owner", tabs: [{id: "owner", route: "/admin/hr/employees/record/7"}]}, dispatch: state.dispatch})}));
+vi.mock("@/server/actions/hr/child-mutation",()=>({
+ readComplianceChildRevision:async()=>({success:true,revision:"1"}),
+ mutateHrChild:async(request:import("@/lib/hr/child-save-contract").ChildMutation,contract:import("@/lib/hr/child-save-contract").ChildSaveContract)=>{
+  const names:Record<string,string>={"identity-document":"IdentityDocument","medical-insurance":"MedicalInsurance","access-card":"AccessCard","training-certificate":"TrainingCertificate","medical-record":"MedicalRecord"};
+  const action=request.action==='create'?'create':request.action==='archive'?'archive':request.action==='verify'?'verify':'update';
+  const args=action==='archive'||action==='verify'?[request.id,contract,request.employeeId]:[request.id??request.employeeId,request.values,contract];
+  const r=await state.mutate(action+"Employee"+names[request.kind],args);
+  return r.success?{...r,data:{kind:request.kind,id:r.data.id,employee_id:request.employeeId,operation_id:contract.operationId,revision:String(Number(request.revision??0)+1),replayed:false}}:r;
+ },reconcileHrChild:state.reconcile,
+}));
 vi.mock("@/components/workspace/workspace-draft-provider", () => ({useWorkspaceDraftStoreContext: () => state.store}));
 vi.mock("@/hooks/use-workspace", () => ({useWorkspace: () => ({closeTab: vi.fn(), markDirty: state.markDirty, updateTabRoute: vi.fn(), isTabActive: () => true})}));
 vi.mock("sonner", () => ({toast: {error: state.error, success: state.success, warning: vi.fn()}}));
 vi.mock("@/lib/reads/client", async original => ({...await original<typeof import("@/lib/reads/client")>(), readJson: state.read}));
 vi.mock("@/server/actions/hr/employees", () => ({createEmployee: state.profileSave, updateEmployee: state.profileSave}));
+// Ordinary synthetic atomic transport; real owned draft/recovery controller and
+// parent leases remain mounted. No separate evidence mutation is dispatched.
+vi.mock('@/server/actions/hr/dependent-mutation',()=>({
+ mutateEmployeeDependent:async(request:import('@/lib/hr/dependent-contract').DependentMutation,contract:import('@/lib/hr/dependent-contract').DependentSaveContract)=>{
+  const name=request.kind==='archive'?'archiveEmployeeDependent':request.id===null?'createEmployeeDependent':'updateEmployeeDependent';
+  const result=await state.mutate(name,[request.id??request.employeeId,request.values,contract]);
+  return result.success?{success:true,data:{id:result.data.id,employee_id:request.employeeId,operation_id:contract.operationId,revision:String(Number(request.revision??0)+1),replayed:false}}:result;
+ },reconcileDependentMutation:vi.fn(),
+}));
 vi.mock("@/server/actions/hr/compliance", () => Object.fromEntries([
   "createEmployeeIdentityDocument", "updateEmployeeIdentityDocument", "archiveEmployeeIdentityDocument", "verifyEmployeeIdentityDocument",
   "createEmployeeMedicalInsurance", "updateEmployeeMedicalInsurance", "archiveEmployeeMedicalInsurance", "verifyEmployeeMedicalInsurance",
@@ -85,6 +104,7 @@ const clients: QueryClient[] = [];
 function deferred<T>() {let resolve!: (value: T) => void, reject!: (error: Error) => void; const promise = new Promise<T>((done, fail) => {resolve = done; reject = fail;}); return {promise, resolve, reject};}
 beforeEach(() => {
   state.store = createWorkspaceDraftStore(); state.store.setViewState("draft:tab:owner:section:employee-workspace-form", "compliance");
+  state.reconcile.mockResolvedValue({success:false,uncertain:true,error:'Synthetic receipt remains unconfirmed'});
   state.mounts = 0; state.leases = undefined; state.legacy = undefined;
   state.read.mockImplementation(normalRead);
   state.settings.mockResolvedValue({success: true, data: {data: [{id: 1, name_en: "Synthetic type", code: "SYNTH", is_active: true}]}});
@@ -92,7 +112,7 @@ beforeEach(() => {
   state.prefill.mockImplementation(async (_: number, id: number) => prefill(id));
   state.genericPrefill.mockImplementation(async (_: number, id: number) => ({success: true, data: {dms_document_id: id, linkedToEmployee: true, sourceDocument: {document_no: `SYNTH-${id}`, title: `Synthetic document ${id}`}, prefillSource: "dms_metadata", fields: {dependent_name_en: `Synthetic dependent ${id}`, relationship_type_id: 1}}}));
 });
-afterEach(() => {cleanup(); clients.splice(0).forEach(client => client.clear()); state.dialogs.clear(); vi.restoreAllMocks(); for (const fn of [state.read, state.mutate, state.settings, state.prefill, state.genericPrefill, state.docs, state.error, state.success, state.dispatch, state.markDirty, state.profileSave]) fn.mockReset();});
+afterEach(() => {cleanup(); clients.splice(0).forEach(client => client.clear()); state.dialogs.clear(); vi.restoreAllMocks(); for (const fn of [state.read, state.mutate, state.settings, state.prefill, state.genericPrefill, state.docs, state.error, state.success, state.dispatch, state.markDirty, state.profileSave,state.reconcile]) fn.mockReset();});
 function mount() {
   const client = new QueryClient({defaultOptions: {queries: {retry: false, retryDelay: 0}}}); clients.push(client);
   const tree = (ctx: AuthContext) => <QueryClientProvider client={client}><WorkspaceUiMemoryProvider><EmployeeWorkspaceForm employee={employee} mode="edit" authContext={ctx}/></WorkspaceUiMemoryProvider></QueryClientProvider>;
@@ -127,7 +147,7 @@ it.each(remainingCreates)("real $kind manual create bridge sends one confirmed k
   for (const [label, value] of item.fields) fireEvent.change(within(dialog).getByLabelText(label), {target: {value}});
   fireEvent.change(within(dialog).getByLabelText("Notes"), {target: {value: "SYNTHETIC_CREATE_NOTE"}});
   fireEvent.click(within(dialog).getByRole("button", {name: /^Save/}));
-  await waitFor(() => expect(state.mutate).toHaveBeenCalledWith(item.action, [7, expect.objectContaining({...item.payload, dms_document_id: null, notes: "SYNTHETIC_CREATE_NOTE"})]));
+  await waitFor(() => expect(state.mutate).toHaveBeenCalledWith(item.action, [7, expect.objectContaining({...item.payload, dms_document_id: null, notes: "SYNTHETIC_CREATE_NOTE"}),expect.objectContaining({operationId:expect.any(String),revision:null})]));
   expect(state.mutate).toHaveBeenCalledTimes(1); await waitFor(() => expect(view.client.getQueryState(key)?.isInvalidated).toBe(true));
   expect(view.client.getQueryState(other)?.isInvalidated).toBe(false);
   expect(spy.mock.calls.filter(([f]) => JSON.stringify(f?.queryKey) === JSON.stringify(["hr", "compliance", item.legacy, 7]))).toHaveLength(1);
@@ -137,30 +157,31 @@ it.each(remainingCreates)("real $kind manual create bridge sends one confirmed k
 it("actual form retires private scope state without remounting or losing its profile draft, and old closes cannot unlock B", async () => {
   const view = mount(); await screen.findByText("Synthetic identity");
   fireEvent.change(screen.getByLabelText("Profile name"), {target: {value: "RETAINED_PROFILE_DRAFT"}});
-  const saveSession = state.store!.getViewState("draft:tab:owner:employee-workspace-form:save");
+  const saveSession = state.store!.getViewState("draft:tab:owner:employee-workspace-form:actor:7:compliance-parent:save");
+  expect(saveSession).toBeDefined();
   await manual(); const old = state.dialogs.get("Review & Save Legal Document")!; expect(locked()).toBe(true);
   view.replace(scopedB); await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(locked()).toBe(false); expect((screen.getByLabelText("Profile name") as HTMLInputElement).value).toBe("RETAINED_PROFILE_DRAFT");
-  expect(state.store!.getViewState("draft:tab:owner:employee-workspace-form:save")).toBe(saveSession); expect(state.mounts).toBe(1);
+  expect(state.store!.getViewState("draft:tab:owner:employee-workspace-form:actor:7:compliance-parent:save")).toBe(saveSession); expect(state.mounts).toBe(1);
   const b = await manual(); fireEvent.change(within(b).getByLabelText("Identity number"), {target: {value: "PRIVATE-B"}});
   await act(async () => {old.close(false); old.close(true); old.submit?.();});
   expect(locked()).toBe(true); expect((screen.getByLabelText("Identity number") as HTMLInputElement).value).toBe("PRIVATE-B"); expect(state.mutate).not.toHaveBeenCalled();
 });
-it.each(["success", "unknown"] as const)("actual identity pending %s survives scoped ABA with one transition and an independent confirmed-cache path", async outcome => {
-  const pending = deferred<{success: true; data: {id: number}}>(); state.mutate.mockReturnValue(pending.promise);
-  const view = mount(); await screen.findByText("Synthetic identity"); const key = shadowKey("identity"); view.client.setQueryData(key, {marker: "old"});
-  const dialog = await manual(), old = state.dialogs.get("Review & Save Legal Document")!; fireEvent.click(within(dialog).getByRole("button", {name: /^Save/}));
-  await waitFor(() => expect(primaryCalls("createEmployeeIdentityDocument")).toHaveLength(1)); view.replace(scopedB); view.replace(auth);
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull()); await add(); expect(locked()).toBe(true);
-  await act(async () => {old.submit?.(); if (outcome === "success") pending.resolve({success: true, data: {id: 17}}); else pending.reject(new Error("Synthetic response lost"));});
-  expect(screen.getByRole("button", {name: /Enter Manually/})).toBeTruthy(); expect(locked()).toBe(true); expect(state.mounts).toBe(1); expect(state.success).not.toHaveBeenCalled();
-  expect(view.client.getQueryState(key)?.isInvalidated ?? false).toBe(outcome === "success");
-  if (outcome === "unknown") {
-    fireEvent.click(screen.getByRole("button", {name: /Enter Manually/})); const next = screen.getByRole("dialog");
-    fireEvent.change(within(next).getByLabelText("Identity type"), {target: {value: "1"}}); fireEvent.change(within(next).getByLabelText("Identity number"), {target: {value: "PRIVATE-B"}});
-    await act(async () => {state.dialogs.get("Review & Save Legal Document")?.submit?.();});
-  }
-  expect(primaryCalls("createEmployeeIdentityDocument")).toHaveLength(1);
+it.each(["success","unknown"] as const)("actual identity pending %s keeps the opaque ABA gate until explicit reconciliation",async outcome=>{
+ const pending=deferred<{success:true;data:{id:number}}>();state.mutate.mockReturnValue(pending.promise);
+ const view=mount();await screen.findByText("Synthetic identity");const key=shadowKey("identity");view.client.setQueryData(key,{marker:"old"});
+ const dialog=await manual(),old=state.dialogs.get("Review & Save Legal Document")!;fireEvent.click(within(dialog).getByRole("button",{name:/^Save/}));
+ await waitFor(()=>expect(primaryCalls("createEmployeeIdentityDocument")).toHaveLength(1));const op=primaryCalls("createEmployeeIdentityDocument")[0][1][2].operationId;
+ view.replace(scopedB);view.replace(auth);await waitFor(()=>expect(screen.queryByRole("dialog")).toBeNull());
+ fireEvent.click(within(collection()).getByRole("button",{name:"Add"}));expect(screen.queryByRole("dialog")).toBeNull();expect(locked()).toBe(false);
+ await act(async()=>{old.submit?.();if(outcome==="success")pending.resolve({success:true,data:{id:17}});else pending.reject(Error("Synthetic response lost"));});
+ expect(screen.queryByRole("dialog")).toBeNull();expect(state.success).not.toHaveBeenCalled();expect(primaryCalls("createEmployeeIdentityDocument")).toHaveLength(1);
+ expect(view.client.getQueryState(key)?.isInvalidated??false).toBe(outcome==="success");
+ if(outcome==="success")state.reconcile.mockResolvedValue({success:true,data:{kind:"identity-document",id:17,employee_id:7,operation_id:op,revision:"1",replayed:true}});
+ const check=await screen.findByRole("button",{name:"Check earlier result"});fireEvent.click(check);await waitFor(()=>expect(state.reconcile).toHaveBeenCalledWith(op));
+ if(outcome==="success"){await waitFor(()=>expect(screen.queryByRole("button",{name:"Check earlier result"})).toBeNull());await add();expect(screen.getByRole("button",{name:/Enter Manually/})).toBeTruthy();}
+ else{await screen.findByText("Synthetic receipt remains unconfirmed");fireEvent.click(within(collection()).getByRole("button",{name:"Add"}));expect(screen.queryByRole("dialog")).toBeNull();}
+ expect(primaryCalls("createEmployeeIdentityDocument")).toHaveLength(1);expect(state.mounts).toBe(1);
 });
 it("actual identity pending prefill cannot publish into a reopened same-principal ABA generation", async () => {
   const pending = deferred<ReturnType<typeof prefill>>(); state.prefill.mockReturnValue(pending.promise); const view = mount(); await screen.findByText("Synthetic identity");
@@ -191,19 +212,20 @@ it.each(["Legal Documents", "Dependents"])("real %s parent admits both batch ite
   expect(spy.mock.calls.filter(([filters]) => JSON.stringify(filters?.queryKey) === JSON.stringify(["hr", "compliance", legacy, 7]))).toHaveLength(1);
   expect(screen.getByText(/2 created.*0 failed.*0 not submitted/)).toBeTruthy();
 });
-it.each(["add", "edit"] as const)("actual dependent %s confirms primary once even when staged links throw, without refreshing before link dispatch", async mode => {
-  const links = deferred<never>(); state.mutate.mockImplementation(async (name: string) => name === "applyEmployeeDependentDocumentLinks" ? links.promise : {success: true, data: {id: 17}});
-  const view = mount(); await screen.findByText("Synthetic identity"); const key = shadowKey("dependents"); view.client.setQueryData(key, {marker: "old"});
-  let dialog: HTMLElement;
-  if (mode === "add") dialog = await manual("Dependents"); else {fireEvent.click(within(collection("Dependents")).getByRole("button", {name: "Edit record"})); dialog = await screen.findByRole("dialog", {name: "Edit Dependent"});}
-  await waitFor(() => expect((within(dialog).getByRole("button", {name: /^Save/}) as HTMLButtonElement).disabled).toBe(false));
-  fireEvent.click(within(dialog).getByRole("button", {name: "Stage synthetic link"})); fireEvent.click(within(dialog).getByRole("button", {name: /^Save/}));
-  await waitFor(() => expect(primaryCalls("applyEmployeeDependentDocumentLinks")).toHaveLength(1)); expect(view.client.getQueryState(key)?.isInvalidated).toBe(false);
-  await act(async () => {links.reject(new Error("Synthetic link response lost"));});
-  await waitFor(() => expect(view.client.getQueryState(key)?.isInvalidated).toBe(true));
-  expect(primaryCalls(mode === "add" ? "createEmployeeDependent" : "updateEmployeeDependent")).toHaveLength(1); expect(state.success).not.toHaveBeenCalled();
-  await act(async () => {state.dialogs.get(mode === "add" ? "Review & Save Dependent" : "Edit Dependent")?.submit?.();});
-  expect(primaryCalls(mode === "add" ? "createEmployeeDependent" : "updateEmployeeDependent")).toHaveLength(1);
+it.each(["add","edit"] as const)("atomic dependent %s retains record/evidence operation through response loss and reconciles once",async mode=>{
+ const pending=deferred<{success:true;data:{id:number}}>();state.mutate.mockReturnValue(pending.promise);
+ const view=mount();await screen.findByText("Synthetic identity");const key=shadowKey("dependents");view.client.setQueryData(key,{marker:"old"});
+ const dialog=mode==="add"?await manual("Dependents"):await openEdit(editKinds[2]);
+ fireEvent.click(within(dialog).getByRole("button",{name:"Stage synthetic link"}));fireEvent.click(within(dialog).getByRole("button",{name:/^Save/}));
+ const action=mode==="add"?"createEmployeeDependent":"updateEmployeeDependent";await waitFor(()=>expect(primaryCalls(action)).toHaveLength(1));
+ const original=structuredClone(primaryCalls(action)[0]);expect(original[1][2]).toMatchObject({addDocumentIds:[41],removeDocumentIds:[]});
+ expect(primaryCalls("applyEmployeeDependentDocumentLinks")).toHaveLength(0);expect(view.client.getQueryState(key)?.isInvalidated).toBe(false);
+ await act(async()=>{pending.reject(Error("Synthetic atomic response lost"));});
+ expect(view.client.getQueryState(key)?.isInvalidated).toBe(false);expect(state.success).not.toHaveBeenCalled();
+ state.mutate.mockResolvedValue({success:true,data:{id:17}});
+ fireEvent.click(await screen.findByRole("button",{name:"Retry original dependent save"}));
+ await waitFor(()=>expect(primaryCalls(action)).toHaveLength(2));expect(primaryCalls(action)[1]).toEqual(original);
+ await waitFor(()=>expect(view.client.getQueryState(key)?.isInvalidated).toBe(true));expect(primaryCalls("applyEmployeeDependentDocumentLinks")).toHaveLength(0);
 });
 
 it("an actual principal session remount releases only its own lease and late success cannot unlock the replacement", async () => {
@@ -219,40 +241,27 @@ it("an actual principal session remount releases only its own lease and late suc
   expect(view.client.getQueryState(key)?.isInvalidated).toBe(true); expect(state.success).not.toHaveBeenCalled(); expect(state.mutate).toHaveBeenCalledTimes(1);
 });
 
-it("a retired real dependent primary receipt never borrows a replacement generation's staged links", async () => {
-  const pending = deferred<{success: true; data: {id: number}}>(); state.mutate.mockReturnValue(pending.promise);
-  const view = mount(); await screen.findByText("Synthetic identity"); const key = shadowKey("dependents"); view.client.setQueryData(key, {marker: "old"});
-  const first = await manual("Dependents"); fireEvent.click(within(first).getByRole("button", {name: "Stage synthetic link"}));
-  fireEvent.click(within(first).getByRole("button", {name: /^Save/})); await waitFor(() => expect(primaryCalls("createEmployeeDependent")).toHaveLength(1));
-  view.replace(scopedB); await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  const replacement = await manual("Dependents"); fireEvent.change(within(replacement).getByLabelText("Name (English)"), {target: {value: "REPLACEMENT_DEPENDENT"}});
-  fireEvent.click(within(replacement).getByRole("button", {name: "Stage synthetic link"}));
-  const spy = vi.spyOn(view.client, "invalidateQueries"); await act(async () => {pending.resolve({success: true, data: {id: 17}});});
-  expect(primaryCalls("createEmployeeDependent")).toHaveLength(1); expect(primaryCalls("applyEmployeeDependentDocumentLinks")).toHaveLength(0);
-  expect(view.client.getQueryState(key)?.isInvalidated).toBe(true); expect(locked()).toBe(true);
-  expect((screen.getByLabelText("Name (English)") as HTMLInputElement).value).toBe("REPLACEMENT_DEPENDENT"); expect(state.success).not.toHaveBeenCalled(); expect(state.error).not.toHaveBeenCalled();
-  expect(spy.mock.calls.filter(([f]) => JSON.stringify(f?.queryKey) === JSON.stringify(["hr", "compliance", "dependents", 7]))).toHaveLength(1);
+it("a retired dependent atomic receipt cannot borrow a replacement scope's links or acknowledge its editor",async()=>{
+ const pending=deferred<{success:true;data:{id:number}}>();state.mutate.mockReturnValue(pending.promise);
+ const view=mount();await screen.findByText("Synthetic identity");const key=shadowKey("dependents");view.client.setQueryData(key,{marker:"old"});
+ const first=await manual("Dependents");fireEvent.click(within(first).getByRole("button",{name:"Stage synthetic link"}));fireEvent.click(within(first).getByRole("button",{name:/^Save/}));
+ await waitFor(()=>expect(primaryCalls("createEmployeeDependent")).toHaveLength(1));view.replace(scopedB);await waitFor(()=>expect(screen.queryByRole("dialog")).toBeNull());
+ const replacementAdd=within(collection("Dependents")).queryByRole("button",{name:"Add"});if(replacementAdd)fireEvent.click(replacementAdd);expect(screen.queryByRole("dialog")).toBeNull();
+ const original=primaryCalls("createEmployeeDependent")[0];expect(original[1][2]).toMatchObject({addDocumentIds:[41]});state.error.mockClear();
+ await act(async()=>{pending.resolve({success:true,data:{id:17}});});
+ expect(primaryCalls("createEmployeeDependent")).toHaveLength(1);expect(primaryCalls("applyEmployeeDependentDocumentLinks")).toHaveLength(0);
+ expect(view.client.getQueryState(key)?.isInvalidated).toBe(true);expect(screen.queryByRole("dialog")).toBeNull();expect(state.success).not.toHaveBeenCalled();expect(state.error).not.toHaveBeenCalled();
+ expect(state.store!.getViewState("draft:tab:owner:f11-dependent:7:7:editor")).not.toContain("Synthetic dependent");
 });
 
-it.each(["false", "unknown"] as const)("a retired real dependent link %s settles its primary fact once and preserves the replacement editor", async outcome => {
-  const links = deferred<{success: false; error: string}>(); state.mutate.mockImplementation(async (name: string) => name === "applyEmployeeDependentDocumentLinks" ? links.promise : {success: true, data: {id: 17}});
-  const view = mount(); await screen.findByText("Synthetic identity"); const key = shadowKey("dependents"); view.client.setQueryData(key, {marker: "old"});
-  const first = await manual("Dependents"); fireEvent.click(within(first).getByRole("button", {name: "Stage synthetic link"})); fireEvent.click(within(first).getByRole("button", {name: /^Save/}));
-  await waitFor(() => expect(primaryCalls("applyEmployeeDependentDocumentLinks")).toHaveLength(1)); expect(view.client.getQueryState(key)?.isInvalidated).toBe(false);
-  view.replace(scopedB); view.replace(auth); await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  const replacement = await manual("Dependents"); fireEvent.change(within(replacement).getByLabelText("Name (English)"), {target: {value: "REPLACEMENT_LINK_OWNER"}});
-  const spy = vi.spyOn(view.client, "invalidateQueries");
-  await act(async () => {if (outcome === "unknown") links.reject(new Error("Synthetic link response lost")); else links.resolve({success: false, error: "Synthetic link rejected"});});
-  expect(view.client.getQueryState(key)?.isInvalidated).toBe(true); expect(locked()).toBe(true);
-  expect((screen.getByLabelText("Name (English)") as HTMLInputElement).value).toBe("REPLACEMENT_LINK_OWNER"); expect(state.success).not.toHaveBeenCalled();
-  expect(spy.mock.calls.filter(([f]) => JSON.stringify(f?.queryKey) === JSON.stringify(["hr", "compliance", "dependents", 7]))).toHaveLength(1);
-  if (outcome === "false") expect(state.error).not.toHaveBeenCalled();
-  else {
-    // The unchanged guarded transition retains its uncertainty latch across ABA.
-    await act(async () => {state.dialogs.get("Review & Save Dependent")?.submit?.();});
-    expect(primaryCalls("createEmployeeDependent")).toHaveLength(1);
-  }
-  expect(primaryCalls("applyEmployeeDependentDocumentLinks")).toHaveLength(1);
+it.each(["false","unknown"] as const)("retired dependent atomic %s outcome cannot invent a partial saved fact",async outcome=>{
+ const pending=deferred<{success:false;error:string}>();state.mutate.mockReturnValue(pending.promise);
+ const view=mount();await screen.findByText("Synthetic identity");const key=shadowKey("dependents");view.client.setQueryData(key,{marker:"old"});
+ const first=await manual("Dependents");fireEvent.click(within(first).getByRole("button",{name:"Stage synthetic link"}));fireEvent.click(within(first).getByRole("button",{name:/^Save/}));
+ await waitFor(()=>expect(primaryCalls("createEmployeeDependent")).toHaveLength(1));view.replace(scopedB);await waitFor(()=>expect(screen.queryByRole("dialog")).toBeNull());
+ await act(async()=>{if(outcome==="unknown")pending.reject(Error("Synthetic unknown atomic outcome"));else pending.resolve({success:false,error:"Rejected atomic operation"});});
+ expect(view.client.getQueryState(key)?.isInvalidated).toBe(false);expect(primaryCalls("applyEmployeeDependentDocumentLinks")).toHaveLength(0);expect(state.success).not.toHaveBeenCalled();
+ fireEvent.click(within(collection("Dependents")).getByRole("button",{name:"Add"}));expect(screen.queryByRole("dialog")).toBeNull();expect(primaryCalls("createEmployeeDependent")).toHaveLength(1);
 });
 
 it.each(["Legal Documents", "Dependents"])("real %s parent flushes an earlier batch commit after the next prefill retires", async label => {
@@ -406,23 +415,18 @@ async function reopenRetainedDetail(view: ReturnType<typeof mount>, item: EditKi
   return dialog;
 }
 
-it.each(editKinds)("same-owner opening: retired $kind edit success preserves the actual replacement Add draft and parent lease", async item => {
-  const pending = deferred<{success: true; data: {id: number}}>(); state.mutate.mockReturnValue(pending.promise);
-  const view = mount(); await screen.findByText("Synthetic identity");
-  fireEvent.change(screen.getByLabelText("Profile name"), {target: {value: "RETAINED_PROFILE_DRAFT"}});
-  const dialog = await openEdit(item); fireEvent.change(within(dialog).getByLabelText("Notes"), {target: {value: "ORIGINAL_EDIT_DRAFT"}});
-  fireEvent.click(within(dialog).getByRole("button", {name: "Save"}));
-  await waitFor(() => expect(state.mutate).toHaveBeenCalledWith(item.action, [17, expect.objectContaining({notes: "ORIGINAL_EDIT_DRAFT"})]));
-  expect(within(dialog).getByLabelText("Notes").closest("[inert]")).not.toBeNull();
-  await retireDetailOpening(view, item); const replacement = await replacementAdd(item), notice = watchEditNotification(view, item);
-  await act(async () => {pending.resolve({success: true, data: {id: 17}});});
-  await waitFor(() => expect(notice.count()).toBe(1)); expect(view.client.getQueryState(notice.key)?.isInvalidated).toBe(true);
-  expect(view.client.getQueryState(notice.other)?.isInvalidated).toBe(false); assertReplacement(replacement);
-  expect((screen.getByLabelText("Profile name") as HTMLInputElement).value).toBe("RETAINED_PROFILE_DRAFT");
-  expect(state.success).not.toHaveBeenCalled(); expect(state.error).not.toHaveBeenCalled(); expect(state.mutate).toHaveBeenCalledTimes(1);
-  if (item.kind === "identity") expect(state.mounts).toBe(1);
+it.each(editKinds)("same-owner opening: retired $kind save blocks replacement until its original outcome settles",async item=>{
+ const pending=deferred<{success:true;data:{id:number}}>();state.mutate.mockReturnValue(pending.promise);
+ const view=mount();await screen.findByText("Synthetic identity");fireEvent.change(screen.getByLabelText("Profile name"),{target:{value:"RETAINED_PROFILE_DRAFT"}});
+ const dialog=await openEdit(item);fireEvent.change(within(dialog).getByLabelText("Notes"),{target:{value:"ORIGINAL_EDIT_DRAFT"}});fireEvent.click(within(dialog).getByRole("button",{name:"Save"}));
+ await waitFor(()=>expect(primaryCalls(item.action)).toHaveLength(1));expect(primaryCalls(item.action)[0][1][2]).toMatchObject({operationId:expect.any(String),revision:"1"});
+ await retireDetailOpening(view,item);const notice=watchEditNotification(view,item);
+ fireEvent.click(within(collection(item.label)).getByRole("button",{name:"Add"}));expect(screen.queryByRole("dialog")).toBeNull();
+ await act(async()=>{pending.resolve({success:true,data:{id:17}});});await waitFor(()=>expect(notice.count()).toBe(1));
+ expect(view.client.getQueryState(notice.key)?.isInvalidated).toBe(true);expect(view.client.getQueryState(notice.other)?.isInvalidated).toBe(false);
+ expect(screen.queryByRole("dialog")).toBeNull();expect((screen.getByLabelText("Profile name")as HTMLInputElement).value).toBe("RETAINED_PROFILE_DRAFT");
+ expect(state.success).not.toHaveBeenCalled();expect(primaryCalls(item.action)).toHaveLength(1);expect(state.mounts).toBe(1);
 });
-
 it.each(editKinds)("same-owner opening: ordinary $kind edit success still closes its own opening and confirms once", async item => {
   const pending = deferred<{success: true; data: {id: number}}>(); state.mutate.mockReturnValue(pending.promise);
   const view = mount(); await screen.findByText("Synthetic identity"); const dialog = await openEdit(item), notice = watchEditNotification(view, item);
@@ -434,74 +438,43 @@ it.each(editKinds)("same-owner opening: ordinary $kind edit success still closes
   expect(view.client.getQueryState(notice.other)?.isInvalidated).toBe(false); expect(state.success).toHaveBeenCalledTimes(1); expect(state.mutate).toHaveBeenCalledTimes(1);
 });
 
-it("same-owner opening: reopening the same edit row does not revive its older completion", async () => {
-  const item = editKinds[0], pending = deferred<{success: true; data: {id: number}}>(); state.mutate.mockReturnValue(pending.promise);
-  const view = mount(); await screen.findByText("Synthetic identity"); const first = await openEdit(item);
-  fireEvent.click(within(first).getByRole("button", {name: "Save"})); await waitFor(() => expect(primaryCalls(item.action)).toHaveLength(1));
-  await retireDetailOpening(view, item);
-  const replacement = await reopenRetainedDetail(view, item), notice = watchEditNotification(view, item);
-  // No fabricated typed Edit B: the old section transition still makes this
-  // actual replacement edit inert until the old action settles.
-  expect(within(replacement).getByLabelText("Notes").closest("[inert]")).not.toBeNull();
-  expect((within(replacement).getByRole("button", {name: "Save"}) as HTMLButtonElement).disabled).toBe(true);
-  await act(async () => {pending.resolve({success: true, data: {id: 17}});});
-  expect(document.body.contains(replacement)).toBe(true); expect(locked()).toBe(true); expect(notice.count()).toBe(1);
-  expect(state.success).not.toHaveBeenCalled(); expect(state.mutate).toHaveBeenCalledTimes(1);
+it("same-owner opening: an unresolved edit cannot reopen or revive its older completion",async()=>{
+ const item=editKinds[0],pending=deferred<{success:true;data:{id:number}}>();state.mutate.mockReturnValue(pending.promise);
+ const view=mount();await screen.findByText("Synthetic identity");const first=await openEdit(item);fireEvent.click(within(first).getByRole("button",{name:"Save"}));await waitFor(()=>expect(primaryCalls(item.action)).toHaveLength(1));
+ await retireDetailOpening(view,item);const notice=watchEditNotification(view,item);
+ fireEvent.click(within(collection(item.label)).getByRole("button",{name:"Edit"}));expect(screen.queryByRole("dialog")).toBeNull();
+ await act(async()=>{pending.resolve({success:true,data:{id:17}});});await waitFor(()=>expect(notice.count()).toBe(1));
+ expect(screen.queryByRole("dialog")).toBeNull();expect(locked()).toBe(false);expect(state.success).not.toHaveBeenCalled();expect(primaryCalls(item.action)).toHaveLength(1);
+});
+it.each(["rejected","unknown"]as const)("same-owner opening: old edit %s never replaces an unresolved operation",async outcome=>{
+ const item=editKinds[0],pending=deferred<{success:false;error:string}>();state.mutate.mockReturnValue(pending.promise);
+ const view=mount();await screen.findByText("Synthetic identity");const first=await openEdit(item);fireEvent.click(within(first).getByRole("button",{name:"Save"}));await waitFor(()=>expect(primaryCalls(item.action)).toHaveLength(1));
+ await retireDetailOpening(view,item);const notice=watchEditNotification(view,item);fireEvent.click(within(collection(item.label)).getByRole("button",{name:"Add"}));expect(screen.queryByRole("dialog")).toBeNull();
+ await act(async()=>{if(outcome==="unknown")pending.reject(Error("Synthetic response lost"));else pending.resolve({success:false,error:"Original opening rejected"});});
+ expect(notice.count()).toBe(0);expect(view.client.getQueryState(notice.key)?.isInvalidated).toBe(false);expect(state.success).not.toHaveBeenCalled();expect(primaryCalls(item.action)).toHaveLength(1);
+ if(outcome==="unknown"){
+  const keep=await screen.findByRole("button",{name:"Keep recovery for later"});fireEvent.click(keep);
+  fireEvent.click(await screen.findByRole("button",{name:"Check earlier result"}));await screen.findByText("Synthetic receipt remains unconfirmed");
+  fireEvent.click(within(collection(item.label)).getByRole("button",{name:"Add"}));expect(screen.queryByRole("dialog")).toBeNull();expect(primaryCalls(item.action)).toHaveLength(1);
+ }
+});
+it("same-owner retired dependent keeps its original evidence contract and blocks a second operation",async()=>{
+ const item=editKinds[2],pending=deferred<{success:true;data:{id:number}}>();state.mutate.mockReturnValue(pending.promise);
+ const view=mount();await screen.findByText("Synthetic identity");const first=await openEdit(item);
+ fireEvent.click(within(first).getByRole("button",{name:"Stage synthetic link"}));fireEvent.click(within(first).getByRole("button",{name:"Save"}));await waitFor(()=>expect(primaryCalls(item.action)).toHaveLength(1));
+ const original=structuredClone(primaryCalls(item.action)[0]);await retireDetailOpening(view,item);const notice=watchEditNotification(view,item);
+ fireEvent.click(within(collection(item.label)).getByRole("button",{name:"Add"}));expect(screen.queryByRole("dialog")).toBeNull();state.error.mockClear();
+ await act(async()=>{pending.resolve({success:true,data:{id:17}});});expect(notice.count()).toBe(1);expect(primaryCalls("applyEmployeeDependentDocumentLinks")).toHaveLength(0);
+ expect(primaryCalls(item.action)).toEqual([original]);expect(screen.queryByRole("dialog")).toBeNull();expect(state.success).not.toHaveBeenCalled();expect(state.error).not.toHaveBeenCalled();
 });
 
-it.each(["rejected", "unknown"] as const)("same-owner opening: old edit %s preserves Add and the original outcome semantics", async outcome => {
-  const item = editKinds[0], pending = deferred<{success: false; error: string}>(); state.mutate.mockReturnValue(pending.promise);
-  const view = mount(); await screen.findByText("Synthetic identity"); const first = await openEdit(item);
-  fireEvent.click(within(first).getByRole("button", {name: "Save"})); await waitFor(() => expect(primaryCalls(item.action)).toHaveLength(1));
-  await retireDetailOpening(view, item); const replacement = await replacementAdd(item), notice = watchEditNotification(view, item);
-  await act(async () => {if (outcome === "unknown") pending.reject(new Error("Synthetic update response lost")); else pending.resolve({success: false, error: "Original opening rejected"});});
-  assertReplacement(replacement); expect(notice.count()).toBe(0); expect(view.client.getQueryState(notice.key)?.isInvalidated).toBe(false);
-  expect(state.success).not.toHaveBeenCalled(); expect(state.mutate).toHaveBeenCalledTimes(1);
-  if (outcome === "rejected") expect(state.error).not.toHaveBeenCalled();
-  else {
-    expect(state.error).toHaveBeenCalledWith(expect.stringContaining("operation could not be confirmed"));
-    await cancelReplacement(replacement); const next = await reopenRetainedDetail(view, item);
-    await waitFor(() => expect((within(next).getByRole("button", {name: "Save"}) as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(within(next).getByRole("button", {name: "Save"}));
-    await waitFor(() => expect(state.error).toHaveBeenCalledWith(expect.stringContaining("previous operation is unconfirmed")));
-    expect(primaryCalls(item.action)).toHaveLength(1);
-  }
-});
-
-it("same-owner opening: retired dependent primary never starts links borrowed from replacement Add", async () => {
-  const item = editKinds[2], pending = deferred<{success: true; data: {id: number}}>();
-  state.mutate.mockImplementation((name: string) => name === item.action ? pending.promise : Promise.resolve({success: true}));
-  const view = mount(); await screen.findByText("Synthetic identity"); const first = await openEdit(item);
-  fireEvent.click(within(first).getByRole("button", {name: "Save"})); await waitFor(() => expect(primaryCalls(item.action)).toHaveLength(1));
-  await retireDetailOpening(view, item); const replacement = await replacementAdd(item), notice = watchEditNotification(view, item);
-  fireEvent.click(within(replacement).getByRole("button", {name: "Stage synthetic link"}));
-  await act(async () => {pending.resolve({success: true, data: {id: 17}});});
-  expect(notice.count()).toBe(1); expect(view.client.getQueryState(notice.key)?.isInvalidated).toBe(true);
-  expect(primaryCalls("applyEmployeeDependentDocumentLinks")).toHaveLength(0); assertReplacement(replacement);
-  expect(state.success).not.toHaveBeenCalled(); expect(state.error).not.toHaveBeenCalled(); expect(state.mutate).toHaveBeenCalledTimes(1);
-});
-
-it.each(["success", "rejected", "unknown"] as const)("same-owner opening: already-dispatched dependent links settle %s without touching replacement Add", async outcome => {
-  const item = editKinds[2], links = deferred<{success: boolean; error?: string}>();
-  state.mutate.mockImplementation((name: string) => name === "applyEmployeeDependentDocumentLinks" ? links.promise : Promise.resolve({success: true, data: {id: 17}}));
-  const view = mount(); await screen.findByText("Synthetic identity"); const first = await openEdit(item);
-  fireEvent.click(within(first).getByRole("button", {name: "Stage synthetic link"})); fireEvent.click(within(first).getByRole("button", {name: "Save"}));
-  await waitFor(() => expect(primaryCalls("applyEmployeeDependentDocumentLinks")).toHaveLength(1));
-  await retireDetailOpening(view, item); const replacement = await replacementAdd(item), notice = watchEditNotification(view, item);
-  expect(notice.count()).toBe(0);
-  await act(async () => {
-    if (outcome === "unknown") links.reject(new Error("Synthetic link response lost"));
-    else links.resolve(outcome === "success" ? {success: true} : {success: false, error: "Original link rejected"});
-  });
-  expect(notice.count()).toBe(1); expect(view.client.getQueryState(notice.key)?.isInvalidated).toBe(true); assertReplacement(replacement);
-  expect(primaryCalls(item.action)).toHaveLength(1); expect(primaryCalls("applyEmployeeDependentDocumentLinks")).toHaveLength(1); expect(state.success).not.toHaveBeenCalled();
-  if (outcome !== "unknown") expect(state.error).not.toHaveBeenCalled();
-  else {
-    expect(state.error).toHaveBeenCalledWith(expect.stringContaining("operation could not be confirmed"));
-    await cancelReplacement(replacement); const next = await reopenRetainedDetail(view, item);
-    await waitFor(() => expect((within(next).getByRole("button", {name: "Save"}) as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(within(next).getByRole("button", {name: "Save"}));
-    await waitFor(() => expect(state.error).toHaveBeenCalledWith(expect.stringContaining("previous operation is unconfirmed")));
-    expect(primaryCalls(item.action)).toHaveLength(1);
-  }
+// F11 replaces the old independently-dispatched record/link phases. Exercise
+// the same success/rejection/unknown matrix as ONE revision-bound operation.
+it.each(["success","rejected","unknown"] as const)("same-owner atomic record/evidence settles %s without replacing a retired editor",async outcome=>{
+ const item=editKinds[2],pending=deferred<{success:boolean;data?:{id:number};error?:string}>();state.mutate.mockReturnValue(pending.promise);
+ const view=mount();await screen.findByText("Synthetic identity");const first=await openEdit(item);
+ fireEvent.click(within(first).getByRole("button",{name:"Stage synthetic link"}));fireEvent.click(within(first).getByRole("button",{name:"Save"}));await waitFor(()=>expect(primaryCalls(item.action)).toHaveLength(1));
+ await retireDetailOpening(view,item);const notice=watchEditNotification(view,item);fireEvent.click(within(collection(item.label)).getByRole("button",{name:"Add"}));expect(screen.queryByRole("dialog")).toBeNull();state.error.mockClear();
+ await act(async()=>{if(outcome==="unknown")pending.reject(Error("Synthetic response lost"));else pending.resolve(outcome==="success"?{success:true,data:{id:17}}:{success:false,error:"Atomic save rejected"});});
+ expect(notice.count()).toBe(outcome==="success"?1:0);expect(primaryCalls("applyEmployeeDependentDocumentLinks")).toHaveLength(0);expect(primaryCalls(item.action)).toHaveLength(1);expect(state.success).not.toHaveBeenCalled();expect(screen.queryByRole("dialog")).toBeNull();
 });

@@ -1,0 +1,20 @@
+import{z}from'zod';
+import{employeeDate}from'./employee-contract';
+export const operationItemKind=z.enum(['asset','ppe','accommodation']);
+export type OperationItemKind=z.infer<typeof operationItemKind>;
+export const assetFields={asset_type:z.enum(['id_card','phone','sim','laptop','vehicle','tool','key','other']),asset_reference:z.string().max(200).nullable(),asset_description:z.string().trim().min(1,'Description is required.').max(1000),issued_date:employeeDate,return_due_date:employeeDate.nullable(),condition_on_issue:z.string().max(500).nullable(),notes:z.string().max(2000).nullable()};
+export const ppeFields={ppe_item:z.string().trim().min(1,'PPE item is required.').max(500),standard_or_size:z.string().max(200).nullable(),quantity:z.number().finite().positive('Quantity must be greater than zero.').max(99999999.99).refine(value=>Number(value.toFixed(2))===value,'Quantity supports at most two decimal places.'),issued_date:employeeDate,expiry_or_replacement_date:employeeDate.nullable(),notes:z.string().max(2000).nullable()};
+export const accommodationFields={accommodation_type:z.enum(['company_camp','rented_room','allowance','other']).nullable(),accommodation_location:z.string().max(500).nullable(),room_or_bed_no:z.string().max(100).nullable(),assigned_from:employeeDate,assigned_to:employeeDate.nullable(),notes:z.string().max(2000).nullable()};
+const chronology=(from:string,to:string|null)=>to===null||to>=from;
+export const assetValues=z.object(assetFields).strict().refine(v=>chronology(v.issued_date,v.return_due_date),{path:['return_due_date'],message:'Return due date must not precede issue date.'});
+export const ppeValues=z.object(ppeFields).strict().refine(v=>chronology(v.issued_date,v.expiry_or_replacement_date),{path:['expiry_or_replacement_date'],message:'Expiry or replacement date must not precede issue date.'});
+export const accommodationValues=z.object(accommodationFields).strict().refine(v=>chronology(v.assigned_from,v.assigned_to),{path:['assigned_to'],message:'Assigned to must not precede assigned from.'});
+/** Full original wording remains readable. New writes, not historical reads, enforce bounds. */
+export const assetOpeningValues=z.object({...assetFields,asset_reference:z.string().nullable(),asset_description:z.string(),condition_on_issue:z.string().nullable(),notes:z.string().nullable()}).strict();
+export const ppeOpeningValues=z.object({...ppeFields,ppe_item:z.string(),standard_or_size:z.string().nullable(),notes:z.string().nullable()}).strict();
+export const accommodationOpeningValues=z.object({...accommodationFields,accommodation_location:z.string().nullable(),room_or_bed_no:z.string().nullable(),notes:z.string().nullable()}).strict();
+export const operationItemValues=(kind:OperationItemKind)=>kind==='asset'?assetValues:kind==='ppe'?ppeValues:accommodationValues;
+export const operationItemOpeningValues=(kind:OperationItemKind)=>kind==='asset'?assetOpeningValues:kind==='ppe'?ppeOpeningValues:accommodationOpeningValues;
+export const operationItemActionValues=(kind:OperationItemKind,action:string)=>action==='archive'?z.object({}).strict():action==='return'?kind==='asset'?z.object({returned_date:employeeDate,condition_on_return:z.string().max(500).optional()}).strict():z.object({returned_date:employeeDate}).strict():action==='end'?z.object({assigned_to:employeeDate}).strict():operationItemValues(kind);
+export const OPERATION_ITEM_TABLES={asset:'employee_assets',ppe:'employee_ppe_issues',accommodation:'employee_accommodation_records'}as const;
+export const OPERATION_ITEM_PROJECTIONS={asset:'asset_type,asset_reference,asset_description,issued_date,return_due_date,condition_on_issue,notes',ppe:'ppe_item,standard_or_size,quantity,issued_date,expiry_or_replacement_date,notes',accommodation:'accommodation_type,accommodation_location,room_or_bed_no,assigned_from,assigned_to,notes'}as const;

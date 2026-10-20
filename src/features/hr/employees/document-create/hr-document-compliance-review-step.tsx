@@ -35,6 +35,7 @@ function FieldRow({
         {confidence != null && <HrDocumentConfidenceBadge confidence={confidence} />}
       </div>
       <Input
+        aria-label={label}
         value={displayValue}
         onChange={(e) => onChange(e.target.value)}
         className="h-7 text-xs"
@@ -66,12 +67,13 @@ function SuggestionCard({
   } else if (suggestion.kind === "medical_insurance") {
     showFields.push("insurance_provider", "policy_number", "expiry_date", "network_class");
   } else if (suggestion.kind === "training_certificate") {
-    showFields.push("certificate_number", "provider", "issue_date", "expiry_date");
+    showFields.push("certificate_number", "provider", "completion_date", "expiry_date");
   }
 
   const fieldLabels: Record<string, string> = {
     document_number: "Document Number",
     issue_date: "Issue Date",
+    completion_date: "Completion Date",
     expiry_date: "Expiry Date",
     issuing_authority: "Issuing Authority",
     insurance_provider: "Insurance Provider",

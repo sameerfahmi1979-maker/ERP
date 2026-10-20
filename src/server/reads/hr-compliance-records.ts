@@ -17,8 +17,8 @@ const joins: Record<ComplianceKind, Record<string, string>> = {
   training: {training_category: "hr_training_categories(id,name_en)", training_type: "hr_training_types(id,name_en)"},
   medical: {medical_record_type: "hr_medical_record_types(id,name_en)"},
 };
-function projection(kind: ComplianceKind, detail: boolean) {
-  return Object.keys((detail ? complianceDetailSchemas : complianceRowSchemas)[kind].shape).map(key => joins[kind][key] ? `${key}:${joins[kind][key]}` : key).join(",");
+function projection(kind: ComplianceKind, detail: boolean, medicalView=true) {
+  return Object.keys((detail ? complianceDetailSchemas : complianceRowSchemas)[kind].shape).filter(key=>kind!=='dependents'||medicalView||!DEPENDENT_MEDICAL_FIELDS.some(field=>field===key)).map(key => joins[kind][key] ? `${key}:${joins[kind][key]}` : key).join(",");
 }
 /** Existing text-table semantics (including auto alphanumeric sorting). Only
  * this bounded metadata composition needs the table-core algorithms; no React. */
@@ -68,11 +68,21 @@ export async function readHrComplianceRecords(input: unknown, context?: AuthCont
     const access = complianceAccessSchema.parse({canManage, medicalView, medicalManage: medicalView && medicalManage});
     const query = (select: string, head = false) => bind(db.from(config.table).select(select, {count: "exact", head}).eq("employee_id", p.employeeId).is("deleted_at", null));
     if (p.operation === "detail") {
-      const result = await query(projection(p.kind, true)).eq("id", p.recordId).maybeSingle();
+      const result = await query(projection(p.kind, true,p.kind!=='dependents')).eq("id", p.recordId).maybeSingle();
       signal?.throwIfAborted();
       if (result.error) throw Error("Compliance detail unavailable");
       if (!result.data) return {success: true as const, data: complianceUnavailableSchema.parse({...p, availability: "unavailable"})};
-      const row = complianceDetailSchemas[p.kind].parse(result.data);
+      let projected=p.kind==='dependents'?{...result.data as unknown as Record<string,unknown>,...Object.fromEntries(DEPENDENT_MEDICAL_FIELDS.map(field=>[field,null]))}:result.data;
+      if(p.kind==='dependents'&&medicalView){
+        const ordinary=result.data as unknown as {id:number;workspace_revision:number};
+        const sensitive=await bind(db.rpc('f11_dependent_medical',{p_employee:p.employeeId,p_dependent:p.recordId,p_revision:ordinary.workspace_revision}));
+        signal?.throwIfAborted();
+        if(sensitive.error)throw Error('Dependent medical read unavailable');
+        const medical=z.object({id:subjectSchema.shape.id,employee_id:subjectSchema.shape.id,revision:subjectSchema.shape.id,...Object.fromEntries(DEPENDENT_MEDICAL_FIELDS.map(field=>[field,z.string().nullable()]))}).parse(sensitive.data);
+        if(medical.id!==p.recordId||medical.employee_id!==p.employeeId||medical.revision!==ordinary.workspace_revision)throw Error('Dependent changed during protected detail read');
+        projected={...projected as Record<string,unknown>,...Object.fromEntries(DEPENDENT_MEDICAL_FIELDS.map(field=>[field,medical[field as keyof typeof medical]]))};
+      }
+      const row = complianceDetailSchemas[p.kind].parse(projected);
       if (p.kind === "dependents" && !medicalView) for (const key of DEPENDENT_MEDICAL_FIELDS) (row as Record<string, unknown>)[key] = null;
       return {success: true as const, data: complianceDetailSchema.parse({...p, row, access})};
     }

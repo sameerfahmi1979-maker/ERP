@@ -1,0 +1,17 @@
+import type{PayrollChildKind}from'@/lib/hr/payroll-child-contract';
+export type PayrollField={name:string;label:string;type:'text'|'date'|'number'|'textarea'|'checkbox'|'select'|'choice'|'bank';required?:boolean;nullable?:boolean;defaultValue?:string|boolean;options?:readonly string[];choice?:'payroll-groups'|'salary-component-types'|'mohre-establishments';maxLength?:number};
+export const PAYROLL_EDITORS:Record<PayrollChildKind,{title:string;noun:string;fields:readonly PayrollField[]}>= {
+ 'payroll-profile':{title:'Salary Profile',noun:'salary profile',fields:[
+  {name:'payroll_group_id',label:'Payroll Group',type:'choice',choice:'payroll-groups',nullable:true},{name:'effective_date',label:'Effective Date',type:'date',required:true},{name:'currency',label:'Currency',type:'text',required:true,defaultValue:'AED',maxLength:10},{name:'payroll_status',label:'Payroll Status',type:'select',defaultValue:'active',options:['active','hold','inactive','not_configured']},{name:'notes',label:'Notes',type:'textarea',nullable:true,maxLength:2000},
+ ]},
+ 'salary-component':{title:'Salary Component',noun:'salary component',fields:[
+  {name:'component_type_id',label:'Component Type',type:'choice',choice:'salary-component-types',required:true},{name:'amount',label:'Amount (AED)',type:'number',required:true},{name:'effective_from',label:'Effective From',type:'date',required:true},{name:'effective_to',label:'Effective To',type:'date',nullable:true},{name:'is_active',label:'Active',type:'checkbox',defaultValue:true},{name:'notes',label:'Notes',type:'textarea',nullable:true,maxLength:1000},
+ ]},
+ 'salary-revision':{title:'Salary Revision',noun:'salary revision',fields:[
+  {name:'effective_date',label:'Effective Date',type:'date',required:true},{name:'new_gross',label:'New Basic (AED)',type:'number',required:true},{name:'revision_reason',label:'Revision Reason',type:'textarea',nullable:true,maxLength:1000},{name:'apply_to_components',label:'Apply new basic to Salary Components',type:'checkbox',defaultValue:true},
+ ]},
+ 'wps-profile':{title:'WPS / Bank Details',noun:'WPS profile',fields:[
+  {name:'wps_applicable',label:'WPS Applicable',type:'checkbox',defaultValue:true},{name:'wps_status',label:'WPS Status',type:'select',defaultValue:'active',options:['active','hold','exempt','not_enrolled']},{name:'salary_payment_method',label:'Salary Payment Method',type:'select',defaultValue:'bank_transfer',options:['bank_transfer','exchange_house','cheque']},{name:'bank_id',label:'Bank',type:'bank',nullable:true},{name:'account_holder_name',label:'Account Holder Name',type:'text',nullable:true,maxLength:200},{name:'account_number',label:'Account Number',type:'text',maxLength:50},{name:'iban',label:'IBAN',type:'text',maxLength:34},{name:'exchange_house',label:'Exchange House',type:'text',nullable:true,maxLength:200},{name:'labour_card_number',label:'Labour Card Number',type:'text',nullable:true,maxLength:100},{name:'mohre_person_code',label:'MOHRE Person Code',type:'text',nullable:true,maxLength:100},{name:'mohre_establishment_id',label:'MOHRE Establishment',type:'choice',choice:'mohre-establishments',nullable:true},{name:'salary_effective_date',label:'Salary Effective Date',type:'date',nullable:true},
+ ]},
+ 'payroll-hold':{title:'Payroll Hold',noun:'payroll hold',fields:[{name:'hold_reason',label:'Hold Reason',type:'text',required:true,maxLength:500},{name:'hold_date',label:'Hold Date',type:'date',required:true},{name:'notes',label:'Notes',type:'textarea',nullable:true,maxLength:1000}]},
+};

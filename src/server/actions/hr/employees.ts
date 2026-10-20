@@ -5,12 +5,13 @@ import type {WorkspaceSaveContract} from "@/lib/workspace/save-contract";
 import { workspaceValidationFailure } from "@/lib/workspace/field-errors";
 import { canBrowseEmployees, getEmployeeAccess } from "@/lib/rbac/employee-access";
 import { EMPLOYEE_PUBLIC_FIELDS } from "@/lib/hr/employee-public-fields";
+import {employeeCreateSchema,employeeUpdateSchema,employeeCreateShape,employeeDate,isDefiniteEmployeeRejection} from '@/lib/hr/employee-contract';
+import {employmentEventSchema,type EmployeeEmploymentEvent}from '@/lib/hr/employment-event-contract';
 
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
-import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
 
 // ============================================================================
@@ -84,6 +85,8 @@ export type EmployeeRow = {
 };
 
 export type EmployeeListRow = EmployeeRow & {
+  /** A failed sensitive projection must not masquerade as a known null value. */
+  medical_field_unavailable?:true;
   nationality?: { id: number; name_en: string } | null;
   owner_company?: { id: number; legal_name_en: string; company_code: string } | null;
   branch?: { id: number; branch_name_en: string; branch_code: string } | null;
@@ -113,54 +116,6 @@ export type EmployeeStatusEvent = {
 // ============================================================================
 // Zod Schemas
 // ============================================================================
-
-const employeeCreateSchema = z.object({
-  full_name_en: z.string().min(1, "Full name (English) is required"),
-  full_name_ar: z.string().nullish(),
-  known_name: z.string().nullish(),
-  gender: z.enum(["male", "female"]),
-  nationality_id: z.number().int().positive().nullish(),
-  date_of_birth: z.string().min(1, "Date of birth is required"),
-  marital_status: z.enum(["single", "married", "divorced", "widowed"]).nullish(),
-  mobile_number: z.string().min(1, "Mobile number is required"),
-  personal_email: z.string().email("Invalid email").nullish().or(z.literal("").transform(() => null)),
-  uae_address: z.string().nullish(),
-  home_country_address: z.string().nullish(),
-  blood_group: z.enum(["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"]).nullish(),
-  photo_dms_document_id: z.number().int().positive().nullish(),
-  // Employment
-  owner_company_id: z.number().int().positive({ message: "Employer company is required" }),
-  branch_id: z.number().int().positive().nullish(),
-  department_id: z.number().int().positive().nullish(),
-  designation_id: z.number().int().positive().nullish(),
-  employee_category_id: z.number().int().positive({ message: "Employee Category is required" }),
-  employment_type_id: z.number().int().positive().nullish(),
-  joining_date: z.string().min(1, "Joining date is required"),
-  actual_joining_date: z.string().nullish(),
-  employee_status: z.enum(["active", "inactive", "on_leave", "probation", "suspended", "terminated", "archived"]).default("active"),
-  reporting_manager_id: z.number().int().positive().nullish(),
-  supervisor_id: z.number().int().positive().nullish(),
-  primary_work_site_id: z.number().int().positive().nullish(),
-  sponsor_company_id: z.number().int().positive().nullish(),
-  mohre_establishment_id: z.number().int().positive().nullish(),
-  // Contract
-  probation_start_date: z.string().nullish(),
-  probation_end_date: z.string().nullish(),
-  contract_type: z.enum(["limited", "unlimited"]).nullish(),
-  contract_start_date: z.string().nullish(),
-  contract_end_date: z.string().nullish(),
-  notice_period_days: z.number().int().min(0).nullish(),
-  // Emergency
-  emergency_contact_name: z.string().min(1, "Emergency contact name is required"),
-  emergency_contact_mobile: z.string().min(1, "Emergency contact mobile is required"),
-  emergency_contact_relationship_type_id: z.number().int().positive().nullish(),
-});
-
-const employeeUpdateSchema = employeeCreateSchema.partial().extend({
-  employee_category_id: z.number().int().positive().nullish(),
-  inactive_date: z.string().nullish(),
-  inactive_reason: z.string().nullish(),
-});
 
 const employeeListParamsSchema = z.object({
   search: z.string().optional(),
@@ -316,9 +271,12 @@ export async function getEmployee(employeeId: number): Promise<ActionResult<Empl
       return { success: false, error: error.message };
     }
 
-    const medical = await supabase.rpc("f03_employee_blood_group", { employee_id: employeeId });
-    if(medical.error) return { success:false, error:"Employee medical-field access could not be verified." };
-    return { success: true, data: { ...data as unknown as Omit<EmployeeListRow,"blood_group">, blood_group: medical.data } };
+    try {
+      const medical = await supabase.rpc("f03_employee_blood_group", { employee_id: employeeId });
+      const value = z.enum(['A+','A-','B+','B-','O+','O-','AB+','AB-']).nullable().safeParse(medical.data);
+      if (!medical.error && value.success) return {success:true,data:{...data as unknown as Omit<EmployeeListRow,'blood_group'>,blood_group:value.data}};
+    } catch { /* A separate field outage must not hide an authorized profile. */ }
+    return {success:true,data:{...data as unknown as Omit<EmployeeListRow,'blood_group'>,blood_group:null,medical_field_unavailable:true}};
   } catch (err) {
     logger.error("getEmployee exception", err);
     return { success: false, error: "Failed to get employee" };
@@ -351,6 +309,7 @@ export async function getEmployeeOverview(
     if (!empResult.success || !empResult.data) {
       return { success: false, error: empResult.error ?? "Employee not found" };
     }
+    if(!histResult.success)return {success:false,error:histResult.error??'Employee history could not be loaded.'};
 
     return {
       success: true,
@@ -375,7 +334,7 @@ export async function createEmployee(input: EmployeeCreateInput, contract: Works
   const parsed=employeeCreateSchema.safeParse(input);
   if(!parsed.success) return workspaceValidationFailure(parsed.error.issues);
   const result=await saveWorkspaceRecord("employees",null,parsed.data,contract);
-  if(result.success) revalidatePath("/admin/hr/employees");
+  if(result.success){try{revalidatePath("/admin/hr/employees");}catch{logger.warn('Employee saved; list refresh unavailable');}}
   return result;
 }
 
@@ -391,7 +350,7 @@ export async function updateEmployee(employeeId: number,input: EmployeeUpdateInp
   const access=await getEmployeeAccess(ctx,employeeId);
   if(!access.allows("hr.medical.manage")) delete parsed.data.blood_group;
   const result=await saveWorkspaceRecord("employees",employeeId,parsed.data,contract);
-  if(result.success) {revalidatePath("/admin/hr/employees");revalidatePath(`/admin/hr/employees/record/${employeeId}`);}
+  if(result.success) {try{revalidatePath("/admin/hr/employees");revalidatePath(`/admin/hr/employees/record/${employeeId}`);}catch{logger.warn('Employee saved; record refresh unavailable');}}
   return result;
 }
 
@@ -401,77 +360,30 @@ export async function updateEmployee(employeeId: number,input: EmployeeUpdateInp
 
 export async function archiveEmployee(
   employeeId: number,
-  reason?: string
-): Promise<ActionResult<void>> {
+  reason: string,
+  contract: WorkspaceSaveContract,
+  effectiveDate: string
+): Promise<WorkspaceSaveResult> {
   try {
     const ctx = await getAuthContext();
     if (!hasPermission(ctx, "hr.employees.archive") && !ctx.roleCodes?.includes("system_admin")) {
       return { success: false, error: "Permission denied" };
     }
 
-    const supabase = await createClient();
+    const parsed=z.object({id:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),reason:z.string().trim().min(1).max(2000),effectiveDate:employeeDate,operationId:z.string().uuid(),revision:z.string().regex(/^[1-9]\d*$/)}).safeParse({id:employeeId,reason,effectiveDate,...contract});
+    if(!parsed.success)return workspaceValidationFailure(parsed.error.issues);
+    const supabase=await createClient();
+    const result=await supabase.rpc('f11_archive_employee',{p_operation:parsed.data.operationId,p_id:parsed.data.id,p_revision:parsed.data.revision,p_reason:parsed.data.reason,p_effective:parsed.data.effectiveDate});
+    if(result.error){const code=result.error.code;return {success:false,uncertain:!isDefiniteEmployeeRejection(code),error:code==='P0409'?'This employee changed. Reopen the latest record before archiving.':code==='42501'?'Employee unavailable or archive permission changed.':'Archive unconfirmed or rejected. Keep the same request to reconcile safely.'};}
+    const receipt=z.object({id:z.literal(employeeId),revision:z.string().regex(/^[1-9]\d*$/),replayed:z.boolean()}).safeParse(result.data);
+    if(!receipt.success)return {success:false,uncertain:true,error:'Archive response incomplete. Retry the unchanged request.'};
 
-    const { data: current, error: fetchError } = await supabase
-      .from("employees")
-      .select("id, employee_code, full_name_en, employee_status")
-      .eq("id", employeeId)
-      .is("deleted_at", null)
-      .single();
+    try{revalidatePath("/admin/hr/employees");revalidatePath(`/admin/hr/employees/record/${employeeId}`);}catch{logger.warn('Employee archived; list refresh unavailable');}
 
-    if (fetchError || !current) {
-      return { success: false, error: "Employee not found" };
-    }
-
-    const now = new Date().toISOString();
-
-    const { error: archiveError } = await supabase
-      .from("employees")
-      .update({
-        deleted_at: now,
-        deleted_by: ctx.profile?.id ?? null,
-        employee_status: "archived",
-        inactive_date: new Date().toISOString().split("T")[0],
-        inactive_reason: reason ?? "Archived",
-        updated_by: ctx.profile?.id ?? null,
-      })
-      .eq("id", employeeId)
-      .is("deleted_at", null);
-
-    if (archiveError) {
-      logger.error("archiveEmployee error", archiveError);
-      return { success: false, error: archiveError.message };
-    }
-
-    // Status event
-    await supabase.from("employee_status_events").insert({
-      employee_id: employeeId,
-      old_status: current.employee_status,
-      new_status: "archived",
-      reason: reason ?? "Archived",
-      effective_date: new Date().toISOString().split("T")[0],
-      created_by: ctx.profile?.id ?? null,
-    });
-
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employees",
-      entity_id: employeeId,
-      entity_reference: current.employee_code,
-      action: "archive",
-      new_values: {
-        employee_code: current.employee_code,
-        employee_name: current.full_name_en,
-        reason: reason ?? "Archived",
-      },
-    });
-
-    revalidatePath("/admin/hr/employees");
-    revalidatePath(`/admin/hr/employees/record/${employeeId}`);
-
-    return { success: true };
+    return { success: true,data:receipt.data };
   } catch (err) {
     logger.error("archiveEmployee exception", err);
-    return { success: false, error: "Failed to archive employee" };
+    return { success: false,uncertain:true, error: "Archive unconfirmed. Retry the unchanged request." };
   }
 }
 
@@ -482,74 +394,13 @@ export async function archiveEmployee(
 export async function changeEmployeeStatus(
   employeeId: number,
   newStatus: string,
-  reason?: string,
-  effectiveDate?: string
-): Promise<ActionResult<void>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.employees.update") && !ctx.roleCodes?.includes("system_admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-
-    const supabase = await createClient();
-
-    const { data: current, error: fetchError } = await supabase
-      .from("employees")
-      .select("id, employee_code, full_name_en, employee_status")
-      .eq("id", employeeId)
-      .is("deleted_at", null)
-      .single();
-
-    if (fetchError || !current) {
-      return { success: false, error: "Employee not found" };
-    }
-
-    const { error: updateError } = await supabase
-      .from("employees")
-      .update({
-        employee_status: newStatus,
-        updated_by: ctx.profile?.id ?? null,
-      })
-      .eq("id", employeeId)
-      .is("deleted_at", null);
-
-    if (updateError) {
-      logger.error("changeEmployeeStatus error", updateError);
-      return { success: false, error: updateError.message };
-    }
-
-    await supabase.from("employee_status_events").insert({
-      employee_id: employeeId,
-      old_status: current.employee_status,
-      new_status: newStatus,
-      reason: reason ?? null,
-      effective_date: effectiveDate ?? null,
-      created_by: ctx.profile?.id ?? null,
-    });
-
-    await logAudit({
-      module_code: "HR",
-      entity_name: "employee_status_events",
-      entity_id: employeeId,
-      entity_reference: current.employee_code,
-      action: "create",
-      new_values: {
-        parent_employee_id: employeeId,
-        employee_code: current.employee_code,
-        employee_name: current.full_name_en,
-        old_status: current.employee_status,
-        new_status: newStatus,
-      },
-    });
-
-    revalidatePath("/admin/hr/employees");
-    revalidatePath(`/admin/hr/employees/record/${employeeId}`);
-
-    return { success: true };
-  } catch (err) {
-    logger.error("changeEmployeeStatus exception", err);
-    return { success: false, error: "Failed to change employee status" };
-  }
+  reason: string,
+  effectiveDate: string,
+  contract: WorkspaceSaveContract
+): Promise<WorkspaceSaveResult> {
+  const status=employeeCreateShape.employee_status.safeParse(newStatus);
+  if(!status.success||typeof reason!=='string'||!reason.trim())return {success:false,error:'Select a valid status and enter a reason.'};
+  return updateEmployee(employeeId,{employee_status:status.data,employment_change_reason:reason,employment_effective_date:effectiveDate},contract);
 }
 
 // ============================================================================
@@ -583,4 +434,34 @@ export async function getEmployeeStatusHistory(
     logger.error("getEmployeeStatusHistory exception", err);
     return { success: false, error: "Failed to get status history" };
   }
+}
+
+export type {EmployeeEmploymentEvent};
+export async function getEmployeeEmploymentHistory(employeeId:number,beforeId?:number):Promise<ActionResult<{rows:EmployeeEmploymentEvent[];nextCursor:number|null}>>{
+  const ctx=await getAuthContext();
+  if(!canBrowseEmployees(ctx))return {success:false,error:'Permission denied'};
+  if(!Number.isSafeInteger(employeeId)||employeeId<=0||(beforeId!==undefined&&(!Number.isSafeInteger(beforeId)||beforeId<=0)))return {success:false,error:'Invalid history request'};
+  try{
+    const client=await createClient();
+    const subject=await client.from('employees').select('id').eq('id',employeeId).is('deleted_at',null).maybeSingle();
+    if(subject.error||!subject.data)return {success:false,error:'Employee unavailable'};
+    let query=client.from('employee_employment_events').select('id,employee_id,old_values,new_values,reason,effective_date,created_at,created_by,revision').eq('employee_id',employeeId).order('id',{ascending:false}).limit(51);
+    if(beforeId!==undefined)query=query.lt('id',beforeId);
+    const result=await query;
+    if(result.error)return {success:false,error:'Employment history could not be loaded. Retry without changing the employee.'};
+    const rows=z.array(employmentEventSchema).max(51).parse(result.data);
+    if(rows.some((row,index)=>row.employee_id!==employeeId||(beforeId!==undefined&&row.id>=beforeId)||(index>0&&row.id>=rows[index-1].id)))throw Error('Invalid history projection');
+    return {success:true,data:{rows:rows.slice(0,50),nextCursor:rows.length>50?rows[49].id:null}};
+  }catch{return {success:false,error:'Employment history could not be loaded. Retry without changing the employee.'};}
+}
+
+export async function reconcileEmployeeOperation(operationId:string):Promise<WorkspaceSaveResult>{
+ if(!z.string().uuid().safeParse(operationId).success)return {success:false,error:'Invalid recovery identity'};
+ try{
+  const ctx=await getAuthContext();if(!ctx.profile||!ctx.isAccountActive||ctx.profile.must_change_password)return {success:false,error:'Permission denied',uncertain:true};
+  const client=await createClient(),result=await client.rpc('f11_reconcile_employee',{p_operation:operationId});
+  if(result.error||result.data===null)return {success:false,uncertain:true,error:'Earlier save remains unresolved or unavailable. No private fields were replayed.'};
+  const receipt=z.object({id:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),revision:z.string().regex(/^[1-9]\d*$/),replayed:z.literal(true)}).safeParse(result.data);
+  return receipt.success?{success:true,data:receipt.data}:{success:false,uncertain:true,error:'Recovery response could not be verified'};
+ }catch{return {success:false,uncertain:true,error:'Recovery unconfirmed. No private fields were replayed.'};}
 }

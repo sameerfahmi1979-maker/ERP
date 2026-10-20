@@ -8,21 +8,13 @@ import { useWorkspaceTableState } from "@/hooks/use-workspace-table-state";
 import type { AuthContext } from "@/lib/rbac/check";
 import { hasPermission } from "@/lib/rbac/scope";
 import type { EmployeeListRow } from "@/server/actions/hr/employees";
-import { archiveEmployee } from "@/server/actions/hr/employees";
+import {EmployeeArchiveDialog} from './employee-archive-dialog';
+import {EmployeeRecoveryInbox}from './employee-recovery-inbox';
+import {hrReadIdentity} from '@/lib/reads/hr-read-identity';
 import { useServerPage, type ServerPageSeed } from "@/hooks/use-server-page";
 import { readJson, retryAuthorizedRead } from "@/lib/reads/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
 import { SortColHeader } from "@/components/erp/table/sort-col-header";
 import { TablePagination } from "@/components/erp/table/table-pagination";
@@ -135,6 +127,9 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
   );
 
   const [archiveTarget, setArchiveTarget] = useState<EmployeeListRow | null>(null);
+  const archivePrincipal=hrReadIdentity(authContext);
+  const [archiveIdentity,setArchiveIdentity]=useState(archivePrincipal);
+  if(archiveIdentity!==archivePrincipal){setArchiveIdentity(archivePrincipal);setArchiveTarget(null);}
   const [wizardOpen, setWizardOpen] = useState(false);
   const [sortKey, setSortKey] = usePersistentUiState<string | null>("employees:sort-key", "employee_code");
   const [sortDir, setSortDir] = usePersistentUiState<SortDir>("employees:sort-direction", "asc");
@@ -283,21 +278,11 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
     });
   };
 
-  const handleConfirmArchive = async () => {
-    if (!archiveTarget) return;
-    const result = await archiveEmployee(archiveTarget.id, "Archived from list");
-    if (result.success) {
-      toast.success(`Employee ${archiveTarget.employee_code} archived`);
-      fetchEmployees();
-    } else {
-      toast.error(result.error ?? "Failed to archive employee");
-    }
-    setArchiveTarget(null);
-  };
-
   const colSpan = columnState.visible.length + 1;
 
   return (
+    <div className="space-y-4">
+      <EmployeeRecoveryInbox authContext={authContext}/>
     <QueryReadBoundary queries={[uiReadEmployees, companyRead, countryRead,...(canFilterDepartments ? [uiRead1] : []), ...(canFilterDesignations ? [uiRead2] : [])]}><div className="space-y-4">
       {/* Row 1: Search + actions */}
       <div className="flex flex-wrap items-center gap-2">
@@ -541,7 +526,7 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
                           size="icon"
                           variant="ghost"
                           className="h-11 w-11 sm:h-8 sm:w-8 text-destructive hover:text-destructive"
-                          onClick={() => setArchiveTarget(emp)}
+                          onClick={() => {setArchiveIdentity(archivePrincipal);setArchiveTarget(emp);}}
                           title="Archive"
                         >
                           <Archive className="h-3 w-3" />
@@ -573,35 +558,13 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
           : `Showing ${Math.min((page - 1) * pageSize + 1, totalCount)}–${Math.min(page * pageSize, totalCount)} of ${totalCount} employees`}
       </div>
 
-      <AlertDialog open={!!archiveTarget} onOpenChange={(o) => !o && setArchiveTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Archive Employee?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to archive{" "}
-              <strong>
-                {archiveTarget?.employee_code} — {archiveTarget?.full_name_en}
-              </strong>
-              ? This will set their status to archived and soft-delete the record.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={handleConfirmArchive}
-            >
-              Archive
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {archiveTarget&&archiveIdentity===archivePrincipal&&<EmployeeArchiveDialog key={`${archivePrincipal}:${archiveTarget.id}`} employee={archiveTarget} authContext={authContext} onClose={()=>setArchiveTarget(null)} onArchived={()=>{toast.success(`Employee ${archiveTarget.employee_code} archived`);setArchiveTarget(null);fetchEmployees();}}/>}
 
       <HrDocumentEmployeeCreateWizard
         open={wizardOpen}
         onOpenChange={setWizardOpen}
         authContext={authContext}
       />
-    </div></QueryReadBoundary>
+    </div></QueryReadBoundary></div>
   );
 }

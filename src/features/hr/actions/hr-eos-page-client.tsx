@@ -2,6 +2,7 @@
 import {UserMinus} from "lucide-react";
 import {useHrActionInquiry, useHrActionInquiryIdentity, type HrActionInquiryProps} from "@/hooks/use-hr-action-inquiry";
 import {HrActionInquiryTable} from "./hr-action-inquiry-table";
+import {HrChildRecoveryPanel} from "@/features/hr/employees/hr-child-recovery-panel";
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-muted text-muted-foreground", notice_served: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-200",
@@ -15,7 +16,7 @@ export function HrEosPageClient(props: HrActionInquiryProps) {
 }
 function EosSession(props: HrActionInquiryProps & {identity: string}) {
   const read = useHrActionInquiry("eos", props, props.identity);
-  return <div className="p-6 max-w-7xl mx-auto space-y-4">
+  return <div className="p-6 max-w-7xl mx-auto space-y-4"><HrChildRecoveryPanel authContext={props.authContext}/>
     <div className="flex items-center gap-3"><UserMinus className="h-6 w-6 text-primary" /><div>
       <h1 className="text-2xl font-bold tracking-tight">EOS &amp; Clearance</h1>
       <p className="text-muted-foreground text-sm">All end-of-service cases. Financial settlement is handled by Finance.</p>

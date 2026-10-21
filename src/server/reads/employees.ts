@@ -14,6 +14,7 @@ export const employeeReadSchema = z.object({
   departmentId: z.number().int().positive().optional(), designationId: z.number().int().positive().optional(),
   employeeCategoryId: z.number().int().positive().optional(), employmentTypeId: z.number().int().positive().optional(),
   employeeStatus: z.string().max(40).optional(), nationalityId: z.number().int().positive().optional(),
+  quality: z.enum(['legacy-category','missing-emergency']).optional(),
   primaryWorkSiteId: z.number().int().positive().optional(),
   page: z.number().int().min(1).max(100000).default(1), pageSize: z.number().int().min(1).max(100).default(25),
   sortKey: z.enum(["employee_code","full_name_en","nationality","department","designation","employee_status","company"]).default("employee_code"),
@@ -34,9 +35,14 @@ export async function readEmployees(params: EmployeeReadParams = {}, context?: A
     const p=parsed.data;
     const db=await createClient();
     let query=db.from("employees").select(`${EMPLOYEE_PUBLIC_FIELDS},${joins}`,{count:"exact"}).is("deleted_at",null);
-    if(p.search?.trim()) {const s=literalContains(p.search.trim());query=query.or(["employee_code","full_name_en","full_name_ar","known_name","mobile_number","personal_email"].map(c=>`${c}.ilike.${s}`).join(","));}
+    const searchFilter=p.search?.trim()? ["employee_code","full_name_en","full_name_ar","known_name","mobile_number","personal_email"].map(c=>`${c}.ilike.${literalContains(p.search!.trim())}`).join(","):null;
+    const qualityFilter=p.quality==='missing-emergency'?'emergency_contact_name.is.null,emergency_contact_name.eq."",emergency_contact_mobile.is.null,emergency_contact_mobile.eq.""':null;
+    // One explicit AND tree avoids ambiguity when both filters contain ORs.
+    if(searchFilter&&qualityFilter)query=query.or(`and(or(${searchFilter}),or(${qualityFilter}))`);
+    else if(searchFilter||qualityFilter)query=query.or((searchFilter||qualityFilter)!);
     const filters={owner_company_id:p.ownerCompanyId,branch_id:p.branchId,department_id:p.departmentId,designation_id:p.designationId,employee_category_id:p.employeeCategoryId,employment_type_id:p.employmentTypeId,employee_status:p.employeeStatus,nationality_id:p.nationalityId,primary_work_site_id:p.primaryWorkSiteId};
     for(const [column,value] of Object.entries(filters))if(value!==undefined)query=query.eq(column,value);
+    if(p.quality==='legacy-category')query=query.is('employee_category_id',null);
     const from=(p.page-1)*p.pageSize;
     const {data,error,count}=await query.order(orderColumns[p.sortKey],{ascending:p.sortDir==="asc",nullsFirst:false}).order("id",{ascending:true}).range(from,from+p.pageSize-1);
     if(error || count===null || !Number.isSafeInteger(count) || count<0 || !Array.isArray(data) || data.length!==Math.min(p.pageSize,Math.max(0,count-from))) return {success:false,error:"Employees could not be loaded. Please retry."};

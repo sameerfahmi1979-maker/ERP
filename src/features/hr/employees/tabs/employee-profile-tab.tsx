@@ -15,7 +15,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { EmployeeListRow } from "@/server/actions/hr/employees";
 import { useQuery } from "@tanstack/react-query";
-import {EMPLOYMENT_FIELDS} from '@/lib/hr/employee-contract';
+import {employmentChangeSummary,employmentFieldLabel} from '@/lib/hr/employee-foundation';
+import {EmployeeNameReviewControl}from '../employee-foundation-review';
 
 type Props = {
   authContext:AuthContext;
@@ -113,7 +114,8 @@ export function EmployeeProfileTab({
   canManageMedical = false,
 }: Props) {
   const disabled = mode === "view";
-  const employmentChanged=!!employee&&EMPLOYMENT_FIELDS.some(key=>String(form[key]??'')!==String(employee[key]??''));
+  const changeReview=employee?employmentChangeSummary(employee,form):null;
+  const employmentChanged=!!changeReview?.fields.length;
 
   const params={companyId:form.owner_company_id,branchId:form.branch_id,departmentId:form.department_id,selected:{departments:form.department_id,designations:form.designation_id,sites:form.primary_work_site_id,categories:form.employee_category_id,employment:form.employment_type_id,mohre:form.mohre_establishment_id,relationships:form.emergency_contact_relationship_type_id}};
   const choices=useQuery({queryKey:['hr','profile-choices',hrReadIdentity(authContext),params],enabled:!disabled,staleTime:0,gcTime:0,retry:retryAuthorizedRead,queryFn:async({signal})=>{
@@ -136,6 +138,7 @@ export function EmployeeProfileTab({
 
   return (
     <div className="space-y-8 p-0 md:p-2">
+      {!disabled&&<EmployeeNameReviewControl authContext={authContext} name={form.full_name_en} companyId={form.owner_company_id} employeeId={employee?.id}/>}
       {choiceProblems&&<div role="alert" className="rounded border p-3 text-sm"><p>Some choice lists are unavailable or restricted. Saved references are retained; permitted personal fields remain editable. Unavailable choices cannot be changed.</p><Button type="button" variant="outline" disabled={choices.isFetching} onClick={()=>void choices.refetch()}>Retry choices</Button></div>}
       {/* ── Personal Information ─────────────────────────────────────────────── */}
       <section>
@@ -535,6 +538,11 @@ export function EmployeeProfileTab({
       {mode==='edit'&&<section className="space-y-3 rounded border p-4">
         <h3 className="text-sm font-semibold">Employment change history</h3>
         <p className="text-sm text-muted-foreground">Changes to employer, assignment, status or contract facts require a reason and effective date. Future-dated changes cannot replace current facts.</p>
+        {changeReview&&changeReview.fields.length>0&&<div role="status" className="text-sm">
+          <p>{changeReview.actions.join('; ')}</p>
+          <ul>{changeReview.fields.map(field=><li key={field}>{employmentFieldLabel(field)}: {String(employee?.[field]??'—')} → {String(form[field as keyof EmployeeProfileFormState]??'—')}</li>)}</ul>
+          {changeReview.impacts.map(impact=><p key={impact}>{impact}</p>)}
+        </div>}
         <Label htmlFor="employment_change_reason">Reason{employmentChanged?' *':''}</Label>
         <Textarea id="employment_change_reason" name="employment_change_reason" value={form.employment_change_reason} onChange={e=>setForm(p=>({...p,employment_change_reason:e.target.value}))} required={employmentChanged} maxLength={2000} disabled={disabled}/>
         <Label htmlFor="employment_effective_date">Effective date{employmentChanged?' *':''}</Label>

@@ -78,6 +78,7 @@
     "zod": "^4.4.3"
   },
   "overrides": {
+    "vite": "8.3.3",
     "braces": "$braces",
     "sprintf-js": "$sprintf-js",
     "@fluentui/react-tabster": {

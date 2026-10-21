@@ -8,6 +8,7 @@ import type {AuthContext}from '@/lib/rbac/check';
 import {RecordReadActivity}from '@/hooks/use-record-read-active';
 const m=vi.hoisted(()=>({read:vi.fn()}));
 vi.mock('@/server/actions/hr/employees',()=>({getEmployeeEmploymentHistory:m.read}));
+vi.mock('@/server/actions/hr/employee-foundation',()=>({reviewRecordedEmploymentDate:vi.fn()}));
 vi.mock('@/components/ui/button',()=>({Button:({variant,...props}:React.ButtonHTMLAttributes<HTMLButtonElement>&{variant?:string})=><button data-variant={variant}{...props}/>}));
 import {EmployeeEmploymentHistory}from '@/features/hr/employees/employee-employment-history';
 const auth=syntheticAuthContext(['hr.employees.view'],{id:7,auth_user_id:'synthetic-history-a'});
@@ -17,7 +18,7 @@ const reply=(nextCursor:number|null=null)=>({success:true,data:{rows:[row()],nex
 beforeEach(()=>{m.read.mockReset().mockResolvedValue(reply());});
 afterEach(()=>{cleanup();clients.splice(0).forEach(client=>client.clear());});
 function mount(){const client=new QueryClient({defaultOptions:{queries:{retry:false}}});clients.push(client);const tree=(context:AuthContext,active=true)=><QueryClientProvider client={client}><RecordReadActivity active={active}><EmployeeEmploymentHistory employeeId={7} authContext={context}/></RecordReadActivity></QueryClientProvider>;const view=render(tree(auth));return {...view,client,replace:(context:AuthContext,active=true)=>view.rerender(tree(context,active))};}
-it('renders zero rather than missing data and keeps the compact table',async()=>{mount();await screen.findByText('PRIVATE_HISTORY_A');expect(screen.getByText('notice period days: 1 → 0')).toBeTruthy();expect(screen.queryByText('Edit columns')).toBeNull();expect(screen.queryByText('Edit filters')).toBeNull();});
+it('renders zero rather than missing data and keeps the compact table',async()=>{mount();await screen.findByText('PRIVATE_HISTORY_A');expect(screen.getByText('Notice Period (Days): 1 → 0')).toBeTruthy();expect(screen.queryByText('Edit columns')).toBeNull();expect(screen.queryByText('Edit filters')).toBeNull();});
 it('failure is explicit and retry does not replace it with an empty history',async()=>{m.read.mockResolvedValueOnce({success:false,error:'Unavailable'});mount();await screen.findByRole('alert');expect(screen.queryByText('No employment changes recorded by this release.')).toBeNull();fireEvent.click(screen.getByText('Retry'));await screen.findByText('PRIVATE_HISTORY_A');expect(m.read).toHaveBeenCalledTimes(2);});
 it('page continuation uses the server cursor only',async()=>{m.read.mockResolvedValueOnce(reply(5)).mockResolvedValueOnce({success:true,data:{rows:[{...row(4),reason:'Older'}],nextCursor:null}});mount();fireEvent.click(await screen.findByText('Load earlier changes'));await screen.findByText('Older');expect(m.read.mock.calls).toEqual([[7,undefined],[7,5]]);});
 it('permission loss removes history from the page and the old cache',async()=>{const view=mount();await screen.findByText('PRIVATE_HISTORY_A');view.replace(syntheticAuthContext([],{id:7,auth_user_id:'synthetic-history-a'}));expect(screen.queryByText('PRIVATE_HISTORY_A')).toBeNull();expect(screen.getByRole('alert').textContent).toContain('current access');expect(JSON.stringify(view.client.getQueriesData({queryKey:['hr','employment-history']}))).not.toContain('PRIVATE_HISTORY_A');expect(m.read).toHaveBeenCalledOnce();});

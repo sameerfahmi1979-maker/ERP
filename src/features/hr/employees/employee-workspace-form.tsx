@@ -14,16 +14,11 @@ import {NotificationTaskContextCard} from '@/features/notifications/notification
  * Uses ERPRecordWorkspaceForm (UI.4C).
  *
  * Sections:
- *   Overview      — read-only summary + future placeholders
+ *   Overview      — authorized summary, related context and fact review
  *   Profile       — editable personal/employment/contract/emergency data
- *   Compliance    — placeholder (HR.3)
- *   Time          — placeholder (HR.4)
- *   Payroll & WPS — placeholder (HR.5)
- *   Operations    — placeholder (HR.6)
- *   HR Actions    — placeholder (HR.7)
- *   Documents     — placeholder (HR.3+)
- *   AI Review     — placeholder (HR.12)
- *   Audit         — placeholder
+ *   Compliance / Time / Payroll / Operations / HR Actions / Documents
+ *                 — existing lazy, permission-scoped child workflows
+ *   AI Review / Audit — existing evidence and immutable history readers
  */
 
 import { DraftRestoredNotice } from "@/components/workspace/draft-restored-notice";
@@ -63,6 +58,7 @@ import { EmployeeHrActionsTab } from "./tabs/employee-hr-actions-tab";
 import { EmployeeOperationsTab } from "./tabs/employee-operations-tab";
 import { EmployeeOverviewTab } from "./tabs/employee-overview-tab";
 import {EmployeeEmploymentHistory} from './employee-employment-history';
+import {EmployeeQualitySummary}from './employee-quality-summary';
 import { EmployeePayrollTab } from "./tabs/employee-payroll-tab";
 import { EmployeeProfileTab, type EmployeeProfileFormState } from "./tabs/employee-profile-tab";
 import { EmployeeTimeTab } from "./tabs/employee-time-tab";
@@ -386,6 +382,15 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
 
         {/* Overview — one authorized read composition; retained after its first mount. */}
         <ERPRecordSectionPanel id="overview" activeId={activeSection} title="Overview" lazyMount>
+          {employee&&<EmployeeQualitySummary employee={employee} onProfile={field=>{
+            setActiveSection('profile');
+            requestAnimationFrame(()=>{
+              if(!lifetime.active)return;
+              const form=document.getElementById(formId);
+              const target=Array.from(form?.querySelectorAll<HTMLElement>('[name],[data-workspace-field]')??[]).find(control=>control.dataset.workspaceField===field||control.getAttribute('name')===field&&!(control instanceof HTMLInputElement&&control.type==='hidden'));
+              target?.focus();
+            });
+          }}/>}
           {employee ? (
             <EmployeeOverviewTab
               employee={employee}

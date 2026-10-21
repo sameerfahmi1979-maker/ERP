@@ -1,0 +1,4 @@
+import {defineConfig} from 'vitest/config';
+import path from 'node:path';
+import {fluentTestAliases,fluentTestServer}from '../fluent-test-config.mts';
+export default defineConfig({resolve:{alias:{...fluentTestAliases,'@':path.resolve('src'),'server-only':path.resolve('tests/unit/server-only.ts')}},oxc:{jsx:{runtime:'automatic'}},test:{server:fluentTestServer,environment:'node',fileParallelism:false,include:['tests/remediation/f12/*.test.{ts,tsx}','tests/remediation/f11/*.test.{ts,tsx}','tests/remediation/f06/document-employee-*.test.{ts,tsx}','tests/performance/p03-readers.test.ts','tests/performance/p03-components.test.tsx','tests/remediation/f04/pilot-save.test.tsx'],exclude:['**/*.local.test.ts'],setupFiles:['tests/remediation/f01/offline-setup.ts','tests/remediation/f04/browser-storage.setup.ts']}});

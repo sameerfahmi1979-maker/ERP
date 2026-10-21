@@ -75,3 +75,13 @@ it('candidate-only qualification does not resolve every other employee or manage
 it('discovery freezes stored identities without treating them as authorized recipients',async()=>{
  expect(await resolveNotificationRecipients(event,createAdminClient(),undefined,{discoverOnly:true})).toEqual([11,12]);expect(s.context).not.toHaveBeenCalled();
 });
+it('F12 joining uses verified employee/manager links and current recruitment scope only',async()=>{
+ s.rows.employee_recruitment_links=[{candidate_id:9,employee_id:7}];s.rows.hr_candidates=[{id:9,candidate_id:9,requisition_id:19,joining_status:'in_progress'}];s.rows.hr_job_requisitions=[{id:19,owner_company_id:1,branch_id:2}];
+ s.contexts.set(11,ctx(11,7,['hr.employees.view.self','hr.recruitment.view']));s.contexts.set(12,ctx(12,8,['hr.employees.view.team','hr.recruitment.view']));
+ const joining:NotificationEvent={...event,source_table:'hr_candidates',source_id:9,event_type:'joining_changed',source_snapshot:{candidate_id:9,joining_status:'in_progress'}};
+ expect(await resolve(joining)).toEqual([11,12]);s.rows.erp_user_employee_links=[];await expect(resolve(joining)).rejects.toBeInstanceOf(NotificationRoutingHold);
+});
+it('F12 stale joining status cannot route an old lifecycle snapshot',async()=>{
+ s.rows.hr_candidates=[{id:9,candidate_id:9,requisition_id:19,joining_status:'completed'}];s.rows.hr_job_requisitions=[{id:19,owner_company_id:1,branch_id:2}];s.rows.employee_recruitment_links=[];
+ expect(await resolve({...event,source_table:'hr_candidates',source_id:9,event_type:'joining_changed',source_snapshot:{candidate_id:9,joining_status:'in_progress'}})).toEqual([]);
+});

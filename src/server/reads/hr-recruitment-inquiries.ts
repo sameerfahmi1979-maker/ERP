@@ -118,7 +118,7 @@ export async function readRecruitmentRequisitionDetail(input: unknown) {
   try {
     if (!permitted(await getAuthContext())) return {success: false, error: "Permission denied"};
     const db = await createClient();
-    const result = await db.from("hr_job_requisitions").select(projection("requisitions", false) + ",job_description,requirements,notes").eq("id", parsed.data.recordId).is("deleted_at", null).maybeSingle();
+    const result = await db.from("hr_job_requisitions").select(projection("requisitions", false) + ",workspace_revision,job_description,requirements,notes").eq("id", parsed.data.recordId).is("deleted_at", null).maybeSingle();
     const safe = recruitmentRequisitionDetailSchema.safeParse(result.data?(await hydrateLabels(db,"requisitions",[result.data],false))[0]:null);
     if (result.error || !safe.success || safe.data.id !== parsed.data.recordId) throw Error("Unavailable requisition");
     return {success: true, data: safe.data};

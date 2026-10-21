@@ -1,0 +1,32 @@
+import{describe,it,expect}from'vitest';
+import{recruitmentLifecycleRequest,offerValues,interviewValues,taskValues,type RecruitmentLifecycleRequest}from'@/lib/hr/recruitment-lifecycle-contract';
+import{createRecruitmentOperationState}from'@/lib/hr/recruitment-operation-state';
+import{createWorkspaceDraftStore}from'@/lib/workspace/workspace-draft-store';
+import{dubaiAppointmentInput,dubaiAppointmentValue}from'@/lib/hr/recruitment-time';
+const request:RecruitmentLifecycleRequest={kind:'interview',candidateId:1,id:null,revision:null,action:'create',values:{interview_datetime:'2026-10-21T12:00:00+04:00',interviewer_id:2},reason:'Reviewed appointment'};
+describe('canonical hiring contracts',()=>{
+ it('uses Dubai local time and preserves untouched original precision',()=>{expect(dubaiAppointmentInput('2026-10-21T08:15:27.123456Z')).toBe('2026-10-21T12:15');expect(dubaiAppointmentValue('2026-10-21T12:15','2026-10-21T08:15:27.123456Z')).toBe('2026-10-21T08:15:27.123456Z');expect(dubaiAppointmentValue('2026-10-21T13:20')).toBe('2026-10-21T13:20:00+04:00');expect(dubaiAppointmentValue('2026-10-21T13:20:01')).toBe('2026-10-21T13:20:01+04:00');});
+ it('uses the same actual offer fields on create and edit',()=>{expect(offerValues.parse({offer_date:'2026-10-21',valid_until:'2026-11-21',proposed_joining_date:'2026-10-30',currency:'AED',housing_allowance:100})).toMatchObject({offer_date:'2026-10-21',currency:'AED',housing_allowance:100});});
+ it.each(['offer_title','proposed_start_date','offer_expiry_date','currency_code','probation_period_months'])('does not silently strip nonexistent offer field %s',key=>{expect(offerValues.safeParse({[key]:'wrong'}).success).toBe(false);});
+ it.each(['2026-02-30','bad','2026-2-01'])('rejects impossible offer date %s',offer_date=>{expect(offerValues.safeParse({offer_date}).success).toBe(false);});
+ it('rejects reversed offer validity and gross below basic',()=>{expect(offerValues.safeParse({offer_date:'2026-10-21',valid_until:'2026-10-20'}).success).toBe(false);expect(offerValues.safeParse({basic_salary:200,gross_salary:100}).success).toBe(false);});
+ it.each([-1,101,Infinity,NaN])('bounds score %s',score=>{expect(interviewValues.safeParse({score}).success).toBe(false);});
+ it('requires explicit timezone and refuses caller-provided audit fields',()=>{expect(interviewValues.safeParse({interview_datetime:'2026-10-21T08:00:00'}).success).toBe(false);expect(interviewValues.safeParse({created_by:5}).success).toBe(false);});
+ it('requires actual task subject and completion criteria',()=>{expect(taskValues.safeParse({task_title:'Synthetic'}).success).toBe(false);expect(taskValues.safeParse({candidate_id:1,task_title:'Synthetic',completion_criteria:'Document reviewed'}).success).toBe(true);});
+ it('requires original revision on update and reason on every decision',()=>{expect(recruitmentLifecycleRequest.safeParse({...request,id:2,action:'update'}).success).toBe(false);expect(recruitmentLifecycleRequest.safeParse({...request,reason:' '}).success).toBe(false);});
+ it('prevents state decisions from smuggling material terms',()=>{expect(recruitmentLifecycleRequest.safeParse({...request,kind:'offer',action:'approve',id:2,revision:'1',values:{basic_salary:300}}).success).toBe(false);});
+ it('rejects unsupported cross-kind transitions',()=>{expect(recruitmentLifecycleRequest.safeParse({...request,action:'finish'}).success).toBe(false);});
+});
+describe('account-owned original operation recovery',()=>{
+ const make=()=>{const store=createWorkspaceDraftStore();return{store,state:createRecruitmentOperationState(store,'actor1','scopeA',1,null,'interview')};};
+ const receipt=(op:string)=>({kind:'interview'as const,id:9,candidate_id:1,employee_id:null,operation_id:op,revision:'1',replayed:false});
+ it('retains the original operation and unchanged payload until acknowledgement',()=>{const{state}=make(),first=state.prepare(request);expect(state.prepare(request)).toEqual(first);expect(state.pending).toEqual(first);});
+ it('does not permit altered retry or a new operation while unknown',()=>{const{state}=make();state.prepare(request);expect(()=>state.prepare({...request,reason:'Changed'})).toThrow();expect(state.startNew()).toBe(false);});
+ it('accepts only an exact receipt and requires a fresh opening next',()=>{const{state}=make(),p=state.prepare(request);expect(()=>state.accept({...receipt(p.operation),candidate_id:2})).toThrow();state.accept(receipt(p.operation));expect(state.pending).toBeNull();expect(()=>state.prepare(request)).toThrow();expect(state.startNew()).toBe(true);});
+ it('retirement removes fields and leaves only receipt identifiers',()=>{const{state,store}=make(),p=state.prepare(request);state.retire();expect(state.pending).toBeNull();expect(state.retired?.operation).toBe(p.operation);expect(store.getViewState(state.key)).not.toContain('Reviewed appointment');expect(state.blocked).toBe(true);});
+ it('authority loss retires rather than replaying private fields',()=>{const{state,store}=make();state.prepare(request);const changed=createRecruitmentOperationState(store,'actor1','scopeB',1,null,'interview');expect(changed.pending).toBeNull();expect(changed.retired).not.toBeNull();expect(changed.blocked).toBe(true);});
+ it('another account never receives the earlier pending operation',()=>{const{state,store}=make();state.prepare(request);const other=createRecruitmentOperationState(store,'actor2','scopeA',1,null,'interview');expect(other.pending).toBeNull();expect(other.retired).toBeNull();});
+ it('reconciles only the retired original receipt, without payload replay',()=>{const{state}=make(),p=state.prepare(request);state.retire();expect(()=>state.reconcile(receipt(p.operation))).toThrow();state.reconcile({...receipt(p.operation),replayed:true});expect(state.retired).toBeNull();expect(state.blocked).toBe(false);});
+ it('tampered/missing recovery memory fails closed',()=>{const{state,store}=make();store.setViewState(state.key,'invalid');expect(()=>state.prepare(request)).toThrow();expect(state.blocked).toBe(true);expect(createRecruitmentOperationState(null,'actor1','a',1,null,'interview').blocked).toBe(true);});
+ it('stale controllers cannot overwrite a newer operation',()=>{const{state,store}=make(),other=createRecruitmentOperationState(store,'actor1','scopeA',1,null,'interview');state.prepare(request);expect(()=>other.prepare(request)).toThrow();});
+});

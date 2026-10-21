@@ -39,6 +39,7 @@ beforeEach(() => embeddedAdapters.clear());
 const state = vi.hoisted(() => ({read: vi.fn(), legacyList: vi.fn(), prerequisites: vi.fn(), prep: vi.fn(), mutate: vi.fn(),
   dispatch: vi.fn(), toast: vi.fn(), store: null as ReturnType<typeof createWorkspaceDraftStore> | null,
   submit: null as (() => void | Promise<unknown>) | null}));
+vi.mock('@/server/actions/hr/recruitment-lifecycle',()=>({mutateRecruitmentLifecycle:async(r:{id:number|null;candidateId:number;values:unknown})=>state.mutate(r.id??r.candidateId,r.values),readRecruitmentAssignees:async()=>({success:true,rows:[],hasMore:false}),readRecruitmentTaskChoices:async()=>({success:true,rows:[],hasMore:false}),prepareJoiningTask:async(candidate:number)=>({success:true,data:{candidate_id:candidate,employee_id:null}})}));
 vi.mock("@/lib/reads/client", async original => ({...await original<typeof import("@/lib/reads/client")>(), readJson: state.read}));
 vi.mock("next/navigation", () => ({usePathname: () => "/admin/hr/recruitment/candidates/record/880100", useRouter: () => ({replace: vi.fn(), refresh: vi.fn()})}));
 vi.mock("@/components/workspace/workspace-provider", () => ({useWorkspaceContext: () => ({state: {activeTabId: "child-read-owner", isHydrated: true,
@@ -68,7 +69,7 @@ const context = {profile: {id: 880106, auth_user_id: "synthetic-child-reader", m
 const candidate = {full_name_ar: null, gender: null, nationality_id: null, date_of_birth: null, mobile_number: null, source: null, agency_name: null,
   referred_by_employee_id: null, current_employer: null, current_position: null, notice_period_days: null, rating: null, availability_date: null,
   created_at: "2026-10-04T00:00:00Z", updated_at: "2026-10-04T00:00:00Z", created_by: null, deleted_at: null, requisition: null, nationality: null, referred_by: null,
-  id: 880100, workspace_revision: 17, candidate_code: "SYNTHETIC-880100", full_name_en: "Synthetic child reader candidate", candidate_status: "new", pipeline_stage: "new",
+  id: 880100, workspace_revision: 17, candidate_code: "SYNTHETIC-880100", full_name_en: "Synthetic child reader candidate", candidate_status: "new", pipeline_stage: "new",joining_status:'not_started',
   requisition_id: 880109, expected_salary: 12345, email: "synthetic@example.invalid", current_location: null, notes: "Original synthetic parent notes"} as CandidateRow;
 const access = {canView: true, canManage: true, canManageCandidate: true, companyId: 880101, branchId: null};
 const scenarios = [
@@ -86,10 +87,10 @@ function fixtureRows(kind: CandidateChildKind, candidateId: number) {
   return Array.from({length: rowCount}, (_, index) => {
     const id = 880200 + index, base = {id, candidate_id: candidateId, notes: "Complete private detail " + id};
     if (kind === "documents") return {...base, dms_document_id: id + 2000, dms_document: {document_title: "Synthetic document " + id}, document_purpose: "cv"};
-    if (kind === "interviews") return {...base, interview_location: "Synthetic room " + id, feedback: "Complete feedback " + id, next_step: "Review " + id};
+    if (kind === "interviews") return {...base,interviewer_id:880106,interview_datetime:'2026-10-04T06:00:00Z', interview_location: "Synthetic room " + id, feedback: "Complete feedback " + id, next_step: "Review " + id};
     if (kind === "offers") return {...base, owner_company_id: 880101, branch_id: null, offer_date: "2026-10-01", valid_until: "2026-10-31",
       designation: {id, designation_name_en: "Synthetic position " + id}, basic_salary: offerAccess.canView ? 43210 : null, gross_salary: offerAccess.canView ? 54320 : null, salaryAccess: {...offerAccess}};
-    return {...base, task_title: "Synthetic task " + id};
+    return {...base,assigned_to:880106,completion_criteria:'Synthetic defined completion',due_date:'2026-10-21', task_title: "Synthetic task " + id};
   });
 }
 async function reply(route: string, input: Record<string, unknown>) {
@@ -135,6 +136,7 @@ async function visit(s: Scenario) {
 async function openEditor(s: typeof editors[number]) {
   await visit(s); fireEvent.click(screen.getByRole("button", {name: "Edit record"}));
   const dialog = await screen.findByRole("dialog", {name: s.dialog});
+  fireEvent.change(within(dialog).getByLabelText('Decision / change reason'),{target:{value:'Synthetic reviewed change'}});
   await waitFor(() => expect((within(dialog).getByRole("button", {name: "Save"}) as HTMLButtonElement).disabled).toBe(false));
   return dialog;
 }

@@ -9,7 +9,7 @@ vi.mock('@/hooks/use-workspace-form-owner',()=>({useWorkspaceFormOwner:()=>({id:
 vi.mock('@/server/actions/hr/recruitment',()=>({createJobRequisition:m.create,convertCandidateToEmployee:m.convert}));
 import {useNumberedRecruitmentSession} from '@/features/hr/recruitment/use-numbered-recruitment-session';
 const input={requisition_title:'Synthetic',vacancies_count:1,requisition_status:'draft' as const,priority:'normal' as const};
-const conversion={owner_company_id:2,joining_date:'2026-10-04',emergency_contact_name:'Contact',emergency_contact_mobile:'000'};
+const conversion={owner_company_id:2,joining_date:'2026-10-04',offer_id:61,offer_revision:'4',offer_terms_version:'1',requisition_id:62,emergency_contact_name:'Contact',emergency_contact_mobile:'000'};
 const response=(operation:string)=>({success:true,data:{id:21,requisition_code:'SYN-21',reference_id:31,operation_id:operation,replayed:false}});
 const mount=()=>renderHook(({actor})=>useNumberedRecruitmentSession('requisition',actor),{initialProps:{actor:8}});
 beforeEach(()=>{m.store=createWorkspaceDraftStore();m.owner='owner';m.create.mockReset().mockImplementation((_value,contract)=>Promise.resolve(response(contract.operationId)));m.convert.mockReset().mockImplementation((_id,_value,contract)=>Promise.resolve({success:true,data:{employee_id:22,employee_code:'SYN-22',candidate_id:7,candidate_revision:'4',employee_revision:'1',link_id:23,reference_id:32,operation_id:contract.operationId,replayed:false}}));});

@@ -24,9 +24,9 @@ export function candidateChildFixtureRow(kind: CandidateChildKind, candidateId: 
   const base = {candidate_id: candidateId, created_at: "2026-10-04T00:00:00Z", notes: null};
   const defaults = {
     documents: {document_purpose: null, verification_status: "unverified", dms_document: null},
-    interviews: {interview_round: "first", interview_status: "scheduled", interview_datetime: null, interview_location: null, result: null, score: null, feedback: null, next_step: null},
-    offers: {owner_company_id: null, branch_id: null, offer_status: "draft", offer_date: null, proposed_joining_date: null, valid_until: null, basic_salary: null, gross_salary: null, currency: "AED", designation: null},
-    onboarding: {task_category: null, task_status: "pending", due_date: null},
+    interviews: {workspace_revision:1,interviewer_id:null,interview_round: "first", interview_status: "scheduled", interview_datetime: null, interview_location: null, result: null, score: null, feedback: null, next_step: null},
+    offers: {workspace_revision:1,terms_version:1,approved_terms_version:null,accepted_terms_version:null,housing_allowance:null,transport_allowance:null,other_allowances:null,owner_company_id: null, branch_id: null, offer_status: "draft", offer_date: null, proposed_joining_date: null, valid_until: null, basic_salary: null, gross_salary: null, currency: "AED", designation: null},
+    onboarding: {employee_id:null,workspace_revision:1,checklist_version:1,is_required:true,completion_criteria:null,evidence_required:false,prerequisite_task_id:null,assigned_to:null,dms_document_id:null,completed_by:null,completed_at:null,task_category: null, task_status: "pending", due_date: null},
   };
   const joined = kind === "documents" && source.dms_document && typeof source.dms_document === "object"
     ? {dms_document: {id: source.dms_document_id, document_number: null, document_title: null, ...source.dms_document}} : {};

@@ -25,6 +25,9 @@ const state = vi.hoisted(() => ({read: vi.fn(), salary: vi.fn(), requisitions: v
   onboarding: vi.fn(), prep: vi.fn(), mutate: vi.fn(), dispatch: vi.fn(), error: vi.fn(), success: vi.fn(), warning: vi.fn(),
   dialogSubmit: null as (()=>void|Promise<unknown>) | null,
   store: null as ReturnType<typeof createWorkspaceDraftStore> | null, pathname: '/admin/hr/recruitment/candidates/record/880100'}));
+// Retain this suite's earlier action-spy shape; F12's native contract and HTTP
+// suites verify the real request/receipt protocol independently.
+vi.mock('@/server/actions/hr/recruitment-lifecycle',()=>({mutateRecruitmentLifecycle:async(r:{kind:string;candidateId:number;id:number|null;values:unknown},operation:string)=>{const result=await state.mutate(r.id??r.candidateId,r.values);return result.success?{...result,data:{kind:r.kind,id:r.id??880299,candidate_id:r.candidateId,employee_id:null,operation_id:operation,revision:'1',replayed:false}}:result;},reconcileRecruitmentLifecycle:vi.fn()}));
 vi.mock('@/lib/reads/client', async original => ({...await original<typeof import('@/lib/reads/client')>(), readJson:
   (route: string, input: {kind: CandidateChildKind; operation?: string}, signal?: AbortSignal) => {
     if (route !== 'hr-candidate-children') return state.read(route, input, signal);
@@ -52,7 +55,7 @@ const permissions = ['hr.recruitment.view', 'hr.recruitment.manage', 'hr.payroll
 const context = {profile: {id: 880106, auth_user_id: 'synthetic-candidate-record-review', must_change_password: false}, accountStatus: 'active', isAccountActive: true,
   permissionCodes: permissions, roleCodes: ['hr_scoped'], roleAssignments: [{roleId: 880106, roleCode: 'hr_scoped', ownerCompanyId: 880101, branchId: null, permissionCodes: permissions}]} as unknown as AuthContext;
 const candidate = {full_name_ar:null,gender:null,nationality_id:null,date_of_birth:null,mobile_number:null,source:null,agency_name:null,referred_by_employee_id:null,current_employer:null,current_position:null,notice_period_days:null,rating:null,availability_date:null,created_at:'2026-10-04T00:00:00Z',updated_at:'2026-10-04T00:00:00Z',created_by:null,deleted_at:null,requisition:null,nationality:null,referred_by:null,id: 880100, workspace_revision: 17, candidate_code: 'SYNTHETIC-880100', full_name_en: 'Synthetic retained candidate', candidate_status: 'new', pipeline_stage: 'new',
-  requisition_id: 880109, expected_salary: 54321, email: 'synthetic@example.invalid', current_location: 'Synthetic private location', notes: 'SYNTHETIC PRIVATE PROFILE NOTES'} as CandidateRow;
+  joining_status:'not_started',requisition_id: 880109, expected_salary: 54321, email: 'synthetic@example.invalid', current_location: 'Synthetic private location', notes: 'SYNTHETIC PRIVATE PROFILE NOTES'} as CandidateRow;
 const salaryKey = ['hr','recruitment','salary-access',880109];
 const recordKey = candidateRecordKey(880100,candidateRecordIdentity(context));
 const access = {canView:true,canManage:true,canManageCandidate:true,companyId:880101,branchId:null};
@@ -109,7 +112,8 @@ async function openOffer(mode:'edit'|'new'='edit'){
  section('Offers');
  const button=await screen.findByRole('button',{name:mode==='edit'?'Edit record':'Create Offer'});
  await waitFor(()=>expect((button as HTMLButtonElement).disabled).toBe(false));fireEvent.click(button);
- return screen.findByRole('dialog',{name:mode==='edit'?'Edit Offer':'Create Offer'});
+ const dialog=await screen.findByRole('dialog',{name:mode==='edit'?'Edit Offer':'Create Offer'});
+ fireEvent.change(within(dialog).getByLabelText('Decision / change reason'),{target:{value:'Synthetic reviewed change'}});return dialog;
 }
 async function permissionChange(view:ReturnType<typeof mount>,lost:'view'|'manage'|'none'){
  const perms=permissions.filter(code=>lost==='none'||code!==('hr.payroll.'+lost));
@@ -156,14 +160,18 @@ it('verified exact-scope view loss retires editing/form/cache salary but retains
  expect((within(dialog).getByLabelText('Notes') as HTMLTextAreaElement).value).toBe('Permitted unsaved note');
  await waitFor(()=>expect(cachedOffers(view)?.data[0].basic_salary).toBeNull());
  expect(cachedOffers(view)?.data[0].gross_salary).toBeNull();
- await act(async()=>{await retained();});await waitFor(()=>expect(state.mutate).toHaveBeenCalledTimes(1));
+ await act(async()=>{await retained();});expect(state.mutate).not.toHaveBeenCalled();
+ // A retired authority callback cannot dispatch. The current permitted form
+ // may still save its nonsalary notes after explicit user submission.
+ fireEvent.click(within(dialog).getByRole('button',{name:'Save'}));await waitFor(()=>expect(state.mutate).toHaveBeenCalledTimes(1));
  expect(state.mutate.mock.calls[0][1]).not.toHaveProperty('basic_salary');expect(state.mutate.mock.calls[0][1]).not.toHaveProperty('gross_salary');
 });
 it('restoring view/manage never resurrects retired salary in an already-open editor or retained callback',async()=>{
  const view=mount();await ready();const dialog=await openOffer(),retained=state.dialogSubmit!;
  fireEvent.change(salary(dialog),{target:{value:'76543'}});await permissionChange(view,'view');await permissionChange(view,'none');
  await waitFor(()=>expect(salary(dialog).value).toBe(''));expect(salary(dialog).disabled).toBe(true);
- await act(async()=>{await retained();});await waitFor(()=>expect(state.mutate).toHaveBeenCalledTimes(1));
+ await act(async()=>{await retained();});expect(state.mutate).not.toHaveBeenCalled();
+ fireEvent.click(within(dialog).getByRole('button',{name:'Save'}));await waitFor(()=>expect(state.mutate).toHaveBeenCalledTimes(1));
  expect(state.mutate.mock.calls[0][1]).not.toHaveProperty('basic_salary');
  expect(JSON.stringify(state.mutate.mock.calls)).not.toContain('76543');
 });
@@ -177,7 +185,10 @@ it('manage-only permission loss preserves readable salary but retained callback 
  const cached=cachedOffers(view);
  if(cached)expect(cached.data[0].basic_salary).toBe(43210);
  else expect(view.client.getQueryState(offerKey)).toBeUndefined();
- await act(async()=>{await retained();});await waitFor(()=>expect(state.mutate).toHaveBeenCalledTimes(1));
+ await act(async()=>{await retained();});expect(state.mutate).not.toHaveBeenCalled();
+ // The retired authority callback cannot dispatch. Only a fresh explicit
+ // nonsalary save under the current identity may submit the retained notes.
+ await act(async()=>{await state.dialogSubmit?.();});await waitFor(()=>expect(state.mutate).toHaveBeenCalledTimes(1));
  expect(state.mutate.mock.calls[0][1]).not.toHaveProperty('basic_salary');expect(state.mutate.mock.calls[0][1]).not.toHaveProperty('gross_salary');
 });
 it.each((['edit','new'] as const).flatMap(mode=>(['record','salary-access'] as const).map(kind=>({mode,kind}))))(
@@ -233,7 +244,8 @@ it('a payroll role in another company never grants access to this offer salary',
  const next={...context,roleAssignments:[{...context.roleAssignments![0],permissionCodes:recruitment},{...context.roleAssignments![0],roleId:880199,roleCode:'other_payroll',ownerCompanyId:880102,permissionCodes:payroll}]};
  await act(async()=>{view.client.setQueryData(candidateRecordKey(candidate.id,candidateRecordIdentity(next)),{kind:'record',candidate:{...candidate,expected_salary:null},salaryAccess:{...access,canView:false,canManage:false}});view.replace(candidate,next);});
  await waitFor(()=>expect(salary(dialog).value).toBe(''));expect(salary(dialog).disabled).toBe(true);
- await act(async()=>{await retained();});await waitFor(()=>expect(state.mutate).toHaveBeenCalledTimes(1));expect(state.mutate.mock.calls[0][1]).not.toHaveProperty('basic_salary');
+ await act(async()=>{await retained();});expect(state.mutate).not.toHaveBeenCalled();
+ await act(async()=>{await state.dialogSubmit?.();});await waitFor(()=>expect(state.mutate).toHaveBeenCalledTimes(1));expect(state.mutate.mock.calls[0][1]).not.toHaveProperty('basic_salary');
 });
 it.each([401,403])('terminal %s retires salary portal, cached projections and retained dispatch',async status=>{
  const view=mount();await ready();const dialog=await openOffer(),retained=state.dialogSubmit!;

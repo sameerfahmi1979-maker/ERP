@@ -38,21 +38,21 @@ export const candidateOfferSalaryAccessSchema = z.object({companyId: id.nullable
   .refine(value => (!value.canManage || value.canView) && (value.companyId !== null || value.branchId === null));
 const document = z.object({id, document_number: nullableText, document_title: nullableText}).strip().nullable();
 const documentRow = z.object({id, candidate_id: id, dms_document_id: id, document_purpose: nullableText, verification_status: z.string(), created_at: timestamp, dms_document: document}).strip();
-const interviewRow = z.object({id, candidate_id: id, interview_round: z.string(), interview_status: z.string(), interview_datetime: timestamp.nullable(), interview_location: nullableText, result: nullableText, score: z.number().finite().nullable()}).strip();
-const offerRow = z.object({id, candidate_id: id, owner_company_id: id.nullable(), branch_id: id.nullable(), offer_status: z.string(), proposed_joining_date: nativeDate,
+const interviewRow = z.object({id, candidate_id: id, workspace_revision:id, interviewer_id:id.nullable(), interview_round: z.string(), interview_status: z.string(), interview_datetime: timestamp.nullable(), interview_location: nullableText, result: nullableText, score: z.number().finite().nullable()}).strip();
+const offerRow = z.object({id, candidate_id: id, workspace_revision:id,terms_version:id,approved_terms_version:id.nullable(),accepted_terms_version:id.nullable(), owner_company_id: id.nullable(), branch_id: id.nullable(), offer_status: z.string(), proposed_joining_date: nativeDate,
   valid_until: nativeDate, created_at: timestamp, basic_salary: z.number().finite().nullable(), currency: z.string(), designation: z.object({id, designation_name_en: z.string()}).strip().nullable()}).strip();
-const onboardingRow = z.object({id, candidate_id: id, task_title: z.string(), task_category: nullableText, task_status: z.string(), due_date: nativeDate, created_at: timestamp}).strip();
+const onboardingRow = z.object({id, candidate_id: id, employee_id:id.nullable(),workspace_revision:id,checklist_version:id,is_required:z.boolean(),completion_criteria:nullableText,evidence_required:z.boolean(),prerequisite_task_id:id.nullable(),assigned_to:id.nullable(),dms_document_id:id.nullable(),completed_by:id.nullable(),completed_at:timestamp.nullable(),task_title: z.string(), task_category: nullableText, task_status: z.string(), due_date: nativeDate, created_at: timestamp}).strip();
 export const candidateChildNativeRowSchemas = {documents: documentRow, interviews: interviewRow, offers: offerRow, onboarding: onboardingRow};
 export const candidateChildNativeDetailSchemas = {
   documents: documentRow.extend({notes: nullableText}),
   interviews: interviewRow.extend({feedback: nullableText, next_step: nullableText}),
-  offers: offerRow.extend({offer_date: nativeDate, gross_salary: z.number().finite().nullable(), notes: nullableText}),
+  offers: offerRow.extend({offer_date: nativeDate, gross_salary: z.number().finite().nullable(),housing_allowance:z.number().finite().nullable(),transport_allowance:z.number().finite().nullable(),other_allowances:z.number().finite().nullable(), notes: nullableText}),
   onboarding: onboardingRow.extend({notes: nullableText}),
 };
 const protectedOffer = offerRow.extend({salaryAccess: candidateOfferSalaryAccessSchema}).refine(value =>
   value.salaryAccess.companyId === value.owner_company_id && value.salaryAccess.branchId === value.branch_id && (value.salaryAccess.canView || value.basic_salary === null));
 const protectedOfferDetail = candidateChildNativeDetailSchemas.offers.extend({salaryAccess: candidateOfferSalaryAccessSchema}).refine(value =>
-  value.salaryAccess.companyId === value.owner_company_id && value.salaryAccess.branchId === value.branch_id && (value.salaryAccess.canView || value.basic_salary === null && value.gross_salary === null));
+  value.salaryAccess.companyId === value.owner_company_id && value.salaryAccess.branchId === value.branch_id && (value.salaryAccess.canView || value.basic_salary === null && value.gross_salary === null && value.housing_allowance===null&&value.transport_allowance===null&&value.other_allowances===null));
 export const candidateChildRowSchemas = {...candidateChildNativeRowSchemas, offers: protectedOffer};
 export const candidateChildDetailSchemas = {...candidateChildNativeDetailSchemas, offers: protectedOfferDetail};
 

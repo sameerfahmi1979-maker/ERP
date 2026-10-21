@@ -14,8 +14,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { invalidateRecruitmentCandidateReadModels } from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
 import type {CandidateChildDetailMap, CandidateChildRowMap} from "@/lib/reads/hr-candidate-children-schema";
-import {useHrCandidateChildren, type CandidateChildReadProps} from "@/hooks/use-hr-candidate-children";
-import { archiveInterview, createInterview, updateInterview } from "@/server/actions/hr/recruitment";
+import {useHrCandidateChildren,candidateChildPrefix, type CandidateChildReadProps} from "@/hooks/use-hr-candidate-children";
+import {useRecruitmentLifecycle}from'../use-recruitment-lifecycle';
+import{RecruitmentRecovery}from'../recruitment-recovery';
+import{RecruitmentDecisionDialog}from'../recruitment-decision-dialog';
+import{RecruitmentAssignee}from'../recruitment-assignee';
+import{RecruitmentHistory}from'../recruitment-history';
+import type{RecruitmentLifecycleRequest}from'@/lib/hr/recruitment-lifecycle-contract';
+import{dubaiAppointmentInput,dubaiAppointmentValue}from'@/lib/hr/recruitment-time';
 import { useQueryClient } from "@tanstack/react-query";
 import { Calendar, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState} from "react";
@@ -67,6 +73,8 @@ const RESULT_COLORS: Record<string, string> = {
 };
 
 type InterviewForm = {
+  interviewer_id:number|null;
+  reason:string;
   interview_round: string;
   interview_datetime: string;
   interview_location: string;
@@ -78,6 +86,8 @@ type InterviewForm = {
 };
 
 const EMPTY_FORM: InterviewForm = {
+  interviewer_id:null,
+  reason:'',
   interview_round: "first",
   interview_datetime: "",
   interview_location: "",
@@ -96,7 +106,10 @@ export function CandidateInterviewsTab({ candidateId, canManage, authContext, on
   const [editorVersion, setEditorVersion] = useState(0);
   const editorGeneration = useRef(0);
   const [unavailableEditor, setUnavailableEditor] = useState(false);
-  const [isPending, startTransition] = useTransition();
+  const [transitionPending, startTransition] = useTransition();
+  const session=useRecruitmentLifecycle(authContext,candidateId,null,'interview');
+  const isPending=transitionPending||session.busy;
+  const[decision,setDecision]=useState<RecruitmentLifecycleRequest|null>(null);
 
   const read = useHrCandidateChildren("interviews", candidateId, {authContext, onReadDenied});
   const interviews = read.rows;
@@ -109,7 +122,7 @@ export function CandidateInterviewsTab({ candidateId, canManage, authContext, on
   }, [detailUnavailable, closeDetail, onChildOpen]);
 
   function openAdd() {
-    if (!mutation.canDispatch()) return;
+    if (!mutation.canDispatch()||!session.startNew()) return;
     setEditorVersion(++editorGeneration.current); setUnavailableEditor(false);
     read.closeDetail();
     setEditing(null);
@@ -119,14 +132,16 @@ export function CandidateInterviewsTab({ candidateId, canManage, authContext, on
   }
 
   async function openEdit(row: CandidateChildRowMap["interviews"]) {
-    if (!mutation.canDispatch()) return;
+    if (!mutation.canDispatch()||!session.startNew()) return;
     const interview = await read.loadDetail(row.id);
     if (!interview) return;
     setEditorVersion(++editorGeneration.current); setUnavailableEditor(false);
     setEditing(interview);
     setForm({
+      interviewer_id:interview.interviewer_id,
+      reason:'',
       interview_round: interview.interview_round,
-      interview_datetime: interview.interview_datetime?.slice(0, 16) ?? "",
+      interview_datetime:dubaiAppointmentInput(interview.interview_datetime),
       interview_location: interview.interview_location ?? "",
       interview_status: interview.interview_status,
       result: interview.result ?? "",
@@ -139,6 +154,7 @@ export function CandidateInterviewsTab({ candidateId, canManage, authContext, on
   }
 
   function closeDialog() {
+    if(session.busy||session.pending)return;
     if (editorVersion !== editorGeneration.current) return;
     setEditorVersion(++editorGeneration.current);
     read.closeDetail();
@@ -146,7 +162,7 @@ export function CandidateInterviewsTab({ candidateId, canManage, authContext, on
     onChildOpen?.(false);
   }
 
-  const set = (key: keyof InterviewForm, value: string) => setForm((p) => ({ ...p, [key]: value }));
+  const set = (key: keyof InterviewForm, value: string|number|null) => setForm((p) => ({ ...p, [key]: value }));
 
   function handleSave() {
     if (!dialogOpen || editorVersion !== editorGeneration.current || !mutation.canDispatch()) return;
@@ -154,7 +170,8 @@ export function CandidateInterviewsTab({ candidateId, canManage, authContext, on
       if (!dialogOpen || editorVersion !== editorGeneration.current || !mutation.canDispatch()) return;
       const payload = {
         interview_round: form.interview_round as "screening" | "first" | "second" | "technical" | "final" | "other",
-        interview_datetime: form.interview_datetime || null,
+        interview_datetime:dubaiAppointmentValue(form.interview_datetime,editing?.interview_datetime??null),
+        interviewer_id:form.interviewer_id,
         interview_location: form.interview_location || null,
         interview_status: form.interview_status as "scheduled" | "completed" | "cancelled" | "no_show" | "rescheduled",
         result: (form.result as "pass" | "hold" | "fail" | "pending") || null,
@@ -163,9 +180,14 @@ export function CandidateInterviewsTab({ candidateId, canManage, authContext, on
         next_step: form.next_step || null,
       };
 
-      const res = editing
-        ? await updateInterview(editing.id, payload)
-        : await createInterview(candidateId, payload);
+      let action:RecruitmentLifecycleRequest['action']=editing?'update':'create';
+      if(editing){
+        if(form.interview_status!==editing.interview_status)action=({completed:'complete',cancelled:'cancel',no_show:'no-show',rescheduled:'reschedule'}as const)[form.interview_status as'completed']??'update';
+        else if(payload.interview_datetime&&Date.parse(payload.interview_datetime)!==Date.parse(editing.interview_datetime??''))action='reschedule';
+      }
+      const {interview_status,...fields}=payload;void interview_status;
+      const res=await session.submit({kind:'interview',candidateId,id:editing?.id??null,revision:editing?String(editing.workspace_revision):null,action,values:['cancel','no-show'].includes(action)?{}:fields,reason:form.reason});
+      if(!session.isCurrent())return;
 
       if (res.success) {
         toast.success(editing ? "Interview updated" : "Interview scheduled");
@@ -179,23 +201,17 @@ export function CandidateInterviewsTab({ candidateId, canManage, authContext, on
   }
 
   function handleArchive(id: number) {
-    if (!mutation.canDispatch()) return;
-    startTransition(async () => {
-      if (!mutation.canDispatch()) return;
-      const res = await archiveInterview(id);
-      if (res.success) {
-        toast.success("Interview removed");
-        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateInterviews(candidateId) });
-        invalidateRecruitmentCandidateReadModels(queryClient, candidateId, "interviews");
-      } else {
-        toast.error(res.error ?? "Failed to remove");
-      }
-    });
+    const row=interviews.find(r=>r.id===id);if(!row||!mutation.canDispatch()||!session.startNew())return;
+    setDecision({kind:'interview',candidateId,id,revision:String(row.workspace_revision),action:'archive',values:{},reason:''});
   }
 
+  const recovered=()=>{invalidateRecruitmentCandidateReadModels(queryClient,candidateId,'interviews');void queryClient.invalidateQueries({queryKey:candidateChildPrefix('interviews',candidateId)});setDialogOpen(false);setDecision(null);onChildOpen?.(false);};
+  const recovery=<RecruitmentRecovery session={session}onSaved={recovered}onRetire={()=>{setForm(EMPTY_FORM);setEditing(null);setDialogOpen(false);setDecision(null);onChildOpen?.(false);}}/>;
   if (read.denied) return <p role="alert">Candidate interview access is no longer available.</p>;
   return (
     <QueryReadBoundary queries={read.reads}><div className="p-6">
+      {!dialogOpen&&!decision&&recovery}
+      <RecruitmentDecisionDialog request={decision}busy={isPending}locked={!!session.pending}recovery={recovery}onClose={()=>setDecision(null)}onConfirm={async reason=>{if(!decision||!mutation.canDispatch())return;const r=await session.submit({...decision,reason});if(r.success&&session.isCurrent())recovered();}}/>
       {unavailableEditor && <p role="alert" className="mb-3 text-sm text-destructive">This child record is no longer available. Its private editor entries were removed; your candidate draft is unchanged.</p>}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Interviews</h3>
@@ -229,6 +245,7 @@ export function CandidateInterviewsTab({ candidateId, canManage, authContext, on
                   {interview.interview_location && ` · ${interview.interview_location}`}
                   {interview.score != null && ` · Score: ${interview.score}`}
                 </p>
+                <RecruitmentHistory candidate={candidateId}kind="interview"id={interview.id}identity={read.identity}/>
               </div>
               {canManage && (
                 <div className="flex gap-1">
@@ -250,11 +267,14 @@ export function CandidateInterviewsTab({ candidateId, canManage, authContext, on
         mode={editing ? "edit" : "add"}
         size="lg"
         isSubmitting={isPending}
-        submitDisabled={!mutation.ready}
+        closeDisabled={!!session.pending}
+        recoveryActions={recovery}
+        submitDisabled={!mutation.ready||session.blocked||!!session.pending||!form.reason.trim()}
         onSubmit={handleSave}
       >
         <CandidateChildReadPause admission={mutation} canManage={canManage} />
         <div className="grid grid-cols-12 gap-4">
+          <div className="col-span-12"><RequiredLabel required>Interviewer</RequiredLabel><RecruitmentAssignee required candidate={candidateId}value={form.interviewer_id}onChange={id=>set('interviewer_id',id)}identity={read.identity}label="Interviewer"disabled={!dialogOpen||!!session.pending}/></div>
           <div className="col-span-12 md:col-span-6">
             <RequiredLabel required>Interview Round</RequiredLabel>
             <ERPCombobox ariaLabel="Interview Round" required value={form.interview_round || null} onValueChange={(v) => set("interview_round", String(v ?? "first"))} options={ROUND_OPTIONS} placeholder="Select round" />
@@ -264,8 +284,8 @@ export function CandidateInterviewsTab({ candidateId, canManage, authContext, on
             <ERPCombobox ariaLabel="Status" value={form.interview_status || null} onValueChange={(v) => set("interview_status", String(v ?? "scheduled"))} options={STATUS_OPTIONS} placeholder="Select status" />
           </div>
           <div className="col-span-12 md:col-span-6">
-            <Label>Date & Time</Label>
-            <Input aria-label="Date & Time" type="datetime-local" value={form.interview_datetime} onChange={(e) => set("interview_datetime", e.target.value)} />
+            <Label>Date & Time (Dubai)</Label>
+            <Input aria-label="Date & Time" type="datetime-local" required value={form.interview_datetime} onChange={(e) => set("interview_datetime", e.target.value)} />
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Location / Link</Label>
@@ -282,6 +302,9 @@ export function CandidateInterviewsTab({ candidateId, canManage, authContext, on
           <div className="col-span-12">
             <Label>Feedback</Label>
             <Textarea aria-label="Feedback" value={form.feedback} onChange={(e) => set("feedback", e.target.value)} rows={3} placeholder="Interview feedback notes..." />
+          </div>
+          <div className="col-span-12">
+            <RequiredLabel required>Decision / change reason</RequiredLabel><Textarea aria-label="Decision / change reason"required maxLength={2000}value={form.reason}onChange={e=>set('reason',e.target.value)}/>
           </div>
           <div className="col-span-12">
             <Label>Next Step</Label>

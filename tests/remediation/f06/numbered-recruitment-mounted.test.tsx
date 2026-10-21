@@ -22,7 +22,8 @@ import {RequisitionsPageClient} from '@/features/hr/recruitment/requisitions-pag
 import {CandidateConversionTab} from '@/features/hr/recruitment/tabs/candidate-conversion-tab';
 const codes=['hr.recruitment.manage','hr.recruitment.view','hr.employees.create','hr.employees.view','hr.employees.update','numbering.rules.generate'];
 const auth={profile:{id:8,auth_user_id:'11111111-1111-4111-8111-111111111111'},isAccountActive:true,permissionCodes:codes,globalPermissionCodes:codes,roleCodes:[],roleAssignments:[{roleId:1,roleCode:'synthetic',ownerCompanyId:null,branchId:null,permissionCodes:codes}]} as AuthContext;
-const candidate={id:7,workspace_revision:3,requisition_id:null,full_name_en:'Synthetic',candidate_code:'SYN'} as CandidateRow;
+const candidate={id:7,workspace_revision:3,requisition_id:null,full_name_en:'Synthetic',candidate_code:'SYN',joining_status:'not_started'} as CandidateRow;
+const acceptedOffer={id:61,offer_revision:'4',offer_terms_version:'1',requisition_id:62,owner_company_id:2,branch_id:null,department_id:null,designation_id:null,employment_type_id:null,proposed_joining_date:'2026-10-04'};
 let queryClient:QueryClient;
 const render=(node:ReactElement)=>renderUI(node,{wrapper:({children})=><QueryClientProvider client={queryClient}>{children}</QueryClientProvider>});
 const conversion=()=> <CandidateConversionTab candidate={candidate} authContext={auth} canManage canCreateEmployee/>;
@@ -40,7 +41,7 @@ beforeEach(()=>{
   vi.resetAllMocks();
   queryClient=new QueryClient({defaultOptions:{queries:{retry:false,staleTime:Infinity},mutations:{retry:false}}});
   m.store=createWorkspaceDraftStore();
-  m.prep={success:true,data:{candidate:{id:7,workspace_revision:3,requisition_id:null},latest_offer:null,already_converted:false}};
+  m.prep={success:true,data:{candidate:{id:7,workspace_revision:3,requisition_id:null},latest_offer:acceptedOffer,already_converted:false}};
   m.read.mockResolvedValue({success:true,data:{kind:'requisitions',page:1,pageSize:25,rows:[],totalCount:0}});
   m.prepare.mockImplementation(async()=>m.prep);
   m.create.mockImplementation((_payload,contract)=>Promise.resolve({success:true,data:{id:21,requisition_code:'SYN-21',reference_id:31,operation_id:contract.operationId,replayed:false}}));
@@ -77,11 +78,12 @@ it('mounted lost requisition response reopens frozen original values and retries
   await submit(ui);
   expect(m.create.mock.calls[1]).toEqual(first);
 });
-it('mounted requisition admission cannot invent global scope from scoped-only grants',async()=>{
+it('mounted requisition admits explicit scope selection without inventing global scope',async()=>{
   const scoped={...auth,globalPermissionCodes:['numbering.rules.generate'],roleAssignments:[{roleId:1,roleCode:'synthetic',ownerCompanyId:1,branchId:null,permissionCodes:codes}]} as AuthContext;
   const ui=render(<RequisitionsPageClient authContext={scoped}/>);
   await waitFor(()=>expect(ui.getByText('0 permitted records')).toBeTruthy());
-  expect((ui.getByRole('button',{name:'New Requisition'}) as HTMLButtonElement).disabled).toBe(true);
+  expect((ui.getByRole('button',{name:'New Requisition'}) as HTMLButtonElement).disabled).toBe(false);
+  await open(ui,'New Requisition');expect((ui.getByRole('button',{name:'Save'})as HTMLButtonElement).disabled).toBe(true);await submit(ui);expect(m.create).not.toHaveBeenCalled();
 });
 it('mounted conversion collects mandatory contacts and pins reviewed candidate revision',async()=>{
   const ui=render(conversion());
@@ -96,7 +98,7 @@ it('mounted conversion collects mandatory contacts and pins reviewed candidate r
   expect(m.success).toHaveBeenCalledWith('Candidate converted to employee SYN-22');
 });
 it('mounted stale source displays a reload outcome without dispatch',async()=>{
-  m.prep={success:true,data:{candidate:{id:7,workspace_revision:4,requisition_id:null},latest_offer:null,already_converted:false}};
+  m.prep={success:true,data:{candidate:{id:7,workspace_revision:4,requisition_id:null},latest_offer:acceptedOffer,already_converted:false}};
   const ui=render(conversion());
   await waitFor(()=>expect(ui.getByRole('alert').textContent).toContain('candidate changed'));
   expect((ui.getByRole('button',{name:'Convert to Employee'}) as HTMLButtonElement).disabled).toBe(true);expect(m.convert).not.toHaveBeenCalled();

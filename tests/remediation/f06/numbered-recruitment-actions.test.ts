@@ -8,7 +8,7 @@ vi.mock('next/cache',()=>({revalidatePath:m.cache}));
 import {createJobRequisition,convertCandidateToEmployee} from '@/server/actions/hr/recruitment';
 const op='5e6a4fad-ad32-4c77-9774-78411fbdb954';
 const requisition={requisition_title:'Synthetic request',vacancies_count:1,requisition_status:'draft',priority:'normal'};
-const conversion={owner_company_id:10,joining_date:'2026-10-04',employee_status:'active',emergency_contact_name:'Synthetic contact',emergency_contact_mobile:'0000000000'};
+const conversion={owner_company_id:10,joining_date:'2026-10-04',offer_id:61,offer_revision:'4',offer_terms_version:'1',requisition_id:62,employee_status:'active',emergency_contact_name:'Synthetic contact',emergency_contact_mobile:'0000000000'};
 const reqReceipt={id:41,requisition_code:'SYN-001',operation_id:op,replayed:false,reference_id:51};
 const conversionReceipt={employee_id:42,employee_code:'SYN-002',candidate_id:7,candidate_revision:'4',employee_revision:'1',link_id:43,operation_id:op,replayed:false,reference_id:52};
 const capabilities=['hr.recruitment.manage','hr.recruitment.view','hr.employees.create','hr.employees.view','hr.employees.update','numbering.rules.generate'];

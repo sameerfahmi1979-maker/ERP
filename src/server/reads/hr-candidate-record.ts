@@ -4,7 +4,7 @@ import {createClient} from "@/lib/supabase/server";
 import {candidateRecordCriteriaSchema, candidateRecordRowSchema, candidateRecordSchema, candidateSalaryReadSchema, candidateSalaryAccessSchema} from "@/lib/reads/hr-candidate-record-schema";
 import {z} from "zod";
 
-const COLUMNS = "id,candidate_code,requisition_id,full_name_en,full_name_ar,gender,nationality_id,date_of_birth,mobile_number,email,current_location,source,agency_name,referred_by_employee_id,current_employer,current_position,expected_salary,notice_period_days,candidate_status,pipeline_stage,rating,availability_date,notes,created_at,updated_at,workspace_revision,created_by,deleted_at,requisition:hr_job_requisitions(id,requisition_code,requisition_title),nationality:countries(id,name_en),referred_by:employees!hr_candidates_referred_by_employee_id_fkey(id,full_name_en,employee_code)";
+const COLUMNS = "id,candidate_code,requisition_id,full_name_en,full_name_ar,gender,nationality_id,date_of_birth,mobile_number,email,current_location,source,agency_name,referred_by_employee_id,current_employer,current_position,expected_salary,notice_period_days,candidate_status,pipeline_stage,joining_status,rating,availability_date,notes,created_at,updated_at,workspace_revision,created_by,deleted_at,requisition:hr_job_requisitions(id,requisition_code,requisition_title),nationality:countries(id,name_en),referred_by:employees!hr_candidates_referred_by_employee_id_fkey(id,full_name_en,employee_code)";
 const nativeScope = z.object({id: z.number().int().positive(), owner_company_id: z.number().int().positive().nullable(), branch_id: z.number().int().positive().nullable()}).strip();
 const denied = {success: false as const, error: "Permission denied"};
 

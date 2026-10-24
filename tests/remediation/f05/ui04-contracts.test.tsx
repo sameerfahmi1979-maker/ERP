@@ -5,6 +5,7 @@ import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/r
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {FluentProvider,webLightTheme} from '@fluentui/react-components';
 import {WorkspaceUiMemoryProvider} from '@/hooks/use-persistent-ui-state';
+import {WorkspaceDraftProvider} from '@/components/workspace/workspace-draft-provider';
 import {QueryReadBoundary,readHasFailed} from '@/components/erp/query-read-boundary';
 import {RecordCollection} from '@/components/erp/table/record-collection';
 import {useGuardedTransition} from '@/hooks/use-guarded-transition';
@@ -13,7 +14,8 @@ import {HrSettingsLookupPage} from '@/features/hr/settings/hr-settings-lookup-pa
 import {CandidateInterviewsTab} from '@/features/hr/recruitment/tabs/candidate-interviews-tab';
 import type {ReactNode} from 'react';
 import type {AuthContext} from '@/lib/rbac/check';
-const m=vi.hoisted(()=>({list:vi.fn(),create:vi.fn(),update:vi.fn(),archive:vi.fn(),toast:vi.fn()}));
+const m=vi.hoisted(()=>({list:vi.fn(),create:vi.fn(),update:vi.fn(),archive:vi.fn(),toast:vi.fn(),lifecycle:vi.fn()}));
+vi.mock('@/server/actions/hr/recruitment-lifecycle',()=>({mutateRecruitmentLifecycle:m.lifecycle,readRecruitmentAssignees:async()=>({success:true,rows:[{id:52,full_name:'Synthetic interviewer'}],hasMore:false}),readRecruitmentLifecycleHistory:async()=>({success:true,rows:[],hasMore:false})}));
 vi.mock('next/navigation',()=>({usePathname:()=>'/synthetic',useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('@/server/actions/hr/settings',()=>({archiveHrSettingsRow:vi.fn(),listHrTrainingCategories:vi.fn()}));
 vi.mock('@/server/actions/common-master-data/archive',()=>({listArchivedMasters:vi.fn(),restoreArchivedMaster:vi.fn()}));
@@ -25,7 +27,7 @@ vi.mock('@/lib/reads/client',async importOriginal=>({...await importOriginal<typ
   const result=await m.list();return result.success?{success:true,data:{operation:'page',kind:'interviews',candidateId:p.candidateId,page:p.page,pageSize:p.pageSize,totalCount:result.data.length,rows:result.data}}:result;
  }}));
 const authContext={profile:{id:51,auth_user_id:'synthetic-f05-reader',must_change_password:false},accountStatus:'active',isAccountActive:true,roleCodes:['synthetic'],permissionCodes:['hr.recruitment.view','hr.recruitment.manage'],globalPermissionCodes:['hr.recruitment.view','hr.recruitment.manage'],roleAssignments:[]} as unknown as AuthContext;
-function Wrap({children}:{children:ReactNode}){return <FluentProvider theme={webLightTheme}><QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><WorkspaceUiMemoryProvider>{children}</WorkspaceUiMemoryProvider></QueryClientProvider></FluentProvider>;}
+function Wrap({children}:{children:ReactNode}){return <FluentProvider theme={webLightTheme}><QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><WorkspaceDraftProvider><WorkspaceUiMemoryProvider>{children}</WorkspaceUiMemoryProvider></WorkspaceDraftProvider></QueryClientProvider></FluentProvider>;}
 beforeEach(()=>{vi.resetAllMocks();m.list.mockResolvedValue({success:true,data:[]});});afterEach(cleanup);
 it.each([{isError:true},{isError:false,data:{success:false,error:'private'}}])('failed read states cannot become successful empties',q=>expect(readHasFailed({...q,refetch:vi.fn()})).toBe(true));
 it.each([undefined,[],{success:true,data:[]}])('valid empty states remain empty, not errors',data=>expect(readHasFailed({isError:false,data,refetch:vi.fn()})).toBe(false));
@@ -51,5 +53,24 @@ it('HR lookup required labels stop an invalid create and expose linked summary',
 it('read-only HR settings omit Add and retain list controls',()=>{render(<Wrap><HrSettingsLookupPage entity="hr_grades" principalId={1} breadcrumbs={[]} title="Grades" description="Synthetic" initialData={[{id:1,code:'SYN',name_en:'Synthetic',is_active:true,sort_order:0} as never]} canManage={false} onList={vi.fn()} onCreate={vi.fn()} onUpdate={vi.fn()}/></Wrap>);expect(screen.queryByRole('button',{name:'Add',exact:true})).toBeNull();expect(screen.getByRole('button',{name:'Edit columns'})).toBeTruthy();expect(screen.queryByRole('button',{name:'Edit record'})).toBeNull();});
 it('rejected HR settings saves retain entries with durable safe feedback',async()=>{const create=vi.fn().mockResolvedValue({success:false,error:'PRIVATE SQL'});render(<Wrap><HrSettingsLookupPage entity="hr_grades" principalId={1} breadcrumbs={[]} title="Grades" description="Synthetic" initialData={[]} canManage onList={vi.fn()} onCreate={create} onUpdate={vi.fn()}/></Wrap>);fireEvent.click(screen.getByRole('button',{name:'Add',exact:true}));fireEvent.change(screen.getByLabelText('Code'),{target:{value:'SYN'}});fireEvent.change(screen.getByLabelText('Name (English)'),{target:{value:'Synthetic'}});fireEvent.click(screen.getByRole('button',{name:'Add',exact:true}));expect(await screen.findByText(/The record was not saved/)).toBeTruthy();expect(screen.getByLabelText('Code').getAttribute('value')).toBe('SYN');expect(screen.queryByText('PRIVATE SQL')).toBeNull();expect(screen.getByRole('dialog')).toBeTruthy();});
 it('candidate interview read rejection is explicit and has retry',async()=>{m.list.mockRejectedValueOnce(Error('PRIVATE'));render(<Wrap><CandidateInterviewsTab candidateId={51} authContext={authContext} canManage/></Wrap>);const retry=await screen.findByRole('button',{name:'Retry loading'});expect(screen.queryByText('PRIVATE')).toBeNull();fireEvent.click(retry);await waitFor(()=>expect(m.list).toHaveBeenCalledTimes(2));});
-it('candidate interview score constraint prevents the server call',async()=>{render(<Wrap><CandidateInterviewsTab candidateId={51} authContext={authContext} canManage/></Wrap>);await waitFor(()=>expect(screen.getByRole('button',{name:'Schedule Interview'}).hasAttribute('disabled')).toBe(false));fireEvent.click(screen.getByRole('button',{name:'Schedule Interview'}));fireEvent.change(screen.getByLabelText('Score (0–100)'),{target:{value:'101'}});const d=screen.getByRole('dialog');fireEvent.click(within(d).getByRole('button',{name:'Add',exact:true}));expect(m.create).not.toHaveBeenCalled();expect(await within(d).findByRole('alert')).toBeTruthy();});
-it('read-only candidate interviews omit mutation controls and use compact records',async()=>{m.list.mockResolvedValue({success:true,data:[{id:1,candidate_id:51,interview_round:'first',interview_status:'scheduled',interview_datetime:null,interview_location:null,result:null,score:null}]});render(<Wrap><CandidateInterviewsTab candidateId={51} authContext={authContext} canManage={false}/></Wrap>);await screen.findByText('first Interview');for(const name of ['Schedule Interview','Edit record','Archive record','Edit columns','Edit filters'])expect(screen.queryByRole('button',{name})).toBeNull();});
+it('candidate interview score constraint prevents the current versioned server call',async()=>{
+ m.lifecycle.mockResolvedValue({success:false,error:'Synthetic save rejected'});
+ render(<Wrap><CandidateInterviewsTab candidateId={51} authContext={authContext} canManage/></Wrap>);
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Schedule Interview'}).hasAttribute('disabled')).toBe(false));
+ fireEvent.click(screen.getByRole('button',{name:'Schedule Interview'}));
+ const d=screen.getByRole('dialog');
+ await waitFor(()=>expect(within(d).getByRole('combobox',{name:'Interviewer'}).hasAttribute('disabled')).toBe(false));
+ fireEvent.click(within(d).getByRole('combobox',{name:'Interviewer'}));fireEvent.click(await screen.findByRole('option',{name:'Synthetic interviewer'}));
+ fireEvent.change(screen.getByLabelText('Date & Time'),{target:{value:'2026-10-25T09:00'}});
+ fireEvent.change(screen.getByLabelText('Decision / change reason'),{target:{value:'Synthetic interview review'}});
+ fireEvent.change(screen.getByLabelText('Score (0–100)'),{target:{value:'101'}});
+ fireEvent.click(within(d).getByRole('button',{name:'Add',exact:true}));
+ expect(m.create).not.toHaveBeenCalled();expect(m.lifecycle).not.toHaveBeenCalled();
+ expect((await within(d).findByRole('alert')).textContent).toContain('Score (0–100)');
+ fireEvent.change(screen.getByLabelText('Score (0–100)'),{target:{value:'85'}});
+ fireEvent.click(within(d).getByRole('button',{name:'Add',exact:true}));
+ await waitFor(()=>expect(m.lifecycle).toHaveBeenCalledOnce());
+ expect(m.lifecycle).toHaveBeenCalledWith(expect.objectContaining({kind:'interview',action:'create',values:expect.objectContaining({score:85,interviewer_id:52})}),expect.any(String));
+ expect(m.create).not.toHaveBeenCalled();
+});
+it('read-only candidate interviews omit mutation controls and use compact records',async()=>{m.list.mockResolvedValue({success:true,data:[{id:1,candidate_id:51,workspace_revision:1,interviewer_id:52,interview_round:'first',interview_status:'scheduled',interview_datetime:null,interview_location:null,result:null,score:null}]});render(<Wrap><CandidateInterviewsTab candidateId={51} authContext={authContext} canManage={false}/></Wrap>);await screen.findByText('first Interview');for(const name of ['Schedule Interview','Edit record','Archive record','Edit columns','Edit filters'])expect(screen.queryByRole('button',{name})).toBeNull();});

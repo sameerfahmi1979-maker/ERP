@@ -85,7 +85,7 @@ it('F12 stale joining status cannot route an old lifecycle snapshot',async()=>{
  s.rows.hr_candidates=[{id:9,candidate_id:9,requisition_id:19,joining_status:'completed'}];s.rows.hr_job_requisitions=[{id:19,owner_company_id:1,branch_id:2}];s.rows.employee_recruitment_links=[];
  expect(await resolve({...event,source_table:'hr_candidates',source_id:9,event_type:'joining_changed',source_snapshot:{candidate_id:9,joining_status:'in_progress'}})).toEqual([]);
 });
-it.each([['employee_pro_processes','hr.actions.view','process_status','draft'],['employee_assignments','hr.assignments.view','assignment_status','planned']])('F12 %s requires fresh same-branch source permission and revision',async(table,cap,status,value)=>{
+it.each([['employee_pro_processes','hr.actions.view','process_status','draft'],['employee_assignments','hr.assignments.view','assignment_status','planned']] as const)('F12 %s requires fresh same-branch source permission and revision',async(table,cap,status,value)=>{
  s.rows[table]=[{id:41,employee_id:7,workspace_revision:2,[status]:value}];
  const e:NotificationEvent={...event,source_table:table,source_id:41,event_type:'workforce_changed',source_snapshot:{employee_id:7,workspace_revision:2,[status]:value}};
  expect(await resolve(e)).toEqual([]);

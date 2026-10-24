@@ -15,6 +15,7 @@ import {createWorkspaceDraftStore} from '@/lib/workspace/workspace-draft-store';
 import {childRecoveryMarkers} from '@/lib/hr/child-operation-state';
 import type {ChildMutation,ChildSaveContract} from '@/lib/hr/child-save-contract';
 import type {ERPChildDialogFormProps} from "@/components/erp/erp-child-dialog-form";
+vi.mock('@/server/actions/hr/clearance-evidence',()=>({readClearanceEvidenceChoices:async()=>({success:true,rows:[],hasMore:false}),readClearanceHistory:async()=>({success:true,rows:[],hasMore:false})}));
 
 
 // F05 compact forms have no worklist criteria controls. Capture the real

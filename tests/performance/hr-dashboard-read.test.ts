@@ -3,6 +3,7 @@ import type {AuthContext} from "@/lib/rbac/check";
 type Call = {table: string; methods: unknown[][]};
 const state = vi.hoisted(() => ({authorizations: 0, clients: 0, context: {} as AuthContext, calls: [] as Call[], rows: {} as Record<string, Record<string, unknown>[]>, fault: "", malformed: "", countOverride: undefined as number | null | undefined, cap: false, duplicate: false}));
 vi.mock("@/lib/rbac/check", async () => ({...await import("@/lib/rbac/scope"), getAuthContext: async () => {state.authorizations++; return state.context;}}));
+vi.mock('@/server/reads/payroll-readiness-facts',()=>({readPayrollReadinessFacts:async(_db:unknown,ids:number[])=>{void _db;state.calls.push({table:'f12_payroll_readiness_facts',methods:[['subjects',ids]]});if(state.fault==='employee_wps_profiles')throw Error('Synthetic readiness unavailable');return ids.map(employee_id=>state.rows.f12_readiness_facts?.find(row=>row.employee_id===employee_id)??{employee_id,readiness_status:'not_enrolled',has_wps_profile:false,missing_iban:false});}}));
 vi.mock("@/lib/supabase/server", () => ({createClient: async () => {
   state.clients++;
   return {from: (table: string) => {
@@ -16,10 +17,17 @@ vi.mock("@/lib/supabase/server", () => ({createClient: async () => {
         if (method === "is") rows = rows.filter(r => (r[k] ?? null) === value);
         if (method === "neq") rows = rows.filter(r => r[k] != null && r[k] !== value);
         if (method === "in") rows = rows.filter(r => (value as unknown[]).includes(r[k]));
-        if (["lt", "lte", "gte"].includes(String(method))) rows = rows.filter(r => r[k] != null && (method === "lt" ? String(r[k]) < String(value) : method === "lte" ? String(r[k]) <= String(value) : String(r[k]) >= String(value)));
+        if (["lt", "lte", "gte"].includes(String(method))) rows = rows.filter(r => {
+          if (r[k] == null) return false;
+          const timestamp = k === 'interview_datetime' || k === 'created_at';
+          const left = timestamp ? Date.parse(String(r[k])) : String(r[k]);
+          const right = timestamp ? Date.parse(String(value)) : String(value);
+          return method === 'lt' ? left < right : method === 'lte' ? left <= right : left >= right;
+        });
         if (method === "not" && value === "is") rows = rows.filter(r => r[k] != null);
         if (method === "or" && String(key).startsWith("effective_to")) rows = rows.filter(r => r.effective_to == null || String(r.effective_to) >= "2026-10-04");
         if (method === "or" && String(key).startsWith("iban")) rows = rows.filter(r => r.iban == null || r.iban === "");
+        if (method === 'or' && String(key).startsWith('due_date.lt.')) rows=rows.filter(r=>r.assigned_to==null||r.due_date!=null&&String(r.due_date)<String(key).split(',')[0].slice('due_date.lt.'.length));
       }
       const orders = call.methods.filter(m => m[0] === "order").map(m => String(m[1]));
       rows.sort((a, b) => {for (const key of orders) {const compare = typeof a[key] === "number" ? Number(a[key]) - Number(b[key]) : String(a[key] ?? "").localeCompare(String(b[key] ?? "")); if (compare) return compare;} return 0;});
@@ -49,6 +57,7 @@ beforeEach(() => {
 });
 afterEach(() => {vi.useRealTimers(); Object.assign(state, {authorizations: 0, clients: 0, calls: [], rows: {}, fault: "", malformed: "", countOverride: undefined, cap: false, duplicate: false});});
 const read = (filters: Record<string, unknown> = {}) => readHrDashboard(filters);
+it('PRO worklist counts every unfinished native state, never nonexistent pending or terminal renewals',async()=>{state.rows.employee_pro_processes=['draft','requested','in_progress','waiting_for_document','submitted','approved','cancelled','rejected','completed','pending'].map((process_status,i)=>({id:i+1,employee_id:1,process_status}));const result=await read();expect(result.data?.actions.open_pro_processes).toEqual({status:'ready',value:6});expect(state.calls.filter(c=>c.table==='employee_pro_processes').flatMap(c=>c.methods)).toContainEqual(['in','process_status',['draft','requested','in_progress','waiting_for_document','submitted','approved']]);});
 it("composes one authorized request/client, shares scope/counts and exposes only the validated DTO", async () => {
   const result = await read(); expect(result.success, result.error).toBe(true); expect(hrDashboardSchema.safeParse(result.data).success).toBe(true);
   expect(state.authorizations).toBe(1); expect(state.clients).toBe(1); expect(state.calls.filter(c => c.table === "employees")).toHaveLength(1);
@@ -61,8 +70,7 @@ it("composes one authorized request/client, shares scope/counts and exposes only
 it("preserves employee/date/category distinctions, including active+probation only in top summary", async () => {
   state.rows.employees = [employee(1), employee(2, {employee_status: "probation", employee_category_id: 9}), employee(3, {employee_status: "on_leave", joining_date: "2026-09-30"}), employee(4, {employee_status: "resigned"})];
   const result = await read(); expect(result.data?.employee.active).toEqual({status: "ready", value: 1}); expect(result.data?.employee.terminated_archived).toEqual({status: "ready", value: 1});
-  const legacyMonthStart = new Date(2026, 9, 1).toISOString().slice(0, 10);
-  expect(result.data?.employee.new_joiners_this_month).toEqual({status: "ready", value: legacyMonthStart === "2026-09-30" ? 4 : 3}); expect(result.data?.summary.employee_active).toEqual({status: "ready", value: 2});
+  expect(result.data?.employee.new_joiners_this_month).toEqual({status: "ready", value: 3}); expect(result.data?.summary.employee_active).toEqual({status: "ready", value: 2});
   expect(result.data?.headcount).toMatchObject({status: "ready", total: 2, items: [{categoryId: 1, count: 1}, {categoryId: 9, categoryName: "Category unavailable", count: 1}]});
 });
 it("covers more than the provider cap with stable bounded employee pages and bounded ID predicates", async () => {
@@ -110,11 +118,12 @@ it("combined roles from different company/branch scopes cannot turn masked bank 
   state.context.roleAssignments[1].ownerCompanyId = 1; state.context.roleAssignments[1].branchId = 2;
   expect((await read()).data?.summary.wps_ready_pct).toEqual({status: "unavailable", reason: "scope"});
 });
-it("bank-authorized WPS retains legacy bank-and-IBAN definition without fetching financial values", async () => {
-  state.rows.employee_wps_profiles = [{id: 1, employee_id: 1, iban: "SYNTHETIC_PRIVATE_IBAN", bank_id: 1}, {id: 2, employee_id: 1, iban: "", bank_id: 1}, {id: 3, employee_id: 1, iban: "X", bank_id: null}];
+it("bank-authorized WPS uses dated readiness facts, not legacy bank-and-IBAN presence", async () => {
+  state.rows.employees=[employee(1),employee(2),employee(3)];
+  state.rows.f12_readiness_facts=[{employee_id:1,readiness_status:'ready',has_wps_profile:true,missing_iban:false},{employee_id:2,readiness_status:'incomplete',has_wps_profile:true,missing_iban:true},{employee_id:3,readiness_status:'on_hold',has_wps_profile:true,missing_iban:false}];
   const result = await read(); expect(result.data?.payroll.wps_ready).toEqual({status: "ready", value: 1}); expect(result.data?.payroll.wps_incomplete).toEqual({status: "ready", value: 2});
   expect(result.data?.payroll.missing_iban_bank).toEqual({status: "ready", value: 1}); expect(result.data?.summary.wps_ready_pct).toEqual({status: "ready", value: 33});
-  expect(state.calls.filter(c => c.table === "employee_wps_profiles").every(c => c.methods.some(m => m[0] === "select" && m[1] === "id" && (m[2] as {head: boolean}).head))).toBe(true);
+  expect(state.calls.filter(c=>c.table==='f12_payroll_readiness_facts')).toHaveLength(1);expect(state.calls.some(c=>c.table==='employee_wps_profiles')).toBe(false);
   expect(JSON.stringify(result)).not.toContain("PRIVATE");
 });
 it("filters the shared subjects while retaining all-permitted category/recruitment/clearance scope", async () => {
@@ -167,4 +176,49 @@ it("route validates input and uses private/no-store headers, with generic errors
 it("strict response schema rejects missing statuses, extra private values, and wrong headcount totals", () => {
   expect(hrDashboardCriteriaSchema.parse({})).toEqual({expiryThresholdDays: 60});
   expect(hrDashboardSchema.safeParse({employee: {total: 0}}).success).toBe(false);
+});
+it('F12-05 counts actual open action/EOS states, not obsolete or terminal labels', async () => {
+  state.rows.employee_hr_actions = ['open','in_progress','closed','cancelled','pending'].map((action_status,i)=>({id:i+1,employee_id:1,action_title:'Synthetic task',due_date:null,assigned_to:null,action_status}));
+  state.rows.employee_eos_cases = ['draft','notice_served','clearance_in_progress','pending_final_settlement','closed','cancelled','initiated'].map((case_status,i)=>({id:i+1,employee_id:1,case_status}));
+  const result=await read();expect(result.data?.actions.open_hr_actions).toEqual({status:'ready',value:2});expect(result.data?.actions.open_eos_cases).toEqual({status:'ready',value:4});
+});
+it('F12-05 task attention exposes actual responsibility/due blockers and the existing source, never an invented assignee',async()=>{
+  state.rows.employee_hr_actions=[{id:1,employee_id:1,action_title:'Synthetic HR work',due_date:'2026-10-05',assigned_to:null,action_status:'open'},{id:2,employee_id:1,action_title:'Future assigned work',due_date:'2026-10-05',assigned_to:6,action_status:'open'}];
+  const r=await read();expect(r.data?.attention.failedSources).toEqual([]);expect(r.data?.attention.items.filter(i=>i.id.startsWith('action-work'))).toMatchObject([{id:'action-work-1',description:expect.stringContaining('Unassigned — progress held'),linkHref:'/admin/hr/employees/record/1'}]);
+});
+it('F12-05 open candidate and joining counts cover real unfinished states without terminal or invented labels', async()=>{
+  state.rows.hr_candidates=['new','screening','shortlisted','interview','selected','offered','accepted','hired','rejected','withdrawn','blacklisted','active','in_review','offer'].map((candidate_status,i)=>({id:i+1,candidate_status}));
+  state.rows.hr_onboarding_tasks=['pending','in_progress','blocked','completed','cancelled','not_applicable'].map((task_status,i)=>({id:i+1,candidate_id:null,task_title:'Synthetic task',due_date:'2026-10-03',candidate:null,task_status}));
+  const result=await read();expect(result.data?.recruitment.active_candidates).toEqual({status:'ready',value:7});expect(result.data?.recruitment.onboarding_tasks_pending).toEqual({status:'ready',value:3});expect(result.data?.attention.items.filter(r=>r.id.startsWith('recruit-onboard-'))).toHaveLength(3);
+});
+it('F12-05 counts actual unverified/failed evidence rather than nonexistent pending verification',async()=>{
+  state.rows.employee_identity_documents=['unverified','failed','verified','pending'].map((verification_status,i)=>({id:i+1,employee_id:1,verification_status}));
+  expect((await read()).data?.compliance.missing_unverified).toEqual({status:'ready',value:2});
+});
+it('F12-05 future blocks and assignments are not currently effective',async()=>{
+  state.rows.employee_operational_blocks=[{id:1,employee_id:1,block_status:'active',effective_from:'2026-10-05',effective_to:null},{id:2,employee_id:1,block_status:'active',effective_from:'2026-10-01',effective_to:null}];
+  state.rows.employee_assignments=[{id:1,employee_id:1,assignment_status:'active',effective_from:'2026-10-05',effective_to:null},{id:2,employee_id:1,assignment_status:'active',effective_from:'2026-10-04',effective_to:null}];
+  const result=await read();expect(result.data?.operations.active_blocks).toEqual({status:'ready',value:1});expect(result.data?.operations.current_assignments).toEqual({status:'ready',value:1});expect(result.data?.attention.items.some(r=>r.id==='ops-block-1')).toBe(false);
+});
+it('F12-05 Dubai midnight/month boundaries do not depend on host UTC date',async()=>{
+  vi.setSystemTime(new Date('2026-10-31T20:00:00Z'));state.rows.employees=[employee(1,{joining_date:'2026-11-01'})];
+  state.rows.employee_identity_documents=[{id:1,employee_id:1,expiry_date:'2026-10-31',document_type:null}];
+  const result=await read();expect(result.data?.employee.new_joiners_this_month).toEqual({status:'ready',value:1});expect(result.data?.compliance.expired_documents).toEqual({status:'ready',value:1});
+});
+it('F12-05 timestamp windows include final fractional second and exclude the next Dubai day/week',async()=>{
+  state.rows.hr_interviews=['2026-10-03T19:59:59.999Z','2026-10-03T20:00:00Z','2026-10-10T19:59:59.999Z','2026-10-10T20:00:00Z'].map((interview_datetime,i)=>({id:i+1,interview_datetime,interview_status:'scheduled'}));
+  state.rows.employee_recruitment_links=['2026-09-30T19:59:59.999Z','2026-09-30T20:00:00Z','2026-10-04T19:59:59.999Z','2026-10-04T20:00:00Z'].map((created_at,i)=>({id:i+1,employee_id:1,created_at}));
+  const result=await read();expect(result.data?.recruitment.interviews_this_week).toEqual({status:'ready',value:2});expect(result.data?.recruitment.converted_this_month).toEqual({status:'ready',value:2});
+});
+it('F12-05 laboratory query/payload budget stays batch-bounded, not one private dossier per person',async()=>{
+  const samples=[];
+  for(const size of [1,10,200,1107]){
+    state.calls=[];state.rows={employees:Array.from({length:size},(_,i)=>employee(i+1)),hr_employee_categories:[{id:1,name_en:'Synthetic category'}]};
+    const start=process.hrtime.bigint();const r=await read();const milliseconds=Number(process.hrtime.bigint()-start)/1e6;
+    expect(r.success).toBe(true);const bytes=Buffer.byteLength(JSON.stringify(r));
+    expect(bytes).toBeLessThan(16000);expect(state.calls.length).toBeLessThanOrEqual(80+70*Math.ceil(size/200)+2*Math.ceil(size/500));
+    expect(state.calls.some(c=>c.table==='employee_payroll_profiles'&&c.methods.some(m=>String(m[1]).includes('salary')))).toBe(false);
+    samples.push({subjects:size,queries:state.calls.length,payloadBytes:bytes,milliseconds});
+  }
+  console.info('F12_05_LAB_IN_MEMORY_QUERY_SHAPES_NOT_PRODUCTION_TIMINGS '+JSON.stringify(samples));
 });

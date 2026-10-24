@@ -19,22 +19,23 @@ const COLORS = {
 };
 
 export function HrWorkforceReadinessRing({ ready, notReady, blocked, isLoading, hasAccess = true, unavailable = false }: Props) {
-  const total = ready + notReady + blocked;
+  // These are saved site-check counts, not unique current employees. Active
+  // blocks count people independently and must never enter this denominator.
+  const total = ready + notReady;
   const readyPct = total > 0 ? Math.round((ready / total) * 100) : null;
 
   const data = [
     { key: "ready", label: "Ready", value: ready, color: COLORS.ready },
     { key: "notReady", label: "Not ready", value: notReady, color: COLORS.notReady },
-    { key: "blocked", label: "Blocked", value: blocked, color: COLORS.blocked },
   ].filter((d) => d.value > 0);
 
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
       <div className="px-4 pt-4 pb-1">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Workforce Readiness
+          Recorded site checks
         </p>
-        <p className="text-[11px] text-muted-foreground">Deployable right now</p>
+        <p className="text-[11px] text-muted-foreground">Saved results, not current clearance</p>
       </div>
 
       {!hasAccess ? (
@@ -49,7 +50,7 @@ export function HrWorkforceReadinessRing({ ready, notReady, blocked, isLoading, 
         <div className="flex flex-1 items-center justify-center px-4 py-6 text-center"><p className="text-xs text-muted-foreground">Readiness could not be verified</p></div>
       ) : total === 0 ? (
         <div className="flex flex-1 items-center justify-center px-4 py-6 text-center">
-          <p className="text-xs text-muted-foreground">No assignment data yet</p>
+          <p className="text-xs text-muted-foreground">No saved readiness checks</p>
         </div>
       ) : (
         <div className="flex flex-1 items-center gap-1 px-2 pb-2">
@@ -74,13 +75,13 @@ export function HrWorkforceReadinessRing({ ready, notReady, blocked, isLoading, 
             </ResponsiveContainer>
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
               <span className="text-xl font-bold tabular-nums leading-none">{readyPct}%</span>
-              <span className="text-[9px] text-muted-foreground">ready</span>
+              <span className="text-[9px] text-muted-foreground">saved ready</span>
             </div>
           </div>
           <div className="flex flex-1 flex-col gap-1.5 pr-2">
             <LegendRow color={COLORS.ready} label="Ready" value={ready} />
             <LegendRow color={COLORS.notReady} label="Not ready" value={notReady} />
-            <LegendRow color={COLORS.blocked} label="Blocked" value={blocked} />
+            <LegendRow color={COLORS.blocked} label="People blocked" value={blocked} />
           </div>
         </div>
       )}

@@ -6,6 +6,7 @@ import {literalContains, literalLike} from "@/lib/reads/search";
 import {hrSearchReadRequestSchema, hrSearchAllowedCategories, hrSearchCriteriaIssue, hrSearchPageReadSchema, hrSearchSuggestionsReadSchema,
 } from "@/lib/reads/hr-search-read-schema";
 import type {HrSearchCategory, HrSearchResult} from "@/lib/hr/search/types";
+import {hrDashboardCalendar} from '@/lib/hr/dashboard-metrics';
 
 type Source = {key: string; table: string; category: HrSearchCategory; columns: string[]; search: string[]; employee?: true; employeeSearch?: true;
   employeeStatuses?: string[]; active?: true; medical?: true; confidential?: true; status?: string; date?: string;
@@ -25,7 +26,7 @@ export const HR_SEARCH_READ_SOURCES: readonly Source[] = [
     related: {alias: "record_type", table: "hr_medical_record_types", fk: "medical_record_type_id", column: "name_en", search: true}},
   {key: "leave", table: "employee_leave_requests", category: "time", columns: ["approval_status", "start_date", "end_date"], search: [], employee: true, employeeSearch: true,
     employeeStatuses: ["active", "probation", "on_leave"], related: {alias: "leave_type", table: "hr_leave_types", fk: "leave_type_id", column: "name_en", search: true}},
-  {key: "wps", table: "employee_wps_profiles", category: "payroll", columns: ["wps_status", "bank_id"], search: [], employee: true, employeeSearch: true, employeeStatuses: ["active", "probation"]},
+  {key: "wps", table: "employee_wps_profiles", category: "payroll", columns: ["wps_status"], search: [], employee: true, employeeSearch: true, employeeStatuses: ["active", "probation"]},
   {key: "hold", table: "employee_payroll_holds", category: "payroll", columns: ["is_active"], search: [], employee: true, employeeSearch: true, employeeStatuses: ["active", "probation"], active: true},
   {key: "assignment", table: "employee_assignments", category: "operations", columns: ["assignment_status", "effective_from"], search: [], employee: true, employeeSearch: true,
     related: {alias: "work_site", table: "work_sites", fk: "work_site_id", column: "site_name", search: true}},
@@ -50,7 +51,7 @@ function schema(s: Source) {
 }
 const txt = (r: Raw, key: string) => r[key] as string | null;
 const required = (r: Raw, key: string) => {const value = txt(r, key); if (typeof value !== "string") throw Error("Search row incomplete"); return value;};
-function mapRow(s: Source, r: Raw, query: string): HrSearchResult {
+function mapRow(s: Source, r: Raw, query: string,today:string): HrSearchResult {
   const entityId = r.id as number, emp = s.employee ? employeeLabel.parse(r.employee) : null, candidate = s.key === "onboarding" ? candidateLabel.parse(r.candidate) : null;
   const related = s.related && r[s.related.alias] ? (r[s.related.alias] as Record<string, string | null>)[s.related.column] : null;
   const prefixes: Record<string, string> = {employee: "emp", candidate: "cand", identity: "comp-id", card: "comp-card", training: "comp-cert", medical: "comp-med",
@@ -61,7 +62,7 @@ function mapRow(s: Source, r: Raw, query: string): HrSearchResult {
   const t = (key: string) => txt(r, key), value = (key: string) => t(key) ?? "—", optional = (key: string) => t(key) ?? undefined;
   const status = (key: string, good: string[], warning: string[] = [], bad: string[] = []) => ({status: optional(key),
     statusVariant: good.includes(value(key)) ? "success" as const : warning.includes(value(key)) ? "warning" as const : bad.includes(value(key)) ? "danger" as const : "muted" as const});
-  const expired = (key: string) => !!t(key) && value(key) < new Date().toISOString().slice(0, 10);
+  const expired = (key: string) => !!t(key) && value(key) < today;
   switch (s.key) {
     case "employee": return {...base, entityType: "employee", title: required(r, "full_name_en"), subtitle: required(r, "employee_code"), description: t("mobile_number") ? `Mobile: ${t("mobile_number")}` : undefined,
       ...status("employee_status", ["active"], ["probation"], ["suspended"]), employeeId: entityId, employeeCode: required(r, "employee_code"), employeeName: required(r, "full_name_en"), date: optional("joining_date"), href: `/admin/hr/employees/record/${entityId}`,
@@ -79,14 +80,14 @@ function mapRow(s: Source, r: Raw, query: string): HrSearchResult {
       statusVariant: t("result") === "fit" ? "success" : "muted", date: optional("examination_date"), matchedFields: ["Medical Record Type", "Report Number"]};
     case "leave": return {...base, entityType: "leave_request", title: `Leave: ${related ?? "—"}`, description: `${value("start_date")} → ${value("end_date")}`, status: optional("approval_status"),
       statusVariant: t("approval_status") === "approved" ? "success" : t("approval_status") === "rejected" ? "danger" : "warning", date: optional("start_date"), href: "/admin/hr/time/leave", matchedFields: ["Leave Type", "Employee"]};
-    case "wps": {const state = r.bank_id ? t("wps_status") ?? "enrolled" : "incomplete"; return {...base, entityType: "wps_profile", title: "WPS Profile", description: `Status: ${state}`,
-      status: state, statusVariant: r.bank_id ? "success" : "warning", href: "/admin/hr/payroll/wps", matchedFields: ["Employee"]};}
+    case "wps": return {...base, entityType: "wps_profile", title: "WPS Profile", description: `Recorded profile status: ${t('wps_status')??'unknown'}. Open Payroll/WPS for current dated readiness; this search result is not payment clearance.`,
+      status: optional('wps_status'), statusVariant: 'muted', href: "/admin/hr/payroll/wps", matchedFields: ["Employee"]};
     case "hold": return {...base, entityType: "payroll_hold", title: "Payroll Hold — Active", status: "on_hold", statusVariant: "danger", href: "/admin/hr/payroll/salaries", matchedFields: ["Employee"]};
     case "assignment": return {...base, entityType: "assignment", title: `Assignment${related ? `: ${related}` : ""}`, ...status("assignment_status", ["active"]), date: optional("effective_from"), href: "/admin/hr/operations/assignments", matchedFields: ["Employee", "Site"]};
     case "block": return {...base, entityType: "operational_block", title: "Operational Block — Active", status: "blocked", statusVariant: "danger", date: optional("effective_from"), href: "/admin/hr/operations/blocks", matchedFields: ["Employee"]};
     case "pro": return {...base, entityType: "pro_process", title: `PRO: ${value("process_title")}`,
       ...status("process_status", ["completed"], ["in_progress"]), date: optional("request_date"), href: "/admin/hr/actions/pro", matchedFields: ["Process Title"]};
-    case "action": return {...base, entityType: "hr_action", title: `HR Action: ${value("action_type")}`, ...status("action_status", ["completed"], ["pending"]), date: optional("action_date"), matchedFields: ["Action Type"]};
+    case "action": return {...base, entityType: "hr_action", title: `HR Action: ${value("action_type")}`, ...status("action_status", ["closed"], ["open","in_progress"]), date: optional("action_date"), matchedFields: ["Action Type"]};
     case "disciplinary": return {...base, entityType: "disciplinary", title: `Disciplinary${t("severity") ? ` — ${t("severity")}` : ""}`, description: t("subject") ? `Subject: ${t("subject")}` : undefined,
       status: optional("status"), statusVariant: t("status") === "closed" ? "muted" : "danger", date: optional("incident_date"), href: "/admin/hr/actions/disciplinary", matchedFields: ["Subject"]};
     case "eos": return {...base, entityType: "eos_case", title: `EOS: ${value("eos_type")}`, description: optional("reason"), status: optional("case_status"), statusVariant: t("case_status") === "closed" ? "muted" : "warning", date: optional("last_working_date"), href: "/admin/hr/actions/eos", matchedFields: ["EOS Type", "Reason"]};
@@ -108,7 +109,7 @@ export async function readHrSearch(input: unknown, context?: AuthContext, signal
     if (!ctx.profile?.id || !ctx.isAccountActive || ctx.profile.must_change_password || !allowed.length) return {success: false as const, error: "Permission denied"};
     const p = parsed.data;
     if (p.mode === "results") {const issue = hrSearchCriteriaIssue(p, allowed); if (issue) return {success: false as const, error: "Invalid HR search criteria: " + issue};}
-    const db = await createClient(); signal?.throwIfAborted();
+    const db = await createClient(),today=hrDashboardCalendar().today; signal?.throwIfAborted();
     if (p.mode === "suggestions") {
       const sources = [{category: "employees" as const, table: "employees", code: "employee_code", limit: 5}, {category: "candidates" as const, table: "hr_candidates", code: "candidate_code", limit: 3}].filter(s => allowed.includes(s.category));
       const groups = await boundedMap(sources, async s => {
@@ -144,7 +145,7 @@ export async function readHrSearch(input: unknown, context?: AuthContext, signal
         if (s.employeeStatuses) q.in("employee.employee_status", s.employeeStatuses);
       }
       if (s.active) {
-        if (s.key === "block") q.eq("block_status", "active").or(`effective_to.is.null,effective_to.gte.${new Date().toISOString().slice(0, 10)}`);
+        if (s.key === "block") q.eq("block_status", "active").lte('effective_from',today).or(`effective_to.is.null,effective_to.gte.${today}`);
         else q.eq("is_active", true);
       }
       if (s.status && p.status) q.eq(s.status, p.status);
@@ -170,7 +171,7 @@ export async function readHrSearch(input: unknown, context?: AuthContext, signal
       if (result.error || result.count !== count) throw Error("Search changed or unavailable");
       const rows = z.array(schema(source)).length(to - from + 1).parse(result.data);
       if (new Set(rows.map(r => r.id)).size !== rows.length) throw Error("Duplicate search rows");
-      return rows.map(r => mapRow(source, r, p.query));
+      return rows.map(r => mapRow(source, r, p.query,today));
     });
     return {success: true as const, data: hrSearchPageReadSchema.parse({criteria: p, results: pages.flat(), totalCount, groupCounts,
       hasMore: p.page * p.pageSize < totalCount, ordering: "category-entity-id-v1", countScope: "authorized-matches"})};

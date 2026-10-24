@@ -90,7 +90,7 @@ export function HrDashboardPageClient({ authContext, permissions, initialFilters
     {
       label: "Total Employees",
       value: summaryQuery.isLoading ? "—" : (summary?.employee_total?.toLocaleString() ?? "—"),
-      sub: `${summary?.employee_active ?? "—"} active`,
+      sub: `${summary?.employee_active ?? "—"} active / probation`,
       href: "/admin/hr/employees",
       icon: Users,
       accent: "blue",
@@ -114,7 +114,7 @@ export function HrDashboardPageClient({ authContext, permissions, initialFilters
     {
       label: "WPS Ready",
       value: summaryQuery.isLoading ? "—" : (summary?.wps_ready_pct != null ? `${summary.wps_ready_pct}%` : "—"),
-      sub: "of WPS-enrolled staff",
+      sub: "of permitted active/probation WPS enrolments",
       href: "/admin/hr/payroll/wps",
       icon: Landmark,
       accent: "emerald",
@@ -196,7 +196,7 @@ export function HrDashboardPageClient({ authContext, permissions, initialFilters
           <div>
             <h1 className="text-lg font-semibold leading-tight">HR Dashboard</h1>
             <p className="text-xs text-muted-foreground">
-              Live workforce operations — headcount, compliance, payroll, and readiness
+              Workforce records — headcount, compliance, payroll, and readiness
             </p>
           </div>
         </div>
@@ -213,6 +213,8 @@ export function HrDashboardPageClient({ authContext, permissions, initialFilters
       </div>
 
       <p className="text-xs text-muted-foreground">Counts cover records permitted by your current access. A dash means unavailable or restricted, not zero. Recruitment, category and clearance totals retain their all-permitted-record scope.</p>
+      {read.data&&<p className="text-xs text-muted-foreground">Refreshed {new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Dubai',dateStyle:'medium',timeStyle:'short'}).format(new Date(read.data.asOf))} Dubai time. Counts are read-time observations, not an atomic historical report. Weekly interviews use Sunday–Saturday in Dubai; task counts include unfinished and blocked work.</p>}
+      <p className="text-xs text-muted-foreground">Site readiness counts are saved checks, not unique currently deployable employees. Recheck current evidence, rules and restrictions before assignment; active blocks are a separate people count.</p>
       {partialFailure && <p role="status" className="text-sm text-destructive">Some dashboard counts could not be loaded. Use Refresh to retry; unavailable values are not an all-clear result.</p>}
       {metrics.some(m => m.status === "unavailable" && m.reason === "scope") && <p role="status" className="text-xs text-muted-foreground">Some payroll totals cannot be verified across the selected employee scope.</p>}
       {read.data?.compliance.medical_expired.status === "unavailable" && <p className="text-xs text-muted-foreground">Medical expiry needs an agreed validity rule. A next examination date is not an expiry date.</p>}
@@ -263,7 +265,7 @@ export function HrDashboardPageClient({ authContext, permissions, initialFilters
               <HrDashboardStatItem label="Probation" value={emp?.probation ?? "—"} href="/admin/hr/employees?status=probation" variant="warning" />
               <HrDashboardStatItem label="On leave" value={emp?.on_leave ?? "—"} href="/admin/hr/employees?status=on_leave" />
               <HrDashboardStatItem label="Suspended" value={emp?.suspended ?? "—"} href="/admin/hr/employees?status=suspended" variant={emp?.suspended ? "danger" : "default"} />
-              <HrDashboardStatItem label="Terminated / Archived" value={emp?.terminated_archived ?? "—"} href="/admin/hr/employees?status=terminated" variant="muted" />
+              <HrDashboardStatItem label="Terminated / resigned / archived" value={emp?.terminated_archived ?? "—"} href="/admin/hr/employees" variant="muted" />
               <HrDashboardStatItem label="New joiners this month" value={emp?.new_joiners_this_month ?? "—"} variant="success" />
             </>
           )}
@@ -284,7 +286,7 @@ export function HrDashboardPageClient({ authContext, permissions, initialFilters
             <>
               <HrDashboardStatItem label="Expired documents" value={comp?.expired_documents ?? "—"} variant={comp?.expired_documents ? "danger" : "default"} />
               <HrDashboardStatItem label={`Expiring soon (${read.data?.filters.expiryThresholdDays ?? 60} days)`} value={comp?.expiring_soon ?? "—"} variant={comp?.expiring_soon ? "warning" : "default"} />
-              <HrDashboardStatItem label="Pending / unverified" value={comp?.missing_unverified ?? "—"} variant={comp?.missing_unverified ? "warning" : "default"} />
+              <HrDashboardStatItem label="Unverified / failed evidence" value={comp?.missing_unverified ?? "—"} variant={comp?.missing_unverified ? "warning" : "default"} />
               <HrDashboardStatItem label="Active access cards" value={comp?.active_access_cards ?? "—"} variant="success" />
               <HrDashboardStatItem label="Expired access cards" value={comp?.expired_access_cards ?? "—"} variant={comp?.expired_access_cards ? "danger" : "default"} />
               <HrDashboardStatItem label="Training expiring soon" value={comp?.training_expiring_soon ?? "—"} variant={comp?.training_expiring_soon ? "warning" : "default"} />
@@ -357,9 +359,9 @@ export function HrDashboardPageClient({ authContext, permissions, initialFilters
           ) : (
             <>
               <HrDashboardStatItem label="Current assignments" value={ops?.current_assignments ?? "—"} href="/admin/hr/operations/assignments" />
-              <HrDashboardStatItem label="Ready employees" value={ops?.ready_employees ?? "—"} href="/admin/hr/operations/readiness" variant="success" />
-              <HrDashboardStatItem label="Not ready employees" value={ops?.not_ready_employees ?? "—"} href="/admin/hr/operations/readiness" variant={ops?.not_ready_employees ? "warning" : "default"} />
-              <HrDashboardStatItem label="Blocked employees" value={ops?.blocked_employees ?? "—"} href="/admin/hr/operations/blocks" variant={ops?.blocked_employees ? "danger" : "default"} />
+              <HrDashboardStatItem label="Saved Ready checks" value={ops?.ready_employees ?? "—"} href="/admin/hr/operations/readiness" variant="success" />
+              <HrDashboardStatItem label="Saved not-ready checks" value={ops?.not_ready_employees ?? "—"} href="/admin/hr/operations/readiness" variant={ops?.not_ready_employees ? "warning" : "default"} />
+              <HrDashboardStatItem label="People with active blocks" value={ops?.blocked_employees ?? "—"} href="/admin/hr/operations/blocks" variant={ops?.blocked_employees ? "danger" : "default"} />
               <HrDashboardStatItem label="Active operational blocks" value={ops?.active_blocks ?? "—"} href="/admin/hr/operations/blocks" variant={ops?.active_blocks ? "danger" : "default"} />
               <HrDashboardStatItem label="Assets issued" value={ops?.assets_issued ?? "—"} />
               <HrDashboardStatItem label="PPE due for replacement" value={ops?.ppe_due_replacement ?? "—"} variant={ops?.ppe_due_replacement ? "warning" : "default"} />
@@ -382,7 +384,7 @@ export function HrDashboardPageClient({ authContext, permissions, initialFilters
           ) : (
             <>
               <HrDashboardStatItem label="Open PRO processes" value={acts?.open_pro_processes ?? "—"} href="/admin/hr/actions/pro" variant={acts?.open_pro_processes ? "warning" : "default"} />
-              <HrDashboardStatItem label="Open HR actions" value={acts?.open_hr_actions ?? "—"} variant={acts?.open_hr_actions ? "warning" : "default"} />
+              <HrDashboardStatItem label="Open HR actions" value={acts?.open_hr_actions ?? "—"} href="/admin/hr/actions" variant={acts?.open_hr_actions ? "warning" : "default"} />
               <HrDashboardStatItem label="Pending approvals" value={acts?.pending_approvals ?? "—"} href="/admin/hr/actions/approvals" variant={acts?.pending_approvals ? "danger" : "default"} />
               <HrDashboardStatItem label="Open disciplinary records" value={acts?.open_disciplinary ?? "—"} href="/admin/hr/actions/disciplinary" variant={acts?.open_disciplinary ? "warning" : "default"} />
               <HrDashboardStatItem label="Open EOS cases" value={acts?.open_eos_cases ?? "—"} href="/admin/hr/actions/eos" variant={acts?.open_eos_cases ? "warning" : "default"} />

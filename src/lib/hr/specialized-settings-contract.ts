@@ -17,7 +17,7 @@ export const hrSpecializedSchemas={
   requirement_type:z.enum(['identity_document','training','access_card','medical_record','insurance','custom']),
   required_document_type_id:optionalId,required_training_type_id:optionalId,required_access_card_type_id:optionalId,required_medical_record_type_id:optionalId,
   applies_to_category_id:optionalId,applies_to_designation_id:optionalId,applies_to_work_site_id:optionalId,
-  is_critical:flag,expiry_buffer_days:positiveInt.max(365).optional(),is_active:flag,sort_order:z.number().int().min(0).max(9999).optional()}).strict(),
+  is_critical:flag,waiver_allowed:flag,expiry_buffer_days:positiveInt.max(365).optional(),is_active:flag,sort_order:z.number().int().min(0).max(9999).optional()}).strict(),
  hr_role_requirement_matrix:z.object({employee_category_id:optionalId,designation_id:optionalId,readiness_rule_template_id:id,is_required:flag,notes:optionalText(2000),is_active:flag}).strict(),
  hr_site_requirement_matrix:z.object({work_site_id:optionalId,access_card_type_id:optionalId,training_type_id:optionalId,medical_record_type_id:optionalId,readiness_rule_template_id:optionalId,is_required:flag,notes:optionalText(2000),is_active:flag}).strict(),
  hr_approval_workflows:z.object({workflow_code:code,workflow_name_en:name,workflow_name_ar:optionalText(200),workflow_type:z.enum(['leave','payroll_change','pro_process','eos','recruitment','general']),

@@ -1,0 +1,5 @@
+import{expect,it}from'vitest';import{payrollProfileValues,salaryComponentValues,salaryRevisionValues}from'@/lib/hr/payroll-child-contract';
+const profile={payroll_group_id:null,effective_date:'2026-10-24',currency:'USD',payroll_status:'active',notes:null};
+it.each(['AED','USD','EUR'])('new %s profile follows the exact dated-read currency contract',currency=>expect(payrollProfileValues.safeParse({...profile,currency}).success).toBe(true));
+it.each(['','usd','US','USDD','123','unknown'])('unsupported currency %s cannot be saved as an apparently valid new salary profile',currency=>expect(payrollProfileValues.safeParse({...profile,currency}).success).toBe(false));
+it.each([1.001,1.0000001,-1,Infinity])('numeric salary %s is refused rather than rounded by a tolerance',amount=>{expect(salaryComponentValues.safeParse({component_type_id:1,amount,effective_from:'2026-10-24',effective_to:null,is_active:true,notes:null}).success).toBe(false);expect(salaryRevisionValues.safeParse({effective_date:'2026-10-24',revision_reason:null,new_gross:amount,apply_to_components:true,fingerprint:'a'.repeat(64)}).success).toBe(false);});

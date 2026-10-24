@@ -1,6 +1,6 @@
 # Engineering checks
 
-The production/CI line is Node 22.23.2 and npm 10.9.8. Package engine requirements also account for the DOM-test runtime; use the pinned production line for release acceptance. Use `npm ci`, not an unreviewed dependency upgrade. Local corporate root certificates must be installed through the approved OS trust store (or a specifically approved `NODE_EXTRA_CA_CERTS` file). Do not disable TLS verification.
+The production/CI line is Node 22.23.4 and npm 10.9.9. Package engine requirements also account for the DOM-test runtime; use the pinned production line for release acceptance. Use `npm ci`, not an unreviewed dependency upgrade. Local corporate root certificates must be installed through the approved OS trust store (or a specifically approved `NODE_EXTRA_CA_CERTS` file). Do not disable TLS verification.
 
 - `npm run typecheck`: every shipping TypeScript file and generated Next route types.
 - `npm run lint`: every application file under `src`, plus Next configuration. Errors always fail. The named legacy-warning register stays visible; new or increased warnings also fail. Do not expand the baseline merely to pass CI.

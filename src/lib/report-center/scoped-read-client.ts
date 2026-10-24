@@ -5,12 +5,17 @@ import { getAuthorizedReportEmployees, getLinkedEmployeeId, hasEmployeePermissio
 import { completeReportRead } from "./complete-read";
 
 export type ReportReadClient = Pick<ReturnType<typeof createAdminClient>, "from">;
+const collectionGuards=new WeakMap<ReportReadClient,(fresh:AuthContext)=>Promise<void>>();
+/** Internal collection admission, not a callable HTTP authorization parameter. */
+export async function revalidateScopedReportReadClient(client:ReportReadClient,fresh:AuthContext){
+ const verify=collectionGuards.get(client);if(!verify)throw Error('Report collection authority could not be verified.');await verify(fresh);
+}
 const childCapabilities: Record<string,string[]> = {
  employee_identity_documents:["hr.compliance.view"], employee_medical_insurances:["hr.medical.view"], employee_training_certificates:["hr.compliance.view"],
  employee_dependents:["hr.compliance.view"], employee_medical_records:["hr.medical.view"],
  employee_attendance_daily_summary:["hr.attendance.view"], employee_overtime_records:["hr.attendance.view"],
  employee_leave_requests:["hr.leave.view"],employee_leave_balances:["hr.leave.view"],
- employee_payroll_profiles:["hr.payroll.view"],employee_salary_components:["hr.payroll.view"],employee_payroll_holds:["hr.payroll.view"],employee_wps_profiles:["hr.payroll.view","hr.banking.view"],
+ employee_payroll_profiles:["hr.payroll.view"],employee_salary_components:["hr.payroll.view"],employee_salary_revision_effects:["hr.payroll.view"],employee_payroll_holds:["hr.payroll.view"],employee_wps_profiles:["hr.payroll.view","hr.banking.view"],
  employee_assignments:["hr.assignments.view"],employee_assets:["hr.assignments.view"],employee_ppe_issues:["hr.assignments.view"],
  employee_pro_processes:["hr.actions.view"],employee_disciplinary_records:["hr.actions.view","hr.confidential.view"],
  employee_eos_cases:["hr.eos.view"],employee_clearance_items:["hr.eos.view"],
@@ -23,13 +28,23 @@ export async function createScopedReportReadClient(ctx:AuthContext, reportCode:s
  assertAccountActive(ctx);
  const db=createAdminClient();
  const scopes=new Map<string,{column:string;ids:number[]}>();
+ let verifyEmployeeScope:(fresh:AuthContext)=>Promise<void>=async fresh=>{assertAccountActive(fresh);if(fresh.profile?.id!==ctx.profile?.id)throw Error('Report collection actor changed.');};
  if(reportCode.startsWith("HR_")) {
   const requiredEmployee=required.filter(c=>(c.startsWith("hr.")||c.startsWith("reports."))&&!['hr.employees.view','hr.employee_profile.view','hr.recruitment.view'].includes(c));
   if(reportCode==='HR_SALARY_CERT_WITH_AMOUNT') requiredEmployee.push('hr.payroll.view');
+  if(reportCode==='HR_WPS_READINESS') requiredEmployee.push('hr.payroll.view','hr.banking.view');
   if(reportCode==='HR_WARNING_LETTER'||reportCode==='HR_DISCIPLINARY_SUMMARY') requiredEmployee.push('hr.confidential.view');
   const [employees,linked]=await Promise.all([getAuthorizedReportEmployees(ctx,["reports.run",...requiredEmployee]),getLinkedEmployeeId(ctx)]);
   scopes.set('employees',{column:'id',ids:employees.ids});
   for(const [table,codes] of Object.entries(childCapabilities)) scopes.set(table,{column:'employee_id',ids:employees.subjects.filter(e=>codes.every(c=>hasEmployeePermission(ctx,e,linked,c))).map(e=>e.id)});
+  const normalize=(ids:number[])=>JSON.stringify([...ids].sort((a,b)=>a-b));
+  const admitted=new Map([...scopes].map(([table,scope])=>[table,normalize(scope.ids)]));
+  verifyEmployeeScope=async fresh=>{
+   assertAccountActive(fresh);if(fresh.profile?.id!==ctx.profile?.id)throw Error('Report collection actor changed.');
+   const [current,currentLink]=await Promise.all([getAuthorizedReportEmployees(fresh,["reports.run",...requiredEmployee]),getLinkedEmployeeId(fresh)]);
+   if(normalize(current.ids)!==admitted.get('employees'))throw Error('Employee report scope changed during collection. Run it again.');
+   for(const [table,codes]of Object.entries(childCapabilities))if(normalize(current.subjects.filter(e=>codes.every(c=>hasEmployeePermission(fresh,e,currentLink,c))).map(e=>e.id))!==admitted.get(table))throw Error('Employee report scope changed during collection. Run it again.');
+  };
  }
  if(['HR_CANDIDATE_PIPELINE','HR_REQUISITIONS','HR_ONBOARDING_TASKS'].includes(reportCode)) {
   const recruitmentCaps=['hr.recruitment.view','reports.run',...required.filter(c=>c.startsWith('reports.'))];
@@ -52,7 +67,7 @@ export async function createScopedReportReadClient(ctx:AuthContext, reportCode:s
   if(tasks.error||tasks.count===null||tasks.count>1000) throw new Error('Onboarding report scope could not be verified');
   scopes.set('hr_onboarding_tasks',{column:'id',ids:tasks.data.filter(t=>(t.employee_id===null||employeeIds.includes(t.employee_id))&&(t.candidate_id===null||ids.includes(t.candidate_id))).map(t=>t.id)});
  }
- return {
+ const client={
   from(relation:string) {
    const scope=scopes.get(relation);
    const catalog=relation==='permissions'&&reportCode==='ADMIN_PERMISSION_MATRIX'&&(hasGlobalPermission(ctx,'permissions.view')||hasGlobalPermission(ctx,'roles.view'));
@@ -75,4 +90,5 @@ export async function createScopedReportReadClient(ctx:AuthContext, reportCode:s
    }});
   },
  } as ReportReadClient;
+ collectionGuards.set(client,verifyEmployeeScope);return client;
 }

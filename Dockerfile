@@ -1,8 +1,8 @@
 # F02: the production runtime must match the Linux/CI verification runtime.
-FROM node:22.23.2-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9 AS base
+FROM node:22.23.4-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS base
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN test "$(node --version)" = "v22.23.2" && test "$(npm --version)" = "10.9.8"
+RUN test "$(node --version)" = "v22.23.4" && test "$(npm --version)" = "10.9.9"
 
 FROM base AS build
 COPY package.json package-lock.json ./
@@ -10,6 +10,7 @@ COPY vendor/braces-3.0.3-algt-integrated-2.tgz ./vendor/braces-3.0.3-algt-integr
 COPY vendor/sprintf-js-1.0.3-algt.1.tgz ./vendor/sprintf-js-1.0.3-algt.1.tgz
 RUN npm ci --no-fund
 COPY src ./src
+COPY vendor/shadcn/tailwind.css ./vendor/shadcn/tailwind.css
 COPY tooling/dms/validate-intake.cjs ./tooling/dms/validate-intake.cjs
 COPY public ./public
 COPY next.config.ts tsconfig.json tsconfig.shipping.json postcss.config.mjs ./

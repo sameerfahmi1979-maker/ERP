@@ -3,6 +3,7 @@ import { reportWorkspaceFieldErrors } from "@/lib/workspace/field-errors";
 import {useEmployeeSaveSession} from './use-employee-save-session';
 import {useReadLifetime} from '@/hooks/use-read-lifetime';
 import {hasHrReadCapability,hrReadIdentity} from '@/lib/reads/hr-read-identity';
+import {employeeRecordSection,canApplyEmployeeSectionHint} from '@/lib/hr/employee-navigation';
 import {EmployeeSaveRecovery} from './employee-save-recovery';
 import type {NotificationTaskContext} from '@/lib/notifications/task-context';
 import {NotificationTaskContextCard} from '@/features/notifications/notification-task-context';
@@ -74,6 +75,7 @@ type Props = {
   mode: "add" | "edit" | "view";
   authContext: AuthContext;
   notificationTask?:NotificationTaskContext;
+  initialSection?:string;
 };
 
 const SECTIONS: ERPRecordSection[] = [
@@ -112,6 +114,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 /** Combobox fields holding numeric ids — used to type draft values back (WS.3). */
 const COMBOBOX_NUMERIC_FIELDS = new Set<keyof EmployeeProfileFormState>([
+  "photo_dms_document_id",
   "owner_company_id",
   "branch_id",
   "department_id",
@@ -140,6 +143,7 @@ const employeeCodec: WorkspaceDraftCodec<EmployeeProfileFormState> = {
 
 function buildInitialFormState(employee: EmployeeListRow | null | undefined): EmployeeProfileFormState {
   return {
+    photo_dms_document_id:employee?.photo_dms_document_id??null,
     employment_change_reason: '',
     employment_effective_date: '',
     full_name_en: employee?.full_name_en ?? "",
@@ -184,15 +188,24 @@ export function EmployeeWorkspaceForm(props: Props) {
   return <EmployeeWorkspaceFormInstance key={`${props.authContext.profile?.id ?? 'none'}:${props.authContext.profile?.auth_user_id ?? 'none'}:${props.employee?.id ?? "new"}:${props.mode}`} {...props} />;
 }
 
-function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificationTask }: Props) {
+function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificationTask,initialSection }: Props) {
   const { closeTab, markDirty, updateTabRoute, isTabActive } = useWorkspace();
   const owner = useWorkspaceFormOwner();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, employee ? "overview" : "profile", SECTION_IDS);
+  const sectionHint=employee?employeeRecordSection(initialSection):undefined;
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, employee ? "overview" : "profile", SECTION_IDS,sectionHint);
   const [childDialogOpen, setChildDialogOpen] = useState(false);
   const [complianceChildLeases, setComplianceChildLeases] = useState<Set<object>>(() => new Set());
+  const handledSectionHint=useRef(sectionHint);
+  const sectionHintActive=!owner||isTabActive?.(owner.id)!==false;
+  useEffect(()=>{
+    if(!sectionHint){handledSectionHint.current=undefined;return;}
+    if(canApplyEmployeeSectionHint(sectionHint,handledSectionHint.current,isSubmitting||childDialogOpen||complianceChildLeases.size>0,sectionHintActive)){
+      setActiveSection(sectionHint);handledSectionHint.current=sectionHint;
+    }
+  },[sectionHint,isSubmitting,childDialogOpen,complianceChildLeases.size,sectionHintActive,setActiveSection]);
   const handleComplianceChildLease = useCallback((token: object, open: boolean) => {
     setComplianceChildLeases(previous => {
       if (previous.has(token) === open) return previous;

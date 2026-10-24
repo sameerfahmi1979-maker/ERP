@@ -22,11 +22,11 @@ const allowed = new Set([
 for (const file of allowed) assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex'), manifest.files[file], `unchanged app source ${file}`);
 const originalResolve = Module._resolveFilename;
 const originalTs = Module._extensions['.ts'];
-// Match Next16.3.8's actual server compiler alias, not a mocked marker or a
+// Match the accepted F12 Next16.4.2 server compiler alias, not a mocked marker or a
 // new application dependency. Next documents server-only installation optional.
 assert.ok(process.execArgv.includes('--conditions=react-server'));
-assert.equal(require('next/package.json').version,'16.3.8');
-assert.equal(JSON.parse(fs.readFileSync('package-lock.json')).packages['node_modules/next'].version,'16.3.8');
+assert.equal(require('next/package.json').version,'16.4.2');
+assert.equal(JSON.parse(fs.readFileSync('package-lock.json')).packages['node_modules/next'].version,'16.4.2');
 assert.equal(crypto.createHash('sha256').update(fs.readFileSync(require.resolve('next/dist/compiled/server-only/package.json'))).digest('hex'),'e4b0cc01e2e0349c51c694fa97d8a642eb8322521ca1444b20bd1842594b4339');
 const serverOnlyPackage=require('next/dist/compiled/server-only/package.json');
 assert.equal(serverOnlyPackage.name,'server-only');
@@ -65,13 +65,13 @@ const marker = 'F06 synthetic Linux document verification content';
 const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
 test('actual pinned Linux/glibc native packages load from this installation', () => {
-  assert.equal(process.version, 'v22.23.2');
+  assert.equal(process.version, 'v22.23.4');
   assert.equal(process.platform, 'linux');
   assert.equal(process.arch, 'x64');
   assert.ok(process.report.getReport().header.glibcVersionRuntime);
   const locked = JSON.parse(fs.readFileSync('package-lock.json')).packages;
   for (const [name, expected] of [
-    ['@next/swc-linux-x64-gnu', '16.3.8'], ['@napi-rs/canvas-linux-x64-gnu', '1.0.0'],
+    ['@next/swc-linux-x64-gnu', '16.4.2'], ['@napi-rs/canvas-linux-x64-gnu', '1.0.0'],
     ['@img/sharp-linux-x64', '0.35.5'], ['@img/sharp-libvips-linux-x64', '1.3.4'],
     ['@unrs/resolver-binding-linux-x64-gnu', '1.12.2']
   ]) {

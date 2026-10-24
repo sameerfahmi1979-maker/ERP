@@ -2,7 +2,7 @@
 // Local non-browser verification. Writes only generated receipts/logs to an explicit C:/dev directory.
 const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process'),crypto=require('node:crypto');
 const root=path.resolve(__dirname,'../..');
-const node='C:/dev/toolchains/node-v22.23.2-win-x64/node.exe';
+const node='C:/dev/toolchains/node-v22.23.4-win-x64/node.exe';
 const output=process.argv[2];
 if(!output || !/^C:[/\\]dev[/\\]/i.test(path.resolve(output)) || fs.existsSync(output)) throw Error('Specify a new verification folder under C:/dev');
 fs.mkdirSync(output,{recursive:true});

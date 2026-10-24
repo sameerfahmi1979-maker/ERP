@@ -64,7 +64,8 @@ export function getReadinessStatusBadge(status: string): { label: string; varian
 
 export function isActiveBlock(block: { block_status: string; effective_from: string; effective_to?: string | null }): boolean {
   if (block.block_status !== "active") return false;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  if (block.effective_from > today) return false;
   if (block.effective_to && block.effective_to < today) return false;
   return true;
 }
@@ -75,7 +76,8 @@ export function isCurrentAssignment(assignment: {
   effective_to?: string | null;
 }): boolean {
   if (assignment.assignment_status !== "active") return false;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  if (assignment.effective_from > today) return false;
   if (assignment.effective_to && assignment.effective_to < today) return false;
   return true;
 }

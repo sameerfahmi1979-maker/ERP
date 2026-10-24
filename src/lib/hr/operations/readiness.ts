@@ -217,8 +217,8 @@ export function calculateEmployeeReadiness(input: ReadinessInput): ReadinessResu
     return {
       status: "needs_review",
       missingRequirements: missing,
-      canAssignToSite: true,
-      summary: `Ready with ${warningMissing} warning(s). Review recommended.`,
+      canAssignToSite: false,
+      summary: `${warningMissing} unresolved warning(s). Authorized review is required before deployment.`,
     };
   }
 

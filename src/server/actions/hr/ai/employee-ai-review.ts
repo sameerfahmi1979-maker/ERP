@@ -1,4 +1,5 @@
 "use server";
+import {createHash} from 'node:crypto';
 
 /**
  * HR.12 — HR AI Correction Suggestions + Compliance/Readiness Explanations
@@ -17,9 +18,7 @@
 import { callCommonAiStructuredCompletion } from "@/lib/ai/common/provider-bridge";
 import { isHrAiFeatureEnabled, isHrAiMasterEnabled } from "@/lib/hr/ai/feature-flags";
 import {
-  buildSafeComplianceContext,
   buildSafeEmployeeContext,
-  buildSafeReadinessContext,
 } from "@/lib/hr/ai/hr-ai-redaction";
 import type {
   HrAiActionResult,
@@ -37,6 +36,13 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getEmployeeAccess } from "@/lib/rbac/employee-access";
+import {readHrAiReviewFacts} from '@/server/reads/hr-ai-review-facts';
+import {hrDashboardCalendar} from '@/lib/hr/dashboard-metrics';
+
+async function verifyReviewAccess(employeeId:number,profileId:number,feature:Parameters<typeof isHrAiFeatureEnabled>[0],permission?:string,medical=false){
+ const current=await getEmployeeAccess(await getAuthContext(),employeeId);
+ if(current.scopedContext.profile?.id!==profileId||!hasPermission(current.scopedContext,'hr.ai.use')||permission&&!current.allows(permission)||medical&&!current.allows('hr.medical.view')||!await isHrAiMasterEnabled()||!await isHrAiFeatureEnabled(feature))throw Error('Current advisory access or feature availability changed');
+}
 
 // ── Usage logger (shared pattern) ─────────────────────────────────────────────
 
@@ -98,11 +104,10 @@ async function loadEmployeeSafeProfile(employeeId: number) {
     // Distinguish query/relationship failures from a genuine missing employee.
     console.error("[HR AI Review] employee profile query failed:", {
       code: error.code,
-      message: error.message,
       employeeId,
     });
   }
-  return data;
+  return !error&&data?.id===employeeId?data:null;
 }
 
 // ── 1. Correction Suggestions ─────────────────────────────────────────────────
@@ -134,7 +139,7 @@ export async function generateEmployeeCorrectionSuggestions(
       if (Array.isArray(val)) return val[0] ?? null;
       return val;
     }
-    const { contextText, profile } = buildSafeEmployeeContext(
+    const { contextText } = buildSafeEmployeeContext(
       {
         employee_code: emp.employee_code,
         full_name_en: emp.full_name_en,
@@ -155,7 +160,8 @@ export async function generateEmployeeCorrectionSuggestions(
       ctx
     );
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = hrDashboardCalendar().today;
+    const sourceFingerprint=createHash('sha256').update(JSON.stringify({today,employee:emp})).digest('hex');
 
     const systemPrompt = `You are an HR data quality AI for an ERP system.
 Review the employee profile and identify data quality issues, missing required fields, and inconsistencies.
@@ -169,7 +175,7 @@ Rules:
 - Today's date: ${today}
 - Return valid JSON only. Max 20 suggestions.`;
 
-    const userPrompt = `Employee Profile:\n${contextText}\n\nReturn JSON:
+    const userPrompt = `Employee Profile (as of ${today} Dubai; source ${sourceFingerprint}):\n${contextText}\n\nReturn JSON:
 {
   "suggestions": [
     {"severity":"high","category":"Missing Field","fieldOrTable":"employees.mobile_number","currentValue":null,"recommendedAction":"Add employee mobile number","reason":"Required for payroll and emergency contact","source":"profile","isApplyable":false}
@@ -178,10 +184,13 @@ Rules:
   "summary": "Employee profile has 2 critical gaps..."
 }`;
 
+    await verifyReviewAccess(employeeId,ctx.profile.id,HR_AI_FEATURE_FLAGS.CORRECTIONS);
     const outcome = await callCommonAiStructuredCompletion(systemPrompt, userPrompt, {
       maxTokens: 2000,
       temperature: 0,
     });
+    await verifyReviewAccess(employeeId,ctx.profile.id,HR_AI_FEATURE_FLAGS.CORRECTIONS);
+    if(createHash('sha256').update(JSON.stringify({today:hrDashboardCalendar().today,employee:await loadEmployeeSafeProfile(employeeId)})).digest('hex')!==sourceFingerprint)return {success:false,error:'Advisory source facts changed; refresh before retrying.'};
     const durationMs = Date.now() - start;
 
     if (!outcome.success) {
@@ -196,9 +205,9 @@ Rules:
     if (!validated.success) return { success: false, error: "AI response failed validation." };
 
     await logHrAiUsage({ featureCode: HR_AI_FEATURE_FLAGS.CORRECTIONS, entityId: employeeId, outputType: "correction_suggestions", status: "success", durationMs, model: outcome.model, promptTokens: outcome.promptTokens, completionTokens: outcome.completionTokens, profileId: ctx.profile.id, providerCode: outcome.providerCode, configCode: outcome.configCode, configId: outcome.configId });
-    return { success: true, data: validated.data };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+    return { success: true, data: {...validated.data,suggestions:validated.data.suggestions.map(s=>({...s,isApplyable:false}))} };
+  } catch {
+    return { success: false, error: "HR advisory could not be safely completed. Refresh and retry." };
   }
 }
 
@@ -212,6 +221,7 @@ export async function explainEmployeeCompliance(
     const access = await getEmployeeAccess(await getAuthContext(), employeeId);
     const ctx = access.scopedContext;
     if (!ctx.profile?.id) return { success: false, error: "Not authenticated." };
+    if (!access.allows('hr.compliance.view')) return {success:false,error:'Compliance advisory access denied.'};
     if (!hasPermission(ctx, "hr.ai.use"))
       return { success: false, error: "Permission denied: hr.ai.use required." };
 
@@ -227,47 +237,8 @@ export async function explainEmployeeCompliance(
 
     const db = await createClient();
     const canMedical = hasPermission(ctx, "hr.medical.view");
-    const today = new Date().toISOString().split("T")[0];
-
-    // Load compliance summary (deterministic data — cite, don't invent)
-    const [identityRes, insuranceRes, accessRes, trainingRes, dmsRes] = await Promise.all([
-      db.from("employee_identity_documents").select("id, document_type, expiry_date, is_primary").eq("employee_id", employeeId).is("deleted_at", null),
-      db.from("employee_medical_insurances").select("id, insurance_type, valid_until, status").eq("employee_id", employeeId).is("deleted_at", null),
-      db.from("employee_access_cards").select("id, card_type, valid_to, status").eq("employee_id", employeeId).is("deleted_at", null),
-      db.from("employee_training_certificates").select("id, certificate_name, expiry_date").eq("employee_id", employeeId).is("deleted_at", null),
-      db.from("dms_document_links").select("id").eq("entity_type", "employee").eq("entity_id", employeeId).is("deleted_at", null),
-    ]);
-
-    const expired = (list: { expiry_date?: string | null; valid_until?: string | null; valid_to?: string | null }[]) =>
-      list.filter((r) => {
-        const d = r.expiry_date ?? r.valid_until ?? r.valid_to;
-        return d && d < today;
-      }).length;
-
-    const complianceContext = buildSafeComplianceContext(
-      {
-        identityDocuments: {
-          total: identityRes.data?.length ?? 0,
-          expired: expired(identityRes.data ?? []),
-          expiringSoon: 0,
-        },
-        medicalInsurances: {
-          total: insuranceRes.data?.length ?? 0,
-          active: (insuranceRes.data ?? []).filter((r) => r.status === "active").length,
-        },
-        accessCards: {
-          total: accessRes.data?.length ?? 0,
-          active: (accessRes.data ?? []).filter((r) => r.status === "active").length,
-          expired: expired(accessRes.data ?? []),
-        },
-        trainingCertificates: {
-          total: trainingRes.data?.length ?? 0,
-          expired: expired(trainingRes.data ?? []),
-        },
-        dmsDocuments: { total: dmsRes.data?.length ?? 0 },
-      },
-      canMedical
-    );
+    const facts=await readHrAiReviewFacts(db,employeeId,'compliance',canMedical);
+    const today=facts.asOf,complianceContext=facts.text+`\nSource fingerprint: ${facts.sourceFingerprint}`;
 
     const systemPrompt = `You are an HR compliance AI for an ERP system.
 You have deterministic compliance data for an employee. Explain the compliance status clearly.
@@ -288,7 +259,10 @@ Rules:
   "overallComplianceLevel": "partial"
 }`;
 
+    await verifyReviewAccess(employeeId,ctx.profile.id,HR_AI_FEATURE_FLAGS.COMPLIANCE_EXPLAIN,'hr.compliance.view',canMedical);
     const outcome = await callCommonAiStructuredCompletion(systemPrompt, userPrompt, { maxTokens: 1500, temperature: 0 });
+    await verifyReviewAccess(employeeId,ctx.profile.id,HR_AI_FEATURE_FLAGS.COMPLIANCE_EXPLAIN,'hr.compliance.view',canMedical);
+    if((await readHrAiReviewFacts(db,employeeId,'compliance',canMedical)).sourceFingerprint!==facts.sourceFingerprint)return {success:false,error:'Advisory source facts changed; refresh before retrying.'};
     const durationMs = Date.now() - start;
 
     if (!outcome.success) {
@@ -303,9 +277,9 @@ Rules:
     if (!validated.success) return { success: false, error: "AI response failed validation." };
 
     await logHrAiUsage({ featureCode: HR_AI_FEATURE_FLAGS.COMPLIANCE_EXPLAIN, entityId: employeeId, outputType: "compliance_explanation", status: "success", durationMs, model: outcome.model, promptTokens: outcome.promptTokens, completionTokens: outcome.completionTokens, profileId: ctx.profile.id, providerCode: outcome.providerCode, configCode: outcome.configCode, configId: outcome.configId });
-    return { success: true, data: validated.data };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+    return { success: true, data: {...validated.data,overallComplianceLevel:'unknown'} };
+  } catch {
+    return { success: false, error: "HR advisory could not be safely completed. Refresh and retry." };
   }
 }
 
@@ -319,6 +293,7 @@ export async function explainEmployeeReadiness(
     const access = await getEmployeeAccess(await getAuthContext(), employeeId);
     const ctx = access.scopedContext;
     if (!ctx.profile?.id) return { success: false, error: "Not authenticated." };
+    if (!access.allows('hr.assignments.view')) return {success:false,error:'Readiness advisory access denied.'};
     if (!hasPermission(ctx, "hr.ai.use"))
       return { success: false, error: "Permission denied: hr.ai.use required." };
 
@@ -334,28 +309,8 @@ export async function explainEmployeeReadiness(
 
     const db = await createClient();
 
-    // Load readiness data (deterministic)
-    const [blocksRes, siteReadinessRes] = await Promise.all([
-      db.from("employee_operational_blocks").select("id, block_type, reason, start_date").eq("employee_id", employeeId).is("deleted_at", null).eq("is_active", true),
-      db.from("employee_site_readiness").select("id, work_site:work_sites(site_name), readiness_status, missing_requirements_json").eq("employee_id", employeeId).is("deleted_at", null).limit(5),
-    ]);
-
-    const missingReqs: string[] = [];
-    (siteReadinessRes.data ?? []).forEach((sr) => {
-      const missing = sr.missing_requirements_json as string[] | null;
-      if (Array.isArray(missing)) missingReqs.push(...missing.slice(0, 5));
-    });
-
-    const readinessContext = buildSafeReadinessContext({
-      overallStatus: emp.employee_status ?? "unknown",
-      activeBlockCount: blocksRes.data?.length ?? 0,
-      missingRequirements: missingReqs,
-      siteReadinessRecords: (siteReadinessRes.data ?? []).map((sr) => ({
-        siteName: ((Array.isArray(sr.work_site) ? sr.work_site[0] : sr.work_site) as Record<string, unknown> | null)?.site_name as string ?? "?",
-        status: sr.readiness_status ?? "unknown",
-        missingCount: (sr.missing_requirements_json as string[] | null)?.length ?? 0,
-      })),
-    });
+    const facts=await readHrAiReviewFacts(db,employeeId,'readiness');
+    const readinessContext=facts.text+`\nSource fingerprint: ${facts.sourceFingerprint}`;
 
     const systemPrompt = `You are an HR operations readiness AI for an ERP system.
 Explain why an employee is or is not site/role-ready, based on deterministic data provided.
@@ -375,7 +330,10 @@ Rules:
   "estimatedClearanceSteps": 3
 }`;
 
+    await verifyReviewAccess(employeeId,ctx.profile.id,HR_AI_FEATURE_FLAGS.READINESS_EXPLAIN,'hr.assignments.view');
     const outcome = await callCommonAiStructuredCompletion(systemPrompt, userPrompt, { maxTokens: 1500, temperature: 0 });
+    await verifyReviewAccess(employeeId,ctx.profile.id,HR_AI_FEATURE_FLAGS.READINESS_EXPLAIN,'hr.assignments.view');
+    if((await readHrAiReviewFacts(db,employeeId,'readiness')).sourceFingerprint!==facts.sourceFingerprint)return {success:false,error:'Advisory source facts changed; refresh before retrying.'};
     const durationMs = Date.now() - start;
 
     if (!outcome.success) {
@@ -390,8 +348,8 @@ Rules:
     if (!validated.success) return { success: false, error: "AI response failed validation." };
 
     await logHrAiUsage({ featureCode: HR_AI_FEATURE_FLAGS.READINESS_EXPLAIN, entityId: employeeId, outputType: "readiness_explanation", status: "success", durationMs, model: outcome.model, promptTokens: outcome.promptTokens, completionTokens: outcome.completionTokens, profileId: ctx.profile.id, providerCode: outcome.providerCode, configCode: outcome.configCode, configId: outcome.configId });
-    return { success: true, data: validated.data };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+    return { success: true, data: {...validated.data,overallStatus:facts.overallStatus} };
+  } catch {
+    return { success: false, error: "HR advisory could not be safely completed. Refresh and retry." };
   }
 }

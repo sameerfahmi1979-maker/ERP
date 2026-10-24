@@ -1,11 +1,11 @@
 import {afterEach, expect, it, vi} from "vitest";
-const state = vi.hoisted(() => ({permissions: ["hr.payroll.view", "hr.banking.view"], active: true, password: false, authReads: 0, calls: [] as unknown[][], grants: {} as Record<string, unknown>, employee: {data: {id: 880301}, error: null} as unknown, result: {} as unknown, queue: [] as unknown[], byTable: {} as Record<string, unknown>}));
+const state = vi.hoisted(() => ({permissions: ["hr.payroll.view", "hr.banking.view"], active: true, password: false, authReads: 0, calls: [] as unknown[][], grants: {} as Record<string, unknown>, employee: {data: {id: 880301, employee_status:'active', joining_date:'2020-01-01'}, error: null} as unknown, salaryProfile: {data: {employee_id: 880301, workspace_revision:1, effective_date: "2020-01-01", currency: "AED", payroll_status: "active"}, error: null} as unknown, result: {} as unknown, queue: [] as unknown[], byTable: {} as Record<string, unknown>}));
 vi.mock("@/lib/rbac/check", async () => ({...await import("@/lib/rbac/scope"), getAuthContext: async () => {state.authReads++; return {profile: {id: 6, must_change_password: state.password}, isAccountActive: state.active, permissionCodes: state.permissions, roleCodes: [], roleAssignments: []};}}));
 vi.mock("@/lib/supabase/server", () => ({createClient: async () => ({
   rpc: async (name: string, params: {employee_id: number; permission_code: string}) => {state.calls.push(["rpc", name, params]); return state.grants[params.permission_code] ?? {data: true, error: null};},
   from: (table: string) => {
-    state.calls.push(["from", table]); const q: Record<string, unknown> = {then: (resolve: (value: unknown) => unknown) => Promise.resolve(table === "employees" ? state.employee : state.queue.length ? state.queue.shift() : state.byTable[table] ?? state.result).then(resolve)};
-    for (const method of ["select", "is", "or", "ilike", "eq", "order", "range", "maybeSingle"]) q[method] = (...args: unknown[]) => {state.calls.push([method, ...args]); return q;};
+    state.calls.push(["from", table]); let salaryProfile = false; const q: Record<string, unknown> = {then: (resolve: (value: unknown) => unknown) => Promise.resolve(salaryProfile ? state.salaryProfile : table === "employees" ? state.employee : table === "employee_salary_revision_effects" ? state.byTable[table] ?? {data: [], count: 0, error: null} : state.queue.length ? state.queue.shift() : state.byTable[table] ?? state.result).then(resolve)};
+    for (const method of ["select", "is", "or", "ilike", "eq", "order", "range", "maybeSingle"]) q[method] = (...args: unknown[]) => {if (method === "select" && table === "employee_payroll_profiles" && args[0] === "employee_id,workspace_revision,effective_date,currency,payroll_status") salaryProfile = true; state.calls.push([method, ...args]); return q;};
     return q;
   },
 })}));
@@ -15,7 +15,7 @@ import {payrollRecordFixture, payrollProfileFixture, payrollWpsFixture} from "./
 import {POST as recordsPost} from "@/app/api/reads/hr-payroll-records/route";
 import {POST as pointPost} from "@/app/api/reads/hr-payroll-point/route";
 import {POST as choicesPost} from "@/app/api/reads/hr-payroll-choices/route";
-afterEach(() => Object.assign(state, {permissions: ["hr.payroll.view", "hr.banking.view"], active: true, password: false, authReads: 0, calls: [], grants: {}, employee: {data: {id: 880301}, error: null}, result: {}, queue: [], byTable: {}}));
+afterEach(() => Object.assign(state, {permissions: ["hr.payroll.view", "hr.banking.view"], active: true, password: false, authReads: 0, calls: [], grants: {}, employee: {data: {id: 880301, employee_status:'active', joining_date:'2020-01-01'}, error: null}, result: {}, queue: [], byTable: {}}));
 it.each(PAYROLL_RECORD_KINDS)("%s provides complete counted pages beyond backend cap and checks exact subject", async kind => {
   state.result = {data: [payrollRecordFixture(kind)], count: 1101, error: null};
   const result = await readPayrollRecords({kind, employeeId: 880301, page: 12, pageSize: 100});
@@ -93,9 +93,9 @@ it("employee authorization query failure stays unavailable; private details are 
   state.employee = {data: null, error: {code: "57014"}};
   const result = await readPayrollPoint({kind: "profile", employeeId: 880301}); expect(result.success).toBe(false); expect(result.error).not.toBe("Permission denied"); expect(state.calls.filter(c => c[0] === "from")).toEqual([["from", "employees"]]);
 });
-it("null component amounts preserve existing zero fallback, not a new salary rule", async () => {
-  state.result = {data: [{id: 1, amount: null, is_active: true, deleted_at: null, component_type: {component_kind: "earning", is_basic: true}}], count: 1, error: null};
-  expect((await readPayrollPoint({kind: "salary-totals", employeeId: 880301})).data?.value).toEqual({gross: 0, basic: 0, activeCount: 1});
+it("unknown component amounts cannot be represented as an authorized zero salary", async () => {
+  state.result = {data: [{id: 1, amount: null, is_active: true, deleted_at: null, component_type: {component_kind: "earning", is_basic: true,workspace_revision:1}}], count: 1, error: null};
+  expect((await readPayrollPoint({kind: "salary-totals", employeeId: 880301})).success).toBe(false);
 });
 it("active hold KPI counts the complete employee scope independently of a released-only filtered page", async () => {
   state.queue = [{data: [], count: 0, error: null}, {data: null, count: 1107, error: null}];
@@ -117,11 +117,11 @@ it("profile returns all editor data without unrelated private columns; foreign d
   const profile = await readPayrollPoint({kind: "profile", employeeId: 880301}); expect(profile.success, profile.error).toBe(true); expect(JSON.stringify(profile)).not.toContain("PRIVATE_SECRET");
   state.result = {data: {...payrollRecordFixture("salary-components"), id: 5}, error: null}; expect((await readPayrollPoint({kind: "component-detail", employeeId: 880301, recordId: 1})).success).toBe(false);
 });
-it("salary totals read every bounded page beyond 1000 components and preserve original deterministic rules", async () => {
-  const row = (id: number) => ({id, amount: 10, is_active: id !== 1101, deleted_at: null, component_type: {component_kind: id === 1100 ? "deduction" : "earning", is_basic: id % 2 === 0}});
-  state.queue = [500, 500, 101].map((length, i) => ({data: Array.from({length}, (_, n) => row(i * 500 + n + 1)), count: 1101, error: null}));
-  const result = await readPayrollPoint({kind: "salary-totals", employeeId: 880301}); expect(result.success, result.error).toBe(true); expect(result.data?.value).toEqual({gross: 10990, basic: 5500, activeCount: 1100});
-  expect(state.calls.filter(c => c[0] === "range")).toEqual([["range", 0, 499], ["range", 500, 999], ["range", 1000, 1499]]);
+it("salary totals read every bounded page beyond 1000 components under the exact dated contract", async () => {
+  const row = (id: number) => ({id, employee_id: 880301, workspace_revision:1, component_type_id: id, amount: 10, effective_from: "2020-01-01", effective_to: null, is_active: id !== 1101, deleted_at: null, component_type: {workspace_revision:1,component_kind: id === 1100 ? "deduction" : "earning", is_basic: id % 2 === 0 && id !== 1100}});
+  state.queue = [500, 500, 101].map((length, i) => ({data: Array.from({length}, (_, n) => row(i * 500 + n + 1)), count: 1101, error: null}));state.queue=[...state.queue,...state.queue];
+  const result = await readPayrollPoint({kind: "salary-totals", employeeId: 880301}); expect(result.success, result.error).toBe(true); expect(result.data?.value).toEqual({gross: 10990, basic: 5490, activeCount: 1100});
+  expect(state.calls.filter(c => c[0] === "range")).toEqual(Array.from({length:2},()=>[["range", 0, 499], ["range", 0, 499], ["range", 500, 999], ["range", 1000, 1499]]).flat());
 });
 it.each(["short", "count-change", "failed", "duplicate"])("salary totals reject %s intermediate pages", async mode => {
   const row = (id: number) => ({id, amount: 10, is_active: true, deleted_at: null, component_type: null});
@@ -133,10 +133,10 @@ it("banking permission is independently checked for the exact employee before fe
   state.permissions.push("hr.banking.view"); state.grants["hr.banking.view"] = {data: false, error: null}; expect((await readPayrollPoint({kind: "wps", employeeId: 880301})).error).toBe("Permission denied"); expect(state.calls.filter(c => c[0] === "rpc")).toHaveLength(2); expect(state.calls.some(c => c[0] === "from")).toBe(false);
 });
 it("WPS response masks raw banking values and retains deterministic readiness", async () => {
-  state.byTable = {employee_wps_profiles: {data: payrollWpsFixture, error: null}, employee_payroll_holds: {data: null, count: 0, error: null}, employee_salary_components: {data: [{id: 1, amount: 1000, is_active: true, deleted_at: null, component_type: {component_kind: "earning", is_basic: true}}], count: 1, error: null}};
+  state.byTable = {employee_wps_profiles: {data: payrollWpsFixture, error: null}, employee_payroll_holds: {data: null, count: 0, error: null}, employee_salary_components: {data: [{id: 1, employee_id: 880301, workspace_revision:1, component_type_id: 1, amount: 1000, effective_from: "2020-01-01", effective_to: null, is_active: true, deleted_at: null, component_type: {component_kind: "earning", is_basic: true,workspace_revision:1}}], count: 1, error: null}};
   const result = await readPayrollPoint({kind: "wps", employeeId: 880301}); expect(result.success, result.error).toBe(true); expect(result.data?.value).toMatchObject({profile: {iban: null, account_number: null, account_number_masked: "******7890"}, readiness: {status: "ready", missingRequirements: []}}); expect(JSON.stringify(result)).not.toContain(payrollWpsFixture.iban); expect(JSON.stringify(result)).not.toContain(payrollWpsFixture.account_number);
 });
-it.each(["employee_wps_profiles", "employee_payroll_holds", "employee_salary_components"])("failure in %s never becomes ready/not-enrolled WPS", async table => {
+it.each(["employee_wps_profiles", "employee_payroll_holds", "employee_salary_components", "employee_salary_revision_effects"])("failure in %s never becomes ready/not-enrolled WPS", async table => {
   state.byTable = {employee_wps_profiles: {data: payrollWpsFixture, error: null}, employee_payroll_holds: {data: null, count: 0, error: null}, employee_salary_components: {data: [], count: 0, error: null}, [table]: {data: null, count: null, error: {message: "PRIVATE_ERROR"}}};
   expect((await readPayrollPoint({kind: "wps", employeeId: 880301})).success).toBe(false);
 });
@@ -159,7 +159,7 @@ function wpsCountFixture(holds: Record<string, unknown>, profile: unknown = payr
   state.byTable = {
     employee_wps_profiles: {data: profile, error: null},
     employee_payroll_holds: {data: null, error: null, ...holds},
-    employee_salary_components: {data: [{id: 1, amount: 1000, is_active: true, deleted_at: null, component_type: {component_kind: "earning", is_basic: true}}], count: 1, error: null},
+    employee_salary_components: {data: [{id: 1, employee_id: 880301, workspace_revision:1, component_type_id: 1, amount: 1000, effective_from: "2020-01-01", effective_to: null, is_active: true, deleted_at: null, component_type: {component_kind: "earning", is_basic: true,workspace_revision:1}}], count: 1, error: null},
   };
 }
 const invalidWpsCounts = [

@@ -1,0 +1,20 @@
+import{z}from'zod';
+import{employeeDate,employeeId}from'./employee-contract';
+const stamp=z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00\+04:00$/).datetime({offset:true});
+export const attendanceInterval=z.object({start:stamp,end:stamp,breaks:z.array(z.object({start:stamp,end:stamp}).strict()).max(4).default([])}).strict();
+export const enteredAttendance=z.object({attendance_type:z.enum(['site','office','yard','workshop','remote','on_leave','absent','holiday']),intervals:z.array(attendanceInterval).max(8),notes:z.string().max(500).nullable().optional()}).strict();
+export type EnteredAttendance=z.infer<typeof enteredAttendance>;
+export function enteredMinutes(value:EnteredAttendance,date:string){
+ let previous=-Infinity,total=0;
+ for(const row of value.intervals){const from=Date.parse(row.start),to=Date.parse(row.end);if(!Number.isFinite(from)||!Number.isFinite(to)||from<previous||to<=from||to-from>86400000||row.start.slice(0,10)!==date)throw Error('Use ordered, non-overlapping intervals starting on the selected date (maximum 24 hours).');previous=to;let last=from,breaks=0;for(const b of row.breaks){const start=Date.parse(b.start),end=Date.parse(b.end);if(start<last||end<=start||end>to)throw Error('Breaks must be ordered and contained in their interval.');breaks+=(end-start)/60000;last=end;}total+=(to-from)/60000-breaks;}
+ if(total>1440||!Number.isSafeInteger(total))throw Error('Use whole minutes, at most 24 hours in total.');
+ if(['absent','holiday','on_leave'].includes(value.attendance_type)?value.intervals.length!==0:value.intervals.length===0)throw Error('Choose actual intervals for work, and no work intervals for absence, holiday or leave.');return total;
+}
+export const attendanceRowRequest=z.object({employeeId, date:employeeDate,id:employeeId.nullable(),revision:z.string().regex(/^[1-9]\d*$/).nullable(),fingerprint:z.string().regex(/^[0-9a-f]{64}$/),operation:z.string().uuid(),reason:z.string().trim().min(1).max(500),values:enteredAttendance}).strict().superRefine((r,c)=>{if((r.id===null)!==(r.revision===null))c.addIssue({code:'custom',message:'Original opening is required.'});try{enteredMinutes(r.values,r.date);}catch(e){c.addIssue({code:'custom',path:['values'],message:String((e as Error).message)});}});
+export type AttendanceRowRequest=z.infer<typeof attendanceRowRequest>;
+export const attendanceReceipt=z.object({employee_id:employeeId,id:employeeId,revision:z.string().regex(/^[1-9]\d*$/),operation_id:z.string().uuid(),replayed:z.boolean()}).strict();
+export const attendanceRosterStates=['all','not_entered','pending','queried','approved','locked','approved_leave','ineligible']as const;
+export const attendanceRosterQuery=z.object({date:employeeDate,company:employeeId,branch:employeeId.nullable().default(null),site:employeeId.nullable().default(null),team:employeeId.nullable().default(null),shift:employeeId.nullable().default(null),search:z.string().trim().max(100).default(''),page:z.number().int().min(1).max(100000).default(1),history:z.boolean().default(false),state:z.enum(attendanceRosterStates).default('all')}).strict();
+export const attendanceRosterRow=z.object({employee_id:employeeId,employee_code:z.string(),full_name_en:z.string(),id:employeeId.nullable(),revision:z.string().nullable(),fingerprint:z.string().regex(/^[0-9a-f]{64}$/),eligible:z.boolean(),approved_leave:z.boolean(),approval_status:z.string().nullable(),entered:enteredAttendance.nullable(),schedule:z.array(attendanceInterval).max(8).nullable(),context_warning:z.string().nullable()}).strict();
+export type AttendanceRosterRow=z.infer<typeof attendanceRosterRow>;
+export const attendanceRosterPage=z.object({rows:z.array(attendanceRosterRow).max(25),total:z.number().int().nonnegative().safe(),page:z.number().int().positive()}).strict();

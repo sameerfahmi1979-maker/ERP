@@ -3,6 +3,7 @@ import { RecordCollection } from "@/components/erp/table/record-collection";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import {PayrollReadScope,usePayrollReadScope, usePayrollPoint, usePayrollRecords} from "@/hooks/use-hr-payroll-records";
 import{PayrollRecordEditor}from'../payroll-record-editor';
+import {SalaryReviewButton} from "../salary-review";
 import{HrChildRecoveryPanel}from'../hr-child-recovery-panel';
 import{useReadLifetime}from'@/hooks/use-read-lifetime';
 import{hrReadIdentity}from'@/lib/reads/hr-read-identity';
@@ -153,7 +154,7 @@ function SalaryProfileSection({employeeId,authContext,canManage,onChildOpen}:{em
 
 
  return <>
-    <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="rounded-xl border bg-card p-5 space-y-4">
+    <QueryReadBoundary queries={[uiRead1]}><div className="rounded-xl border bg-card p-5 space-y-4">
       <div className="flex flex-wrap gap-2 items-center justify-between">
         <div className="flex items-center gap-2">
           <DollarSign className="h-5 w-5 text-primary" />
@@ -165,7 +166,7 @@ function SalaryProfileSection({employeeId,authContext,canManage,onChildOpen}:{em
           )}
         </div>
         {canManage && (
-          <Button size="sm" variant="outline" onClick={openEdit} disabled={uiRead1.isFetching || uiRead2.isFetching}>
+          <Button size="sm" variant="outline" onClick={openEdit} disabled={uiRead1.isFetching}>
             <Edit2 className="h-3.5 w-3.5 mr-1.5" />
             {profileData ? "Edit Profile" : "Setup Profile"}
           </Button>
@@ -188,7 +189,7 @@ function SalaryProfileSection({employeeId,authContext,canManage,onChildOpen}:{em
 
 
     </div></QueryReadBoundary>
- {dialogOpen&&<PayrollRecordEditor kind="payroll-profile"employeeId={employeeId}authContext={authContext}target={target}canDispatch={()=>owner.active&&canManage&&uiRead1.canDispatch()&&uiRead2.canDispatch()}blocked={!canManage||!uiRead1.ready||!uiRead2.ready}retry={()=>{void uiRead1.refetch();void uiRead2.refetch();}}onDenied={scope.onDenied}onClose={()=>setDialogOpen(false)}onSaved={()=>{if(!owner.active)return;invalidateHrEmployeePayroll(qc,employeeId);toast.success('Payroll change saved');}}/>}
+ {dialogOpen&&<PayrollRecordEditor kind="payroll-profile"employeeId={employeeId}authContext={authContext}target={target}canDispatch={()=>owner.active&&canManage&&uiRead1.canDispatch()}blocked={!canManage||!uiRead1.ready}retry={()=>{void uiRead1.refetch();}}onDenied={scope.onDenied}onClose={()=>setDialogOpen(false)}onSaved={()=>{if(!owner.active)return;invalidateHrEmployeePayroll(qc,employeeId);toast.success('Payroll change saved');}}/>}
  </>;
 }
 
@@ -220,6 +221,7 @@ function SalaryComponentsSection({employeeId,authContext,canManage,onChildOpen}:
         )}
       </div>
 
+      <p className="text-xs text-muted-foreground">Component records retain their configured values. Dated, independently applied salary revisions may override Basic without rewriting these records; calculated salary values include those applied revisions.</p>
         <div className="divide-y text-sm">
           <RecordCollection presentation="embedded" {...uiRead1.collection} id="hr.employee-payroll-tab.SalaryComponentsSection.components" rows={components} fields={[{"id":"component_type_name_en","path":"component_type.name_en","label":"Component"},{"id":"effective_from","path":"effective_from","label":"Effective From"},{"id":"effective_to","path":"effective_to","label":"Effective To"}]} renderRecord={(comp) => (
             <div key={comp.id} className="flex items-center justify-between py-2.5 gap-4">
@@ -293,17 +295,18 @@ function SalaryRevisionSection({employeeId,authContext,canManage,onChildOpen}:{e
           <RecordCollection presentation="embedded" {...uiRead1.collection} id="hr.employee-payroll-tab.SalaryRevisionSection.revisions" rows={revisions} fields={[{"id":"effective_date","path":"effective_date","label":"Effective Date"},{"id":"revision_reason","path":"revision_reason","label":"Revision Reason"}]} renderRecord={(rev) => (
             <div key={rev.id} className="py-2.5 grid grid-cols-4 gap-2">
               <div><span className="text-muted-foreground">Date:</span> <span className="font-medium">{fmtDate(rev.effective_date)}</span></div>
-              <div><span className="text-muted-foreground">Old Basic:</span> <span>{fmtMoney(rev.old_gross)}</span></div>
-              <div><span className="text-muted-foreground">New Basic:</span> <span className="text-green-700 font-semibold">{fmtMoney(rev.new_gross)}</span></div>
+              <div><span className="text-muted-foreground">Old Basic:</span> <span>{rev.review ? fmtMoney(rev.old_gross,rev.review.currency) : `${rev.old_gross ?? '—'} (currency not recorded)`}</span></div>
+              <div><span className="text-muted-foreground">New Basic:</span> <span className="text-green-700 font-semibold">{rev.review ? fmtMoney(rev.new_gross,rev.review.currency) : `${rev.new_gross ?? '—'} (currency not recorded)`}</span></div>
               <div><span className="text-muted-foreground">By:</span> <span>{rev.creator?.display_name ?? rev.approver?.display_name ?? "—"}</span></div>
               {rev.revision_reason && <div className="col-span-4 text-muted-foreground">{rev.revision_reason}</div>}
+              <div className="col-span-4 flex flex-wrap gap-2 items-center">{rev.review ? <><Badge variant="outline">{rev.review.status}</Badge>{canManage && <SalaryReviewButton employeeId={employeeId} revisionId={rev.id} authContext={authContext} canDispatch={()=>owner.active&&canManage&&uiRead1.canDispatch()&&!dialogOpen} onChildOpen={onChildOpen} onDenied={scope.onDenied}/>}</> : <span className="text-xs text-muted-foreground">Legacy history — not a pending approved proposal.</span>}</div>
             </div>
           )} />
         </div>
 
 
     </div></QueryReadBoundary>
- {dialogOpen&&<PayrollRecordEditor kind="salary-revision"currentBasic={uiRead2.data?.success?uiRead2.data.data?.basic??null:null}employeeId={employeeId}authContext={authContext}target={target}canDispatch={()=>owner.active&&canManage&&uiRead1.canDispatch()&&uiRead2.canDispatch()}blocked={!canManage||!uiRead1.ready||!uiRead2.ready}retry={()=>{void uiRead1.refetch();void uiRead2.refetch();}}onDenied={scope.onDenied}onClose={()=>setDialogOpen(false)}onSaved={(_receipt,request)=>{if(!owner.active)return;invalidateHrEmployeeSalaryRevisions(qc,employeeId);if(request.values.apply_to_components===true)invalidateHrEmployeePayroll(qc,employeeId);toast.success('Payroll change saved');}}/>}
+ {dialogOpen&&<PayrollRecordEditor kind="salary-revision"currentBasic={uiRead2.data?.success?uiRead2.data.data?.basic??null:null}employeeId={employeeId}authContext={authContext}target={target}canDispatch={()=>owner.active&&canManage&&uiRead1.canDispatch()&&uiRead2.canDispatch()}blocked={!canManage||!uiRead1.ready||!uiRead2.ready}retry={()=>{void uiRead1.refetch();void uiRead2.refetch();}}onDenied={scope.onDenied}onClose={()=>setDialogOpen(false)}onSaved={(_receipt,request)=>{if(!owner.active)return;invalidateHrEmployeeSalaryRevisions(qc,employeeId);toast.success(request.values.apply_to_components===true?'Salary proposal recorded; independent approval and dated application are still required.':'Salary history recorded without application.');}}/>}
  </>;
 }
 

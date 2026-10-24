@@ -29,9 +29,9 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22.23.2'
+          node-version: '22.23.4'
           cache: npm
-      - run: npm install --global npm@10.9.8
+      - run: npm install --global npm@10.9.9
       - run: npm ci
       - run: npm test
 
@@ -48,9 +48,9 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22.23.2'
+          node-version: '22.23.4'
           cache: npm
-      - run: npm install --global npm@10.9.8
+      - run: npm install --global npm@10.9.9
       - run: npm ci
       - run: npm run test:remediation
       - name: F11 employee adoption and recovery type contracts (no browser)
@@ -76,9 +76,9 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22.23.2'
+          node-version: '22.23.4'
           cache: npm
-      - run: npm install --global npm@10.9.8
+      - run: npm install --global npm@10.9.9
       - run: npm ci
       - name: F06 offline guard and regression suite
         run: node node_modules/vitest/vitest.mjs run --config tests/remediation/f06/vitest.config.mts --shard ${{ matrix.shard }}
@@ -96,9 +96,9 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22.23.2'
+          node-version: '22.23.4'
           cache: npm
-      - run: npm install --global npm@10.9.8
+      - run: npm install --global npm@10.9.9
       - run: npm ci
       - name: F09 offline delivery, permission, retry and UI-component contracts (no browser)
         run: node node_modules/vitest/vitest.mjs run --config tests/remediation/f09/vitest.config.mts
@@ -149,9 +149,9 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22.23.2'
+          node-version: '22.23.4'
           cache: npm
-      - run: npm install --global npm@10.9.8
+      - run: npm install --global npm@10.9.9
       - run: npm ci
       - name: Phase regression suite with original setup and environment
         run: node node_modules/vitest/vitest.mjs run --config tests/performance/${{ matrix.phase }}.config.mts --shard ${{ matrix.shard }}
@@ -180,9 +180,9 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22.23.2'
+          node-version: '22.23.4'
           cache: npm
-      - run: npm install --global npm@10.9.8
+      - run: npm install --global npm@10.9.9
       - run: npm ci
       - name: Allocate fresh synthetic tracing evidence for this shard
         shell: bash
@@ -220,9 +220,9 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22.23.2'
+          node-version: '22.23.4'
           cache: npm
-      - run: npm install --global npm@10.9.8
+      - run: npm install --global npm@10.9.9
       - run: npm ci
       - name: F00-F06 composed selector and shared integration regressions
         run: node node_modules/vitest/vitest.mjs run --config tests/integration/f00-f06/vitest.config.mts
@@ -257,9 +257,9 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22.23.2'
+          node-version: '22.23.4'
           cache: npm
-      - run: npm install --global npm@10.9.8
+      - run: npm install --global npm@10.9.9
       - run: npm ci
       - run: npm run typecheck:e2e
       # Static types above do not execute a browser runner. Owner browser/device
@@ -279,14 +279,14 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22.23.2'
+          node-version: '22.23.4'
           cache: npm
-      - run: npm install --global npm@10.9.8
+      - run: npm install --global npm@10.9.9
       - run: npm ci
       - run: npm run security:secrets
       - run: npm run security:vendor
       - name: F06 image-check semantic guards (no Docker execution)
-        run: node --test tests/remediation/f06/linux-image-check.test.mjs
+        run: node --test tests/remediation/f06/linux-image-check.test.mjs tests/remediation/f06/node-security-runtime.test.cjs
       - name: Full dependency audit and verified local remediation
         run: node --test tests/remediation/f06/dependency-gate.test.cjs
       - name: Integrated vendor archive, lock, source and installed-consumer guards
@@ -314,9 +314,9 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22.23.2'
+          node-version: '22.23.4'
           cache: npm
-      - run: npm install --global npm@10.9.8
+      - run: npm install --global npm@10.9.9
       - run: npm ci
       # Existing application diagnostics remain blocking, not suppressed.
       - run: npm run lint
@@ -332,12 +332,12 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22.23.2'
+          node-version: '22.23.4'
       - name: Pull exact pinned Linux base for provenance verification
         shell: bash
         run: |
           set -euo pipefail
-          docker pull --platform linux/amd64 node:22.23.2-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9
+          docker pull --platform linux/amd64 node:22.23.4-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d
       - name: Build pinned production image with synthetic public configuration
         shell: bash
         run: |

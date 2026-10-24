@@ -1,4 +1,6 @@
 "use client";
+import {SubjectPhoto}from'../subject-photo';
+import{WorkforceReviewButton}from'../workforce-review';
 import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
@@ -403,6 +405,7 @@ function IdentityDocumentsSection({ authContext, onSubjectDenied, employeeId, ca
               </div>
               {canManageDoc && recordRead.access.canManage && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                  <WorkforceReviewButton employeeId={employeeId}kind="identity-document"sourceId={doc.id}authContext={authContext}canDispatch={admission.canDispatch}onChildOpen={onChildOpen}onDenied={onSubjectDenied}/>
                   {doc.verification_status === "unverified" && (
                     <Button aria-label="Verify" size="sm" variant="ghost" onClick={() => handleVerify(doc.id)} type="button" title="Verify">
                       <CheckCircle className="h-3.5 w-3.5" />
@@ -652,6 +655,7 @@ function MedicalInsurancesSection({ authContext, onSubjectDenied, employeeId, ca
               </div>
               {canManageDoc && recordRead.access.canManage && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                  <WorkforceReviewButton employeeId={employeeId}kind="medical-insurance"sourceId={r.id}authContext={authContext}canDispatch={admission.canDispatch}onChildOpen={onChildOpen}onDenied={onSubjectDenied}/>
                   {r.verification_status === "unverified" && <Button aria-label="Verify" size="sm" variant="ghost" type="button" onClick={() => handleVerify(r.id)} title="Verify"><CheckCircle className="h-3.5 w-3.5" /></Button>}
                   <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
                   <Button aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
@@ -752,6 +756,7 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
   const initialForm = () => ({
     dms_document_id: null as number | null,
     dependent_name_en: "", dependent_name_ar: "", relationship_type_id: null as number | null,
+    photo_dms_document_id:null as number|null,
     date_of_birth: "", nationality_id: null as number | null,
     passport_number: "", passport_expiry: "", emirates_id_number: "", emirates_id_expiry: "",
     residence_visa_number: "", residence_visa_expiry: "", medical_insurance_provider: "",
@@ -851,6 +856,7 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
   ) => (
     <div className="grid grid-cols-12 gap-4">
       <ComplianceDmsPrefillBanner prefillMeta={prefillMeta} />
+      <div className="col-span-12"><SubjectPhoto subject="dependent"employee={editing?.id?employeeId:null}dependent={editing?.id??null}identity={recordRead.identity}value={f.photo_dms_document_id}disabled={dependentSession.saving||!!dependentSession.pending}onValue={value=>setF(previous=>({...previous,photo_dms_document_id:value}))}/></div>
       <div className="col-span-6"><Label>Name (English) <span className="text-destructive">*</span></Label><Input aria-label="Name (English)" required value={f.dependent_name_en} onChange={(e) => setF((p) => ({ ...p, dependent_name_en: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Name (Arabic)</Label><Input aria-label="Name (Arabic)" value={f.dependent_name_ar} onChange={(e) => setF((p) => ({ ...p, dependent_name_ar: e.target.value }))} dir="rtl" /></div>
       <div className="col-span-6"><Label>Relationship <span className="text-destructive">*</span></Label><ERPCombobox ariaLabel="Relationship" value={f.relationship_type_id} onValueChange={(v) => setF((p) => ({ ...p, relationship_type_id: Number(v) }))} options={relTypeOptions} placeholder="Select relationship..." required /></div>
@@ -903,6 +909,7 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
     setEditing(r);
     setForm({
       dms_document_id: r.dms_document_id,
+      photo_dms_document_id:r.photo_dms_document_id??null,
       dependent_name_en: r.dependent_name_en, dependent_name_ar: r.dependent_name_ar ?? "",
       relationship_type_id: r.relationship_type_id, date_of_birth: r.date_of_birth ?? "",
       nationality_id: r.nationality_id, passport_number: r.passport_number ?? "",
@@ -987,6 +994,7 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
               </div>
               {canManageDoc && recordRead.access.canManage && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                  <WorkforceReviewButton employeeId={employeeId}kind="dependent"sourceId={r.id}authContext={authContext}canDispatch={admission.canDispatch}onChildOpen={onChildOpen}onDenied={onSubjectDenied}/>
                   <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
                   <Button aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
@@ -1234,6 +1242,7 @@ function AccessCardsSection({ authContext, onSubjectDenied, employeeId, canManag
               </div>
               {canManageDoc && recordRead.access.canManage && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                  <WorkforceReviewButton employeeId={employeeId}kind="access-card"sourceId={r.id}authContext={authContext}canDispatch={admission.canDispatch}onChildOpen={onChildOpen}onDenied={onSubjectDenied}/>
                   <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
                   <Button aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
@@ -1467,6 +1476,7 @@ function TrainingCertificatesSection({ authContext, onSubjectDenied, employeeId,
               </div>
               {canManageDoc && recordRead.access.canManage && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                  <WorkforceReviewButton employeeId={employeeId}kind="training-certificate"sourceId={r.id}authContext={authContext}canDispatch={admission.canDispatch}onChildOpen={onChildOpen}onDenied={onSubjectDenied}/>
                   {r.verification_status === "unverified" && <Button aria-label="Verify" size="sm" variant="ghost" type="button" onClick={() => handleVerify(r.id)} title="Verify"><CheckCircle className="h-3.5 w-3.5" /></Button>}
                   <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
                   <Button aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
@@ -1698,6 +1708,7 @@ function MedicalRecordsSection({ authContext, onSubjectDenied, employeeId, canMe
                 </div>
                 {canMedManage && recordRead.access.canManage && (
                   <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                  <WorkforceReviewButton employeeId={employeeId}kind="medical-record"sourceId={r.id}authContext={authContext}canDispatch={admission.canDispatch}onChildOpen={onChildOpen}onDenied={onSubjectDenied}/>
                     <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
                     <Button aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
                   </div>

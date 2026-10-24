@@ -17,6 +17,7 @@ import type { EmployeeListRow } from "@/server/actions/hr/employees";
 import { useQuery } from "@tanstack/react-query";
 import {employmentChangeSummary,employmentFieldLabel} from '@/lib/hr/employee-foundation';
 import {EmployeeNameReviewControl}from '../employee-foundation-review';
+import {SubjectPhoto}from '../subject-photo';
 
 type Props = {
   authContext:AuthContext;
@@ -29,6 +30,7 @@ type Props = {
 };
 
 export type EmployeeProfileFormState = {
+  photo_dms_document_id?:number|null;
   employment_change_reason: string;
   employment_effective_date: string;
   full_name_en: string;
@@ -138,6 +140,7 @@ export function EmployeeProfileTab({
 
   return (
     <div className="space-y-8 p-0 md:p-2">
+      <SubjectPhoto employee={employee?.id??null}identity={hrReadIdentity(authContext)}value={form.photo_dms_document_id??null}disabled={disabled}onValue={value=>setForm(old=>({...old,photo_dms_document_id:value}))}/>
       {!disabled&&<EmployeeNameReviewControl authContext={authContext} name={form.full_name_en} companyId={form.owner_company_id} employeeId={employee?.id}/>}
       {choiceProblems&&<div role="alert" className="rounded border p-3 text-sm"><p>Some choice lists are unavailable or restricted. Saved references are retained; permitted personal fields remain editable. Unavailable choices cannot be changed.</p><Button type="button" variant="outline" disabled={choices.isFetching} onClick={()=>void choices.refetch()}>Retry choices</Button></div>}
       {/* ── Personal Information ─────────────────────────────────────────────── */}

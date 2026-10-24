@@ -53,21 +53,19 @@ export function formatTimeInquiryDate(value: string | null | undefined): string 
 
 /** Get current calendar year. */
 export function getCurrentLeaveYear(): number {
-  return new Date().getFullYear();
+  return Number(getTodayString().slice(0,4));
 }
 
 /**
  * Get start of current month as ISO date string.
  */
 export function getStartOfMonth(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  return getTodayString().slice(0,7)+'-01';
 }
 
 /**
  * Get today as ISO date string (YYYY-MM-DD).
  */
 export function getTodayString(): string {
-  const d = new Date();
-  return d.toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 }

@@ -186,8 +186,15 @@ it.each([[400, {page: 0}], [403, {}], [503, {}], [200, {}]] as const)("route has
   expect(await response.text()).not.toContain("PRIVATE");
 });
 const searchActionFingerprint = (source: string) => createHash("sha256").update(source.replace(/\r\n/g, "\n")).digest("hex");
-it("original search action remains unchanged modulo checkout newline encoding", () => {
-  expect(searchActionFingerprint(readFileSync(new NodeURL("../../src/server/actions/hr/search.ts", import.meta.url), "utf8"))).toBe("f456d275a9170a7f093bd3ccdad1db1f5dcff24dab5ed214ec93429f95adba13");
+it("F12-05 deliberately replaces the old frozen partial-error fork with the current guarded reader", () => {
+  const source=readFileSync(new NodeURL("../../src/server/actions/hr/search.ts", import.meta.url),"utf8");
+  expect(source).toContain("readHrSearch");expect(source).toContain("hrSearchPageReadSchema.parse");expect(source).not.toContain("Promise.allSettled");expect(source).not.toContain("createClient");expect(source).not.toContain("PER_CATEGORY_LIMIT");
+});
+it('F12-05 search never uses bank presence as a green payroll readiness decision',async()=>{
+ tables.employee_wps_profiles=[row()];const r=await readHrSearch(full({categories:['payroll']}));expect(r).toMatchObject({success:true,data:{results:[{statusVariant:'muted',description:expect.stringContaining('not payment clearance')}]}});expect(calls.filter(c=>c.table==='employee_wps_profiles').every(c=>!String(c.calls.find(m=>m[0]==='select')?.[1]).includes('bank_id'))).toBe(true);
+});
+it('F12-05 current blocks use the same Dubai lower and upper date predicates as dashboard/source detail',async()=>{
+ await readHrSearch(full({categories:['operations']}));const entries=calls.filter(c=>c.table==='employee_operational_blocks');expect(entries.length).toBeGreaterThan(0);for(const e of entries){const lower=e.calls.find(c=>c[0]==='lte'&&c[1]==='effective_from');expect(lower).toBeTruthy();expect(e.calls).toContainEqual(['or',`effective_to.is.null,effective_to.gte.${lower![2]}`]);}
 });
 const fingerprintControl = 'const label = "Synthetic café";\nreturn label;\n';
 it("source fingerprint treats equivalent LF and CRLF checkouts identically", () => {

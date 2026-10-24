@@ -10,9 +10,10 @@ import type{AuthContext}from'@/lib/rbac/check';import{canUseHrChild}from'@/lib/h
 import{clearanceArea,clearanceOpeningValues,childOperationValues,type ChildMutation,type ChildReceipt}from'@/lib/hr/child-save-contract';
 import{readClearanceOpening}from'@/server/actions/hr/child-mutation';
 import{useHrChildSession}from'./use-hr-child-session';import{useHrChildOwnerLifetime}from'./use-hr-child-owner-lifetime';
-type Values={clearance_area:string;item_title:string;notes:string};
-const empty:Values={clearance_area:'hr',item_title:'',notes:''};
-const codec:WorkspaceDraftCodec<Values>={encode:v=>v,restore:(v,read)=>({clearance_area:read('clearance_area',v.clearance_area),item_title:read('item_title',v.item_title),notes:read('notes',v.notes)})};
+import{ClearanceEvidenceChoice,ClearanceHistory}from'./clearance-evidence';
+type Values={clearance_area:string;item_title:string;notes:string;item_status:string;evidence_document_id:string;evidence_version_id:string};
+const empty:Values={clearance_area:'hr',item_title:'',notes:'',item_status:'pending',evidence_document_id:'',evidence_version_id:''};
+const codec:WorkspaceDraftCodec<Values>={encode:v=>v,restore:(v,read)=>({clearance_area:read('clearance_area',v.clearance_area),item_title:read('item_title',v.item_title),notes:read('notes',v.notes),item_status:read('item_status',v.item_status),evidence_document_id:read('evidence_document_id',v.evidence_document_id),evidence_version_id:read('evidence_version_id',v.evidence_version_id)})};
 export type ClearanceEditorProps={employeeId:number;caseId:number;authContext:AuthContext;target:{id:number;action:'update'|'clear'|'block'|'archive'}|null;canDispatch:()=>boolean;admitted:boolean;retry:()=>void;onClose:()=>void;onSaved:(receipt:ChildReceipt,action:ChildMutation['action'])=>void;onDenied?:()=>void};
 export function ClearanceEditor(props:ClearanceEditorProps){return <Opening key={`${hrReadIdentity(props.authContext)}:${props.employeeId}:${props.caseId}:${props.target?.id??'new'}:${props.target?.action??'create'}`} {...props}/>;}
 function Opening(props:ClearanceEditorProps){
@@ -31,7 +32,7 @@ function Opening(props:ClearanceEditorProps){
 }
 function Editor(props:ClearanceEditorProps&{original:ChildMutation;actor:string;identity:string;session:ReturnType<typeof useHrChildSession>}){
  const{employeeId,caseId,identity,actor,session}=props,[opening]=useState(()=>structuredClone(props.original)),confirmation=!['create','update'].includes(opening.action),archive=opening.action==='archive';
- const initial:Values={clearance_area:String(opening.values.clearance_area??'hr'),item_title:String(opening.values.item_title??''),notes:String(opening.values.notes??'')};
+ const initial:Values={clearance_area:String(opening.values.clearance_area??'hr'),item_title:String(opening.values.item_title??''),notes:String(opening.values.notes??''),item_status:String(opening.values.item_status??'pending'),evidence_document_id:String(opening.values.evidence_document_id??''),evidence_version_id:String(opening.values.evidence_version_id??'')};
  const draft=useWorkspaceControlledDraft<Values>({formId:`f11-clearance:${JSON.stringify([actor,identity,employeeId,caseId,opening.id??'new',opening.action])}`,initialValue:initial,codec,enabled:!archive});
  const key=`${identity}:${employeeId}:${caseId}:${opening.id??'new'}`,lifetime=useReadLifetime(key),owner=useHrChildOwnerLifetime(key),latest=useRef(draft),[error,setError]=useState<string|null>(null),[denied,setDenied]=useState(false),id=useId();
  useLayoutEffect(()=>{latest.current=draft;});useLayoutEffect(()=>()=>{queueMicrotask(()=>{if(!owner.active)latest.current.retire(empty);});},[owner]);
@@ -39,7 +40,9 @@ function Editor(props:ClearanceEditorProps&{original:ChildMutation;actor:string;
  const close=()=>{if(!lifetime.active||session.busy||session.pending)return;draft.retire(empty);props.onClose();};
  const submit=async()=>{
   if(!lifetime.active||!props.canDispatch()||session.blocked||session.receipt||opening.values.eos_case_id!==caseId)return;
-  const submitted=draft.getCurrent(),values=session.pending?session.pending.request.values:archive?{eos_case_id:caseId}:confirmation?{eos_case_id:caseId,...(submitted.notes===''?{}:{notes:submitted.notes})}:{eos_case_id:caseId,clearance_area:submitted.clearance_area,item_title:submitted.item_title};
+  const submitted=draft.getCurrent(),evidence=submitted.evidence_document_id!==''?{evidence_document_id:Number(submitted.evidence_document_id),evidence_version_id:Number(submitted.evidence_version_id)}:opening.values.evidence_document_id?{evidence_document_id:null,evidence_version_id:null}:{};
+  const reopened=opening.id&&submitted.item_status==='pending'&&initial.item_status!=='pending'?{item_status:'pending'}:{};
+  const values=session.pending?session.pending.request.values:archive?{eos_case_id:caseId}:confirmation?{eos_case_id:caseId,...(submitted.notes===''?{}:{notes:submitted.notes})}:{eos_case_id:caseId,clearance_area:submitted.clearance_area,item_title:submitted.item_title,...evidence,...reopened};
   const checked=childOperationValues('clearance',opening.action).safeParse(values);if(!checked.success){setError(checked.error.issues[0]?.message??'Check clearance fields.');return;}
   const result=await session.submit({...opening,values});if(!lifetime.active)return;
   if(result.accessDenied){session.retireForLater();draft.retire(empty);setDenied(true);try{props.onDenied?.();}catch{/* A parent callback cannot prevent private-field retirement. */}return;}
@@ -53,6 +56,9 @@ function Editor(props:ClearanceEditorProps&{original:ChildMutation;actor:string;
   {(error||session.error)&&<p role="alert"className="text-sm text-destructive">{error??session.error}</p>}
   {!props.admitted&&<Button type="button"variant="outline"disabled={session.busy}onClick={props.retry}>Retry original checklist</Button>}
   <p className="text-xs text-muted-foreground">Original EOS case #{caseId}. These are HR clearance records, not departmental signatures, financial settlement or automatic clearance certification.</p>
+  {!confirmation&&<ClearanceEvidenceChoice employee={employeeId}identity={identity}document={draft.value.evidence_document_id}version={draft.value.evidence_version_id}disabled={locked}onValue={(document,version)=>draft.setValue(v=>({...v,evidence_document_id:document,evidence_version_id:version}))}onDenied={()=>{session.retireForLater();draft.retire(empty);setDenied(true);props.onDenied?.();}}/>}
+  {!confirmation&&opening.id&&initial.item_status!=='pending'&&<div><p className="text-sm">Recorded state: {initial.item_status}. Reopening retains the earlier completion and evidence in history.</p><Button type="button"variant="outline"disabled={locked||draft.value.item_status==='pending'}onClick={()=>draft.setValue(v=>({...v,item_status:'pending'}))}>{draft.value.item_status==='pending'?'Will reopen on save':'Reopen as pending'}</Button></div>}
+  {opening.id&&<ClearanceHistory employee={employeeId}caseId={caseId}item={opening.id}identity={identity}onDenied={()=>{session.retireForLater();draft.retire(empty);setDenied(true);props.onDenied?.();}}/>}
   {confirmation?<><p>{title} item #{opening.id} using opening revision {opening.revision}. Its history is retained.</p>{!archive&&<><Label htmlFor={`${id}-notes`}>Notes (optional)</Label><Textarea id={`${id}-notes`}aria-label="Notes (optional)"value={draft.value.notes}maxLength={2000}disabled={locked}onChange={e=>draft.setValue(v=>({...v,notes:e.target.value}))}/><p className="text-xs text-muted-foreground">Leave blank to retain existing notes.</p></>}</>:<div className="grid grid-cols-12 gap-4"><div className="col-span-6"><Label>Clearance Area *</Label><ERPCombobox ariaLabel="Clearance Area"required value={draft.value.clearance_area}options={clearanceArea.options.map(value=>({value,label:value.toUpperCase()}))}disabled={locked}onValueChange={value=>draft.setValue(v=>({...v,clearance_area:String(value??'')}))}/></div><div className="col-span-12"><Label htmlFor={`${id}-title`}>Item Title *</Label><Input id={`${id}-title`}aria-label="Item Title"required value={draft.value.item_title}maxLength={500}disabled={locked}onChange={e=>draft.setValue(v=>({...v,item_title:e.target.value}))}/></div></div>}
  </ERPChildDialogForm>;
 }

@@ -1,6 +1,7 @@
 "use client";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import{LeavePeriodBalances}from'../leave-period-balances';
 
 /**
  * ERP HR.4 — Employee Time Tab
@@ -119,7 +120,7 @@ function TimeSession({employeeId, authContext, onChildOpen}: Props) {
   }
 
   return (
-    <div className="space-y-6 p-6"><HrChildRecoveryPanel authContext={authContext}/>
+    <div className="space-y-6 p-6"><HrChildRecoveryPanel authContext={authContext}/>{canViewLeave&&<LeavePeriodBalances employee={employeeId}identity={identity}/>}
       {canViewAttendance && (
         <>
           <AttendanceSection
@@ -366,8 +367,8 @@ function LeaveSection({employeeId,authContext,canManage,onChildOpen,onSubjectDen
           {balances.map((b) => (
             <div key={b.id} className="border rounded-md p-3 text-xs">
               <p className="font-medium text-muted-foreground">{b.leave_type?.name_en ?? "—"}</p>
-              <p className="text-lg font-bold mt-1">{b.balance_days ?? "—"}<span className="text-xs font-normal text-muted-foreground ml-1">days</span></p>
-              <p className="text-muted-foreground">{b.used_days}/{b.entitled_days} used</p>
+              <p className="text-lg font-bold mt-1">{b.balance_days ?? "—"}<span className="text-xs font-normal text-muted-foreground ml-1">recorded days</span></p>
+              <p className="text-muted-foreground">{b.used_days}/{b.entitled_days} used · Current availability requires period and reservation review below.</p>
             </div>
           ))}
         </div>

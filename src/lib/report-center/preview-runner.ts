@@ -25,7 +25,9 @@ import type { ApplyRedactionOptions } from "./redaction-engine";
 import { REPORT_FETCHERS } from "./report-fetchers";
 import type { ReportDataResult, ReportRegistryEntry } from "./types";
 import { getAuthContext, assertAccountActive, hasPermission } from "@/lib/rbac/check";
-import { createScopedReportReadClient } from "./scoped-read-client";
+import { createScopedReportReadClient,revalidateScopedReportReadClient } from "./scoped-read-client";
+import {getEmployeeAccess} from "@/lib/rbac/employee-access";
+import {reportAuthorityIdentity} from "./result-identity";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -107,7 +109,8 @@ export async function runReportFetcherPreview(
 
   try {
     const actor=await getAuthContext(); assertAccountActive(actor);
-    const permissionCodes=actor.permissionCodes; // Ignore any caller-supplied capability list.
+    let permissionCodes=actor.permissionCodes; // Ignore any caller-supplied capability list.
+    if(!Number.isSafeInteger(maxRows)||maxRows<1||maxRows>PREVIEW_ROW_LIMIT)return{success:false,error:"Preview row limit must be between 1 and 50."};
     // ── 1. Load registry ──────────────────────────────────────────────────
     const registryEntry = await loadRegistryEntry(reportCode);
     if (!registryEntry) {
@@ -138,7 +141,23 @@ export async function runReportFetcherPreview(
     }
 
     // ── 4. Execute fetcher (read-only) ────────────────────────────────────
-    const rawResult: ReportDataResult = await fetcher.fetch(filters ?? {}, permissionCodes,await createScopedReportReadClient(actor,reportCode,registryEntry.required_permissions));
+    const selectedEmployee=reportCode.startsWith('HR_')&&filters?.employee_id!==undefined?Number(filters.employee_id):null;
+    if(selectedEmployee!==null){
+      if(!Number.isSafeInteger(selectedEmployee)||selectedEmployee<=0)throw Error('Select a valid employee.');
+      const access=await getEmployeeAccess(actor,selectedEmployee);
+      if(!['reports.run',...(registryEntry.required_permissions??[])].every(access.allows))throw Error('This employee preview is outside your current permitted scope.');
+      permissionCodes=access.scopedContext.permissionCodes;
+    }
+    const collectionClient=await createScopedReportReadClient(actor,reportCode,registryEntry.required_permissions);
+    const rawResult: ReportDataResult = await fetcher.fetch(filters ?? {}, permissionCodes,collectionClient);
+    const fresh=await getAuthContext();assertAccountActive(fresh);
+    if(reportAuthorityIdentity(fresh)!==reportAuthorityIdentity(actor))throw Error('Your preview permissions changed during collection. Run it again.');
+    if(reportCode.startsWith('HR_'))await revalidateScopedReportReadClient(collectionClient,fresh);
+    if(selectedEmployee!==null){
+      const access=await getEmployeeAccess(fresh,selectedEmployee);
+      if(!['reports.run',...(registryEntry.required_permissions??[])].every(access.allows))throw Error('The employee preview access changed during collection.');
+      permissionCodes=access.scopedContext.permissionCodes;
+    }
 
     const allRows = rawResult.rows ?? [];
     const totalRows = allRows.length;

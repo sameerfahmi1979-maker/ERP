@@ -11,6 +11,7 @@ import {syntheticAuthContext} from '../../performance/fixtures/auth-context';
 import type {AuthContext} from '@/lib/rbac/check';
 const m=vi.hoisted(()=>({mutate:vi.fn(),reconcile:vi.fn(),read:vi.fn(),close:vi.fn(),saved:vi.fn(),dispatch:vi.fn(),denied:vi.fn(),store:null as ReturnType<typeof createWorkspaceDraftStore>|null,submit:undefined as undefined|(()=>Promise<void>)}));
 vi.mock('@/server/actions/hr/child-mutation',()=>({mutateHrChild:m.mutate,reconcileHrChild:m.reconcile,readHrActionOpening:m.read}));
+vi.mock('@/features/hr/employees/workforce-editor-choice',()=>({WorkforceEditorChoice:({label,value,onValue,kind}:{label:string;value:string;onValue:(v:string)=>void;kind:string})=><input aria-label={label} value={value} data-authority-kind={kind} onChange={e=>onValue(e.target.value)}/>}));
 vi.mock('@/components/workspace/workspace-draft-provider',()=>({useWorkspaceDraftStoreContext:()=>m.store}));
 vi.mock('@/hooks/use-workspace-form-owner',()=>({useWorkspaceFormOwner:()=>({id:'pro-owner'})}));
 vi.mock('@/hooks/use-workspace-tab-dirty',()=>({useWorkspaceTabDirty:vi.fn()}));
@@ -23,7 +24,10 @@ vi.mock('@/components/erp/erp-child-dialog-form',()=>({ERPChildDialogForm:({chil
 import {HrRecordEditor,type HrRecordEditorProps} from '@/features/hr/employees/hr-record-editor';
 function HrActionTestEditor(props:Omit<HrRecordEditorProps,'kind'>){return <HrRecordEditor {...props} kind="hr-action"/>;}
 const auth=syntheticAuthContext(['hr.actions.view','hr.actions.manage'],{id:7,auth_user_id:'action-a'}),actor='7:action-a';
-const values={action_title:'Original title',action_status:'open',action_type:'general',action_date:'2026-10-19',due_date:null,notes:'PRIVATE_ORIGINAL'};
+const values={action_title:'Original title',action_status:'open',action_type:'general',action_date:'2026-10-19',due_date:null,assigned_to:null,notes:'PRIVATE_ORIGINAL'};
+it('existing task owner field uses the verified HR authority picker and retains original save identity',async()=>{
+ mount({id:51,action:'update'});const owner=await screen.findByLabelText('Responsible HR User');expect(owner.getAttribute('data-authority-kind')).toBe('pro-process');fireEvent.change(owner,{target:{value:'8'}});fireEvent.change(screen.getByLabelText('Due Date'),{target:{value:'2026-11-01'}});fireEvent.click(screen.getByText('Save action'));await waitFor(()=>expect(m.saved).toHaveBeenCalledOnce());expect(m.mutate.mock.calls[0][0]).toMatchObject({id:51,revision:'4',values:{assigned_to:8,due_date:'2026-11-01'}});
+});
 const reply=(request:unknown,contract:unknown,replayed=false)=>{const r=request as {id:number|null;revision:string|null},c=contract as {operationId:string};return{success:true,data:{kind:'hr-action',employee_id:7,id:r.id??51,operation_id:c.operationId,revision:String(Number(r.revision??0)+1),replayed}};};
 const clients:QueryClient[]=[];
 beforeEach(()=>{vi.resetAllMocks();m.store=createWorkspaceDraftStore();m.dispatch.mockReturnValue(true);m.read.mockResolvedValue({success:true,revision:'4',values});m.mutate.mockImplementation(async(r,c)=>reply(r,c));});

@@ -23,6 +23,8 @@ import { callCommonAiStructuredCompletion } from "@/lib/ai/common/provider-bridg
 import { isHrAiMasterEnabled, isHrAiFeatureEnabled } from "@/lib/hr/ai/feature-flags";
 import { HR_AI_FEATURE_FLAGS, HrAiDraftOutputSchema } from "@/lib/hr/ai/types";
 import type { HrAiActionResult, HrAiDraftOutput } from "@/lib/hr/ai/types";
+import {readSalarySnapshot} from "@/server/reads/salary-snapshot";
+import {payrollToday} from "@/lib/hr/payroll/salary-as-of";
 
 const DraftInputSchema = z.object({
   employeeId:  z.number().int().positive(),
@@ -63,7 +65,7 @@ export async function draftHrLetterOrEmail(
     const requiresPayrollView = ["salary_certificate"].includes(draftType);
     const requiresActionsView = ["warning_letter"].includes(draftType);
 
-    if (requiresPayrollView && !hasPermission(ctx, "hr.payroll.view"))
+    if (requiresPayrollView && !access.allows("hr.payroll.view"))
       return { success: false, error: "Permission denied: hr.payroll.view required for salary certificate drafts." };
     if (requiresActionsView && (!hasPermission(ctx, "hr.actions.view") || !hasPermission(ctx, "hr.confidential.view")))
       return { success: false, error: "Permission denied: HR action and confidential-record access are required for warning letter drafts." };
@@ -105,19 +107,15 @@ export async function draftHrLetterOrEmail(
       return { success: false, error: "Could not load employee data due to a server error. Please try again or contact an administrator." };
     }
 
-    if (!emp) return { success: false, error: "Employee not found." };
+    if (!emp || emp.id!==employeeId) return { success: false, error: "Employee not found." };
 
     // Include salary only with payroll permission
     let salaryContext = "";
-    if (requiresPayrollView && hasPermission(ctx, "hr.payroll.view")) {
-      const { data: payProfile } = await db
-        .from("employee_payroll_profiles")
-        .select("basic_salary, currency")
-        .eq("employee_id", employeeId)
-        .maybeSingle();
-      if (payProfile?.basic_salary) {
-        salaryContext = `\nBasic Salary: ${payProfile.basic_salary} ${payProfile.currency ?? "AED"}`;
-      }
+    if (requiresPayrollView) {
+      try{
+        const salary=await readSalarySnapshot(db,employeeId);
+        salaryContext=`\nSalary as of ${salary.asOf}: Basic ${salary.basic}; Gross ${salary.gross}; Currency ${salary.currency}. Source ${salary.sourceFingerprint}. These are dated recorded facts, not payment or statutory entitlements.`;
+      }catch{return{success:false,error:'Current dated salary facts could not be verified. No salary draft was requested.'};}
     }
 
     const draftLabels: Record<string, string> = {
@@ -151,7 +149,7 @@ export async function draftHrLetterOrEmail(
       salaryContext,
     ].filter(Boolean).join("\n");
 
-    const today = new Date().toLocaleDateString("en-AE", { day: "2-digit", month: "long", year: "numeric" });
+    const today = payrollToday();
 
     const systemPrompt = `You are an HR letter drafting assistant for a UAE-based company ERP system.
 Draft professional, formal HR correspondence.
@@ -185,11 +183,14 @@ Return JSON:
   "isOfficialReady": false
 }`;
 
+    const stillAuthorized=async()=>{const current=await getEmployeeAccess(await getAuthContext(),employeeId);return current.scopedContext.profile?.id===ctx.profile!.id&&current.allows('hr.ai.use')&&(!requiresPayrollView||current.allows('hr.payroll.view'))&&(!requiresActionsView||current.allows('hr.actions.view')&&current.allows('hr.confidential.view'));};
+    if(!await stillAuthorized())return{success:false,error:'Employee draft access changed. No draft was requested.'};
     const outcome = await callCommonAiStructuredCompletion(systemPrompt, userPrompt, {
       maxTokens: 1800,
       temperature: 0.3,
     });
     const durationMs = Date.now() - start;
+    if(!await stillAuthorized())return{success:false,error:'Employee draft access changed. The collected output is unavailable.'};
 
     if (!outcome.success) {
       await logHrAiUsage({ featureCode: HR_AI_FEATURE_FLAGS.LETTER_DRAFT, entityId: employeeId, outputType: "letter_draft", status: "failure", durationMs, model: null, promptTokens: null, completionTokens: null, profileId: ctx.profile.id, providerCode: null, configCode: null, configId: null });
@@ -207,7 +208,7 @@ Return JSON:
 
     await logHrAiUsage({ featureCode: HR_AI_FEATURE_FLAGS.LETTER_DRAFT, entityId: employeeId, outputType: "letter_draft", status: "success", durationMs, model: outcome.model, promptTokens: outcome.promptTokens, completionTokens: outcome.completionTokens, profileId: ctx.profile.id, providerCode: outcome.providerCode, configCode: outcome.configCode, configId: outcome.configId });
     return { success: true, data: safeOutput };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  } catch {
+    return { success: false, error: "The authorized draft source is unavailable. No official document was issued." };
   }
 }

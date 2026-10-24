@@ -102,6 +102,7 @@ export type EmployeeMedicalInsuranceRow = {
 };
 
 export type EmployeeDependentRow = {
+  photo_dms_document_id?:number|null;
   id: number;
   workspace_revision: number;
   employee_id: number;

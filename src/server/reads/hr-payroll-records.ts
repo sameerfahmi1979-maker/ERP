@@ -4,8 +4,9 @@ import {getAuthContext} from "@/lib/rbac/check";
 import {createClient} from "@/lib/supabase/server";
 import {literalContains, literalLike} from "@/lib/reads/search";
 import {operationsRealDate} from "@/lib/reads/hr-operations-schema";
-import {collectCompletePages} from "@/lib/reads/complete-pages";
-import {calculateBasicSalary, calculateGrossSalary, checkWpsReadiness} from "@/lib/hr/payroll/wps-readiness";
+import {checkWpsReadiness} from "@/lib/hr/payroll/wps-readiness";
+import {payrollToday,payrollEmploymentEligible,salaryDisplayNumber} from "@/lib/hr/payroll/salary-as-of";
+import {readSalarySnapshot} from "@/server/reads/salary-snapshot";
 import {redactWpsProfile} from "@/lib/hr/payroll/redaction";
 import {z} from "zod";
 import {PAYROLL_RECORD_FIELDS, payrollRecordCriteriaSchema, payrollRecordPageSchema, payrollRecordRows, payrollPointCriteriaSchema, payrollProfileSchema, payrollWpsRawSchema, payrollPointSchemas, type PayrollRecordKind} from "@/lib/reads/hr-payroll-records-schema";
@@ -14,12 +15,12 @@ import {payrollChoiceCriteriaSchema, payrollChoicePageSchema, payrollComponentSc
 const tables = {"salary-components": "employee_salary_components", "salary-revisions": "employee_salary_revisions", holds: "employee_payroll_holds"} as const;
 const relations = {
   "salary-components": "component_type:hr_salary_component_types!employee_salary_components_component_type_id_fkey(id,code,name_en,component_kind,is_wps_component)",
-  "salary-revisions": "approver:user_profiles!employee_salary_revisions_approved_by_fkey(display_name),creator:user_profiles!employee_salary_revisions_created_by_fkey(display_name)",
+  "salary-revisions": "approver:user_profiles!employee_salary_revisions_approved_by_fkey(display_name),creator:user_profiles!employee_salary_revisions_created_by_fkey(display_name),review:employee_salary_revision_reviews!employee_salary_revision_reviews_revision_id_fkey(revision_id,employee_id,status,workspace_revision,currency)",
   holds: "releaser:user_profiles!employee_payroll_holds_released_by_fkey(display_name)",
 };
 function projection(kind: PayrollRecordKind, full = false) {
   const schema = kind === "salary-components" && full ? payrollComponentSchema : payrollRecordRows[kind];
-  return Object.keys(schema.shape).filter(k => !["component_type", "approver", "creator", "releaser"].includes(k)).join(",") + "," + relations[kind];
+  return Object.keys(schema.shape).filter(k => !["component_type", "approver", "creator", "releaser", "review"].includes(k)).join(",") + "," + relations[kind];
 }
 async function subject(employeeId: number, banking = false) {
   const ctx = await getAuthContext();
@@ -103,13 +104,9 @@ export async function readPayrollRecords(input: unknown) {
   } catch {return {success: false, error: "Payroll records could not be completely loaded. Please retry."};}
 }
 
-const aggregateRow = z.object({id: z.number().int().positive(), amount: z.number().finite().nullable(), is_active: z.boolean(), deleted_at: z.string().nullable(), component_type: z.object({component_kind: z.string(), is_basic: z.boolean()}).nullable()});
 async function totals(db: NonNullable<Awaited<ReturnType<typeof subject>>>, employeeId: number) {
-  // Complete bounded native pages, not a capped child embed. The browser only
-  // receives three numbers. Aggregate-RPC tuning remains a measured follow-up.
-  const rows = await collectCompletePages((from, to) => db.from("employee_salary_components").select("id,amount,is_active,deleted_at,component_type:hr_salary_component_types!employee_salary_components_component_type_id_fkey(component_kind,is_basic)", {count: "exact"}).eq("employee_id", employeeId).is("deleted_at", null).order("id").range(from, to), {identity: r => r.id});
-  const complete = z.array(aggregateRow).parse(rows).map(row => ({...row, amount: row.amount ?? 0}));
-  return {gross: calculateGrossSalary(complete), basic: calculateBasicSalary(complete), activeCount: complete.filter(r => r.is_active).length};
+  const snapshot = await readSalarySnapshot(db, employeeId);
+  return {gross: salaryDisplayNumber(snapshot.gross), basic: salaryDisplayNumber(snapshot.basic), activeCount: snapshot.activeCount};
 }
 export async function readPayrollPoint(input: unknown) {
   const parsed = payrollPointCriteriaSchema.safeParse(input);
@@ -128,14 +125,17 @@ export async function readPayrollPoint(input: unknown) {
       if (result.error) throw Error("Payroll profile unavailable"); data = result.data;
     } else {
       const columns = Object.keys(payrollWpsRawSchema.shape).filter(k => !["bank", "mohre_establishment"].includes(k)).join(",") + ",bank:banks!employee_wps_profiles_bank_id_fkey(id,bank_name_en,bank_code),mohre_establishment:hr_mohre_establishments!employee_wps_profiles_mohre_establishment_id_fkey(id,establishment_name,establishment_number)";
-      const [profile, holds, salary] = await Promise.all([
+      const [profile, holds, salary, employment] = await Promise.all([
         db.from("employee_wps_profiles").select(columns).eq("employee_id", p.employeeId).is("deleted_at", null).maybeSingle(),
         db.from("employee_payroll_holds").select("id", {count: "exact", head: true}).eq("employee_id", p.employeeId).eq("is_active", true).is("deleted_at", null),
-        totals(db, p.employeeId),
+        readSalarySnapshot(db, p.employeeId),
+        db.from("employees").select("id,employee_status,joining_date").eq("id",p.employeeId).is("deleted_at",null).maybeSingle(),
       ]);
       if (profile.error || holds.error || typeof holds.count !== "number" || !Number.isSafeInteger(holds.count) || holds.count < 0) throw Error("Incomplete WPS readiness");
+      if(employment.error)throw Error("Employment context unavailable");
+      const current=z.object({id:z.literal(p.employeeId),employee_status:z.string(),joining_date:z.string()}).parse(employment.data);
       const raw = payrollWpsRawSchema.nullable().parse(profile.data);
-      data = {profile: raw ? redactWpsProfile(raw, true) : null, readiness: checkWpsReadiness({wpsProfile: raw, hasActivePayrollHold: holds.count > 0, hasSalaryComponents: salary.activeCount > 0, grossSalary: salary.gross})};
+      data = {profile: raw ? redactWpsProfile(raw, true) : null, readiness: checkWpsReadiness({wpsProfile: raw, hasActivePayrollHold: holds.count > 0, hasSalaryComponents: salary.activeCount > 0, grossSalary: salaryDisplayNumber(salary.gross), payrollStatus: salary.payrollStatus,employmentEligible:payrollEmploymentEligible(current,payrollToday())})};
     }
     const safe = payrollPointSchemas[p.kind].safeParse(data);
     if (!safe.success || safe.data && "employee_id" in safe.data && safe.data.employee_id !== p.employeeId || p.kind === "component-detail" && safe.data && "id" in safe.data && safe.data.id !== p.recordId) throw Error("Invalid payroll detail");

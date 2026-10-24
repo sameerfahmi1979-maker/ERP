@@ -1,0 +1,20 @@
+import {beforeEach,expect,it,vi} from 'vitest';import type {AuthContext} from '@/lib/rbac/check';
+const m=vi.hoisted(()=>({auth:vi.fn(),access:vi.fn(),fetcher:vi.fn(),facade:vi.fn(),registry:vi.fn()}));
+vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>{const q={select:()=>q,eq:()=>q,is:()=>q,maybeSingle:m.registry};return{from:()=>q};}}));
+vi.mock('@/lib/rbac/check',async()=>{const scope=await import('@/lib/rbac/scope');return{...scope,getAuthContext:m.auth,assertAccountActive:(ctx:AuthContext)=>{if(!scope.canUseApplication(ctx))throw Error('Account unavailable');}};});
+vi.mock('@/lib/rbac/employee-access',()=>({getEmployeeAccess:m.access}));
+vi.mock('@/lib/report-center/scoped-read-client',()=>({createScopedReportReadClient:m.facade,revalidateScopedReportReadClient:vi.fn()}));
+vi.mock('@/lib/report-center/report-fetchers',()=>({REPORT_FETCHERS:{HR_SALARY_CERT_WITH_AMOUNT:{fetch:m.fetcher}}}));
+vi.mock('@/lib/logger',()=>({logger:{error:vi.fn()}}));
+import {runReportFetcherPreview} from '@/lib/report-center/preview-runner';
+const actor={profile:{id:1,must_change_password:false},isAccountActive:true,permissionCodes:['reports.run','hr.payroll.view.self'],roleCodes:[],roleAssignments:[]} as unknown as AuthContext;
+const scoped={...actor,permissionCodes:['reports.run','hr.payroll.view']};
+beforeEach(()=>{vi.resetAllMocks();m.auth.mockResolvedValue(actor);m.access.mockResolvedValue({allows:()=>true,scopedContext:scoped});m.facade.mockResolvedValue({});m.registry.mockResolvedValue({data:{report_code:'HR_SALARY_CERT_WITH_AMOUNT',required_permissions:['hr.payroll.view'],sensitive_profile:'payroll'}});m.fetcher.mockResolvedValue({columns:['gross_salary'],rows:[{gross_salary:'0.10',owner_company_id:1}]});});
+const request={reportCode:'HR_SALARY_CERT_WITH_AMOUNT',filters:{employee_id:8},permissionCodes:['FAKE_CALLER_RIGHTS']};
+it('own payroll preview uses exact employee-scoped permissions and does not falsely redact its authorized pay',async()=>{
+ const result=await runReportFetcherPreview(request);expect(result,result.error).toMatchObject({success:true,rows:[{gross_salary:'0.10'}]});expect(m.fetcher).toHaveBeenCalledWith({employee_id:8},scoped.permissionCodes,{});expect(m.access).toHaveBeenCalledTimes(2);
+});
+it('another company role cannot authorize the selected employee',async()=>{m.access.mockResolvedValue({allows:()=>false,scopedContext:scoped});expect((await runReportFetcherPreview(request)).success).toBe(false);expect(m.fetcher).not.toHaveBeenCalled();});
+it('authority change during collection returns no private preview rows',async()=>{m.auth.mockResolvedValueOnce(actor).mockResolvedValue({...actor,permissionCodes:[]});const r=await runReportFetcherPreview(request);expect(r.success).toBe(false);expect(r.error).toContain('permissions changed');expect(m.fetcher).toHaveBeenCalledOnce();expect(r).not.toHaveProperty('rows');});
+it('own/team relationship loss during collection returns no private rows',async()=>{m.access.mockResolvedValueOnce({allows:()=>true,scopedContext:scoped}).mockResolvedValue({allows:()=>false,scopedContext:{...scoped,permissionCodes:[]}});const r=await runReportFetcherPreview(request);expect(r.success).toBe(false);expect(r.error).toContain('access changed');expect(m.fetcher).toHaveBeenCalledOnce();});
+it.each([0,-1,51,Infinity,1.5])('invalid preview limit %s cannot expand the output',async maxRows=>{expect((await runReportFetcherPreview({...request,maxRows})).success).toBe(false);expect(m.fetcher).not.toHaveBeenCalled();});

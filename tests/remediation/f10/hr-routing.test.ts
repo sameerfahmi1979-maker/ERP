@@ -85,3 +85,15 @@ it('F12 stale joining status cannot route an old lifecycle snapshot',async()=>{
  s.rows.hr_candidates=[{id:9,candidate_id:9,requisition_id:19,joining_status:'completed'}];s.rows.hr_job_requisitions=[{id:19,owner_company_id:1,branch_id:2}];s.rows.employee_recruitment_links=[];
  expect(await resolve({...event,source_table:'hr_candidates',source_id:9,event_type:'joining_changed',source_snapshot:{candidate_id:9,joining_status:'in_progress'}})).toEqual([]);
 });
+it.each([['employee_pro_processes','hr.actions.view','process_status','draft'],['employee_assignments','hr.assignments.view','assignment_status','planned']])('F12 %s requires fresh same-branch source permission and revision',async(table,cap,status,value)=>{
+ s.rows[table]=[{id:41,employee_id:7,workspace_revision:2,[status]:value}];
+ const e:NotificationEvent={...event,source_table:table,source_id:41,event_type:'workforce_changed',source_snapshot:{employee_id:7,workspace_revision:2,[status]:value}};
+ expect(await resolve(e)).toEqual([]);
+ s.contexts.set(11,ctx(11,7,['hr.employees.view.self',cap]));s.contexts.set(12,ctx(12,8,['hr.employees.view.team',cap]));expect(await resolve(e)).toEqual([11,12]);
+ s.contexts.set(12,ctx(12,8,['hr.employees.view.team',cap],3));expect(await resolve(e)).toEqual([11]);
+ s.rows[table][0].workspace_revision=3;expect(await resolve(e)).toEqual([]);
+});
+it('F12 workforce notices hold missing identity mappings and retry source outages',async()=>{
+ s.rows.employee_pro_processes=[{id:41,employee_id:7,workspace_revision:2,process_status:'draft'}];const e:NotificationEvent={...event,source_table:'employee_pro_processes',source_id:41,event_type:'workforce_changed',source_snapshot:{employee_id:7,workspace_revision:2,process_status:'draft'}};
+ s.rows.erp_user_employee_links=[];await expect(resolve(e)).rejects.toBeInstanceOf(NotificationRoutingHold);s.failed='employee_pro_processes';await expect(resolve(e)).rejects.toThrow();
+});

@@ -13,8 +13,9 @@ import {notificationDocumentSubjectsAllowed} from '@/server/notification-documen
 import {notificationUploadReviewAllowed} from '@/server/notification-upload-authority';
 
 const positive=z.number().int().positive().refine(Number.isSafeInteger);
-const hrSources=['employee_leave_requests','employee_attendance_corrections','employee_salary_revisions','employee_payroll_holds','employee_approval_requests','employee_identity_documents','employee_medical_insurances','hr_interviews','hr_offers','hr_onboarding_tasks','hr_candidates'] as const;
+const hrSources=['employee_leave_requests','employee_attendance_corrections','employee_salary_revisions','employee_payroll_holds','employee_approval_requests','employee_identity_documents','employee_medical_insurances','hr_interviews','hr_offers','hr_onboarding_tasks','hr_candidates','employee_pro_processes','employee_assignments'] as const;
 const hrProjection:Record<typeof hrSources[number],string>={
+ employee_pro_processes:'id,employee_id,workspace_revision,process_status,assigned_to,target_date,f12_source_kind,f12_source_id,f12_source_version,f12_source_expiry,f12_replacement_id',employee_assignments:'id,employee_id,workspace_revision,assignment_status,work_site_id,effective_from,effective_to',
  employee_leave_requests:'id,employee_id,approval_status',employee_attendance_corrections:'id,employee_id',
  employee_salary_revisions:'id,employee_id',employee_payroll_holds:'id,employee_id,is_active',
  employee_approval_requests:'id,employee_id,request_status',employee_identity_documents:'id,employee_id,expiry_date,status',
@@ -83,7 +84,7 @@ async function hrRecipients(event:NotificationEvent,db:DB,considered?:Set<number
  const current=await boundedQuery(sourceQuery.maybeSingle());
  if(current.error)throw Error('HR event source unavailable');if(!current.data)return [];
  const record=z.record(z.string(),z.unknown()).safeParse(current.data);if(!record.success)throw Error('HR source contract unavailable');
- for(const key of ['employee_id','candidate_id','approval_status','request_status','is_active','interview_status','interview_datetime','offer_status','task_status','due_date','joining_status','candidate_status','pipeline_stage']){
+ for(const key of ['employee_id','candidate_id','approval_status','request_status','is_active','interview_status','interview_datetime','offer_status','task_status','due_date','joining_status','candidate_status','pipeline_stage','workspace_revision','process_status','target_date','f12_source_kind','f12_source_id','f12_source_version','f12_source_expiry','f12_replacement_id','assignment_status','work_site_id','effective_from','effective_to']){
   if(key in snapshot&&snapshot[key]!==null&&record.data[key]!==snapshot[key])return [];
  }
  if('assigned_to' in snapshot&&snapshot.assigned_to!==null&&(event.source_table==='hr_interviews'?record.data.interviewer_id:record.data.assigned_to)!==snapshot.assigned_to)return [];
@@ -96,7 +97,7 @@ async function hrRecipients(event:NotificationEvent,db:DB,considered?:Set<number
   if(employee){
    try{
     const access=await getEmployeeAccess(ctx,employee.id);
-    const caps:Record<string,readonly string[]>={employee_salary_revisions:['hr.payroll.view'],employee_payroll_holds:['hr.payroll.view'],
+    const caps:Record<string,readonly string[]>={employee_salary_revisions:['hr.payroll.view'],employee_payroll_holds:['hr.payroll.view'],employee_pro_processes:['hr.actions.view'],employee_assignments:['hr.assignments.view'],
      employee_medical_insurances:['hr.medical.view'],employee_identity_documents:['hr.compliance.view'],
      employee_attendance_corrections:['hr.attendance.view'],employee_approval_requests:['hr.actions.view'],employee_leave_requests:['hr.leave.view','hr.leave.manage']};
     if(caps[event.source_table]&&!caps[event.source_table].some(code=>access.allows(code)))continue;

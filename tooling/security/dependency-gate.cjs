@@ -14,7 +14,7 @@ const REVIEWED = Object.freeze({
   testSha256: '1fe41a70d613c1f0a14bff4b3cf6fc3c0f36e653f8c921ba6dc7dba35d5950c5',
   golden: 'tests/remediation/f06/braces-upstream-golden.json',
   goldenSha256: '69e1fc3fd15dd84133da8f7798751b6733962d635301cbdd29d4a8614666d375',
-  node: 'v22.23.2',
+  node: 'v22.23.4',
   advisoryUrl: 'https://github.com/advisories/GHSA-vfj7-8cjw-p6xm',
   advisorySource: 1240992,
   integrity: 'sha512-46Juc7zI9zpC2E4z4tIkfLZy0UdI7w2ORkcS8pH/wGyEEMZUtThi9mtREcx68G6Tv+H1U4d1c7KR0UWFiT/Pqw=='
@@ -136,12 +136,12 @@ function run(root = path.resolve(__dirname, '../..')) {
   const evidence = { runId, startedAt: new Date().toISOString(), node: process.version, state: 'FAIL' };
   let rawAudit;
   try {
-    if (process.version !== REVIEWED.node) fail('dependency gate requires pinned Node 22.23.2');
+    if (process.version !== REVIEWED.node) fail('dependency gate requires pinned Node 22.23.4');
     if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0') fail('audit cannot run with TLS verification disabled');
     const npm = process.env.npm_execpath || [path.join(path.dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js'), path.resolve(path.dirname(process.execPath), '../lib/node_modules/npm/bin/npm-cli.js')].find(file => fs.existsSync(file));
     if (!npm || !fs.existsSync(npm)) fail('npm CLI path unavailable');
     evidence.npmVersion = JSON.parse(fs.readFileSync(path.resolve(path.dirname(npm), '../package.json'), 'utf8')).version;
-    if (evidence.npmVersion !== '10.9.8') fail('dependency gate requires pinned npm 10.9.8');
+    if (evidence.npmVersion !== '10.9.9') fail('dependency gate requires pinned npm 10.9.9');
     rawAudit = spawnSync(process.execPath, [npm, 'audit', '--json', '--audit-level=high', '--include=dev', '--include=optional', '--include=peer', '--strict-ssl=true'], { cwd: root, encoding: 'utf8', timeout: 90000, maxBuffer: 16 * 1024 * 1024, shell: false, windowsHide: true });
     fs.writeFileSync(path.join(directory, 'npm-audit.raw.json'), rawAudit.stdout || '');
     fs.writeFileSync(path.join(directory, 'npm-audit.stderr.txt'), rawAudit.stderr || '');

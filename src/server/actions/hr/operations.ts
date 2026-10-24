@@ -64,7 +64,7 @@ export async function getCurrentEmployeeAssignment(employeeId: number): Promise<
     return { success: false, error: "Unauthorized" };
   }
   const supabase = await createClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const { data, error } = await supabase
     .from("employee_assignments")
     .select(
@@ -496,7 +496,7 @@ export async function getEmployeeOperationsSummary(
   }
 
   const supabase = await createClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 
   const [assignmentResult, blocksResult, assetsResult, ppeResult, accommodationResult, readinessResult] =
     await Promise.all([
@@ -546,6 +546,7 @@ export async function getEmployeeOperationsSummary(
         .order("checked_at", { ascending: false }),
     ]);
 
+  if([assignmentResult,blocksResult,assetsResult,ppeResult,accommodationResult,readinessResult].some(result=>result.error))return{success:false,error:'Current operations dependencies are unavailable; no assignment, custody or readiness conclusion is confirmed.'};
   const activeBlocks = (blocksResult.data ?? []).filter(isActiveBlock);
 
   return {
@@ -593,6 +594,7 @@ export async function getEmployeeReadinessSummary(
       .order("checked_at", { ascending: false }),
   ]);
 
+  if (blocksResult.error || readinessResult.error) return {success:false,error:'Current readiness dependencies are unavailable; readiness is not confirmed.'};
   const activeBlocks = (blocksResult.data ?? []).filter(isActiveBlock);
   const siteRecords = readinessResult.data ?? [];
 
@@ -602,7 +604,8 @@ export async function getEmployeeReadinessSummary(
   } else if (siteRecords.length === 0) {
     overallStatus = "needs_review";
   } else if (siteRecords.every((r) => r.readiness_status === "ready")) {
-    overallStatus = "ready";
+    // Saved calculations are history, not a current-source deployment decision.
+    overallStatus = "needs_review";
   } else if (siteRecords.some((r) => r.readiness_status === "blocked" || r.readiness_status === "expired")) {
     overallStatus = "expired";
   } else if (siteRecords.some((r) => r.readiness_status === "not_ready")) {

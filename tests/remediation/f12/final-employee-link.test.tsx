@@ -1,0 +1,20 @@
+import {renderToStaticMarkup} from 'react-dom/server';import {beforeEach,expect,it,vi} from 'vitest';
+const m=vi.hoisted(()=>({auth:vi.fn(),read:vi.fn(),browse:vi.fn()}));
+vi.mock('@/server/reads/read-context',()=>({getReadAuthContext:m.auth}));
+vi.mock('@/server/reads/employees',()=>({readEmployees:m.read}));
+vi.mock('@/lib/reads/scope-version',()=>({readScopeVersion:()=> 'synthetic-current-scope'}));
+vi.mock('@/lib/rbac/employee-access',()=>({canBrowseEmployees:m.browse}));
+vi.mock('@/lib/hr/ai/feature-flags',()=>({isHrAiFeatureEnabled:async()=>false}));
+vi.mock('next/navigation',()=>({redirect:()=>{throw Error('NEXT_REDIRECT');}}));
+vi.mock('@/components/erp/load-error',()=>({LoadError:()=> <div>READ_UNAVAILABLE</div>}));
+vi.mock('@/components/erp/page-header',()=>({ERPPageHeader:()=>null}));
+vi.mock('@/components/erp/hr-reports-menu',()=>({HrReportsMenu:()=>null}));
+vi.mock('@/features/hr/employees/employees-table',()=>({EmployeesTable:({initialStatus}:{initialStatus?:string})=><div data-status={initialStatus??'all'}>COUNTED_EMPLOYEE_TABLE</div>}));
+import Page from '@/app/(protected)/admin/hr/employees/page';
+beforeEach(()=>{vi.resetAllMocks();m.auth.mockResolvedValue({profile:{id:1,auth_user_id:'synthetic'},roleCodes:[]});m.browse.mockReturnValue(true);m.read.mockResolvedValue({success:true,data:{rows:[],totalCount:0,updatedAt:1}});});
+it.each(['active','probation','on_leave','suspended'])('dashboard %s link applies the same status to server read and client opening',async status=>{
+ const html=renderToStaticMarkup(await Page({searchParams:Promise.resolve({status})}));expect(m.read.mock.calls[0][0]).toEqual({page:1,pageSize:25,employeeStatus:status});expect(html).toContain(`data-status="${status}"`);
+});
+it.each(['unrecognized',['active','inactive']])('unsupported or duplicate URL value cannot inject a list predicate',async status=>{const html=renderToStaticMarkup(await Page({searchParams:Promise.resolve({status})}));expect(m.read.mock.calls[0][0]).toEqual({page:1,pageSize:25});expect(html).toContain('data-status="all"');});
+it('entry hint does not replace employee authority',async()=>{m.browse.mockReturnValue(false);await expect(Page({searchParams:Promise.resolve({status:'active'})})).rejects.toThrow('NEXT_REDIRECT');expect(m.read).not.toHaveBeenCalled();});
+it('source failure is not a successful empty status drilldown',async()=>{m.read.mockResolvedValue({success:false,error:'SYNTHETIC_PRIVATE'});const html=renderToStaticMarkup(await Page({searchParams:Promise.resolve({status:'active'})}));expect(html).toContain('READ_UNAVAILABLE');expect(html).not.toContain('COUNTED_EMPLOYEE_TABLE');expect(html).not.toContain('PRIVATE');});

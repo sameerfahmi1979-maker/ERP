@@ -12,7 +12,8 @@
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
 import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
-import { calculateGrossSalary, calculateBasicSalary } from "@/lib/hr/payroll/wps-readiness";
+import {readSalarySnapshot} from "@/server/reads/salary-snapshot";
+import {payrollToday,salaryDate} from "@/lib/hr/payroll/salary-as-of";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared helper: load employee base data
@@ -34,8 +35,8 @@ async function loadEmployeeBase(employeeId: number, db: ReportReadClient) {
     .eq("id", employeeId)
     .is("deleted_at", null)
     .single();
-  if (error) throw new Error(`Employee query failed: ${error.message}`);
-  if (!data) throw new Error("Employee not found");
+  if (error) throw new Error("Authorized employee source could not be loaded");
+  if (!data || data.id !== employeeId) throw new Error("Authorized employee source not available");
   return data;
 }
 
@@ -53,18 +54,29 @@ export const experienceLetterFetcher: ReportFetcher = {
     const emp = await loadEmployeeBase(employeeId, db);
     const company = emp.owner_company as unknown as { legal_name_en: string } | null;
 
-    // Find last_working_date from EOS cases if employee left
-
-    const { data: eos } = await db
+    // Only the actual closed-case state is eligible; legacy "approved" and
+    // "completed" were never EOS states. Do not pick one of several careers.
+    const selectedCase=filters.eos_case_id===undefined?null:Number(filters.eos_case_id);
+    if(selectedCase!==null&&(!Number.isSafeInteger(selectedCase)||selectedCase<=0))throw Error('Choose a valid original separation case.');
+    let query = db
       .from("employee_eos_cases")
-      .select("last_working_date")
+      .select("id,employee_id,last_working_date,employment_end_date,case_status")
       .eq("employee_id", employeeId)
-      .in("case_status", ["approved", "completed"])
+      .eq("case_status", "closed")
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
-      .limit(1);
-
-    const lastWorkingDate = eos?.[0]?.last_working_date ?? null;
+      .limit(2);
+    if(selectedCase!==null)query=query.eq('id',selectedCase);
+    const {data:eos,error}=await query;
+    if(error||!Array.isArray(eos))throw Error('The original separation facts could not be verified. No experience letter was produced.');
+    if(eos.length>1)throw Error('Several closed separation cases exist. Select the original case before preparing this letter.');
+    const source=eos[0],asOf=payrollToday();
+    if(source&&(source.employee_id!==employeeId||source.case_status!=='closed'||selectedCase!==null&&source.id!==selectedCase))throw Error('The separation case does not match this employee.');
+    if(selectedCase!==null&&!source)throw Error('The selected closed separation case is unavailable.');
+    const lastWorkingDate=source?.last_working_date??null;
+    if(source&&(!lastWorkingDate||!source.employment_end_date))throw Error('Review the recorded last working and employment end dates before preparing this letter.');
+    if(source&&(salaryDate(lastWorkingDate!)>asOf||salaryDate(source.employment_end_date!)>asOf||source.employment_end_date!<lastWorkingDate!||lastWorkingDate!<salaryDate(emp.joining_date)))throw Error('The recorded separation dates require review for this letter date.');
+    if(!source&&emp.employee_status==='terminated')throw Error('A verified closed separation case with recorded dates is required for a former employee letter.');
 
     const row = {
       employee_name: emp.full_name_en,
@@ -74,14 +86,14 @@ export const experienceLetterFetcher: ReportFetcher = {
       joining_date: emp.joining_date,
       last_working_date: lastWorkingDate ?? "",
       company_name: company?.legal_name_en ?? "",
-      generated_date: new Date().toISOString().split("T")[0],
+      generated_date: asOf,
       owner_company_id: emp.owner_company_id,
     };
 
     return {
       columns: Object.keys(row).filter((k) => k !== "owner_company_id"),
       rows: [row],
-      meta: { sourceRecordId: emp.id, letter_type: "experience_letter", ownerCompanyIds: [emp.owner_company_id] },
+      meta: { sourceRecordId: emp.id, letter_type: "experience_letter", asOf, separationCaseId:source?.id??null, employmentEndDate:source?.employment_end_date??null, ownerCompanyIds: [emp.owner_company_id] },
     };
   },
 };
@@ -270,7 +282,9 @@ export const salaryCertWithAmountFetcher: ReportFetcher = {
   reportCode: "HR_SALARY_CERT_WITH_AMOUNT",
 
   async fetch(filters: Record<string, unknown>, permissionCodes: string[], db: ReportReadClient): Promise<ReportDataResult> {
-    if (!permissionCodes.includes("hr.payroll.view")) {
+    // Coarse capability refusal only. The supplied scoped facade independently
+    // intersects the current actor's own/team/HR grants for this exact employee.
+    if (!permissionCodes.some(code=>["hr.payroll.view","hr.payroll.view.self","hr.payroll.view.team"].includes(code))) {
       throw new Error("You do not have permission to generate salary certificates with amounts. Requires hr.payroll.view.");
     }
 
@@ -281,32 +295,7 @@ export const salaryCertWithAmountFetcher: ReportFetcher = {
     const company = emp.owner_company as unknown as { legal_name_en: string } | null;
 
 
-    // gross_salary and basic_salary are NOT stored on employee_payroll_profiles —
-    // they are computed from employee_salary_components. Query both tables.
-    const [{ data: payroll }, { data: components }] = await Promise.all([
-      db
-        .from("employee_payroll_profiles")
-        .select("currency, payroll_status")
-        .eq("employee_id", employeeId)
-        .is("deleted_at", null)
-        .maybeSingle(),
-      db
-        .from("employee_salary_components")
-        .select(
-          "amount, is_active, deleted_at, component_type:hr_salary_component_types!employee_salary_components_component_type_id_fkey(component_kind, is_basic)"
-        )
-        .eq("employee_id", employeeId),
-    ]);
-
-    const mappedComponents = (components ?? []).map((c) => ({
-      amount: Number(c.amount ?? 0),
-      is_active: c.is_active,
-      deleted_at: c.deleted_at,
-      component_type: c.component_type as unknown as { component_kind: string; is_basic?: boolean } | null,
-    }));
-
-    const gross = calculateGrossSalary(mappedComponents);
-    const basic = calculateBasicSalary(mappedComponents);
+    const salary = await readSalarySnapshot(db, employeeId);
 
     const row = {
       employee_name: emp.full_name_en,
@@ -314,17 +303,17 @@ export const salaryCertWithAmountFetcher: ReportFetcher = {
       designation: (emp.designation as unknown as { designation_name_en: string } | null)?.designation_name_en ?? "",
       company_name: company?.legal_name_en ?? "",
       joining_date: emp.joining_date,
-      basic_salary: basic,
-      gross_salary: gross,
-      currency: payroll?.currency ?? "AED",
-      generated_date: new Date().toISOString().split("T")[0],
+      basic_salary: salary.basic,
+      gross_salary: salary.gross,
+      currency: salary.currency,
+      generated_date: salary.asOf,
       owner_company_id: emp.owner_company_id,
     };
 
     return {
       columns: ["employee_name", "employee_code", "designation", "company_name", "joining_date", "basic_salary", "gross_salary", "currency", "generated_date"],
       rows: [row],
-      meta: { sourceRecordId: emp.id, letter_type: "salary_cert_with_amount", ownerCompanyIds: [emp.owner_company_id], sensitive: true },
+      meta: { sourceRecordId: emp.id, letter_type: "salary_cert_with_amount", ownerCompanyIds: [emp.owner_company_id], sensitive: true, salaryAsOf:salary.asOf,salarySourceFingerprint:salary.sourceFingerprint },
     };
   },
 };

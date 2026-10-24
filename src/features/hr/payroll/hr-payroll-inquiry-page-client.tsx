@@ -17,7 +17,7 @@ function columns(kind: PayrollInquiryKind): ColumnDef<Row>[] {
   const salary: ColumnDef<Row>[] = [
     {id: "payroll_group_name", header: "Payroll Group", accessorFn: row => "payroll_group_name" in row ? row.payroll_group_name : null, size: 160, cell: ({row: {original: row}}) => "payroll_group_name" in row ? row.payroll_group_name ?? "Restricted or unavailable" : null},
     {id: "payroll_status", header: "Status", accessorFn: row => "payroll_status" in row ? row.payroll_status : null, size: 160, cell: ({row: {original: row}}) => "payroll_status" in row && <Badge variant={variant(row.payroll_status ?? "not_configured")} className="capitalize">{row.payroll_status?.replaceAll("_", " ") ?? "Not Configured"}</Badge>},
-    {id: "gross_salary", header: "Gross Salary", accessorFn: row => "gross_salary" in row ? row.gross_salary : null, size: 160, cell: ({row: {original: row}}) => "gross_salary" in row ? row.gross_salary.toLocaleString("en-AE", {minimumFractionDigits: 2, maximumFractionDigits: 2}) : null},
+    {id: "gross_salary", header: "Gross Salary", accessorFn: row => "gross_salary" in row ? row.gross_salary : null, size: 160, cell: ({row: {original: row}}) => "gross_salary" in row ? row.gross_salary?.toLocaleString("en-AE", {minimumFractionDigits: 2, maximumFractionDigits: 2}) ?? "Salary unavailable" : null},
     {id: "currency", header: "Currency", accessorFn: row => "currency" in row ? row.currency : null, size: 160, cell: ({row: {original: row}}) => "currency" in row ? row.currency ?? "—" : null},
   ];
   const wps: ColumnDef<Row>[] = [

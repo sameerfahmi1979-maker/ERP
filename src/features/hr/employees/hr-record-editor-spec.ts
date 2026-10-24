@@ -3,7 +3,7 @@ import{operationalBlockValues,operationalBlockOpeningValues}from'@/lib/hr/operat
 import{assetValues,assetOpeningValues,ppeValues,ppeOpeningValues,accommodationValues,accommodationOpeningValues}from '@/lib/hr/operation-item-contract';
 import {proProcessValues,proProcessOpeningValues,hrActionValues,hrActionOpeningValues,performanceValues,performanceOpeningValues,disciplinaryValues,disciplinaryOpeningValues,approvalValues,approvalOpeningValues,eosCaseValues,eosCaseOpeningValues,assignmentValues,assignmentOpeningValues} from '@/lib/hr/child-save-contract';
 export type HrRecordKind='pro-process'|'hr-action'|'performance'|'disciplinary'|'approval'|'eos-case'|'assignment'|'asset'|'ppe'|'accommodation'|'operational-block'|'role-requirement';
-export type HrRecordField={name:string;label:string;type:'text'|'date'|'select'|'textarea'|'checkbox'|'number';min?:number;max?:number;step?:number;required?:boolean;nullable?:boolean;defaultValue?:string;maxLength?:number;options?:readonly string[]};
+export type HrRecordField={name:string;label:string;type:'text'|'date'|'select'|'textarea'|'checkbox'|'number'|'lookup';min?:number;max?:number;step?:number;required?:boolean;nullable?:boolean;defaultValue?:string;maxLength?:number;options?:readonly string[]};
 export const HR_RECORD_EDITORS={
  'role-requirement':{title:'Role Requirement',noun:'requirement',key:'f11-role-requirement-opening',form:'f11-role-requirement',schema:roleRequirementValues,openingSchema:roleRequirementOpeningValues,fields:[
   {name:'requirement_name',label:'Requirement Name',type:'text',required:true,maxLength:500},
@@ -47,7 +47,9 @@ export const HR_RECORD_EDITORS={
 
  assignment:{title:'Assignment',noun:'assignment',key:'f11-assignment-opening',form:'f11-assignment',schema:assignmentValues,openingSchema:assignmentOpeningValues,fields:[
   {name:'assignment_type',label:'Assignment Type',type:'select',required:true,defaultValue:'primary',options:assignmentOpeningValues.shape.assignment_type.options},
-  {name:'assignment_status',label:'Status',type:'select',required:true,defaultValue:'active',options:assignmentOpeningValues.shape.assignment_status.options},
+  {name:'assignment_status',label:'Status',type:'select',required:true,defaultValue:'planned',options:assignmentOpeningValues.shape.assignment_status.options},
+  {name:'work_site_id',label:'Work site (optional)',type:'lookup',nullable:true},
+  {name:'deployment_review_id',label:'Independent deployment approval (activation only)',type:'lookup',nullable:true},
   {name:'effective_from',label:'Effective From',type:'date',required:true},
   {name:'effective_to',label:'Effective To',type:'date',nullable:true},
   {name:'notes',label:'Notes',type:'textarea',nullable:true,maxLength:2000},
@@ -57,6 +59,7 @@ export const HR_RECORD_EDITORS={
   {name:'case_status',label:'Status',type:'select',defaultValue:'draft',options:eosCaseValues.shape.case_status.unwrap().options},
   {name:'notice_date',label:'Notice Date',type:'date',nullable:true},
   {name:'last_working_date',label:'Last Working Date',type:'date',nullable:true},
+  {name:'employment_end_date',label:'Employment End Date',type:'date',nullable:true},
   {name:'reason',label:'Reason',type:'textarea',nullable:true,maxLength:5000},
  ]as readonly HrRecordField[]},
  approval:{title:'Approval Request',noun:'request',key:'f11-approval-opening',form:'f11-approval',schema:approvalValues,openingSchema:approvalOpeningValues,fields:[
@@ -82,6 +85,10 @@ export const HR_RECORD_EDITORS={
   {name:'summary',label:'Summary',type:'textarea',nullable:true,maxLength:5000},
  ]as readonly HrRecordField[]},
  'pro-process':{title:'PRO Process',noun:'process',key:'f11-pro-opening',form:'f11-pro',schema:proProcessValues,openingSchema:proProcessOpeningValues,fields:[
+  {name:'f12_source_kind',label:'Renewal source (optional)',type:'select',nullable:true,options:['identity-document','medical-insurance','access-card']},
+  {name:'f12_source_id',label:'Original expiring record',type:'lookup',nullable:true},
+  {name:'assigned_to',label:'Responsible person',type:'lookup',nullable:true},
+  {name:'f12_replacement_id',label:'Verified replacement record (completion only)',type:'lookup',nullable:true},
   {name:'process_title',label:'Process Title',type:'text',required:true,maxLength:500},
   {name:'process_status',label:'Status',type:'select',required:true,defaultValue:'draft',options:proProcessValues.shape.process_status.unwrap().options},
   {name:'priority',label:'Priority',type:'select',required:true,defaultValue:'normal',options:['low','normal','high','urgent']},
@@ -95,6 +102,7 @@ export const HR_RECORD_EDITORS={
   {name:'action_status',label:'Status',type:'select',required:true,defaultValue:'open',options:hrActionValues.shape.action_status.unwrap().options},
   {name:'action_date',label:'Action Date',type:'date',required:true},
   {name:'due_date',label:'Due Date',type:'date',nullable:true},
+  {name:'assigned_to',label:'Responsible HR User',type:'lookup',nullable:true},
   {name:'notes',label:'Notes',type:'textarea',nullable:true,maxLength:5000},
  ]as readonly HrRecordField[]},
 }as const;

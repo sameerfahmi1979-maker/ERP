@@ -8,11 +8,13 @@ import { EmployeesTable } from "@/features/hr/employees/employees-table";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { HrReportsMenu } from "@/components/erp/hr-reports-menu";
 import { isHrAiFeatureEnabled } from "@/lib/hr/ai/feature-flags";
+import {employeeDashboardStatus} from '@/lib/hr/dashboard-metrics';
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function EmployeesPage() {
+export default async function EmployeesPage({searchParams}:{searchParams?:Promise<{status?:string|string[]}>}) {
+  const initialStatus=employeeDashboardStatus((await searchParams)?.status);
   const authContext = await getReadAuthContext();
 
   if (
@@ -21,7 +23,7 @@ export default async function EmployeesPage() {
     redirect("/access-denied");
   }
 
-  const result = await readEmployees({ page: 1, pageSize: 25 }, authContext);
+  const result = await readEmployees({ page: 1, pageSize: 25,...(initialStatus?{employeeStatus:initialStatus}:{}) }, authContext);
   if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/employees" />;
   const rows = result.success && result.data ? result.data.rows : [];
   const totalCount = result.success && result.data ? result.data.totalCount : 0;
@@ -50,6 +52,8 @@ export default async function EmployeesPage() {
       />
 
       <EmployeesTable
+        key={initialStatus??'all'}
+        initialStatus={initialStatus}
         initialRows={rows}
         initialTotal={totalCount}
         initialUpdatedAt={result.data?.updatedAt??0}

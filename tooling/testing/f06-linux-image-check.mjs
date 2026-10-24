@@ -7,9 +7,9 @@ import {spawn} from 'node:child_process';
 import http from 'node:http';
 import {fileURLToPath} from 'node:url';
 
-export const BASE='node:22.23.2-bookworm-slim@sha256:48e4b67d85f87bd551df43704e24d252f56cc5f8e9718841aace50f19948f0f9';
+export const BASE='node:22.23.4-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d';
 export const NATIVE='tests/remediation/f06/linux-native-paths.cjs';
-export const NATIVE_SHA='4c727a06d20ac6e8fea882f095b5a4792430ee83aaf4a4d4ea5759efc2ca4a59';
+export const NATIVE_SHA='ff134aad603ffc3cd14d246b78f32d6fb3819a62e32487c5f69d26f3d2c01e89';
 // Historical Windows bytes stay historical. CI pins canonical public LF bytes.
 export const HISTORICAL_RAW_IMPACT={
  'Dockerfile':'643e766a1d8b316170e652c3ba836e0f41f5a3052ca8cd438c8c877bfe78a139',
@@ -28,7 +28,7 @@ export const HISTORICAL_RAW_IMPACT={
 // Historical F06 evidence remains unchanged; this map pins the reviewed integration.
 export const IMPACT={...HISTORICAL_RAW_IMPACT,
  'tooling/security/verify-vendor-patches.cjs':'40aedab3cfb75fc56493e39f84dbbc8c203a6f226ee055f2524e9d0b7242e8f5',
- 'tooling/security/dependency-gate.cjs':'fb4ee255133c5a35201d1c181822c363a6f2ef0917bdb59d0eb33ebaf9a48912',
+ 'tooling/security/dependency-gate.cjs':'39f9c7257572cde7476e88e3921114d6b54129c3b46f89ff9f5cbbaf5a129ef6',
  'vendor/PATCH-MANIFEST.json':'17827374ccd33b2c3c4261ca6f9493a5299c094d097a7b0dfbc4ef49c8d51304',
  'vendor/sprintf-js-artifact.json':'1eea80a9b3117f87d0b4b5fed26e529d3539ec977a9614c94554bf6f19c7b678',
  'vendor/braces-artifact.json':'8219a0badc659d073d61de4d98fe7a5527e6e5cc2119b9f4c6a6e994a954a78a',
@@ -37,10 +37,14 @@ export const IMPACT={...HISTORICAL_RAW_IMPACT,
  'vendor/braces-3.0.3-algt-integrated-2.tgz':'3b42ddbff088317a60e6f10e14f907fff6cb7db5b14d9204cf63534d573339ee',
  // Reviewed F07 delta: one pinned saxes parser dependency and one runtime
  // parser file, with the worker's universal secret-safe logging seam.
- 'Dockerfile':'e50b94fcb2501a2d905805a85951043876538c0e993b57a604b6856d06b7b621',
- '.dockerignore':'f08f96773d97f9bf1a182ff5ca9c210b3e9eb7910e2407ef61f969f9637bb26a',
- 'package.json':'5685f7af2ee1477f8d322803cd60fd2449399fb06da8294277943ea9adde7636',
- 'package-lock.json':'1fd79222c634e5ddcf5f664ab4fecf7b3ebf614e5184069afce230abc65f38fe',
+ 'Dockerfile':'6cd376c3e5d31c4bf7b2453ff6bb2b693f9581b53e663aa4b5692bac1b245ef4',
+ '.dockerignore':'bb90a159cf4df305ac432d5fb4aedfabbf1c2a05abff28d784fe1f63af4ec09c',
+ // Preserve the approved local UI stylesheet in the build, not the runtime tree.
+ 'vendor/shadcn/tailwind.css':'146941ac3ff65496fdf1cb306e697255328e4dadc7c105d66e36bb031b00f6d6',
+ // Current accepted F12 dependency security fixes plus Node22.23.4/npm10.9.9.
+ // Historical receipts above remain historical; exact current inputs requalify.
+ 'package.json':'054bc376c660c6c4fe05aa846bcd05246e77b47feebc7da775eafd7e7cb610a5',
+ 'package-lock.json':'5286358cae0c894ff59cc0c7bab7c0134ee45e5898cf474ab403e281ce0f8326',
  'src/lib/branding/constants.ts':'70a0e8005ce9b8ec76334643b8a345a2908944169252b2fcd59db33f41236e14',
  // Reviewed Arabic OCR successor; preserve historical F06 hashes above.
  'src/lib/dms/file-content-extractor.ts':'db6b17688166fac42bfbaea474b86d57084d81d9fae7a7966c45ae6539a0391f',
@@ -50,7 +54,7 @@ export const IMPACT={...HISTORICAL_RAW_IMPACT,
  'src/lib/log-context.ts':'8b90e656f51f09d1342febe516ecce239a5f2b3f208da549962cdfd8b464f803',
  'tooling/dms/validate-intake.cjs':'d524803ef5049bf600ca16e37ef74229b7dd494792df677326a1e7765f1764c6'
 };
-export const LOCK_GRAPH_SHA='acb16a636330177c6d2ea52be9ec1649228db777bbbee54efa82ed1919a922fa';
+export const LOCK_GRAPH_SHA='81c94957156fbfcdccccdcf63f8ded7f9e2a68adfc3a14ec2f9bbf39c1e29899';
 export const TRUST_ROOTS=['/etc/ssl/certs','/usr/local/share/ca-certificates','/etc/ca-certificates.conf','/usr/local/etc/npmrc','/etc/npmrc','/root/.npmrc','/home/node/.npmrc','/root/.npm','/home/node/.npm'];
 // F07 ships exactly one reviewed parser subprocess, not the developer tooling
 // tree. Keep strict runtime layout/hash checks and all original trust gates.
@@ -79,7 +83,7 @@ export function validateImage(v){
 export function validateOwnership(v,ref,owner){assert.equal(v.Id,ref.id);assert.equal(v.Image,ref.image);assert.equal(v.Config.Image,ref.image);assert.equal(v.Name,'/'+ref.name);assert.equal(v.Config.Labels?.['algt.f06.ci-owner'],owner);return v;}
 export function validateBaseLineage(base,runtime){for(const v of [base,runtime]){assert.equal(v.RootFS?.Type,'layers');assert.ok(Array.isArray(v.RootFS.Layers)&&v.RootFS.Layers.length);for(const h of v.RootFS.Layers)assert.match(h,digestPattern);}assert.deepEqual(runtime.RootFS.Layers.slice(0,base.RootFS.Layers.length),base.RootFS.Layers,'Runtime must inherit exact pinned base layer prefix');}
 export function validateTrust(base,runtime){
- for(const x of [base,runtime]){assert.equal(x.node,'v22.23.2');assert.equal(x.platform,'linux');assert.deepEqual(x.roots,TRUST_ROOTS);assert.ok(x.files&&typeof x.files==='object'&&!Array.isArray(x.files));for(const root of TRUST_ROOTS)assert.ok(Object.hasOwn(x.files,root),'Explicit trust root inventory missing');for(const [p,v]of Object.entries(x.files)){assert.ok(TRUST_ROOTS.some(r=>p===r||p.startsWith(r+'/')));assert.ok(['absent','directory','file','symlink'].includes(v.kind));if(v.kind==='absent')assert.deepEqual(v,{kind:'absent'});if(v.kind==='directory')assert.deepEqual(v,{kind:'directory'});if(v.kind==='file'){assert.deepEqual(Object.keys(v).sort(),['kind','sha256']);assert.match(v.sha256||'',/^[a-f0-9]{64}$/);}if(v.kind==='symlink'){assert.deepEqual(Object.keys(v).sort(),['kind','link','sha256']);assert.equal(typeof v.link,'string');assert.match(v.sha256||'',/^[a-f0-9]{64}$/);}for(const parent of TRUST_ROOTS)if(x.files[parent]?.kind==='absent')assert.ok(p===parent||!p.startsWith(parent+'/'),'Contradictory absent root');}}
+ for(const x of [base,runtime]){assert.equal(x.node,'v22.23.4');assert.equal(x.platform,'linux');assert.deepEqual(x.roots,TRUST_ROOTS);assert.ok(x.files&&typeof x.files==='object'&&!Array.isArray(x.files));for(const root of TRUST_ROOTS)assert.ok(Object.hasOwn(x.files,root),'Explicit trust root inventory missing');for(const [p,v]of Object.entries(x.files)){assert.ok(TRUST_ROOTS.some(r=>p===r||p.startsWith(r+'/')));assert.ok(['absent','directory','file','symlink'].includes(v.kind));if(v.kind==='absent')assert.deepEqual(v,{kind:'absent'});if(v.kind==='directory')assert.deepEqual(v,{kind:'directory'});if(v.kind==='file'){assert.deepEqual(Object.keys(v).sort(),['kind','sha256']);assert.match(v.sha256||'',/^[a-f0-9]{64}$/);}if(v.kind==='symlink'){assert.deepEqual(Object.keys(v).sort(),['kind','link','sha256']);assert.equal(typeof v.link,'string');assert.match(v.sha256||'',/^[a-f0-9]{64}$/);}for(const parent of TRUST_ROOTS)if(x.files[parent]?.kind==='absent')assert.ok(p===parent||!p.startsWith(parent+'/'),'Contradictory absent root');}}
  assert.deepEqual(runtime,base,'Fresh runtime trust/configuration inventory differs from pinned base');
 }
 export function nativeArguments(root,verification){return['--network','none','--read-only','--user','1000','--tmpfs','/tmp:rw,noexec,nosuid,size=128m','--mount','type=bind,src='+root+'/src,dst=/app/src,readonly','--mount','type=bind,src='+verification+',dst=/app/verification,readonly','--entrypoint','node'];}
@@ -88,8 +92,8 @@ export function runtimeProbe(provenance,sprintfFiles,parserHash){
  return String.raw`
 const fs=require('fs'),crypto=require('crypto'),path=require('path'),cp=require('child_process'),assert=require('assert/strict');
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex'),expected=${JSON.stringify(provenance)},sprintfFiles=${JSON.stringify(sprintfFiles)};
-assert.equal(process.version,'v22.23.2');assert.equal(process.platform,'linux');assert.equal(process.arch,'x64');assert.ok(process.report.getReport().header.glibcVersionRuntime);
-assert.equal(cp.execFileSync('/usr/local/bin/npm',['--version'],{encoding:'utf8',timeout:10000}).trim(),'10.9.8');
+assert.equal(process.version,'v22.23.4');assert.equal(process.platform,'linux');assert.equal(process.arch,'x64');assert.ok(process.report.getReport().header.glibcVersionRuntime);
+assert.equal(cp.execFileSync('/usr/local/bin/npm',['--version'],{encoding:'utf8',timeout:10000}).trim(),'10.9.9');
 for(const p of ['/run/secrets/f06-inspection-root.pem','/app/verification','/app/verification-output','/app/.security-evidence','/app/tests','/app/vendor','/tmp/f06-npm-cache']){try{fs.lstatSync(p);throw Error('Unexpected verification/secret path');}catch(e){if(e.code!=='ENOENT')throw e;}}
 ${parserRuntimeGuard(parserHash)}
 assert.ok(!process.env.NODE_EXTRA_CA_CERTS&&!process.env.NODE_TLS_REJECT_UNAUTHORIZED);
@@ -106,12 +110,12 @@ assert.equal(cp.execFileSync(process.execPath,['--max-old-space-size=384','/app/
 const invalid=cp.spawnSync(process.execPath,['--max-old-space-size=384','/app/tooling/dms/validate-intake.cjs','application/pdf'],{...childOptions,input:Buffer.from('%PDF-not-a-document')});
 assert.equal(invalid.status,1);assert.notEqual(invalid.stdout,'F07_FORMAT_VALID\n');
 const buildId=fs.readFileSync('/app/.next/BUILD_ID','utf8').trim();assert.ok(buildId);
-console.log(JSON.stringify({node:process.version,npm:'10.9.8',platform:process.platform,arch:process.arch,glibc:process.report.getReport().header.glibcVersionRuntime,buildId,buildManifestSha256:hash(fs.readFileSync('/app/.next/build-manifest.json')),lockSha256:hash(fs.readFileSync('/app/package-lock.json')),bracesFiles:11,sprintfFiles:3,documentParser:{sha256:${JSON.stringify(parserHash)},formats:['pdf','xlsx'],malformedRejected:true}}));
+console.log(JSON.stringify({node:process.version,npm:'10.9.9',platform:process.platform,arch:process.arch,glibc:process.report.getReport().header.glibcVersionRuntime,buildId,buildManifestSha256:hash(fs.readFileSync('/app/.next/build-manifest.json')),lockSha256:hash(fs.readFileSync('/app/package-lock.json')),bracesFiles:11,sprintfFiles:3,documentParser:{sha256:${JSON.stringify(parserHash)},formats:['pdf','xlsx'],malformedRejected:true}}));
 `;
 }
 
 async function main(){
- assert.equal(process.platform,'linux');assert.equal(process.version,'v22.23.2');assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.GITHUB_REPOSITORY,'sameerfahmi1979-maker/ERP');assert.equal(process.env.ALGT_F06_CI_IMAGE_CHECK,'1');
+ assert.equal(process.platform,'linux');assert.equal(process.version,'v22.23.4');assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.GITHUB_REPOSITORY,'sameerfahmi1979-maker/ERP');assert.equal(process.env.ALGT_F06_CI_IMAGE_CHECK,'1');
  const candidate=process.env.F06_CANDIDATE_SHA,event=process.env.GITHUB_SHA;assert.match(candidate||'',/^[a-f0-9]{40}$/);assert.match(event||'',/^[a-f0-9]{40}$/);assert.match(process.env.GITHUB_RUN_ID||'',/^\d+$/);assert.match(process.env.GITHUB_RUN_ATTEMPT||'',/^\d+$/);
  for(const k of ['NODE_EXTRA_CA_CERTS','NODE_TLS_REJECT_UNAUTHORIZED','NPM_CONFIG_CA','NPM_CONFIG_CAFILE','NPM_CONFIG_STRICT_SSL','npm_config_ca','npm_config_cafile','npm_config_strict_ssl','DOCKER_HOST','DOCKER_CONTEXT'])assert.equal(process.env[k],undefined,'No CI trust/daemon overrides');
  const root=fs.realpathSync(process.cwd());assert.equal(root,fs.realpathSync(process.env.GITHUB_WORKSPACE));assert.ok(!root.includes(','));
@@ -133,7 +137,7 @@ async function main(){
  async function close(ref){const v=validateOwnership(await inspect(ref.id||ref.name),{...ref,id:ref.id||(await inspect(ref.name)).Id},owner);ref.id=v.Id;if(v.State.Running){await docker(['container','stop','--time','10',ref.id],{timeout:20000});}const ended=validateOwnership(await inspect(ref.id),ref,owner);assert.equal(ended.State.Running,false);assert.ok(['created','exited'].includes(ended.State.Status));await docker(['container','rm',ref.id]);await absent(ref.name);refs.splice(refs.indexOf(ref),1);closedRefs.push({...ref,endedState:ended.State.Status,absent:true});write('closed-'+ref.name+'.json',closedRefs.at(-1));return ended.State;}
  async function probe(image,label,script){const ref=await create(image,label,['--network','none','--read-only','--user','0','--tmpfs','/tmp:rw,noexec,nosuid,size=64m','--entrypoint','node','-i'],['-']);const r=await docker(['container','start','--attach','--interactive',ref.id],{input:script,timeout:60000});const v=validateOwnership(await inspect(ref.id),ref,owner);assert.equal(v.State.Running,false);assert.equal(v.State.ExitCode,0);assert.equal(v.State.OOMKilled,false);await close(ref);return JSON.parse(r.stdout);}
  async function image(id){const v=JSON.parse((await docker(['image','inspect',id])).stdout);assert.equal(v.length,1);assert.match(v[0].Id,digestPattern);assert.equal(v[0].Os,'linux');assert.equal(v[0].Architecture,'amd64');return v[0];}
- const sourceManifest=()=>{const names=['.github/workflows/engineering.yml','.gitattributes','tests/remediation/f06/linux-image-check.test.mjs','Dockerfile','.dockerignore','package.json','package-lock.json','next.config.ts','tsconfig.json','tsconfig.shipping.json','postcss.config.mjs','vendor/braces-3.0.3-algt-depth-1.tgz','vendor/braces-3.0.3-algt-integrated-2.tgz','vendor/sprintf-js-1.0.3-algt.1.tgz','vendor/braces-artifact.json','vendor/sprintf-js-artifact.json','vendor/PATCH-MANIFEST.json','tooling/security/verify-vendor-patches.cjs',NATIVE,'tooling/testing/f06-linux-image-check.mjs','tooling/dms/validate-intake.cjs','vendor/braces/PROVENANCE.json','tooling/security/dependency-gate.cjs'];const walk=p=>{const s=fs.lstatSync(path.join(root,p));assert.ok(!s.isSymbolicLink());if(s.isDirectory())for(const n of fs.readdirSync(path.join(root,p)).sort())walk(p+'/'+n);else names.push(p);};walk('src');walk('public');return Object.fromEntries([...new Set(names)].sort().map(p=>[p,sha(ordinary(path.join(root,p)))]));};
+ const sourceManifest=()=>{const names=['tests/remediation/f06/node-security-runtime.test.cjs','vendor/shadcn/tailwind.css','.github/workflows/engineering.yml','.gitattributes','tests/remediation/f06/linux-image-check.test.mjs','Dockerfile','.dockerignore','package.json','package-lock.json','next.config.ts','tsconfig.json','tsconfig.shipping.json','postcss.config.mjs','vendor/braces-3.0.3-algt-depth-1.tgz','vendor/braces-3.0.3-algt-integrated-2.tgz','vendor/sprintf-js-1.0.3-algt.1.tgz','vendor/braces-artifact.json','vendor/sprintf-js-artifact.json','vendor/PATCH-MANIFEST.json','tooling/security/verify-vendor-patches.cjs',NATIVE,'tooling/testing/f06-linux-image-check.mjs','tooling/dms/validate-intake.cjs','vendor/braces/PROVENANCE.json','tooling/security/dependency-gate.cjs'];const walk=p=>{const s=fs.lstatSync(path.join(root,p));assert.ok(!s.isSymbolicLink());if(s.isDirectory())for(const n of fs.readdirSync(path.join(root,p)).sort())walk(p+'/'+n);else names.push(p);};walk('src');walk('public');return Object.fromEntries([...new Set(names)].sort().map(p=>[p,sha(ordinary(path.join(root,p)))]));};
  const request=(p,method='GET')=>new Promise((resolve,reject)=>{let done=false;const req=http.request({hostname:'127.0.0.1',port:16401,path:p,method},res=>{let size=0;const chunks=[];res.on('data',b=>{size+=b.length;if(size>4*1024**2)req.destroy(Error('HTTP body bound'));else chunks.push(b);});res.on('end',()=>{done=true;clearTimeout(timer);resolve({status:res.statusCode,location:res.headers.location||null,body:Buffer.concat(chunks)});});res.on('error',reject);});const timer=setTimeout(()=>req.destroy(Error('Absolute HTTP deadline')),5000);req.on('error',e=>{if(!done){clearTimeout(timer);reject(e);}});req.end();});
  try{
   write('intent.json',receipt);const checkout=(await run('git',['rev-parse','HEAD'])).stdout.trim();assert.equal(checkout,candidate);assert.equal((await run('git',['diff','--name-only','HEAD'])).stdout.trim(),'');receipt.actualCheckout=checkout;

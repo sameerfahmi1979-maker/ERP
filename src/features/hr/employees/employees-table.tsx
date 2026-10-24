@@ -80,6 +80,7 @@ type Props = {
   initialTotal: number;
   initialUpdatedAt: number;
   initialReadIdentity: ServerPageSeed<EmployeeListRow>["identity"];
+  initialStatus?: string;
   authContext: AuthContext;
   documentWizardEnabled?: boolean;
 };
@@ -99,7 +100,7 @@ function statusFilterLabel(s: string): string {
   return s.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
-export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, initialReadIdentity, authContext, documentWizardEnabled = false }: Props) {
+export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, initialReadIdentity, initialStatus, authContext, documentWizardEnabled = false }: Props) {
   const { openTab } = useWorkspace();
 
   const {
@@ -112,7 +113,8 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
   } = useWorkspaceTableState({
     key: "employees-table",
     scope: "route",
-    identifier: "/admin/hr/employees",
+    identifier: initialStatus?`/admin/hr/employees?status=${encodeURIComponent(initialStatus)}`:"/admin/hr/employees",
+    initialFilters: initialStatus?{status:initialStatus}:{},
     initialPagination: { pageIndex: 0, pageSize: 25 },
     initialColumnVisibility: { nationality: false },
   });
@@ -187,7 +189,7 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
     []
   );
 
-  const seed = useMemo<ServerPageSeed<EmployeeListRow>>(() => ({identity:initialReadIdentity,params:{page:1,pageSize:25,sortKey:"employee_code",sortDir:"asc"},data:{rows:initialRows,totalCount:initialTotal,page:1,pageSize:25},updatedAt:initialUpdatedAt}),[initialRows,initialTotal,initialUpdatedAt,initialReadIdentity]);
+  const seed = useMemo<ServerPageSeed<EmployeeListRow>>(() => ({identity:initialReadIdentity,params:{page:1,pageSize:25,sortKey:"employee_code",sortDir:"asc",...(initialStatus?{employeeStatus:initialStatus}:{})},data:{rows:initialRows,totalCount:initialTotal,page:1,pageSize:25},updatedAt:initialUpdatedAt}),[initialRows,initialTotal,initialUpdatedAt,initialReadIdentity,initialStatus]);
   const uiReadEmployees=useServerPage<EmployeeListRow>({resource:"employees",params:{page,pageSize,search:search.trim()||undefined,quality:filters.quality??undefined,employeeStatus:filters.status??undefined,ownerCompanyId:filters.companyId??undefined,departmentId:filters.departmentId??undefined,designationId:filters.designationId??undefined,nationalityId:filters.nationalityId??undefined,sortKey:sortKey??"employee_code",sortDir},seed});
   const rows=uiReadEmployees.data?.rows??[];
   const totalCount=uiReadEmployees.data?.totalCount??0;

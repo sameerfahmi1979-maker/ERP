@@ -3,7 +3,8 @@ import {z} from "zod";
 import {getAuthContext, canUseApplication, type AuthContext} from "@/lib/rbac/check";
 import {createClient} from "@/lib/supabase/server";
 import {collectCompletePages} from "@/lib/reads/complete-pages";
-import {calculateGrossSalary, checkWpsReadiness} from "@/lib/hr/payroll/wps-readiness";
+import {checkWpsReadiness} from "@/lib/hr/payroll/wps-readiness";
+import {payrollToday, payrollEmploymentEligible, salaryDisplayNumber} from "@/lib/hr/payroll/salary-as-of";
 import {employeeOverviewCriteriaSchema, employeeOverviewDataSchemas, employeeOverviewSchema, type EmployeeOverview, type EmployeeOverviewSection} from "@/lib/reads/employee-overview-schema";
 
 type Result = {data: unknown; error: unknown};
@@ -40,7 +41,7 @@ export async function readEmployeeOverview(input: unknown, context?: AuthContext
     const ctx = context ?? await getAuthContext();
     if (!canUseApplication(ctx)) return {success: false, error: "Permission denied"};
     const db = await createClient(), {employeeId, sections} = parsed.data;
-    const subject = await point(db.from("employees").select("id").eq("id", employeeId).is("deleted_at", null).maybeSingle(), z.object({id: rowId}).nullable());
+    const subject = await point(db.from("employees").select("id,employee_status,joining_date").eq("id", employeeId).is("deleted_at", null).maybeSingle(), z.object({id: rowId,employee_status:z.string(),joining_date:z.string()}).nullable());
     if (!subject || subject.id !== employeeId) return {success: false, error: "Permission denied"};
     // Deduplication is ONLY within this invocation. One role's scope must never
     // supply another role's sensitive capability; F03 resolves each intersection.
@@ -98,15 +99,15 @@ export async function readEmployeeOverview(input: unknown, context?: AuthContext
       payroll: async () => {
         const banking = await permitted("hr.banking.view");
         const wpsSchema = z.object({wps_applicable: z.boolean(), wps_status: z.string(), bank_id: rowId.nullable(), account_number: z.string().nullable(), iban: z.string().nullable(), exchange_house: z.string().nullable(), salary_payment_method: z.string(), labour_card_number: z.string().nullable(), mohre_person_code: z.string().nullable()}).strip().nullable();
-        const [profile, wps, holds, components] = await Promise.all([
-          point(base("employee_payroll_profiles").select("payroll_status").eq("employee_id", employeeId).is("deleted_at", null).maybeSingle(), z.object({payroll_status: z.string().nullable()}).strip().nullable()),
+        const asOf = payrollToday();
+        const [salary, wps, holds] = await Promise.all([
+          point(db.rpc("f12_salary_as_of", {p_employee: employeeId, p_as_of: asOf}), z.object({asOf: z.literal(asOf), currency: z.string().regex(/^[A-Z]{3}$/), gross: z.string().regex(/^\d+\.\d{2}$/), activeCount: z.number().int().nonnegative(), payrollStatus: z.enum(["active", "hold", "inactive", "not_configured"])})),
           banking ? point(base("employee_wps_profiles").select("wps_applicable,wps_status,bank_id,account_number,iban,exchange_house,salary_payment_method,labour_card_number,mohre_person_code").eq("employee_id", employeeId).is("deleted_at", null).maybeSingle(), wpsSchema) : null,
           count(tally("employee_payroll_holds").eq("is_active", true)),
-          complete(() => base("employee_salary_components").select("id,amount,is_active,deleted_at,component_type:hr_salary_component_types!employee_salary_components_component_type_id_fkey(component_kind)", {count: "exact"}).eq("employee_id", employeeId).order("id"), z.object({id: rowId, amount: z.number().finite().nullable(), is_active: z.boolean(), deleted_at: z.string().nullable(), component_type: z.object({component_kind: z.string()}).strip().nullable()}).strip()),
         ]);
-        const salary = components.map(row => ({...row, amount: row.amount ?? 0})), gross = calculateGrossSalary(salary), hasActiveHold = holds > 0;
-        const readiness = banking ? checkWpsReadiness({wpsProfile: wps, hasActivePayrollHold: hasActiveHold, hasSalaryComponents: salary.some(row => row.is_active && !row.deleted_at), grossSalary: gross}) : null;
-        return {payrollStatus: profile?.payroll_status ?? null, grossSalary: gross, hasActiveHold, wpsStatus: wps?.wps_status ?? null, wpsReadiness: readiness ? {status: readiness.status} : null, bankingRestricted: !banking};
+        const gross = salaryDisplayNumber(salary.gross), hasActiveHold = holds > 0;
+        const readiness = banking ? checkWpsReadiness({wpsProfile: wps, hasActivePayrollHold: hasActiveHold, hasSalaryComponents: salary.activeCount > 0, grossSalary: gross, payrollStatus: salary.payrollStatus,employmentEligible:payrollEmploymentEligible(subject,asOf)}) : null;
+        return {payrollStatus: salary.payrollStatus, grossSalary: gross, currency: salary.currency, asOf, hasActiveHold, wpsStatus: wps?.wps_status ?? null, wpsReadiness: readiness, bankingRestricted: !banking};
       },
       operations: async () => {
         const [assignment, blocks, assets, ppe, accommodation, readiness] = await Promise.all([

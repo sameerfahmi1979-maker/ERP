@@ -21,7 +21,7 @@ export const candidateConversionInputSchema=z.object({
  owner_company_id:recruitmentId,branch_id:optionalId,department_id:optionalId,designation_id:optionalId,
  employment_type_id:optionalId,employee_category_id:optionalId,joining_date:date,
  employee_status:z.enum(['active','probation','suspended','inactive','terminated']).default('active'),
- reporting_manager_id:optionalId,primary_work_site_id:optionalId,conversion_notes:text,offer_id:optionalId,requisition_id:optionalId,
+ reporting_manager_id:optionalId,primary_work_site_id:optionalId,conversion_notes:text,offer_id:recruitmentId,offer_revision:revision,offer_terms_version:revision,requisition_id:recruitmentId,
  emergency_contact_name:z.string().trim().min(1,'Emergency contact name is required'),
  emergency_contact_mobile:z.string().trim().min(1,'Emergency contact mobile is required'),
 }).strict();
@@ -31,7 +31,7 @@ export const requisitionCreationReceiptSchema=z.object({id:recruitmentId,requisi
 export const candidateConversionReceiptSchema=z.object({employee_id:recruitmentId,employee_code:z.string().min(1),candidate_id:recruitmentId,candidate_revision:revision,employee_revision:revision,link_id:recruitmentId,operation_id:z.string().uuid(),replayed:z.boolean(),reference_id:recruitmentId}).strict();
 export const candidateConversionPreparationSchema=z.object({
  candidate:z.object({id:recruitmentId,workspace_revision:recruitmentId,requisition_id:recruitmentId.nullable()}).strict(),
- latest_offer:z.object({id:recruitmentId,requisition_id:recruitmentId.nullable(),department_id:recruitmentId.nullable(),designation_id:recruitmentId.nullable(),employment_type_id:recruitmentId.nullable(),owner_company_id:recruitmentId.nullable(),branch_id:recruitmentId.nullable(),proposed_joining_date:z.string().nullable()}).strict().nullable(),
+ latest_offer:z.object({id:recruitmentId,offer_revision:revision,offer_terms_version:revision,requisition_id:recruitmentId.nullable(),department_id:recruitmentId.nullable(),designation_id:recruitmentId.nullable(),employment_type_id:recruitmentId.nullable(),owner_company_id:recruitmentId.nullable(),branch_id:recruitmentId.nullable(),proposed_joining_date:z.string().nullable()}).strict().nullable(),
  already_converted:z.boolean(),
 }).strict();
 export type CandidateConversionPreparation=z.infer<typeof candidateConversionPreparationSchema>;

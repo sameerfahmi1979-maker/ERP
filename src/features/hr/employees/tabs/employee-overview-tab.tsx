@@ -514,8 +514,8 @@ function PayrollSummarySection() {
                 <span className="text-xs text-muted-foreground">Gross Salary</span>
               </div>
               <p className="text-sm font-bold text-green-700">
-                {summary.grossSalary !== null
-                  ? `AED ${summary.grossSalary.toLocaleString("en-AE", { minimumFractionDigits: 2 })}`
+                {summary.grossSalary !== null && summary.currency
+                  ? `${summary.currency} ${summary.grossSalary.toLocaleString("en-AE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                   : "***"}
               </p>
             </div>

@@ -1,5 +1,6 @@
 'use server';
 import{z}from 'zod';
+import{hrServiceGuidance}from'@/lib/hr/service-holds';
 import{canUseComplianceDocumentEntry}from'@/server/hr-compliance-document-access';
 import{COMPLIANCE_CHILD_TABLES,complianceChildKind}from'@/lib/hr/compliance-child-contract';
 import{getAuthContext,hasPermission}from '@/lib/rbac/check';
@@ -12,11 +13,12 @@ import{roleRequirementOpeningValues,requirementRefreshValues}from'@/lib/hr/role-
 import{siteReadinessValues}from'@/lib/hr/site-readiness-contract';
 import{payrollChildKind,payrollOpeningValues,PAYROLL_CHILD_COLUMNS,PAYROLL_CHILD_TABLES}from'@/lib/hr/payroll-child-contract';
 import{timeChildKind,timeOpeningValues,TIME_CHILD_COLUMNS,TIME_CHILD_TABLES}from'@/lib/hr/time-child-contract';
+import{attendanceInterval}from'@/lib/hr/attendance-workbench-contract';
 import{operationalBlockOpeningValues}from'@/lib/hr/operational-block-contract';
 import{employeeDate}from '@/lib/hr/employee-contract';
 import{operationItemKind,operationItemOpeningValues,OPERATION_ITEM_TABLES,OPERATION_ITEM_PROJECTIONS,type OperationItemKind}from '@/lib/hr/operation-item-contract';
 async function authorized(kind?:ChildKind){return canUseHrChild(await getAuthContext(),kind);}
-export async function readTimeChildOpening(rawKind:unknown,employee:number,id:number|null=null,action='create',rawBalance?:unknown):Promise<{success:boolean;id?:number|null;revision?:string|null;values?:Record<string,unknown>;error?:string;denied?:true}>{
+export async function readTimeChildOpening(rawKind:unknown,employee:number,id:number|null=null,action='create',rawBalance?:unknown):Promise<{success:boolean;id?:number|null;revision?:string|null;values?:Record<string,unknown>;actualAttendance?:boolean;error?:string;denied?:true}>{
  const parsed=timeChildKind.safeParse(rawKind),balance=z.object({leave_type_id:employeeId,leave_year:z.number().int().min(2000).max(2100)}).strict().safeParse(rawBalance);
  if(!parsed.success||!employeeId.safeParse(employee).success||id!==null&&!employeeId.safeParse(id).success||!['create','update','archive','approve','reject','cancel','query','correct','recalculate'].includes(action)||rawBalance!==undefined&&!balance.success)return{success:false,error:'Invalid time opening identity.'};
  const kind=parsed.data;
@@ -25,12 +27,13 @@ export async function readTimeChildOpening(rawKind:unknown,employee:number,id:nu
   const client=await createClient(),subject=await client.from('employees').select('id').eq('id',employee).is('deleted_at',null).maybeSingle();
   if(subject.error||subject.data?.id!==employee)return{success:false,error:'Current employee access unavailable.',denied:true};
   if(id===null&&!(kind==='leave-balance'&&balance.success))return{success:true,id:null,revision:null,values:{}};
-  let query=client.from(TIME_CHILD_TABLES[kind]).select('id,employee_id,workspace_revision,'+TIME_CHILD_COLUMNS[kind]).eq('employee_id',employee);
+  let query=client.from(TIME_CHILD_TABLES[kind]).select('id,employee_id,workspace_revision,'+TIME_CHILD_COLUMNS[kind]+(kind==='attendance-summary'&&action==='update'?',entered_intervals':'')).eq('employee_id',employee);
   if(['shift-assignment','leave-request','overtime'].includes(kind))query=query.is('deleted_at',null);
   if(id!==null)query=query.eq('id',id);else if(balance.success)query=query.eq('leave_type_id',balance.data.leave_type_id).eq('leave_year',balance.data.leave_year);
   const r=await query.maybeSingle();if(r.error)return{success:false,error:'The complete original Time record could not be verified.'};
   if(!r.data)return id!==null?{success:false,error:'Original Time record unavailable.',denied:true}:{success:true,id:null,revision:null,values:balance.success?balance.data:{}};
-  const row=r.data as unknown as Record<string,unknown>,{id:recordId,employee_id,workspace_revision,...values}=row;
+  const row=r.data as unknown as Record<string,unknown>,{id:recordId,employee_id,workspace_revision,entered_intervals,...values}=row;
+  if(kind==='attendance-summary'&&action==='update'&&entered_intervals!==undefined&&entered_intervals!==null&&!z.array(attendanceInterval).max(8).safeParse(entered_intervals).success)return{success:false,error:'Complete actual-time provenance unavailable.'};
   if(employee_id!==employee||!employeeId.safeParse(recordId).success||!employeeId.safeParse(workspace_revision).success||!timeOpeningValues(kind).safeParse(values).success)return{success:false,error:'The complete Time opening or revision is invalid.'};
   let opening=values;
   if(action==='correct')opening={correction_reason:'',notes:values.notes};
@@ -38,7 +41,7 @@ export async function readTimeChildOpening(rawKind:unknown,employee:number,id:nu
   else if(['archive','approve'].includes(action))opening={};
   else if(action==='recalculate'){const fingerprint=await client.rpc('f11_leave_balance_opening',{p_employee:employee,p_id:recordId});if(fingerprint.error||!z.string().regex(/^[0-9a-f]{64}$/).safeParse(fingerprint.data).success)return{success:false,error:'Complete leave sources unavailable.'};opening={fingerprint:fingerprint.data};}
   if(!await authorized(kind))return{success:false,error:'Current Time access changed.',denied:true};
-  return{success:true,id:recordId as number,revision:String(workspace_revision),values:opening};
+  return{success:true,id:recordId as number,revision:String(workspace_revision),values:opening,...(kind==='attendance-summary'&&action==='update'?{actualAttendance:entered_intervals!==undefined&&entered_intervals!==null}:{})};
  }catch{return{success:false,error:'Time opening unavailable. No request was sent.'};}
 }
 export async function readPayrollChildOpening(rawKind:unknown,employee:number,id:number|null=null,action='create'):Promise<{success:boolean;id?:number|null;revision?:string|null;values?:Record<string,unknown>;error?:string;denied?:true}>{
@@ -105,7 +108,7 @@ export async function mutateHrChild(raw:unknown,rawContract:unknown):Promise<Chi
   if(complianceChildKind.safeParse(r.kind).success&&parsed.data.entry_source==='document'&&!await canUseComplianceDocumentEntry(await getAuthContext()))return{success:false,error:'The document-to-record entry is unavailable with current access or settings.',accessDenied:true};
   const client=await createClient();dispatched=true;
   const result=await client.rpc(complianceChildKind.safeParse(r.kind).success?'f11_mutate_compliance_child':timeChildKind.safeParse(r.kind).success?'f11_mutate_time_child':payrollChildKind.safeParse(r.kind).success?'f11_mutate_payroll_child':r.kind==='site-readiness'?'f11_mutate_site_readiness':['role-requirement','requirements-refresh'].includes(r.kind)?'f11_mutate_role_requirement':r.kind==='operational-block'?'f11_mutate_operational_block':['asset','ppe','accommodation'].includes(r.kind)?'f11_mutate_operation_item':r.kind==='assignment'?'f11_mutate_assignment':r.kind==='hr-note'?'f11_mutate_hr_child':r.kind==='pro-process'?'f11_mutate_pro_process':r.kind==='performance'?'f11_mutate_performance':r.kind==='disciplinary'?'f11_mutate_disciplinary':r.kind==='approval'?'f11_mutate_approval':r.kind==='eos-case'?'f11_mutate_eos_case':r.kind==='clearance'?'f11_mutate_clearance':'f11_mutate_hr_action',{p_kind:r.kind,p_employee:r.employeeId,p_id:r.id,p_revision:c.revision,p_operation:c.operationId,p_action:r.action,p_data:parsed.data});
-  if(result.error){const definite=isDefiniteEmployeeRejection(result.error.code);return{success:false,uncertain:!definite,...(result.error.code==='42501'?{accessDenied:true as const}:{}),error:result.error.code==='P0409'?'This record changed after opening. Reopen and compare before changing it.':result.error.code==='42501'?'Current access to this employee or confidential record is unavailable.':definite?'The change was rejected. Check the fields and current record.':'The outcome is unconfirmed. Keep the original request for reconciliation.'};}
+  if(result.error){const definite=isDefiniteEmployeeRejection(result.error.code)||result.error.code==='PT409';return{success:false,uncertain:!definite,...(result.error.code==='42501'?{accessDenied:true as const}:{}),error:hrServiceGuidance(result.error.code,result.error.message)??(['P0409','PT409'].includes(result.error.code)?'This record or its policy sources changed after opening. Reopen and compare before changing it.':result.error.code==='42501'?'Current access to this employee or confidential record is unavailable.':definite?'The change was rejected. Check the fields and current record.':'The outcome is unconfirmed. Keep the original request for reconciliation.')};}
   const receipt=childReceiptSchema.safeParse(result.data);
   if(!receipt.success||receipt.data.employee_id!==r.employeeId||receipt.data.kind!==r.kind||receipt.data.operation_id!==c.operationId||(r.id!==null&&receipt.data.id!==r.id)||(r.kind==='clearance'&&receipt.data.eos_case_id!==r.values.eos_case_id))return{success:false,uncertain:true,error:'The save response could not be verified. Keep the original request for reconciliation.'};
   try{revalidatePath(`/admin/hr/employees/record/${r.employeeId}`);}catch{/* A confirmed transaction is not undone by refresh failure. */}
@@ -136,7 +139,7 @@ export async function readProProcessOpening(employee:number,id:number):Promise<{
  if(!employeeId.safeParse(employee).success||!employeeId.safeParse(id).success)return{success:false,error:'Invalid process identity.'};
  try{
   if(!await authorized('pro-process'))return{success:false,error:'Permission denied',denied:true};
-  const r=await(await createClient()).from('employee_pro_processes').select('id,employee_id,workspace_revision,process_title,process_status,priority,request_date,target_date,notes').eq('id',id).eq('employee_id',employee).is('deleted_at',null).maybeSingle();
+  const r=await(await createClient()).from('employee_pro_processes').select('id,employee_id,workspace_revision,process_title,process_status,priority,request_date,target_date,notes,assigned_to,f12_source_kind,f12_source_id,f12_replacement_id').eq('id',id).eq('employee_id',employee).is('deleted_at',null).maybeSingle();
   if(r.error?.code==='42501'||!r.error&&r.data===null)return{success:false,error:'Current access to this process could not be verified.',denied:true};
   const row=z.object({id:z.literal(id),employee_id:z.literal(employee),workspace_revision:employeeId,...proProcessOpeningValues.shape}).strict().safeParse(r.data);
   if(r.error||!row.success)return{success:false,error:'The current process and revision could not be verified.'};
@@ -148,7 +151,7 @@ export async function readHrActionOpening(employee:number,id:number):Promise<{su
  if(!employeeId.safeParse(employee).success||!employeeId.safeParse(id).success)return{success:false,error:'Invalid action identity.'};
  try{
   if(!await authorized('hr-action'))return{success:false,error:'Permission denied',denied:true};
-  const r=await(await createClient()).from('employee_hr_actions').select('id,employee_id,workspace_revision,action_title,action_type,action_status,action_date,due_date,notes').eq('id',id).eq('employee_id',employee).is('deleted_at',null).maybeSingle();
+  const r=await(await createClient()).from('employee_hr_actions').select('id,employee_id,workspace_revision,action_title,action_type,action_status,action_date,due_date,assigned_to,notes').eq('id',id).eq('employee_id',employee).is('deleted_at',null).maybeSingle();
   if(r.error?.code==='42501'||!r.error&&r.data===null)return{success:false,error:'Current access to this action could not be verified.',denied:true};
   const row=z.object({id:z.literal(id),employee_id:z.literal(employee),workspace_revision:employeeId,...hrActionOpeningValues.shape}).strict().safeParse(r.data);
   if(r.error||!row.success)return{success:false,error:'The current action and revision could not be verified.'};
@@ -257,7 +260,7 @@ export async function readEosCaseOpening(employee:number,id:number,action='updat
  if(!employeeId.safeParse(employee).success||!employeeId.safeParse(id).success||!['update','archive'].includes(action))return{success:false,error:'Invalid case opening identity or operation.'};
  try{
   if(!await authorized('eos-case'))return{success:false,error:'Permission denied',denied:true};
-  const r=await(await createClient()).from('employee_eos_cases').select('id,employee_id,workspace_revision,eos_type,case_status,notice_date,last_working_date,reason').eq('id',id).eq('employee_id',employee).is('deleted_at',null).maybeSingle();
+  const r=await(await createClient()).from('employee_eos_cases').select('id,employee_id,workspace_revision,eos_type,case_status,notice_date,last_working_date,employment_end_date,reason').eq('id',id).eq('employee_id',employee).is('deleted_at',null).maybeSingle();
   if(r.error?.code==='42501'||!r.error&&r.data===null)return{success:false,error:'Current case access is unavailable.',denied:true};
   const row=z.object({id:z.literal(id),employee_id:z.literal(employee),workspace_revision:employeeId,...eosCaseOpeningValues.shape}).strict().safeParse(r.data);
   if(r.error||!row.success)return{success:false,error:'The case and its opening revision could not be verified.'};
@@ -277,7 +280,7 @@ export async function readClearanceOpening(employee:number,caseId:number,id:numb
   if(parent.error?.code==='42501'||!parent.error&&parent.data===null)return{success:false,error:'Current access to the original case is unavailable.',denied:true};
   if(parent.error||!checkedParent.success)return{success:false,error:'The original case could not be verified.'};
   if(['closed','cancelled'].includes(checkedParent.data.case_status))return{success:false,error:'The original case is closed or cancelled. Its clearance history is read-only.'};
-  const r=await client.from('employee_clearance_items').select('id,employee_id,workspace_revision,eos_case_id,clearance_area,item_title,item_status,notes').eq('id',id).eq('employee_id',employee).eq('eos_case_id',caseId).is('deleted_at',null).maybeSingle();
+  const r=await client.from('employee_clearance_items').select('id,employee_id,workspace_revision,eos_case_id,clearance_area,item_title,item_status,notes,evidence_document_id,evidence_version_id').eq('id',id).eq('employee_id',employee).eq('eos_case_id',caseId).is('deleted_at',null).maybeSingle();
   if(r.error?.code==='42501'||!r.error&&r.data===null)return{success:false,error:'Current clearance access is unavailable.',denied:true};
   const row=z.object({id:z.literal(id),employee_id:z.literal(employee),workspace_revision:employeeId,...clearanceOpeningValues.shape,eos_case_id:z.literal(caseId)}).strict().safeParse(r.data);
   if(r.error||!row.success)return{success:false,error:'The clearance item and revision could not be verified.'};
@@ -292,7 +295,7 @@ export async function readAssignmentOpening(employee:number,id:number):Promise<{
  if(!employeeId.safeParse(employee).success||!employeeId.safeParse(id).success)return{success:false,error:'Invalid assignment opening identity.'};
  try{
   if(!await authorized('assignment'))return{success:false,error:'Permission denied',denied:true};
-  const r=await(await createClient()).from('employee_assignments').select('id,employee_id,workspace_revision,assignment_type,assignment_status,effective_from,effective_to,notes').eq('id',id).eq('employee_id',employee).is('deleted_at',null).maybeSingle();
+  const r=await(await createClient()).from('employee_assignments').select('id,employee_id,workspace_revision,assignment_type,assignment_status,effective_from,effective_to,notes,work_site_id').eq('id',id).eq('employee_id',employee).is('deleted_at',null).maybeSingle();
   if(r.error?.code==='42501'||!r.error&&r.data===null)return{success:false,error:'Current assignment access is unavailable.',denied:true};
   const row=z.object({id:z.literal(id),employee_id:z.literal(employee),workspace_revision:employeeId,...assignmentOpeningValues.shape}).strict().safeParse(r.data);
   if(r.error||!row.success)return{success:false,error:'The complete assignment and opening revision could not be verified.'};

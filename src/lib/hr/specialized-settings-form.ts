@@ -18,7 +18,7 @@ export const hrRuleForms:Record<HrRuleEntity,{title:string;singular:string;descr
   ref('required_access_card_type_id','Access card type','required_access_card'),ref('required_medical_record_type_id','Medical record type','required_medical'),
   ref('applies_to_category_id','Employee category','category','name_en',false,'No category selected'),ref('applies_to_designation_id','Designation','designation','designation_name_en',false,'No designation selected'),
   ref('applies_to_work_site_id','Work site','work_site','site_name',false,'No work site selected'),
-  number('expiry_buffer_days','Expiry warning (days)',1,365,'60',true),number('sort_order','Sort order',0,9999,'0',true),bool('is_critical','Critical',true),bool('is_active','Active'),
+  number('expiry_buffer_days','Expiry warning (days)',1,365,'60',true),number('sort_order','Sort order',0,9999,'0',true),bool('is_critical','Critical',true),bool('waiver_allowed','Allow independent dated exception review'),bool('is_active','Active'),
  ]},
  hr_role_requirement_matrix:{title:'Role Requirement Matrix',singular:'role requirement',description:'Link categories and designations to approved readiness rules.',fields:[
   ref('readiness_rule_template_id','Readiness rule','readiness_rule','rule_name_en',true),

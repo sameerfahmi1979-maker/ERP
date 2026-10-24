@@ -15,6 +15,7 @@
 
 import type { AuthContext } from "@/lib/rbac/check";
 import { hasPermission } from "@/lib/rbac/check";
+import {salaryDate} from "@/lib/hr/payroll/salary-as-of";
 
 // ── Redaction profile type ────────────────────────────────────────────────────
 
@@ -44,7 +45,9 @@ export interface EmployeeBasicContext {
   primary_work_site_name?: string | null;
   employment_type?: string | null;
   // Sensitive — only included with permissions
-  gross_salary?: number | null;
+  gross_salary?: number | string | null;
+  salary_currency?: string | null;
+  salary_as_of?: string | null;
   wps_applicable?: boolean | null;
   // Medical — only included with permissions
   medical_readiness_status?: string | null;
@@ -96,11 +99,13 @@ export function buildSafeEmployeeContext(
     `Employment Type: ${employee.employment_type ?? "[not set]"}`,
   ];
 
-  if (canPayroll && employee.gross_salary != null) {
-    lines.push(`Gross Salary: ${employee.gross_salary} AED`);
+  let datedSalary=false;
+  if(canPayroll&&employee.gross_salary!=null&&/^\d+(?:\.\d{1,2})?$/.test(String(employee.gross_salary))&&employee.salary_currency&&/^[A-Z]{3}$/.test(employee.salary_currency)&&employee.salary_as_of){try{salaryDate(employee.salary_as_of);datedSalary=true;}catch{/* Unknown date is not an authorized dated salary fact. */}}
+  if (datedSalary) {
+    lines.push(`Gross Salary: ${employee.gross_salary} ${employee.salary_currency} (as of ${employee.salary_as_of})`);
     lines.push(`WPS Applicable: ${employee.wps_applicable ?? "unknown"}`);
   } else {
-    lines.push("Salary/WPS: [redacted — no payroll permission]");
+    lines.push(canPayroll?"Salary/WPS: [dated salary source unavailable]":"Salary/WPS: [redacted — no payroll permission]");
   }
 
   if (canMedical && employee.medical_readiness_status != null) {

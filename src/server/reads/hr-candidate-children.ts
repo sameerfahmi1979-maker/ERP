@@ -39,8 +39,9 @@ function protectedRow(kind: CandidateChildKind, value: unknown, detail: boolean,
   const allowed = (code: string) => row.owner_company_id === null ? hasGlobalPermission(context, code) : hasPermissionInScope(context, code, row.owner_company_id, row.branch_id);
   const canView = allowed("hr.payroll.view");
   const salaryAccess = candidateOfferSalaryAccessSchema.parse({companyId: row.owner_company_id, branchId: row.branch_id, canView, canManage: canView && allowed("hr.payroll.manage")});
+  const compensation=detail?candidateChildNativeDetailSchemas.offers.parse(value):null;
   return {...row, basic_salary: canView ? row.basic_salary : null,
-    ...("gross_salary" in row ? {gross_salary: canView ? row.gross_salary : null} : {}), salaryAccess};
+    ...(compensation ? {gross_salary: canView ? compensation.gross_salary : null,housing_allowance:canView?compensation.housing_allowance:null,transport_allowance:canView?compensation.transport_allowance:null,other_allowances:canView?compensation.other_allowances:null} : {}), salaryAccess};
 }
 
 /** Cookie-bound F03 projections/RLS remain authoritative, including related

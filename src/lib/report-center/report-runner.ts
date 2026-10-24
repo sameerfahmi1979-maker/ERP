@@ -23,7 +23,7 @@ import { resolveReportBranding } from "./branding-resolver";
 import { applyRedaction } from "./redaction-engine";
 import { REPORT_FETCHERS } from "./report-fetchers";
 import { assertAccountActive, hasPermission, getAuthContextForProfileId, type AuthContext } from "@/lib/rbac/check";
-import { createScopedReportReadClient } from "./scoped-read-client";
+import { createScopedReportReadClient,revalidateScopedReportReadClient,type ReportReadClient } from "./scoped-read-client";
 import {collectedCompanyIds,reportAuthorityIdentity} from './result-identity';
 import {getEmployeeAccess} from '@/lib/rbac/employee-access';
 
@@ -256,6 +256,7 @@ export async function runReport(
   }
 
   let rawData: ReportDataResult;
+  let collectionClient:ReportReadClient;
   try {
     // A capability granted for another company must not unmask fields on this
     // selected employee. The collection facade independently narrows row IDs.
@@ -266,10 +267,11 @@ export async function runReport(
       if(!['reports.run',...registryEntry.required_permissions,...deliveryPermissions].every(access.allows))throw Error('This employee report is outside your current permitted scope.');
       callerPermissionCodes=access.scopedContext.permissionCodes;
     }
+    collectionClient=await createScopedReportReadClient(actor,request.reportCode,[...registryEntry.required_permissions,...deliveryPermissions]);
     rawData = await fetcher.fetch(
       request.filters ?? {},
       callerPermissionCodes,
-      await createScopedReportReadClient(actor,request.reportCode,[...registryEntry.required_permissions,...deliveryPermissions])
+      collectionClient
     );
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
@@ -288,12 +290,20 @@ export async function runReport(
     const fresh=await getAuthContextForProfileId(actor.profile!.id);
     assertAccountActive(fresh);
     if(reportAuthorityIdentity(fresh)!==reportAuthorityIdentity(actor))throw Error('Your report permissions changed during collection. Run it again.');
+    if(request.reportCode.startsWith('HR_'))await revalidateScopedReportReadClient(collectionClient,fresh);
+    // Role identity alone does not include live employee/user or manager links.
+    // Reconcile those relationships before releasing any selected-person facts.
+    if(request.reportCode.startsWith('HR_') && request.filters?.employee_id!==undefined){
+      const access=await getEmployeeAccess(fresh,Number(request.filters.employee_id));
+      if(!['reports.run',...registryEntry.required_permissions,...deliveryPermissions].every(access.allows))throw Error('Your employee report access changed during collection. Run it again.');
+      callerPermissionCodes=access.scopedContext.permissionCodes;
+    }
     brandingResult=await resolveReportBranding({templateId:request.templateId,ownerCompanyIds:actualCompanies,registryEntry,isLetterType:registryEntry.is_letter_type},fresh);
     if(brandingResult.requiresManualTemplateSelection){await failReportRunLog(runId,'Company letterhead selection required',Date.now()-startMs);return {success:false,runId,requiresManualTemplateSelection:true,error:'This report spans multiple companies. Select a governed group or neutral letterhead.'};}
     const brandCompany=brandingResult.resolvedBrandingProfile?.owner_company_id;
     if(brandCompany!==null&&brandCompany!==undefined && (actualCompanies.length!==1||actualCompanies[0]!==brandCompany))throw Error('Choose a letterhead matching the report company, or a governed group/neutral letterhead for combined data.');
   }catch(error){
-    const message=error instanceof Error&&/company context|permissions changed|Choose a letterhead/.test(error.message)?error.message:'Report company or branding authority could not be verified. No output was produced.';
+    const message=error instanceof Error&&/company context|permissions changed|scope changed|employee report access changed|Choose a letterhead/.test(error.message)?error.message:'Report company or branding authority could not be verified. No output was produced.';
     await failReportRunLog(runId,message,Date.now()-startMs);return {success:false,error:message,runId};
   }
 

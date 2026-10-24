@@ -22,7 +22,7 @@ const context = {profile: {id: 8001, auth_user_id: "synthetic-candidate-reader",
 const row = {id: 8004, candidate_code: "SYNTHETIC-CAND", requisition_id: 8005, full_name_en: "Synthetic candidate", full_name_ar: null,
   gender: null, nationality_id: null, date_of_birth: null, mobile_number: null, email: null, current_location: null, source: null,
   agency_name: null, referred_by_employee_id: null, current_employer: null, current_position: null, expected_salary: 54321,
-  notice_period_days: null, candidate_status: "new", pipeline_stage: "new", rating: null, availability_date: null, notes: "Synthetic private note",
+  notice_period_days: null, candidate_status: "new", pipeline_stage: "new",joining_status:'not_started', rating: null, availability_date: null, notes: "Synthetic private note",
   created_at: "2026-10-04T00:00:00Z", updated_at: "2026-10-04T00:00:00Z", workspace_revision: 17, created_by: null, deleted_at: null,
   requisition: {id: 8005, requisition_code: "SYNTHETIC-REQ", requisition_title: "Synthetic role"}, nationality: null, referred_by: null};
 beforeEach(() => {state.context = context; state.candidate = {...row}; state.requisition = {id: 8005, owner_company_id: 8002, branch_id: 8003};

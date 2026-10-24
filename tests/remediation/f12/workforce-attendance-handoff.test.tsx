@@ -1,0 +1,13 @@
+import{beforeEach,expect,it,vi}from'vitest';import{syntheticAuthContext}from'../../performance/fixtures/auth-context';
+const m=vi.hoisted(()=>({context:vi.fn(),opening:vi.fn(),history:vi.fn()}));
+vi.mock('@/lib/rbac/check',async()=>({...await import('@/lib/rbac/scope'),getAuthContext:m.context}));
+vi.mock('@/server/actions/hr/attendance-workbench',()=>({readAttendanceEntryOpening:m.opening}));
+vi.mock('@/server/reads/hr-time',()=>({readHrTime:m.history}));
+vi.mock('@/features/hr/time/attendance/hr-attendance-page-client',()=>({HrAttendancePageClient:()=>null}));
+vi.mock('next/navigation',()=>({redirect:()=>{throw Error('Redirect');}}));
+import Page from'@/app/(protected)/admin/hr/time/attendance/page';
+beforeEach(()=>{vi.resetAllMocks();m.context.mockResolvedValue(syntheticAuthContext(['hr.attendance.view','hr.attendance.manage']));m.opening.mockResolvedValue({success:true,data:{company:3,date:'2026-10-20',row:{employee_code:'SYN7'}}});});
+it('only server-verified original context seeds entry; no URL names/company/role are trusted',async()=>{const element=await Page({searchParams:Promise.resolve({entry_employee:'7',entry_record:'51',company:'999',search:'OTHER'})});expect(m.opening).toHaveBeenCalledWith(7,51);expect(JSON.stringify(element)).toContain('SYN7');expect(JSON.stringify(element)).not.toContain('OTHER');expect(m.history).not.toHaveBeenCalled();});
+it.each([{entry_employee:['7','8']},{entry_employee:'7',entry_record:'not-an-id'},{entry_record:'51'}])('malformed handoff fails closed without broad roster fallback %j',async params=>{const element=await Page({searchParams:Promise.resolve(params)});expect(element.props).toMatchObject({title:'Attendance context'});expect(m.opening).not.toHaveBeenCalled();});
+it('unavailable or revoked original context is an error, not silently today',async()=>{m.opening.mockResolvedValue({success:false});const element=await Page({searchParams:Promise.resolve({entry_employee:'7',entry_record:'51'})});expect(element.props).toMatchObject({title:'Attendance context'});});
+it('ordinary daily entry does not issue a context or history query',async()=>{await Page({});expect(m.opening).not.toHaveBeenCalled();expect(m.history).not.toHaveBeenCalled();});

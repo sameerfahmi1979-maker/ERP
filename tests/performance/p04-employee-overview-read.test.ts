@@ -5,7 +5,9 @@ vi.mock("@/lib/rbac/check", async () => ({...await import("@/lib/rbac/scope"), g
   state.authorizations++; return {profile: {id: 6, must_change_password: state.password}, isAccountActive: state.active, permissionCodes: ["hr.employees.view"], roleCodes: [], roleAssignments: []};
 }}));
 vi.mock("@/lib/supabase/server", () => ({createClient: async () => ({rpc: (name: string, params: {permission_code: string}) => {
-  state.rpc.push([name, params]); return Promise.resolve({data: !state.denied.includes(params.permission_code), error: params.permission_code === state.failedPermission ? {message: "PRIVATE_PERMISSION_FAILURE"} : null});
+  state.rpc.push([name, params]);
+  if(name === 'f12_salary_as_of') return Promise.resolve({data: state.points.salary ?? {asOf: new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()), currency:'USD',gross:'6000.00',activeCount:1,payrollStatus:'active'}, error: state.fault === 'salary' ? {message:'PRIVATE_NATIVE_FAILURE'} : null});
+  return Promise.resolve({data: !state.denied.includes(params.permission_code), error: params.permission_code === state.failedPermission ? {message: "PRIVATE_PERMISSION_FAILURE"} : null});
 }, from: (table: string) => {
   const call = {table, methods: [] as unknown[][]}; state.calls.push(call);
   const query: Record<string, unknown> = {then: (resolve: (r: unknown) => unknown) => {
@@ -14,7 +16,7 @@ vi.mock("@/lib/supabase/server", () => ({createClient: async () => ({rpc: (name:
     const all = state.rows[table] ?? [], count = state.counts[table] ?? all.length;
     let data: unknown = all.slice(range ? Number(range[1]) : 0, range ? Number(range[2]) + 1 : limit ? Number(limit[1]) : undefined);
     if (state.duplicate && range && Number(range[1]) > 0 && table === "employee_salary_components") data = [{...all[0]}, ...all.slice(Number(range[1]) + 1, Number(range[2]) + 1)];
-    if (isPoint) data = table === "employees" ? state.subject ? {id: 7} : null : state.points[table] ?? null;
+    if (isPoint) data = table === "employees" ? state.subject ? state.points.employment ?? {id: 7,employee_status:'active',joining_date:'2020-01-01'} : null : state.points[table] ?? null;
     if ((selected?.[2] as {head?: boolean})?.head) data = null;
     if (state.malformed === table) data = [{id: "BROKEN"}];
     return Promise.resolve({data, count, error: null}).then(resolve);
@@ -27,7 +29,7 @@ import {POST} from "@/app/api/reads/employee-overview/route";
 import {EMPLOYEE_OVERVIEW_SECTIONS} from "@/lib/reads/employee-overview-schema";
 afterEach(() => {vi.useRealTimers(); Object.assign(state, {active: true, password: false, subject: true, authorizations: 0, denied: [], failedPermission: "", fault: "", malformed: "", duplicate: false, rows: {}, counts: {}, points: {}, calls: [], rpc: []});});
 const read = (sections?: string[]) => readEmployeeOverview({employeeId: 7, ...(sections ? {sections} : {})});
-const targets = {compliance: "employee_identity_documents", time: "employee_attendance_daily_summary", payroll: "employee_salary_components", operations: "employee_assets", actions: "employee_approval_requests", recruitment: "employee_recruitment_links"};
+const targets = {compliance: "employee_identity_documents", time: "employee_attendance_daily_summary", payroll: "salary", operations: "employee_assets", actions: "employee_approval_requests", recruitment: "employee_recruitment_links"};
 
 it("composes all six native sections with exactly one live authorization and only lean projections", async () => {
   const result = await read(); expect(result.success, result.error).toBe(true); expect(state.authorizations).toBe(1);
@@ -73,11 +75,16 @@ it("medical, banking, confidential and leave restrictions do not masquerade as z
   expect(result.data!.sections.time).toMatchObject({status: "ready", data: {leaveBalanceCount: null, pendingLeaveCount: null}});
   for (const table of ["employee_medical_records", "employee_medical_insurances", "employee_wps_profiles", "employee_performance_records", "employee_disciplinary_records", "employee_leave_balances", "employee_leave_requests"]) expect(state.calls.some(c => c.table === table)).toBe(false);
 });
-it("salary totals cover 1107 rows with bounded count-checked pages, reusing the original earning rule", async () => {
-  state.rows.employee_salary_components = Array.from({length: 1107}, (_, i) => ({id: i + 1, amount: 2, is_active: true, deleted_at: null, component_type: {component_kind: "earning"}}));
-  const result = await read(["payroll"]); expect(result.data!.sections.payroll).toMatchObject({status: "ready", data: {grossSalary: 2214}});
-  expect(state.calls.filter(c => c.table === "employee_salary_components").map(c => c.methods.find(m => m[0] === "range"))).toEqual([["range", 0, 499], ["range", 500, 999], ["range", 1000, 1499]]);
-  state.duplicate = true; expect((await read(["payroll"])).data!.sections.payroll).toEqual({status: "failed"});
+it("salary overview uses one atomic dated ordinary-client fact read, not embedded undated components", async () => {
+  const result = await read(["payroll"]);
+  expect(result.data!.sections.payroll).toMatchObject({status:"ready",data:{grossSalary:6000,currency:"USD"}});
+  expect(state.rpc.filter(r=>r[0]==="f12_salary_as_of")).toHaveLength(1);
+  expect(state.calls.some(c=>c.table==="employee_salary_components")).toBe(false);
+  state.fault="salary";expect((await read(["payroll"])).data!.sections.payroll).toEqual({status:"failed"});
+});
+it.each([{}, {asOf:"2020-01-01",currency:"USD",gross:"0.00",activeCount:1,payrollStatus:"active"},
+  {asOf:"2026-10-24",currency:"",gross:"100.00",activeCount:1,payrollStatus:"active"}])("malformed or wrong-date native salary cannot become a ready overview",async salary=>{
+  state.points.salary=salary;expect((await read(["payroll"])).data!.sections.payroll).toEqual({status:"failed"});
 });
 it("compliance preserves distinct training/identity expiry rules and complete totals", async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-04T08:00:00Z"));

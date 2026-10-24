@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { checkDocumentConfidentialityAccess } from "@/lib/dms/document-access";
 import {createHash} from "node:crypto";
+import {readBoundedDmsObject} from '@/server/dms-file-verification';
 
 const noStore = {"Cache-Control":"private, no-store", "Referrer-Policy":"no-referrer"};
 const unavailable = (error:string,status:number) => NextResponse.json({error},{status,headers:noStore});
@@ -79,11 +80,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     // Fetch from Supabase storage via admin client
     const adminClient = createAdminClient();
-    const { data: blob, error: downloadError } = await adminClient.storage
-      .from(file.storage_bucket as string)
-      .download(file.storage_path as string);
-
-    if (downloadError || !blob) {
+    let blob:Blob;
+    try {
+      blob=await readBoundedDmsObject(adminClient.storage.from(file.storage_bucket as string),file.storage_path as string,Number(file.file_size_bytes));
+    } catch {
       return NextResponse.json(
         { error: "The file could not be retrieved. Please retry." },
         { status: 502, headers:noStore }

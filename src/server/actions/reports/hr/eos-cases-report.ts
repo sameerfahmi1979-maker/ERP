@@ -16,7 +16,8 @@ export const eosCasesFetcher: ReportFetcher = {
       let empQ = db.from("employees").select("id").is("deleted_at", null);
       if (filters.owner_company_id) empQ = empQ.eq("owner_company_id", Number(filters.owner_company_id));
       if (filters.department_id) empQ = empQ.eq("department_id", Number(filters.department_id));
-      const { data } = await empQ.limit(2000);
+      const { data, error } = await empQ.limit(2000);
+      if(error||!Array.isArray(data))throw new Error("Complete separation report scope unavailable");
       empIds = (data ?? []).map((e) => e.id);
       if (empIds.length === 0) return { columns: [], rows: [], meta: { total: 0 } };
     }
@@ -24,7 +25,7 @@ export const eosCasesFetcher: ReportFetcher = {
     let q = db
       .from("employee_eos_cases")
       .select(
-        `id, employee_id, eos_type, case_status, notice_date, last_working_date,
+        `id, employee_id, eos_type, case_status, notice_date, last_working_date, employment_end_date,
          final_settlement_status, clearance_completed, created_at,
          employee:employees(
            employee_code, full_name_en, owner_company_id,
@@ -41,7 +42,7 @@ export const eosCasesFetcher: ReportFetcher = {
     if (filters.date_to) q = q.lte("notice_date", String(filters.date_to));
 
     const { data, error } = await q.limit(2000);
-    if (error) throw new Error(`HR_EOS_CASES fetch error: ${error.message}`);
+    if (error||!Array.isArray(data)) throw new Error("Complete separation report records unavailable");
 
     const rows = (data ?? []).map((r) => {
       const emp = r.employee as unknown as { employee_code: string; full_name_en: string; owner_company_id: number; department?: { department_name_en: string } | null; owner_company?: { legal_name_en: string } | null } | null;
@@ -54,6 +55,7 @@ export const eosCasesFetcher: ReportFetcher = {
         case_status: r.case_status,
         notice_date: r.notice_date ?? "",
         last_working_date: r.last_working_date ?? "",
+        employment_end_date: r.employment_end_date ?? "",
         final_settlement_status: r.final_settlement_status,
         clearance_completed: r.clearance_completed ? "Yes" : "No",
         owner_company_id: emp?.owner_company_id ?? 0,
@@ -65,7 +67,7 @@ export const eosCasesFetcher: ReportFetcher = {
     return {
       columns: [
         "employee_code", "employee_name", "company", "department",
-        "eos_type", "case_status", "notice_date", "last_working_date",
+        "eos_type", "case_status", "notice_date", "last_working_date", "employment_end_date",
         "final_settlement_status", "clearance_completed",
       ],
       rows,

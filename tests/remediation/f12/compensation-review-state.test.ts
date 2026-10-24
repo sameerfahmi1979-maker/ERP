@@ -1,0 +1,32 @@
+import {describe, expect, it} from "vitest";
+import {createWorkspaceDraftStore} from "@/lib/workspace/workspace-draft-store";
+import {createSalaryReviewState} from "@/lib/hr/payroll/salary-review-state";
+import {salaryReviewRequest, salaryReviewActions, matchesSalaryReviewReceipt, type SalaryReviewOpening, type SalaryReviewRequest} from "@/lib/hr/payroll/salary-review-contract";
+const subject = {employee_id: 8, revision_id: 9};
+const request: SalaryReviewRequest = {...subject, operation_id: "11111111-1111-4111-8111-111111111111", action: "approve", review_revision: "1", fingerprint: "a".repeat(64), reason: "Private salary decision"};
+const receipt = {...subject, operation_id: request.operation_id, action: "approve" as const, review_revision: "2", status: "approved" as const, replayed: false};
+const opening: SalaryReviewOpening = {...subject, review_revision: "1", status: "pending", requested_by: 7, approved_by: null, effective_date: "2026-10-23", today: "2026-10-23", new_basic: "1200.02", currency: "USD", fingerprint: request.fingerprint, source_current: true};
+const state = () => createSalaryReviewState(createWorkspaceDraftStore(), "actor", "tab", "scope", subject);
+describe("F12-04 private original salary operation", () => {
+  it("retains the same original across remount", () => {const store=createWorkspaceDraftStore(),a=createSalaryReviewState(store,"actor","tab","scope",subject);a.prepare(request);const b=createSalaryReviewState(store,"actor","tab","scope",subject);expect(b.pending).toEqual(request);expect(()=>b.prepare({...request,reason:"Changed retry"})).toThrow();});
+  it("does not return mutable stored requests", () => {const s=state();s.prepare(request);s.pending!.reason="Tampered";expect(s.pending!.reason).toBe(request.reason);});
+  it("rejects wrong employee/revision without saving", () => {const s=state();for(const change of [{employee_id:7},{revision_id:10}])expect(()=>s.prepare({...request,...change})).toThrow();expect(s.pending).toBeNull();});
+  it("actor/tab/subject namespaces cannot borrow private reasons", () => {const store=createWorkspaceDraftStore();createSalaryReviewState(store,"a","tab","scope",subject).prepare(request);for(const [actor,owner,sub] of [["b","tab",subject],["a","other",subject],["a","tab",{...subject,revision_id:10}]] as const)expect(createSalaryReviewState(store,actor,owner,"scope",sub).pending).toBeNull();});
+  it("authority change removes reason/source hash, retaining only opaque identifiers", () => {const store=createWorkspaceDraftStore(),old=createSalaryReviewState(store,"actor","tab","old",subject);old.prepare(request);const next=createSalaryReviewState(store,"actor","tab","new",subject);expect(next.pending).toBeNull();expect(next.retired?.operation_id).toBe(request.operation_id);expect(store.getViewState(old.key)).not.toContain(request.reason);expect(store.getViewState(old.key)).not.toContain(request.fingerprint);expect(()=>next.prepare(request)).toThrow();next.reconcile(receipt);expect(next.receipt).toEqual(receipt);});
+  it("later definite failure cannot erase earlier uncertain original", () => {const s=state();s.prepare(request);expect(()=>s.reject(true)).toThrow();expect(s.pending).toEqual(request);});
+  it.each([{...receipt,employee_id:9},{...receipt,revision_id:10},{...receipt,review_revision:"1"},{...receipt,action:"apply",status:"applied"},{...receipt,operation_id:"22222222-2222-4222-8222-222222222222"}])("rejects mismatched receipt", bad => {const s=state();s.prepare(request);expect(()=>s.accept(bad)).toThrow();expect(s.pending).toEqual(request);});
+  it("confirmed result blocks duplicate send until explicit new opening", () => {const s=state();s.prepare(request);s.accept(receipt);expect(()=>s.prepare(request)).toThrow();s.startNew();expect(s.receipt).toBeNull();});
+  it("corrupt/copied recovery state blocks without overwriting it", () => {const store=createWorkspaceDraftStore(),a=createSalaryReviewState(store,"a","tab","scope",subject);a.prepare(request);const b=createSalaryReviewState(store,"b","tab","scope",subject);store.setViewState(b.key,store.getViewState(a.key)!);const bad=createSalaryReviewState(store,"b","tab","scope",subject);expect(bad.blocked).toBe(true);expect(()=>bad.prepare(request)).toThrow();expect(store.getViewState(b.key)).toBe(store.getViewState(a.key));});
+  it("external state removal blocks resubmission", () => {const store=createWorkspaceDraftStore(),s=createSalaryReviewState(store,"a","tab","scope",subject);s.prepare(request);store.clearDraftsForTab("tab");expect(()=>s.prepare(request)).toThrow();expect(s.blocked).toBe(true);});
+  it("missing private memory never permits a mutation", () => {const s=createSalaryReviewState(null,"a","tab","scope",subject);expect(s.blocked).toBe(true);expect(()=>s.prepare(request)).toThrow();});
+  it.each([{reason:""},{reason:"x".repeat(1001)},{fingerprint:"bad"},{review_revision:"0"},{action:"pay"},{employee_id:0},{actor_id:1}])("rejects unsupported request fields", change => expect(salaryReviewRequest.safeParse({...request,...change}).success).toBe(false));
+  it("matches exact action, status and incremented original revision", () => {expect(matchesSalaryReviewReceipt(receipt,request)).toBe(true);expect(matchesSalaryReviewReceipt({...receipt,status:"pending"},request)).toBe(false);});
+});
+describe("F12-04 available current salary decisions", () => {
+  it("requester cannot approve/reject self",()=>expect(salaryReviewActions(opening,7)).toEqual(["withdraw"]));
+  it("different manager can approve/reject fresh proposal",()=>expect(salaryReviewActions(opening,8)).toEqual(["approve","reject"]));
+  it("stale source only permits rejection or requester withdrawal",()=>{expect(salaryReviewActions({...opening,source_current:false},8)).toEqual(["reject"]);expect(salaryReviewActions({...opening,source_current:false},7)).toEqual(["withdraw"]);});
+  it("approval alone does not offer early application",()=>expect(salaryReviewActions({...opening,status:"approved",approved_by:8,effective_date:"2026-10-24"},7)).toEqual(["withdraw"]));
+  it("due approved application is explicit",()=>expect(salaryReviewActions({...opening,status:"approved",approved_by:8},7)).toEqual(["withdraw","apply"]));
+  it.each(["recorded","rejected","withdrawn","applied"] as const)("%s history cannot be silently reactivated",status=>expect(salaryReviewActions({...opening,status},8)).toEqual([]));
+});

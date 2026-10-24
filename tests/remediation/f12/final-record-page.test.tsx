@@ -1,0 +1,15 @@
+import {renderToStaticMarkup}from'react-dom/server';import{beforeEach,expect,it,vi}from'vitest';
+const m=vi.hoisted(()=>({auth:vi.fn(),get:vi.fn(),access:vi.fn(),browse:vi.fn()}));
+vi.mock('@/lib/rbac/check',()=>({getAuthContext:m.auth}));
+vi.mock('@/lib/rbac/employee-access',()=>({canBrowseEmployees:m.browse,getEmployeeAccess:m.access}));
+vi.mock('@/server/actions/hr/employees',()=>({getEmployee:m.get}));
+vi.mock('next/navigation',()=>({redirect:()=>{throw Error('DENIED');},notFound:()=>{throw Error('NOT_FOUND');}}));
+vi.mock('next/link',()=>({default:({children}:{children:React.ReactNode})=>children}));
+vi.mock('@/features/notifications/notification-open',()=>({NotificationArrival:()=>null}));
+vi.mock('@/server/notification-task-context',()=>({readNotificationTaskContext:async()=>null}));
+vi.mock('@/features/hr/employees/employee-workspace-form',()=>({EmployeeWorkspaceForm:({initialSection,authContext}:{initialSection?:string;authContext:{permissionCodes:string[]}})=><div data-section={initialSection??'default'} data-scope={authContext.permissionCodes.join(',')}>EXISTING_FORM</div>}));
+import Page from '@/app/(protected)/admin/hr/employees/record/[id]/page';
+beforeEach(()=>{vi.clearAllMocks();m.auth.mockResolvedValue({profile:{id:1}});m.browse.mockReturnValue(true);m.get.mockResolvedValue({success:true,data:{id:7}});m.access.mockResolvedValue({allows:()=>false,scopedContext:{permissionCodes:['hr.employees.view.self']}});});
+it.each([{section:'payroll'},{tab:'hr-actions'}])('actual record route consumes only allowlisted section hint %j',async params=>{const html=renderToStaticMarkup(await Page({params:Promise.resolve({id:'7'}),searchParams:Promise.resolve(params)}));expect(html).toContain(`data-section="${params.section??params.tab}"`);expect(html).toContain('data-scope="hr.employees.view.self"');expect(html).not.toContain('hr.payroll.manage');expect(m.access).toHaveBeenCalledWith(expect.anything(),7);});
+it.each([{section:'forbidden'},{section:['payroll','profile']}])('invalid section does not select another view or bypass record authority',async params=>{const html=renderToStaticMarkup(await Page({params:Promise.resolve({id:'7'}),searchParams:Promise.resolve(params)}));expect(html).toContain('data-section="default"');});
+it('record gate still wins over an explicit payroll deep link',async()=>{m.browse.mockReturnValue(false);await expect(Page({params:Promise.resolve({id:'7'}),searchParams:Promise.resolve({section:'payroll'})})).rejects.toThrow('DENIED');expect(m.get).not.toHaveBeenCalled();});

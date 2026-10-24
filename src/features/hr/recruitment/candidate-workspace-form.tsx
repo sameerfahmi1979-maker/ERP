@@ -33,6 +33,7 @@ import { CandidateOffersTab } from "./tabs/candidate-offers-tab";
 import { CandidateOnboardingTab } from "./tabs/candidate-onboarding-tab";
 import { CandidateOverviewTab } from "./tabs/candidate-overview-tab";
 import { CandidateProfileTab } from "./tabs/candidate-profile-tab";
+import{CandidateProgressControls}from'./candidate-progress-controls';
 
 type Props = {
   candidate?: CandidateRow | null;
@@ -305,8 +306,9 @@ function CandidateWorkspaceFormInstance({ candidate: openingCandidate, mode, aut
       };
 
       const wasNew = originalId === null;
-      const contract = saveSession.begin(payload);
-      const result = wasNew ? await createCandidate(payload, contract) : await updateCandidate(originalId, payload, contract);
+      const{candidate_status,pipeline_stage,...profilePayload}=payload;void candidate_status;void pipeline_stage;
+      const contract = saveSession.begin(wasNew?payload:profilePayload);
+      const result = wasNew ? await createCandidate(payload, contract) : await updateCandidate(originalId, profilePayload, contract);
       const receipt = result.success && result.data && Number.isSafeInteger(result.data.id) && result.data.id > 0 &&
         (wasNew || result.data.id === originalId) && /^[1-9]\d*$/.test(result.data.revision) && typeof result.data.replayed === "boolean" ? result.data : undefined;
       if (saveSession.isRetired || submittedLease.accessRetired) {
@@ -370,6 +372,7 @@ function CandidateWorkspaceFormInstance({ candidate: openingCandidate, mode, aut
       <DraftRestoredNotice visible={editable && restoredFromDraft} />
       {notificationTask&&!read.query.isError&&<NotificationTaskContextCard task={notificationTask} onSection={setActiveSection} blocked={isPending||childDialogOpen||saveBlocked||saveSession.requiresReconciliation}/>}
       <ERPRecordSectionPanel id="overview" activeId={activeSection}>
+        {candidate&&editable&&<CandidateProgressControls candidate={candidate}authContext={authContext}admitted={authorized&&!isPending&&!saveBlocked&&!saveSession.requiresReconciliation}onOpenChange={setChildDialogOpen}/>}
         {candidate && (
           <CandidateOverviewTab
             candidate={candidate}
@@ -387,7 +390,7 @@ function CandidateWorkspaceFormInstance({ candidate: openingCandidate, mode, aut
       <form id={FORM_ID} onSubmit={event => { event.preventDefault(); void handleSave(); }}>
       <ERPRecordSectionPanel id="profile" activeId={activeSection}>
         <CandidateProfileTab
-          form={form}
+          form={candidate?{...form,candidate_status:candidate.candidate_status,pipeline_stage:candidate.pipeline_stage}:form}
           setForm={setForm}
           mode={mode}
           canManage={canManage}

@@ -11,7 +11,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { z } from "zod";
-import{childSaveContract,clearanceValues,type ChildSaveContract,type ChildSaveResult}from '@/lib/hr/child-save-contract';
+import{childSaveContract,clearanceCreateFields,type ChildSaveContract,type ChildSaveResult}from '@/lib/hr/child-save-contract';
 import{canUseHrChild}from '@/lib/hr/child-authority';
 import{mutateHrChild,readProProcessOpening}from './child-mutation';
 
@@ -626,7 +626,7 @@ export async function listEmployeeClearanceItems(eosCaseId: number): Promise<Cle
 }
 
 export async function createEmployeeClearanceItem(caseId:number,input:unknown,contract?:ChildSaveContract):Promise<ChildSaveResult>{
- const checked=childSaveContract.safeParse(contract),fields=clearanceValues.omit({eos_case_id:true}).safeParse(input);
+ const checked=childSaveContract.safeParse(contract),fields=clearanceCreateFields.safeParse(input);
  if(!checked.success||checked.data.revision!==null||!fields.success||!Number.isSafeInteger(caseId)||caseId<1)return{success:false,error:'Original case/save identity and valid clearance fields are required.'};
  if(!canUseHrChild(await getAuthContext(),'clearance'))return{success:false,error:'Current clearance access is unavailable.',accessDenied:true};
  const parent=await(await createClient()).from('employee_eos_cases').select('employee_id').eq('id',caseId).is('deleted_at',null).maybeSingle();

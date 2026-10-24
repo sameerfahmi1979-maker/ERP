@@ -5,6 +5,7 @@ import {afterEach, expect, it, vi} from "vitest";
 import {act, cleanup, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
 import {WorkspaceUiMemoryProvider} from "@/hooks/use-persistent-ui-state";
+import {WorkspaceDraftProvider} from "@/components/workspace/workspace-draft-provider";
 import type {AuthContext} from "@/lib/rbac/check";
 import {ReadError} from "@/lib/reads/client";
 import {RECRUITMENT_INQUIRY_KINDS, RECRUITMENT_INQUIRY_CONFIG, recruitmentReadIdentity, recruitmentInquiryRowSchemas, type RecruitmentInquiryCriteria, type RecruitmentInquiryKind, type RecruitmentInquiryPage} from "@/lib/reads/hr-recruitment-inquiries-schema";
@@ -17,6 +18,7 @@ import {recruitmentInquiryFixture as fixture} from "./hr-recruitment-inquiry-fix
 const state = vi.hoisted(() => ({read: vi.fn(), create: vi.fn(), update: vi.fn(), archive: vi.fn(), success: vi.fn(), error: vi.fn()}));
 vi.mock("@/lib/reads/client", async original => ({...await original<typeof import("@/lib/reads/client")>(), readJson: state.read}));
 vi.mock("@/server/actions/hr/recruitment", () => ({createJobRequisition: state.create, updateJobRequisition: state.update, archiveJobRequisition: state.archive}));
+vi.mock("@/server/actions/hr/recruitment-lifecycle", () => ({mutateRecruitmentLifecycle: state.update}));
 vi.mock("@/hooks/realtime/use-realtime-sync", () => ({useRealtimeSync: () => {}}));
 vi.mock("sonner", () => ({toast: {success: state.success, error: state.error}}));
 vi.mock("next/navigation", () => ({usePathname: () => "/admin/hr/recruitment"}));
@@ -35,7 +37,7 @@ function page(kind: RecruitmentInquiryKind, options: {context?: AuthContext; cou
 const clients: QueryClient[] = [];
 function mount(node: React.ReactNode) {
   const client = new QueryClient({defaultOptions: {queries: {retry: false, retryDelay: 0}}}); clients.push(client);
-  const wrap = (child: React.ReactNode) => <QueryClientProvider client={client}><WorkspaceUiMemoryProvider>{child}</WorkspaceUiMemoryProvider></QueryClientProvider>;
+  const wrap = (child: React.ReactNode) => <QueryClientProvider client={client}><WorkspaceDraftProvider><WorkspaceUiMemoryProvider>{child}</WorkspaceUiMemoryProvider></WorkspaceDraftProvider></QueryClientProvider>;
   const view = render(wrap(node)); return {...view, client, replace: (child: React.ReactNode) => view.rerender(wrap(child))};
 }
 const lastParams = () => state.read.mock.calls.at(-1)?.[1] as RecruitmentInquiryCriteria;
@@ -92,8 +94,9 @@ it("requisition edit retrieves complete wording on demand and preserves dirty wo
   await act(async () => finish({success: true, data: fixture("requisitions")})); const dialog = await screen.findByRole("dialog");
   expect((within(dialog).getByLabelText("Job Description") as HTMLTextAreaElement).value).toBe("Complete original wording");
   fireEvent.change(within(dialog).getByLabelText("Job Description"), {target: {value: "Retained draft"}});
+  fireEvent.change(within(dialog).getByLabelText("Decision / change reason"), {target: {value: "Synthetic wording correction"}});
   fireEvent.click(within(dialog).getByRole("button", {name: /^Save/})); await waitFor(() => expect(state.update).toHaveBeenCalledTimes(1));
-  expect(state.update.mock.calls[0][1]).toMatchObject({job_description: "Retained draft", requirements: "Complete requirements"}); expect((within(dialog).getByLabelText("Job Description") as HTMLTextAreaElement).value).toBe("Retained draft");
+  expect(state.update).toHaveBeenCalledWith(expect.objectContaining({kind: "requisition", id: 1, revision: "1", action: "update", reason: "Synthetic wording correction", values: expect.objectContaining({job_description: "Retained draft", requirements: "Complete requirements"})}), expect.any(String)); expect((within(dialog).getByLabelText("Job Description") as HTMLTextAreaElement).value).toBe("Retained draft");
 });
 it("mismatched requisition details cannot open a partial editor", async () => {
   state.read.mockResolvedValue({success: true, data: {...fixture("requisitions"), id: 999}}); mount(page("requisitions", {count: 1})); await ready("requisitions");

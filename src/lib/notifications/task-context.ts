@@ -1,5 +1,7 @@
 export type NotificationTaskContext={id:number;label:string;section:string;status:string;path:string;token?:string};
 export const notificationTaskSources={
+ pro:{table:'employee_pro_processes',label:'PRO/renewal process',section:'hr-actions',status:'process_status',deleted:true},
+ deployment:{table:'employee_assignments',label:'Deployment assignment',section:'operations',status:'assignment_status',deleted:true},
  leave:{table:'employee_leave_requests',label:'Leave request',section:'time',status:'approval_status',deleted:true},
  attendance:{table:'employee_attendance_corrections',label:'Attendance correction',section:'time',status:null,deleted:false},
  salary:{table:'employee_salary_revisions',label:'Salary revision',section:'payroll',status:null,deleted:false},

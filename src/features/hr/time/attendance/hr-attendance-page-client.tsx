@@ -18,10 +18,14 @@ import {formatHours, formatTimeInquiryDate} from "@/lib/hr/time/date-utils";
 import {CheckCircle, ExternalLink} from "lucide-react";
 import Link from "next/link";
 import {toast} from "sonner";
-type Props = {initialRows: HrTimeAttendanceRow[]; initialCount: number; authContext: AuthContext; initialReadIdentity?: string; initialUpdatedAt?: number};
+import{AttendanceWorkbench}from'./attendance-workbench';
+import{canUseHrChild}from'@/lib/hr/child-authority';
+import{RecordReadActivity}from'@/hooks/use-record-read-active';
+type Props = {initialRows: HrTimeAttendanceRow[]; initialCount: number; authContext: AuthContext; initialReadIdentity?: string; initialUpdatedAt?: number;entrySeed?:{company:number;date:string;search:string}};
 export function HrAttendancePageClient(props: Props) {
   const identity = useHrTimeInquiryIdentity("attendance", props.authContext);
-  return <AttendanceSession key={identity} {...props} />;
+  const[history,setHistory]=useState(!canUseHrChild(props.authContext,'attendance-summary'));
+  return <><div className="flex gap-2 mb-4">{canUseHrChild(props.authContext,'attendance-summary')&&<Button variant={history?'outline':'default'}onClick={()=>setHistory(false)}>Daily entry</Button>}<Button variant={history?'default':'outline'}onClick={()=>setHistory(true)}>Attendance history</Button></div>{canUseHrChild(props.authContext,'attendance-summary')&&<div hidden={history}><RecordReadActivity active={!history}><AttendanceWorkbench key={identity}authContext={props.authContext}initial={props.entrySeed}/></RecordReadActivity></div>}{history&&<AttendanceSession key={identity} {...props}/>}</>;
 }
 function AttendanceSession({initialRows, initialCount, authContext, initialReadIdentity, initialUpdatedAt}: Props) {
   const qc=useQueryClient(),[target,setTarget]=useState<(TimeTarget&{employeeId:number;criteria:string})|null>(null),[readState,setReadState]=useState<HrTimeReadAdmission>({ready:false,criteria:'',ids:[]}),admission=useRef<HrTimeReadAdmission>({ready:false,criteria:'',ids:[]});
@@ -30,7 +34,7 @@ function AttendanceSession({initialRows, initialCount, authContext, initialReadI
   useRealtimeSync({table:'employee_attendance_daily_summary',event:'*',debounceMs:400,onEvent:()=>invalidateHrDailyAttendance(qc)});
   const canDispatch=()=>admission.current.ready&&!!target&&admission.current.ids.includes(target.id!);
   const handleApprove=(row:HrTimeAttendanceRow)=>{if(admission.current.ready&&admission.current.ids.includes(row.id))setTarget({kind:'attendance-summary',id:row.id,employeeId:row.employee_id,criteria:admission.current.criteria,action:'approve'});};
-  return <><HrChildRecoveryPanel authContext={authContext}/>{target&&<TimeRecordEditor target={target}employeeId={target.employeeId}authContext={authContext}canDispatch={canDispatch}blocked={!readState.ready||!readState.ids.includes(target.id!)}retry={()=>invalidateHrDailyAttendance(qc)}onClose={()=>setTarget(null)}onSaved={()=>{toast.success("Attendance approved");invalidateHrDailyAttendance(qc);}}/>}<HrTimeReadList onReadAdmission={onReadAdmission} kind="attendance" authContext={authContext} initialPage={{kind: "attendance", rows: initialRows, totalCount: initialCount, page: 1, pageSize: 25}} initialUpdatedAt={initialUpdatedAt} initialReadIdentity={initialReadIdentity} renderRecord={row => {
+  return <><HrChildRecoveryPanel authContext={authContext}/>{target&&<TimeRecordEditor target={target}employeeId={target.employeeId}authContext={authContext}canDispatch={canDispatch}blocked={!readState.ready||!readState.ids.includes(target.id!)}retry={()=>invalidateHrDailyAttendance(qc)}onClose={()=>setTarget(null)}onSaved={()=>{toast.success("Attendance approved");invalidateHrDailyAttendance(qc);}}/>}<HrTimeReadList onReadAdmission={onReadAdmission} kind="attendance" authContext={authContext} initialPage={initialReadIdentity?{kind: "attendance", rows: initialRows, totalCount: initialCount, page: 1, pageSize: 25}:undefined} initialUpdatedAt={initialUpdatedAt} initialReadIdentity={initialReadIdentity} renderRecord={row => {
     if (!("attendance_date" in row)) return null;
     const badge = getAttendanceStatusBadge(row.approval_status);
     return <div className="flex flex-wrap items-center gap-2 text-sm"><span>{formatTimeInquiryDate(row.attendance_date)}</span><span className="text-xs text-muted-foreground">EMP-{row.employee_id}</span><span>{getAttendanceTypeLabel(row.attendance_type)}</span><span>{formatHours(row.total_hours)}</span><span>OT {formatHours(row.overtime_hours)}</span><Badge variant={badge.variant}>{badge.label}</Badge>{row.is_missing_punch && <Badge variant="destructive">Missing</Badge>}

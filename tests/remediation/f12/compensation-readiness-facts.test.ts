@@ -1,0 +1,8 @@
+import{expect,it,vi}from'vitest';import{readPayrollReadinessFacts}from'@/server/reads/payroll-readiness-facts';
+function fixture(data:unknown,error:unknown=null){const rpc=vi.fn().mockResolvedValue({data,error});return{db:{rpc}as unknown as Parameters<typeof readPayrollReadinessFacts>[0],rpc};}
+const row={employee_id:7,readiness_status:'ready',has_wps_profile:true,missing_iban:false};
+it('uses the caller client and one exact bounded set RPC with a fixed date',async()=>{const f=fixture([row]);expect(await readPayrollReadinessFacts(f.db,[7],'2026-10-24')).toEqual([row]);expect(f.rpc).toHaveBeenCalledOnce();expect(f.rpc).toHaveBeenCalledWith('f12_payroll_readiness_facts',{p_employees:[7],p_as_of:'2026-10-24'});});
+it.each([[],[row,row],[{...row,employee_id:8}],[{...row,readiness_status:'unknown'}],[{...row,iban:'PRIVATE_BANK'}],null].map(data=>({data})))('incomplete/foreign/extra-private or unknown results never become successful ready counts',async({data})=>{const f=fixture(data);await expect(readPayrollReadinessFacts(f.db,[7])).rejects.toThrow('unavailable');});
+it('failed native source never becomes zero readiness',async()=>{await expect(readPayrollReadinessFacts(fixture(null,{message:'PRIVATE_SQL'}).db,[7])).rejects.toThrow(/^Complete authorized payroll readiness facts unavailable$/);});
+it.each([[0],[7,7],Array.from({length:201},(_,i)=>i+1)].map(ids=>({ids})))('invalid or oversized IDs are rejected before dispatch',async({ids})=>{const f=fixture([]);await expect(readPayrollReadinessFacts(f.db,ids)).rejects.toThrow();expect(f.rpc).not.toHaveBeenCalled();});
+it('genuine empty selection requires no RPC',async()=>{const f=fixture([]);expect(await readPayrollReadinessFacts(f.db,[])).toEqual([]);expect(f.rpc).not.toHaveBeenCalled();});

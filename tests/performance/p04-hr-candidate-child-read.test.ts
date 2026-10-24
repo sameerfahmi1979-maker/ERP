@@ -47,13 +47,13 @@ const context = {profile: {id: 8101, auth_user_id: "synthetic-child-reader", mus
   permissionCodes: permissions, globalPermissionCodes: [], roleCodes: ["scoped"], roleAssignments: [{roleId: 8101, roleCode: "scoped", ownerCompanyId: 8102, branchId: 8103, permissionCodes: permissions}]} as unknown as AuthContext;
 const stamp = "2026-10-04T00:00:00Z", candidateId = 8104;
 const fixture = (kind: CandidateChildKind, id = 8105): Row => {
-  const common = {id, candidate_id: candidateId, created_at: stamp, notes: "Private edit note", unrelated_private: "do not transfer"};
+  const common = {id, candidate_id: candidateId,workspace_revision:1, created_at: stamp, notes: "Private edit note", unrelated_private: "do not transfer"};
   switch (kind) {
     case "documents": return {...common, dms_document_id: 8106, document_purpose: "cv", verification_status: "verified", dms_document: {id: 8106, document_number: "SYNTHETIC-DMS", document_title: "Synthetic سيرة"}};
-    case "interviews": return {...common, interview_round: "first", interview_status: "scheduled", interview_datetime: stamp, interview_location: null, result: null, score: null, feedback: "Private feedback", next_step: "Synthetic next step"};
-    case "offers": return {...common, owner_company_id: 8102, branch_id: 8103, offer_status: "draft", proposed_joining_date: null, valid_until: null,
+    case "interviews": return {...common,interviewer_id:null, interview_round: "first", interview_status: "scheduled", interview_datetime: stamp, interview_location: null, result: null, score: null, feedback: "Private feedback", next_step: "Synthetic next step"};
+    case "offers": return {...common,terms_version:1,approved_terms_version:null,accepted_terms_version:null,housing_allowance:null,transport_allowance:null,other_allowances:null, owner_company_id: 8102, branch_id: 8103, offer_status: "draft", proposed_joining_date: null, valid_until: null,
       basic_salary: 50123, gross_salary: 60123, currency: "AED", designation_id: null, designation: null, offer_date: null};
-    case "onboarding": return {...common, task_title: "Synthetic task", task_category: null, task_status: "pending", due_date: null};
+    case "onboarding": return {...common,employee_id:null,checklist_version:1,is_required:true,completion_criteria:null,evidence_required:false,prerequisite_task_id:null,assigned_to:null,dms_document_id:null,completed_by:null,completed_at:null, task_title: "Synthetic task", task_category: null, task_status: "pending", due_date: null};
   }
 };
 const page = (kind: CandidateChildKind, extra: Record<string, unknown> = {}) => ({operation: "page", kind, candidateId, ...extra});

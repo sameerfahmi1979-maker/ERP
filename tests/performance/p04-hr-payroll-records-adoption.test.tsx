@@ -55,7 +55,7 @@ vi.mock('@/server/actions/hr/child-mutation',()=>({
    let row:Record<string,unknown>|null;
    if(kind==='payroll-hold')row=payrollRecordFixture('holds',id??undefined)as unknown as Record<string,unknown>;
    else{const point=await state.point({kind:kind==='payroll-profile'?'profile':kind==='salary-component'?'component-detail':'wps',employeeId,...(kind==='salary-component'?{recordId:id}:{})});row=kind==='wps-profile'?point?.profile:point;}
-   if(!row)return{success:false,error:'The complete original payroll record could not be verified.'};
+   if(!row)return id===null&&['payroll-profile','wps-profile'].includes(kind)?{success:true,id:null,revision:null,values:{}}:{success:false,error:'The complete original payroll record could not be verified.'};
    const values=Object.fromEntries(PAYROLL_CHILD_COLUMNS[kind].split(',').map(key=>[key,row![key]])),parsed=payrollOpeningValues(kind).safeParse(values);
    if(!parsed.success)return{success:false,error:'The complete original payroll record could not be verified.'};
    return{success:true,id:id??null,revision:id?'4':null,values:id?parsed.data:{}};
@@ -200,7 +200,7 @@ it("detail failure never opens a partial component editor", async () => {
 });
 it("bounded salary totals coalesce between profile and revision editor and retain prior invalidation", async () => {
   const view = mount(); await screen.findAllByText(token("salary-revisions")); expect(state.point.mock.calls.filter(c => c[0].kind === "salary-totals")).toHaveLength(1);
-  fireEvent.click(screen.getByRole("button", {name: "Record Revision"})); await screen.findByRole("dialog", {name: "Record Salary Revision"}); expect((screen.getByLabelText("Current Basic (AED)") as HTMLInputElement).value).toBe("AED 1,000.00");
+  fireEvent.click(screen.getByRole("button", {name: "Record Revision"})); await screen.findByRole("dialog", {name: "Record Salary Revision"}); expect((screen.getByLabelText("Current Basic (profile currency)") as HTMLInputElement).value).toBe("1,000.00");
   expect(state.point.mock.calls.filter(c => c[0].kind === "salary-totals")).toHaveLength(1);
   await act(async () => {await view.client.invalidateQueries({queryKey: ["hr", "payroll", "gross-salary", 880301]});}); expect(state.point.mock.calls.filter(c => c[0].kind === "salary-totals")).toHaveLength(2);
 });
@@ -270,6 +270,12 @@ it("failed salary aggregate does not display a zero salary or absent salary prof
   state.point.mockImplementation(async (input: PointInput) => {if (input.kind === "salary-totals") throw new ReadError("Controlled aggregate error", 400); return input.kind === "profile" ? payrollProfileFixture : {profile: redactWpsProfile(payrollWpsFixture, true), readiness: {status: "ready", missingRequirements: []}};});
   mount(); await screen.findByText("Salary unavailable"); expect(screen.queryByText("No payroll profile configured yet.")).toBeNull(); expect(screen.queryByText("AED 0.00")).toBeNull();
 });
+it("new payroll profile setup does not depend on the aggregate that requires that profile", async () => {
+  state.point.mockImplementation(async(input:PointInput)=>{if(input.kind==='profile')return null;if(input.kind==='salary-totals')throw new ReadError('Profile not configured',400);return {profile:null,readiness:{status:'not_enrolled',missingRequirements:['WPS profile not configured']}};});
+  mount();const setup=await screen.findByRole('button',{name:'Setup Profile'});await waitFor(()=>expect(setup).toHaveProperty('disabled',false));fireEvent.click(setup);
+  const dialog=await screen.findByRole('dialog',{name:'Setup Salary Profile'});fireEvent.change(within(dialog).getByLabelText('Effective Date'),{target:{value:'2026-10-23'}});fireEvent.change(within(dialog).getByLabelText('Currency'),{target:{value:'USD'}});
+  fireEvent.click(within(dialog).getByRole('button',{name:'Save salary profile'}));await waitFor(()=>expect(state.mutations.createOrUpdateEmployeePayrollProfile).toHaveBeenCalledTimes(1));expect(state.mutations.createOrUpdateEmployeePayrollProfile.mock.calls[0][1]).toMatchObject({currency:'USD',effective_date:'2026-10-23'});expect(screen.queryByText('AED 0.00')).toBeNull();
+});
 it("active hold KPI remains complete when no filtered rows match", async () => {
   state.page.mockImplementation(async (input: PageInput) => ({rows: [], totalCount: 0, ...(input.kind === "holds" ? {activeCount: 1107} : {})}));
   mount(); await section("holds").findByText("1107 Active"); expect(section("holds").getByText("0 matching holds")).toBeTruthy(); expect(section("holds").getByText("No related records yet.")).toBeTruthy();
@@ -280,7 +286,7 @@ const mutationJourneys: MutationJourney[] = [
   {name: "payroll profile save", mutation: "createOrUpdateEmployeePayrollProfile", affected: ["salary", "wps"], button: "Edit Profile", dialog: "Edit Salary Profile"},
   {name: "component save", mutation: "updateEmployeeSalaryComponent", affected: ["salary", "wps"], button: "Edit record", section: "salary-components", dialog: "Edit Salary Component"},
   {name: "component archive", mutation: "archiveEmployeeSalaryComponent", affected: ["salary", "wps"], button: "Archive record", section: "salary-components", dialog:"Archive Salary Component",submit:"Archive salary component"},
-  {name: "applied salary revision", mutation: "createEmployeeSalaryRevision", affected: ["salary", "wps"], button: "Record Revision", dialog: "Record Salary Revision", submit: "Save salary revision"},
+  {name: "pending salary proposal (not an application)", mutation: "createEmployeeSalaryRevision", affected: [], button: "Record Revision", dialog: "Record Salary Revision", submit: "Save salary revision"},
   {name: "history-only salary revision", mutation: "createEmployeeSalaryRevision", affected: [], button: "Record Revision", dialog: "Record Salary Revision", submit: "Save salary revision", revisionHistoryOnly: true},
   {name: "WPS profile save", mutation: "createOrUpdateEmployeeWpsProfile", affected: ["wps"], button: "Edit WPS Profile", dialog: "Edit WPS / Bank Details"},
   {name: "hold placement", mutation: "placeEmployeePayrollHold", affected: ["salary", "wps"], button: "Place Hold", dialog: "Place Payroll Hold", submit: "Save payroll hold"},
@@ -308,7 +314,7 @@ it.each(mutationJourneys.flatMap(journey => [true, false].map(success => ({...jo
     if (journey.dialog) {
       const dialog = await screen.findByRole("dialog", {name: journey.dialog});
       if (journey.mutation === "createEmployeeSalaryRevision") {
-        fireEvent.change(within(dialog).getByLabelText("New Basic (AED)"), {target: {value: "1400"}});
+        fireEvent.change(within(dialog).getByLabelText("New Basic (profile currency)"), {target: {value: "1400"}});
         if (journey.revisionHistoryOnly) fireEvent.click(within(dialog).getByRole("switch"));
       }
       if (journey.mutation === "placeEmployeePayrollHold") fireEvent.change(within(dialog).getByLabelText("Hold Reason"), {target: {value: "Synthetic cache refresh check"}});

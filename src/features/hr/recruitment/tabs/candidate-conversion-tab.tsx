@@ -16,6 +16,9 @@ import type {AuthContext} from '@/lib/rbac/check';
 import {hasGlobalPermission} from '@/lib/rbac/scope';
 import {candidateConversionInputSchema,canCreateRecruitmentDestination} from '@/lib/hr/numbered-recruitment-contract';
 import {useNumberedRecruitmentSession} from '../use-numbered-recruitment-session';
+import{CandidateJoiningControls}from'../candidate-joining-controls';
+import{RecruitmentReceiptHistory}from'../recruitment-history';
+import{candidateRecordIdentity}from'@/lib/reads/hr-candidate-record-schema';
 import type { CandidateRow } from "@/server/actions/hr/recruitment";
 import { prepareCandidateEmployeeConversion } from "@/server/actions/hr/recruitment";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -43,6 +46,8 @@ type ConversionForm = {
   employee_status: string;
   conversion_notes: string;
   offer_id: number | null;
+  offer_revision:string;
+  offer_terms_version:string;
   requisition_id: number | null;
   emergency_contact_name:string;
   emergency_contact_mobile:string;
@@ -59,6 +64,8 @@ const EMPTY_FORM: ConversionForm = {
   employee_status: "active",
   conversion_notes: "",
   offer_id: null,
+  offer_revision:'',
+  offer_terms_version:'',
   requisition_id: null,
   emergency_contact_name:'',
   emergency_contact_mobile:'',
@@ -89,7 +96,7 @@ export function CandidateConversionTab({ candidate, authContext, canManage, canC
   const latestOffer = prepRes?.data?.latest_offer;
   // The disabled legacy link placeholder is not an active prerequisite read.
   const mutation = useCandidateChildReadAdmission({canManage: canManage && canCreateEmployee, mutationAdmitted,
-    prerequisitesMet: !alreadyConverted && !conversionResult, reads: [uiRead2], onRetryMutationAdmission});
+    prerequisitesMet: !alreadyConverted && !conversionResult && !!latestOffer, reads: [uiRead2], onRetryMutationAdmission});
 
   function openDialog() {
     if(session.pending?.kind==='conversion'){
@@ -101,6 +108,8 @@ export function CandidateConversionTab({ candidate, authContext, canManage, canC
     const newForm = { ...EMPTY_FORM };
     if (latestOffer) {
       newForm.offer_id = latestOffer.id;
+      newForm.offer_revision=latestOffer.offer_revision;
+      newForm.offer_terms_version=latestOffer.offer_terms_version;
       newForm.requisition_id = latestOffer.requisition_id ?? null;
       newForm.department_id = latestOffer.department_id ?? null;
       newForm.designation_id = latestOffer.designation_id ?? null;
@@ -157,6 +166,7 @@ export function CandidateConversionTab({ candidate, authContext, canManage, canC
       {session.pending&&<Button onClick={openDialog} disabled={isPending||session.blocked}>Recover Original Conversion</Button>}
       {prepRes?.success&&String(prepRes.data?.candidate.workspace_revision)!==String(candidate.workspace_revision)&&!session.pending&&<p role="alert">The candidate changed. Reopen its record before reviewing conversion.</p>}
       <div>
+        {!latestOffer&&!alreadyConverted&&<p role="status">Conversion is held until a current, independently approved offer has explicitly recorded candidate acceptance. No direct-hire exception is available.</p>}
         <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">Candidate Conversion</h3>
 
         {alreadyConverted ? (
@@ -182,7 +192,7 @@ export function CandidateConversionTab({ candidate, authContext, canManage, canC
                     </p>
                     <div className="mt-2 text-xs text-muted-foreground space-y-1">
                       <p>• Candidate: <strong>{candidate.full_name_en}</strong> ({candidate.candidate_code})</p>
-                      <p>• Status must be <strong>accepted</strong> or <strong>selected</strong> before conversion is recommended</p>
+                      <p>• A current independently approved and explicitly accepted offer version is required. Its agreed start date and employment fields must match this conversion.</p>
                       {latestOffer && (
                         <p>• Latest accepted offer found — data will be pre-filled from offer</p>
                       )}
@@ -224,6 +234,8 @@ export function CandidateConversionTab({ candidate, authContext, canManage, canC
         )}
       </div>
 
+      {canManage&&<CandidateJoiningControls candidate={candidate}authContext={authContext}admitted={mutationAdmitted&&!dialogOpen}/>}
+      {canManage&&<RecruitmentReceiptHistory candidate={candidate.id}identity={candidateRecordIdentity(authContext)}/>}
       <ERPChildDialogForm
         open={dialogOpen}
         onOpenChange={closeDialog}

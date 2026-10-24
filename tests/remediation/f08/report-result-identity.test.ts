@@ -1,16 +1,16 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 import type {AuthContext} from '@/lib/rbac/check';
-const m=vi.hoisted(()=>({code:'F08_ANALYTICAL',registryError:false,admissionError:false,completionError:false,zeroCompletion:false,ctx:null as unknown as AuthContext,fetch:vi.fn(),resolve:vi.fn(),fresh:vi.fn(),employee:vi.fn(),writes:[] as any[]}));
+const m=vi.hoisted(()=>({code:'F08_ANALYTICAL',registryError:false,admissionError:false,completionError:false,zeroCompletion:false,ctx:null as unknown as AuthContext,fetch:vi.fn(),resolve:vi.fn(),fresh:vi.fn(),employee:vi.fn(),writes:[] as Record<string,unknown>[]}));
 vi.mock('@/lib/rbac/check',async()=>({...await vi.importActual('@/lib/rbac/scope'),assertAccountActive:(ctx:AuthContext)=>{if(!ctx.isAccountActive)throw Error('Inactive');},getAuthContextForProfileId:m.fresh}));
 vi.mock('@/lib/report-center/branding-resolver',()=>({resolveReportBranding:m.resolve}));
 vi.mock('@/lib/report-center/report-fetchers',()=>({REPORT_FETCHERS:{F08_ANALYTICAL:{fetch:m.fetch},HR_F08_SCOPED:{fetch:m.fetch}}}));
-vi.mock('@/lib/report-center/scoped-read-client',()=>({createScopedReportReadClient:vi.fn()}));
+vi.mock('@/lib/report-center/scoped-read-client',()=>({createScopedReportReadClient:vi.fn(),revalidateScopedReportReadClient:vi.fn()}));
 vi.mock('@/lib/rbac/employee-access',()=>({getEmployeeAccess:m.employee}));
 vi.mock('@/lib/logger',()=>({logger:{error:vi.fn()}}));
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>({from:(table:string)=>{
- let write:any;const q={select:()=>q,eq:()=>q,is:()=>q,insert:(v:any)=>{write=v;m.writes.push(v);return q;},update:(v:any)=>{write=v;m.writes.push(v);return q;},
+ let write:Record<string,unknown>|undefined;const q={select:()=>q,eq:()=>q,is:()=>q,insert:(v:Record<string,unknown>)=>{write=v;m.writes.push(v);return q;},update:(v:Record<string,unknown>)=>{write=v;m.writes.push(v);return q;},
  maybeSingle:async()=>table==='erp_report_registry'?{error:m.registryError?{}:null,data:{id:1,report_code:m.code,required_permissions:['reports.run'],sensitive_profile:'normal',branding_strategy:'auto_by_owner_company'}}:{data:m.zeroCompletion?null:{id:7},error:m.completionError&&write?.run_status==='success'?{}:null},
- single:async()=>({data:{id:7},error:m.admissionError?{}:null}),then:(f:(v:any)=>unknown)=>Promise.resolve({error:null}).then(f)};return q;
+ single:async()=>({data:{id:7},error:m.admissionError?{}:null}),then:(f:(v:{error:null})=>unknown)=>Promise.resolve({error:null}).then(f)};return q;
 }})}));
 import {runReport} from '@/lib/report-center/report-runner';
 import {collectedCompanyIds,reportAuthorityIdentity} from '@/lib/report-center/result-identity';
@@ -35,4 +35,12 @@ it('never passes another company medical/payroll capabilities into a selected em
 });
 it('a selected employee outside current report permissions never reaches a fetcher',async()=>{
  m.code='HR_F08_SCOPED';m.employee.mockResolvedValue({allows:()=>false,scopedContext:{...m.ctx,permissionCodes:[]}});expect((await runReport({reportCode:m.code,requestedByUserId:11,outputFormat:'screen',filters:{employee_id:2}},m.ctx)).success).toBe(false);expect(m.fetch).not.toHaveBeenCalled();
+});
+it('rechecks live employee links after collection even when the role identity is unchanged',async()=>{
+ m.code='HR_F08_SCOPED';
+ m.employee.mockResolvedValueOnce({allows:()=>true,scopedContext:m.ctx}).mockResolvedValueOnce({allows:()=>false,scopedContext:{...m.ctx,permissionCodes:[]}});
+ const result=await runReport({reportCode:m.code,requestedByUserId:11,outputFormat:'screen',filters:{employee_id:2}},m.ctx);
+ expect(m.fetch).toHaveBeenCalledOnce();expect(m.employee).toHaveBeenCalledTimes(2);
+ expect(result).toMatchObject({success:false,error:expect.stringContaining('employee report access changed')});expect(result.data).toBeUndefined();
+ expect(m.writes.some(w=>w.run_status==='success')).toBe(false);
 });

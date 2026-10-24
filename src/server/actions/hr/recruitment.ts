@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import{offerValues}from'@/lib/hr/recruitment-lifecycle-contract';
 
 // ============================================================================
 // Shared result type
@@ -180,47 +181,10 @@ const interviewCompleteSchema = z.object({
   next_step: z.string().optional().nullable(),
 });
 
-const offerCreateSchema = z.object({
-  requisition_id: z.number().optional().nullable(),
-  offer_status: z.enum(["draft", "pending_approval", "approved", "sent", "accepted", "rejected", "withdrawn", "expired", "cancelled"]).default("draft"),
-  offer_date: z.string().optional().nullable(),
-  valid_until: z.string().optional().nullable(),
-  proposed_joining_date: z.string().optional().nullable(),
-  owner_company_id: z.number().optional().nullable(),
-  branch_id: z.number().optional().nullable(),
-  department_id: z.number().optional().nullable(),
-  designation_id: z.number().optional().nullable(),
-  employment_type_id: z.number().optional().nullable(),
-  basic_salary: z.number().min(0).optional().nullable(),
-  gross_salary: z.number().min(0).optional().nullable(),
-  currency: z.string().default("AED"),
-  offer_document_id: z.number().optional().nullable(),
-  notes: z.string().optional().nullable(),
-}).refine(
-  (d) => {
-    if (d.offer_date && d.valid_until) {
-      return new Date(d.valid_until) >= new Date(d.offer_date);
-    }
-    return true;
-  },
-  { message: "Valid until must be on or after offer date", path: ["valid_until"] }
-);
-
-const offerUpdateSchema = z.object({
-  offer_title: z.string().min(1).optional(),
-  owner_company_id: z.number().optional().nullable(),
-  basic_salary: z.number().min(0).optional().nullable(),
-  gross_salary: z.number().min(0).optional().nullable(),
-  housing_allowance: z.number().min(0).optional().nullable(),
-  transport_allowance: z.number().min(0).optional().nullable(),
-  other_allowances: z.number().min(0).optional().nullable(),
-  proposed_start_date: z.string().optional().nullable(),
-  offer_expiry_date: z.string().optional().nullable(),
-  probation_period_months: z.number().int().min(0).max(24).optional().nullable(),
-  currency_code: z.string().length(3).optional().nullable(),
-  employment_type_id: z.number().optional().nullable(),
-  notes: z.string().optional().nullable(),
-});
+// Legacy callers fail closed at the native command guard; their parser still
+// uses the same real field dictionary as the supported versioned UI.
+const offerCreateSchema = offerValues;
+const offerUpdateSchema = z.object(offerValues.shape).partial().strict();
 
 const offerStatusSchema = z.object({
   offer_status: z.enum(["draft", "pending_approval", "approved", "sent", "accepted", "rejected", "withdrawn", "expired", "cancelled"]),
@@ -309,6 +273,7 @@ export type CandidateRow = {
   created_at: string;
   updated_at: string;
   workspace_revision: number;
+  joining_status:'not_started'|'in_progress'|'completed'|'cancelled'|'no_show';
   created_by: number | null;
   deleted_at: string | null;
   // Joins

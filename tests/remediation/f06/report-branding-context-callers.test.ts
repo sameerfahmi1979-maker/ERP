@@ -12,7 +12,7 @@ vi.mock('@/lib/rbac/check', async () => ({
 }));
 vi.mock('@/lib/report-center/branding-resolver', () => ({ resolveReportBranding: m.resolve }));
 vi.mock('@/lib/report-center/report-fetchers', () => ({ REPORT_FETCHERS: { F06_SYNTHETIC: { fetch: m.fetch } } }));
-vi.mock('@/lib/report-center/scoped-read-client', () => ({ createScopedReportReadClient: m.scoped }));
+vi.mock('@/lib/report-center/scoped-read-client', () => ({ createScopedReportReadClient: m.scoped,revalidateScopedReportReadClient:vi.fn() }));
 vi.mock('@/server/actions/audit', () => ({ logAudit: m.audit }));
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ from(table: string) {
   m.tables.push(table);

@@ -4,6 +4,8 @@ import {getAuthContext, hasPermission, hasPermissionInScope, hasGlobalPermission
 import {createClient} from "@/lib/supabase/server";
 import {collectCompletePages} from "@/lib/reads/complete-pages";
 import {hrDashboardCriteriaSchema, hrDashboardSchema, type HrDashboard, type HrDashboardMetric, type HrDashboardAttentionItem} from "@/lib/reads/hr-dashboard-schema";
+import{readPayrollReadinessFacts}from'./payroll-readiness-facts';import{payrollToday}from'@/lib/hr/payroll/salary-as-of';
+import {hrDashboardCalendar, HR_OPEN_ACTION_STATES, HR_OPEN_EOS_STATES, HR_ACTIVE_CANDIDATE_STATES, HR_PENDING_ONBOARDING_STATES} from '@/lib/hr/dashboard-metrics';
 
 const id = z.number().int().positive().refine(Number.isSafeInteger);
 const employeeRow = z.object({id, employee_status: z.string(), joining_date: z.string().nullable(), employee_category_id: id.nullable(),
@@ -56,11 +58,8 @@ export async function readHrDashboard(input: unknown, context?: AuthContext): Pr
     // Dynamic projection boundary: all returned rows/counts are checked by the
     // schemas below. This avoids pretending unrelated projections share a DTO.
     const select = (table: string, columns: string, head = false): Selected => db.from(table).select(columns, {count: "exact", head}) as unknown as Selected;
-    const now = new Date(), today = now.toISOString().slice(0, 10);
-    // Retain the original dashboard's server-local calendar boundaries.
-    const future = (days: number) => {const date = new Date(now); date.setDate(date.getDate() + days); return date.toISOString().slice(0, 10);};
-    const weekDay = (offset: number) => {const date = new Date(now); date.setDate(date.getDate() - date.getDay() + offset); return date.toISOString().slice(0, 10);};
-    const month = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10), soon = future(filters.expiryThresholdDays);
+    const now = new Date(), calendar = hrDashboardCalendar(now, filters.expiryThresholdDays);
+    const {today, month, soon, future} = calendar;
     const can = (code: string) => hasPermission(ctx, `hr.${code}.view`);
     const employeeQuery = (filtered: boolean) => {
       let query = db.from("employees").select("id,employee_status,joining_date,employee_category_id,owner_company_id,branch_id,employee_code,full_name_en", {count: "exact"}).is("deleted_at", null);
@@ -105,7 +104,7 @@ export async function readHrDashboard(input: unknown, context?: AuthContext): Pr
     };
     const m = (permission: string, key: string, table: string, modify?: (query: Selected) => Selected, scope?: "all" | "active" | "global", softDelete?: boolean) => metric(can(permission), () => tally(key, table, modify, scope, softDelete));
     const resolve = async <T extends Record<string, Promise<HrDashboardMetric> | HrDashboardMetric>>(values: T) => Object.fromEntries(await Promise.all(Object.entries(values).map(async ([k, v]) => [k, await v]))) as {[K in keyof T]: HrDashboardMetric};
-    const blockFilter = (q: Selected) => q.eq("block_status", "active").or(`effective_to.is.null,effective_to.gte.${today}`);
+    const blockFilter = (q: Selected) => q.eq("block_status", "active").lte('effective_from', today).or(`effective_to.is.null,effective_to.gte.${today}`);
     const blockedEmployees = async () => {
       const ids = new Set<number>();
       for (const batch of activeIds) {
@@ -115,17 +114,16 @@ export async function readHrDashboard(input: unknown, context?: AuthContext): Pr
       return ids.size;
     };
     const payrollCoverage = can("payroll") && covers("payroll"), bankCoverage = payrollCoverage && can("banking") && covers("banking");
-    const bankMetric = (key: string, query?: (q: Selected) => Selected) => !can("payroll") || !can("banking") ? Promise.resolve(restricted) : !bankCoverage ? Promise.resolve(unknownScope) : metric(true, () => tally(key, "employee_wps_profiles", query, "active"));
-    const wpsTotal = bankMetric("wps-total"), wpsReady = bankMetric("wps-ready", q => q.not("iban", "is", null).neq("iban", "").not("bank_id", "is", null));
-    const subtract = async (a: Promise<HrDashboardMetric>, b: Promise<HrDashboardMetric>) => {
-      const [left, right] = await Promise.all([a, b]);
-      return left.status !== "ready" ? left : right.status !== "ready" ? right : left.value < right.value ? failed : ready(left.value - right.value);
-    };
+    const readinessFacts=bankCoverage?Promise.all(activeIds.map(ids=>readPayrollReadinessFacts(db,ids,payrollToday(now)))).then(rows=>rows.flat()):null;
+    // Attach a rejection handler at admission; downstream metrics retain failure.
+    void readinessFacts?.catch(()=>undefined);
+    const bankMetric=(predicate:(row:Awaited<ReturnType<typeof readPayrollReadinessFacts>>[number])=>boolean)=>!can('payroll')||!can('banking')?Promise.resolve(restricted):!bankCoverage?Promise.resolve(unknownScope):metric(true,async()=>(await readinessFacts!).filter(predicate).length);
+    const wpsTotal=bankMetric(row=>row.has_wps_profile),wpsReady=bankMetric(row=>row.readiness_status==='ready');
     const profileCount = m("payroll", "profiles", "employee_payroll_profiles", undefined, "active");
     const [compliance, time, payroll, operations, actions, recruitment, complianceIssues, summaryBlocks, headcount, attention] = await Promise.all([
       resolve({expired_documents: m("compliance", "expired-docs", "employee_identity_documents", q => q.lt("expiry_date", today)),
         expiring_soon: m("compliance", "soon-docs", "employee_identity_documents", q => q.gte("expiry_date", today).lte("expiry_date", soon)),
-        missing_unverified: m("compliance", "unverified", "employee_identity_documents", q => q.eq("verification_status", "pending")),
+        missing_unverified: m("compliance", "unverified", "employee_identity_documents", q => q.in("verification_status", ["unverified", "failed"])),
         active_access_cards: m("compliance", "cards-active", "employee_access_cards", q => q.eq("status", "active")),
         expired_access_cards: m("compliance", "cards-expired", "employee_access_cards", q => q.lt("expiry_date", today)),
         training_expiring_soon: m("compliance", "training-soon", "employee_training_certificates", q => q.gte("expiry_date", today).lte("expiry_date", soon)),
@@ -140,31 +138,31 @@ export async function readHrDashboard(input: unknown, context?: AuthContext): Pr
         overtime_pending_approval: m("attendance", "overtime-pending", "employee_overtime_records", q => q.eq("approval_status", "pending"), "active")}),
       resolve({payroll_profiles_configured: profileCount,
         missing_payroll_profile: !can("payroll") ? restricted : !payrollCoverage ? unknownScope : profileCount.then(p => p.status === "ready" ? ready(Math.max(0, active.length - p.value)) : p),
-        wps_ready: wpsReady, wps_incomplete: subtract(wpsTotal, wpsReady),
+        wps_ready: wpsReady, wps_incomplete: bankMetric(row=>row.has_wps_profile&&row.readiness_status!=='ready'&&row.readiness_status!=='exempt'),
         on_payroll_hold: m("payroll", "holds", "employee_payroll_holds", q => q.eq("is_active", true), "active"),
         // Legacy metric counts missing IBAN only, despite the old label mentioning bank.
-        missing_iban_bank: bankMetric("missing-iban", q => q.or('iban.is.null,iban.eq.""'))}),
-      resolve({current_assignments: m("assignments", "assignments", "employee_assignments", q => q.eq("assignment_status", "active"), "active"),
+        missing_iban_bank: bankMetric(row=>row.missing_iban)}),
+      resolve({current_assignments: m("assignments", "assignments", "employee_assignments", q => q.eq("assignment_status", "active").lte('effective_from', today).or(`effective_to.is.null,effective_to.gte.${today}`), "active"),
         ready_employees: m("assignments", "readiness-ready", "employee_site_readiness", q => q.eq("readiness_status", "ready"), "active"),
         not_ready_employees: m("assignments", "readiness-other", "employee_site_readiness", q => q.neq("readiness_status", "ready"), "active"),
         blocked_employees: metric(can("assignments"), blockedEmployees), active_blocks: m("assignments", "active-blocks", "employee_operational_blocks", blockFilter, "active"),
         assets_issued: m("assignments", "assets", "employee_assets", q => q.eq("status", "issued"), "active"),
         ppe_due_replacement: m("assignments", "ppe", "employee_ppe_issues", q => q.lt("expiry_or_replacement_date", today).is("returned_date", null), "active"),
         accommodation_active: m("assignments", "accommodation", "employee_accommodation_records", q => q.eq("status", "active"), "active")}),
-      resolve({open_pro_processes: m("actions", "pro", "employee_pro_processes", q => q.in("process_status", ["pending", "in_progress"])),
-        open_hr_actions: m("actions", "hr-actions", "employee_hr_actions", q => q.in("action_status", ["pending", "in_progress"])),
+      resolve({open_pro_processes: m("actions", "pro", "employee_pro_processes", q => q.in("process_status", ["draft", "requested", "in_progress", "waiting_for_document", "submitted", "approved"])),
+        open_hr_actions: m("actions", "hr-actions", "employee_hr_actions", q => q.in("action_status", HR_OPEN_ACTION_STATES)),
         pending_approvals: m("actions", "approvals", "employee_approval_requests", q => q.eq("request_status", "pending")),
         open_disciplinary: can("actions") ? m("confidential", "disciplinary", "employee_disciplinary_records", q => q.in("status", ["open", "under_review"])) : restricted,
-        open_eos_cases: can("actions") ? m("eos", "eos", "employee_eos_cases", q => q.in("case_status", ["initiated", "in_progress", "pending_clearance"])) : restricted,
+        open_eos_cases: can("actions") ? m("eos", "eos", "employee_eos_cases", q => q.in("case_status", HR_OPEN_EOS_STATES)) : restricted,
         // Retain legacy all-permitted clearance scope; it was never employee-filtered.
         pending_clearance_items: can("actions") ? m("eos", "clearance", "employee_clearance_items", q => q.eq("item_status", "pending"), "global") : restricted}),
       resolve({open_requisitions: m("recruitment", "req-open", "hr_job_requisitions", q => q.eq("requisition_status", "open"), "global"),
-        active_candidates: m("recruitment", "candidates", "hr_candidates", q => q.in("candidate_status", ["active", "in_review", "interview", "offer"]), "global"),
-        interviews_this_week: m("recruitment", "interviews", "hr_interviews", q => q.gte("interview_datetime", weekDay(0)).lte("interview_datetime", weekDay(6) + "T23:59:59").eq("interview_status", "scheduled"), "global"),
+        active_candidates: m("recruitment", "candidates", "hr_candidates", q => q.in("candidate_status", HR_ACTIVE_CANDIDATE_STATES), "global"),
+        interviews_this_week: m("recruitment", "interviews", "hr_interviews", q => q.gte("interview_datetime", calendar.weekStartInstant).lt("interview_datetime", calendar.nextWeekInstant).eq("interview_status", "scheduled"), "global"),
         offers_pending: m("recruitment", "offers-pending", "hr_offers", q => q.eq("offer_status", "sent"), "global"),
         offers_accepted: m("recruitment", "offers-accepted", "hr_offers", q => q.eq("offer_status", "accepted"), "global"),
-        onboarding_tasks_pending: m("recruitment", "onboarding", "hr_onboarding_tasks", q => q.eq("task_status", "pending"), "global"),
-        converted_this_month: m("recruitment", "converted", "employee_recruitment_links", q => q.gte("created_at", month + "T00:00:00").lte("created_at", today + "T23:59:59"), "global", false)}),
+        onboarding_tasks_pending: m("recruitment", "onboarding", "hr_onboarding_tasks", q => q.in("task_status", HR_PENDING_ONBOARDING_STATES), "global"),
+        converted_this_month: m("recruitment", "converted", "employee_recruitment_links", q => q.gte("created_at", calendar.monthStartInstant).lt("created_at", calendar.tomorrowInstant), "global", false)}),
       m("compliance", "compliance-issues", "employee_identity_documents", q => q.lte("expiry_date", soon)),
       m("assignments", "summary-blocks", "employee_operational_blocks", blockFilter),
       (async (): Promise<HrDashboard["headcount"]> => {
@@ -222,15 +220,18 @@ export async function readHrDashboard(input: unknown, context?: AuthContext): Pr
           source("actions", can("actions"), 10, z.object({id, employee_id: id, approval_type: z.string(), created_at: z.string()}).strip(),
             ids => subjectQuery("employee_approval_requests", "id,employee_id,approval_type,created_at", ids).eq("request_status", "pending"), "created_at",
             r => ({id: `action-approval-${r.id}`, severity: "warning", category: "actions", title: `Pending approval: ${r.approval_type}`, ...person(r.employee_id), linkHref: "/admin/hr/actions/approvals", linkLabel: "View Approvals"})),
+          source('actions',can('actions'),10,z.object({id,employee_id:id,action_title:z.string(),action_status:z.string(),due_date:z.string().nullable(),assigned_to:id.nullable()}).strip(),
+            ids=>subjectQuery('employee_hr_actions','id,employee_id,action_title,action_status,due_date,assigned_to',ids).in('action_status',HR_OPEN_ACTION_STATES).or(`due_date.lt.${today},assigned_to.is.null`),'due_date',
+            r=>({id:`action-work-${r.id}`,severity:'warning',category:'actions',title:r.action_title,...person(r.employee_id),description:`${person(r.employee_id).description} · ${r.assigned_to===null?'Unassigned — progress held':`Assigned HR profile #${r.assigned_to}`} · ${r.action_status.replaceAll('_',' ')}${r.due_date===null?' · Due date missing':` · Due ${r.due_date}`}`,dueDate:r.due_date??undefined,linkHref:`/admin/hr/employees/record/${r.employee_id}`,linkLabel:'View Employee — HR Actions tab'})),
           source("operations", can("assignments"), 10, z.object({id, employee_id: id, effective_from: z.string()}).strip(),
             ids => blockFilter(subjectQuery("employee_operational_blocks", "id,employee_id,effective_from", ids)), "effective_from",
             r => ({id: `ops-block-${r.id}`, severity: "critical", category: "operations", title: "Operational block active", ...person(r.employee_id), dueDate: r.effective_from, linkHref: "/admin/hr/operations/blocks", linkLabel: "View Blocks"})),
           source("recruitment", can("recruitment"), 10, z.object({id, candidate_id: id, valid_until: z.string(), candidate: candidateLabel}).strip(),
             () => select("hr_offers", "id,candidate_id,valid_until,candidate:hr_candidates!hr_offers_candidate_id_fkey(full_name_en,candidate_code)").eq("offer_status", "sent").gte("valid_until", today).lte("valid_until", future(14)).is("deleted_at", null), "valid_until",
             r => ({id: `recruit-offer-${r.id}`, severity: "warning", category: "recruitment", title: "Offer expiring soon", description: r.candidate ? `${r.candidate.full_name_en} (${r.candidate.candidate_code ?? "—"})` : "Candidate unavailable", candidateId: r.candidate_id, candidateCode: r.candidate?.candidate_code ?? undefined, dueDate: r.valid_until, linkHref: `/admin/hr/recruitment/candidates/record/${r.candidate_id}`, linkLabel: "View Candidate"}), false),
-          source("recruitment", can("recruitment"), 10, z.object({id, candidate_id: id.nullable(), task_title: z.string(), due_date: z.string(), candidate: candidateLabel}).strip(),
-            () => select("hr_onboarding_tasks", "id,candidate_id,task_title,due_date,candidate:hr_candidates!hr_onboarding_tasks_candidate_id_fkey(full_name_en,candidate_code)").eq("task_status", "pending").lt("due_date", today).is("deleted_at", null), "due_date",
-            r => ({id: `recruit-onboard-${r.id}`, severity: "warning", category: "recruitment", title: `Overdue onboarding: ${r.task_title}`, description: r.candidate ? `${r.candidate.full_name_en} (${r.candidate.candidate_code ?? "—"})` : r.candidate_id === null ? "Onboarding task" : "Candidate unavailable", candidateId: r.candidate_id ?? undefined, candidateCode: r.candidate?.candidate_code ?? undefined, dueDate: r.due_date, linkHref: r.candidate_id === null ? "/admin/hr/recruitment/onboarding" : `/admin/hr/recruitment/candidates/record/${r.candidate_id}`, linkLabel: r.candidate_id === null ? "View Onboarding" : "View Candidate"}), false),
+          source("recruitment", can("recruitment"), 10, z.object({id, candidate_id: id.nullable(), task_title: z.string(), due_date: z.string(), assigned_to:id.nullable().optional(),task_status:z.string().optional(), candidate: candidateLabel}).strip(),
+            () => select("hr_onboarding_tasks", "id,candidate_id,task_title,due_date,assigned_to,task_status,candidate:hr_candidates!hr_onboarding_tasks_candidate_id_fkey(full_name_en,candidate_code)").in("task_status", HR_PENDING_ONBOARDING_STATES).lt("due_date", today).is("deleted_at", null), "due_date",
+            r => ({id: `recruit-onboard-${r.id}`, severity: "warning", category: "recruitment", title: `${r.task_status==='blocked'?'Blocked':'Overdue'} onboarding: ${r.task_title}`, description: `${r.candidate ? `${r.candidate.full_name_en} (${r.candidate.candidate_code ?? "—"})` : r.candidate_id === null ? "Onboarding task" : "Candidate unavailable"} · ${r.assigned_to==null?'Unassigned — joining held':`Assigned HR profile #${r.assigned_to}`}`, candidateId: r.candidate_id ?? undefined, candidateCode: r.candidate?.candidate_code ?? undefined, dueDate: r.due_date, linkHref: r.candidate_id === null ? "/admin/hr/recruitment/onboarding" : `/admin/hr/recruitment/candidates/record/${r.candidate_id}`, linkLabel: r.candidate_id === null ? "View Onboarding" : "View Candidate"}), false),
         ]);
         const priority = {critical: 0, warning: 1, info: 2};
         items.sort((a, b) => priority[a.severity] - priority[b.severity] || (a.dueDate && b.dueDate ? a.dueDate.localeCompare(b.dueDate) : 0) || a.id.localeCompare(b.id));

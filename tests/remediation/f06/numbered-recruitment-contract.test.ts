@@ -1,7 +1,7 @@
 import {expect,it} from 'vitest';
 import fs from 'node:fs';
 import {candidateConversionInputSchema,candidateConversionContractSchema,requisitionCreationSchema,requisitionCreationContractSchema} from '@/lib/hr/numbered-recruitment-contract';
-const valid={owner_company_id:1,joining_date:'2026-10-04',emergency_contact_name:'Contact',emergency_contact_mobile:'000'};
+const valid={owner_company_id:1,joining_date:'2026-10-04',offer_id:61,offer_revision:'4',offer_terms_version:'1',requisition_id:62,emergency_contact_name:'Contact',emergency_contact_mobile:'000'};
 const op='5e6a4fad-ad32-4c77-9774-78411fbdb954';
 it.each([0,-1,1.2,Number.MAX_SAFE_INTEGER+1,'1'])('rejects malformed IDs %s',id=>{expect(candidateConversionInputSchema.safeParse({...valid,owner_company_id:id}).success).toBe(false);});
 it.each(['2026-02-30','bad','2026-2-01',''])('rejects malformed date %s',joining_date=>{expect(candidateConversionInputSchema.safeParse({...valid,joining_date}).success).toBe(false);});

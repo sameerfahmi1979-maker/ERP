@@ -31,6 +31,17 @@ function mount(auth = context, seed?: HrDashboard) {
 }
 afterEach(() => {cleanup(); clients.splice(0).forEach(client => client.clear()); state.read.mockReset();});
 function row(label: string) {return screen.getByText(label).parentElement!;}
+it('saved site checks are labelled historical and never mixed with blocked people into a current deployability percentage',async()=>{
+  const data=dashboard();data.operations.ready_employees={status:'ready',value:2};data.operations.not_ready_employees={status:'ready',value:1};data.operations.blocked_employees={status:'ready',value:9};
+  state.read.mockResolvedValue(reply(data));mount();await screen.findByText('CURRENT_CATEGORY');
+  expect(screen.getByText('Recorded site checks')).toBeTruthy();expect(screen.getByText('67%')).toBeTruthy();
+  expect(screen.queryByText('Deployable right now')).toBeNull();expect(screen.getByText(/Saved results, not current clearance/)).toBeTruthy();
+  expect(within(row('Saved Ready checks')).getByText('2')).toBeTruthy();expect(within(row('People with active blocks')).getByText('9')).toBeTruthy();
+});
+it('active blocks without any saved checks never produce an invented saved-readiness percentage',async()=>{
+  const data=dashboard();data.operations.blocked_employees={status:'ready',value:9};state.read.mockResolvedValue(reply(data));mount();await screen.findByText('CURRENT_CATEGORY');
+  expect(screen.getByText('No saved readiness checks')).toBeTruthy();const ring=screen.getByText('Recorded site checks').parentElement!.parentElement!;expect(within(ring).queryByText('0%')).toBeNull();expect(screen.queryByText('Deployable right now')).toBeNull();
+});
 it("all real dashboard cards and category widget share one transport and fresh cache on workspace return", async () => {
   state.read.mockResolvedValue(reply()); const view = mount(); await screen.findByText("CURRENT_CATEGORY");
   expect(state.read).toHaveBeenCalledTimes(1); expect(state.read.mock.calls[0].slice(0, 2)).toEqual(["hr-dashboard", {expiryThresholdDays: 60}]);
@@ -44,7 +55,7 @@ it.each(["failed", "restricted", "unavailable"] as const)("%s metrics show dashe
   const data = dashboard(); const metric = status === "unavailable" ? {status, reason: "scope" as const} : {status};
   data.payroll.wps_ready = metric; data.operations.ready_employees = metric; data.summary.compliance_issues = metric;
   state.read.mockResolvedValue(reply(data)); mount(); await screen.findByText("CURRENT_CATEGORY");
-  expect(within(row("WPS ready")).getByText("—")).toBeTruthy(); expect(within(row("Ready employees")).getByText("—")).toBeTruthy();
+  expect(within(row("WPS ready")).getByText("—")).toBeTruthy(); expect(within(row("Saved Ready checks")).getByText("—")).toBeTruthy();
   expect(screen.getByText("Readiness could not be verified")).toBeTruthy(); expect(within(row("WPS ready")).queryByText("0")).toBeNull();
   if (status === "failed") expect(screen.getByRole("status").textContent).toContain("Some dashboard counts could not be loaded");
 });
@@ -93,7 +104,7 @@ it("ordinary 503 suppresses previous totals, retries once, and supports a succes
   state.read.mockResolvedValueOnce(reply()).mockRejectedValue(new ReadError("Temporarily unavailable", 503)); const view = mount(); await screen.findByText("CURRENT_CATEGORY");
   await act(async () => {await view.client.invalidateQueries({queryKey: ["hr", "dashboard"]});});
   await screen.findByRole("alert"); expect(screen.queryByText("CURRENT_CATEGORY")).toBeNull(); expect(state.read).toHaveBeenCalledTimes(3);
-  expect(screen.queryByText("No assignment data yet")).toBeNull(); expect(screen.queryByText("No active employees")).toBeNull(); expect(screen.queryByText("0 shown")).toBeNull();
+  expect(screen.queryByText("No saved readiness checks")).toBeNull(); expect(screen.queryByText("No active employees")).toBeNull(); expect(screen.queryByText("0 shown")).toBeNull();
   state.read.mockResolvedValue(reply(dashboard("RECOVERED_CATEGORY"))); fireEvent.click(screen.getByRole("button", {name: "Retry loading"})); await screen.findByText("RECOVERED_CATEGORY");
 });
 it.each(["missing-metric", "wrong-filter", "private-field", "bad-total"])("%s DTO cannot become an accepted dashboard", async mode => {

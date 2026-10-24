@@ -10,6 +10,7 @@ import {syntheticAuthContext} from '../../performance/fixtures/auth-context';
 import type {AuthContext} from '@/lib/rbac/check';
 const m=vi.hoisted(()=>({mutate:vi.fn(),reconcile:vi.fn(),read:vi.fn(),close:vi.fn(),saved:vi.fn(),dispatch:vi.fn(),denied:vi.fn(),store:null as ReturnType<typeof createWorkspaceDraftStore>|null,submit:undefined as undefined|(()=>Promise<void>)}));
 vi.mock('@/server/actions/hr/child-mutation',()=>({mutateHrChild:m.mutate,reconcileHrChild:m.reconcile,readProProcessOpening:m.read}));
+vi.mock('@/server/actions/hr/workforce-editor',()=>({readWorkforceEditorChoices:async()=>({success:true,rows:[],hasMore:false})}));
 vi.mock('@/components/workspace/workspace-draft-provider',()=>({useWorkspaceDraftStoreContext:()=>m.store}));
 vi.mock('@/hooks/use-workspace-form-owner',()=>({useWorkspaceFormOwner:()=>({id:'pro-owner'})}));
 vi.mock('@/hooks/use-workspace-tab-dirty',()=>({useWorkspaceTabDirty:vi.fn()}));
@@ -21,7 +22,7 @@ vi.mock('@/components/erp/combobox',()=>({ERPCombobox:({name,ariaLabel,value,opt
 vi.mock('@/components/erp/erp-child-dialog-form',()=>({ERPChildDialogForm:({children,recoveryActions,title,onSubmit,submitLabel,submitDisabled,isSubmitting,onOpenChange,closeDisabled}:{children:React.ReactNode;recoveryActions?:React.ReactNode;title:string;onSubmit?:()=>Promise<void>;submitLabel?:string;submitDisabled?:boolean;isSubmitting?:boolean;onOpenChange:(b:boolean)=>void;closeDisabled?:boolean})=>{if(onSubmit)m.submit=onSubmit;return <section aria-label={title}>{children}{recoveryActions}{onSubmit&&<button disabled={submitDisabled||isSubmitting} onClick={()=>void onSubmit()}>{submitLabel}</button>}<button disabled={closeDisabled} onClick={()=>onOpenChange(false)}>Cancel process</button></section>;}}));
 import {ProProcessEditor} from '@/features/hr/employees/pro-process-editor';
 const auth=syntheticAuthContext(['hr.actions.view','hr.actions.manage'],{id:7,auth_user_id:'pro-a'}),actor='7:pro-a';
-const values={process_title:'Original title',process_status:'draft',priority:'normal',request_date:'2026-10-19',target_date:null,notes:'PRIVATE_ORIGINAL'};
+const values={process_title:'Original title',process_status:'draft',priority:'normal',request_date:'2026-10-19',target_date:null,notes:'PRIVATE_ORIGINAL',assigned_to:null,f12_source_kind:null,f12_source_id:null,f12_replacement_id:null};
 const reply=(request:unknown,contract:unknown,replayed=false)=>{const r=request as {id:number|null;revision:string|null},c=contract as {operationId:string};return{success:true,data:{kind:'pro-process',employee_id:7,id:r.id??51,operation_id:c.operationId,revision:String(Number(r.revision??0)+1),replayed}};};
 const clients:QueryClient[]=[];
 beforeEach(()=>{vi.resetAllMocks();m.store=createWorkspaceDraftStore();m.dispatch.mockReturnValue(true);m.read.mockResolvedValue({success:true,revision:'4',values});m.mutate.mockImplementation(async(r,c)=>reply(r,c));});

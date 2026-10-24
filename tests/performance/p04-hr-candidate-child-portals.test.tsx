@@ -24,6 +24,11 @@ const state = vi.hoisted(() => ({read: vi.fn(), salary: vi.fn(), requisitions: v
   onboarding: vi.fn(), prep: vi.fn(), mutate: vi.fn(), dispatch: vi.fn(), error: vi.fn(), success: vi.fn(), warning: vi.fn(),
   dialogSubmit: null as (()=>void|Promise<unknown>) | null,
   store: null as ReturnType<typeof createWorkspaceDraftStore> | null, pathname: '/admin/hr/recruitment/candidates/record/880100'}));
+// These regressions retain their original admission/privacy assertions. The
+// native action/HTTP protocol has separate F12 tests; this adapter only keeps
+// the earlier controlled action spy's argument shape for those assertions.
+vi.mock('@/server/actions/hr/recruitment-lifecycle',()=>({mutateRecruitmentLifecycle:async(r:{kind:string;candidateId:number;id:number|null;values:unknown},operation:string)=>{const result=await state.mutate(r.id??r.candidateId,r.values);return result.success?{...result,data:{kind:r.kind,id:r.id??880299,candidate_id:r.candidateId,employee_id:null,operation_id:operation,revision:'1',replayed:false}}:result;},reconcileRecruitmentLifecycle:vi.fn(),readRecruitmentAssignees:async()=>({success:true,rows:[],hasMore:false}),readRecruitmentTaskChoices:async()=>({success:true,rows:[],hasMore:false}),prepareJoiningTask:async(candidate:number)=>({success:true,data:{candidate_id:candidate,employee_id:null}})}));
+vi.mock('@/features/hr/recruitment/recruitment-assignee',()=>({RecruitmentAssignee:({label,value,onChange}:{label:string;value:number|null;onChange:(id:number)=>void})=><input aria-label={label}value={value??''}onChange={e=>onChange(Number(e.target.value))}/>}));
 vi.mock('@/lib/reads/client', async original => ({...await original<typeof import('@/lib/reads/client')>(), readJson:
   (route: string, input: {kind: CandidateChildKind; operation?: string}, signal?: AbortSignal) => {
     if (route !== 'hr-candidate-children') return state.read(route, input, signal);
@@ -55,7 +60,7 @@ const context = {profile: {id: 880106, auth_user_id: 'synthetic-candidate-record
     {roleId: 880107, roleCode: 'numbering_only', ownerCompanyId: null, branchId: null, permissionCodes: numberingPermissions},
   ]} as unknown as AuthContext;
 const candidate = {full_name_ar:null,gender:null,nationality_id:null,date_of_birth:null,mobile_number:null,source:null,agency_name:null,referred_by_employee_id:null,current_employer:null,current_position:null,notice_period_days:null,rating:null,availability_date:null,created_at:'2026-10-04T00:00:00Z',updated_at:'2026-10-04T00:00:00Z',created_by:null,deleted_at:null,requisition:null,nationality:null,referred_by:null,id: 880100, workspace_revision: 17, candidate_code: 'SYNTHETIC-880100', full_name_en: 'Synthetic retained candidate', candidate_status: 'new', pipeline_stage: 'new',
-  requisition_id: 880109, expected_salary: 54321, email: 'synthetic@example.invalid', current_location: 'Synthetic private location', notes: 'SYNTHETIC PRIVATE PROFILE NOTES'} as CandidateRow;
+  joining_status:'not_started',requisition_id: 880109, expected_salary: 54321, email: 'synthetic@example.invalid', current_location: 'Synthetic private location', notes: 'SYNTHETIC PRIVATE PROFILE NOTES'} as CandidateRow;
 const salaryKey = ['hr','recruitment','salary-access',880109];
 const recordKey = candidateRecordKey(880100,candidateRecordIdentity(context));
 const access = {canView:true,canManage:true,canManageCandidate:true,companyId:880101,branchId:null};
@@ -78,7 +83,7 @@ beforeEach(() => {
   state.interviews.mockResolvedValue({success: true, data: []});
   state.offers.mockResolvedValue({success: true, data: []});
   state.onboarding.mockResolvedValue({success: true, data: []});
-  state.prep.mockResolvedValue({success: true, data: {candidate, latest_offer: null, already_converted: false}});
+  state.prep.mockResolvedValue({success: true, data: {candidate, latest_offer:acceptedOffer, already_converted: false}});
 });
 afterEach(() => {cleanup(); clients.splice(0).forEach(client => client.clear()); state.store = null;});
 
@@ -102,6 +107,7 @@ const scenarios=[
  {kind:'onboarding',section:'Onboarding',open:'Add Task',dialog:'Add Onboarding Task',submit:'Add',field:'Notes',list:'onboarding',key:queryKeys.recruitment.candidateOnboarding(candidate.id)},
  {kind:'conversion',section:'Conversion',open:'Convert to Employee',dialog:'Convert to Employee',submit:'Confirm Conversion',field:'Conversion Notes',list:'prep',key:['recruitment','conversion-prep',candidate.id]},
 ] as const;
+const acceptedOffer={id:880160,offer_revision:'4',offer_terms_version:'1',requisition_id:880109,owner_company_id:880101,branch_id:null,department_id:null,designation_id:null,employment_type_id:null,proposed_joining_date:'2026-10-04'};
 type Scenario=typeof scenarios[number];
 vi.mock('@/components/erp/erp-child-dialog-form',async original=>{
  const actual=await original<typeof import('@/components/erp/erp-child-dialog-form')>();
@@ -115,6 +121,9 @@ async function openChild(s:Scenario){
  section(s.section);const button=screen.getByRole('button',{name:s.open});
  await waitFor(()=>expect((button as HTMLButtonElement).disabled).toBe(false));
  fireEvent.click(button);const dialog=await screen.findByRole('dialog',{name:s.dialog});
+ if(s.kind!=='conversion')fireEvent.change(within(dialog).getByLabelText('Decision / change reason'),{target:{value:'Synthetic reviewed action'}});
+ if(s.kind==='interviews'){fireEvent.change(within(dialog).getByLabelText('Interviewer'),{target:{value:'880106'}});fireEvent.change(within(dialog).getByLabelText('Date & Time'),{target:{value:'2026-10-04T10:00'}});}
+ if(s.kind==='onboarding'){fireEvent.change(within(dialog).getByLabelText('Authorized assignee'),{target:{value:'880106'}});fireEvent.change(within(dialog).getByLabelText('Completion criteria'),{target:{value:'Synthetic explicit verification'}});fireEvent.change(within(dialog).getByLabelText('Due Date'),{target:{value:'2026-10-21'}});}
  if(s.kind==='onboarding')fireEvent.change(within(dialog).getByLabelText('Task Title'),{target:{value:'Synthetic required task'}});
  if(s.kind==='conversion'){
   fireEvent.change(within(dialog).getByLabelText('Owner Company ID'),{target:{value:'880101'}});
@@ -139,13 +148,13 @@ async function failRead(view:ReturnType<typeof mount>,s:Scenario,failure:'record
 }
 
 function healthy(s:Scenario){
- return s.kind==='conversion'?{success:true,data:{candidate,latest_offer:null,already_converted:false}}:{success:true,data:[]};
+ return s.kind==='conversion'?{success:true,data:{candidate,latest_offer:acceptedOffer,already_converted:false}}:{success:true,data:[]};
 }
 function expectedArgs(s:Scenario){
- if(s.kind==='interviews')return [candidate.id,{interview_round:'first',interview_datetime:null,interview_location:null,interview_status:'scheduled',result:null,score:null,feedback:'SYNTHETIC CHILD NOTES',next_step:null}];
- if(s.kind==='offers')return [candidate.id,{offer_status:'draft',offer_date:null,valid_until:null,proposed_joining_date:null,basic_salary:null,gross_salary:null,currency:'AED',notes:'SYNTHETIC CHILD NOTES'}];
- if(s.kind==='onboarding')return [{task_title:'Synthetic required task',task_category:null,task_status:'pending',due_date:null,notes:'SYNTHETIC CHILD NOTES',candidate_id:candidate.id}];
- return [candidate.id,{owner_company_id:880101,branch_id:null,department_id:null,designation_id:null,employment_type_id:null,employee_category_id:null,joining_date:'2026-10-04',employee_status:'active',conversion_notes:'SYNTHETIC CHILD NOTES',offer_id:null,requisition_id:880109,emergency_contact_name:'Synthetic emergency contact',emergency_contact_mobile:'000'},
+ if(s.kind==='interviews')return [candidate.id,{interview_round:'first',interview_datetime:'2026-10-04T10:00:00+04:00',interviewer_id:880106,interview_location:null,result:null,score:null,feedback:'SYNTHETIC CHILD NOTES',next_step:null}];
+ if(s.kind==='offers')return [candidate.id,{offer_date:null,valid_until:null,proposed_joining_date:null,basic_salary:null,gross_salary:null,housing_allowance:null,transport_allowance:null,other_allowances:null,currency:'AED',notes:'SYNTHETIC CHILD NOTES'}];
+ if(s.kind==='onboarding')return [candidate.id,{task_title:'Synthetic required task',task_category:null,due_date:'2026-10-21',notes:'SYNTHETIC CHILD NOTES',candidate_id:candidate.id,employee_id:null,assigned_to:880106,completion_criteria:'Synthetic explicit verification',is_required:true,evidence_required:false,dms_document_id:null,prerequisite_task_id:null}];
+ return [candidate.id,{owner_company_id:880101,branch_id:null,department_id:null,designation_id:null,employment_type_id:null,employee_category_id:null,joining_date:'2026-10-04',employee_status:'active',conversion_notes:'SYNTHETIC CHILD NOTES',offer_id:acceptedOffer.id,offer_revision:'4',offer_terms_version:'1',requisition_id:880109,emergency_contact_name:'Synthetic emergency contact',emergency_contact_mobile:'000'},
   {operationId:expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i),revision:'17'}];
 }
 function savedResult(s:Scenario){
@@ -249,8 +258,14 @@ it.each(scenarios.flatMap(s=>['success','rejection','unknown'].map(outcome=>({s,
   expect(state.success).not.toHaveBeenCalled();expect(state.error).not.toHaveBeenCalled();
   expect(screen.queryByText(/Employee created:/)).toBeNull();
   await act(async()=>{await retainedSubmit();});expect(state.mutate).toHaveBeenCalledTimes(1);
- }else if(outcome==='success')expect(state.success).toHaveBeenCalledTimes(1);
- else{expect(state.success).not.toHaveBeenCalled();expect(state.error).toHaveBeenCalledWith(outcome==='unknown'?expect.stringContaining('The operation could not be confirmed.'): 'Synthetic actual rejection');}
+ }else{
+  // F12 aligns child completion with F11's strict retirement: a late reply
+  // cannot toast, resurrect fields or replay. Reconcile the original receipt.
+  expect(state.success).not.toHaveBeenCalled();expect(state.error).not.toHaveBeenCalled();
+  const marker=state.store!.getViewState(`f12-hiring:v1:${context.profile!.id}:${candidate.id}:-:${s.kind==='interviews'?'interview':s.kind==='offers'?'offer':'task'}`)!;
+  expect(JSON.parse(marker)).toMatchObject({pending:null,retired:{candidate:candidate.id}});expect(marker).not.toContain('SYNTHETIC CHILD NOTES');
+  await act(async()=>{await retainedSubmit();});expect(state.mutate).toHaveBeenCalledTimes(1);
+ }
 });
 it('Conversion cannot proceed when a refreshed prerequisite says already converted',async()=>{
  const s=scenarios[3],view=mount();await ready();const dialog=await openChild(s),retained=state.dialogSubmit!;

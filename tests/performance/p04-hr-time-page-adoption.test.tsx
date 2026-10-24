@@ -5,6 +5,7 @@ import {afterEach, expect, it, vi} from "vitest";
 import {act, cleanup, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
 import {WorkspaceUiMemoryProvider} from "@/hooks/use-persistent-ui-state";
+import {WorkspaceProvider} from "@/components/workspace/workspace-provider";
 import type {AuthContext} from "@/lib/rbac/check";
 import {HR_TIME_KINDS, hrTimeReadIdentity, type HrTimeAttendanceRow, type HrTimeShiftRow, type HrTimeLeaveRow, type HrTimeKind, type HrTimeCriteria} from "@/lib/reads/hr-time-schema";
 import {HrAttendancePageClient} from "@/features/hr/time/attendance/hr-attendance-page-client";
@@ -18,7 +19,11 @@ const state = vi.hoisted(() => ({commands:vi.fn(),store:null as ReturnType<typeo
 vi.mock("@/lib/reads/client", async original => ({...await original<typeof import("@/lib/reads/client")>(), readJson: state.read}));
 vi.mock("@/server/actions/hr/time", () => ({approveAttendanceDailySummary: state.approveAttendance, approveLeaveRequest: state.approveLeave, rejectLeaveRequest: state.rejectLeave}));
 vi.mock("@/hooks/realtime/use-realtime-sync", () => ({useRealtimeSync: vi.fn()}));
-vi.mock("next/navigation", () => ({usePathname: () => "/admin/hr/time"}));
+vi.mock("next/navigation", () => ({usePathname: () => "/admin/hr/time/attendance", useSearchParams: () => new URLSearchParams(), useRouter: () => ({push: vi.fn(), replace: vi.fn()})}));
+// History is the subject here; leave the real daily-entry workbench mounted but
+// do not select a company or invoke its separate roster/lookup transport.
+// Daily-entry actions and draft recovery have their own F12 component coverage.
+vi.mock("@/components/erp/organizations/owner-company-select", () => ({OwnerCompanySelect: () => <span>Select a company for daily entry</span>}));
 
 vi.mock('@/components/workspace/workspace-draft-provider',()=>({useWorkspaceDraftStoreContext:()=>state.store}));
 vi.mock('@/server/actions/hr/child-mutation',()=>({
@@ -41,8 +46,9 @@ function page(kind: HrTimeKind, options: {context?: AuthContext; seedIdentity?: 
 const clients: QueryClient[] = [];
 function mount(children: React.ReactNode) {
  state.store=createWorkspaceDraftStore(); const client = new QueryClient({defaultOptions: {queries: {retry: false, retryDelay: 0}}}); clients.push(client);
- const wrap = (node: React.ReactNode) => <QueryClientProvider client={client}><WorkspaceUiMemoryProvider>{node}</WorkspaceUiMemoryProvider></QueryClientProvider>;
- const view = render(wrap(children)); return {...view, client, replace: (node: React.ReactNode) => view.rerender(wrap(node))};
+ const wrap = (node: React.ReactNode) => <QueryClientProvider client={client}><WorkspaceProvider principalId="synthetic-time-history"><WorkspaceUiMemoryProvider>{node}</WorkspaceUiMemoryProvider></WorkspaceProvider></QueryClientProvider>;
+ const openHistory = () => {const button = screen.queryByRole("button", {name: "Attendance history"}); if (button) fireEvent.click(button);};
+ const view = render(wrap(children)); openHistory(); return {...view, client, replace: (node: React.ReactNode) => {view.rerender(wrap(node)); openHistory();}};
 }
 function readyRow(kind: HrTimeKind, id: number) {return kind === "attendance" ? screen.findByText(`EMP-${id}`) : kind === "shifts" ? screen.findAllByText(`Synthetic shift ${id}`) : screen.findAllByText(`Synthetic leave employee ${id}`);}
 function absentRow(kind: HrTimeKind, id: number) {return screen.queryAllByText(kind === "attendance" ? `EMP-${id}` : kind === "shifts" ? `Synthetic shift ${id}` : `Synthetic leave employee ${id}`);}
@@ -67,7 +73,7 @@ it("leave matching SSR pending page is immediately usable without a redundant in
 });
 it("attendance changed exact date loads matching rows, not the initial page", async () => {
  state.read.mockImplementation((_resource, p) => Promise.resolve(envelope(p, 51, 1)));
- mount(page("attendance", {count: 1})); fireEvent.change(screen.getByLabelText("Date"), {target: {value: "2026-02-03"}});
+ mount(page("attendance", {count: 1})); fireEvent.change(screen.getByLabelText("Date", {selector: 'input[aria-label="Date"]'}), {target: {value: "2026-02-03"}});
  await readyRow("attendance", 51); expect(lastParams()).toMatchObject({kind: "attendance", page: 1, pageSize: 25, date: "2026-02-03"}); expect(absentRow("attendance", 1)).toHaveLength(0);
 });
 it("leave clearing pending criteria fetches all statuses, never reseeds pending rows", async () => {

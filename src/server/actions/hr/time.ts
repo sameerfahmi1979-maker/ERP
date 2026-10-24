@@ -574,9 +574,11 @@ export async function getEmployeeTimeSummary(
   employeeId: number
 ): Promise<ActionResult<EmployeeTimeSummary>> {
   const supabase = await createClient();
-  const today = new Date();
-  const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
-  const currentYear = today.getFullYear();
+  const ctx=await getAuthContext();
+  if(!ctx.profile||!ctx.isAccountActive||ctx.profile.must_change_password||!canViewLeave(ctx)||!hasPermission(ctx,'hr.attendance.view')||!timeEmployeeId.safeParse(employeeId).success||!await getEmployeeCtxRls(employeeId))return{success:false,error:'Current employee and time/leave access required.'};
+  const today = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const monthStart = today.slice(0,7)+'-01';
+  const currentYear = Number(today.slice(0,4));
 
   const [shiftRes, attRes, balRes, leaveRes, otRes] = await Promise.all([
     supabase
@@ -584,7 +586,8 @@ export async function getEmployeeTimeSummary(
       .select("*, work_calendar:work_calendars!employee_shift_assignments_work_calendar_id_fkey(calendar_name), work_shift:work_shifts!employee_shift_assignments_work_shift_id_fkey(shift_name)")
       .eq("employee_id", employeeId)
       .is("deleted_at", null)
-      .is("effective_to", null)
+      .lte("effective_from", today)
+      .or(`effective_to.is.null,effective_to.gte.${today}`)
       .order("effective_from", { ascending: false })
       .limit(1)
       .maybeSingle(),
@@ -593,7 +596,8 @@ export async function getEmployeeTimeSummary(
       .from("employee_attendance_daily_summary")
       .select("id", { count: "exact" })
       .eq("employee_id", employeeId)
-      .gte("attendance_date", monthStart),
+      .gte("attendance_date", monthStart)
+      .lte("attendance_date", today),
 
     supabase
       .from("employee_leave_balances")
@@ -614,9 +618,11 @@ export async function getEmployeeTimeSummary(
       .eq("employee_id", employeeId)
       .eq("approval_status", "approved")
       .is("deleted_at", null)
-      .gte("overtime_date", monthStart),
+      .gte("overtime_date", monthStart)
+      .lte("overtime_date", today),
   ]);
 
+  if([shiftRes,attRes,balRes,leaveRes,otRes].some(result=>result.error))return{success:false,error:'Current time dependencies are unavailable; no zero balances or counts are assumed.'};
   const overtimeHours = (otRes.data ?? []).reduce((sum, r) => sum + Number(r.hours ?? 0), 0);
 
   return {

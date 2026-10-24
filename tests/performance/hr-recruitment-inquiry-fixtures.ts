@@ -1,6 +1,6 @@
 import type {RecruitmentInquiryKind} from "@/lib/reads/hr-recruitment-inquiries-schema";
 export function recruitmentInquiryFixture(kind: RecruitmentInquiryKind, id = 1) {
-  const base = {id, department_id:null,designation_id:null,requisition_id:null,interviewer_id:null,assigned_to:null, created_at: "2026-01-01T00:00:00Z", notes: "SYNTHETIC_PRIVATE_NOTES", arbitrary_secret: "OMIT_UNRELATED"};
+  const base = {id, workspace_revision:1, department_id:null,designation_id:null,requisition_id:null,interviewer_id:null,assigned_to:null, created_at: "2026-01-01T00:00:00Z", notes: "SYNTHETIC_PRIVATE_NOTES", arbitrary_secret: "OMIT_UNRELATED"};
   const candidate = {id: 100, candidate_code: "PERF-CAND-100", full_name_en: "Synthetic candidate " + id, full_name_ar: "مرشح اختباري"};
   if (kind === "requisitions") return {...base, requisition_code: "PERF-REQ-" + id, requisition_title: "Synthetic requisition " + id, vacancies_count: 1, requisition_status: "open", priority: "normal", target_start_date: "2026-02-01", department: null, designation: null, job_description: "Complete original wording", requirements: "Complete requirements"};
   if (kind === "candidates") return {...base, candidate_code: "PERF-CAND-" + id, full_name_en: "Synthetic candidate " + id, full_name_ar: "مرشح اختباري", candidate_status: "new", pipeline_stage: "new", mobile_number: null, email: null, source: "direct", requisition: null};

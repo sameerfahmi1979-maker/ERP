@@ -5,6 +5,7 @@ import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import {act, cleanup, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
 import {WorkspaceUiMemoryProvider} from "@/hooks/use-persistent-ui-state";
+import {WorkspaceDraftProvider} from "@/components/workspace/workspace-draft-provider";
 import {RequisitionsPageClient} from "@/features/hr/recruitment/requisitions-page-client";
 import {CandidateOverviewTab} from "@/features/hr/recruitment/tabs/candidate-overview-tab";
 import {ReadError} from "@/lib/reads/client";
@@ -39,6 +40,7 @@ vi.mock("@/server/actions/hr/recruitment", () => ({
   createJobRequisition: state.mutate, updateJobRequisition: state.mutate, archiveJobRequisition: state.mutate,
 }));
 vi.mock("sonner", () => ({toast: {success: state.success, error: state.error}}));
+vi.mock("@/server/actions/hr/recruitment-lifecycle", () => ({mutateRecruitmentLifecycle: state.mutate}));
 vi.mock("@/hooks/realtime/use-realtime-sync", () => ({useRealtimeSync: () => {}}));
 vi.mock("next/navigation", () => ({usePathname: () => "/admin/hr/recruitment"}));
 
@@ -52,7 +54,7 @@ const counts = (id = 100) => ({success: true, data: {candidateId: id, interview_
 const clients: QueryClient[] = [];
 function mount(node: React.ReactNode) {
   const client = new QueryClient({defaultOptions: {queries: {retry: false, retryDelay: 0, staleTime: Infinity}}}); clients.push(client);
-  const wrap = (child: React.ReactNode) => <QueryClientProvider client={client}><WorkspaceUiMemoryProvider>{child}</WorkspaceUiMemoryProvider></QueryClientProvider>;
+  const wrap = (child: React.ReactNode) => <QueryClientProvider client={client}><WorkspaceDraftProvider><WorkspaceUiMemoryProvider>{child}</WorkspaceUiMemoryProvider></WorkspaceDraftProvider></QueryClientProvider>;
   const view = render(wrap(node)); return {...view, client, replace: (next: React.ReactNode) => view.rerender(wrap(next))};
 }
 function requisitions() {return <RequisitionsPageClient authContext={context} initialReadIdentity={recruitmentReadIdentity(context)} initialUpdatedAt={Date.now()}
@@ -102,15 +104,18 @@ it("ordinary 503 pauses the requisition portal, preserves its draft, and a rejec
   const dialog = await screen.findByRole("dialog"); fireEvent.change(within(dialog).getByLabelText("Job Description"), {target: {value: "Retained synthetic draft"}});
   state.read.mockRejectedValue(new ReadError("Temporary failure", 503));
   await act(async () => {await view.client.invalidateQueries({queryKey: inquiryPrefix});});
-  expect(screen.queryByRole("dialog")).toBeNull();
+  // F12 retains the visible draft and pauses submission during an outage.
+  await screen.findByText(/Your fields are retained; saving is paused/);
+  expect(within(screen.getByRole("dialog")).getByRole("button", {name: /^Save/})).toHaveProperty("disabled", true);
   expect(state.mutate).not.toHaveBeenCalled();
   state.read.mockResolvedValue({success: true, data: {kind: "requisitions", page: 1, pageSize: 25, totalCount: 1, rows: [recruitmentInquiryRowSchemas.requisitions.parse(fixture("requisitions"))]}});
   await act(async () => {await view.client.invalidateQueries({queryKey: inquiryPrefix});});
   const restoredDialog = await screen.findByRole("dialog");
   expect((within(restoredDialog).getByLabelText("Job Description") as HTMLTextAreaElement).value).toBe("Retained synthetic draft");
   state.mutate.mockResolvedValue({success: false, error: "Synthetic validation failure"});
+  fireEvent.change(within(restoredDialog).getByLabelText("Decision / change reason"), {target: {value: "Synthetic wording correction"}});
   fireEvent.click(within(restoredDialog).getByRole("button", {name: /^Save/})); await waitFor(() => expect(state.mutate).toHaveBeenCalledTimes(1));
-  expect(state.mutate.mock.calls[0][1]).toMatchObject({job_description: "Retained synthetic draft", requirements: "Complete requirements"});
+  expect(state.mutate).toHaveBeenCalledWith(expect.objectContaining({kind: "requisition", id: 1, revision: "1", action: "update", reason: "Synthetic wording correction", values: expect.objectContaining({job_description: "Retained synthetic draft", requirements: "Complete requirements"})}), expect.any(String));
   expect((within(restoredDialog).getByLabelText("Job Description") as HTMLTextAreaElement).value).toBe("Retained synthetic draft");
 });
 

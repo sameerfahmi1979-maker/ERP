@@ -32,6 +32,9 @@ export type WpsReadinessInput = {
   hasActivePayrollHold: boolean;
   hasSalaryComponents: boolean;
   grossSalary: number;
+  /** Current profile context, when supplied by the dated source reader. */
+  payrollStatus?: string;
+  employmentEligible?: boolean;
 };
 
 export function checkWpsReadiness(input: WpsReadinessInput): WpsReadinessResult {
@@ -66,9 +69,13 @@ export function checkWpsReadiness(input: WpsReadinessInput): WpsReadinessResult 
   }
 
   const missing: string[] = [];
+  if (input.employmentEligible === false) missing.push("Employment is not currently eligible");
+  if (input.payrollStatus !== undefined && input.payrollStatus !== "active") missing.push("Payroll profile is not active");
+  if (wpsProfile.wps_status !== "active") missing.push("WPS status is not recognized as active");
 
   // Check bank/exchange house
   const method = wpsProfile.salary_payment_method;
+  if (!["bank_transfer", "exchange_house", "cheque"].includes(method)) missing.push("Payment method is not recognized");
   if (method === "bank_transfer") {
     if (!wpsProfile.bank_id) missing.push("Bank not selected");
     if (!wpsProfile.iban || wpsProfile.iban.trim() === "") missing.push("IBAN not provided");
@@ -87,7 +94,9 @@ export function checkWpsReadiness(input: WpsReadinessInput): WpsReadinessResult 
   if (!hasSalaryComponents) {
     missing.push("No salary components configured");
   }
-  if (grossSalary <= 0) {
+  if (!Number.isFinite(grossSalary)) {
+    missing.push("Salary is unavailable");
+  } else if (grossSalary <= 0) {
     missing.push("Gross salary is zero");
   }
 

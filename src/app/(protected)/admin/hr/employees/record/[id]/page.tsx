@@ -6,13 +6,14 @@ import { EmployeeWorkspaceForm } from "@/features/hr/employees/employee-workspac
 import Link from "next/link";
 import {NotificationArrival} from '@/features/notifications/notification-open';
 import {readNotificationTaskContext} from '@/server/notification-task-context';
+import {employeeRecordSection} from '@/lib/hr/employee-navigation';
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 interface EmployeeRecordPageProps {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ mode?: string; f10_open?:string;task?:string;task_id?:string }>;
+  searchParams: Promise<{ mode?: string; f10_open?:string;task?:string;task_id?:string;section?:string|string[];tab?:string|string[] }>;
 }
 
 export default async function EmployeeRecordPage({
@@ -20,7 +21,7 @@ export default async function EmployeeRecordPage({
   searchParams,
 }: EmployeeRecordPageProps) {
   const { id: idStr } = await params;
-  const { mode: modeParam,f10_open,task,task_id } = await searchParams;
+  const { mode: modeParam,f10_open,task,task_id,section,tab } = await searchParams;
 
   const id = Number(idStr);
   if (!Number.isSafeInteger(id) || id <= 0) {
@@ -69,6 +70,7 @@ export default async function EmployeeRecordPage({
       {task===undefined?<NotificationArrival token={f10_open} path={`/admin/hr/employees/record/${id}`}/>:!taskContext&&<p role="alert">The notified task is unavailable, changed or no longer permitted. Its alert has not been marked read.</p>}
       <EmployeeWorkspaceForm
         employee={result.data}
+        initialSection={employeeRecordSection(section??tab)}
         mode={mode}
         authContext={access.scopedContext}
         notificationTask={taskContext??undefined}

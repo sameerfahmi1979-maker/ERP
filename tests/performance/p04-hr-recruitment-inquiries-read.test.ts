@@ -80,7 +80,7 @@ it("requisition detail retains all editor wording and independently masked label
   expect(result.data).toMatchObject({job_description: "Complete original wording", requirements: "Complete requirements", notes: "SYNTHETIC_PRIVATE_NOTES", department: null, designation: null});
   expect(state.calls).toContainEqual(["eq", "id", 1]); expect(JSON.stringify(result)).not.toContain("OMIT_UNRELATED");
 });
-it.each([null, {id: 1}, {...fixture("requisitions"), id: 2}])("unavailable/mismatched detail is rejected", async data => {
+it.each([null, {id: 1}, {...fixture("requisitions"), id: 2}, {...fixture("requisitions"), workspace_revision: undefined}])("unavailable/mismatched/unversioned detail is rejected", async data => {
   state.result = {data, error: null}; expect((await readRecruitmentRequisitionDetail({recordId: 1})).success).toBe(false);
 });
 it("external reads stay private, correlated, bounded and opaque on failure", async () => {

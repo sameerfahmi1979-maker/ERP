@@ -6,6 +6,8 @@ import type {AuthContext} from '@/lib/rbac/check';
 import {hasHrReadCapability,hrReadIdentity} from '@/lib/reads/hr-read-identity';
 import {useReadLifetime}from '@/hooks/use-read-lifetime';
 import {getEmployeeEmploymentHistory} from '@/server/actions/hr/employees';
+import {employmentFieldLabel} from '@/lib/hr/employee-foundation';
+import {EmployeeDateReview}from './employee-date-review';
 
 export function EmployeeEmploymentHistory({employeeId,authContext}:{employeeId:number;authContext:AuthContext}){
  const identity=hrReadIdentity(authContext),client=useQueryClient(),lifetime=useReadLifetime(`${identity}:${employeeId}`);
@@ -21,10 +23,11 @@ export function EmployeeEmploymentHistory({employeeId,authContext}:{employeeId:n
  if(!allowed)return <p role="alert">Employment history is unavailable with your current access.</p>;
  if(!lifetime.enabled)return null;
  return <section className="space-y-3"><h3 className="font-semibold">Employment history</h3>
+  <EmployeeDateReview employeeId={employeeId} authContext={authContext}/>
   <p className="text-sm text-muted-foreground">History begins with changes recorded by this release. Earlier employment history has not been reconstructed or guessed. Reference numbers identify the exact stored assignments.</p>
   {read.isError?<div role="alert">History could not be loaded; this is not an empty history. <Button type="button" variant="outline" onClick={()=>{if(lifetime.active)void read.refetch();}}>Retry</Button></div>:read.isPending?<p role="status">Loading history…</p>:<>
   <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Effective</th><th className="p-2">Change</th><th className="p-2">Reason</th><th className="p-2">Recorded</th></tr></thead><tbody>
-  {read.data.pages.flatMap(page=>page.rows).map(row=><tr key={row.id} className="border-b align-top"><td className="p-2 whitespace-nowrap">{row.effective_date}</td><td className="p-2">{row.old_values===null?'Initial recorded employment facts':Object.keys(row.new_values).filter(key=>JSON.stringify(row.old_values?.[key])!==JSON.stringify(row.new_values[key])).map(key=><p key={key}>{key.replaceAll('_',' ')}: {String(row.old_values?.[key]??'—')} → {String(row.new_values[key]??'—')}</p>)}</td><td className="p-2 whitespace-pre-wrap">{row.reason}</td><td className="p-2">{row.created_at}<br/>Revision {row.revision}</td></tr>)}
+  {read.data.pages.flatMap(page=>page.rows).map(row=><tr key={row.id} className="border-b align-top"><td className="p-2 whitespace-nowrap">{row.effective_date}</td><td className="p-2">{row.old_values===null?'Initial recorded employment facts':Object.keys(row.new_values).filter(key=>JSON.stringify(row.old_values?.[key])!==JSON.stringify(row.new_values[key])).map(key=><p key={key}>{employmentFieldLabel(key)}: {String(row.old_values?.[key]??'—')} → {String(row.new_values[key]??'—')}</p>)}</td><td className="p-2 whitespace-pre-wrap">{row.reason}</td><td className="p-2">{row.created_at}<br/>Revision {row.revision}</td></tr>)}
   </tbody></table></div>
   {read.data.pages[0].rows.length===0&&<p>No employment changes recorded by this release.</p>}
   {read.hasNextPage&&<Button type="button" variant="outline" disabled={read.isFetchingNextPage} onClick={()=>{if(lifetime.active)void read.fetchNextPage();}}>Load earlier changes</Button>}

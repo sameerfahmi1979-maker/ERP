@@ -202,9 +202,9 @@ export function CandidateProfileTab({ form, setForm, mode, canManage, canManageS
             <ERPCombobox name="candidate_status" ariaLabel="Candidate Status"
               value={form.candidate_status || null}
               onValueChange={(v) => set("candidate_status", String(v ?? "new"))}
-              options={STATUS_OPTIONS}
+              options={STATUS_OPTIONS.filter(option=>option.value!=='hired'||form.candidate_status==='hired')}
               placeholder="Select status"
-              disabled={isView}
+              disabled={isView||mode!=='add'}
             />
           </div>
           <div className="col-span-12 md:col-span-6">
@@ -212,9 +212,9 @@ export function CandidateProfileTab({ form, setForm, mode, canManage, canManageS
             <ERPCombobox name="pipeline_stage" ariaLabel="Pipeline Stage"
               value={form.pipeline_stage || null}
               onValueChange={(v) => set("pipeline_stage", String(v ?? "new"))}
-              options={PIPELINE_OPTIONS}
+              options={PIPELINE_OPTIONS.filter(option=>option.value!=='hired'||form.pipeline_stage==='hired')}
               placeholder="Select stage"
-              disabled={isView}
+              disabled={isView||mode!=='add'}
             />
           </div>
         </div>

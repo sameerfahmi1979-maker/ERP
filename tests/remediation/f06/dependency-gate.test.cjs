@@ -87,7 +87,7 @@ test('reviewed bytes pass and hash drift fails', () => {
   assert.doesNotThrow(() => verifyHash(bytes, digest, 'test'));
   assert.throws(() => verifyHash(Buffer.from('drift'), digest, 'test'), /mismatch/);
 });
-const proof = () => ({ runId: 'current-run', target: 'node_modules/braces', node: 'v22.23.2', testSha256: REVIEWED.testSha256, goldenSha256: REVIEWED.goldenSha256, status: 0, tests: 66, passed: 66, failed: 0 });
+const proof = () => ({ runId: 'current-run', target: 'node_modules/braces', node: 'v22.23.4', testSha256: REVIEWED.testSha256, goldenSha256: REVIEWED.goldenSha256, status: 0, tests: 66, passed: 66, failed: 0 });
 const expected = { runId: 'current-run', target: 'node_modules/braces' };
 test('current complete security proof passes', () => assert.doesNotThrow(() => validateProof(proof(), expected)));
 for (const [field, replacement] of [['runId', 'stale-run'], ['target', 'wrong-copy'], ['node', 'v26.0.0'], ['testSha256', 'drift'], ['goldenSha256', 'drift'], ['status', 1], ['tests', 65], ['passed', 65], ['failed', 1]]) {

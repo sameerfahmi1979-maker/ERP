@@ -138,21 +138,20 @@ it.each(["self", "team"])("lets the existing %s read hint request authoritative 
   expect(state.mutate).not.toHaveBeenCalled();
 });
 
-it("a retained create callback cannot dispatch into a closed and reopened daily dialog", async () => {
+it("new actual-time entry uses a read-only handoff, never a retained legacy create callback", async () => {
   mount(); await screen.findByText("Synthetic shift");
   const add = within(section("Attendance")).getByRole("button", {name: "Daily Summary"});
   await waitFor(() => expect((add as HTMLButtonElement).disabled).toBe(false)); fireEvent.click(add);
-  let dialog = await screen.findByRole("dialog", {name: "Add Daily Attendance"});
-  fireEvent.change(within(dialog).getByLabelText("Notes"), {target: {value: "RETIRED_OLD_CREATE_DRAFT"}});
-  const oldSubmit = state.submits.get("Add Daily Attendance")!;
+  let dialog = await screen.findByRole("dialog", {name: "Enter actual attendance"});
+  expect(within(dialog).getByRole('link',{name:'Open central actual-time entry'}).getAttribute('href')).toBe('/admin/hr/time/attendance?entry_employee=7');
+  expect(state.submits.get('Enter actual attendance')).toBeUndefined();
+  expect(within(dialog).queryByLabelText('Notes')).toBeNull();
   fireEvent.click(within(dialog).getByRole("button", {name: "Cancel"}));
-  fireEvent.click(await screen.findByRole("button", {name: "Discard changes"}));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  fireEvent.click(add); dialog = await screen.findByRole("dialog", {name: "Add Daily Attendance"});
-  fireEvent.change(within(dialog).getByLabelText("Notes"), {target: {value: "NEW_CREATE_DRAFT"}});
-  await act(async () => {await oldSubmit();});
+  fireEvent.click(add); dialog = await screen.findByRole("dialog", {name: "Enter actual attendance"});
+  expect(state.submits.get('Enter actual attendance')).toBeUndefined();
   expect(state.mutate).not.toHaveBeenCalled();
-  expect((within(dialog).getByLabelText("Notes") as HTMLInputElement).value).toBe("NEW_CREATE_DRAFT");
+  expect(within(dialog).getByRole('link',{name:'Open central actual-time entry'})).toBeTruthy();
 });
 
 it("an already-dispatched daily save keeps the actual guarded single-dispatch behavior", async () => {

@@ -1,5 +1,6 @@
 "use client";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import {EMPLOYEE_QUALITY_FILTERS,type EmployeeQualityFilter}from '@/lib/hr/employee-foundation';
 
 import { useCallback, useEffect, useMemo, useState} from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -65,6 +66,7 @@ const DEFAULT_EMP_COL_WIDTHS: Record<EmpColKey, number> = {
 const EMP_COLUMNS: ListColumn[] = Object.entries(DEFAULT_EMP_COL_WIDTHS).map(([id, width]) => ({ id, width, label: ({code:"Employee code",name:"Full name",nationality:"Nationality",department:"Department",designation:"Designation",status:"Status",company:"Company"} as Record<string,string>)[id], visible: id !== "nationality", required: id === "code" || id === "name" }));
 
 type EmployeeFilters = {
+  quality: EmployeeQualityFilter | null;
   status: string | null;
   companyId: number | null;
   departmentId: number | null;
@@ -78,12 +80,14 @@ type Props = {
   initialTotal: number;
   initialUpdatedAt: number;
   initialReadIdentity: ServerPageSeed<EmployeeListRow>["identity"];
+  initialStatus?: string;
   authContext: AuthContext;
   documentWizardEnabled?: boolean;
 };
 
 function parseFilters(raw: Record<string, unknown>): EmployeeFilters {
   return {
+    quality:EMPLOYEE_QUALITY_FILTERS.some(option=>option.value===raw.quality)?raw.quality as EmployeeQualityFilter:null,
     status: typeof raw.status === "string" ? raw.status : null,
     companyId: typeof raw.companyId === "number" ? raw.companyId : null,
     departmentId: typeof raw.departmentId === "number" ? raw.departmentId : null,
@@ -96,7 +100,7 @@ function statusFilterLabel(s: string): string {
   return s.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
-export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, initialReadIdentity, authContext, documentWizardEnabled = false }: Props) {
+export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, initialReadIdentity, initialStatus, authContext, documentWizardEnabled = false }: Props) {
   const { openTab } = useWorkspace();
 
   const {
@@ -109,7 +113,8 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
   } = useWorkspaceTableState({
     key: "employees-table",
     scope: "route",
-    identifier: "/admin/hr/employees",
+    identifier: initialStatus?`/admin/hr/employees?status=${encodeURIComponent(initialStatus)}`:"/admin/hr/employees",
+    initialFilters: initialStatus?{status:initialStatus}:{},
     initialPagination: { pageIndex: 0, pageSize: 25 },
     initialColumnVisibility: { nationality: false },
   });
@@ -119,6 +124,7 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       rawFilters.status,
+      rawFilters.quality,
       rawFilters.companyId,
       rawFilters.departmentId,
       rawFilters.designationId,
@@ -183,8 +189,8 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
     []
   );
 
-  const seed = useMemo<ServerPageSeed<EmployeeListRow>>(() => ({identity:initialReadIdentity,params:{page:1,pageSize:25,sortKey:"employee_code",sortDir:"asc"},data:{rows:initialRows,totalCount:initialTotal,page:1,pageSize:25},updatedAt:initialUpdatedAt}),[initialRows,initialTotal,initialUpdatedAt,initialReadIdentity]);
-  const uiReadEmployees=useServerPage<EmployeeListRow>({resource:"employees",params:{page,pageSize,search:search.trim()||undefined,employeeStatus:filters.status??undefined,ownerCompanyId:filters.companyId??undefined,departmentId:filters.departmentId??undefined,designationId:filters.designationId??undefined,nationalityId:filters.nationalityId??undefined,sortKey:sortKey??"employee_code",sortDir},seed});
+  const seed = useMemo<ServerPageSeed<EmployeeListRow>>(() => ({identity:initialReadIdentity,params:{page:1,pageSize:25,sortKey:"employee_code",sortDir:"asc",...(initialStatus?{employeeStatus:initialStatus}:{})},data:{rows:initialRows,totalCount:initialTotal,page:1,pageSize:25},updatedAt:initialUpdatedAt}),[initialRows,initialTotal,initialUpdatedAt,initialReadIdentity,initialStatus]);
+  const uiReadEmployees=useServerPage<EmployeeListRow>({resource:"employees",params:{page,pageSize,search:search.trim()||undefined,quality:filters.quality??undefined,employeeStatus:filters.status??undefined,ownerCompanyId:filters.companyId??undefined,departmentId:filters.departmentId??undefined,designationId:filters.designationId??undefined,nationalityId:filters.nationalityId??undefined,sortKey:sortKey??"employee_code",sortDir},seed});
   const rows=uiReadEmployees.data?.rows??[];
   const totalCount=uiReadEmployees.data?.totalCount??0;
   const fetching=uiReadEmployees.isBusy;
@@ -339,6 +345,7 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
       <div className="flex flex-wrap items-center gap-2">
         <EditFilters scopeLabel="Search and filters query all permitted employees. Apply a changed company before choosing its department, and a changed department before its designation."
           definitions={[
+            {id:"quality",label:"Data review",type:"select",options:[...EMPLOYEE_QUALITY_FILTERS]},
             {id:"status",label:"Status",type:"select",options:statusOptions.map(o=>({value:String(o.value),label:o.label}))},
             {id:"companyId",label:"Company",type:"select",options:companyOptions.map(o=>({value:String(o.value),label:o.label}))},
             ...(canFilterDepartments ? [{id:"departmentId",label:loadingDepartments ? "Department (loading)" : "Department",type:"select" as const,options:departmentOptions.map(o=>({value:String(o.value),label:o.label}))}] : []),
@@ -346,7 +353,7 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
             {id:"nationalityId",label:"Nationality",type:"select",options:countryOptions.map(o=>({value:String(o.value),label:o.label}))}
           ]}
           values={Object.fromEntries(Object.entries(filters).map(([key,value])=>[key,value == null ? "" : String(value)]))}
-          onApply={values=>setFilter({status:values.status || null,companyId:values.companyId ? Number(values.companyId) : null,departmentId:values.departmentId ? Number(values.departmentId) : null,designationId:values.designationId ? Number(values.designationId) : null,nationalityId:values.nationalityId ? Number(values.nationalityId) : null})} />
+          onApply={values=>setFilter({quality:EMPLOYEE_QUALITY_FILTERS.some(option=>option.value===values.quality)?values.quality as EmployeeQualityFilter:null,status:values.status || null,companyId:values.companyId ? Number(values.companyId) : null,departmentId:values.departmentId ? Number(values.departmentId) : null,designationId:values.designationId ? Number(values.designationId) : null,nationalityId:values.nationalityId ? Number(values.nationalityId) : null})} />
         <span className="text-xs text-muted-foreground">Search, filters and sorting apply to all permitted employees.</span>
         {(!canFilterDepartments || !canFilterDesignations) && <span className="text-xs text-muted-foreground">Some filters are unavailable with your current permissions.</span>}
       </div>

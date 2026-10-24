@@ -44,7 +44,7 @@ export const recruitmentInquiryPageSchema = z.object({kind: z.enum(RECRUITMENT_I
   return {...p, rows: rows.data};
 });
 export const recruitmentRequisitionDetailCriteriaSchema = z.object({recordId: id}).strict();
-export const recruitmentRequisitionDetailSchema = recruitmentInquiryRowSchemas.requisitions.extend({job_description: nullableText, requirements: nullableText, notes: nullableText}).strip();
+export const recruitmentRequisitionDetailSchema = recruitmentInquiryRowSchemas.requisitions.extend({workspace_revision:id,job_description: nullableText, requirements: nullableText, notes: nullableText}).strip();
 export type RecruitmentInquiryCriteria = z.infer<typeof recruitmentInquiryCriteriaSchema>;
 export type RecruitmentInquiryPage = z.infer<typeof recruitmentInquiryPageSchema>;
 export type RecruitmentInquiryRowMap = {[K in RecruitmentInquiryKind]: z.infer<(typeof recruitmentInquiryRowSchemas)[K]>};

@@ -33,6 +33,9 @@ import{employeeId as payrollEmployeeId}from'@/lib/hr/employee-contract';
 import{canUseHrChild}from'@/lib/hr/child-authority';
 import{PAYROLL_CHILD_TABLES,type PayrollChildKind}from'@/lib/hr/payroll-child-contract';
 import{mutateHrChild}from'./child-mutation';
+import {readPayrollPoint} from "@/server/reads/hr-payroll-records";
+import {readPayrollInquiry} from "@/server/reads/hr-payroll-inquiries";
+import {readEmployeeOverview} from "@/server/reads/employee-overview";
 async function mutateOriginalPayroll(kind:PayrollChildKind,id:number,action:'update'|'archive'|'release',input:unknown,contract:ChildSaveContract):Promise<ChildSaveResult>{
  if(!payrollEmployeeId.safeParse(id).success||!childSaveContract.safeParse(contract).success||contract.revision===null||!canUseHrChild(await getAuthContext(),kind))return{success:false,error:'Original payroll revision and current access required.'};
  const r=await(await createClient()).from(PAYROLL_CHILD_TABLES[kind]).select('id,employee_id').eq('id',id).is('deleted_at',null).maybeSingle();
@@ -43,12 +46,8 @@ import {
   redactWpsProfile,
   redactSalaryComponent,
   redactSalaryRevision,
-  maskMoney,
 } from "@/lib/hr/payroll/redaction";
 import {
-  checkWpsReadiness,
-  calculateGrossSalary,
-  calculateBasicSalary,
   type WpsReadinessResult,
 } from "@/lib/hr/payroll/wps-readiness";
 
@@ -258,54 +257,17 @@ export async function archiveEmployeeSalaryComponent(id:number,contract:ChildSav
 export async function calculateEmployeeGrossSalary(
   employeeId: number
 ): Promise<ActionResult<{ gross: number }>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.payroll.view"))
-    return { success: false, error: "Permission denied: hr.payroll.view required" };
-
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("employee_salary_components")
-    .select("amount, is_active, deleted_at, component_type:hr_salary_component_types!employee_salary_components_component_type_id_fkey(component_kind)")
-    .eq("employee_id", employeeId);
-
-  if (error) return { success: false, error: error.message };
-
-  const gross = calculateGrossSalary(
-    (data ?? []).map((c) => ({
-      amount: c.amount ?? 0,
-      is_active: c.is_active,
-      deleted_at: c.deleted_at,
-      component_type: c.component_type as unknown as { component_kind: string } | null,
-    }))
-  );
-  return { success: true, data: { gross } };
+  const result = await readPayrollPoint({kind: "salary-totals", employeeId});
+  const value = result.data?.value;
+  return result.success && value && "gross" in value ? {success: true, data: {gross: value.gross}} : {success: false, error: result.error ?? "Current salary unavailable."};
 }
 
 export async function calculateEmployeeBasicSalary(
   employeeId: number
 ): Promise<ActionResult<{ basic: number }>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.payroll.view"))
-    return { success: false, error: "Permission denied: hr.payroll.view required" };
-
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("employee_salary_components")
-    .select("amount, is_active, deleted_at, component_type:hr_salary_component_types!employee_salary_components_component_type_id_fkey(is_basic)")
-    .eq("employee_id", employeeId)
-    .is("deleted_at", null);
-
-  if (error) return { success: false, error: error.message };
-
-  const basic = calculateBasicSalary(
-    (data ?? []).map((c) => ({
-      amount: Number(c.amount) || 0,
-      is_active: c.is_active,
-      deleted_at: c.deleted_at,
-      component_type: c.component_type as unknown as { is_basic?: boolean } | null,
-    }))
-  );
-  return { success: true, data: { basic } };
+  const result = await readPayrollPoint({kind: "salary-totals", employeeId});
+  const value = result.data?.value;
+  return result.success && value && "basic" in value ? {success: true, data: {basic: value.basic}} : {success: false, error: result.error ?? "Current salary unavailable."};
 }
 
 // ── Salary Revisions ───────────────────────────────────────────────────────────
@@ -414,296 +376,56 @@ export async function createOrUpdateEmployeeWpsProfile(employeeId:number,input:u
 export async function getEmployeeWpsReadiness(
   employeeId: number
 ): Promise<ActionResult<WpsReadinessResult>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.payroll.view"))
-    return { success: false, error: "Permission denied: hr.payroll.view required" };
-
-  const supabase = await createClient();
-
-  const [wpsRes, holdsRes, componentsRes] = await Promise.all([
-    supabase
-      .from("employee_wps_profiles")
-      .select("wps_applicable, wps_status, bank_id, account_number, iban, exchange_house, salary_payment_method, labour_card_number, mohre_person_code")
-      .eq("employee_id", employeeId)
-      .is("deleted_at", null)
-      .maybeSingle(),
-    supabase
-      .from("employee_payroll_holds")
-      .select("id")
-      .eq("employee_id", employeeId)
-      .eq("is_active", true)
-      .is("deleted_at", null)
-      .limit(1),
-    supabase
-      .from("employee_salary_components")
-      .select("amount, is_active, deleted_at, component_type:hr_salary_component_types!employee_salary_components_component_type_id_fkey(component_kind)")
-      .eq("employee_id", employeeId),
-  ]);
-
-  const components = (componentsRes.data ?? []).map((c) => ({
-    amount: c.amount ?? 0,
-    is_active: c.is_active,
-    deleted_at: c.deleted_at,
-    component_type: c.component_type as unknown as { component_kind: string } | null,
-  }));
-
-  const gross = calculateGrossSalary(components);
-  const result = checkWpsReadiness({
-    wpsProfile: wpsRes.data ?? null,
-    hasActivePayrollHold: (holdsRes.data ?? []).length > 0,
-    hasSalaryComponents: components.filter((c) => c.is_active && !c.deleted_at).length > 0,
-    grossSalary: gross,
-  });
-
-  return { success: true, data: result };
+  const result = await readPayrollPoint({kind: "wps", employeeId});
+  const value = result.data?.value;
+  return result.success && value && "readiness" in value ? {success: true, data: value.readiness} : {success: false, error: result.error ?? "Current payroll readiness unavailable."};
 }
 
-export async function listWpsReadiness(
-  params?: unknown
-): Promise<ActionResult<{ data: Array<{
-  employee_id: number;
-  employee_code: string;
-  full_name_en: string;
-  wps_status: string | null;
-  salary_payment_method: string | null;
-  has_active_hold: boolean;
-  readiness_status: string;
-}>; count: number }>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.payroll.view"))
-    return { success: false, error: "Permission denied: hr.payroll.view required" };
-
-  const parsed = wpsReadinessParamsSchema.safeParse(params ?? {});
-  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-  const { page, page_size, wps_status, owner_company_id } = parsed.data;
-  const from = (page - 1) * page_size;
-  const to = from + page_size - 1;
-
-  const supabase = await createClient();
-
-  let q = supabase
-    .from("employees")
-    .select(
-      `id, employee_code, full_name_en,
-       wps_profile:employee_wps_profiles!employee_wps_profiles_employee_id_fkey(wps_status, salary_payment_method, wps_applicable, bank_id, iban, account_number, exchange_house, labour_card_number, mohre_person_code),
-       payroll_holds:employee_payroll_holds!employee_payroll_holds_employee_id_fkey(id, is_active, deleted_at),
-       salary_components:employee_salary_components!employee_salary_components_employee_id_fkey(id, amount, is_active, deleted_at, component_type:hr_salary_component_types!employee_salary_components_component_type_id_fkey(component_kind))`,
-      { count: "exact" }
-    )
-    .is("deleted_at", null)
-    .order("full_name_en")
-    .range(from, to);
-
-  if (owner_company_id) q = q.eq("owner_company_id", owner_company_id);
-
-  const { data, error, count } = await q;
-  if (error) return { success: false, error: error.message };
-
-  const rows = (data ?? []).map((emp) => {
-    const wpsArr = emp.wps_profile as unknown[];
-    const wpsProfile = (wpsArr && wpsArr.length > 0 ? wpsArr[0] : null) as {
-      wps_applicable: boolean;
-      wps_status: string;
-      bank_id: number | null;
-      account_number: string | null;
-      iban: string | null;
-      exchange_house: string | null;
-      salary_payment_method: string;
-      labour_card_number: string | null;
-      mohre_person_code: string | null;
-    } | null;
-
-    const holdsArr = (emp.payroll_holds as unknown[]) ?? [];
-    const hasActiveHold = holdsArr.some(
-      (h) => (h as { is_active: boolean; deleted_at: string | null }).is_active && !(h as { deleted_at: string | null }).deleted_at
-    );
-
-    const componentsArr = (emp.salary_components as unknown[]) ?? [];
-    const activeComponents = componentsArr.filter(
-      (c) => (c as { is_active: boolean; deleted_at: string | null }).is_active && !(c as { deleted_at: string | null }).deleted_at
-    ).map((c) => ({
-      amount: (c as { amount: number }).amount ?? 0,
-      is_active: true,
-      deleted_at: null,
-      component_type: (c as { component_type: { component_kind: string } | null }).component_type,
-    }));
-
-    const gross = calculateGrossSalary(activeComponents);
-    const readiness = checkWpsReadiness({
-      wpsProfile,
-      hasActivePayrollHold: hasActiveHold,
-      hasSalaryComponents: activeComponents.length > 0,
-      grossSalary: gross,
-    });
-
-    return {
-      employee_id: emp.id,
-      employee_code: emp.employee_code,
-      full_name_en: emp.full_name_en,
-      wps_status: wpsProfile?.wps_status ?? null,
-      salary_payment_method: wpsProfile?.salary_payment_method ?? null,
-      has_active_hold: hasActiveHold,
-      readiness_status: readiness.status,
-    };
-  }).filter((row) => !wps_status || row.wps_status === wps_status);
-
-  return { success: true, data: { data: rows, count: count ?? 0 } };
+/** Legacy callers share the counted, currently scoped inquiry. Never filter a
+ * partially loaded page or treat ignored criteria as a complete result. */
+export async function listWpsReadiness(params?: unknown): Promise<ActionResult<{data: Array<{
+  employee_id: number; employee_code: string; full_name_en: string; wps_status: string | null;
+  salary_payment_method: string | null; has_active_hold: boolean; readiness_status: string;
+}>; count: number}>> {
+  const parsed = wpsReadinessParamsSchema.strict().safeParse(params ?? {});
+  if (!parsed.success) return {success: false, error: "Invalid WPS inquiry criteria"};
+  const p = parsed.data;
+  if (p.missing_iban || p.missing_labour_card) return {success: false, error: "This legacy filter is unsupported. Use the permitted WPS readiness inquiry."};
+  const result = await readPayrollInquiry({kind: "wps", page: p.page, pageSize: p.page_size,
+    ownerCompanyId: p.owner_company_id ?? null, status: p.wps_status || null, activeHoldOnly: p.on_hold ?? false});
+  return result.success && result.data?.kind === "wps"
+    ? {success: true, data: {data: result.data.rows, count: result.data.totalCount}}
+    : {success: false, error: result.error ?? "Complete WPS readiness unavailable."};
 }
-
-// ── Global Salary Profiles List ────────────────────────────────────────────────
 
 export async function listGlobalSalaryProfiles(params?: {
-  page?: number;
-  page_size?: number;
-  owner_company_id?: number;
-  payroll_status?: string;
-}): Promise<ActionResult<{ data: Array<{
-  employee_id: number;
-  employee_code: string;
-  full_name_en: string;
-  payroll_status: string | null;
-  payroll_group_name: string | null;
-  gross_salary: number | null;
-  currency: string | null;
-}>; count: number }>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.payroll.view"))
-    return { success: false, error: "Permission denied: hr.payroll.view required" };
-
-  const canView = hasPermission(ctx, "hr.payroll.view");
-  const { page = 1, page_size = 50, owner_company_id, payroll_status } = params ?? {};
-  const from = (page - 1) * page_size;
-  const to = from + page_size - 1;
-
-  const supabase = await createClient();
-
-  let q = supabase
-    .from("employees")
-    .select(
-      `id, employee_code, full_name_en,
-       payroll_profile:employee_payroll_profiles!employee_payroll_profiles_employee_id_fkey(payroll_status, currency, payroll_group:hr_payroll_groups!employee_payroll_profiles_payroll_group_id_fkey(name_en)),
-       salary_components:employee_salary_components!employee_salary_components_employee_id_fkey(amount, is_active, deleted_at, component_type:hr_salary_component_types!employee_salary_components_component_type_id_fkey(component_kind))`,
-      { count: "exact" }
-    )
-    .is("deleted_at", null)
-    .order("full_name_en")
-    .range(from, to);
-
-  if (owner_company_id) q = q.eq("owner_company_id", owner_company_id);
-
-  const { data, error, count } = await q;
-  if (error) return { success: false, error: error.message };
-
-  const rows = (data ?? [])
-    .map((emp) => {
-      const profileArr = emp.payroll_profile as unknown[];
-      const profile = (profileArr && profileArr.length > 0 ? profileArr[0] : null) as {
-        payroll_status: string;
-        currency: string;
-        payroll_group: { name_en: string } | null;
-      } | null;
-
-      const componentsArr = (emp.salary_components as unknown[]) ?? [];
-      const components = componentsArr.map((c) => ({
-        amount: (c as { amount: number }).amount ?? 0,
-        is_active: (c as { is_active: boolean }).is_active,
-        deleted_at: (c as { deleted_at: string | null }).deleted_at,
-        component_type: (c as { component_type: { component_kind: string } | null }).component_type,
-      }));
-
-      const gross = calculateGrossSalary(components);
-
-      return {
-        employee_id: emp.id,
-        employee_code: emp.employee_code,
-        full_name_en: emp.full_name_en,
-        payroll_status: profile?.payroll_status ?? null,
-        payroll_group_name: profile?.payroll_group?.name_en ?? null,
-        gross_salary: maskMoney(gross, canView),
-        currency: profile?.currency ?? null,
-      };
-    })
-    .filter((r) => !payroll_status || r.payroll_status === payroll_status);
-
-  return { success: true, data: { data: rows, count: count ?? 0 } };
+  page?: number; page_size?: number; owner_company_id?: number; payroll_status?: string;
+}): Promise<ActionResult<{data: Array<{
+  employee_id: number; employee_code: string; full_name_en: string; payroll_status: string | null;
+  payroll_group_name: string | null; gross_salary: number | null; currency: string | null;
+}>; count: number}>> {
+  const parsed = z.object({page: z.number().int().min(1).max(100000).default(1),
+    page_size: z.number().int().min(1).max(100).default(50),
+    owner_company_id: z.number().int().positive().optional(), payroll_status: z.string().optional()
+  }).strict().safeParse(params ?? {});
+  if (!parsed.success) return {success: false, error: "Invalid salary inquiry criteria"};
+  const p = parsed.data;
+  const result = await readPayrollInquiry({kind: "salary", page: p.page, pageSize: p.page_size,
+    ownerCompanyId: p.owner_company_id ?? null, status: p.payroll_status || null});
+  return result.success && result.data?.kind === "salary"
+    ? {success: true, data: {data: result.data.rows, count: result.data.totalCount}}
+    : {success: false, error: result.error ?? "Complete salary inquiry unavailable."};
 }
 
-// ── Summary for Overview Tab ───────────────────────────────────────────────────
-
-export async function getEmployeePayrollSummary(
-  employeeId: number
-): Promise<ActionResult<EmployeePayrollSummary>> {
-  const ctx = await getAuthContext();
-
-  if (!hasPermission(ctx, "hr.payroll.view")) {
-    return {
-      success: true,
-      data: {
-        payrollStatus: null,
-        grossSalary: null,
-        wpsReadiness: null,
-        hasActiveHold: false,
-        wpsStatus: null,
-      },
-    };
-  }
-
-  const supabase = await createClient();
-
-  const [profileRes, wpsRes, holdsRes, componentsRes] = await Promise.all([
-    supabase
-      .from("employee_payroll_profiles")
-      .select("payroll_status")
-      .eq("employee_id", employeeId)
-      .is("deleted_at", null)
-      .maybeSingle(),
-    supabase
-      .from("employee_wps_profiles")
-      .select("wps_applicable, wps_status, bank_id, account_number, iban, exchange_house, salary_payment_method, labour_card_number, mohre_person_code")
-      .eq("employee_id", employeeId)
-      .is("deleted_at", null)
-      .maybeSingle(),
-    supabase
-      .from("employee_payroll_holds")
-      .select("id")
-      .eq("employee_id", employeeId)
-      .eq("is_active", true)
-      .is("deleted_at", null)
-      .limit(1),
-    supabase
-      .from("employee_salary_components")
-      .select("amount, is_active, deleted_at, component_type:hr_salary_component_types!employee_salary_components_component_type_id_fkey(component_kind)")
-      .eq("employee_id", employeeId),
-  ]);
-
-  const components = (componentsRes.data ?? []).map((c) => ({
-    amount: c.amount ?? 0,
-    is_active: c.is_active,
-    deleted_at: c.deleted_at,
-    component_type: c.component_type as unknown as { component_kind: string } | null,
-  }));
-
-  const gross = calculateGrossSalary(components);
-  const hasActiveHold = (holdsRes.data ?? []).length > 0;
-
-  const readiness = checkWpsReadiness({
-    wpsProfile: wpsRes.data ?? null,
-    hasActivePayrollHold: hasActiveHold,
-    hasSalaryComponents: components.filter((c) => c.is_active && !c.deleted_at).length > 0,
-    grossSalary: gross,
-  });
-
-  return {
-    success: true,
-    data: {
-      payrollStatus: profileRes.data?.payroll_status ?? null,
-      grossSalary: gross,
-      wpsReadiness: readiness,
-      hasActiveHold,
-      wpsStatus: wpsRes.data?.wps_status ?? null,
-    },
-  };
+export async function getEmployeePayrollSummary(employeeId: number): Promise<ActionResult<EmployeePayrollSummary>> {
+  const result = await readEmployeeOverview({employeeId, sections: ["payroll"]});
+  const section = result.data?.sections.payroll;
+  if (!result.success || !section || section.status !== "ready")
+    return {success: false, error: result.error ?? (section?.status === "restricted" ? "Permission denied" : "Current payroll summary unavailable.")};
+  const value = section.data;
+  return {success: true, data: {payrollStatus: value.payrollStatus, grossSalary: value.grossSalary,
+    hasActiveHold: value.hasActiveHold, wpsStatus: value.wpsStatus,
+    wpsReadiness: value.wpsReadiness}};
 }
 
 // ── Combobox Helpers ───────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ import { reportWorkspaceFieldErrors } from "@/lib/workspace/field-errors";
 import {useEmployeeSaveSession} from './use-employee-save-session';
 import {useReadLifetime} from '@/hooks/use-read-lifetime';
 import {hasHrReadCapability,hrReadIdentity} from '@/lib/reads/hr-read-identity';
+import {employeeRecordSection,canApplyEmployeeSectionHint} from '@/lib/hr/employee-navigation';
 import {EmployeeSaveRecovery} from './employee-save-recovery';
 import type {NotificationTaskContext} from '@/lib/notifications/task-context';
 import {NotificationTaskContextCard} from '@/features/notifications/notification-task-context';
@@ -14,16 +15,11 @@ import {NotificationTaskContextCard} from '@/features/notifications/notification
  * Uses ERPRecordWorkspaceForm (UI.4C).
  *
  * Sections:
- *   Overview      — read-only summary + future placeholders
+ *   Overview      — authorized summary, related context and fact review
  *   Profile       — editable personal/employment/contract/emergency data
- *   Compliance    — placeholder (HR.3)
- *   Time          — placeholder (HR.4)
- *   Payroll & WPS — placeholder (HR.5)
- *   Operations    — placeholder (HR.6)
- *   HR Actions    — placeholder (HR.7)
- *   Documents     — placeholder (HR.3+)
- *   AI Review     — placeholder (HR.12)
- *   Audit         — placeholder
+ *   Compliance / Time / Payroll / Operations / HR Actions / Documents
+ *                 — existing lazy, permission-scoped child workflows
+ *   AI Review / Audit — existing evidence and immutable history readers
  */
 
 import { DraftRestoredNotice } from "@/components/workspace/draft-restored-notice";
@@ -63,6 +59,7 @@ import { EmployeeHrActionsTab } from "./tabs/employee-hr-actions-tab";
 import { EmployeeOperationsTab } from "./tabs/employee-operations-tab";
 import { EmployeeOverviewTab } from "./tabs/employee-overview-tab";
 import {EmployeeEmploymentHistory} from './employee-employment-history';
+import {EmployeeQualitySummary}from './employee-quality-summary';
 import { EmployeePayrollTab } from "./tabs/employee-payroll-tab";
 import { EmployeeProfileTab, type EmployeeProfileFormState } from "./tabs/employee-profile-tab";
 import { EmployeeTimeTab } from "./tabs/employee-time-tab";
@@ -78,6 +75,7 @@ type Props = {
   mode: "add" | "edit" | "view";
   authContext: AuthContext;
   notificationTask?:NotificationTaskContext;
+  initialSection?:string;
 };
 
 const SECTIONS: ERPRecordSection[] = [
@@ -116,6 +114,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 /** Combobox fields holding numeric ids — used to type draft values back (WS.3). */
 const COMBOBOX_NUMERIC_FIELDS = new Set<keyof EmployeeProfileFormState>([
+  "photo_dms_document_id",
   "owner_company_id",
   "branch_id",
   "department_id",
@@ -144,6 +143,7 @@ const employeeCodec: WorkspaceDraftCodec<EmployeeProfileFormState> = {
 
 function buildInitialFormState(employee: EmployeeListRow | null | undefined): EmployeeProfileFormState {
   return {
+    photo_dms_document_id:employee?.photo_dms_document_id??null,
     employment_change_reason: '',
     employment_effective_date: '',
     full_name_en: employee?.full_name_en ?? "",
@@ -188,15 +188,24 @@ export function EmployeeWorkspaceForm(props: Props) {
   return <EmployeeWorkspaceFormInstance key={`${props.authContext.profile?.id ?? 'none'}:${props.authContext.profile?.auth_user_id ?? 'none'}:${props.employee?.id ?? "new"}:${props.mode}`} {...props} />;
 }
 
-function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificationTask }: Props) {
+function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificationTask,initialSection }: Props) {
   const { closeTab, markDirty, updateTabRoute, isTabActive } = useWorkspace();
   const owner = useWorkspaceFormOwner();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, employee ? "overview" : "profile", SECTION_IDS);
+  const sectionHint=employee?employeeRecordSection(initialSection):undefined;
+  const [activeSection, setActiveSection] = useWorkspaceFormSection(FORM_ID, employee ? "overview" : "profile", SECTION_IDS,sectionHint);
   const [childDialogOpen, setChildDialogOpen] = useState(false);
   const [complianceChildLeases, setComplianceChildLeases] = useState<Set<object>>(() => new Set());
+  const handledSectionHint=useRef(sectionHint);
+  const sectionHintActive=!owner||isTabActive?.(owner.id)!==false;
+  useEffect(()=>{
+    if(!sectionHint){handledSectionHint.current=undefined;return;}
+    if(canApplyEmployeeSectionHint(sectionHint,handledSectionHint.current,isSubmitting||childDialogOpen||complianceChildLeases.size>0,sectionHintActive)){
+      setActiveSection(sectionHint);handledSectionHint.current=sectionHint;
+    }
+  },[sectionHint,isSubmitting,childDialogOpen,complianceChildLeases.size,sectionHintActive,setActiveSection]);
   const handleComplianceChildLease = useCallback((token: object, open: boolean) => {
     setComplianceChildLeases(previous => {
       if (previous.has(token) === open) return previous;
@@ -386,6 +395,15 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
 
         {/* Overview — one authorized read composition; retained after its first mount. */}
         <ERPRecordSectionPanel id="overview" activeId={activeSection} title="Overview" lazyMount>
+          {employee&&<EmployeeQualitySummary employee={employee} onProfile={field=>{
+            setActiveSection('profile');
+            requestAnimationFrame(()=>{
+              if(!lifetime.active)return;
+              const form=document.getElementById(formId);
+              const target=Array.from(form?.querySelectorAll<HTMLElement>('[name],[data-workspace-field]')??[]).find(control=>control.dataset.workspaceField===field||control.getAttribute('name')===field&&!(control instanceof HTMLInputElement&&control.type==='hidden'));
+              target?.focus();
+            });
+          }}/>}
           {employee ? (
             <EmployeeOverviewTab
               employee={employee}

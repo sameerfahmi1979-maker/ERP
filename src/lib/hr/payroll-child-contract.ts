@@ -1,9 +1,10 @@
 import{z}from'zod';
 import{employeeDate,employeeId}from'./employee-contract';
+import{salaryMinorUnits}from'./payroll/salary-as-of';
 export const payrollChildKind=z.enum(['payroll-profile','salary-component','salary-revision','wps-profile','payroll-hold']);
 export type PayrollChildKind=z.infer<typeof payrollChildKind>;
-const money=z.number().finite().min(0).max(9999999999.99).refine(v=>Math.abs(v*100-Math.round(v*100))<0.0001,'Use at most two decimal places.');
-const profileFields={payroll_group_id:employeeId.nullable(),effective_date:employeeDate,currency:z.string().trim().min(1).max(10),payroll_status:z.enum(['active','hold','inactive','not_configured']),notes:z.string().max(2000).nullable()};
+const money=z.number().finite().min(0).max(9999999999.99).refine(v=>{try{salaryMinorUnits(v);return true;}catch{return false;}},'Use at most two decimal places.');
+const profileFields={payroll_group_id:employeeId.nullable(),effective_date:employeeDate,currency:z.string().trim().regex(/^[A-Z]{3}$/,'Use an uppercase three-letter currency code.'),payroll_status:z.enum(['active','hold','inactive','not_configured']),notes:z.string().max(2000).nullable()};
 const componentFields={component_type_id:employeeId,amount:money,effective_from:employeeDate,effective_to:employeeDate.nullable(),is_active:z.boolean(),notes:z.string().max(1000).nullable()};
 const wpsFields={wps_applicable:z.boolean(),wps_status:z.enum(['active','hold','exempt','not_enrolled']),bank_id:employeeId.nullable(),account_holder_name:z.string().max(200).nullable(),exchange_house:z.string().max(200).nullable(),salary_payment_method:z.enum(['bank_transfer','exchange_house','cheque']),labour_card_number:z.string().max(100).nullable(),mohre_person_code:z.string().max(100).nullable(),mohre_establishment_id:employeeId.nullable(),salary_effective_date:employeeDate.nullable()};
 export const payrollProfileValues=z.object(profileFields).strict();

@@ -9,6 +9,7 @@ import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import{RequiredLabel}from'@/components/erp/required-label';
 import { Textarea } from "@/components/ui/textarea";
 import { invalidateRecruitmentCandidateReadModels } from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
@@ -16,7 +17,11 @@ import {candidateRecordIdentity, type CandidateSalaryAccess} from "@/lib/reads/h
 import { hasPermissionInScope, hasGlobalPermission } from "@/lib/rbac/scope";
 import type {CandidateChildDetailMap, CandidateChildRowMap, CandidateChildPage, CandidateChildDetail} from "@/lib/reads/hr-candidate-children-schema";
 import {useHrCandidateChildren, candidateChildPrefix, type CandidateChildReadProps} from "@/hooks/use-hr-candidate-children";
-import { archiveOffer, changeOfferStatus, createOffer, updateOffer } from "@/server/actions/hr/recruitment";
+import{useRecruitmentLifecycle}from'../use-recruitment-lifecycle';
+import{RecruitmentRecovery}from'../recruitment-recovery';
+import{RecruitmentDecisionDialog}from'../recruitment-decision-dialog';
+import{RecruitmentHistory}from'../recruitment-history';
+import type{RecruitmentLifecycleRequest}from'@/lib/hr/recruitment-lifecycle-contract';
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, Gift, Pencil, Plus, Trash2, XCircle } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -57,6 +62,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 type OfferForm = {
+  housing_allowance:string;transport_allowance:string;other_allowances:string;reason:string;
   offer_status: string;
   offer_date: string;
   valid_until: string;
@@ -68,6 +74,7 @@ type OfferForm = {
 };
 
 const EMPTY_FORM: OfferForm = {
+  housing_allowance:'',transport_allowance:'',other_allowances:'',reason:'',
   offer_status: "draft",
   offer_date: "",
   valid_until: "",
@@ -86,7 +93,10 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, onRead
   const [editorVersion, setEditorVersion] = useState(0);
   const editorGeneration = useRef(0);
   const [unavailableEditor, setUnavailableEditor] = useState(false);
-  const [isPending, startTransition] = useTransition();
+  const [transitionPending, startTransition] = useTransition();
+  const session=useRecruitmentLifecycle(authContext,candidateId,null,'offer');
+  const isPending=transitionPending||session.busy;
+  const[decision,setDecision]=useState<RecruitmentLifecycleRequest|null>(null);
   const read = useHrCandidateChildren("offers", candidateId, {authContext, onReadDenied});
   const evidenceIdentity = `${candidateId}:${candidateRecordIdentity(authContext)}`;
   const [verifiedDefaultScope, setVerifiedDefaultScope] = useState({identity: evidenceIdentity, companyId: defaultCompanyId, branchId: defaultBranchId});
@@ -121,17 +131,17 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, onRead
   const offerProof = currentOffer?.salaryAccess ?? editing?.salaryAccess;
   const canViewSalary=salaryAllowedInScope('hr.payroll.view',salaryCompany,salaryBranch,offerProof);
   const canManageSalary=canViewSalary&&!salaryRetired&&salaryAllowedInScope('hr.payroll.manage',salaryCompany,salaryBranch,offerProof);
-  const currentSalary = useRef({canManage: false, basic: "", gross: ""});
+  const currentSalary = useRef({canManage: false, basic: "", gross: "",housing:'',transport:'',other:''});
   useLayoutEffect(() => {
     currentSalary.current = {canManage: canManageSalary, basic: canViewSalary && !salaryRetired ? form.basic_salary : "",
-      gross: canViewSalary && !salaryRetired ? form.gross_salary : ""};
-    return () => {currentSalary.current = {canManage: false, basic: "", gross: ""};};
-  }, [canManageSalary, canViewSalary, salaryRetired, form.basic_salary, form.gross_salary]);
+      gross: canViewSalary && !salaryRetired ? form.gross_salary : "",housing:canViewSalary&&!salaryRetired?form.housing_allowance:'',transport:canViewSalary&&!salaryRetired?form.transport_allowance:'',other:canViewSalary&&!salaryRetired?form.other_allowances:''};
+    return () => {currentSalary.current = {canManage: false, basic: "", gross: "",housing:'',transport:'',other:''};};
+  }, [canManageSalary, canViewSalary, salaryRetired, form.basic_salary, form.gross_salary,form.housing_allowance,form.transport_allowance,form.other_allowances]);
   const redactOffer = useCallback(<T extends CandidateChildRowMap["offers"]>(offer: T): T => {
     const freshProof = read.activeDetail?.id === offer.id ? read.activeDetail.salaryAccess : offer.salaryAccess;
     const allowed = salaryAllowedInScope("hr.payroll.view", offer.owner_company_id, offer.branch_id, freshProof);
     return allowed || (offer.basic_salary === null && (!("gross_salary" in offer) || offer.gross_salary === null)) ? offer
-      : {...offer, basic_salary: null, ...("gross_salary" in offer ? {gross_salary: null} : {}), salaryAccess: {...offer.salaryAccess, canView: false, canManage: false}};
+      : {...offer, basic_salary: null, ...("gross_salary" in offer ? {gross_salary: null,housing_allowance:null,transport_allowance:null,other_allowances:null} : {}), salaryAccess: {...offer.salaryAccess, canView: false, canManage: false}};
   }, [salaryAllowedInScope, read.activeDetail]);
 
   const offers = read.rows.map(redactOffer);
@@ -144,10 +154,11 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, onRead
     setSalaryRetired(true); setSalaryWasVisible(false);
   }, [detailUnavailable, closeDetail, onChildOpen]);
   if (canViewSalary && !salaryWasVisible) setSalaryWasVisible(true);
-  if (!canViewSalary && (salaryWasVisible || form.basic_salary || form.gross_salary || editing?.basic_salary != null || editing?.gross_salary != null)) {
+  useLayoutEffect(()=>{if(!canViewSalary&&session.pending&&['basic_salary','gross_salary','housing_allowance','transport_allowance','other_allowances'].some(key=>key in session.pending!.request.values))session.retire();},[canViewSalary,session]);
+  if (!canViewSalary && (salaryWasVisible || form.basic_salary || form.gross_salary ||form.housing_allowance||form.transport_allowance||form.other_allowances|| editing?.basic_salary != null || editing?.gross_salary != null)) {
     if (!salaryRetired) setSalaryRetired(true);
-    if (form.basic_salary || form.gross_salary) setForm({...form, basic_salary: "", gross_salary: ""});
-    if (editing && (editing.basic_salary != null || editing.gross_salary != null)) setEditing({...editing, basic_salary: null, gross_salary: null,
+    if (form.basic_salary || form.gross_salary||form.housing_allowance||form.transport_allowance||form.other_allowances) setForm({...form, basic_salary: "", gross_salary: "",housing_allowance:'',transport_allowance:'',other_allowances:''});
+    if (editing && (editing.basic_salary != null || editing.gross_salary != null||editing.housing_allowance!=null||editing.transport_allowance!=null||editing.other_allowances!=null)) setEditing({...editing, basic_salary: null, gross_salary: null,housing_allowance:null,transport_allowance:null,other_allowances:null,
       salaryAccess: {...editing.salaryAccess, canView: false, canManage: false}});
   }
   useEffect(() => {
@@ -168,7 +179,7 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, onRead
   }, [queryClient, candidateId, read.identity, redactOffer, read.query.data, read.detailQuery.data]);
 
   function openAdd() {
-    if (!mutation.canDispatch()) return;
+    if (!mutation.canDispatch()||!session.startNew()) return;
     setEditorVersion(++editorGeneration.current); setUnavailableEditor(false);
     read.closeDetail();
     setSalaryRetired(false); setSalaryWasVisible(false);
@@ -179,7 +190,7 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, onRead
   }
 
   async function openEdit(row: CandidateChildRowMap["offers"]) {
-    if (!mutation.canDispatch()) return;
+    if (!mutation.canDispatch()||!session.startNew()) return;
     const detail = await read.loadDetail(row.id);
     if (!detail) return;
     setEditorVersion(++editorGeneration.current); setUnavailableEditor(false);
@@ -187,6 +198,7 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, onRead
     setSalaryRetired(false); setSalaryWasVisible(false);
     setEditing(offer);
     setForm({
+      housing_allowance:offer.housing_allowance==null?'':String(offer.housing_allowance),transport_allowance:offer.transport_allowance==null?'':String(offer.transport_allowance),other_allowances:offer.other_allowances==null?'':String(offer.other_allowances),reason:'',
       offer_status: offer.offer_status,
       offer_date: offer.offer_date ?? "",
       valid_until: offer.valid_until ?? "",
@@ -201,6 +213,7 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, onRead
   }
 
   function closeDialog() {
+    if(session.busy||session.pending)return;
     if (editorVersion !== editorGeneration.current) return;
     setEditorVersion(++editorGeneration.current);
     read.closeDetail();
@@ -215,21 +228,20 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, onRead
     startTransition(async () => {
       if (!dialogOpen || editorVersion !== editorGeneration.current || !mutation.canDispatch()) return;
       const payload = {
-        offer_status: form.offer_status as "draft" | "pending_approval" | "approved" | "sent" | "accepted" | "rejected" | "withdrawn" | "expired" | "cancelled",
         offer_date: form.offer_date || null,
         valid_until: form.valid_until || null,
         proposed_joining_date: form.proposed_joining_date || null,
         ...(currentSalary.current.canManage?{
           basic_salary:currentSalary.current.basic?parseFloat(currentSalary.current.basic):null,
           gross_salary:currentSalary.current.gross?parseFloat(currentSalary.current.gross):null,
+          housing_allowance:currentSalary.current.housing?Number(currentSalary.current.housing):null,transport_allowance:currentSalary.current.transport?Number(currentSalary.current.transport):null,other_allowances:currentSalary.current.other?Number(currentSalary.current.other):null,
         }:{}),
         currency: form.currency || "AED",
         notes: form.notes || null,
       };
 
-      const res = editing
-        ? await updateOffer(editing.id, payload)
-        : await createOffer(candidateId, payload);
+      const res=await session.submit({kind:'offer',candidateId,id:editing?.id??null,revision:editing?String(editing.workspace_revision):null,action:editing?'update':'create',values:payload,reason:form.reason});
+      if(!session.isCurrent())return;
 
       if (res.success) {
         toast.success(editing ? "Offer updated" : "Offer created");
@@ -243,38 +255,22 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, onRead
   }
 
   function handleStatusChange(id: number, status: string) {
-    if (!mutation.canDispatch()) return;
-    startTransition(async () => {
-      if (!mutation.canDispatch()) return;
-      const res = await changeOfferStatus(id, status);
-      if (res.success) {
-        toast.success(`Offer ${status}`);
-        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateOffers(candidateId) });
-        invalidateRecruitmentCandidateReadModels(queryClient, candidateId, "offers");
-      } else {
-        toast.error(res.error ?? "Failed to update status");
-      }
-    });
+    const row=offers.find(o=>o.id===id);const action:Record<string,RecruitmentLifecycleRequest['action']>={pending_approval:'submit',approved:'approve',sent:'send',accepted:'accept',rejected:'reject',withdrawn:'withdraw',expired:'expire',cancelled:'cancel',archive:'archive'};
+    if(!row||!action[status]||!mutation.canDispatch()||!session.startNew())return;
+    setDecision({kind:'offer',candidateId,id,revision:String(row.workspace_revision),action:action[status],values:{},reason:''});
   }
 
   function handleArchive(id: number) {
-    if (!mutation.canDispatch()) return;
-    startTransition(async () => {
-      if (!mutation.canDispatch()) return;
-      const res = await archiveOffer(id);
-      if (res.success) {
-        toast.success("Offer removed");
-        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateOffers(candidateId) });
-        invalidateRecruitmentCandidateReadModels(queryClient, candidateId, "offers");
-      } else {
-        toast.error(res.error ?? "Failed to remove");
-      }
-    });
+    handleStatusChange(id,'archive');
   }
 
+  const recovered=()=>{setDialogOpen(false);setDecision(null);onChildOpen?.(false);invalidateRecruitmentCandidateReadModels(queryClient,candidateId,'offers');void queryClient.invalidateQueries({queryKey:candidateChildPrefix('offers',candidateId)});};
+  const recovery=<RecruitmentRecovery session={session}onSaved={recovered}onRetire={()=>{setForm(EMPTY_FORM);setEditing(null);setDialogOpen(false);setDecision(null);onChildOpen?.(false);}}/>;
   if (read.denied) return <p role="alert">Candidate offer access is no longer available.</p>;
   return (
     <QueryReadBoundary queries={read.reads}><div className="p-6">
+      {!dialogOpen&&!decision&&recovery}
+      <RecruitmentDecisionDialog request={decision}busy={isPending}locked={!!session.pending}recovery={recovery}onClose={()=>setDecision(null)}onConfirm={async reason=>{if(!decision||!mutation.canDispatch())return;const r=await session.submit({...decision,reason});if(r.success&&session.isCurrent())recovered();}}/>
       {unavailableEditor && <p role="alert" className="mb-3 text-sm text-destructive">This child record is no longer available. Its private editor entries were removed; your candidate draft is unchanged.</p>}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">Offers</h3>
@@ -303,6 +299,7 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, onRead
                   {offer.proposed_joining_date && ` · Joining: ${offer.proposed_joining_date}`}
                   {offer.valid_until && ` · Valid until: ${offer.valid_until}`}
                 </p>
+                <RecruitmentHistory candidate={candidateId}kind="offer"id={offer.id}identity={read.identity}/>
               </div>
               {canManage && (
                 <div className="flex gap-1">
@@ -312,7 +309,10 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, onRead
                       <Button aria-label="Reject" size="sm" variant="ghost" onClick={() => handleStatusChange(offer.id, "rejected")} disabled={isPending || !mutation.ready} title="Reject"><XCircle className="h-4 w-4 text-red-500" /></Button>
                     </>
                   )}
-                  {["draft", "pending_approval", "approved"].includes(offer.offer_status) && (
+                  {['draft','rejected'].includes(offer.offer_status)&&<Button size="sm"variant="ghost"disabled={isPending||!mutation.ready}onClick={()=>handleStatusChange(offer.id,'pending_approval')}>Submit for approval</Button>}
+                  {offer.offer_status==='pending_approval'&&<Button size="sm"variant="ghost"disabled={isPending||!mutation.ready}onClick={()=>handleStatusChange(offer.id,'approved')}>Independent approval</Button>}
+                  {offer.offer_status==='accepted'&&<Button size="sm"variant="ghost"disabled={isPending||!mutation.ready}onClick={()=>handleStatusChange(offer.id,'withdrawn')}>Withdraw</Button>}
+                  {["approved"].includes(offer.offer_status) && (
                     <Button aria-label="Mark Sent" size="sm" variant="ghost" onClick={() => handleStatusChange(offer.id, "sent")} disabled={isPending || !mutation.ready} title="Mark Sent" className="text-xs px-2">Send</Button>
                   )}
                   <Button aria-label="Edit record" size="sm" variant="ghost" onClick={() => openEdit(offer)} disabled={!mutation.ready}><Pencil className="h-4 w-4" /></Button>
@@ -333,7 +333,9 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, onRead
         mode={editing ? "edit" : "add"}
         size="lg"
         isSubmitting={isPending}
-        submitDisabled={!mutation.ready}
+        closeDisabled={!!session.pending}
+        recoveryActions={recovery}
+        submitDisabled={!mutation.ready||session.blocked||!!session.pending||!form.reason.trim()}
         onSubmit={handleSave}
       >
         <CandidateChildReadPause admission={mutation} canManage={canManage} />
@@ -341,7 +343,7 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, onRead
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12 md:col-span-6">
             <Label>Offer Status</Label>
-            <ERPCombobox ariaLabel="Offer Status" value={form.offer_status || null} onValueChange={(v) => set("offer_status", String(v ?? "draft"))} options={STATUS_OPTIONS} placeholder="Select status" />
+            <ERPCombobox ariaLabel="Offer Status" disabled value={form.offer_status || null} onValueChange={()=>{}} options={STATUS_OPTIONS} placeholder="Select status" />
           </div>
           <div className="col-span-12 md:col-span-3">
             <Label>Offer Date</Label>
@@ -367,6 +369,10 @@ export function CandidateOffersTab({ candidateId, canManage, authContext, onRead
             <Label>Currency</Label>
             <Input aria-label="Currency" value={form.currency} onChange={(e) => set("currency", e.target.value)} placeholder="AED" />
           </div>
+          <div className="col-span-12">
+            <RequiredLabel required>Decision / change reason</RequiredLabel><Textarea aria-label="Decision / change reason"required maxLength={2000}value={form.reason}onChange={e=>set('reason',e.target.value)}/>
+          </div>
+          {(['housing_allowance','transport_allowance','other_allowances']as const).map(key=><div className="col-span-12 md:col-span-4"key={key}><Label>{key.replaceAll('_',' ')}</Label><Input aria-label={key.replaceAll('_',' ')}type="number"min={0}step="0.01"value={canViewSalary&&!salaryRetired?form[key]:''}disabled={!canManageSalary}onChange={e=>set(key,e.target.value)}/></div>)}
           <div className="col-span-12">
             <Label>Notes</Label>
             <Textarea aria-label="Notes" value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={3} placeholder="Offer notes..." />

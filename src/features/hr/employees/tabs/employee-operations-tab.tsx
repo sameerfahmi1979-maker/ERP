@@ -1,4 +1,5 @@
 "use client";
+import{WorkforceReviewButton}from'../workforce-review';
 import {hasHrReadCapability} from "@/lib/reads/hr-read-identity";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
@@ -27,7 +28,7 @@ import{hrReadIdentity}from "@/lib/reads/hr-read-identity";
 import { toast } from "sonner";
 import {
   MapPin, Briefcase, ShieldCheck, AlertOctagon, Package, HardHat, Home,
-  Plus, Edit2, Archive, CheckCircle, XCircle, RefreshCw,
+  Plus, Edit2, Archive, XCircle, RefreshCw,
   Lock, Flag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -187,6 +188,7 @@ function AssignmentsSection({employeeId,authContext,canManage,onChildOpen}:{empl
                 </div>
                 {canManage && (
                   <div className="flex gap-1.5">
+                    {a.assignment_status==='planned'&&<WorkforceReviewButton employeeId={employeeId}kind="assignment"sourceId={a.id as number}authContext={authContext}canDispatch={canDispatch}onChildOpen={onChildOpen}onDenied={onDenied}/>}
                     <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(a,"update")}>
                       <Edit2 className="h-3.5 w-3.5" />
                     </Button>
@@ -215,6 +217,7 @@ function SiteReadinessSection({employeeId,authContext,canManage,onChildOpen}:{em
  const setIsOpen=(open:boolean)=>{if(!owner.active)return;setIsOpenRaw(open);onChildOpen?.(open);};
  const canDispatch=()=>owner.active&&canManage&&uiRead1.canDispatch();
  return <><QueryReadBoundary queries={[uiRead1]}><Section title="Site Readiness"icon={<ShieldCheck className="h-5 w-5 text-primary"/>}action={canManage?<Button size="sm"disabled={!uiRead1.ready}onClick={()=>{if(canDispatch())setIsOpen(true);}}><RefreshCw className="h-3.5 w-3.5 mr-1"/>Check Readiness</Button>:undefined}>
+  <p className="text-xs text-muted-foreground">Saved calculations are history, not current deployment approval. Recheck current evidence, rules and restrictions before assignment.</p>
   <RecordCollection presentation="embedded" {...uiRead1.collection}id="hr.employee-operations-tab.SiteReadinessSection.records"rows={records}fields={HR_OPERATION_RECORD_CONFIG.readiness.fields.map(f=>({...f,path:f.id==='site_name'?'work_sites.name_en':f.id}))}renderRecord={r=>{const badge=getReadinessStatusBadge(r.readiness_status as string),site=(r.work_sites as Record<string,unknown>|null)?.name_en;return <div className="flex items-start justify-between py-3 px-1"><div className="space-y-1"><div className="flex items-center gap-2"><Badge variant={badge.variant}>{badge.label}</Badge><span className="text-sm font-medium">{String(site??'Unknown site')}</span></div><p className="text-xs text-muted-foreground">Checked: {String(r.checked_at??'—').slice(0,10)}</p></div></div>;}}/>
  </Section></QueryReadBoundary>{isOpen&&<SiteReadinessDialog employeeId={employeeId}authContext={authContext}canDispatch={canDispatch}blocked={!canManage||!uiRead1.ready}retry={()=>{void uiRead1.refetch();}}onDenied={onDenied}onClose={()=>setIsOpen(false)}onSaved={()=>{if(!owner.active)return;invalidateHrEmployeeReadiness(qc,employeeId);toast.success('Readiness calculation saved');}}/>}</>;
 }
@@ -240,6 +243,7 @@ function RoleRequirementsSection({employeeId,authContext,canManage,onChildOpen}:
   };
 
  return <><QueryReadBoundary queries={[uiRead1]}><Section title="Role Requirements"icon={<Briefcase className="h-5 w-5 text-primary"/>}action={canManage?<div className="flex gap-2"><Button size="sm"variant="outline"disabled={!uiRead1.ready}onClick={()=>{if(canDispatch())setRefreshOpen(true);}}><RefreshCw className="h-3.5 w-3.5 mr-1"/>Recalculate</Button><Button size="sm"disabled={!uiRead1.ready}onClick={openAdd}><Plus className="h-3.5 w-3.5 mr-1"/>Add Requirement</Button></div>:undefined}>
+        <p className="text-xs text-muted-foreground">These are recorded requirement statuses. Current evidence and dated, source-valid waivers are revalidated separately; a saved “waived” label alone does not grant an exemption.</p>
         <div className="divide-y">
           <RecordCollection presentation="embedded" {...uiRead1.collection} id="hr.employee-operations-tab.RoleRequirementsSection.reqs" rows={reqs} fields={HR_OPERATION_RECORD_CONFIG.requirements.fields.map(f => ({...f}))} renderRecord={(r) => (
             <div key={r.id as number} className="flex items-start justify-between py-3 px-1">
@@ -254,11 +258,7 @@ function RoleRequirementsSection({employeeId,authContext,canManage,onChildOpen}:
               {canManage && (
                 <div className="flex gap-1.5">
                   <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(r,'update')}><Edit2 className="h-3.5 w-3.5" /></Button>
-                  {r.status !== "waived" && (
-                    <Button aria-label="Waive" size="icon" variant="ghost" className="h-7 w-7" title="Waive" onClick={() => openRecord(r,'waive')}>
-                      <CheckCircle className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
+                  <WorkforceReviewButton employeeId={employeeId}kind="role-requirement"sourceId={r.id as number}authContext={authContext}canDispatch={canDispatch}onChildOpen={onChildOpen}onDenied={onDenied}/>
                   <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(r,'archive')}><Archive className="h-3.5 w-3.5" /></Button>
                 </div>
               )}

@@ -11,7 +11,7 @@ export const candidateRecordRowSchema = z.object({
   gender: text, nationality_id: id.nullable(), date_of_birth: text, mobile_number: text, email: text,
   current_location: text, source: text, agency_name: text, referred_by_employee_id: id.nullable(),
   current_employer: text, current_position: text, expected_salary: z.number().finite().nullable(),
-  notice_period_days: z.number().int().nullable(), candidate_status: z.string(), pipeline_stage: z.string(), rating: text,
+  notice_period_days: z.number().int().nullable(), candidate_status: z.string(), pipeline_stage: z.string(), joining_status:z.enum(['not_started','in_progress','completed','cancelled','no_show']),rating: text,
   availability_date: text, notes: text, created_at: z.string().min(1), updated_at: z.string().min(1),
   workspace_revision: z.number().int().positive().refine(Number.isSafeInteger), created_by: id.nullable(), deleted_at: z.null(),
   requisition: z.object({id, requisition_code: text, requisition_title: z.string()}).strip().nullable(),

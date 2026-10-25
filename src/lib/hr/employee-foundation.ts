@@ -11,7 +11,7 @@ export const EMPLOYEE_FOUNDATION_FIELDS = {
  full_name_en:rule('Full Name (English)','person',true),full_name_ar:rule('Full Name (Arabic)','person'),known_name:rule('Known Name','person'),
  gender:rule('Gender','person',true),nationality_id:rule('Nationality','person',false,{source:'countries'}),date_of_birth:rule('Date of Birth','person',true,{date:'fact'}),
  marital_status:rule('Marital Status','person'),mobile_number:rule('Mobile Number','person',true),personal_email:rule('Personal Email','person'),
- uae_address:rule('UAE Address','person'),home_country_address:rule('Home Country Address','person'),blood_group:rule('Blood Group','person',false,{sensitive:'medical'}),photo_dms_document_id:rule('Photo','person',false,{source:'dms_documents'}),
+ uae_address:rule('UAE Address','person'),home_country_address:rule('Home Country Address','person'),blood_group:rule('Blood Group','person',false,{sensitive:'medical'}),photo_framing:rule('Photo framing','person'),photo_dms_document_id:rule('Photo','person',false,{source:'dms_documents'}),
  owner_company_id:rule('Employer Company','employment',true,{source:'owner_companies'}),employee_category_id:rule('Employee Category','employment',true,{source:'hr_employee_categories'}),employment_type_id:rule('Employment Type','employment',false,{source:'hr_employment_types'}),
  joining_date:rule('Joining Date','employment',true,{date:'employment'}),actual_joining_date:rule('Actual Joining Date','employment',false,{date:'employment'}),employee_status:rule('Employment Status','employment'),
  sponsor_company_id:rule('Sponsor Company','employment',false,{source:'owner_companies'}),mohre_establishment_id:rule('MOHRE Establishment','employment',false,{source:'hr_mohre_establishments'}),

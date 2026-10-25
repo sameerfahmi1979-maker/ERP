@@ -1,5 +1,7 @@
 "use client";
-import {SubjectPhoto}from'../subject-photo';
+import {SubjectPhoto,SubjectPhotoReadOnly}from'../subject-photo';
+import {useSubjectPhotoDraft} from '../use-subject-photo-draft';
+import {PhotoRecoveryNotice} from '../photo-recovery-notice';
 import{WorkforceReviewButton}from'../workforce-review';
 import { useGuardedTransition as useTransition } from "@/hooks/use-guarded-transition";
 import { RecordCollection } from "@/components/erp/table/record-collection";
@@ -756,7 +758,7 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
   const initialForm = () => ({
     dms_document_id: null as number | null,
     dependent_name_en: "", dependent_name_ar: "", relationship_type_id: null as number | null,
-    photo_dms_document_id:null as number|null,
+    photo_dms_document_id:null as number|null,photo_framing:'',photo_pending:'',
     date_of_birth: "", nationality_id: null as number | null,
     passport_number: "", passport_expiry: "", emirates_id_number: "", emirates_id_expiry: "",
     residence_visa_number: "", residence_visa_expiry: "", medical_insurance_provider: "",
@@ -784,6 +786,7 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
   const { data: relTypes } = uiRead2;
 
   const admission = useComplianceReadAdmission(canManageDoc && recordRead.access.canManage, [...recordRead.reads, uiRead2], JSON.stringify([recordRead.owner, recordRead.denied, recordRead.restricted]));
+  const photoDraft=useSubjectPhotoDraft(recordRead.identity,'dependent:'+employeeId+':'+(editing?.id??'new'));
   const dependentSession=useDependentSaveSession(employeeId,authContext.profile?.id,JSON.stringify([recordRead.identity,recordRead.medicalViewRetired,recordRead.denied,recordRead.restricted]),admission.generation,'editor');
   const [archiveCandidate,setArchiveCandidate]=useState<{id:number;revision:string;name:string}|null>(null);
   const [archiveDialogOpen,setArchiveDialogOpenRaw]=useState(false);
@@ -856,7 +859,7 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
   ) => (
     <div className="grid grid-cols-12 gap-4">
       <ComplianceDmsPrefillBanner prefillMeta={prefillMeta} />
-      <div className="col-span-12"><SubjectPhoto subject="dependent"employee={editing?.id?employeeId:null}dependent={editing?.id??null}identity={recordRead.identity}value={f.photo_dms_document_id}disabled={dependentSession.saving||!!dependentSession.pending}onValue={value=>setF(previous=>({...previous,photo_dms_document_id:value}))}/></div>
+      <div className="col-span-12"><SubjectPhoto draft={photoDraft} framing={f.photo_framing} onFraming={(frame,pending)=>setF(previous=>({...previous,photo_framing:frame,...(pending===undefined?{}:{photo_pending:pending?'file':''})}))} subject="dependent"employee={editing?.id?employeeId:null}dependent={editing?.id??null}identity={recordRead.identity}value={f.photo_dms_document_id}disabled={dependentSession.saving||!!dependentSession.pending}onValue={value=>setF(previous=>({...previous,photo_dms_document_id:value}))}/></div>
       <div className="col-span-6"><Label>Name (English) <span className="text-destructive">*</span></Label><Input aria-label="Name (English)" required value={f.dependent_name_en} onChange={(e) => setF((p) => ({ ...p, dependent_name_en: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Name (Arabic)</Label><Input aria-label="Name (Arabic)" value={f.dependent_name_ar} onChange={(e) => setF((p) => ({ ...p, dependent_name_ar: e.target.value }))} dir="rtl" /></div>
       <div className="col-span-6"><Label>Relationship <span className="text-destructive">*</span></Label><ERPCombobox ariaLabel="Relationship" value={f.relationship_type_id} onValueChange={(v) => setF((p) => ({ ...p, relationship_type_id: Number(v) }))} options={relTypeOptions} placeholder="Select relationship..." required /></div>
@@ -896,12 +899,15 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
 
   const openAdd = () => {
     if (!admission.canDispatch()) return;
+    if(photoDraft.pending||photoDraft.createdPerson){toast.error('Finish the retained photo in its original dependent form before opening another.');return;}
     if(!dependentSession.startNew()){toast.error("Reconcile the previous dependent save before opening another record.");return;}
+    setEditing(null);
     depLinkChangesRef.current = EMPTY_DEP_LINK_CHANGES;
     setAddDialogOpen(true);
   };
   const openEdit = async (selected: {id: number}) => {
     if (!admission.canDispatch()) return;
+    if((photoDraft.pending||photoDraft.createdPerson)&&!(photoDraft.recovered?.dependent===selected.id&&!photoDraft.recovered.savePending)){toast.error('Finish the retained photo in its original dependent form before opening another.');return;}
     if(!dependentSession.startNew()){toast.error("Reconcile the previous dependent save first.");return;}
     const r = await recordRead.loadDetail(selected.id);
     if (!r || !admission.isCurrent()) return;
@@ -909,7 +915,7 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
     setEditing(r);
     setForm({
       dms_document_id: r.dms_document_id,
-      photo_dms_document_id:r.photo_dms_document_id??null,
+      photo_dms_document_id:r.photo_dms_document_id??null,photo_framing:r.photo_framing?JSON.stringify(r.photo_framing):'',photo_pending:'',
       dependent_name_en: r.dependent_name_en, dependent_name_ar: r.dependent_name_ar ?? "",
       relationship_type_id: r.relationship_type_id, date_of_birth: r.date_of_birth ?? "",
       nationality_id: r.nationality_id, passport_number: r.passport_number ?? "",
@@ -928,11 +934,15 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
     const err=validateDependent(currentDependentForm.current);if(err){toast.error(err);return;}
     startTransition(async()=>{
       if(!admission.canDispatch()||!recordRead.isDetailCurrent(editing.id))return;
-      const values=buildPayload(currentDependentForm.current),changes=depLinkChangesRef.current;
-      const result=await dependentSession.submit({employeeId,id:editing.id,kind:'save',revision:String(editing.workspace_revision),values,addDocumentIds:changes.addDocumentIds,removeDocumentIds:changes.removeDocumentIds});
+      let reviewed=currentDependentForm.current;
+      try{if(photoDraft.pending||reviewed.photo_pending){const photo=await photoDraft.resolve(employeeId,editing.id,reviewed);reviewed={...reviewed,...photo};setForm(previous=>({...previous,...photo}));}}
+      catch(e){toast.error(e instanceof Error?e.message:'Photo remains pending');return;}
+      if(!admission.canDispatch()||!recordRead.isDetailCurrent(editing.id))return;
+      const values=buildPayload(reviewed),changes=depLinkChangesRef.current;
+      const result=await dependentSession.submit({employeeId,id:editing.id,kind:'save',revision:String(editing.workspace_revision),values,addDocumentIds:changes.addDocumentIds,removeDocumentIds:changes.removeDocumentIds},photoDraft.pending?(request,contract)=>photoDraft.saveDependent(request,contract,reviewed):undefined);
       if(result.success){handleAddSaved({hasDmsDocument:!!values.dms_document_id});void qc.invalidateQueries({queryKey:['hr','dependent-doc-links']});}
       if(!admission.isCurrent()||!recordRead.isDetailCurrent(editing.id))return;
-      if(result.success){toast.success('Dependent and document links saved together');recordRead.closeDetail();setEditDialogOpen(false);}else toast.error(result.error??'Dependent save unconfirmed');
+      if(result.success){try{await photoDraft.confirmed();}catch(e){toast.error(e instanceof Error?e.message:'Photo confirmation pending');return;}toast.success('Dependent and document links saved together');recordRead.closeDetail();setEditDialogOpen(false);}else toast.error(result.error??'Dependent save unconfirmed');
     });
   };
 
@@ -941,6 +951,7 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
   };
 
   const handleArchive = async(id:number)=>{
+    if(photoDraft.pending||photoDraft.createdPerson){toast.error('Finish the retained photo before opening another operation.');return;}
     if(!admission.canDispatch()||!dependentSession.startNew())return;
     const current=await recordRead.loadDetail(id);if(!current||!admission.isCurrent())return;
     // The fresh detail query settles before React commits its admission state.
@@ -957,8 +968,15 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
   const recovery=(dependentSession.pending||dependentSession.error||dependentSession.blocked)&&<div role="alert" className="mb-3 rounded border p-3 text-sm">
     <p>{dependentSession.error??'An earlier dependent save needs reconciliation before another change.'}</p>
     {dependentSession.pending&&<Button type="button" variant="outline" disabled={!admission.ready||dependentSession.saving} onClick={async()=>{
+      const original=dependentSession.pending?.request;
       const result=await dependentSession.retry();
-      if(result.success){handleAddSaved();void qc.invalidateQueries({queryKey:['hr','dependent-doc-links']});if(admission.isCurrent()){toast.success('Original dependent save confirmed');recordRead.closeDetail();setEditDialogOpen(false);setAddDialogOpen(false);}}
+      if(result.success){handleAddSaved();void qc.invalidateQueries({queryKey:['hr','dependent-doc-links']});if(admission.isCurrent()){
+        if(photoDraft.pending||photoDraft.createdPerson){
+          if(original?.id===null&&result.data){photoDraft.rememberPerson({id:result.data.id,revision:result.data.revision});toast.success('Person created. Use Save to finish the photo.');}
+          else if(original?.values.photo_dms_document_id===photoDraft.retained?.receipt?.documentId){try{await photoDraft.confirmed();}catch(e){toast.error(e instanceof Error?e.message:'Photo confirmation pending');return;}toast.success('Dependent and photo save confirmed');recordRead.closeDetail();setEditDialogOpen(false);setAddDialogOpen(false);}
+          else toast.success('Original person save confirmed. Use Save to finish the photo.');
+        }else{toast.success('Original dependent save confirmed');recordRead.closeDetail();setEditDialogOpen(false);setAddDialogOpen(false);}
+      }}
       else if(admission.isCurrent())toast.error(result.error??'Original request remains unconfirmed');
     }}>Retry original dependent save</Button>}
     {dependentSession.retired&&<Button type="button" variant="outline" disabled={!admission.ready||dependentSession.saving} onClick={async()=>{const result=await dependentSession.reconcileRetired();if(result.success){handleAddSaved();toast.success('Earlier dependent save confirmed without replaying private fields');}else toast.error(result.error??'Earlier save remains unresolved');}}>Check earlier saved result</Button>}
@@ -969,6 +987,7 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
   return (
     <QueryReadBoundary queries={[...recordRead.reads,uiRead2]}><div className="mb-8">
       {recovery}
+      <PhotoRecoveryNotice draft={photoDraft} onOpenDependent={id=>void openEdit({id})}/>
       <SectionHeader icon={Users} title="Dependents" count={recordRead.serverRead.totalCount ?? undefined} onAdd={openAdd} canAdd={admission.ready} onAddFromDocs={() => { if (admission.canDispatch()) setDmsWizardOpen(true); }} canAddFromDocs={admission.ready && documentWizardEnabled} />
       {isLoading && <Skeleton className="h-16 w-full" />}
       {uiRead1.isSuccess && recordRead.serverRead.totalCount === 0 && !recordRead.invalid && <EmptyState message="No dependents added yet." />}
@@ -991,6 +1010,7 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
                   {r.emirates_id_expiry && <span className="text-xs text-muted-foreground">EID exp: {formatDate(r.emirates_id_expiry)}</span>}
                   {r.residence_visa_expiry && <span className="text-xs text-muted-foreground">Visa exp: {formatDate(r.residence_visa_expiry)}</span>}
                 </div>
+                <SubjectPhotoReadOnly key={recordRead.identity+':'+r.id} employee={employeeId} dependent={r.id} subject="dependent" identity={recordRead.identity}/>
               </div>
               {canManageDoc && recordRead.access.canManage && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
@@ -1007,7 +1027,7 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
       <ComplianceDmsAddDialog
         admission={admission}
         open={addDialogOpen}
-        onOpenChange={setAddDialogOpen}
+        onOpenChange={open=>{if(!open&&!photoDraft.retained&&!photoDraft.createdPerson&&!photoDraft.busy&&!photoDraft.blocked)photoDraft.discard();setAddDialogOpen(open);}}
         employeeId={employeeId}
         recordKind="dependent"
         privacyRevision={recordRead.medicalViewRetired ? "medical-retired" : "medical-current"}
@@ -1018,13 +1038,31 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
         size="xl"
         createEmptyForm={initialForm}
         validate={validateDependent}
-        closeDisabled={!!dependentSession.pending}
+        closeDisabled={!!dependentSession.pending||photoDraft.busy||!!photoDraft.retained||!!photoDraft.createdPerson||photoDraft.blocked}
         recovery={recovery}
         save={async(f)=>{
           if(!admission.canDispatch())return {success:false,error:'Required record checks are not ready'};
-          if(dependentSession.receipt&&!dependentSession.startNew())return {success:false,error:'Prior result needs reconciliation'};
-          const changes=depLinkChangesRef.current;
-          return dependentSession.submit({employeeId,id:null,kind:'save',revision:null,values:buildPayload(f),addDocumentIds:changes.addDocumentIds,removeDocumentIds:changes.removeDocumentIds});
+          try{
+            const changes=depLinkChangesRef.current;
+            const staged=photoDraft.pending||!!f.photo_pending||!!photoDraft.createdPerson;
+            if(staged)photoDraft.validate(f);
+            if(!staged){
+              if(dependentSession.receipt&&!dependentSession.startNew())return {success:false,error:'Prior result needs reconciliation'};
+              return dependentSession.submit({employeeId,id:null,kind:'save',revision:null,values:buildPayload(f),addDocumentIds:changes.addDocumentIds,removeDocumentIds:changes.removeDocumentIds});
+            }
+            let person=photoDraft.createdPerson;
+            if(!person){
+              const base=await dependentSession.submit({employeeId,id:null,kind:'save',revision:null,values:buildPayload({...f,photo_dms_document_id:null,photo_framing:'',photo_pending:''}),addDocumentIds:changes.addDocumentIds,removeDocumentIds:changes.removeDocumentIds},(request,contract)=>photoDraft.saveDependent(request,contract,f));
+              if(!base.success||!base.data||base.retired)return base;
+              person={id:base.data.id,revision:base.data.revision};photoDraft.rememberPerson(person);
+            }
+            const photo=await photoDraft.resolve(employeeId,person.id,f);
+            if(!admission.canDispatch())return {success:false,error:'Photo update paused; reopen with current access.'};
+            if(dependentSession.receipt&&!dependentSession.startNew())return {success:false,error:'Prior result needs reconciliation'};
+            const result=await dependentSession.submit({employeeId,id:person.id,kind:'save',revision:person.revision,values:buildPayload({...f,...photo}),addDocumentIds:[],removeDocumentIds:[]},(request,contract)=>photoDraft.saveDependent(request,contract,f));
+            if(result.success&&!result.retired)await photoDraft.confirmed();
+            return result;
+          }catch(e){return {success:false,error:e instanceof Error?e.message:'Person created; photo update remains pending. Retry Save.'};}
         }}
         onSaved={handleAddSaved}
         renderReview={({ form: addForm, setForm: setAddForm, prefillMeta }) => (
@@ -1043,7 +1081,7 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
         <ComplianceReadPause admission={admission}/>{recovery}
         <p>Archive {archiveCandidate?.name}? The saved revision will be checked. Linked documents and their history will not be deleted.</p>
       </ERPChildDialogForm>
-      <ERPChildDialogForm open={editDialogOpen} onOpenChange={(open) => { if (!admission.isCurrent()) return; if (!open) recordRead.closeDetail(); setEditDialogOpen(open); }} closeDisabled={!!dependentSession.pending} title="Edit Dependent" icon={<Users className="h-5 w-5" />} mode="edit" size="xl" isSubmitting={isSubmitting} submitDisabled={!admission.ready} onSubmit={handleEditSubmit}>
+      <ERPChildDialogForm open={editDialogOpen} onOpenChange={(open) => { if (!admission.isCurrent()||dependentSession.pending||photoDraft.busy||photoDraft.retained||photoDraft.blocked) return; if (!open) {photoDraft.discard();recordRead.closeDetail();} setEditDialogOpen(open); }} closeDisabled={!!dependentSession.pending||photoDraft.busy||!!photoDraft.retained||photoDraft.blocked} title="Edit Dependent" icon={<Users className="h-5 w-5" />} mode="edit" size="xl" isSubmitting={isSubmitting} submitDisabled={!admission.ready} onSubmit={handleEditSubmit}>
         <ComplianceReadPause admission={admission} />
         {recovery}
         {renderDependentFields(form, setForm, null)}

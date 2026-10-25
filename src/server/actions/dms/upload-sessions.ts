@@ -7,7 +7,7 @@ import type { z } from "zod";
 import {verifyTemporaryUpload} from '@/server/dms-temp-upload-verification';
 import {discardRetainedIntake} from '@/server/dms-intake-discard';
 import {admitSingleUpload,acknowledgeSingleUpload,type SingleUploadContract,type SingleUploadAdmissionResult} from '@/server/dms-single-upload-admission';
-import type {SingleUploadRequest} from '@/lib/dms/single-upload-admission';
+import type {SingleUploadRequest,UploadOwningScope} from '@/lib/dms/single-upload-admission';
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -145,7 +145,7 @@ export async function getDmsUploadSession(
 
 // ── Create upload session + get signed upload URL ─────────────────────────────
 
-export type CreateUploadSessionInput = z.infer<typeof dmsFileMetadataSchema> & {context?:{entityType:string;entityId:number}};
+export type CreateUploadSessionInput = z.infer<typeof dmsFileMetadataSchema> & {context?:{entityType:string;entityId:number};scope?:UploadOwningScope};
 
 export type CreateUploadSessionResult = {
   session: DmsUploadSessionRow;

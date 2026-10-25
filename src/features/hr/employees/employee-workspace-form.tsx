@@ -1,4 +1,7 @@
 "use client";
+import {useSubjectPhotoDraft} from './use-subject-photo-draft';
+import {PhotoRecoveryNotice} from './photo-recovery-notice';
+import {parsePhotoFraming} from '@/lib/hr/photo-framing';
 import { reportWorkspaceFieldErrors } from "@/lib/workspace/field-errors";
 import {useEmployeeSaveSession} from './use-employee-save-session';
 import {useReadLifetime} from '@/hooks/use-read-lifetime';
@@ -144,6 +147,7 @@ const employeeCodec: WorkspaceDraftCodec<EmployeeProfileFormState> = {
 function buildInitialFormState(employee: EmployeeListRow | null | undefined): EmployeeProfileFormState {
   return {
     photo_dms_document_id:employee?.photo_dms_document_id??null,
+    photo_framing:employee?.photo_framing?JSON.stringify(employee.photo_framing):'',photo_pending:'',
     employment_change_reason: '',
     employment_effective_date: '',
     full_name_en: employee?.full_name_en ?? "",
@@ -222,6 +226,7 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
     retirementScope: recoveryScope, recordScope: id => `f11-employee:${actor}:record:${id}`,
   });
   const identity = hrReadIdentity(authContext), lifetime = useReadLifetime(identity);
+  const photoDraft=useSubjectPhotoDraft(identity,'employee:'+String(employee?.id??'new'));
   const mounted = useRef(false);
   const openingIdentity = useRef(identity);
   const [, showRetirement] = useState(0);
@@ -232,7 +237,7 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
     ? checkPermission(authContext, 'hr.employees.update') || checkPermission(authContext, 'hr.employee_profile.manage')
     : checkPermission(authContext, 'hr.employees.create'));
   const recordId = useRef(saveSession.id);
-  const [savedId, setSavedId] = useState(employee?.id ?? null);
+  const [savedId, setSavedId] = useState(saveSession.id);
   const isViewing = mode === "view";
   const isAdding = savedId === null;
   const isEditing = !isViewing && !isAdding;
@@ -261,12 +266,13 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
     };
   }, [saveSession, retire]);
 
-  const handleRequestClose = () => { if (owner) closeTab(owner.id); };
+  const handleRequestClose = () => { if(photoDraft.retained||photoDraft.busy||photoDraft.blocked){toast.error('Finish the retained photo save before closing.');return;}if (owner) closeTab(owner.id); };
 
   const handleSave = async (closeAfter = false): Promise<boolean> => {
+    if(photoDraft.recovered&&isAdding&&(photoDraft.recovered.employee||photoDraft.recovered.savePending)){toast.error('Resume the original photo save and open its saved employee before another entry.');return false;}
     if (isViewing || !canEdit || !lifetime.active || saveSession.isRetired || saveSession.requiresReconciliation || !admission.enter()) return false;
     setIsSubmitting(true);
-    const submitted = getCurrent();
+    let submitted = getCurrent();
     let confirmed = false;
     try {
       const formElement = document.getElementById(formId) as HTMLFormElement | null;
@@ -280,8 +286,15 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
         toast.error("Check the required employee fields before saving.");
         return false;
       }
+      const photoPending=photoDraft.pending||!!submitted.photo_pending;
+      if(photoPending)photoDraft.validate({photo_dms_document_id:submitted.photo_dms_document_id??null,photo_framing:submitted.photo_framing,photo_pending:submitted.photo_pending});
+      if(photoPending&&recordId.current!==null){const photo=await photoDraft.resolve(recordId.current,null,{photo_dms_document_id:submitted.photo_dms_document_id??null,photo_framing:submitted.photo_framing,photo_pending:submitted.photo_pending});submitted={...submitted,...photo};setForm(previous=>({...previous,...photo}));}
+      const {photo_pending:photoDraftMarker,...savedFields}=submitted;
+      void photoDraftMarker;
       const data = {
-        ...submitted,
+        ...savedFields,
+        photo_framing:recordId.current===null&&photoPending?null:parsePhotoFraming(submitted.photo_framing),
+        photo_dms_document_id:recordId.current===null&&photoPending?null:submitted.photo_dms_document_id,
         employment_change_reason: submitted.employment_change_reason || undefined,
         employment_effective_date: submitted.employment_effective_date || undefined,
         full_name_ar: submitted.full_name_ar || null,
@@ -303,13 +316,13 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
       };
       const wasNew = recordId.current === null;
       const wasPending = saveSession.hasPending;
-      const result = wasNew
-        ? await createEmployee(data as EmployeeCreateInput, saveSession.begin(data))
-        : await updateEmployee(recordId.current!, data as EmployeeUpdateInput, saveSession.begin(data));
+      const contract=saveSession.begin(data);
+      const result = photoPending
+        ? await photoDraft.save(wasNew?{kind:'employee-create',input:data as EmployeeCreateInput,contract}:{kind:'employee-update',id:recordId.current!,input:data as EmployeeUpdateInput,contract},submitted)
+        : wasNew?await createEmployee(data as EmployeeCreateInput,contract):await updateEmployee(recordId.current!,data as EmployeeUpdateInput,contract);
       if (!lifetime.active || saveSession.isRetired) return false;
       if (!result.success) { if (!wasPending && !result.uncertain) saveSession.rejected(); reportWorkspaceFieldErrors(formElement, result.fieldErrors); toast.error(result.error ?? "Failed to save employee"); return false; }
       if (!result.data || !Number.isSafeInteger(result.data.id) || result.data.id <= 0 || (recordId.current !== null && result.data.id !== recordId.current) || !/^[1-9]\d*$/.test(result.data.revision) || typeof result.data.replayed !== 'boolean') { toast.error("Save response incomplete. Retry the same values to reconcile it."); return false; }
-      confirmed = true;
       saveSession.accept(result.data);
       if (wasNew) {
         const id = (result as {data?: {id: number}}).data?.id;
@@ -317,6 +330,16 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
         recordId.current = id;
         setSavedId(id);
       }
+      if(wasNew&&photoPending){
+        const photo=await photoDraft.resolve(recordId.current!,null,{photo_dms_document_id:submitted.photo_dms_document_id??null,photo_framing:submitted.photo_framing,photo_pending:submitted.photo_pending});
+        const photoData={...data,photo_dms_document_id:photo.photo_dms_document_id,photo_framing:parsePhotoFraming(photo.photo_framing)};
+        const attached=await photoDraft.save({kind:'employee-update',id:recordId.current!,input:photoData as EmployeeUpdateInput,contract:saveSession.begin(photoData)},submitted);
+        if(!lifetime.active||saveSession.isRetired)return false;
+        if(!attached.success){if(!attached.uncertain)saveSession.rejected();throw Error(attached.error??'Employee created; photo update remains pending. Retry Save.');}
+        if(!attached.data||attached.data.id!==recordId.current)throw Error('Photo save response incomplete. Retry the retained request.');
+        saveSession.accept(attached.data);submitted={...submitted,...photo};setForm(previous=>({...previous,...photo}));
+      }
+      await photoDraft.confirmed();confirmed=true;
       try {
         invalidateHrEmployees(queryClient);
         invalidateHrEmployee(queryClient, recordId.current!);
@@ -348,6 +371,7 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
     mode: canEdit ? mode : 'view' as const,
     form,
     setForm,
+    photoDraft,photoEmployeeId:savedId,photoDisabled:isSubmitting||saveSession.hasPending,
   };
 
   if (!canRead) return <p role="alert">Employee access is no longer available. Private drafts have been retired; reopen with current authorization.</p>;
@@ -379,6 +403,7 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
       onSaveAndClose={isViewing || !canEdit ? undefined : () => handleSave(true)}
       onRequestClose={handleRequestClose}
       isSubmitting={isSubmitting}
+      closeBlocked={!!photoDraft.retained||photoDraft.blocked}
       isChildDialogOpen={childDialogOpen || complianceChildLeases.size > 0}
     >
       <form
@@ -390,6 +415,7 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
       >
         {/* WS.3: visible signal that unsaved values from a previous visit were restored */}
         <DraftRestoredNotice visible={!isViewing && restoredFromDraft} className="mb-3" />
+        {!isViewing&&<PhotoRecoveryNotice draft={photoDraft}/>}
         <EmployeeSaveRecovery key={identity} session={saveSession} scope={saveSession.id === null ? recoveryScope : `f11-employee:${actor}:record:${saveSession.id}`}/>
         {notificationTask&&<NotificationTaskContextCard task={notificationTask} onSection={setActiveSection} blocked={isSubmitting||childDialogOpen||complianceChildLeases.size>0}/>}
 

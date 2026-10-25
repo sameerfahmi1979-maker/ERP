@@ -40,3 +40,21 @@ it('a reload discovers the exact original unacknowledged request before signing'
 it('recovery cannot substitute another owner, file or subject',async()=>{m.rpc.mockResolvedValue({data:{recovery:{version:1,...contract,metadata:{...metadata,sha256_hash:'b'.repeat(64)},context:null}},error:null});expect(await admitSingleUpload(metadata,contract)).toMatchObject({success:false});expect(m.admin).not.toHaveBeenCalled();});
 it('acknowledgment checks the exact native receipt',async()=>{m.rpc.mockResolvedValue({data:{operationId,sessionId:session.id,acknowledged:true},error:null});expect(await acknowledgeSingleUpload({version:1,...contract,metadata,context:null},session.id)).toMatchObject({success:true});expect(m.rpc).toHaveBeenCalledWith('f07_acknowledge_single_upload',expect.objectContaining({p_session:session.id}));});
 it('lost acknowledgment retains original recovery',async()=>{m.rpc.mockRejectedValue(Error('lost'));expect(await acknowledgeSingleUpload({version:1,...contract,metadata,context:null},session.id)).toMatchObject({success:false,uncertain:true});});
+
+it('explicit owning company is sent separately from source-record context',async()=>{
+ m.rpc.mockResolvedValue({data:{operationId,authUserId,session:{...session,owning_company_id:7002,owning_branch_id:null},replayed:false},error:null});
+ const scope={companyId:7002,branchId:null};
+ expect(await admitSingleUpload({...metadata,scope},contract)).toMatchObject({success:true});
+ expect(m.rpc).toHaveBeenCalledWith('f07_admit_single_upload',{p_request:{version:1,...contract,metadata,context:null,scope}});
+});
+it('a receipt for a different owning company cannot issue a capability',async()=>{
+ m.rpc.mockResolvedValue({data:{operationId,authUserId,session:{...session,owning_company_id:7001,owning_branch_id:null},replayed:false},error:null});
+ expect(await admitSingleUpload({...metadata,scope:{companyId:7002,branchId:null}},contract)).toMatchObject({success:false,uncertain:true});expect(m.sign).not.toHaveBeenCalled();
+});
+it('record origin and explicit owning scope cannot be mixed',async()=>{
+ expect(await admitSingleUpload({...metadata,context:{entityType:'employee',entityId:7},scope:{companyId:7002,branchId:null}},contract)).toMatchObject({success:false});expect(m.rpc).not.toHaveBeenCalled();
+});
+it.each([[ 'PT422','Choose an owning company' ],['22023','file details'],['PT409','differs from its original'],['42501','current access']])('reports the actual admission category %s',async(code,message)=>{
+ m.rpc.mockResolvedValue({data:null,error:{code}});const r=await admitSingleUpload(metadata,contract);
+ expect(r).toMatchObject({success:false,uncertain:false});expect(r.error).toContain(message);expect(r.error).not.toContain('The retained upload or');expect(m.sign).not.toHaveBeenCalled();
+});

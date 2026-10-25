@@ -103,6 +103,7 @@ export type EmployeeMedicalInsuranceRow = {
 
 export type EmployeeDependentRow = {
   photo_dms_document_id?:number|null;
+  photo_framing?:import('@/lib/hr/photo-framing').PhotoFraming|null;
   id: number;
   workspace_revision: number;
   employee_id: number;

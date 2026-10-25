@@ -7,6 +7,8 @@ import { DmsAdminFileStoragePanel } from "@/features/dms/admin/dms-admin-file-st
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { useDmsBatchAdmission } from "@/hooks/use-dms-batch-admission";
+import {DmsUploadScopePicker} from './dms-upload-scope-picker';
+import type {UploadOwningScope} from '@/lib/dms/single-upload-admission';
 import {useDmsSingleUploadAdmission} from '@/hooks/use-dms-single-upload-admission';
 import { startAiIntakeFromUploadSession } from "@/server/actions/dms/ai-intake";
 import type { DmsDocumentRow } from "@/server/actions/dms/documents";
@@ -81,7 +83,9 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
   const [selectedSession, setSelectedSession] = useState<DmsUploadSessionRow | null>(null);
 
   const [uploadMode, setUploadMode] = useState<UploadMode>("single");
-  const singleAdmission=useDmsSingleUploadAdmission(entityContext);
+  const [owningScope,setOwningScope]=useState<UploadOwningScope|null>(null);
+  const singleAdmission=useDmsSingleUploadAdmission(entityContext,entityContext?undefined:owningScope);
+  const selectedOwningScope=owningScope??singleAdmission.retainedScope;
   const batchFailureRef = useRef<HTMLDivElement>(null);
   const batch = useDmsBatchAdmission({
     enabled: batchEnabled && uploadMode === "batch",
@@ -249,18 +253,19 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
     input: CreateUploadSessionInput & { file: File }
   ) => {
     const { file, ...sessionInput } = input;
+    if(!entityContext&&!selectedOwningScope&&!singleAdmission.pending){setUploadState({phase:"error",message:"Choose an owning company before selecting a file."});return;}
     let retained:ReturnType<typeof singleAdmission.begin>;
     try{retained=singleAdmission.begin(sessionInput);}
     catch(e){setUploadState({phase:'error',message:e instanceof Error?e.message:'Retained upload recovery is unavailable.'});return;}
     try{
     setUploadState({ phase: "uploading", progress: 0 });
 
-    let result = await createDmsUploadSession({...sessionInput,context:retained.request.context??undefined},
+    let result = await createDmsUploadSession({...sessionInput,context:retained.request.context??undefined,scope:retained.request.scope},
       {operationId:retained.request.operationId,authUserId:retained.request.authUserId});
     if(!retained.isCurrent())return;
     if(result.recovery){
       if(!retained.recover(result.recovery))return;
-      result=await createDmsUploadSession({...sessionInput,context:retained.request.context??undefined},
+      result=await createDmsUploadSession({...sessionInput,context:retained.request.context??undefined,scope:retained.request.scope},
         {operationId:retained.request.operationId,authUserId:retained.request.authUserId});
       if(!retained.isCurrent())return;
     }
@@ -334,7 +339,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
     }catch{
       if(retained.isCurrent())setUploadState({phase:'error',message:'Upload outcome is unconfirmed. Reselect the same original file to recover this request; do not start another copy.'});
     }finally{retained.settled();}
-  }, [autoStartEnabled, handleAiFill, singleAdmission]);
+  }, [autoStartEnabled, handleAiFill, singleAdmission, entityContext, selectedOwningScope]);
 
   const handleCancelDuplicate = () => {
     if (uploadState.phase === "duplicate") {
@@ -457,9 +462,10 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
 
         {uploadMode === "single" ? (
           <>
+            {!entityContext&&<DmsUploadScopePicker value={selectedOwningScope} onChange={setOwningScope} disabled={singleAdmission.pending||uploadState.phase==='uploading'}/>}
             <DmsUploadDropzone
               onFileSelected={handleFileSelected}
-              disabled={uploadState.phase === "uploading"}
+              disabled={uploadState.phase === "uploading"||(!entityContext&&!selectedOwningScope&&!singleAdmission.pending)}
             />
             {uploadState.phase === "uploading" && (
               <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">

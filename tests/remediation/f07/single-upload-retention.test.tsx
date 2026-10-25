@@ -18,3 +18,18 @@ it('retired owner cannot publish a stale reply or clear the new owner draft',()=
 it('same component context change permanently retires the prior activation',()=>{const {result,rerender}=renderHook(({id})=>useDmsSingleUploadAdmission({entityType:'employee',entityId:id}),{initialProps:{id:1}});const run=result.current.begin(metadata);act(()=>rerender({id:2}));expect(run.isCurrent()).toBe(false);expect(run.confirmed()).toBe(false);});
 it('corrupt retention and failed storage never dispatch',()=>{const {result}=renderHook(()=>useDmsSingleUploadAdmission());m.store!.setDraft('draft:tab:synthetic-workspace:f07-single-upload:null',{request:'invalid'});expect(()=>result.current.begin(metadata)).toThrow();expect(m.store!.getDraft('draft:tab:synthetic-workspace:f07-single-upload:null')!.request).toBe('invalid');});
 it('reload recovery durably adopts only the exact server-retained original identity',()=>{const {result}=renderHook(()=>useDmsSingleUploadAdmission());const run=result.current.begin(metadata);const original={...run.request,operationId:'d7000000-0000-4000-8000-000000000001'};expect(run.recover(original)).toBe(true);expect(run.request).toEqual(original);expect(run.isCurrent()).toBe(true);expect(()=>run.recover({...original,context:{entityType:'employee',entityId:1}})).toThrow(/differs/);run.settled();expect(result.current.begin(metadata).request).toEqual(original);});
+
+it('selected company is frozen with the original file and operation',()=>{
+ const {result}=renderHook(()=>useDmsSingleUploadAdmission(null,{companyId:7,branchId:8}));const run=result.current.begin(metadata);
+ expect(run.request.scope).toEqual({companyId:7,branchId:8});expect(run.request.context).toBeNull();expect(result.current.pending).toBe(true);expect(result.current.retainedScope).toEqual({companyId:7,branchId:8});
+ expect(()=>run.recover({...run.request,scope:{companyId:9,branchId:null}})).toThrow();run.settled();
+});
+it('company changes cannot redirect a pending upload or erase the original',()=>{
+ const {result,rerender}=renderHook(({company})=>useDmsSingleUploadAdmission(null,{companyId:company,branchId:null}),{initialProps:{company:7}});
+ const run=result.current.begin(metadata);run.settled();act(()=>rerender({company:8}));expect(run.isCurrent()).toBe(false);
+ expect(()=>result.current.begin(metadata)).toThrow(/earlier upload/);expect(result.current.retainedScope).toEqual({companyId:7,branchId:null});
+});
+it('remount without a new company selection retains original explicit scope',()=>{
+ const first=renderHook(()=>useDmsSingleUploadAdmission(null,{companyId:7,branchId:null}));const run=first.result.current.begin(metadata);run.settled();first.unmount();
+ const second=renderHook(()=>useDmsSingleUploadAdmission());expect(second.result.current.begin(metadata).request).toEqual(run.request);
+});

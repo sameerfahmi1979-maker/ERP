@@ -8,6 +8,10 @@ import { ERPRecordSectionPanel, ERPRecordWorkspaceForm } from '@/components/work
 import { collectWorkspaceFieldIssues } from '@/lib/workspace/form-validation';
 import { reportWorkspaceFieldErrors, workspaceValidationFailure } from '@/lib/workspace/field-errors';
 afterEach(cleanup);
+it('retained multipart recovery blocks close but keeps Save available',async()=>{
+ const save=vi.fn(),close=vi.fn();const ui=render(<ERPRecordWorkspaceForm title="Synthetic recovery" mode="edit" isDirty sections={[]} activeSection="profile" onSectionChange={()=>{}} onSave={save} onRequestClose={close} closeBlocked><form><input defaultValue="Retained"/></form></ERPRecordWorkspaceForm>);
+ const cancel=ui.queryByRole('button',{name:'Cancel'});if(cancel)fireEvent.click(cancel);expect(close).not.toHaveBeenCalled();fireEvent.click(ui.getByRole('button',{name:'Save',exact:true}));await waitFor(()=>expect(save).toHaveBeenCalledOnce());
+});
 function Form({save,child=false}:{save:()=>Promise<void>|void;child?:boolean}) {
  const [section,setSection]=useState('basic');
  return <ERPRecordWorkspaceForm title="Synthetic" mode="add" isDirty sections={[{id:'basic',label:'Basic'},{id:'contact',label:'Contact'}]} activeSection={section} onSectionChange={setSection} onSave={save} onSaveAndClose={save} isChildDialogOpen={child}>

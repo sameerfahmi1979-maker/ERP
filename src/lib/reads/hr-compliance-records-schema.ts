@@ -1,4 +1,5 @@
 import {z} from "zod";
+import {photoFramingSchema} from '@/lib/hr/photo-framing';
 import {normalizeReadSorting, readSortingSchema} from "./read-sorting";
 export {hrReadIdentity as complianceReadIdentity} from "./hr-read-identity";
 
@@ -25,7 +26,7 @@ export const complianceDetailSchemas = {
     document_type: label, issue_country: label, issuing_emirate: label, issue_city: label,
     issuing_authority_party: z.object({id, display_name: z.string(), party_code: z.string()}).strip().nullable(), sponsor_company: z.object({id, legal_name_en: z.string()}).strip().nullable()}).strip(),
   insurance: z.object({...base, insurance_provider: z.string(), tpa: text, policy_number: z.string(), insurance_card_number: text, network_class: text, issue_date: date, expiry_date: z.iso.date(), employee_covered: z.boolean(), dependent_coverage_included: z.boolean(), dependent_count_covered: z.number().int().nullable(), status: z.string(), verification_status: z.string(), renewal_status: z.string()}).strip(),
-  dependents: z.object({...base, photo_dms_document_id:id.nullable().optional(),workspace_revision:id,dependent_name_en: z.string(), dependent_name_ar: text, relationship_type_id: id, date_of_birth: date, nationality_id: id.nullable(), passport_number: text, passport_expiry: date, emirates_id_number: text, emirates_id_expiry: date, residence_visa_number: text, residence_visa_expiry: date,
+  dependents: z.object({...base, photo_dms_document_id:id.nullable().optional(),photo_framing:photoFramingSchema.nullable().optional(),workspace_revision:id,dependent_name_en: z.string(), dependent_name_ar: text, relationship_type_id: id, date_of_birth: date, nationality_id: id.nullable(), passport_number: text, passport_expiry: date, emirates_id_number: text, emirates_id_expiry: date, residence_visa_number: text, residence_visa_expiry: date,
     medical_insurance_provider: text, medical_insurance_policy: text, medical_insurance_card: text, medical_insurance_expiry: date, sponsored_by: text, is_active: z.boolean(), relationship_type: label, nationality: label}).strip(),
   cards: z.object({...base, access_type_id: id, client_authority: text, work_site_id: id.nullable(), card_number: text, application_reference: text, issue_date: date, expiry_date: date, status: z.string(), renewal_status: z.string(), access_type: label, work_site: z.object({id, site_name: z.string()}).strip().nullable()}).strip(),
   training: z.object({...base, training_category_id: id.nullable(), training_type_id: id, provider: text, approval_body: text, certificate_number: text, completion_date: date, expiry_date: date, required_for_designation: z.boolean(), required_for_site: z.boolean(), status: z.string(), verification_status: z.string(), training_category: label, training_type: label}).strip(),

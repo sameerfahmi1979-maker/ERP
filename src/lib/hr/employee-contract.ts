@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {photoFramingInput} from './photo-framing';
 export function isDefiniteEmployeeRejection(code:unknown):boolean{return typeof code==='string'&&code.length===5&&(/^(?:22|23|42|P0)[0-9A-Z]{3}$/.test(code)||['40000','40001','40002','40P01'].includes(code));}
 
 export const employeeId=z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
@@ -7,6 +8,7 @@ const optionalDate=employeeDate.nullish();
 const text=z.string().nullish();
 const required=(label:string)=>z.string().trim().min(1,`${label} is required`);
 export const employeeCreateShape={
+ photo_framing:photoFramingInput.optional(),
  full_name_en:required('Full name (English)'),full_name_ar:text,known_name:text,gender:z.enum(['male','female']),nationality_id:employeeId.nullish(),date_of_birth:employeeDate,
  marital_status:z.enum(['single','married','divorced','widowed']).nullish(),mobile_number:required('Mobile number'),personal_email:z.string().email('Invalid email').nullish().or(z.literal('').transform(()=>null)),
  uae_address:text,home_country_address:text,blood_group:z.enum(['A+','A-','B+','B-','O+','O-','AB+','AB-']).nullish(),photo_dms_document_id:employeeId.nullish(),

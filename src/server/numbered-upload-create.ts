@@ -64,7 +64,10 @@ export async function createNumberedDocumentFromUpload(input:UploadCreationInput
   // An ambiguous upload reply can be recovered ONLY by independently checking
   // exact bytes under a stable object identity/version at this operation's
   // newly allocated document path. This does not attest the first uploader.
-  await storage.storage.from('dms-documents').upload(plan.data.storage_path,original.body,{contentType:original.proof.mime,upsert:false});
+  // Storage sends Blob uploads as multipart and uses the Blob's own MIME type.
+  // The bounded reader intentionally returns untyped bytes; attach only the
+  // actual verified type so the immutable copy passes its native attestation.
+  await storage.storage.from('dms-documents').upload(plan.data.storage_path,new Blob([original.body],{type:original.proof.mime}),{contentType:original.proof.mime,upsert:false});
   const rechecked=await client.rpc('create_numbered_dms_upload',{p_operation:identity.data.operationId,p_request:request});
   const admission=uploadCreationPlanSchema.safeParse(rechecked.data);
   if(rechecked.error||!admission.success||admission.data.operation_id!==identity.data.operationId||admission.data.documentId!==documentId||

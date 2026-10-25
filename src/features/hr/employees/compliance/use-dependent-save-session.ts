@@ -39,12 +39,13 @@ export function useDependentSaveSession(employeeId:number,actorId:number|undefin
  const scope=useMemo(()=>({store,ownerId,actorId,authority,generation}),[store,ownerId,actorId,authority,generation]);
  const live=useRef(scope),mounted=useRef(false),flight=useRef(false),[,redraw]=useState(0),[saving,setSaving]=useState(false);
  const session=useMemo(()=>createDependentController({store,ownerId,actorId,authority,employeeId,consumer}),[store,ownerId,actorId,authority,employeeId,consumer]);
+ const dispatchOwner=useRef<{session:typeof session;dispatch:typeof mutateEmployeeDependent}|null>(null);
  useLayoutEffect(()=>{mounted.current=true;live.current={store,ownerId,actorId,authority,generation};if(store!==scope.store||ownerId!==scope.ownerId||actorId!==scope.actorId||authority!==scope.authority||generation!==scope.generation)session.retire();return()=>{mounted.current=false;};},[store,ownerId,actorId,authority,generation,scope,session]);
  const isCurrent=()=>mounted.current&&live.current.store===scope.store&&live.current.ownerId===scope.ownerId&&live.current.actorId===scope.actorId&&live.current.authority===scope.authority&&live.current.generation===scope.generation;
- const submit=async(request:DependentMutation):Promise<DependentSaveResult>=>{
+ const submit=async(request:DependentMutation,dispatch?:typeof mutateEmployeeDependent):Promise<DependentSaveResult>=>{
   if(flight.current||!isCurrent()||session.blocked)return {success:false,error:'Dependent save paused; reconcile the retained operation first.'};
   const recovering=!!session.state.pending;let dispatched=false;flight.current=true;setSaving(true);
-  try{const p=session.prepare(request);dispatched=true;const result=await mutateEmployeeDependent(p.request,p.contract);
+  try{const p=session.prepare(request);const port=dispatch??(recovering&&dispatchOwner.current?.session===session?dispatchOwner.current.dispatch:mutateEmployeeDependent);dispatchOwner.current={session,dispatch:port};dispatched=true;const result=await port(p.request,p.contract);
    if(!result.success){if(!isCurrent())return {success:false,uncertain:true,error:'Save result belongs to an earlier access context.'};if(!recovering&&!result.uncertain)session.reject();session.fail(result.error??'Save unconfirmed. Retry the original request.');return {...result,uncertain:recovering||result.uncertain};}
    const receipt=receiptSchema.parse(result.data);
    if(receipt.operation_id!==p.contract.operationId||receipt.employee_id!==employeeId||(p.request.id!==null&&receipt.id!==p.request.id))throw Error('Receipt identity mismatch');

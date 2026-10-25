@@ -111,6 +111,8 @@ export interface ERPRecordWorkspaceFormProps {
   isChildDialogOpen?: boolean;
   /** Inline child editor: protect navigation/parent actions without making its controls inert. */
   isInlineTaskOpen?: boolean;
+  /** Retained multipart save: keep Save available to reconcile, but prevent closing or switching. */
+  closeBlocked?: boolean;
 
   /**
    * ERP GLOBAL UI.4E — optional ref forwarded to the record body scroll container.
@@ -146,6 +148,7 @@ export function ERPRecordWorkspaceForm({
   onRequestClose,
   isChildDialogOpen = false,
   isInlineTaskOpen = false,
+  closeBlocked = false,
   bodyScrollRef,
   children,
 }: ERPRecordWorkspaceFormProps) {
@@ -159,16 +162,16 @@ export function ERPRecordWorkspaceForm({
   const errorId = React.useId();
   const pending = saving || isSubmitting;
   const childTaskOpen = isChildDialogOpen || isInlineTaskOpen;
-  useWorkspaceNavigationLock(childTaskOpen || pending);
+  useWorkspaceNavigationLock(childTaskOpen || pending || closeBlocked);
   const workspace = useWorkspaceContext();
   const owner = useWorkspaceFormOwner();
   const dispatch = workspace?.dispatch;
   const ownerId = owner?.id;
   React.useEffect(() => {
     if (!dispatch || !ownerId) return;
-    dispatch({ type: "MARK_CHILD_DIALOG_OPEN", tabId: ownerId, open: childTaskOpen || pending });
+    dispatch({ type: "MARK_CHILD_DIALOG_OPEN", tabId: ownerId, open: childTaskOpen || pending || closeBlocked });
     return () => dispatch({ type: "MARK_CHILD_DIALOG_OPEN", tabId: ownerId, open: false });
-  }, [dispatch, ownerId, childTaskOpen, pending]);
+  }, [dispatch, ownerId, childTaskOpen, pending, closeBlocked]);
   const allIssues = React.useMemo(() => mergeFieldIssues(issues, serverIssues), [issues, serverIssues]);
   useInlineFieldFeedback(allIssues);
   React.useEffect(() => {
@@ -271,7 +274,7 @@ export function ERPRecordWorkspaceForm({
           isDirty={isDirty}
           compact={compactIdentity}
           actions={headerActions}
-          onRequestClose={pending || childTaskOpen ? undefined : onRequestClose}
+          onRequestClose={pending || childTaskOpen || closeBlocked ? undefined : onRequestClose}
         />
 
         {/* ── Content zone — inert + dimmed when child dialog is open ── */}
@@ -286,7 +289,7 @@ export function ERPRecordWorkspaceForm({
           {/* Footer */}
           <ERPRecordFormFooter
             mode={mode}
-            onCancel={pending || childTaskOpen ? undefined : onRequestClose}
+            onCancel={pending || childTaskOpen || closeBlocked ? undefined : onRequestClose}
             onSave={onSave && !isInlineTaskOpen ? () => { void runSave(onSave); } : undefined}
             onSaveAndClose={onSaveAndClose && !isInlineTaskOpen ? () => { void runSave(onSaveAndClose); } : undefined}
             hasUnsavedChanges={isDirty}

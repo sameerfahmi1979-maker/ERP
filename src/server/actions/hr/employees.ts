@@ -45,6 +45,7 @@ export type EmployeeRow = {
   home_country_address: string | null;
   blood_group: string | null;
   photo_dms_document_id: number | null;
+  photo_framing?:import('@/lib/hr/photo-framing').PhotoFraming|null;
   // Employment
   owner_company_id: number;
   branch_id: number | null;
@@ -349,6 +350,7 @@ export async function updateEmployee(employeeId: number,input: EmployeeUpdateInp
   if(!parsed.success) return workspaceValidationFailure(parsed.error.issues);
   const access=await getEmployeeAccess(ctx,employeeId);
   if(!access.allows("hr.medical.manage")) delete parsed.data.blood_group;
+  if(parsed.data.photo_framing){try{const {validateSavedPhotoFraming}=await import('@/server/hr-photo-source');await validateSavedPhotoFraming(employeeId,null,parsed.data.photo_dms_document_id,parsed.data.photo_framing);}catch{return {success:false,error:'Photo source could not be verified. Reopen its current framing before saving.'};}}
   const result=await saveWorkspaceRecord("employees",employeeId,parsed.data,contract);
   if(result.success) {try{revalidatePath("/admin/hr/employees");revalidatePath(`/admin/hr/employees/record/${employeeId}`);}catch{logger.warn('Employee saved; record refresh unavailable');}}
   return result;

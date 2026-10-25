@@ -41,10 +41,10 @@ export const IMPACT={...HISTORICAL_RAW_IMPACT,
  '.dockerignore':'bb90a159cf4df305ac432d5fb4aedfabbf1c2a05abff28d784fe1f63af4ec09c',
  // Preserve the approved local UI stylesheet in the build, not the runtime tree.
  'vendor/shadcn/tailwind.css':'146941ac3ff65496fdf1cb306e697255328e4dadc7c105d66e36bb031b00f6d6',
- // Current accepted F12 dependency security fixes plus Node22.23.4/npm10.9.9.
- // Historical receipts above remain historical; exact current inputs requalify.
- 'package.json':'054bc376c660c6c4fe05aa846bcd05246e77b47feebc7da775eafd7e7cb610a5',
- 'package-lock.json':'5286358cae0c894ff59cc0c7bab7c0134ee45e5898cf474ab403e281ce0f8326',
+ // Reviewed photo framing adds react-easy-crop 6.2.4 / normalize-wheel 1.0.1.
+ // Preserve F12 security fixes, pinned Node/npm and historical receipts above.
+ 'package.json':'b134c5e13d6281b4fbc7bf40fb95cbb36ef552368765fe6eae3fd15811b78edf',
+ 'package-lock.json':'4f5b037d114caa7a21c6a77028ba158fbae2883167bd71588ac83123cade2b82',
  'src/lib/branding/constants.ts':'70a0e8005ce9b8ec76334643b8a345a2908944169252b2fcd59db33f41236e14',
  // Reviewed Arabic OCR successor; preserve historical F06 hashes above.
  'src/lib/dms/file-content-extractor.ts':'db6b17688166fac42bfbaea474b86d57084d81d9fae7a7966c45ae6539a0391f',
@@ -54,7 +54,7 @@ export const IMPACT={...HISTORICAL_RAW_IMPACT,
  'src/lib/log-context.ts':'8b90e656f51f09d1342febe516ecce239a5f2b3f208da549962cdfd8b464f803',
  'tooling/dms/validate-intake.cjs':'d524803ef5049bf600ca16e37ef74229b7dd494792df677326a1e7765f1764c6'
 };
-export const LOCK_GRAPH_SHA='81c94957156fbfcdccccdcf63f8ded7f9e2a68adfc3a14ec2f9bbf39c1e29899';
+export const LOCK_GRAPH_SHA='757f14da8658513d02839ef388ffbb2bb41f657eecd82c967501bf5573f86763';
 export const TRUST_ROOTS=['/etc/ssl/certs','/usr/local/share/ca-certificates','/etc/ca-certificates.conf','/usr/local/etc/npmrc','/etc/npmrc','/root/.npmrc','/home/node/.npmrc','/root/.npm','/home/node/.npm'];
 // F07 ships exactly one reviewed parser subprocess, not the developer tooling
 // tree. Keep strict runtime layout/hash checks and all original trust gates.

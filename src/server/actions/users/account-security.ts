@@ -4,6 +4,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, assertAccountActive, hasGlobalPermission, hasPermissionInScope, isGlobalAdmin } from "@/lib/rbac/check";
 import { authEmailSchema, passwordPolicySchema } from "@/lib/validation/auth";
@@ -61,6 +62,9 @@ async function securityTarget(userProfileId: number) {
       .select("roles!inner(role_code)").eq("user_profile_id", userProfileId).eq("is_active", true).is("owner_company_id", null).is("branch_id", null);
     if (roleError || (roles ?? []).some(r => ["system_admin","group_admin"].includes((r.roles as unknown as { role_code: string })?.role_code))) throw new Error("Privileged account requires a global administrator");
   }
+  const client = await createClient();
+  const authority = await client.rpc('administrator_can_manage_identity', {target_profile:userProfileId,capability:'users.security.manage'});
+  if (authority.error || authority.data !== true) throw new Error('This identity has access outside your administrative scope');
   const { data: identity, error: identityError } = await admin.auth.admin.getUserById(target.auth_user_id);
   if (identityError || !identity.user) throw new Error("Target identity could not be verified");
   return { ctx, target, user: identity.user, admin };

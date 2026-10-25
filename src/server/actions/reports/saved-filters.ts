@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 
 export type ActionResult<T = unknown> = {
@@ -131,7 +131,7 @@ export async function createSavedFilter(
         filter_name: parsed.data.filterName,
         filters_json: parsed.data.filtersJson,
         is_default: parsed.data.isDefault,
-        is_shared: parsed.data.isShared && hasPermission(ctx, "reports.saved_filters.manage"),
+        is_shared: parsed.data.isShared && hasGlobalPermission(ctx, "reports.saved_filters.manage"),
       })
       .select("id")
       .single();
@@ -186,7 +186,7 @@ export async function updateSavedFilter(
 
     const rec = existing as { id: number; report_id: number; user_profile_id: number };
     const isOwner = rec.user_profile_id === ctx.profile.id;
-    const canManage = hasPermission(ctx, "reports.saved_filters.manage");
+    const canManage = hasGlobalPermission(ctx, "reports.saved_filters.manage");
 
     if (!isOwner && !canManage) {
       return { success: false, error: "You can only edit your own saved filters." };
@@ -247,7 +247,7 @@ export async function deleteSavedFilter(id: number): Promise<ActionResult> {
 
     const rec = existing as { id: number; user_profile_id: number };
     const isOwner = rec.user_profile_id === ctx.profile.id;
-    const canManage = hasPermission(ctx, "reports.saved_filters.manage");
+    const canManage = hasGlobalPermission(ctx, "reports.saved_filters.manage");
 
     if (!isOwner && !canManage) {
       return { success: false, error: "You can only delete your own saved filters." };

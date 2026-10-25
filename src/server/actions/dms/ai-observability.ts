@@ -16,7 +16,7 @@
  */
 
 import { extractSafeUsageDisplayFields, sanitizeErrorMessage } from "@/lib/ai/observability/safe-usage-redaction";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission } from "@/lib/rbac/check";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -187,11 +187,11 @@ async function checkObservabilityAccess(): Promise<{
   if (!ctx.profile) return { ok: false, error: "Not authenticated." };
 
   const hasView =
-    hasPermission(ctx, "dms.ai_observability.view") ||
-    hasPermission(ctx, "dms.ai_observability.admin") ||
-    hasPermission(ctx, "dms.admin") ||
-    hasPermission(ctx, "settings.ai.view") ||
-    hasPermission(ctx, "settings.ai.manage") ||
+    hasGlobalPermission(ctx, "dms.ai_observability.view") ||
+    hasGlobalPermission(ctx, "dms.ai_observability.admin") ||
+    hasGlobalPermission(ctx, "dms.admin") ||
+    hasGlobalPermission(ctx, "settings.ai.view") ||
+    hasGlobalPermission(ctx, "settings.ai.manage") ||
     ctx.roleCodes.includes("system_admin");
 
   if (!hasView) return { ok: false, error: "Permission denied." };
@@ -228,15 +228,15 @@ export async function getDmsAiObservabilityConfig(): Promise<ActionResult<Observ
     if (!ctx.profile) return { success: false, error: "Not authenticated." };
 
     const hasView =
-      hasPermission(ctx, "dms.ai_observability.view") ||
-      hasPermission(ctx, "dms.ai_observability.admin") ||
-      hasPermission(ctx, "dms.admin") ||
-      hasPermission(ctx, "settings.ai.view") ||
+      hasGlobalPermission(ctx, "dms.ai_observability.view") ||
+      hasGlobalPermission(ctx, "dms.ai_observability.admin") ||
+      hasGlobalPermission(ctx, "dms.admin") ||
+      hasGlobalPermission(ctx, "settings.ai.view") ||
       ctx.roleCodes.includes("system_admin");
 
     const hasAdmin =
-      hasPermission(ctx, "dms.ai_observability.admin") ||
-      hasPermission(ctx, "settings.ai.manage") ||
+      hasGlobalPermission(ctx, "dms.ai_observability.admin") ||
+      hasGlobalPermission(ctx, "settings.ai.manage") ||
       ctx.roleCodes.includes("system_admin");
 
     let flagEnabled = false;
@@ -833,8 +833,8 @@ async function checkAdminAccess(): Promise<{ ok: boolean; error?: string }> {
   const ctx = await getAuthContext();
   if (!ctx.profile) return { ok: false, error: "Not authenticated." };
   const hasAdmin =
-    hasPermission(ctx, "dms.ai_observability.admin") ||
-    hasPermission(ctx, "settings.ai.manage") ||
+    hasGlobalPermission(ctx, "dms.ai_observability.admin") ||
+    hasGlobalPermission(ctx, "settings.ai.manage") ||
     ctx.roleCodes.includes("system_admin");
   if (!hasAdmin) return { ok: false, error: "Permission denied. Requires dms.ai_observability.admin." };
   return { ok: true };

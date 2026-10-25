@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission, isGlobalAdmin } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
@@ -58,19 +58,19 @@ export type SaveDmsNotificationSettingsInput = z.infer<typeof settingsSchema>;
 function canManage(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
   return (
     isGlobalAdmin(ctx) ||
-    hasPermission(ctx, "dms.admin") ||
-    hasPermission(ctx, "dms.notifications.manage") ||
-    hasPermission(ctx, "dms.notifications.settings.manage")
+    hasGlobalPermission(ctx, "dms.admin") ||
+    hasGlobalPermission(ctx, "dms.notifications.manage") ||
+    hasGlobalPermission(ctx, "dms.notifications.settings.manage")
   );
 }
 
 function canView(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
   return (
     isGlobalAdmin(ctx) ||
-    hasPermission(ctx, "dms.admin") ||
-    hasPermission(ctx, "dms.notifications.manage") ||
-    hasPermission(ctx, "dms.notifications.view") ||
-    hasPermission(ctx, "dms.notifications.settings.manage")
+    hasGlobalPermission(ctx, "dms.admin") ||
+    hasGlobalPermission(ctx, "dms.notifications.manage") ||
+    hasGlobalPermission(ctx, "dms.notifications.view") ||
+    hasGlobalPermission(ctx, "dms.notifications.settings.manage")
   );
 }
 

@@ -1,0 +1,17 @@
+// @vitest-environment jsdom
+import React,{useState} from 'react';
+import {it,expect,vi,beforeEach,afterEach} from 'vitest';
+import {render,screen,fireEvent,waitFor,cleanup} from '@testing-library/react';
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
+const m=vi.hoisted(()=>({read:vi.fn()}));
+vi.mock('@/server/actions/hr/attendance-workbench',()=>({readTimesheetSites:m.read}));
+vi.mock('@/hooks/use-read-lifetime',()=>({useReadLifetime:()=>({enabled:true,active:true})}));
+vi.mock('@/components/erp/combobox',()=>({ERPCombobox:({ariaLabel,options,value,disabled,onValueChange,onSearchQueryChange}:{ariaLabel:string;options:{value:number;label:string}[];value:number|null;disabled:boolean;onValueChange:(v:number)=>void;onSearchQueryChange:(s:string)=>void})=><><input aria-label={'Search '+ariaLabel}onChange={e=>onSearchQueryChange(e.target.value)}/><select aria-label={ariaLabel}value={value??''}disabled={disabled}onChange={e=>onValueChange(Number(e.target.value))}><option value="">Choose</option>{options.map(o=><option key={o.value}value={o.value}>{o.label}</option>)}</select></>}));
+import {TimesheetSiteSelect} from '@/features/hr/time/attendance/timesheet-site-select';
+let qc:QueryClient;
+beforeEach(()=>{vi.clearAllMocks();qc=new QueryClient({defaultOptions:{queries:{retry:false}}});m.read.mockResolvedValue({success:true,rows:[{id:3,label:'SYN-SITE — Synthetic yard'}],hasMore:false});});
+afterEach(()=>{cleanup();qc.clear();});
+function Choice({name}:{name:string}){const[v,setV]=useState<number|null>(null);return <TimesheetSiteSelect company={1}date="2026-10-25"authority="synthetic"value={v}disabled={false}ariaLabel={name}onChange={setV}/>;}
+it('shares site reads across rows and keeps the surviving row cache when one is removed',async()=>{const tree=(second:boolean)=><QueryClientProvider client={qc}><Choice name="First"/>{second&&<Choice name="Second"/>}</QueryClientProvider>;const view=render(tree(true));await waitFor(()=>expect(screen.getByLabelText('First').hasAttribute('disabled')).toBe(false));expect(m.read).toHaveBeenCalledTimes(1);view.rerender(tree(false));await Promise.resolve();expect(qc.getQueryData(['timesheet-sites','synthetic',1,'2026-10-25','',0])).toBeTruthy();expect(screen.getByLabelText('First').hasAttribute('disabled')).toBe(false);view.unmount();await waitFor(()=>expect(qc.getQueryCache().findAll({queryKey:['timesheet-sites']})).toHaveLength(0));});
+it('retains the selected site label when searching a different page',async()=>{render(<QueryClientProvider client={qc}><Choice name="Site"/></QueryClientProvider>);await waitFor(()=>expect(screen.getByLabelText('Site').hasAttribute('disabled')).toBe(false));fireEvent.change(screen.getByLabelText('Site'),{target:{value:'3'}});m.read.mockResolvedValue({success:true,rows:[{id:4,label:'OTHER — Another yard'}],hasMore:false});fireEvent.change(screen.getByLabelText('Search Site'),{target:{value:'other'}});await screen.findByRole('option',{name:'OTHER — Another yard'});expect(screen.getByLabelText('Site')).toHaveProperty('value','3');expect(screen.getByRole('option',{name:'SYN-SITE — Synthetic yard'})).toBeTruthy();});
+it('holds selection on failure rather than presenting an empty successful list',async()=>{m.read.mockResolvedValue({success:false,error:'Unavailable'});render(<QueryClientProvider client={qc}><Choice name="Site"/></QueryClientProvider>);await screen.findByRole('button',{name:'Retry sites'});expect(screen.getByLabelText('Site').hasAttribute('disabled')).toBe(true);});

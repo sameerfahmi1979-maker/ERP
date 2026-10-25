@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { hasPermission } from "./scope";
+import { assignmentScopeError } from "./administrator-policy";
 export { canUseApplication, hasRole, hasPermission, isGlobalAdmin, hasGlobalPermission, hasPermissionInScope } from "./scope";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -114,6 +115,7 @@ async function buildAuthContext(profile: UserProfile, email: string | null): Pro
 
   if (err1) throw new Error("Unable to resolve role assignments");
 
+  let validUserRoleRows = userRoleRows ?? [];
   const roleIds = (userRoleRows ?? []).map((r) => r.role_id as number).filter(Boolean);
 
   // Step 2 — get active role records (filter inactive roles at role level)
@@ -142,6 +144,11 @@ async function buildAuthContext(profile: UserProfile, email: string | null): Pro
     }
   }
 
+  // Invalid reserved administrator shapes never become authority, including legacy rows.
+  validUserRoleRows = validUserRoleRows.filter(a => !assignmentScopeError(roleNames.get(a.role_id) ?? '', a.owner_company_id, a.branch_id));
+  for (let i = roleCodes.length - 1; i >= 0; i--) {
+    if (!validUserRoleRows.some(a => roleNames.get(a.role_id) === roleCodes[i])) roleCodes.splice(i, 1);
+  }
   // Step 3 — get permission_ids linked to the active roles
   const permissionSet = new Set<string>();
   const globalPermissionSet = new Set<string>();
@@ -174,7 +181,8 @@ async function buildAuthContext(profile: UserProfile, email: string | null): Pro
           const codes = rolePermissions.get(link.role_id as number) ?? [];
           codes.push(p.permission_code as string);
           rolePermissions.set(link.role_id as number, codes);
-          const assignments = (userRoleRows ?? []).filter(a => a.role_id === link.role_id);
+          const assignments = validUserRoleRows.filter(a => a.role_id === link.role_id);
+          if (assignments.length === 0) continue;
           const global = assignments.some(a => a.owner_company_id === null && a.branch_id === null);
           if (global) globalPermissionSet.add(p.permission_code as string);
           // These are platform-wide capabilities, not company capabilities.
@@ -196,7 +204,7 @@ async function buildAuthContext(profile: UserProfile, email: string | null): Pro
     accountStatus,
     isAccountActive,
     globalPermissionCodes: Array.from(globalPermissionSet),
-    roleAssignments: (userRoleRows ?? []).filter(a => activeRoleIds.includes(a.role_id as number)).map(a => ({ roleId: a.role_id as number, roleCode: roleNames.get(a.role_id as number)!, ownerCompanyId: a.owner_company_id as number | null, branchId: a.branch_id as number | null, permissionCodes: rolePermissions.get(a.role_id as number) ?? [] })),
+    roleAssignments: validUserRoleRows.filter(a => activeRoleIds.includes(a.role_id as number)).map(a => ({ roleId: a.role_id as number, roleCode: roleNames.get(a.role_id as number)!, ownerCompanyId: a.owner_company_id as number | null, branchId: a.branch_id as number | null, permissionCodes: rolePermissions.get(a.role_id as number) ?? [] })),
   };
 }
 

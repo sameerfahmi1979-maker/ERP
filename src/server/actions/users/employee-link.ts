@@ -7,6 +7,8 @@ import { revalidatePath } from "next/cache";
 async function targetForLink(profileId: number) {
   if (!Number.isSafeInteger(profileId) || profileId <= 0) throw new Error("Invalid account");
   const ctx=await getAuthContext(); assertAccountActive(ctx);
+  const authority = await (await createClient()).rpc("administrator_can_manage_identity", {target_profile:profileId,capability:"users.employee_link.manage"});
+  if(authority.error || authority.data !== true) throw new Error("Access denied");
   const {data,error}=await createAdminClient().from("user_profiles").select("id,owner_company_id,branch_id").eq("id",profileId).single();
   if(error || !data || !(data.owner_company_id===null?hasGlobalPermission(ctx,"users.employee_link.manage"):hasPermissionInScope(ctx,"users.employee_link.manage",data.owner_company_id,data.branch_id))) throw new Error("Access denied");
   return data;

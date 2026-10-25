@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission } from "@/lib/rbac/check";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { adminListApprovalWorkflows } from "@/server/actions/dms/document-approvals";
 import { getDmsDocumentTypes } from "@/server/actions/dms/document-types";
@@ -17,8 +17,8 @@ export default async function DmsApprovalWorkflowsAdminPage() {
   const ctx = await getAuthContext();
 
   const canView =
-    hasPermission(ctx, "dms.approvals.admin") ||
-    hasPermission(ctx, "dms.admin") ||
+    hasGlobalPermission(ctx, "dms.approvals.admin") ||
+    hasGlobalPermission(ctx, "dms.admin") ||
     ctx.roleCodes.includes("system_admin");
 
   if (!canView) redirect("/access-denied");

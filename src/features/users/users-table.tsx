@@ -70,6 +70,7 @@ type UsersTableProps = {
   mcpFilter?: string;
   noRoleFilter?: boolean;
   roles?: Role[];
+  canAssignGlobal?: boolean;
   companies?: OwnerCompany[];
   branches?: Branch[];
   userProfileId?: number | string;
@@ -109,6 +110,7 @@ export function UsersTable({
   mcpFilter = "",
   noRoleFilter = false,
   roles = [],
+  canAssignGlobal = false,
   companies = [],
   branches = [],
   userProfileId,
@@ -374,6 +376,7 @@ export function UsersTable({
       {assigningRoleUser && (
         <AssignRoleDialog
           user={assigningRoleUser}
+          canAssignGlobal={canAssignGlobal}
           open={Boolean(assigningRoleUser)}
           onOpenChange={(open) => {
             if (!open) setAssigningRoleUser(null);

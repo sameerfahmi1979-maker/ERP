@@ -1,3 +1,4 @@
+import { isGlobalAdmin } from "@/lib/rbac/scope";
 import { Suspense } from "react";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { UsersTable } from "@/features/users/users-table";
@@ -98,6 +99,7 @@ export default async function AdminUsersPage({
       />
       <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading users…</div>}>
         <UsersTable
+          canAssignGlobal={isGlobalAdmin(ctx)}
           data={usersResult.rows}
           totalCount={usersResult.totalCount}
           page={usersResult.page}

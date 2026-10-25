@@ -427,6 +427,8 @@ function canUserSeeItem(
   if (item.publicToAllActive) return true;
   if (isGlobalAdmin) return true;
   if (item.path === "/admin/notifications/email-queue") return ["notifications.email_queue.view","notifications.email_queue.manage","notifications.admin"].some(code=>globalPermissionCodes.includes(code));
+  if (item.path === "/admin/dms/approval-workflows") return ["dms.approvals.admin","dms.admin"].some(code=>globalPermissionCodes.includes(code));
+  if (item.path === "/admin/dms/notification-settings") return ["dms.admin","dms.notifications.manage","dms.notifications.settings.manage"].some(code=>globalPermissionCodes.includes(code));
   if (item.requiresGlobalAdmin) return false;
   if (item.requiredPermission) return permissionCodes.includes(item.requiredPermission);
   if (item.requiredAnyPermissions) {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { AuthContext } from "@/lib/rbac/check";
-import { hasGlobalPermission } from "@/lib/rbac/scope";
+import { hasGlobalPermission, hasPermissionInScope } from "@/lib/rbac/scope";
 import { administrationDate } from "@/lib/master-data/administration-validation";
 
 export const signatoryId = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
@@ -35,9 +35,16 @@ export const signatoryRequest = z.discriminatedUnion("action", [
   z.object({ action: z.enum(["archive", "restore"]), company_id: signatoryId }).strict(),
 ]);
 export type SignatoryRequest = z.infer<typeof signatoryRequest>;
-export function canReadCompanySignatories(ctx: AuthContext) {
-  return ["common_md.view", "common_md.organizations.view", "organizations.view"].some(code => hasGlobalPermission(ctx, code));
+function signatoryPermission(ctx: AuthContext, code: string, companyId?: number) {
+  // Preserve ordinary-role authority. Only the explicitly assigned company
+  // administrator gains the new company-owned operation; branches cannot.
+  return hasGlobalPermission(ctx, code) || (companyId !== undefined &&
+    !!ctx.roleAssignments?.some(a => a.roleCode === 'company_admin' && a.ownerCompanyId === companyId && a.branchId === null && a.permissionCodes.includes(code)) &&
+    hasPermissionInScope(ctx, code, companyId, null));
 }
-export function canManageCompanySignatories(ctx: AuthContext) {
-  return canReadCompanySignatories(ctx) && ["common_md.manage", "common_md.organizations.manage", "organizations.manage"].some(code => hasGlobalPermission(ctx, code));
+export function canReadCompanySignatories(ctx: AuthContext, companyId?: number) {
+  return ["common_md.view", "common_md.organizations.view", "organizations.view"].some(code => signatoryPermission(ctx, code, companyId));
+}
+export function canManageCompanySignatories(ctx: AuthContext, companyId?: number) {
+  return canReadCompanySignatories(ctx, companyId) && ["common_md.manage", "common_md.organizations.manage", "organizations.manage"].some(code => signatoryPermission(ctx, code, companyId));
 }

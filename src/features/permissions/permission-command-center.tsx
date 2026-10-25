@@ -1,5 +1,7 @@
 "use client";
 
+import { administratorScope } from "@/lib/rbac/administrator-policy";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -282,9 +284,10 @@ return (<>
 
 
 return (<>
+                      {administratorScope(role.role_code) && <span className="text-xs text-muted-foreground">Inherited within assigned scope</span>}
                       <Switch
                         checked={isCurrentlyOn}
-                        disabled={!canManage}
+                        disabled={!canManage || administratorScope(role.role_code) !== null}
                         onCheckedChange={() => onToggle(role, selectedPermission, originalAssigned)}
                         aria-label={
                           isCurrentlyOn
@@ -512,7 +515,7 @@ export function PermissionCommandCenter({
 
   const handleToggle = useCallback(
     (role: Role, permission: Permission, originalAssigned: boolean) => {
-      if (!canManage || savingRef.current) return;
+      if (!canManage || savingRef.current || administratorScope(role.role_code) !== null) return;
       const key = `${permission.id}:${role.id}`;
       setDraftChanges((prev) => {
         const next = new Map(prev);
@@ -558,6 +561,10 @@ export function PermissionCommandCenter({
 
   const handleSave = useCallback(async () => {
     if (!canManage || savingRef.current || draftChanges.size === 0) return;
+    if ([...draftChanges.values()].some(change => administratorScope(change.roleCode) !== null)) {
+      toast.error('Administrator access is inherited. Remove these draft grant changes and review the administrator scope policy.');
+      return;
+    }
     savingRef.current = true;
     setIsSaving(true);
 

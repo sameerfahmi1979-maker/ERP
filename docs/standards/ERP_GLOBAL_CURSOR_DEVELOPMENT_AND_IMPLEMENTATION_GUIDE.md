@@ -106,7 +106,7 @@ Every future planning, implementation, database, UI, server-action, security, te
 - Next.js Server Actions
 - Supabase PostgreSQL
 - Supabase RLS (Row Level Security)
-- Custom authentication using anon role (NOT standard Supabase Auth)
+- Supabase Auth with authenticated database access and current ERP session validation
 
 **Data & Validation** (verified snapshot at guide creation):
 - Zod 4.4.3 (schema validation)
@@ -208,8 +208,8 @@ src/features/[module]/[entity]/actions.ts
 - `getEntityChildren()` (for child records)
 
 **Authentication Flow**:
-- Custom authentication using Supabase anon role
-- NOT using standard Supabase Auth
+- Supabase Auth using server-verified getUser()
+- Current ERP session validated through f03_current_session_valid
 - Auth context via `getAuthContext()` from `@/lib/rbac/check`
 - Permission checks via `hasPermission(authContext, "permission.code")`
 
@@ -562,7 +562,7 @@ supabase/migrations/20260608105300_erp_base_002f3e2c_global_master_data_numberin
 
 ### 7.1 Authentication Model
 
-**CRITICAL**: This ERP uses **anon role with custom authentication**, NOT standard Supabase Auth.
+**CRITICAL**: Use Supabase Auth and authenticated RLS. Server getAuthContext() verifies getUser(), f03_current_session_valid, active-account status and required password changes. Anonymous access is not business authorization. Follow [the administrator scope standard](./ERP_ADMINISTRATOR_SCOPE_STANDARD.md).
 
 **Auth Flow**:
 ```typescript
@@ -570,7 +570,7 @@ supabase/migrations/20260608105300_erp_base_002f3e2c_global_master_data_numberin
 const ctx = await getAuthContext();
 
 // Check authentication
-if (!ctx.authenticated) {
+if (!ctx.profile || !ctx.isAccountActive || ctx.profile.must_change_password) {
   return { success: false, error: "Authentication required" };
 }
 
@@ -617,24 +617,12 @@ Always inspect the actual `getAuthContext()` return shape before using role or p
 ### 7.2 RLS Policy Requirements
 
 **When creating RLS policies**:
-- Policies must work with **anon role** and custom auth flow
-- Do NOT create policies that only work with `authenticated` role
-- Policies must check custom session/context
+- Business policies apply to `authenticated`, with narrowly documented exceptions only
+- Do not grant `anon` business-table access
+- Policies must enforce the current ERP session, account status and actual record scope
 - Policies must respect user roles and permissions
 
-**Example Pattern** (consult existing policies for exact pattern):
-```sql
-CREATE POLICY "Users can view customers based on permission"
-ON customers FOR SELECT
-TO anon
-USING (
-  -- Custom auth check via function
-  -- Example only - verify actual pattern in live database
-  EXISTS (
-    SELECT 1 FROM check_user_permission('master_data.party_master.view')
-  )
-);
-```
+**Authorization pattern:** reuse the current subject/parent-scoped database helper for the actual table. Capability/menu checks are not row authorization. Do not copy an anonymous permission-only example or bypass RLS through a service client. New capabilities require reviewed administrator classification and allow/deny fixtures.
 
 ### 7.3 Three-Layer Security
 
@@ -657,7 +645,7 @@ USING (
 ```typescript
 export async function createCustomer(input: unknown) {
   const ctx = await getAuthContext();
-  if (!ctx.authenticated) {
+  if (!ctx.profile || !ctx.isAccountActive || ctx.profile.must_change_password) {
     return { success: false, error: "Authentication required" };
   }
   if (!hasPermission(ctx, "master_data.party_master.manage")) {
@@ -942,7 +930,7 @@ export async function createCustomer(
 
     // 2. Get auth context
     const ctx = await getAuthContext();
-    if (!ctx.authenticated) {
+    if (!ctx.profile || !ctx.isAccountActive || ctx.profile.must_change_password) {
       return { success: false, error: "Authentication required" };
     }
 

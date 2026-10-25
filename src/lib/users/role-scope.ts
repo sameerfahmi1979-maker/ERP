@@ -16,5 +16,5 @@ export function formatRoleScopeLabel(
 ): string {
   if (scope === "branch") return branchName ? `Branch: ${branchName}` : "Branch";
   if (scope === "company") return companyName ? `Company: ${companyName}` : "Company";
-  return "Global";
+  return "Global System — all companies and branches";
 }

@@ -14,6 +14,7 @@ export function validateAdministrationDates(data:Record<string,unknown>,ctx:z.Re
 /** Never return a database message, row dump or internal constraint name. */
 export function administrationWriteError(error:{code?:string;message?:string}):string{
  const known:Record<string,string>={
+  'Review and revoke administrator assignments before closing or transferring this scope':'Review and remove administrator assignments before closing or moving this company or branch.',
   'Organization identity is immutable':'The company code and established identifiers cannot be changed.',
   'Branch identity and ownership are immutable':'The branch code and established company cannot be changed.',
   'Invalid administration date range':'The end date cannot precede the start date.',

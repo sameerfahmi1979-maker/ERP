@@ -37,7 +37,7 @@ afterEach(() => { cleanup(); query.clear(); });
 
 it.each([['reader', ['organizations.view'], true], ['scoped company manager', permissions, false], ['scoped branch manager', ['common_md.view', 'common_md.manage'], false], ['manage without read', ['organizations.manage'], true]] as const)('%s never sees unauthorized mutation controls', async (_label, codes, global) => {
  render(ui(auth([...codes], global))); await waitFor(() => expect(screen.queryByText('Loading signatories…')).toBeNull()); expect(screen.queryByRole('button', { name: 'Add Signatory' })).toBeNull(); expect(screen.queryByRole('button', { name: 'Edit signatory' })).toBeNull();
- if (!global || codes.length === 1 && codes[0].endsWith('manage')) { expect(m.list).not.toHaveBeenCalled(); expect(screen.queryByText('No signatories')).toBeNull(); expect(screen.getByRole('alert').textContent).toMatch(/Global signatory read/); }
+ if (!global || codes.length === 1 && codes[0].endsWith('manage')) { expect(m.list).not.toHaveBeenCalled(); expect(screen.queryByText('No signatories')).toBeNull(); expect(screen.getByRole('alert').textContent).toMatch(/Signatory read access/); }
 });
 it('global common-master capabilities independently admit child editing', async () => { render(ui(auth(['common_md.view', 'common_md.manage']))); await openEdit(); expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(false); });
 it('view mode keeps even globally authorized actors read-only', async () => { render(ui(auth(), true)); await screen.findByText('Saved Person'); expect(screen.queryByRole('button', { name: 'Add Signatory' })).toBeNull(); });

@@ -38,6 +38,8 @@ import { SecuritySection } from "./user-security-section";
 import { UserSecurityHistorySection } from "./user-security-history-section";
 import { UserEffectiveAccessSection } from "./user-effective-access-section";
 import { EmployeeIdentityLink } from "./employee-identity-link";
+import { isGlobalAdmin } from "@/lib/rbac/scope";
+import { administratorRoleLabel, administratorScope, administratorAccessSummary, assignmentScopeError } from "@/lib/rbac/administrator-policy";
 import { formatRoleScopeLabel } from "@/lib/users/role-scope";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -128,6 +130,9 @@ export function UserWorkspaceForm({
     const saved = getDraftDefault("owner_company_id", user?.owner_company_id ?? "");
     return saved && Number.isSafeInteger(Number(saved)) && Number(saved) > 0 ? Number(saved) : null;
   });
+  const [initialRoleId, setInitialRoleId] = useState(() => getDraftDefault("initial_role_id", ""));
+  const initialRole = roles.find(role => String(role.id) === initialRoleId);
+  const requiredInitialScope = administratorScope(initialRole?.role_code ?? '');
   const [initialRoleScope, setInitialRoleScope] = useState(() => getDraftDefault("initial_role_scope_company_id", ""));
   const [initialRoleBranch, setInitialRoleBranch] = useState(() => {
     const saved = getDraftDefault("initial_role_scope_branch_id", "");
@@ -176,6 +181,11 @@ export function UserWorkspaceForm({
         return false;
       }
 
+      if (initialRoleId) {
+        if (!initialRole?.is_active || initialRole.is_assignable === false) { toast.error('Choose an available initial role.'); return false; }
+        const scopeError = assignmentScopeError(initialRole.role_code, initialRoleScope === 'global' ? null : Number(initialRoleScope), initialRoleBranch ? Number(initialRoleBranch) : null);
+        if (scopeError) { toast.error(scopeError); return false; }
+      }
       creationOperation.current ??= crypto.randomUUID();
       const data = {
         creation_operation_id: creationOperation.current,
@@ -190,9 +200,9 @@ export function UserWorkspaceForm({
         owner_company_id: formData.get("owner_company_id") ? Number(formData.get("owner_company_id")) : null,
         branch_id: formData.get("branch_id") ? Number(formData.get("branch_id")) : null,
         status: (formData.get("status") as "active" | "inactive" | "suspended") || "active",
-        initial_role_id: formData.get("initial_role_id") ? Number(formData.get("initial_role_id")) : null,
+        initial_role_id: initialRoleId ? Number(initialRoleId) : null,
         initial_role_scope_company_id: initialRoleScope && initialRoleScope !== "global" ? Number(initialRoleScope) : null,
-        initial_role_scope_branch_id: formData.get("initial_role_scope_branch_id") ? Number(formData.get("initial_role_scope_branch_id")) : null,
+        initial_role_scope_branch_id: initialRoleBranch ? Number(initialRoleBranch) : null,
         initial_role_global_confirmed: initialRoleScope === "global",
       };
       const result = await createUser(data);
@@ -203,7 +213,9 @@ export function UserWorkspaceForm({
         creationOperation.current = null;
         setSendInvite(true);
         setSelectedCompanyId(null);
+        setInitialRoleId("");
         setInitialRoleScope("");
+        setInitialRoleBranch("");
         clearDraft();
         resetDirty();
         if (activeTab?.id) markDirty(activeTab.id, false);
@@ -241,12 +253,15 @@ export function UserWorkspaceForm({
     }
   };
 
-  const assignableRoles = filterAssignableRoles(roles);
+  const assignableRoles = filterAssignableRoles(roles).filter(r => isGlobalAdmin(authContext) || !["system_admin","group_admin","company_admin"].includes(r.role_code));
   const selectClass =
     "flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40";
 
   const assignedRoleColumns: ColumnDef<UserRoleAssignment>[] = [
-{accessorKey:"role_name",header:"Role"},{accessorKey:"role_code",header:"Code"},{id:"scope",header:"Scope",accessorFn:role=>formatRoleScopeLabel(role.scope,role.scope_company_name,role.scope_branch_name)},
+{id:"role",header:"Role",accessorFn:role=>administratorRoleLabel(role.role_code,role.role_name)},{id:"scope",header:"Company / branch access",accessorFn:role=>{
+ const invalid=assignmentScopeError(role.role_code,role.owner_company_id ?? null,role.branch_id ?? null);
+ return invalid ? 'Needs scope selection — '+invalid : formatRoleScopeLabel(role.scope,role.scope_company_name,role.scope_branch_name);
+}},
 {accessorKey:"assigned_at",header:"Assigned",meta:{filter:{type:"date"}},cell:({row})=>format(new Date(row.original.assigned_at),"d MMM yyyy HH:mm")},
 {id:"actions",header:"Actions",enableHiding:false,enableSorting:false,cell:({row})=>isViewing?null:<Button type="button" variant="outline" onClick={()=>setRoleToRemove(row.original)} aria-label={`Remove role ${row.original.role_name}`}>Remove</Button>}];
 
@@ -480,10 +495,14 @@ export function UserWorkspaceForm({
               <div className="grid grid-cols-12 gap-4">
                 <div className="col-span-12 space-y-1.5">
                   <Label htmlFor="initial_role_id" className="text-muted-foreground text-xs">Primary Role</Label>
-                  <select id="initial_role_id" name="initial_role_id" className={selectClass} defaultValue={getDraftDefault("initial_role_id", "")}>
+                  <select id="initial_role_id" name="initial_role_id" className={selectClass} value={initialRoleId} onChange={event => {
+                    const value=event.target.value;
+                    setInitialRoleId(value); setInitialRoleScope(''); setInitialRoleBranch('');
+                    writeDraftField('initial_role_id',value); writeDraftField('initial_role_scope_company_id',''); writeDraftField('initial_role_scope_branch_id','');
+                  }}>
                     <option value="">No initial role (No business access)</option>
                     {assignableRoles.map((r) => (
-                      <option key={r.id} value={r.id}>{r.role_name} ({r.role_code})</option>
+                      <option key={r.id} value={r.id}>{administratorRoleLabel(r.role_code, r.role_name)} ({r.role_code})</option>
                     ))}
                   </select>
                 </div>
@@ -491,16 +510,16 @@ export function UserWorkspaceForm({
                   <Label htmlFor="initial_role_scope_company_id" className="text-muted-foreground text-xs">Role Scope: Company</Label>
                   <select id="initial_role_scope_company_id" name="initial_role_scope_company_id" className={selectClass} value={initialRoleScope} onChange={(e)=>{ setInitialRoleScope(e.target.value); setInitialRoleBranch(""); writeDraftField("initial_role_scope_company_id",e.target.value); writeDraftField("initial_role_scope_branch_id",""); }}>
                     <option value="">Choose scope — no default grant</option>
-                    <option value="global">Global — explicitly authorize all companies</option>
-                    {companies.map((c) => (
-                      <option key={c.id} value={c.id}>{c.legal_name_en}</option>
+                    {isGlobalAdmin(authContext) && requiredInitialScope !== "company" && requiredInitialScope !== "branch" && <option value="global">Global System — explicitly authorize all companies and branches</option>}
+                    {(requiredInitialScope === "global" ? [] : companies).map((c) => (
+                      <option key={c.id} value={c.id}>{c.legal_name_en} ({c.company_code})</option>
                     ))}
                   </select>
                 </div>
                 <div className="col-span-6 space-y-1.5">
                   <Label htmlFor="initial_role_scope_branch_id" className="text-muted-foreground text-xs">Role Scope: Branch</Label>
-                  <select id="initial_role_scope_branch_id" name="initial_role_scope_branch_id" className={selectClass} value={initialRoleBranch} onChange={e => {setInitialRoleBranch(e.target.value);writeDraftField("initial_role_scope_branch_id",e.target.value);}} disabled={!initialRoleScope || initialRoleScope==="global"}>
-                    <option value="">All branches within the chosen scope</option>
+                  <select id="initial_role_scope_branch_id" name="initial_role_scope_branch_id" className={selectClass} value={initialRoleBranch} onChange={e => {setInitialRoleBranch(e.target.value);writeDraftField("initial_role_scope_branch_id",e.target.value);}} disabled={!initialRoleId || !initialRoleScope || initialRoleScope==="global" || requiredInitialScope==='company'} required={!!initialRoleId && requiredInitialScope==='branch'}>
+                    <option value="">{requiredInitialScope === "branch" ? "Choose a specific branch" : "All branches within the chosen company"}</option>
                     {branches.filter(b=>String(b.owner_company_id)===initialRoleScope).map((b) => (
                       <option key={b.id} value={b.id}>{b.branch_name_en} ({b.branch_code})</option>
                     ))}
@@ -509,7 +528,7 @@ export function UserWorkspaceForm({
                 <div className="col-span-12 flex gap-2.5 p-3 rounded-lg border border-border bg-muted/20">
                   <ShieldAlert className="h-4 w-4 shrink-0 text-indigo-500 mt-0.5" />
                   <p className="text-[10px] text-muted-foreground leading-normal font-medium">
-                    Choose the smallest required scope. Global access must be selected deliberately. With no initial role, the new account has no business access.
+                    {administratorAccessSummary(initialRole?.role_code ?? '') ?? 'Choose the smallest required scope. Global access must be selected deliberately. With no initial role, the new account has no business access.'} After creation, use Assigned Roles to add more companies or branches. The home company does not limit explicitly assigned access.
                   </p>
                 </div>
               </div>
@@ -520,6 +539,7 @@ export function UserWorkspaceForm({
           {mode !== "add" && (
             <ERPRecordSectionPanel id="roles" activeId={activeSection} title="Assigned Roles">
               <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">Each row is one company or branch assignment. Add more assignments as needed; removing one does not remove the others.</p>
                 <ERPDataTable presentation="embedded" tableId={`user.roles:${user?.id}`} resultsLabel="Assigned roles" data={user?.roles ?? []} columns={assignedRoleColumns} enableRowSelection={false}/>
                 {!isViewing && user && (
                   <Button
@@ -628,6 +648,7 @@ export function UserWorkspaceForm({
           user={user}
           open={assignRoleOpen}
           onOpenChange={setAssignRoleOpen}
+          canAssignGlobal={isGlobalAdmin(authContext)}
           roles={roles}
           companies={companies}
           branches={branches}

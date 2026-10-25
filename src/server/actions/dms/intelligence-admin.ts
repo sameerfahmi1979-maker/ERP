@@ -19,6 +19,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { checkDocumentConfidentialityAccess } from "@/lib/dms/document-access";
 import { extractFileContent } from "@/lib/dms/file-content-extractor";
 import { getDmsAiProvider } from "@/lib/dms/ai/factory";
 import { persistFileOcrResult } from "@/lib/dms/ocr/persist-file-ocr-result";
@@ -770,6 +771,10 @@ export async function getDmsDocumentSemanticIndexStatus(documentId: number): Pro
   }
 
   try {
+    const caller = await createClient();
+    if (!(await checkDocumentConfidentialityAccess(caller, documentId, ctx)).allowed) {
+      return { success: false, error: "Document unavailable or access denied." };
+    }
     const admin = createAdminClient();
 
     // Get chunk counts per status

@@ -8,13 +8,13 @@ import { canReadCompanySignatories, canManageCompanySignatories, signatoryId, si
 
 export type { OwnerCompanySignatoryRow } from "@/lib/administration/company-signatory-contract";
 export type ActionResult<T = unknown> = { success: boolean; data?: T; error?: string; uncertain?: boolean };
-const denied = "Global signatory read and management permission is required to make this change.";
+const denied = "Signatory read and management permission for this company is required to make this change.";
 const readError = "Company signatories could not be loaded. Check access and try again.";
 
 export async function listCompanySignatories(company_id: number): Promise<ActionResult<OwnerCompanySignatoryRow[]>> {
   if (!signatoryId.safeParse(company_id).success) return { success: false, error: "The company is unavailable." };
   try {
-    if (!canReadCompanySignatories(await getAuthContext())) return { success: false, error: "Global signatory read permission is required. Scoped company access does not include this shared child register." };
+    if (!canReadCompanySignatories(await getAuthContext(), company_id)) return { success: false, error: "Signatory read access for this company is required." };
     const client = await createClient();
     const rows: OwnerCompanySignatoryRow[] = [];
     let after = 0;
@@ -39,7 +39,7 @@ async function mutate(action: "save" | "archive" | "restore", companyId: number,
   if (!signatoryId.safeParse(companyId).success || (id !== null && !signatoryId.safeParse(id).success) || !attempt.success || (id === null) !== (attempt.data.revision === null)) return { success: false, error: "Reopen the signatory before saving. Its save identity or revision is unavailable." };
   let dispatched = false;
   try {
-    if (!canManageCompanySignatories(await getAuthContext())) return { success: false, error: denied };
+    if (!canManageCompanySignatories(await getAuthContext(), companyId)) return { success: false, error: denied };
     const client = await createClient();
     dispatched = true;
     const { data, error } = await client.rpc("save_company_signatory", { p_operation: attempt.data.operationId, p_company_id: companyId, p_id: id, p_revision: attempt.data.revision, p_action: action, p_data: fields });

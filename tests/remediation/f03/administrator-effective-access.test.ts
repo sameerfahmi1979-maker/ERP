@@ -1,0 +1,15 @@
+import {beforeEach,it,expect,vi} from 'vitest';
+import type {AuthContext} from '@/lib/rbac/check';
+const m=vi.hoisted(()=>({ctx:{} as AuthContext,rpc:vi.fn(),admin:vi.fn()}));
+vi.mock('@/lib/rbac/check',async()=>({...await vi.importActual('@/lib/rbac/scope'),getAuthContext:async()=>m.ctx,assertAccountActive:(ctx:AuthContext)=>{if(!ctx.isAccountActive||ctx.profile?.must_change_password)throw Error('Inactive');}}));
+vi.mock('@/lib/supabase/admin',()=>({createAdminClient:m.admin}));
+vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({rpc:m.rpc})}));
+vi.mock('@/server/actions/audit',()=>({logAudit:vi.fn()}));
+vi.mock('@/lib/logger',()=>({logger:{error:vi.fn()}}));
+import {getUserEffectiveAccess} from '@/server/actions/users/effective-access';
+beforeEach(()=>{vi.clearAllMocks();m.ctx={profile:{id:1,must_change_password:false}as AuthContext['profile'],email:null,roleCodes:['company_admin'],permissionCodes:['users.view'],accountStatus:'active',isAccountActive:true,globalPermissionCodes:[],roleAssignments:[{roleId:1,roleCode:'company_admin',ownerCompanyId:1,branchId:null,permissionCodes:['users.view']}]};m.rpc.mockResolvedValue({data:false,error:null});m.admin.mockImplementation(()=>{throw Error('Synthetic unavailable inventory');});});
+it('requires native whole-identity scope before privileged permission inventory',async()=>{expect((await getUserEffectiveAccess(2)).success).toBe(false);expect(m.rpc).toHaveBeenCalledWith('administrator_can_manage_identity',{target_profile:2,capability:'users.view'});expect(m.admin).not.toHaveBeenCalled();});
+it.each([{data:null,error:{code:'503'}},{data:'true',error:null},{data:true,error:{code:'42501'}}])('fails closed on uncertain or malformed identity authority %j',async reply=>{m.rpc.mockResolvedValue(reply);expect((await getUserEffectiveAccess(2)).success).toBe(false);expect(m.admin).not.toHaveBeenCalled();});
+it('never treats multiple scoped assignments as global identity access',async()=>{m.ctx.roleAssignments.push({...m.ctx.roleAssignments[0],ownerCompanyId:2});await getUserEffectiveAccess(3);expect(m.rpc).toHaveBeenCalled();expect(m.admin).not.toHaveBeenCalled();});
+it('does not dispatch for an invalid identity or suspended caller',async()=>{await getUserEffectiveAccess(0);m.ctx.isAccountActive=false;await getUserEffectiveAccess(2);expect(m.rpc).not.toHaveBeenCalled();expect(m.admin).not.toHaveBeenCalled();});
+it('allows verified own identity to reach its ordinary inventory checks',async()=>{await getUserEffectiveAccess(1);expect(m.rpc).not.toHaveBeenCalled();expect(m.admin).toHaveBeenCalledTimes(1);});

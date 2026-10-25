@@ -60,7 +60,8 @@ export function UserEffectiveAccessSection({ userProfileId, authContext }: Props
 {id:"permission",header:"Permission",size:300,accessorFn:p=>[p.permission_name,p.permission_code].filter(Boolean).join(" "),cell:({row})=><div><p className="font-medium">{row.original.permission_name ?? row.original.permission_code}</p><p className="text-xs text-muted-foreground">{row.original.permission_code}</p></div>},
 {id:"module",header:"Module",accessorFn:p=>permissionModuleLabel(p.module_code ?? "other")},
 {id:"role",header:"Source role",accessorFn:p=>p.source_role_name ?? p.source_role_code},
-{id:"scope",header:"Scope",accessorFn:permissionScopeLabel}];
+{id:"scope",header:"Scope",accessorFn:permissionScopeLabel},
+{id:"basis",header:"Access from",accessorFn:p=>p.access_basis === "administrator_policy" ? "Administrator scope policy" : "Assigned role"}];
 
   if (!allowed) {
     return (
@@ -79,8 +80,8 @@ export function UserEffectiveAccessSection({ userProfileId, authContext }: Props
         <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-3 py-2.5 text-sm text-amber-800 dark:text-amber-300">
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
           <span>
-            This user has <strong>Global Administrator</strong> access and can override permission
-            checks. Effective permissions shown are from assigned roles.
+            This user has <strong>Global System Administrator</strong> access across the ERP.
+            Business approvals, locks and retention rules still apply. The table shows recorded role permissions.
           </span>
         </div>
       )}

@@ -8,6 +8,8 @@ All future Cursor planning, implementation, database, UI, server-action, testing
 
 ## Official Standards
 
+[Administrator scope and future-module contract](./ERP_ADMINISTRATOR_SCOPE_STANDARD.md) is mandatory for authorization changes. Runtime activation remains gated by the reviewed migration and acceptance record.
+
 ### 1. [ERP Global Cursor Development and Implementation Guide](./ERP_GLOBAL_CURSOR_DEVELOPMENT_AND_IMPLEMENTATION_GUIDE.md)
 
 **Version**: REV1  

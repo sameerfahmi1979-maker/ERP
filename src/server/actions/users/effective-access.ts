@@ -3,9 +3,11 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasGlobalPermission, hasPermissionInScope, assertAccountActive } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
+import { administratorScope, administratorRoleLabel, assignmentScopeError } from '@/lib/rbac/administrator-policy';
 import { sanitizeServerActionError } from "@/lib/audit/sanitizers";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -27,6 +29,7 @@ export type EffectivePermissionRow = {
   owner_company_id: number | null;
   branch_id: number | null;
   assigned_at: string | null;
+  access_basis?: "administrator_policy" | "explicit_role";
 };
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -126,12 +129,14 @@ async function buildEffectivePermissions(
     const scopeType: "global" | "company" | "branch" =
       branchId ? "branch" : ownerCompanyId ? "company" : "global";
 
+    if (assignmentScopeError(role.role_code, ownerCompanyId, branchId)) continue;
     rows.push({
       permission_code: perm.permission_code,
       permission_name: perm.permission_name,
       module_code: perm.module_code,
       source_role_code: role.role_code,
-      source_role_name: role.role_name,
+      source_role_name: administratorRoleLabel(role.role_code,role.role_name ?? role.role_code),
+      access_basis: ["company","branch"].includes(administratorScope(role.role_code) ?? "") ? "administrator_policy" : "explicit_role",
       scope_type: scopeType,
       owner_company_id: ownerCompanyId,
       branch_id: branchId,
@@ -174,6 +179,15 @@ export async function getUserEffectiveAccess(
 
     assertAccountActive(ctx);
     if (!Number.isSafeInteger(userProfileId) || userProfileId <= 0) return { success: false, error: "Invalid user" };
+    // A user's home company does not describe all of their authority. Do not
+    // disclose another company's grants through this privileged inventory.
+    if (ctx.profile!.id !== userProfileId && !hasGlobalPermission(ctx, "users.view") &&
+        !hasGlobalPermission(ctx, "permissions.view") && !hasGlobalPermission(ctx, "audit.view")) {
+      const scope = await (await createClient()).rpc("administrator_can_manage_identity", {
+        target_profile: userProfileId, capability: "users.view",
+      });
+      if (scope.error || scope.data !== true) return { success: false, error: "This account's access is outside your administrative scope." };
+    }
     const admin = createAdminClient();
     const { data: target, error: targetError } = await admin.from("user_profiles")
       .select("id,status,must_change_password,owner_company_id,branch_id").eq("id",userProfileId).maybeSingle();

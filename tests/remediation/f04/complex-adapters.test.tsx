@@ -87,7 +87,7 @@ it('branch explicit geography clearing is submitted as null IDs and survives a r
 });
 const organization:any={id:50,workspace_revision:1,legal_name_en:'Synthetic',company_code:'SYN',default_currency:'SYN',country_id:1,emirate_id:10,city_id:100,area_zone_id:1000,office_emirate_id:10,office_city_id:100};
 const org=(context=administrationAuth)=>render(<OrganizationWorkspaceForm organization={organization} mode="edit" authContext={context}/>);
-it('scoped company editor does not inherit the global signatory mutation capability',()=>{const ui=org();expect(ui.queryByRole('button',{name:'Add Signatory'})).toBeNull();expect(ui.getByText(/Global signatory read permission is required/)).toBeTruthy();expect(ctx.save).not.toHaveBeenCalled();});
+it('ordinary scoped company editor does not inherit administrator signatory authority',()=>{const ui=org();expect(ui.queryByRole('button',{name:'Add Signatory'})).toBeNull();expect(ui.getByRole('alert').textContent).toContain('Signatory read access for this company is required.');expect(ctx.save).not.toHaveBeenCalled();});
 it('organization draft restores geography, currency and office child clears independently',async()=>{
  const first=org();await waitFor(()=>expect((first.getByLabelText('Currency') as HTMLSelectElement).value).toBe('5'));
  fireEvent.change(first.getByLabelText('Country'),{target:{value:'2'}});fireEvent.change(first.getByLabelText('Currency'),{target:{value:'6'}});fireEvent.change(first.getAllByLabelText('Emirate')[1],{target:{value:'20'}});first.unmount();

@@ -969,7 +969,7 @@ export async function adminListApprovalWorkflows(): Promise<ActionResult<Workflo
   try {
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!isDmsAdmin(ctx)) return { success: false, error: "Permission denied" };
+    if (!(hasGlobalPermission(ctx, "dms.admin") || hasGlobalPermission(ctx, "dms.approvals.admin"))) return { success: false, error: "Permission denied" };
 
     const supabase = await createClient();
     const { data, error } = await supabase
@@ -1030,7 +1030,7 @@ export async function adminGetApprovalWorkflow(id: number): Promise<ActionResult
 
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!isDmsAdmin(ctx)) return { success: false, error: "Permission denied" };
+    if (!(hasGlobalPermission(ctx, "dms.admin") || hasGlobalPermission(ctx, "dms.approvals.admin"))) return { success: false, error: "Permission denied" };
 
     const supabase = await createClient();
     const { data: wf, error } = await supabase
@@ -1124,7 +1124,7 @@ export async function adminDeactivateApprovalWorkflow(id: number, expectedUpdate
 async function saveWorkflowConfiguration(id: number | null, expected: string | null, input: Record<string, unknown>): Promise<ActionResult<{ id: number }>> {
   try {
     const ctx = await getAuthContext();
-    if (!ctx.profile || !isDmsAdmin(ctx)) return { success: false, error: "Permission denied" };
+    if (!ctx.profile || !(hasGlobalPermission(ctx, "dms.admin") || hasGlobalPermission(ctx, "dms.approvals.admin"))) return { success: false, error: "Permission denied" };
     const supabase = await createClient();
     const result = await supabase.rpc("f05_save_dms_workflow", { p_id: id, p_expected_updated_at: expected, p_input: input });
     if (result.error || !result.data) {

@@ -24,12 +24,12 @@ export function CompanySignatoriesSection(props: Props) {
   const owner = useWorkspaceFormOwner();
   // A fresh read admission must recover the retained child task, not overwrite it
   // with a second create after a temporary permission loss.
-  return <CompanySignatoriesSession key={`${props.authContext.profile?.id ?? "none"}:${props.companyId}:${owner?.id ?? "none"}:${canReadCompanySignatories(props.authContext)}`} {...props} />;
+  return <CompanySignatoriesSession key={`${props.authContext.profile?.id ?? "none"}:${props.companyId}:${owner?.id ?? "none"}:${canReadCompanySignatories(props.authContext, props.companyId)}`} {...props} />;
 }
 function CompanySignatoriesSession({ companyId, authContext, enabled, readOnly, onChildOpen }: Props) {
   const principalId = authContext.profile?.id ?? 0;
-  const canRead = canReadCompanySignatories(authContext);
-  const canEdit = !readOnly && canManageCompanySignatories(authContext);
+  const canRead = canReadCompanySignatories(authContext, companyId);
+  const canEdit = !readOnly && canManageCompanySignatories(authContext, companyId);
   const owner = useWorkspaceFormOwner();
   const store = useWorkspaceDraftStoreContext();
   const draftKey = signatoryDraftKey(owner?.id ?? null, principalId, companyId);
@@ -74,9 +74,9 @@ function CompanySignatoriesSession({ companyId, authContext, enabled, readOnly, 
       </Button></div> : null },
   ];
   return <div className="space-y-3">
-    {!canRead ? <p role="alert">Global signatory read permission is required. Scoped company access does not include this shared child register.</p>
+    {!canRead ? <p role="alert">Signatory read access for this company is required.</p>
       : <>
-        {!canEdit && <p className="text-sm text-muted-foreground">Signatories are read-only. Changes require global signatory read and management permission and an editable workspace.</p>}
+        {!canEdit && <p className="text-sm text-muted-foreground">Signatories are read-only. Changes require signatory read and management permission for this company and an editable workspace.</p>}
         {query.isPending ? <p role="status">Loading signatories…</p> : query.isError ? <div role="alert"><p>Signatories could not be loaded. No complete register is available.</p><Button type="button" variant="outline" onClick={() => void query.refetch()}>Try again</Button></div>
           : <><div className="flex justify-end">{canEdit && <Button type="button" size="sm" variant="outline" disabled={!!editor || !!openingError} onClick={() => open(null, "save")}><PlusCircle className="h-4 w-4 mr-1" />Add Signatory</Button>}</div>
             <ERPDataTable presentation="embedded" tableId={`company.signatories:${companyId}`} resultsLabel="Signatories" data={query.data ?? []} columns={columns} enableRowSelection={false} /></>}

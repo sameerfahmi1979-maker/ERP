@@ -10,7 +10,7 @@
 
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/check";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -145,7 +145,7 @@ export async function createColumnProfile(
         profile_name: parsed.data.profileName,
         column_config_json: parsed.data.columnConfigJson,
         is_default: parsed.data.isDefault,
-        is_shared: parsed.data.isShared && hasPermission(ctx, "reports.column_profiles.manage"),
+        is_shared: parsed.data.isShared && hasGlobalPermission(ctx, "reports.column_profiles.manage"),
       })
       .select("id")
       .single();
@@ -204,7 +204,7 @@ export async function updateColumnProfile(
 
     const rec = existing as { id: number; report_id: number; user_profile_id: number };
     const isOwner = rec.user_profile_id === ctx.profile.id;
-    const canManage = hasPermission(ctx, "reports.column_profiles.manage");
+    const canManage = hasGlobalPermission(ctx, "reports.column_profiles.manage");
 
     if (!isOwner && !canManage) {
       return { success: false, error: "You can only edit your own column profiles." };
@@ -263,7 +263,7 @@ export async function deleteColumnProfile(id: number): Promise<ActionResult> {
 
     const rec = existing as { id: number; user_profile_id: number };
     const isOwner = rec.user_profile_id === ctx.profile.id;
-    const canManage = hasPermission(ctx, "reports.column_profiles.manage");
+    const canManage = hasGlobalPermission(ctx, "reports.column_profiles.manage");
 
     if (!isOwner && !canManage) {
       return { success: false, error: "You can only delete your own column profiles." };

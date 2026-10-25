@@ -5,9 +5,10 @@
  *
  * AI results are SUGGESTIONS only. Nothing is auto-saved to metadata.
  * OCR text and AI prompts are NEVER logged.
- * Confidential documents (hr/legal/executive) require dms.admin.
+ * Confidential documents require current document, scope and sensitivity authority.
  */
 
+import { checkDocumentConfidentialityAccess } from "@/lib/dms/document-access";
 import { logDmsAiUsage } from "@/lib/ai/observability/log-dms-ai-usage";
 import { buildClassificationCandidates } from "@/lib/dms/ai/classification-candidate-builder";
 import { buildSanitizedClassificationPayload } from "@/lib/dms/ai/classification-output";
@@ -94,7 +95,7 @@ export type DmsAiAnalysisStatus = {
   pending_jobs: number;
 };
 
-// ── Confidential document levels that require dms.admin ─────────────────────
+// ── Confidential document levels requiring scoped authority ─────────────────────
 
 const RESTRICTED_CONFIDENTIALITY = new Set(["hr", "legal", "executive"]);
 
@@ -142,8 +143,8 @@ export async function getDmsAiAnalysisStatus(
 
     // Confidential check
     if (RESTRICTED_CONFIDENTIALITY.has(doc.confidentiality_level as string)) {
-      if (!hasPermission(ctx, "dms.admin")) {
-        return { success: false, error: "AI analysis not permitted for confidential documents without dms.admin permission" };
+      if (!(await checkDocumentConfidentialityAccess(supabase,documentId,ctx)).allowed) {
+        return { success: false, error: "Current confidential-document access is required." };
       }
     }
 
@@ -290,8 +291,8 @@ export async function runDmsAiAnalysisForDocument(
 
     // Confidential restriction
     if (RESTRICTED_CONFIDENTIALITY.has(doc.confidentiality_level as string)) {
-      if (!hasPermission(ctx, "dms.admin")) {
-        return { success: false, error: "AI analysis not permitted for confidential documents without dms.admin" };
+      if (!(await checkDocumentConfidentialityAccess(supabase,documentId,ctx,"dms.documents.ai.run")).allowed) {
+        return { success: false, error: "Current scoped AI and confidential-document authority is required." };
       }
     }
 
@@ -984,8 +985,8 @@ export async function getDmsAiMetadataApplyHistory(
     if (!doc) return { success: false, error: "Document not found" };
 
     if (RESTRICTED_CONFIDENTIALITY.has(doc.confidentiality_level as string)) {
-      if (!hasPermission(ctx, "dms.admin")) {
-        return { success: false, error: "Apply history for confidential documents requires dms.admin" };
+      if (!(await checkDocumentConfidentialityAccess(supabase,documentId,ctx)).allowed) {
+        return { success: false, error: "Current confidential-document access is required." };
       }
     }
 

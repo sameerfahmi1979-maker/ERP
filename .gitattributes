@@ -13,6 +13,7 @@
 /tests/remediation/f06/braces-upstream-golden.json text eol=lf
 /tooling/security/dependency-gate.cjs text eol=lf
 /vendor/braces/** text eol=lf
+/vendor/shadcn/** text eol=lf
 /vendor/sprintf-js/** text eol=lf
 /vendor/PATCH-MANIFEST.json text eol=lf
 /vendor/sprintf-js-artifact.json text eol=lf

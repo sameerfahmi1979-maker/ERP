@@ -10,6 +10,8 @@ import { revalidatePath } from "next/cache";
 import { logAudit, createAuditDiff } from "@/server/actions/audit";
 import { sanitizeServerActionError } from "@/lib/audit/sanitizers";
 import { randomBytes, randomUUID, createHash } from "node:crypto";
+import { resolveRoleScope } from "@/lib/users/role-scope";
+import { assignmentScopeError } from "@/lib/rbac/administrator-policy";
 import { issueAccountInvitation } from "@/lib/auth/invitations";
 import { sendSecurityTemplate } from "@/lib/auth/security-email";
 import {
@@ -121,6 +123,12 @@ export async function createUser(input: CreateUserInput): Promise<ActionResult<{
       return { success: false, error: "Initial role assignment requires users.roles.assign in that scope." };
     }
     const admin = createAdminClient();
+    if (validated.initial_role_id) {
+      const selected = await admin.from('roles').select('role_code,is_active,is_assignable').eq('id', validated.initial_role_id).maybeSingle();
+      if (selected.error || !selected.data?.is_active || selected.data.is_assignable === false) return { success: false, error: 'The initial role is unavailable.' };
+      const shapeError = assignmentScopeError(selected.data.role_code, validated.initial_role_scope_company_id ?? null, validated.initial_role_scope_branch_id ?? null);
+      if (shapeError) return { success: false, error: shapeError };
+    }
     if (validated.branch_id) {
       const { data: branch, error } = await admin.from("branches").select("owner_company_id").eq("id",validated.branch_id).single();
       if (error || branch.owner_company_id !== validated.owner_company_id) return { success: false, error: "The selected branch does not belong to the selected company." };
@@ -246,6 +254,8 @@ export async function adminUpdateUserProfile(
       if (adminGuard) return { success: false, error: adminGuard };
     }
 
+    const authority = await supabase.rpc('administrator_can_manage_identity', {target_profile:id,capability:'users.update'});
+    if (authority.error || authority.data !== true) return {success:false,error:'This account has authority outside your administrative scope.'};
     // USERS.2 — Auto-set last admin update timestamp
     const updatePayload = {
       ...updates,
@@ -329,6 +339,8 @@ export async function assignRoleToUser(
       return { success: false, error: "User or role not found" };
     }
 
+    const shapeError = assignmentScopeError(role.role_code, validated.owner_company_id ?? null, validated.branch_id ?? null);
+    if (shapeError) return { success: false, error: shapeError };
     // USERS.3 — server-side enforcement: only active + assignable roles may be assigned
     if (!role.is_active) {
       return { success: false, error: `Role "${role.role_name}" is inactive and cannot be assigned` };
@@ -380,7 +392,7 @@ export async function assignRoleToUser(
       new_values: {
         user_profile_id: validated.user_profile_id,
         role: role.role_name,
-        scope: validated.owner_company_id ? "company" : validated.branch_id ? "branch" : "global",
+        scope: resolveRoleScope(validated.owner_company_id, validated.branch_id),
       },
       owner_company_id: validated.owner_company_id ?? userProfile.owner_company_id ?? undefined,
       branch_id: validated.branch_id ?? userProfile.branch_id ?? undefined,
@@ -466,7 +478,7 @@ export async function removeRoleFromUser(
       old_values: {
         user_profile_id: oldData.user_profile_id,
         role: role?.role_name,
-        scope: oldData.owner_company_id ? "company" : oldData.branch_id ? "branch" : "global",
+        scope: resolveRoleScope(oldData.owner_company_id, oldData.branch_id),
       },
       owner_company_id: oldData.owner_company_id ?? userProfile?.owner_company_id ?? undefined,
       branch_id: oldData.branch_id ?? userProfile?.branch_id ?? undefined,
@@ -515,6 +527,9 @@ export async function deleteUser(
       return { success: false, error: `User not found (id: ${userProfileId}${fetchError ? ` — ${fetchError.message}` : ""})` };
     }
 
+    const identityClient = await createClient();
+    const authority = await identityClient.rpc('administrator_can_manage_identity', {target_profile:userProfileId,capability:'users.delete'});
+    if (authority.error || authority.data !== true) return {success:false,error:'This account has authority outside your administrative scope.'};
     if (!(profile.owner_company_id == null ? hasGlobalPermission(ctx, "users.delete") : hasPermissionInScope(ctx, "users.delete", profile.owner_company_id, profile.branch_id))) return { success: false, error: "You cannot delete this account in its company/branch scope." };
     if (!isGlobalAdmin(ctx)) {
       const targetRoles = await adminClient.from("user_roles").select("roles!inner(role_code, is_active)")

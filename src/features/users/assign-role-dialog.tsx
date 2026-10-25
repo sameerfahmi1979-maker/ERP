@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import type { UserWithRoles, Role } from "@/types/domain";
 import type { UserCompanyOption, UserBranchOption } from "@/lib/users/scope-options";
 import { assignRoleToUser } from "@/server/actions/users";
+import { administratorScope, administratorRoleLabel, administratorAccessSummary, assignmentScopeError } from "@/lib/rbac/administrator-policy";
 import { RequiredLabel } from "@/components/erp/required-label";
 
 // High-privilege role codes that warrant a warning
@@ -16,6 +17,7 @@ const HIGH_PRIVILEGE_ROLE_CODES = new Set([
   "system_admin",
   "group_admin",
   "company_admin",
+  "branch_admin",
 ]);
 
 type AssignRoleDialogProps = {
@@ -23,6 +25,7 @@ type AssignRoleDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   roles?: Role[];
+  canAssignGlobal?: boolean;
   companies?: UserCompanyOption[];
   branches?: UserBranchOption[];
 };
@@ -40,23 +43,25 @@ function AssignRoleDialogFields({
   open,
   onOpenChange,
   roles = [],
+  canAssignGlobal = false,
   companies = [],
   branches = [],
 }: AssignRoleDialogProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [addAnotherScope, setAddAnotherScope] = useState(false);
   const [selectedScope, setSelectedScope] = useState<"global" | "company" | "branch">(user.branch_id ? "branch" : "company");
   const [roleId, setRoleId] = useState<string>("");
   const [ownerCompanyId, setOwnerCompanyId] = useState<string>(user.owner_company_id ? String(user.owner_company_id) : "");
   const [branchId, setBranchId] = useState<string>(user.branch_id ? String(user.branch_id) : "");
 
-  const assignableRoles = useMemo(() => filterAssignableRoles(roles), [roles]);
+  const assignableRoles = useMemo(() => filterAssignableRoles(roles).filter(r => canAssignGlobal || !["system_admin","group_admin","company_admin"].includes(r.role_code)), [roles, canAssignGlobal]);
 
   const roleOptions = useMemo(
     () =>
       assignableRoles.map((r) => ({
         value: String(r.id),
-        label: r.role_name,
+        label: administratorRoleLabel(r.role_code, r.role_name),
         code: r.role_code,
       })),
     [assignableRoles],
@@ -64,17 +69,17 @@ function AssignRoleDialogFields({
 
   // Filter branches by selected company
   const filteredBranches = useMemo(() => {
-    if (!ownerCompanyId) return branches;
+    if (!ownerCompanyId) return [];
     return branches.filter((b) => String(b.owner_company_id) === ownerCompanyId);
   }, [branches, ownerCompanyId]);
 
   const companyOptions = useMemo(
-    () => companies.map((c) => ({ value: String(c.id), label: c.legal_name_en })),
+    () => companies.map((c) => ({ value: String(c.id), label: `${c.legal_name_en}${c.company_code ? ` (${c.company_code})` : ""}` })),
     [companies],
   );
 
   const branchOptions = useMemo(
-    () => filteredBranches.map((b) => ({ value: String(b.id), label: b.branch_name_en })),
+    () => filteredBranches.map((b) => ({ value: String(b.id), label: `${b.branch_name_en}${b.branch_code ? ` (${b.branch_code})` : ""}` })),
     [filteredBranches],
   );
 
@@ -83,7 +88,8 @@ function AssignRoleDialogFields({
   const isHighPrivilege = selectedRole && HIGH_PRIVILEGE_ROLE_CODES.has(selectedRole.role_code);
 
   const handleFormSubmit = async () => {
-    if (!roleId) {
+    if (isSubmitting) return;
+    if (!selectedRole) {
       toast.error("Please select a role");
       return;
     }
@@ -95,6 +101,10 @@ function AssignRoleDialogFields({
       toast.error("Please select a branch for the role scope");
       return;
     }
+    if (selectedScope !== 'global' && !companies.some(c => String(c.id) === ownerCompanyId)) { toast.error('Choose an available company.'); return; }
+    if (selectedScope === 'branch' && !filteredBranches.some(b => String(b.id) === branchId)) { toast.error('Choose a branch belonging to the selected company.'); return; }
+    const shapeError = assignmentScopeError(selectedRole?.role_code ?? '', selectedScope === 'global' ? null : Number(ownerCompanyId), selectedScope === 'branch' ? Number(branchId) : null);
+    if (shapeError) { toast.error(shapeError); return; }
     setIsSubmitting(true);
     const data = {
       user_profile_id: user.id,
@@ -107,7 +117,8 @@ function AssignRoleDialogFields({
       const result = await assignRoleToUser(data);
       if (result.success) {
         toast.success("Role assigned successfully");
-        onOpenChange(false);
+        if (addAnotherScope && selectedScope !== 'global') { setOwnerCompanyId(''); setBranchId(''); }
+        else onOpenChange(false);
         router.refresh();
       } else {
         toast.error(result.error || "Failed to assign role");
@@ -124,7 +135,7 @@ function AssignRoleDialogFields({
       open={open}
       onOpenChange={onOpenChange}
       title={`Assign Role to ${user.full_name || user.display_name || "User"}`}
-      subtitle="Select a role and scope for this user assignment"
+      subtitle="Add one assignment per company or branch. A user can have several assignments."
       icon={<ShieldCheck className="h-5 w-5" />}
       mode="add"
       size="sm"
@@ -133,6 +144,11 @@ function AssignRoleDialogFields({
       submitLabel="Assign Role"
     >
       <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">Each assignment adds access only to its selected company or branch. Existing assignments remain unchanged.</p>
+        {selectedScope !== 'global' && <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={addAnotherScope} onChange={event => setAddAnotherScope(event.target.checked)} />
+          Keep open to add another company or branch
+        </label>}
         {/* High-privilege role warning */}
         {isHighPrivilege && (
           <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-3 py-2.5 text-sm text-amber-800 dark:text-amber-300">
@@ -150,6 +166,8 @@ function AssignRoleDialogFields({
             value={roleId}
             onValueChange={(v) => {
               setRoleId(v != null ? String(v) : "");
+              const requiredScope = administratorScope(assignableRoles.find(r => String(r.id) === String(v))?.role_code ?? '');
+              if (requiredScope) { setSelectedScope(requiredScope); if (requiredScope !== 'branch') setBranchId(''); }
             }}
             options={roleOptions}
             placeholder="Select role..."
@@ -169,15 +187,18 @@ function AssignRoleDialogFields({
               setSelectedScope(v);
             }}
             options={[
-              { value: "global", label: "Global" },
+              { value: "global", label: "Global System — all companies and branches" },
               { value: "company", label: "Company" },
               { value: "branch", label: "Branch" },
-            ]}
+            ].filter(option => (option.value !== 'global' || canAssignGlobal) && (!administratorScope(selectedRole?.role_code ?? '') || option.value === administratorScope(selectedRole?.role_code ?? '')))}
             placeholder="Select scope..."
             required
           />
         </div>
 
+        {selectedRole && administratorAccessSummary(selectedRole.role_code) && (
+          <p className="text-sm text-muted-foreground" role="note">{administratorAccessSummary(selectedRole.role_code)}</p>
+        )}
         {selectedScope !== "global" && (
           <div>
             <RequiredLabel required>Organization</RequiredLabel>

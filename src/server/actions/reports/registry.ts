@@ -11,7 +11,7 @@
 
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
 import {listReportTemplates as listScopedTemplates,listBrandingProfiles as listScopedBrandingProfiles} from "./templates";
@@ -133,7 +133,7 @@ export async function createReportRegistryEntry(
 ): Promise<ActionResult<{ id: number }>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "reports.manage")) {
+    if (!hasGlobalPermission(ctx, "reports.manage")) {
       return { success: false, error: "You do not have permission to manage reports." };
     }
 
@@ -200,7 +200,7 @@ export async function updateReportRegistryEntry(
 ): Promise<ActionResult<{ id: number }>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "reports.manage")) {
+    if (!hasGlobalPermission(ctx, "reports.manage")) {
       return { success: false, error: "You do not have permission to manage reports." };
     }
 

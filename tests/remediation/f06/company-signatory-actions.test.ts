@@ -65,6 +65,19 @@ it('rejects scoped-only authority honestly before issuing a mutation', async () 
  expect(await create()).toMatchObject({ success: false, error: expect.stringMatching(/permission|global/i) });
  expect(mock.client).not.toHaveBeenCalled();
 });
+it('admits an assigned company administrator only for that company', async () => {
+ const ctx=principal(['organizations.view','organizations.manage'],false);
+ ctx.roleAssignments[0].roleCode='company_admin';mock.auth.mockResolvedValue(ctx);
+ expect(await create()).toMatchObject({success:true,data:receipt});
+ expect(mock.rpc).toHaveBeenCalledOnce();mock.rpc.mockClear();
+ expect(await create({...input,company_id:8})).toMatchObject({success:false});
+ expect(mock.rpc).not.toHaveBeenCalled();
+});
+it('does not promote a branch administrator into company signatory authority',async()=>{
+ const ctx=principal(['organizations.view','organizations.manage'],false);
+ ctx.roleAssignments[0].roleCode='branch_admin';mock.auth.mockResolvedValue(ctx);
+ expect(await create()).toMatchObject({success:false});expect(mock.rpc).not.toHaveBeenCalled();
+});
 it('requires the existing read admission as well as manage admission', async () => {
  mock.auth.mockResolvedValue(principal(['organizations.manage']));
  expect(await create()).toMatchObject({ success: false });

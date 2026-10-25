@@ -22376,6 +22376,7 @@ export type Database = {
       }
       permissions: {
         Row: {
+          administrator_scope: string
           action_code: string
           created_at: string
           description: string | null
@@ -22391,6 +22392,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          administrator_scope?: string
           action_code: string
           created_at?: string
           description?: string | null
@@ -22406,6 +22408,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          administrator_scope?: string
           action_code?: string
           created_at?: string
           description?: string | null
@@ -26746,6 +26749,10 @@ export type Database = {
       }
     }
     Functions: {
+      administrator_can_manage_identity: {
+        Args: { target_profile: number; capability: string }
+        Returns: boolean
+      }
       save_finance_reference_record: {
         Args: { p_entity: string; p_operation: string; p_id: number | null; p_revision: string | null; p_action: string; p_data: Json }
         Returns: Json

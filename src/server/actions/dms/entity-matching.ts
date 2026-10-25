@@ -16,7 +16,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { logger } from "@/lib/logger";
 import { revalidatePath } from "next/cache";
@@ -109,9 +109,9 @@ function canViewMatching(ctx: Awaited<ReturnType<typeof getAuthContext>>): boole
 
 function canRunMatching(ctx: Awaited<ReturnType<typeof getAuthContext>>): boolean {
   return (
-    hasPermission(ctx, "dms.entity_matching.run") ||
-    hasPermission(ctx, "dms.entity_matching.admin") ||
-    hasPermission(ctx, "dms.admin") ||
+    hasGlobalPermission(ctx, "dms.entity_matching.run") ||
+    hasGlobalPermission(ctx, "dms.entity_matching.admin") ||
+    hasGlobalPermission(ctx, "dms.admin") ||
     ctx.roleCodes.includes("system_admin")
   );
 }
@@ -256,7 +256,7 @@ export async function bulkRunDmsEntityMatching(
 
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!hasPermission(ctx, "dms.entity_matching.admin") && !hasPermission(ctx, "dms.admin") && !ctx.roleCodes.includes("system_admin")) {
+    if (!hasGlobalPermission(ctx, "dms.entity_matching.admin") && !hasGlobalPermission(ctx, "dms.admin") && !ctx.roleCodes.includes("system_admin")) {
       return { success: false, error: "Permission denied — requires dms.entity_matching.admin" };
     }
 
@@ -361,7 +361,7 @@ export async function reviewDmsEntityMatchCandidate(
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
     if (!canReviewMatching(ctx)) return { success: false, error: "Permission denied — requires dms.entity_matching.review" };
 
-    const db = createAdminClient();
+    const db = await createClient();
     const now = new Date().toISOString();
 
     const newStatus = decision.decision === "accepted_for_later_apply" ? "accepted" : "rejected";
@@ -388,7 +388,7 @@ export async function reviewDmsEntityMatchCandidate(
         resolution_note: decision.note?.slice(0, 500) ?? null,
         updated_at:      now,
       })
-      .eq("id", id);
+      .eq("id", id).eq("status", "pending").select("id").single();
 
     if (error) return { success: false, error: error.message };
 

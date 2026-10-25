@@ -15,7 +15,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { logger } from "@/lib/logger";
 import { revalidatePath } from "next/cache";
@@ -113,9 +113,9 @@ function canViewValidation(ctx: Awaited<ReturnType<typeof getAuthContext>>): boo
 
 function canRunValidation(ctx: Awaited<ReturnType<typeof getAuthContext>>): boolean {
   return (
-    hasPermission(ctx, "dms.validation.run") ||
-    hasPermission(ctx, "dms.validation.admin") ||
-    hasPermission(ctx, "dms.admin") ||
+    hasGlobalPermission(ctx, "dms.validation.run") ||
+    hasGlobalPermission(ctx, "dms.validation.admin") ||
+    hasGlobalPermission(ctx, "dms.admin") ||
     ctx.roleCodes.includes("system_admin")
   );
 }
@@ -267,7 +267,7 @@ export async function bulkRunDmsValidation(
 
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!hasPermission(ctx, "dms.validation.admin") && !hasPermission(ctx, "dms.admin") && !ctx.roleCodes.includes("system_admin")) {
+    if (!hasGlobalPermission(ctx, "dms.validation.admin") && !hasGlobalPermission(ctx, "dms.admin") && !ctx.roleCodes.includes("system_admin")) {
       return { success: false, error: "Permission denied — requires dms.validation.admin" };
     }
 
@@ -376,7 +376,7 @@ export async function reviewDmsValidationFinding(
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
     if (!canReviewValidation(ctx)) return { success: false, error: "Permission denied — requires dms.validation.review" };
 
-    const db = createAdminClient();
+    const db = await createClient();
     const now = new Date().toISOString();
 
     let newStatus: string;
@@ -411,7 +411,7 @@ export async function reviewDmsValidationFinding(
         resolution_note: decision.note?.slice(0, 500) ?? null,
         updated_at:      now,
       })
-      .eq("id", id);
+      .eq("id", id).eq("status", "open").select("id").single();
 
     if (error) return { success: false, error: error.message };
 

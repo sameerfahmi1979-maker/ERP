@@ -1,0 +1,99 @@
+.workbench {
+  container: attendance / inline-size;
+  min-width: 0;
+  color: var(--foreground);
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  align-items: start;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--card);
+}
+
+.filters > * { min-width: 0; }
+.filters label:not(.checkbox), .fieldLabel {
+  display: block;
+  margin-bottom: .375rem;
+  font-size: .8125rem;
+  font-weight: 600;
+}
+.filters label > input { margin-top: .375rem; }
+.checkbox { display: flex; align-items: center; gap: .5rem; font-size: .875rem; }
+.checkbox input { flex: 0 0 auto; }
+.filterActions, .actions, .pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+}
+.filterActions { grid-column: 1 / -1; justify-content: space-between; }
+.actions { padding-block: .25rem; }
+.workbench button { max-width: 100%; height: auto; min-height: 2rem; white-space: normal; }
+.feedback { padding: .75rem 1rem; border: 1px solid var(--border); background: var(--muted); border-radius: 4px; overflow-wrap: anywhere; }
+.validation { border-inline-start: 3px solid var(--destructive); background: var(--card); }
+.validation ul { margin-top: .375rem; padding-inline-start: 1.25rem; list-style: disc; }
+.validation a { text-decoration: underline; text-underline-offset: 3px; }
+
+/* Native datetime controls need a containing block. The shared list cells use
+   nowrap; letting these form cells inherit that rule overflows adjacent cells. */
+.table { width: 100%; table-layout: fixed; border: 1px solid var(--border); background: var(--card); }
+.table th, .table td { padding: .875rem; white-space: normal; overflow-wrap: anywhere; vertical-align: top; }
+.table th { background: var(--muted); font-size: .8125rem; }
+.table th:nth-child(1) { width: 21%; }
+.table th:nth-child(2) { width: 10%; }
+.table th:nth-child(3) { width: 34%; }
+.table th:nth-child(4) { width: 20%; }
+.table th:nth-child(5) { width: 15%; }
+.table td > * { min-width: 0; max-width: 100%; }
+.employee { display: flex; align-items: flex-start; gap: .625rem; cursor: pointer; }
+.employee input { flex: 0 0 auto; margin-top: .25rem; }
+.employee span { min-width: 0; }
+.employee strong, .employee small { display: block; }
+.employee small { margin-top: .25rem; color: var(--muted-foreground); }
+.history { display: inline-block; margin-top: .625rem; font-size: .8125rem; }
+.interval {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: .75rem;
+  padding: .75rem;
+  margin-bottom: .75rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--background);
+}
+.interval label, .notes label { display: block; min-width: 0; font-size: .8125rem; }
+.interval input, .notes input, .notes textarea { display: block; width: 100%; min-width: 0; max-width: 100%; margin-top: .375rem; background: var(--card); }
+.interval > .intervalHeading, .interval > .break, .interval > .actions { grid-column: 1 / -1; }
+.intervalHeading { font-weight: 600; font-size: .8125rem; }
+.break { display: grid; gap: .625rem; min-width: 0; padding-top: .75rem; border-top: 1px solid var(--border); }
+.break button { justify-self: start; }
+.notes { display: grid; gap: .75rem; }
+.notes textarea { min-height: 4.5rem; resize: vertical; }
+.rowState { display: grid; gap: .625rem; font-size: .8125rem; }
+.status { justify-self: start; padding: .25rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--muted); font-weight: 600; }
+.rowState button { justify-self: start; }
+.mobileLabel { display: none; }
+.pagination { justify-content: space-between; font-size: .8125rem; color: var(--muted-foreground); }
+
+@container attendance (max-width: 68rem) {
+  .table, .table tbody { display: block; }
+  .table thead { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .table tbody > tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding: .875rem; gap: 1rem; }
+  .table td { display: block; min-width: 0; padding: 0; }
+  .table td:nth-child(1), .table td:nth-child(5) { grid-column: 1 / -1; }
+  .table td:nth-child(3) { grid-row: span 2; grid-column: 2; }
+  .table td:nth-child(4) { grid-column: 1; grid-row: 3; }
+  .mobileLabel { display: block; margin-bottom: .5rem; font-size: .8125rem; font-weight: 600; }
+}
+
+@container attendance (max-width: 44rem) {
+  .table tbody > tr { grid-template-columns: minmax(0, 1fr); }
+  .table td:nth-child(n) { grid-column: 1; grid-row: auto; }
+  .workbench button, .workbench input:not([type="checkbox"]), .workbench select { min-height: 2.75rem; }
+  .workbench input:not([type="checkbox"]), .workbench textarea, .workbench select { font-size: 1rem; }
+}

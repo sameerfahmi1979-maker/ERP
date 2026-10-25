@@ -303,7 +303,7 @@ export interface HrAiActivityRecord {
   entityId: number | null;
   inputContextType: string;
   redactionProfile: string;
-  sensitiveDataIncluded: boolean;
+  sensitiveDataIncluded: boolean | null;
   outputType: string;
   status: string;
   durationMs: number | null;

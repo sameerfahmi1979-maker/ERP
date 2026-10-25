@@ -1,8 +1,31 @@
 import type { NextConfig } from "next";
+import {createHash} from "node:crypto";
+import {existsSync,readFileSync,readdirSync} from "node:fs";
+import {join,relative} from "node:path";
+
+// Source archives have no Git metadata. A reproducible public source digest also
+// identifies those builds. Runtime containers reuse the stored Next build id.
+function diagnosticBuildId(){
+  if(!existsSync(join(__dirname,"src"))){
+    const stored=readFileSync(join(__dirname,".next/BUILD_ID"),"utf8").trim();
+    return /^[a-f\d]{64}$/i.test(stored)?stored:"unavailable";
+  }
+  const hash=createHash("sha256");
+  const add=(file:string)=>{hash.update(relative(__dirname,file).replaceAll("\\","/")+"\0");hash.update(readFileSync(file));};
+  const walk=(dir:string)=>{for(const e of readdirSync(dir,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name,"en"))){const file=join(dir,e.name);if(e.isDirectory())walk(file);else if(e.isFile())add(file);}};
+  walk(join(__dirname,"src"));
+  for(const file of ["package.json","package-lock.json","next.config.ts","tsconfig.shipping.json"])add(join(__dirname,file));
+  return hash.digest("hex");
+}
+const buildId=diagnosticBuildId();
 
 const nextConfig: NextConfig = {
+  // Build identity is public, bounded and secret-free; used only for safe diagnostics.
+  env: { NEXT_PUBLIC_ALGT_BUILD_COMMIT: buildId },
+  generateBuildId: async()=>buildId,
   async headers() {
     return [{ source: "/:path*", headers: [
+      { key: "X-ALGT-Build", value: buildId },
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "Referrer-Policy", value: "no-referrer" },
       { key: "X-Frame-Options", value: "SAMEORIGIN" },

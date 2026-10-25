@@ -22,5 +22,5 @@ export async function readHomeDashboard(ctx:AuthContext){
         if(r.error||!Array.isArray(r.data))throw Error("Activity unavailable");return{status:"ready"as const,rows:r.data};
       }catch{return{status:"failed"as const,rows:[]};}})(),
   ]);
-  return{employees,documentsPending,parties,activity};
+  return{asOf:new Date().toISOString(),employees,documentsPending,parties,activity};
 }

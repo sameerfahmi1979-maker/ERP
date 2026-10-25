@@ -14,9 +14,9 @@ export default async function DashboardPage(){
   const data=await readHomeDashboard(ctx);
   const label=(metric:{status:string;value?:number})=>metric.status==="ready"?String(metric.value):metric.status==="restricted"?"Restricted":"Unavailable";
   const cards=[
-    {title:"Total Employees",value:label(data.employees),icon:Users,iconColor:"text-blue-600"},
-    {title:"Queued / Processing AI Tasks",value:label(data.documentsPending),icon:FileText,iconColor:"text-amber-600"},
-    {title:"Registered Parties",value:label(data.parties),icon:Building2,iconColor:"text-teal-600"},
+    {title:"Total Employees",value:label(data.employees),icon:Users,iconColor:"text-blue-600",description:"All permitted employee records, excluding deleted records."},
+    {title:"Queued / Processing AI Tasks",value:label(data.documentsPending),icon:FileText,iconColor:"text-amber-600",description:"Permitted queued or running AI jobs; this is not a document count."},
+    {title:"Registered Parties",value:label(data.parties),icon:Building2,iconColor:"text-teal-600",description:"All permitted party records, including inactive parties."},
   ];
   const links=[
     {permission:"hr.employees.view",label:"Employees",href:"/admin/hr/employees"},
@@ -27,6 +27,7 @@ export default async function DashboardPage(){
   ].filter(item=>hasPermission(ctx,item.permission));
   return <div className="space-y-6 max-w-[1400px]">
     <ERPPageHeader title="Executive Dashboard" description="Current records available to your account" breadcrumbs={[{label:"Home",href:"/"},{label:"Dashboard"}]}/>
+    <p className="text-xs text-muted-foreground">Read at {data.asOf}. Counts describe currently permitted records and can change after refresh.</p>
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">{cards.map(card=><ERPStatCard key={card.title} {...card}/>)}</div>
     <ERPSectionCard title="Recent Activity" description="Up to ten recent audit events available to your account">
       {data.activity.status!=="ready"?<p role="status">{data.activity.status==="restricted"?"Activity access is restricted.":"Activity could not be loaded. Reload to retry."}</p>:

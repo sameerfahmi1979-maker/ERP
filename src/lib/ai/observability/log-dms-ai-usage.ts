@@ -60,7 +60,7 @@ async function estimateCost(
 
     const { data: rate } = await db
       .from("erp_ai_model_cost_rates")
-      .select("rate_type, input_cost_per_1m_tokens, output_cost_per_1m_tokens, unit_cost, requires_confirmation")
+      .select("rate_type, input_cost_per_1m_tokens, output_cost_per_1m_tokens, unit_cost, requires_confirmation, currency_code")
       .eq("provider_type", providerType)
       .eq("model_id", modelId)
       .eq("is_active", true)
@@ -70,7 +70,7 @@ async function estimateCost(
       .limit(1)
       .maybeSingle();
 
-    if (!rate) return null;
+    if (!rate || rate.currency_code !== "USD") return null;
 
     // Must not compute cost when requires_confirmation is still true
     if ((rate as { requires_confirmation?: boolean }).requires_confirmation === true) return null;
@@ -85,10 +85,12 @@ async function estimateCost(
     if (r.rate_type === "zero") return 0;
 
     if (r.rate_type === "token") {
-      const inputRate = r.input_cost_per_1m_tokens ?? 0;
-      const outputRate = r.output_cost_per_1m_tokens ?? 0;
-      const inTokens = inputTokens ?? 0;
-      const outTokens = outputTokens ?? 0;
+      const inputRate = r.input_cost_per_1m_tokens;
+      const outputRate = r.output_cost_per_1m_tokens;
+      const inTokens = inputTokens;
+      const outTokens = outputTokens;
+      if ([inputRate, outputRate, inTokens, outTokens].some(value => typeof value !== "number" || !Number.isFinite(value) || value < 0)) return null;
+      if (inputRate == null || outputRate == null || inTokens == null || outTokens == null) return null;
       return (inTokens / 1_000_000) * inputRate + (outTokens / 1_000_000) * outputRate;
     }
 
@@ -153,7 +155,7 @@ export async function logDmsAiUsage(input: DmsAiUsageInput): Promise<number | nu
         estimated_cost:     estimatedCost,
         duration_ms:        input.durationMs ?? null,
         error_message:      safeError,
-        metadata_json:      safeMetadata,
+        metadata_json:      { ...safeMetadata, cost_currency: estimatedCost === null ? null : "USD" },
         created_by:         input.createdBy ?? null,
         document_id:        input.documentId ?? null,
         ai_job_id:          input.aiJobId ?? null,

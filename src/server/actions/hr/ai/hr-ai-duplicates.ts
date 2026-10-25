@@ -17,16 +17,11 @@ import { isHrAiFeatureEnabled, isHrAiMasterEnabled } from "@/lib/hr/ai/feature-f
 import type { HrAiActionResult, HrAiDuplicateOutput, HrAiDuplicateSuggestion } from "@/lib/hr/ai/types";
 import { HR_AI_FEATURE_FLAGS } from "@/lib/hr/ai/types";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { logHrAiUsage } from "@/lib/hr/ai/usage-log";
 import { createClient } from "@/lib/supabase/server";
+import { verifiedAggregate } from "@/server/reads/verified-aggregate";
 import { getEmployeeAccess } from "@/lib/rbac/employee-access";
 
-async function logHrAiUsage(params: { featureCode: string; entityId: number; outputType: string; status: "success" | "failure"; durationMs: number; model: string | null; promptTokens: number | null; completionTokens: number | null; profileId: number | null; providerCode: string | null; configCode: string | null; configId: number | null }) {
-  try {
-    const db = createAdminClient();
-    await db.from("erp_ai_usage_logs").insert({ feature_code: params.featureCode, entity_type: "employee", entity_id: params.entityId, action_type: params.outputType, status: params.status, duration_ms: params.durationMs, model_used: params.model, prompt_tokens: params.promptTokens, completion_tokens: params.completionTokens, user_profile_id: params.profileId, provider_code: params.providerCode, config_code: params.configCode, config_id: params.configId });
-  } catch { /* non-critical */ }
-}
 
 export async function detectEmployeeDuplicates(
   employeeId: number
@@ -48,22 +43,23 @@ export async function detectEmployeeDuplicates(
 
     const db = await createClient();
 
-    const { data: emp } = await db
+    const { data: emp, error: employeeError } = await db
       .from("employees")
       .select("id, employee_code, full_name_en, mobile_number, personal_email")
       .eq("id", employeeId)
       .is("deleted_at", null)
       .maybeSingle();
 
-    if (!emp) return { success: false, error: "Employee not found." };
+    if (employeeError) throw Error("Employee source unavailable");
+    if (!emp || emp.id !== employeeId) return { success: false, error: "Employee not found." };
 
     // Load identity documents for deterministic checks
-    const { data: identityDocs } = await db
+    const { data: identityDocs } = await verifiedAggregate((from,to) => db
       .from("employee_identity_documents")
-      .select("document_type, document_number")
+      .select("id,document_type,document_number",{count:"exact"})
       .eq("employee_id", employeeId)
       .is("deleted_at", null)
-      .limit(10);
+      .order("id").range(from,to));
 
     // ── DETERMINISTIC CHECKS ─────────────────────────────────────────────────
 
@@ -73,13 +69,13 @@ export async function detectEmployeeDuplicates(
     // Check: same mobile number
     if (emp.mobile_number) {
       checksPerformed.push("Same mobile number");
-      const { data: mobileDups } = await db
+      const { data: mobileDups } = await verifiedAggregate((from,to) => db
         .from("employees")
-        .select("id, employee_code, full_name_en")
+        .select("id,employee_code,full_name_en",{count:"exact"})
         .eq("mobile_number", emp.mobile_number)
         .neq("id", employeeId)
         .is("deleted_at", null)
-        .limit(5);
+        .order("id").range(from,to));
 
       for (const dup of mobileDups ?? []) {
         duplicates.push({
@@ -101,13 +97,13 @@ export async function detectEmployeeDuplicates(
     // Check: same personal email
     if (emp.personal_email) {
       checksPerformed.push("Same personal email");
-      const { data: emailDups } = await db
+      const { data: emailDups } = await verifiedAggregate((from,to) => db
         .from("employees")
-        .select("id, employee_code, full_name_en")
+        .select("id,employee_code,full_name_en",{count:"exact"})
         .eq("personal_email", emp.personal_email)
         .neq("id", employeeId)
         .is("deleted_at", null)
-        .limit(5);
+        .order("id").range(from,to));
 
       for (const dup of emailDups ?? []) {
         if (!duplicates.some((d) => d.recordBId === dup.id)) {
@@ -128,18 +124,16 @@ export async function detectEmployeeDuplicates(
       }
     }
 
-    // Check: same identity document number
+    // Check all permitted matching identity rows in bounded chunks, not one query per document.
+    const numbers = [...new Set((identityDocs ?? []).map(d => d.document_number).filter((v): v is string => typeof v === "string" && !!v))];
+    if (numbers.length > 200) throw Error("Identity comparison budget exceeded");
+    const identityMatches = numbers.length ? (await verifiedAggregate((from,to) => db.from("employee_identity_documents")
+      .select("id,employee_id,document_type,document_number,employees!inner(id,employee_code,full_name_en)",{count:"exact"})
+      .in("document_number",numbers).neq("employee_id",employeeId).is("deleted_at",null).is("employees.deleted_at",null).order("id").range(from,to))).data : [];
     for (const doc of identityDocs ?? []) {
       if (!doc.document_number) continue;
       checksPerformed.push(`Same ${doc.document_type}`);
-      const { data: docDups } = await db
-        .from("employee_identity_documents")
-        .select("employee_id, document_type, employees!inner(id, employee_code, full_name_en)")
-        .eq("document_type", doc.document_type)
-        .eq("document_number", doc.document_number)
-        .neq("employee_id", employeeId)
-        .is("deleted_at", null)
-        .limit(5);
+      const docDups = identityMatches.filter(r => r.document_type === doc.document_type && r.document_number === doc.document_number);
 
       for (const dupDoc of docDups ?? []) {
         const dupEmp = dupDoc.employees as unknown as { id: number; employee_code: string; full_name_en: string } | null;
@@ -162,18 +156,12 @@ export async function detectEmployeeDuplicates(
       }
     }
 
-    // Check: candidate link (was this employee a candidate?)
-    checksPerformed.push("Candidate-employee link check");
-    const { data: candidateLink } = await db
-      .from("employees")
-      .select("converted_from_candidate_id")
-      .eq("id", employeeId)
-      .maybeSingle();
-
     const summary = duplicates.length === 0
-      ? "No duplicate or conflict indicators found for this employee."
-      : `Found ${duplicates.length} potential duplicate/conflict indicator(s). Human review required before any action.`;
+      ? "No exact-match indicators found among the records currently available to your account. This does not certify that the person has no duplicates."
+      : `Found ${duplicates.length} potential indicators among permitted records; showing up to 10. Human review is required before any action.`;
 
+    const current = await getEmployeeAccess(await getAuthContext(),employeeId);
+    if (current.scopedContext.profile?.id !== ctx.profile.id || JSON.stringify(current.scopedContext.roleAssignments) !== JSON.stringify(ctx.roleAssignments) || !hasPermission(current.scopedContext,"hr.ai.use") || !await isHrAiMasterEnabled() || !await isHrAiFeatureEnabled(HR_AI_FEATURE_FLAGS.DUPLICATES)) throw Error("Current access changed");
     const durationMs = Date.now() - start;
     await logHrAiUsage({ featureCode: HR_AI_FEATURE_FLAGS.DUPLICATES, entityId: employeeId, outputType: "duplicate_detection", status: "success", durationMs, model: null, promptTokens: null, completionTokens: null, profileId: ctx.profile.id, providerCode: null, configCode: null, configId: null });
 
@@ -185,7 +173,7 @@ export async function detectEmployeeDuplicates(
         summary,
       },
     };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  } catch {
+    return { success: false, error: "Duplicate checks could not be completed. Refresh and try again." };
   }
 }

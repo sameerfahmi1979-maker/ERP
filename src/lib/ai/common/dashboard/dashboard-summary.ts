@@ -4,6 +4,7 @@
 
 import type { DailyDashboardScope, DailyDashboardSummary, DashboardPermissionState, DashboardSection } from "./types";
 import { getDashboardSectionLink } from "./dashboard-links";
+import { reportSafeDiagnostic } from "@/lib/observability/safe-diagnostic";
 import {
   collectRiskKpis,
   collectComplianceKpis,
@@ -47,7 +48,8 @@ export async function buildDailyDashboardSummary(
 
   function unwrap<T>(r: PromiseSettledResult<T | null>, sectionName: string): T | null {
     if (r.status === "rejected") {
-      warnings.push(`Failed to load ${sectionName}: ${String(r.reason)}`);
+      const reference = reportSafeDiagnostic(r.reason, { route: "/admin/ai/dashboard", source: "dashboard", event: "AI_SECTION_UNAVAILABLE", build: process.env.NEXT_PUBLIC_ALGT_BUILD_COMMIT });
+      warnings.push(`${sectionName} is unavailable. Refresh to try again. Reference: ${reference}`);
       return null;
     }
     return r.value;
@@ -155,7 +157,7 @@ export async function buildDailyDashboardSummary(
     scope,
     generatedAt: new Date().toISOString(),
     kpis: topKpis,
-    sections,
+    sections: sections.map(section=>({...section,asOf:new Date().toISOString(),state:!section.hasPermission?"restricted":!section.isLoaded?"failed":section.kpis.length||section.alerts.length?"ready":"empty"})),
     permissionState: permissions,
     warnings,
   };

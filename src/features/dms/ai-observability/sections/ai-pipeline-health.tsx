@@ -40,6 +40,7 @@ export function AiPipelineHealth({ refreshKey }: Props) {
 
   return (
     <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border p-4">
+      <p className="text-xs text-muted-foreground mb-2">Current stored states, read at {data.asOf}. Deleted records are excluded; embedding counts include active chunks only. Review counts refer to open requests. These counts do not certify provider availability.</p>
       <HealthRow label="Documents pending AI" value={data.documentsWithPendingAi} />
       <HealthRow label="Documents AI processing" value={data.documentsAiProcessing} />
       <HealthRow label="Documents AI failed" value={data.documentsAiFailed} warn />

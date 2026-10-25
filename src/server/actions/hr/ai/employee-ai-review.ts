@@ -33,7 +33,7 @@ import {
   HrAiReadinessExplanationSchema,
 } from "@/lib/hr/ai/types";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { logHrAiUsage } from "@/lib/hr/ai/usage-log";
 import { createClient } from "@/lib/supabase/server";
 import { getEmployeeAccess } from "@/lib/rbac/employee-access";
 import {readHrAiReviewFacts} from '@/server/reads/hr-ai-review-facts';
@@ -46,39 +46,6 @@ async function verifyReviewAccess(employeeId:number,profileId:number,feature:Par
 
 // ── Usage logger (shared pattern) ─────────────────────────────────────────────
 
-async function logHrAiUsage(params: {
-  featureCode: string;
-  entityId: number;
-  outputType: string;
-  status: "success" | "failure";
-  durationMs: number;
-  model: string | null;
-  promptTokens: number | null;
-  completionTokens: number | null;
-  profileId: number | null;
-  providerCode: string | null;
-  configCode: string | null;
-  configId: number | null;
-}) {
-  try {
-    const db = createAdminClient();
-    await db.from("erp_ai_usage_logs").insert({
-      feature_code:      params.featureCode,
-      entity_type:       "employee",
-      entity_id:         params.entityId,
-      action_type:       params.outputType,
-      status:            params.status,
-      duration_ms:       params.durationMs,
-      model_used:        params.model,
-      prompt_tokens:     params.promptTokens,
-      completion_tokens: params.completionTokens,
-      user_profile_id:   params.profileId,
-      provider_code:     params.providerCode,
-      config_code:       params.configCode,
-      config_id:         params.configId,
-    });
-  } catch { /* non-critical */ }
-}
 
 // ── Shared employee data loader ───────────────────────────────────────────────
 
@@ -100,14 +67,8 @@ async function loadEmployeeSafeProfile(employeeId: number) {
     .eq("id", employeeId)
     .is("deleted_at", null)
     .maybeSingle();
-  if (error) {
-    // Distinguish query/relationship failures from a genuine missing employee.
-    console.error("[HR AI Review] employee profile query failed:", {
-      code: error.code,
-      employeeId,
-    });
-  }
-  return !error&&data?.id===employeeId?data:null;
+  if (error) throw Error("Authorized employee facts unavailable");
+  return data?.id === employeeId ? data : null;
 }
 
 // ── 1. Correction Suggestions ─────────────────────────────────────────────────

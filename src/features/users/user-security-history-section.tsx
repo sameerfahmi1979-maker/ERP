@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Lock, ShieldAlert, RefreshCw, ChevronDown } from "lucide-react";
 import type { AuditLog } from "@/types/domain";
 import type { AuthContext } from "@/lib/rbac/check";
+import {canUseApplication,hasPermission} from "@/lib/rbac/scope";
+import {hrReadIdentity} from "@/lib/reads/hr-read-identity";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import type { ColumnDef } from "@tanstack/react-table";
 
@@ -72,12 +74,7 @@ type Props = {
 };
 
 function canViewSecurityHistory(ctx: AuthContext): boolean {
-  return (
-    ctx.roleCodes.includes("system_admin") ||
-    ctx.roleCodes.includes("group_admin") ||
-    ctx.permissionCodes.includes("users.security.manage") ||
-    ctx.permissionCodes.includes("audit.view")
-  );
+  return canUseApplication(ctx) && (hasPermission(ctx,"users.security.manage") || hasPermission(ctx,"audit.view"));
 }
 
 function getActionBadgeVariant(action: string): "default" | "secondary" | "destructive" | "outline" {
@@ -108,7 +105,7 @@ function SafePayloadDisplay({ payload }: { payload: unknown }) {
 }
 
 export function UserSecurityHistorySection(props: Props) {
-  return <UserSecurityHistoryContent key={`${props.userProfileId}:${canViewSecurityHistory(props.authContext)}`} {...props} />;
+  return <UserSecurityHistoryContent key={`${props.userProfileId}:${hrReadIdentity(props.authContext)}:${canViewSecurityHistory(props.authContext)}`} {...props} />;
 }
 
 function UserSecurityHistoryContent({ userProfileId, authContext }: Props) {
@@ -117,34 +114,22 @@ function UserSecurityHistoryContent({ userProfileId, authContext }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [expandedPayloads, setExpandedPayloads] = useState<Set<string>>(new Set());
 
-  const load = useCallback(() => {
-    if (!canViewSecurityHistory(authContext)) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    fetch(`/api/admin/audit/user-history?user_profile_id=${userProfileId}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((data: { logs?: AuditLog[] }) => setLogs(data.logs ?? []))
-      .catch(() => setError("Could not load security history. Please try again."))
-      .finally(() => setLoading(false));
-  }, [userProfileId, authContext]);
-
+  const [revision,setRevision]=useState(0);
+  const load=()=>{setLoading(true);setError(null);setLogs([]);setRevision(value=>value+1);};
   const permitted = canViewSecurityHistory(authContext);
   useEffect(() => {
     if (!permitted) return;
     const controller = new AbortController();
-    fetch(`/api/admin/audit/user-history?user_profile_id=${userProfileId}`, { signal: controller.signal })
-      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then((data: { logs?: AuditLog[] }) => { if (!controller.signal.aborted) setLogs(data.logs ?? []); })
+    fetch(`/api/admin/audit/user-history?user_profile_id=${userProfileId}`, { signal: controller.signal,cache:"no-store" })
+      .then((r) => { if (!r.ok) throw new Error("History unavailable"); return r.json(); })
+      .then((data: { logs?: AuditLog[] }) => {
+        if(!Array.isArray(data.logs))throw Error("History unavailable");
+        if (!controller.signal.aborted) setLogs(data.logs);
+      })
       .catch(() => { if (!controller.signal.aborted) setError("Could not load security history. Please try again."); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [userProfileId, permitted]);
+  }, [userProfileId, permitted,revision]);
 
   const togglePayload = (id: string) => {
     setExpandedPayloads((prev) => {
@@ -186,10 +171,11 @@ function UserSecurityHistoryContent({ userProfileId, authContext }: Props) {
         <ShieldAlert className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-medium">Event History</span>
         {!loading && !error && (
-          <Badge variant="outline" className="text-xs">{filtered.length} events</Badge>
+          <Badge variant="outline" className="text-xs">{filtered.length} recent events</Badge>
         )}
       </div>
 
+      <p className="text-xs text-muted-foreground">Latest 50 permitted history records. This preview does not establish that older events are absent.</p>
       {/* Loading skeleton */}
       {loading && (
         <div className="space-y-2">
@@ -216,7 +202,7 @@ function UserSecurityHistoryContent({ userProfileId, authContext }: Props) {
         </div>
       )}
 
-      {!loading && !error && <ERPDataTable presentation="embedded" tableId={`user.security-history:${userProfileId}`} resultsLabel="Loaded security events" data={filtered} columns={columns} enableRowSelection={false} initialPageSize={20} emptyMessage="No security events recorded for this user."/>}
+      {!loading && !error && <ERPDataTable presentation="embedded" tableId={`user.security-history:${userProfileId}`} resultsLabel="Loaded security events" data={filtered} columns={columns} enableRowSelection={false} initialPageSize={20} emptyMessage="No matching events in the latest 50 permitted history records."/>}
     </div>
   );
 }

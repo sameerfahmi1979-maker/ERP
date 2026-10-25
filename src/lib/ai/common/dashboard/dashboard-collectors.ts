@@ -6,17 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import {verifiedAggregate, verifiedPreview, verifiedHead} from "@/server/reads/verified-aggregate";
 import type { DailyDashboardScope, DashboardAlertItem, DashboardKpiCard } from "./types";
 
-function scopeToDate(scope: DailyDashboardScope): string {
-  const now = new Date();
-  if (scope === "today") {
-    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    return d.toISOString();
-  }
-  if (scope === "last_7_days") {
-    return new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  }
-  return new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-}
+import { dashboardPeriodStart as scopeToDate } from "./metric-definitions";
 
 // ── 1. Risk KPIs ─────────────────────────────────────────────────────────────
 
@@ -58,8 +48,8 @@ export async function collectRiskKpis(scope: DailyDashboardScope): Promise<RiskK
 
   const alerts: DashboardAlertItem[] = (topRows ?? []).map((r) => ({
     id: Number(r.id),
-    label: `${r.entity_type} #${r.entity_id}`,
-    sublabel: `Risk: ${r.risk_level} (${r.risk_score ?? 0})`,
+    label: `${r.entity_type} review #${r.id}`,
+    sublabel: `Risk: ${r.risk_level} (${r.risk_score ?? "score unavailable"})`,
     severity: r.risk_level === "critical" ? "critical" : "warning",
     navigationPath: `/admin/ai/risk`,
   }));
@@ -107,7 +97,7 @@ export async function collectComplianceKpis(scope: DailyDashboardScope): Promise
 
   const alerts: DashboardAlertItem[] = (topRows ?? []).map((r) => ({
     id: Number(r.id),
-    label: `${r.entity_type} #${r.entity_id}`,
+    label: `${r.entity_type} review #${r.id}`,
     sublabel: `Severity: ${r.severity} — ${r.status}`,
     severity: r.severity === "critical" ? "critical" : "warning",
     navigationPath: `/admin/ai/compliance`,
@@ -154,8 +144,8 @@ export async function collectDuplicateKpis(scope: DailyDashboardScope): Promise<
 
   const alerts: DashboardAlertItem[] = (topRows ?? []).map((r) => ({
     id: Number(r.id),
-    label: `${r.entity_type_a} #${r.entity_id_a} ↔ ${r.entity_type_b} #${r.entity_id_b}`,
-    sublabel: `Confidence: ${Math.round((r.confidence_score ?? 0) * 100)}% — ${r.candidate_type}`,
+    label: `Duplicate review #${r.id}`,
+    sublabel: `Confidence: ${r.confidence_score == null ? "Unknown" : `${Math.round(r.confidence_score * 100)}%`} — ${r.candidate_type}`,
     severity: (r.confidence_score ?? 0) >= 0.9 ? "critical" : "warning",
     navigationPath: `/admin/ai/duplicates`,
   }));
@@ -217,7 +207,7 @@ export async function collectFieldSuggestionKpis(scope: DailyDashboardScope): Pr
 
   const alerts: DashboardAlertItem[] = (topRows ?? []).map((r) => ({
     id: Number(r.id),
-    label: `${r.entity_type} #${r.entity_id} — ${r.field_code}`,
+    label: `${r.entity_type} suggestion #${r.id} — ${r.field_code}`,
     sublabel: r.status === "conflict_detected" ? "Conflict detected" : "Pending review",
     severity: r.status === "conflict_detected" ? "warning" : "normal",
   }));
@@ -358,12 +348,6 @@ export async function collectSearchKpis(scope: DailyDashboardScope, userId: numb
   const supabase = await createClient();
   const since = scopeToDate(scope);
 
-  const { count: totalSearches } = await verifiedHead(supabase
-    .from("erp_ai_recent_searches")
-    .select("id", {count: "exact", head: true})
-    .is("deleted_at", null)
-    .gte("created_at", since));
-
   const { data: modeCounts } = await verifiedAggregate((from, to) => supabase
     .from("erp_ai_recent_searches")
     .select("id,search_mode", {count: "exact"})
@@ -388,13 +372,13 @@ export async function collectSearchKpis(scope: DailyDashboardScope, userId: numb
   const alerts: DashboardAlertItem[] = (mySearches ?? []).map((r) => ({
     id: Number(r.id),
     label: `Search (${r.search_mode ?? "unknown"})`,
-    sublabel: `${r.result_count ?? 0} results`,
+    sublabel: r.result_count == null ? "Result count unavailable" : `${r.result_count} results`,
     severity: "normal",
   }));
 
   return {
     kpis: [
-      { label: `Searches (${scope})`, value: totalSearches ?? 0 },
+      { label: `Searches (${scope})`, value: modeCounts.length },
       { label: "Top Mode", value: topMode ? `${topMode[0]} (${topMode[1]})` : "—" },
       { label: "My Recent Searches", value: (mySearches ?? []).length },
     ],
@@ -420,9 +404,9 @@ export async function collectAiUsageKpis(scope: DailyDashboardScope): Promise<Ai
 
   const all = rows ?? [];
   const totalCalls = all.length;
-  const failedCalls = all.filter((r) => r.status === "error" || r.status === "failed").length;
-  const totalInputTokens = all.reduce((s, r) => s + (r.input_token_count ?? 0), 0);
-  const totalOutputTokens = all.reduce((s, r) => s + (r.output_token_count ?? 0), 0);
+  const failedCalls = all.filter((r) => ["error", "failed", "failure"].includes(r.status)).length;
+  const totalInputTokens = all.some(r => r.input_token_count == null) ? null : all.reduce((s, r) => s + (r.input_token_count ?? 0), 0);
+  const totalOutputTokens = all.some(r => r.output_token_count == null) ? null : all.reduce((s, r) => s + (r.output_token_count ?? 0), 0);
 
   const areaBreakdown = all.reduce<Record<string, number>>((acc, r) => {
     const a = r.feature_area ?? "unknown";
@@ -439,8 +423,8 @@ export async function collectAiUsageKpis(scope: DailyDashboardScope): Promise<Ai
     kpis: [
       { label: `AI Calls (${scope})`, value: totalCalls },
       { label: "Failed Calls", value: failedCalls, severity: failedCalls > 0 ? "warning" : "normal" },
-      { label: "Input Tokens", value: totalInputTokens.toLocaleString() },
-      { label: "Output Tokens", value: totalOutputTokens.toLocaleString() },
+      { label: "Input Tokens", value: totalInputTokens?.toLocaleString() ?? "Unknown" },
+      { label: "Output Tokens", value: totalOutputTokens?.toLocaleString() ?? "Unknown" },
       ...areaKpis,
     ],
     alerts: [],

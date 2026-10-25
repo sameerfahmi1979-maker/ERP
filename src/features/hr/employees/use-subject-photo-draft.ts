@@ -119,7 +119,13 @@ export function useSubjectPhotoDraft(identity:string,scope:string) {
       const value={file:next,url:URL.createObjectURL(next),source:{documentId:1,versionId:1,fileId:1,sha256,width,height},epoch};
       file.current=value;setLocal(value);return value.source;
     },
-    discard(){if(!current()||flight.current||read())throw Error('Finish or reconcile the retained upload before replacing it.');selection.current++;if(file.current)URL.revokeObjectURL(file.current.url);file.current=null;setLocal(null);},
+    discard(){
+      // Closing an ordinary form does not require a photo session. A retired
+      // callback must leave the current owner's bytes and recovery untouched.
+      if(!current())return;
+      if(flight.current||read())throw Error('Finish or reconcile the retained upload before replacing it.');
+      selection.current++;if(file.current)URL.revokeObjectURL(file.current.url);file.current=null;setLocal(null);
+    },
     async resolve(employee:number,dependent:number|null,values:PhotoValues){
       if(!current()||flight.current||blocked)throw Error('Photo save is unavailable.');
         let state=read();if(!file.current&&!state){if(values.photo_pending)throw Error('Reselect the staged photo before saving. Files are not stored in workspace drafts.');return values;}

@@ -19,6 +19,45 @@ beforeEach(()=>{vi.clearAllMocks();m.store=createWorkspaceDraftStore();qc=new Qu
 afterEach(()=>{cleanup();qc.clear();});
 async function open(){render(<QueryClientProvider client={qc}><AttendanceWorkbench authContext={ctx}/></QueryClientProvider>);fireEvent.click(screen.getByRole('button',{name:'Synthetic company'}));await screen.findByLabelText('Attendance type SYN1');}
 function draft(){fireEvent.change(screen.getByLabelText('Attendance type SYN1'),{target:{value:'absent'}});fireEvent.change(screen.getByLabelText('Notes SYN1'),{target:{value:'Private synthetic note'}});fireEvent.change(screen.getByLabelText('Change reason SYN1'),{target:{value:'Verified absence'}});}
+it('the required-reason summary moves focus to the editable field without saving',async()=>{
+ await open();
+ fireEvent.change(screen.getByLabelText('Attendance type SYN1'),{target:{value:'absent'}});
+ const reason=screen.getByLabelText('Change reason SYN1');
+ expect(reason.getAttribute('aria-required')).toBe('true');
+ expect(reason.getAttribute('aria-invalid')).toBe('true');
+ fireEvent.click(screen.getByRole('link',{name:'SYN1: Change reason is required.'}));
+ expect(document.activeElement).toBe(reason);
+ fireEvent.change(reason,{target:{value:'Confirmed absence'}});
+ expect(reason.getAttribute('aria-invalid')).toBe('false');
+ expect(m.save).not.toHaveBeenCalled();
+});
+it('the contained interval editor preserves overnight dates and individually labelled breaks in the saved payload',async()=>{
+ render(<QueryClientProvider client={qc}><AttendanceWorkbench authContext={ctx}initial={{company:1,date:'2026-10-24',search:'SYN1'}}/></QueryClientProvider>);
+ await screen.findByLabelText('Attendance type SYN1');
+ expect(screen.getByRole('table',{name:'Daily attendance entries'})).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Add actual interval'}));
+ fireEvent.change(screen.getByLabelText('Time in SYN1 interval 1'),{target:{value:'2026-10-24T22:00'}});
+ fireEvent.change(screen.getByLabelText('Time out SYN1 interval 1'),{target:{value:'2026-10-25T06:00'}});
+ fireEvent.click(screen.getByRole('button',{name:'Add break'}));
+ fireEvent.change(screen.getByLabelText('Break start SYN1 interval 1 break 1'),{target:{value:'2026-10-25T01:00'}});
+ fireEvent.change(screen.getByLabelText('Break end SYN1 interval 1 break 1'),{target:{value:'2026-10-25T01:30'}});
+ fireEvent.change(screen.getByLabelText('Change reason SYN1'),{target:{value:'Verified overnight attendance'}});
+ fireEvent.click(screen.getByRole('button',{name:'Save changed rows (1)'}));
+ await screen.findByText(/1 saved; 0 need review; 0 unconfirmed/);
+ expect(m.save).toHaveBeenCalledTimes(1);
+ expect(m.save.mock.calls[0][0]).toMatchObject({employeeId:1,values:{intervals:[{start:'2026-10-24T22:00:00+04:00',end:'2026-10-25T06:00:00+04:00',breaks:[{start:'2026-10-25T01:00:00+04:00',end:'2026-10-25T01:30:00+04:00'}]}]}});
+});
+it('invalid interval summary focuses the time field and retains the draft',async()=>{
+ await open();
+ fireEvent.click(screen.getByRole('button',{name:'Add actual interval'}));
+ fireEvent.change(screen.getByLabelText('Change reason SYN1'),{target:{value:'Synthetic invalid interval'}});
+ fireEvent.click(screen.getByRole('button',{name:'Save changed rows (1)'}));
+ const link=await screen.findByRole('link',{name:/SYN1: Check actual intervals/});
+ fireEvent.click(link);
+ expect(document.activeElement).toBe(screen.getByLabelText('Time in SYN1 interval 1'));
+ expect(screen.getByLabelText('Change reason SYN1')).toHaveProperty('value','Synthetic invalid interval');
+ expect(m.save).not.toHaveBeenCalled();
+});
 it('opening a date loads roster but never creates attendance',async()=>{await open();expect(m.save).not.toHaveBeenCalled();expect(screen.getByRole('button',{name:'Save changed rows (0)'}).hasAttribute('disabled')).toBe(true);});
 it('saves only changed rows with exact original receipt and preserves reason',async()=>{await open();draft();fireEvent.click(screen.getByRole('button',{name:'Save changed rows (1)'}));await screen.findByText(/1 saved; 0 need review; 0 unconfirmed/);expect(m.save).toHaveBeenCalledTimes(1);expect(m.save.mock.calls[0][0]).toMatchObject({employeeId:1,reason:'Verified absence',values:{attendance_type:'absent',intervals:[],notes:'Private synthetic note'}});expect(screen.getByRole('button',{name:'Save changed rows (0)'}).hasAttribute('disabled')).toBe(true);});
 it('retains a changed row while paging and saves that row without altering unchanged page rows',async()=>{await open();draft();fireEvent.click(screen.getByRole('button',{name:'Next'}));await screen.findByLabelText('Attendance type SYN2');fireEvent.click(screen.getByRole('button',{name:'Save changed rows (1)'}));await screen.findByText(/1 saved; 0 need review/);expect(m.save.mock.calls[0][0].employeeId).toBe(1);expect(m.save).toHaveBeenCalledTimes(1);});

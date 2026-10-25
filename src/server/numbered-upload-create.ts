@@ -15,6 +15,7 @@ function failure(code:string|undefined,retained?:{documentId:number;documentNo:s
  return {success:false,uncertain:!!retained||!rollback,retained,error:retained?
   `Document ${retained.documentNo} is retained, but its attachment is incomplete. Retry this same request; do not create it again.`:
   code==='42501'?'This upload or its destination is unavailable, or you no longer have permission to complete it.':
+  code==='57014'?'The server took too long to confirm document creation. Creation is unconfirmed. Retry this retained request; do not upload or create it again.':
   rollback?'The request was rejected. Check the upload and its metadata; no new document was committed.':unconfirmed};
 }
 async function verifiedSource(storage:ReturnType<ReturnType<typeof createAdminClient>['storage']['from']>,source:z.infer<typeof uploadCreationSnapshotSchema>['source'],sha256=source.sha256_hash){

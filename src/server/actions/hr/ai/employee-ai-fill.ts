@@ -21,48 +21,13 @@ import { isHrAiFeatureEnabled, isHrAiMasterEnabled } from "@/lib/hr/ai/feature-f
 import type { HrAiActionResult, HrAiDocumentFillOutput } from "@/lib/hr/ai/types";
 import { HR_AI_FEATURE_FLAGS, HrAiDocumentFillOutputSchema } from "@/lib/hr/ai/types";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { logHrAiUsage } from "@/lib/hr/ai/usage-log";
 import { createClient } from "@/lib/supabase/server";
+import { readHrFillFacts } from "@/server/reads/hr-ai-fill-facts";
 import { getEmployeeAccess } from "@/lib/rbac/employee-access";
 
 // ── Usage log helper ──────────────────────────────────────────────────────────
 
-async function logHrAiUsage(params: {
-  featureCode: string;
-  entityType: string;
-  entityId: number;
-  outputType: string;
-  status: "success" | "failure";
-  durationMs: number;
-  model: string | null;
-  promptTokens: number | null;
-  completionTokens: number | null;
-  profileId: number | null;
-  providerCode: string | null;
-  configCode: string | null;
-  configId: number | null;
-}) {
-  try {
-    const db = createAdminClient();
-    await db.from("erp_ai_usage_logs").insert({
-      feature_code:       params.featureCode,
-      entity_type:        params.entityType,
-      entity_id:          params.entityId,
-      action_type:        params.outputType,
-      status:             params.status,
-      duration_ms:        params.durationMs,
-      model_used:         params.model,
-      prompt_tokens:      params.promptTokens,
-      completion_tokens:  params.completionTokens,
-      user_profile_id:    params.profileId,
-      provider_code:      params.providerCode,
-      config_code:        params.configCode,
-      config_id:          params.configId,
-    });
-  } catch {
-    // Non-critical — do not propagate logging errors
-  }
-}
 
 // ── Main action ───────────────────────────────────────────────────────────────
 
@@ -90,55 +55,15 @@ export async function generateEmployeeDocumentFillSuggestions(
 
     const db = await createClient();
 
-    // 1. Load employee safe profile
-    const { data: emp } = await db
-      .from("employees")
-      .select(`
-        id, employee_code, full_name_en, employee_status, joining_date,
-        date_of_birth, gender, nationality:countries(name_en),
-        department:departments(department_name_en),
-        designation:designations(designation_name_en)
-      `)
-      .eq("id", employeeId)
-      .is("deleted_at", null)
-      .maybeSingle();
-
-    if (!emp) return { success: false, error: "Employee not found." };
-
-    // 2. Load employee identity documents (masked)
-    const { data: identityDocs } = await db
-      .from("employee_identity_documents")
-      .select("document_type, document_number, issue_date, expiry_date, is_primary")
-      .eq("employee_id", employeeId)
-      .is("deleted_at", null)
-      .order("is_primary", { ascending: false })
-      .limit(10);
-
-    // 3. Load DMS documents linked to this employee
-    const { data: dmsLinks } = await db
-      .from("dms_document_links")
-      .select(`
-        id,
-        document:dms_documents(
-          id, document_no, document_type:dms_document_types(type_code, name_en),
-          completeness_score, ai_risk_level, issue_date, expiry_date
-        )
-      `)
-      .eq("entity_type", "employee")
-      .eq("entity_id", employeeId)
-      .is("deleted_at", null)
-      .limit(15);
-
+    const facts = await readHrFillFacts(db,employeeId);
+    const {emp,identityDocs,dmsLinks}=facts;
     const dmsDocumentContext = (dmsLinks ?? [])
       .map((link) => {
         const doc = firstOrSelf(link.document as unknown) as Record<string, unknown> | null;
         if (!doc) return null;
         const docType = firstOrSelf(doc.document_type as unknown) as Record<string, unknown> | null;
         const typeName = (docType?.name_en as string) ?? "Unknown";
-        const summary = doc.ai_summary as string | null;
-        return `Document: ${typeName} | Completeness: ${doc.completeness_score ?? "?"}% | ${
-          summary ? `AI Summary: ${summary.slice(0, 300)}` : "No AI summary"
-        }`;
+        return `Document metadata #${doc.id}: ${typeName} | Issued: ${doc.issue_date ?? "Unknown"} | Expires: ${doc.expiry_date ?? "Unknown"}. File text and summaries are not supplied.`;
       })
       .filter(Boolean)
       .join("\n---\n");
@@ -162,7 +87,7 @@ export async function generateEmployeeDocumentFillSuggestions(
     const desig = (firstOrSelf(emp.designation) as JoinedRow | null)?.designation_name_en as string ?? null;
 
     const systemPrompt = `You are an HR records AI assistant for an ERP system.
-Your task: review DMS documents linked to an employee and suggest which employee profile fields could be filled or corrected based on the document data.
+Your task: review only the supplied stored metadata for DMS documents linked to an employee and suggest which employee profile fields could be filled or corrected based on the document data.
 Rules:
 - Only suggest fields that can be inferred from the provided document context.
 - Mark isConflict=true if current value differs from document evidence.
@@ -209,13 +134,21 @@ Return JSON:
   "documentsReviewed": 0,
   "warning": null
 }
-Only safe, non-sensitive profile fields (names, dates, status, nationality). Max 15 suggestions.`;
+Only full_name_en, full_name_ar, date_of_birth, gender, employee_status or joining_date may be suggested. A suggestion must name a supplied sourceDocumentId. Max 15 suggestions. File contents have not been reviewed; do not infer missing values from a document type or expiry date.`;
 
+    const verify = async () => {
+      const current = await getEmployeeAccess(await getAuthContext(),employeeId);
+      if (current.scopedContext.profile?.id !== ctx.profile?.id || !hasPermission(current.scopedContext,"hr.ai.use") || !hasPermission(current.scopedContext,"dms.documents.view") || JSON.stringify(current.scopedContext.roleAssignments)!==JSON.stringify(ctx.roleAssignments) || !await isHrAiMasterEnabled() || !await isHrAiFeatureEnabled(HR_AI_FEATURE_FLAGS.FILL)) throw Error("Advisory access changed");
+    };
+    if (userPrompt.length > 16000) return {success:false,error:"Too much document metadata for a safe advisory request. Review the records directly."};
+    await verify();
     const outcome = await callCommonAiStructuredCompletion(systemPrompt, userPrompt, {
       maxTokens: 2000,
       temperature: 0,
     });
 
+    await verify();
+    if ((await readHrFillFacts(db,employeeId)).fingerprint !== facts.fingerprint) return {success:false,error:"Document metadata changed. Refresh before requesting suggestions again."};
     const durationMs = Date.now() - start;
 
     if (!outcome.success) {
@@ -250,6 +183,9 @@ Only safe, non-sensitive profile fields (names, dates, status, nationality). Max
       return { success: false, error: "AI response failed validation. Please try again." };
     }
 
+    const allowedFields = new Set(["full_name_en","full_name_ar","date_of_birth","gender","employee_status","joining_date"]);
+    const sourceIds = new Set(dmsLinks.map(link => (firstOrSelf(link.document as unknown) as Record<string,unknown>|null)?.id));
+    if (validated.data.suggestions.some(s => !allowedFields.has(s.fieldName) || !Number.isSafeInteger(s.sourceDocumentId) || !sourceIds.has(s.sourceDocumentId))) return {success:false,error:"AI suggested unsupported fields or sources. Review the original records."};
     await logHrAiUsage({
       featureCode: HR_AI_FEATURE_FLAGS.FILL,
       entityType: "employee",
@@ -266,11 +202,11 @@ Only safe, non-sensitive profile fields (names, dates, status, nationality). Max
       configId: outcome.configId,
     });
 
-    return { success: true, data: validated.data };
-  } catch (err) {
+    return { success: true, data: {...validated.data,documentsReviewed:0,warning:"Stored metadata only; file contents were not reviewed. Verify every suggestion against the original document.",suggestions:validated.data.suggestions.map(s=>({...s,requiresReview:true}))} };
+  } catch {
     return {
       success: false,
-      error: err instanceof Error ? err.message : "Unexpected error.",
+      error: "Document suggestions could not be verified. Refresh and try again.",
     };
   }
 }

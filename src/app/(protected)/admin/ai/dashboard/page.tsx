@@ -16,14 +16,14 @@ export default async function AiDailyDashboardPage() {
     hasPermission(ctx, "ai.dashboard.view") ||
     hasPermission(ctx, "ai.dashboard.admin") ||
     hasPermission(ctx, "ai.common.view") ||
-    hasPermission(ctx, "ai.common.admin") ||
-    ctx.roleCodes.includes("system_admin");
+    hasPermission(ctx, "ai.common.admin");
 
   if (!canView) {
     redirect("/access-denied");
   }
 
   const enabled = await isAiDailyDashboardEnabled();
+  if (enabled === null) return <LoadError title="AI dashboard availability" retryHref="/admin/ai/dashboard" />;
 
   if (!enabled) {
     return (

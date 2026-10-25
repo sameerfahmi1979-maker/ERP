@@ -6,6 +6,7 @@ import { DashboardKpiCardComponent } from "./dashboard-kpi-card";
 import { DashboardAlertList } from "./dashboard-alert-list";
 import { DashboardPermissionEmpty } from "./dashboard-permission-empty";
 import { ExternalLink } from "lucide-react";
+import { DASHBOARD_DEFINITIONS } from "@/lib/ai/common/dashboard/metric-definitions";
 
 interface Props {
   section: DashboardSection;
@@ -40,14 +41,17 @@ export function DashboardSectionCard({ section }: Props) {
         )}
       </div>
       <div className="p-5 space-y-5">
-        {section.kpis.length > 0 && (
+        <p className="text-xs text-muted-foreground">{DASHBOARD_DEFINITIONS[section.code].definition}</p>
+        {section.asOf && <p className="text-xs text-muted-foreground">Read at {section.asOf}</p>}
+        {!section.isLoaded && <p role="alert" className="text-sm text-destructive">This section is unavailable. Use Refresh to try again; the other sections remain available.</p>}
+        {section.isLoaded && section.kpis.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {section.kpis.map((kpi, i) => (
               <DashboardKpiCardComponent key={i} card={kpi} />
             ))}
           </div>
         )}
-        {section.alerts.length > 0 && (
+        {section.isLoaded && section.alerts.length > 0 && (
           <div>
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wide">
               Top Items
@@ -55,7 +59,7 @@ export function DashboardSectionCard({ section }: Props) {
             <DashboardAlertList alerts={section.alerts} />
           </div>
         )}
-        {section.kpis.length === 0 && section.alerts.length === 0 && (
+        {section.isLoaded && section.kpis.length === 0 && section.alerts.length === 0 && (
           <p className="text-sm text-slate-500 dark:text-slate-400 italic">No data available.</p>
         )}
       </div>

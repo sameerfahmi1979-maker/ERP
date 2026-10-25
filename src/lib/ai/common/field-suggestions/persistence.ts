@@ -16,6 +16,8 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import { usageErrorCategory } from "@/lib/ai/observability/usage-summary";
+import { reportSafeDiagnostic } from "@/lib/observability/safe-diagnostic";
 import type { ErpAiFieldSuggestionDraft, ErpAiEntityType, ErpAiCurrentRecordSnapshot } from "../types";
 import {
   ERP_COMMON_AI_PROMPT_VERSION,
@@ -258,7 +260,7 @@ export async function logCommonAiUsage(input: UsageLogInput): Promise<void> {
   try {
     const supabase = await createClient();
 
-    await supabase.from("erp_ai_usage_logs").insert({
+    const result = await supabase.from("erp_ai_usage_logs").insert({
       provider_config_id: input.configId,
       feature_area: "ERP_AI_FIELD_SUGGESTIONS",
       operation_type: "generate_field_suggestions",
@@ -268,7 +270,7 @@ export async function logCommonAiUsage(input: UsageLogInput): Promise<void> {
       output_token_count: input.completionTokens,
       duration_ms: input.durationMs,
       error_message: input.errorMessage
-        ? input.errorMessage.slice(0, 300)
+        ? usageErrorCategory(input.errorMessage)
         : null,
       metadata_json: {
         entity_type: input.entityType,
@@ -279,7 +281,9 @@ export async function logCommonAiUsage(input: UsageLogInput): Promise<void> {
       created_by: input.userProfileId,
       created_at: new Date().toISOString(),
     });
-  } catch {
-    // Non-fatal — never throw from usage log
+    if(result.error) throw Error("Usage recording unavailable");
+  } catch (error) {
+    reportSafeDiagnostic(error,{route:"unknown",source:"server",event:"AI_USAGE_RECORDING_UNAVAILABLE"});
+    // Non-fatal; a logging failure must not replay the provider/business operation.
   }
 }

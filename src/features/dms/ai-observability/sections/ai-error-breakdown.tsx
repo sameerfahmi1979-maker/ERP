@@ -3,8 +3,8 @@ import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import { loadedListValue } from "@/components/erp/table/loaded-list-view";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
-import { getDmsAiErrorBreakdown, type ObservabilityFilters } from "@/server/actions/dms/ai-observability";
-import { useQuery } from "@tanstack/react-query";
+import { type ObservabilityFilters } from "@/server/actions/dms/ai-observability";
+import { useUsageSnapshot } from "../use-usage-snapshot";
 
 interface Props {
   filters: ObservabilityFilters;
@@ -12,17 +12,7 @@ interface Props {
 }
 
 export function AiErrorBreakdown({ filters, refreshKey }: Props) {
-  const uiRead1 = useQuery({
-    queryKey: ["dms-observability", "getDmsAiErrorBreakdown", filters, refreshKey],
-    queryFn: async () => {
-      const result = await getDmsAiErrorBreakdown(filters);
-      if (!result.success || !result.data) throw new Error(result.error ?? "Failed to load.");
-      return result.data;
-    },
-    retry: false,
-    gcTime: 0,
-    refetchOnWindowFocus: false,
-  });
+  const uiRead1 = useUsageSnapshot("errors", filters, refreshKey);
  const { data, isPending: loading, error: queryError } = uiRead1;
   const error = queryError?.message;
 

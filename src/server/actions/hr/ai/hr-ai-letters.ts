@@ -15,7 +15,7 @@
  */
 
 import { z } from "zod";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { logHrAiUsage } from "@/lib/hr/ai/usage-log";
 import { createClient } from "@/lib/supabase/server";
 import { getEmployeeAccess } from "@/lib/rbac/employee-access";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
@@ -36,12 +36,6 @@ const DraftInputSchema = z.object({
 
 export type DraftLetterInput = z.infer<typeof DraftInputSchema>;
 
-async function logHrAiUsage(params: { featureCode: string; entityId: number; outputType: string; status: "success" | "failure"; durationMs: number; model: string | null; promptTokens: number | null; completionTokens: number | null; profileId: number | null; providerCode: string | null; configCode: string | null; configId: number | null }) {
-  try {
-    const db = createAdminClient();
-    await db.from("erp_ai_usage_logs").insert({ feature_code: params.featureCode, entity_type: "employee", entity_id: params.entityId, action_type: params.outputType, status: params.status, duration_ms: params.durationMs, model_used: params.model, prompt_tokens: params.promptTokens, completion_tokens: params.completionTokens, user_profile_id: params.profileId, provider_code: params.providerCode, config_code: params.configCode, config_id: params.configId });
-  } catch { /* non-critical */ }
-}
 
 export async function draftHrLetterOrEmail(
   input: DraftLetterInput

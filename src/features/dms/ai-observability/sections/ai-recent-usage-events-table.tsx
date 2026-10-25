@@ -4,8 +4,8 @@ import { loadedListValue } from "@/components/erp/table/loaded-list-view";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
 import { Badge } from "@/components/ui/badge";
-import { getDmsAiRecentUsageEvents, type ObservabilityFilters } from "@/server/actions/dms/ai-observability";
-import { useQuery } from "@tanstack/react-query";
+import { type ObservabilityFilters } from "@/server/actions/dms/ai-observability";
+import { useUsageSnapshot } from "../use-usage-snapshot";
 
 interface Props {
   filters: ObservabilityFilters;
@@ -19,17 +19,7 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
 };
 
 export function AiRecentUsageEventsTable({ filters, refreshKey }: Props) {
-  const uiRead1 = useQuery({
-    queryKey: ["dms-observability", "getDmsAiRecentUsageEvents", filters, refreshKey],
-    queryFn: async () => {
-      const result = await getDmsAiRecentUsageEvents(filters);
-      if (!result.success || !result.data) throw new Error(result.error ?? "Failed to load.");
-      return result.data;
-    },
-    retry: false,
-    gcTime: 0,
-    refetchOnWindowFocus: false,
-  });
+  const uiRead1 = useUsageSnapshot("recent", filters, refreshKey);
  const { data, isPending: loading, error: queryError } = uiRead1;
   const error = queryError?.message;
 

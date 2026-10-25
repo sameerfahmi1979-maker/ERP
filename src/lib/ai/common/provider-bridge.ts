@@ -81,14 +81,10 @@ export async function callCommonAiStructuredCompletion(
       configId,
       durationMs: Date.now() - start,
     };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    // Strip any potential prompt content from error messages
-    const safeMsg = msg.slice(0, 300);
-
+  } catch {
     return {
       success: false,
-      error: `AI provider call failed: ${safeMsg}`,
+      error: "AI provider could not complete this request. Try again later or contact your administrator.",
       isProviderNotConfigured: false,
       durationMs: Date.now() - start,
     };

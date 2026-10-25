@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
-import { logger } from "@/lib/logger";
+import { reportSafeDiagnostic } from "@/lib/observability/safe-diagnostic";
+import { sanitizeSecurityAuditPayload } from "@/lib/audit/sanitizers";
+import { literalContains } from "@/lib/reads/search";
 import type { AuditLog } from "@/types/domain";
 
 /**
@@ -19,11 +21,13 @@ export async function listAuditLogs(options?: {
 }): Promise<AuditLog[]> {
   const supabase = await createClient();
   const { limit = 100, module, action, entity_id, entity_name, actor_user_profile_id, date_from, date_to, search } = options || {};
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw Error("Invalid history preview limit");
 
   let query = supabase
     .from("audit_logs")
     .select("*")
     .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
     .limit(limit);
 
   if (module) query = query.eq("module_code", module);
@@ -33,16 +37,16 @@ export async function listAuditLogs(options?: {
   if (actor_user_profile_id !== undefined) query = query.eq("actor_user_profile_id", actor_user_profile_id);
   if (date_from) query = query.gte("created_at", date_from);
   if (date_to) query = query.lte("created_at", date_to);
-  if (search) query = query.or(`action.ilike.%${search}%,entity_reference.ilike.%${search}%`);
+  if (search) query = query.or(`action.ilike.${literalContains(search)},entity_reference.ilike.${literalContains(search)}`);
 
   const { data, error } = await query;
 
   if (error) {
-    logger.error("listAuditLogs error", error.message);
-    return [];
+    const reference = reportSafeDiagnostic(error, { source: "dashboard", route: "/admin/audit", event: "AUDIT_HISTORY_UNAVAILABLE" });
+    throw Error(`Audit history is unavailable. Reference: ${reference}`);
   }
-
-  return data ?? [];
+  if (!Array.isArray(data)) throw Error("Audit history is unavailable");
+  return data.map(row => ({...row, old_values:sanitizeSecurityAuditPayload(row.old_values),new_values:sanitizeSecurityAuditPayload(row.new_values)}));
 }
 
 /**
@@ -53,6 +57,7 @@ export async function listUserSecurityAuditLogs(
   userProfileId: number,
   limit = 50,
 ): Promise<AuditLog[]> {
+  if (!Number.isSafeInteger(userProfileId) || userProfileId < 1 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw Error("Invalid history request");
   const supabase = await createClient();
 
   const { data, error } = await supabase
@@ -61,12 +66,13 @@ export async function listUserSecurityAuditLogs(
     .eq("entity_id", userProfileId)
     .in("entity_name", ["user_profiles", "user_roles", "debug_route"])
     .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
     .limit(limit);
 
   if (error) {
-    logger.error("listUserSecurityAuditLogs error", error.message);
-    return [];
+    const reference = reportSafeDiagnostic(error, { source: "dashboard", route: "/admin/users", event: "USER_HISTORY_UNAVAILABLE" });
+    throw Error(`Security history is unavailable. Reference: ${reference}`);
   }
-
-  return data ?? [];
+  if (!Array.isArray(data)) throw Error("Security history is unavailable");
+  return data.map(row => ({...row,old_values:sanitizeSecurityAuditPayload(row.old_values),new_values:sanitizeSecurityAuditPayload(row.new_values)}));
 }

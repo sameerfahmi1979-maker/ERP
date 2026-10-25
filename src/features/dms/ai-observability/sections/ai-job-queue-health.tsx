@@ -40,6 +40,7 @@ export function AiJobQueueHealth({ refreshKey }: Props) {
 
   return (
     <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border overflow-hidden">
+      <p className="text-xs text-muted-foreground p-3">Current queue through {new Date(data.asOf).toLocaleString()}. {data.oldestWaitingAt ? `Oldest waiting job: ${new Date(data.oldestWaitingAt).toLocaleString()}.` : "No waiting jobs at this read."} Usage filters do not change queue totals.</p>
       <div className="grid grid-cols-5 border-b">
         {[
           { label: "Queued", value: data.queuedCount, color: "text-blue-600" },
@@ -56,7 +57,7 @@ export function AiJobQueueHealth({ refreshKey }: Props) {
       </div>
       {data.recentJobs.length > 0 && (
         <div className="overflow-x-auto">
-          {/* UI05 explicit table: authorized loaded rows, original permission-aware actions */}<ERPDataTable presentation="embedded" tableId="special.dms.ai-observability.sections.ai-job-queue-health" data={data.recentJobs.slice(0, 10)} columns={[{id:"id",header:"ID",accessorFn:j=>loadedListValue(j,"id"),meta:{filter:{type:"number"}},enableHiding:false,size:220,cell:({row:{original:j}})=>{
+          {/* Recent preview, not a full queue export. */}<ERPDataTable presentation="embedded" tableId="special.dms.ai-observability.sections.ai-job-queue-health" data={data.recentJobs} columns={[{id:"id",header:"ID",accessorFn:j=>loadedListValue(j,"id"),meta:{filter:{type:"number"}},enableHiding:false,size:220,cell:({row:{original:j}})=>{
 return <>{j.id}</>;}},{id:"jobType",header:"Type",accessorFn:j=>loadedListValue(j,"jobType"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:j}})=>{
 return <>{j.jobType}</>;}},{id:"jobStatus",header:"Status",accessorFn:j=>loadedListValue(j,"jobStatus"),meta:{filter:{type:"text"}},enableHiding:true,size:180,cell:({row:{original:j}})=>{
 return <><Badge variant={STATUS_BADGE[j.jobStatus] ?? "outline"} className="text-xs">

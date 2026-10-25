@@ -54,6 +54,8 @@ export interface DashboardSection {
   link?: DashboardLink;
   hasPermission: boolean;
   isLoaded: boolean;
+  state?: "ready" | "empty" | "failed" | "restricted";
+  asOf?: string;
 }
 
 export interface DailyDashboardSummary {

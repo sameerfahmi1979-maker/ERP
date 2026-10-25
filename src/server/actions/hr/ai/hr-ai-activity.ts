@@ -14,6 +14,8 @@ import { createClient } from "@/lib/supabase/server";
 import { HR_AI_FEATURE_FLAGS } from "@/lib/hr/ai/types";
 import type { HrAiActivityRecord, HrAiActionResult } from "@/lib/hr/ai/types";
 
+import { verifiedPreview } from "@/server/reads/verified-aggregate";
+
 const HR_FEATURE_CODES = Object.values(HR_AI_FEATURE_FLAGS);
 
 export async function listHrAiActivity(
@@ -35,37 +37,43 @@ export async function listHrAiActivity(
     } else return { success: false, error: "Invalid subject." };
 
     const db = createAdminClient();
-    const { data, error } = await db
+    const { data } = await verifiedPreview(db
       .from("erp_ai_usage_logs")
-      .select("id, feature_code, entity_type, entity_id, action_type, status, duration_ms, model_used, prompt_tokens, completion_tokens, user_profile_id, created_at, provider_code, config_code, config_id")
-      .in("feature_code", HR_FEATURE_CODES)
-      .eq("entity_type", entityType)
-      .eq("entity_id", entityId)
+      .select("id,feature_area,operation_type,status,duration_ms,model_id,input_token_count,output_token_count,created_by,created_at", {count:"exact"})
+      .in("feature_area", HR_FEATURE_CODES)
+      .eq("metadata_json->>entity_type", entityType)
+      .eq("metadata_json->>entity_id", String(entityId))
       .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (error) return { success: false, error: error.message };
+      .order("id", {ascending:false})
+      .limit(50), 50);
 
     const records: HrAiActivityRecord[] = (data ?? []).map((row) => ({
       id: row.id,
-      featureCode: row.feature_code,
-      entityType: row.entity_type,
-      entityId: row.entity_id,
-      inputContextType: "employee_profile",
-      redactionProfile: "standard",
-      sensitiveDataIncluded: false,
-      outputType: row.action_type,
+      featureCode: row.feature_area,
+      entityType,
+      entityId,
+      inputContextType: "authorized_subject_context",
+      redactionProfile: "not_recorded",
+      sensitiveDataIncluded: null,
+      outputType: row.operation_type,
       status: row.status,
       durationMs: row.duration_ms,
       createdAt: row.created_at,
-      createdBy: row.user_profile_id,
-      model: row.model_used,
-      promptTokens: row.prompt_tokens,
-      completionTokens: row.completion_tokens,
+      createdBy: row.created_by,
+      model: row.model_id,
+      promptTokens: row.input_token_count,
+      completionTokens: row.output_token_count,
     }));
 
+    const current = await getAuthContext();
+    if (current.profile?.id !== ctx.profile.id || !hasPermission(current,"hr.ai.view") || JSON.stringify(current.roleAssignments) !== JSON.stringify(ctx.roleAssignments)) return { success:false,error:"Access changed. Refresh and try again." };
+    if (entityType === "employee" && !(await getEmployeeAccess(current,entityId)).allows("hr.ai.view")) return { success:false,error:"Access changed. Refresh and try again." };
+    if (entityType === "candidate") {
+      const check = await (await createClient()).from("hr_candidates").select("id,owner_company_id,branch_id").eq("id",entityId).is("deleted_at",null).maybeSingle();
+      if (check.error || !check.data || !hasPermissionInScope(current,"hr.ai.view",check.data.owner_company_id,check.data.branch_id)) return { success:false,error:"Candidate unavailable or access denied." };
+    }
     return { success: true, data: records };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : "Unexpected error." };
+  } catch {
+    return { success: false, error: "Activity could not be verified. Refresh to try again." };
   }
 }

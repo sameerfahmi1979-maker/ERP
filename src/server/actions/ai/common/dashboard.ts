@@ -9,7 +9,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
 import { buildDailyDashboardSummary } from "@/lib/ai/common/dashboard/dashboard-summary";
 import type {
   DailyDashboardScope,
@@ -37,15 +37,16 @@ export type ActionResult<T = undefined> = T extends undefined
 
 // ── Feature flag check ─────────────────────────────────────────────────────────
 
-export async function isAiDailyDashboardEnabled(): Promise<boolean> {
+export async function isAiDailyDashboardEnabled(): Promise<boolean | null> {
   try {
     const supabase = await createClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("erp_ai_feature_flags")
       .select("is_enabled")
       .eq("feature_code", "ERP_AI_DAILY_DASHBOARD")
       .single();
-    return data?.is_enabled === true;
+    if (error || !data || typeof data.is_enabled !== "boolean") return null;
+    return data.is_enabled;
   } catch {
     return false;
   }
@@ -56,7 +57,7 @@ export async function isAiDailyDashboardEnabled(): Promise<boolean> {
 type AuthCtx = Awaited<ReturnType<typeof getAuthContext>>;
 
 function buildPermissionState(ctx: AuthCtx): DashboardPermissionState {
-  const isAdmin = ctx.roleCodes.includes("system_admin");
+  const isAdmin = isGlobalAdmin(ctx);
   const isDashboardAdmin =
     hasPermission(ctx, "ai.dashboard.admin") || isAdmin;
 
@@ -99,7 +100,7 @@ function canViewDashboard(ctx: AuthCtx): boolean {
     hasPermission(ctx, "ai.dashboard.admin") ||
     hasPermission(ctx, "ai.common.view") ||
     hasPermission(ctx, "ai.common.admin") ||
-    ctx.roleCodes.includes("system_admin")
+    isGlobalAdmin(ctx)
   );
 }
 
@@ -116,14 +117,19 @@ export async function getAiDailyDashboard(input?: {
     }
 
     const scope: DailyDashboardScope = input?.scope ?? "today";
+    if (!["today", "last_7_days", "last_30_days"].includes(scope)) return { success: false, error: "Choose a valid dashboard period." };
+    const enabled = await isAiDailyDashboardEnabled();
+    if (enabled !== true) return { success: false, error: enabled === false ? "AI Daily Dashboard is not enabled." : "Feature availability could not be verified. Try again." };
     const permissions = buildPermissionState(ctx);
     const userId = ctx.profile?.id ?? 0;
 
     const summary = await buildDailyDashboardSummary(scope, permissions, userId);
 
+    const current = await getAuthContext();
+    if (!canViewDashboard(current) || current.profile?.id !== ctx.profile?.id || JSON.stringify(current.roleAssignments) !== JSON.stringify(ctx.roleAssignments) || JSON.stringify(buildPermissionState(current)) !== JSON.stringify(permissions)) return { success: false, error: "Access changed. Refresh and try again." };
     return { success: true, data: summary };
-  } catch (err) {
-    return { success: false, error: `Failed to load dashboard: ${String(err)}` };
+  } catch {
+    return { success: false, error: "Dashboard unavailable. Refresh to try again." };
   }
 }
 
@@ -141,6 +147,9 @@ export async function getAiDailyDashboardSection(input: {
     }
 
     const scope: DailyDashboardScope = input.scope ?? "today";
+    if (!["today", "last_7_days", "last_30_days"].includes(scope)) return { success: false, error: "Choose a valid dashboard period." };
+    const enabled = await isAiDailyDashboardEnabled();
+    if (enabled !== true) return { success: false, error: enabled === false ? "AI Daily Dashboard is not enabled." : "Feature availability could not be verified. Try again." };
     const permissions = buildPermissionState(ctx);
     const userId = ctx.profile?.id ?? 0;
     const link = getDashboardSectionLink(input.sectionCode);
@@ -268,8 +277,10 @@ export async function getAiDailyDashboardSection(input: {
         return { success: false, error: "Unknown section code." };
     }
 
-    return { success: true, data: section };
-  } catch (err) {
-    return { success: false, error: `Failed to load section: ${String(err)}` };
+    const current = await getAuthContext();
+    if (!canViewDashboard(current) || current.profile?.id !== ctx.profile?.id || JSON.stringify(current.roleAssignments) !== JSON.stringify(ctx.roleAssignments) || JSON.stringify(buildPermissionState(current)) !== JSON.stringify(permissions)) return { success: false, error: "Access changed. Refresh and try again." };
+    return { success: true, data: {...section,asOf:new Date().toISOString(),state:!section.hasPermission?"restricted":section.kpis.length||section.alerts.length?"ready":"empty"} };
+  } catch {
+    return { success: false, error: "Section unavailable. Refresh to try again." };
   }
 }

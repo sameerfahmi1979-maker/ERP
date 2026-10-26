@@ -3,6 +3,7 @@
 import {DmsReadReady} from "@/features/dms/documents/section-read-boundary";
 import {useQueryClient} from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import {AlertDialog,AlertDialogContent,AlertDialogHeader,AlertDialogTitle,AlertDialogDescription,AlertDialogFooter,AlertDialogCancel,AlertDialogAction} from '@/components/ui/alert-dialog';
 import { DmsAdminFileStoragePanel } from "@/features/dms/admin/dms-admin-file-storage-panel";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -81,6 +82,9 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
   const [attachDialogOpen, setAttachDialogOpen] = useState(false);
   const [createDocDialogOpen, setCreateDocDialogOpen] = useState(false);
   const [selectedSession, setSelectedSession] = useState<DmsUploadSessionRow | null>(null);
+  const [discardSession,setDiscardSession]=useState<DmsUploadSessionRow|null>(null);
+  const [discardBusy,setDiscardBusy]=useState(false);
+  const discardFlight=useRef(false);
 
   const [uploadMode, setUploadMode] = useState<UploadMode>("single");
   const [owningScope,setOwningScope]=useState<UploadOwningScope|null>(null);
@@ -365,6 +369,9 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
   };
 
   const handleCancelSession = async (session: DmsUploadSessionRow) => {
+    if(discardFlight.current)return;
+    discardFlight.current=true;setDiscardBusy(true);
+    try{
     const result = await cancelDmsUploadSession(session.id);
     if (!result.success) {
       toast.error(result.error ?? "Failed to cancel session");
@@ -373,10 +380,13 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
     setSessions((prev) =>
       prev.map((s) => s.id === session.id ? { ...s, status: "cancelled" } : s)
     );
-    toast.success("Upload session cancelled");
+    toast.success("Upload discarded from the Inbox. Files and history are retained.");
+    setDiscardSession(null);
     if (uploadState.phase === "ready" && uploadState.session.id === session.id) {
       setUploadState({ phase: "idle" });
     }
+    }catch{toast.error('Discard is unconfirmed. Retry this same Inbox item; do not upload it again.');}
+    finally{discardFlight.current=false;setDiscardBusy(false);}
   };
 
   const handleRefresh = async () => {
@@ -639,7 +649,8 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
           onReadAvailable={setInboxReadAvailable}
           onAttach={handleAttach}
           onCreateDocument={handleCreateDocument}
-          onCancel={handleCancelSession}
+          onCancel={setDiscardSession}
+          isSubmitting={discardBusy}
           onAiFill={handleAiFill}
         />
       </div>
@@ -652,6 +663,20 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
 
       {/* Keep drafts mounted but retire portal actions after a failed inbox recheck. */}
       <DmsReadReady value={inboxReadAvailable}>
+      <AlertDialog open={!!discardSession} onOpenChange={open=>{if(!open&&!discardBusy)setDiscardSession(null);}}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard this upload?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {discardSession?.original_filename} will leave the active Inbox. Any uncommitted approval will be cancelled; its original files, reference and history stay retained. A completed document cannot be discarded here.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={discardBusy}>Keep upload</AlertDialogCancel>
+            <AlertDialogAction disabled={discardBusy} onClick={event=>{event.preventDefault();if(discardSession)void handleCancelSession(discardSession);}}>{discardBusy?'Discarding…':'Discard upload'}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <DmsUploadAttachDialog
         open={attachDialogOpen}
         onOpenChange={setAttachDialogOpen}

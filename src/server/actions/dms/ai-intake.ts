@@ -1,5 +1,6 @@
 "use server";
 import {discardRetainedIntake} from '@/server/dms-intake-discard';
+import {recoverNumberedAiApproval} from '@/server/dms-ai-approval-recovery';
 import {verifyAndAttestIntakeSource} from '@/server/dms-intake-source-attestation';
 
 /**
@@ -44,6 +45,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {batchDraftUuidSchema,batchDraftPrepareEnvelopeSchema} from "@/lib/dms/numbered-batch-draft";
+
+export async function recoverAiIntakeApproval(sessionId:number){return recoverNumberedAiApproval(sessionId);}
 
 // ── Entity → party database matching ──────────────────────────────────────────
 

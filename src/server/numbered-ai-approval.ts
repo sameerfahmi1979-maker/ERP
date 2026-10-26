@@ -57,7 +57,10 @@ export async function approveNumberedAiIntake(input:unknown,contract?:WorkspaceS
   }
   dispatched=true;
   const begun=await client.rpc('reserve_numbered_ai_intake',{p_operation:c.data.operationId,p_request:request});
-  if(begun.error)return failure(begun.error.code);
+  if(begun.error){
+   if(begun.error.code==='PT409'&&begun.error.message==='Intake has another retained approval')return {success:false,recoveryRequired:true,error:'An earlier approval is retained. Recover its original request before retrying.'};
+   return failure(begun.error.code);
+  }
   const plan=aiApprovalPlanSchema.safeParse(begun.data);
   if(!plan.success||plan.data.operation_id!==c.data.operationId||plan.data.upload_session_id!==request.uploadSessionId||plan.data.actor_id!==ctx.profile.id)return {success:false,uncertain:true,error:lost};
   const p=plan.data;retained={documentId:p.documentId,documentNo:p.documentNo};

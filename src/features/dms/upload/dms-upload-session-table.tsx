@@ -281,13 +281,13 @@ export function DmsUploadSessionTable({
                         <PlusCircle className="h-3 w-3" />
                         New Doc
                       </Button>
-                      <Button aria-label="Cancel upload"
+                      <Button aria-label="Discard upload from Inbox"
                         size="icon"
                         variant="ghost"
                         className="h-7 w-7"
                         onClick={() => onCancel(s)}
                         disabled={isSubmitting}
-                        title="Cancel upload"
+                        title="Discard upload from Inbox"
                       >
                         <XCircle className="h-3.5 w-3.5 text-destructive" />
                       </Button>

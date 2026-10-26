@@ -43,7 +43,11 @@ export const aiApprovalPreparationSchema=z.object({operation_id:z.string().uuid(
 // Explicit acknowledgement from the read-only preparation branch, not a
 // generic save failure. Never usable to abandon a prepared/reserved attempt.
 export const aiApprovalPreparationRejectionSchema=z.object({operation_id:z.string().uuid(),upload_session_id:id}).strict();
+export const aiApprovalRecoverySchema=z.object({input:aiApprovalInputSchema,contract:aiApprovalContractSchema,receipt:aiApprovalReceiptSchema.nullable()}).strict().superRefine((value,ctx)=>{
+ if(!value.input.prepared||value.receipt&&(value.receipt.operation_id!==value.contract.operationId||value.receipt.upload_session_id!==value.input.uploadSessionId))ctx.addIssue({code:'custom',message:'Invalid retained approval identity'});
+});
+export type AiApprovalRecoveryResult={success:true;data:z.infer<typeof aiApprovalRecoverySchema>|null}|{success:false;error:string};
 export type AiApprovalInput=z.input<typeof aiApprovalInputSchema>;
 export type AiApprovalReceipt=z.infer<typeof aiApprovalReceiptSchema>;
 export type AiApprovalResult={success:true;data:AiApprovalReceipt}|{success:false;error?:string;uncertain?:boolean;
- prepared?:z.infer<typeof aiApprovalPreparationSchema>;preparationRejected?:z.infer<typeof aiApprovalPreparationRejectionSchema>;retained?:{documentId:number;documentNo:string}};
+ recoveryRequired?:boolean;prepared?:z.infer<typeof aiApprovalPreparationSchema>;preparationRejected?:z.infer<typeof aiApprovalPreparationRejectionSchema>;retained?:{documentId:number;documentNo:string}};

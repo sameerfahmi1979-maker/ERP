@@ -16,7 +16,7 @@ beforeEach(() => {
   m.rpc.mockResolvedValue({ data: { actorId: 11, authSessionId: "f0800000-0000-4000-8000-000000000002" }, error: null });
   m.original.mockResolvedValue({ data: { storage_path: "synthetic/7.pdf", generated_by: 11 }, error: null });
   m.info.mockResolvedValue({ data: object, error: null });
-  m.download.mockResolvedValue({ data: new Blob([bytes]), error: null });
+  m.download.mockImplementation(() => ({ asStream: async () => ({ data: new Blob([bytes]).stream(), error: null }) }));
   m.serviceRpc.mockResolvedValue({ data: null, error: null });
 });
 describe("stored-original attestation, controlled Storage ports (not live Storage)", () => {
@@ -43,11 +43,11 @@ describe("stored-original attestation, controlled Storage ports (not live Storag
     await expect(attestStoredOutput(command)).rejects.toThrow("identity"); expect(m.download).not.toHaveBeenCalled();
   });
   it.each([0, 33554433])("denies out-of-bounds bytes %d without attesting", async size => {
-    m.download.mockResolvedValue({ data: { size, arrayBuffer: vi.fn() }, error: null });
+    m.download.mockImplementation(() => ({ asStream: async () => ({ data: new Blob([new Uint8Array(size)]).stream(), error: null }) }));
     await expect(attestStoredOutput(command)).rejects.toThrow("bounds"); expect(m.serviceRpc).not.toHaveBeenCalled();
   });
   it("denies different bytes despite a successful Storage response", async () => {
-    m.download.mockResolvedValue({ data: new Blob(["different bytes"]), error: null });
+    m.download.mockImplementation(() => ({ asStream: async () => ({ data: new Blob(["different bytes"]).stream(), error: null }) }));
     await expect(attestStoredOutput(command)).rejects.toThrow("retained rendering"); expect(m.serviceRpc).not.toHaveBeenCalled();
   });
   it.each(["version", "id", "lastModified"] as const)("denies changed object %s", async key => {

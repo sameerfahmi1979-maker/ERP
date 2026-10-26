@@ -1,0 +1,6 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": { "noEmit": true, "incremental": false },
+  "include": ["./*.ts", "./*.mts", "../f08/durable-operation.test.ts", "../f08/verified-original.test.ts", "../../../src/types/**/*.d.ts"],
+  "exclude": ["../../../node_modules"]
+}

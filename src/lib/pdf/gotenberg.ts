@@ -54,6 +54,7 @@ export async function isGotenbergHealthy(): Promise<boolean> {
       method: "GET",
       signal: AbortSignal.timeout(5000),
     });
+    void res.body?.cancel().catch(() => {});
     return res.ok;
   } catch {
     return false;
@@ -70,8 +71,8 @@ export async function getGotenbergVersion(): Promise<string> {
     const res = await fetch(`${GOTENBERG_URL}/health`, {
       signal: AbortSignal.timeout(5000),
     });
+    void res.body?.cancel().catch(() => {});
     if (!res.ok) return "unknown";
-    await res.body?.cancel();
     return `gotenberg@${GOTENBERG_URL.includes("localhost") ? "dev" : "prod"}`;
   } catch {
     return "unknown";
@@ -151,8 +152,10 @@ export async function gotenbergConvertUrl(options: GotenbergUrlOptions): Promise
   });
 
   if (!res.ok) {
-    const errorText = await res.text().catch(() => "(no body)");
-    throw new Error(`[Gotenberg] HTTP ${res.status}: ${errorText.substring(0, 200)}`);
+    // A renderer/proxy body can contain private print URLs, tokens or document
+    // content, and may stream indefinitely. Keep only the numeric status.
+    void res.body?.cancel().catch(() => {});
+    throw new Error(`[Gotenberg] HTTP ${res.status}`);
   }
 
   const buffer = await readValidatedPdfResponse(res);
@@ -231,8 +234,8 @@ export async function gotenbergConvertHtml(options: GotenbergHtmlOptions): Promi
   });
 
   if (!res.ok) {
-    const errorText = await res.text().catch(() => "(no body)");
-    throw new Error(`[Gotenberg] HTTP ${res.status}: ${errorText.substring(0, 200)}`);
+    void res.body?.cancel().catch(() => {});
+    throw new Error(`[Gotenberg] HTTP ${res.status}`);
   }
 
   const buffer = await readValidatedPdfResponse(res);

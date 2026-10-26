@@ -100,3 +100,7 @@ CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F02_CLOSEOUT/
 /.f06-linux-image-evidence/
 # F07 private lifecycle evidence, native fixtures and release receipts.
 /CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F07/
+
+# F18 synthetic backup sets, fixtures and local recovery outputs are private.
+/.resilience/
+/CODEX_AUDIT_13_09_2026/IMPLEMENTATION/F18/

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hashFinalPdfBytes } from "./idempotency";
-import { MAX_RENDERED_PDF_BYTES } from "@/lib/pdf/validate-response";
+import { readBoundedOriginal } from "./bounded-original";
 
 const identity = z.object({ id: z.string().uuid(), version: z.string().min(1), lastModified: z.string().datetime({ offset: true }) });
 const actor = z.object({ actorId: z.number().int().positive(), authSessionId: z.string().uuid() });
@@ -23,9 +23,7 @@ export async function attestStoredOutput(input: { issuanceId: number; expectedSh
   const storage = admin.storage.from("erp-generated-pdfs");
   const before = await storage.info(original.data.storage_path), first = identity.safeParse(before.data);
   if (before.error || !first.success) throw new Error("Original Storage identity is unavailable.");
-  const file = await storage.download(original.data.storage_path);
-  if (file.error || !file.data || file.data.size < 1 || file.data.size > MAX_RENDERED_PDF_BYTES) throw new Error("Original bytes are unavailable or exceed the accepted bounds.");
-  const bytes = Buffer.from(await file.data.arrayBuffer());
+  const bytes = await readBoundedOriginal(storage, original.data.storage_path);
   const digest = hashFinalPdfBytes(bytes);
   if (digest !== input.expectedSha256) throw new Error("Original bytes do not match the retained rendering.");
   const after = await storage.info(original.data.storage_path), last = identity.safeParse(after.data);

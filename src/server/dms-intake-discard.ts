@@ -11,7 +11,8 @@ export async function discardRetainedIntake(client:SupabaseClient,input:z.input<
  try{
   const r=await client.rpc('f07_discard_intake',{p_session:p.data.sessionId,p_document:p.data.documentId,p_reason:p.data.reason??null});
   if(r.error){const rejected=/^(?:22|23|42|P0|PT)[A-Z0-9]{3}$/.test(r.error.code??'');return {ok:false as const,uncertain:!rejected,error:rejected?
-   'Discard was rejected. Check scoped archive permission and reconcile any pending creation or approval. All files remain retained.':
+   r.error.code==='42501'?'You cannot discard this intake with your current access. A retained approval must be cancelled by its original uploader.':
+   'Discard was not completed. This intake may already have a document or a conflicting operation. Refresh the Inbox and review its current state; all files remain retained.':
    'Discard is unconfirmed. Retry the same intake and reason; no file has been deleted.'};}
   const parsed=receipt.safeParse(r.data);
   if(!parsed.success||parsed.data.uploadSessionId!==p.data.sessionId||parsed.data.documentId!==p.data.documentId)throw Error('Unverified receipt');

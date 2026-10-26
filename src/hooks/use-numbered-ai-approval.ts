@@ -1,10 +1,11 @@
 "use client";
 
-import {useCallback,useLayoutEffect,useMemo,useRef,useState} from 'react';
+import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {useWorkspaceDraftStoreContext} from '@/components/workspace/workspace-draft-provider';
 import {useWorkspaceFormOwner} from '@/hooks/use-workspace-form-owner';
 import {aiApprovalContractSchema,aiApprovalInputSchema,aiApprovalPreparationSchema,aiApprovalPreparationRejectionSchema,aiApprovalReceiptSchema,type AiApprovalInput,type AiApprovalReceipt,type AiApprovalResult} from '@/lib/dms/numbered-ai-approval';
 import type {WorkspaceSaveContract} from '@/lib/workspace/save-contract';
+import {aiApprovalRecoverySchema,type AiApprovalRecoveryResult} from '@/lib/dms/numbered-ai-approval';
 
 type Attempt={input:AiApprovalInput;contract:WorkspaceSaveContract;receipt?:AiApprovalReceipt;preparationEditable?:true};
 type Dispatch=(input:AiApprovalInput,contract:WorkspaceSaveContract)=>Promise<AiApprovalResult>;
@@ -12,11 +13,12 @@ const lost:AiApprovalResult={success:false,uncertain:true,error:'Approval is unc
 const changed:AiApprovalResult={success:false,uncertain:true,error:'The intake owner changed. Reopen the original intake to recover its retained request.'};
 const clone=<T,>(value:T):T=>JSON.parse(JSON.stringify(value)) as T;
 
-/** Single-file approval only, memory-only request recovery. No file bytes or storage credentials.
+/** Single-file approval. Discover server-retained originals after reload; keep
+ * temporary client requests in owner memory only. No file bytes or credentials.
  * The shell replaces the draft provider on principal change; tab closure clears
  * its prefix. Each context/session retains a single operation. Only an explicit
  * first read-only rejection permits input correction, never identity reset. */
-export function useNumberedAiApproval(contextKey:string,dispatch:Dispatch){
+export function useNumberedAiApproval(contextKey:string,dispatch:Dispatch,recover?:(id:number)=>Promise<AiApprovalRecoveryResult>){
  const store=useWorkspaceDraftStoreContext();
  const owner=useWorkspaceFormOwner();
  const ownerId=owner?.id??null;
@@ -26,6 +28,7 @@ export function useNumberedAiApproval(contextKey:string,dispatch:Dispatch){
  const live=useRef({epoch,mounted:false});
  const flight=useRef(false);
  const committed=useRef<{epoch:typeof epoch;receipt:AiApprovalReceipt}|null>(null);
+ const [recovery,setRecovery]=useState<{epoch:typeof epoch;blocked:boolean}|null>(null);
  useLayoutEffect(()=>{
   live.current={epoch,mounted:true};
   return()=>{live.current.mounted=false;};
@@ -48,8 +51,45 @@ export function useNumberedAiApproval(contextKey:string,dispatch:Dispatch){
   if(!isCurrent()||!store)throw Error('Owner changed');
   store.setDraft(key,{attempts:JSON.stringify(attempts)});refresh(value=>value+1);
  },[isCurrent,key,store]);
+ const discover=useCallback(async()=>{
+  if(!recover)return;
+  const result=await recover(Number(contextKey));
+  if(!isCurrent())throw Error('Owner changed');
+  if(!result.success)throw Error('Recovery unavailable');
+  if(result.data===null)throw Error('Original approval unavailable');
+  const original=aiApprovalRecoverySchema.safeParse(result.data);
+  if(!original.success||String(original.data.input.uploadSessionId)!==contextKey)throw Error('Invalid original approval');
+  const attempts=read();
+  // The database's single source-bound plan is authoritative. An unreserved
+  // local attempt from a second tab cannot replace its operation or values.
+  const {input,contract,receipt}=original.data;
+  attempts[contextKey]={input,contract,...(receipt?{receipt}:{})};save(attempts);
+ },[contextKey,isCurrent,read,recover,save]);
+ useEffect(()=>{
+  if(!recover)return;
+  let retired=false;
+  void (async()=>{
+   try{
+    // Do not let StrictMode's retired discovery publish into a later lease.
+    const result=await recover(Number(contextKey));
+    if(retired||!isCurrent())return;
+    if(!result.success)throw Error('Recovery unavailable');
+    if(result.data!==null){
+     const original=aiApprovalRecoverySchema.safeParse(result.data);
+     if(!original.success||String(original.data.input.uploadSessionId)!==contextKey)throw Error('Invalid original approval');
+     const {input,contract,receipt}=original.data;
+     save({...read(),[contextKey]:{input,contract,...(receipt?{receipt}:{})}});
+    }
+    setRecovery({epoch,blocked:false});
+   }catch{if(!retired&&isCurrent())setRecovery({epoch,blocked:true});}
+  })();
+  return()=>{retired=true;};
+ },[contextKey,epoch,isCurrent,read,recover,save]);
+ const loading=!!recover&&recovery?.epoch!==epoch;
+ const recoveryBlocked=!!recover&&recovery?.epoch===epoch&&recovery.blocked;
  const run=useCallback(async(input:unknown):Promise<AiApprovalResult>=>{
   if(!isCurrent()||!store||!ownerId)return changed;
+  if(loading||recoveryBlocked)return {success:false,error:'Original approval recovery is not ready. Reopen this intake before retrying.'};
   if(committed.current?.epoch===epoch)return {success:true,data:committed.current.receipt};
   if(flight.current)return {success:false,error:'An approval request is already running.'};
   flight.current=true;
@@ -81,6 +121,10 @@ export function useNumberedAiApproval(contextKey:string,dispatch:Dispatch){
     result=await dispatch(clone(attempt.input),clone(attempt.contract));
     if(!isCurrent())return changed;
    }
+   if(!result.success&&result.recoveryRequired&&recover){
+    await discover();
+    return {success:false,error:'The original approval has been recovered. Select Retry retained approval to complete it with its original reviewed values.'};
+   }
    if(result.success){
     const receipt=aiApprovalReceiptSchema.safeParse(result.data);
     if(!attempt.input.prepared||!receipt.success||receipt.data.operation_id!==attempt.contract.operationId||receipt.data.upload_session_id!==attempt.input.uploadSessionId)return lost;
@@ -99,9 +143,9 @@ export function useNumberedAiApproval(contextKey:string,dispatch:Dispatch){
    // uncertain send, successful preparation, reservation or malformed reply.
    return result.prepared?lost:result;
   }catch{return lost;}finally{flight.current=false;}
- },[contextKey,dispatch,epoch,isCurrent,ownerId,read,save,store]);
+ },[contextKey,dispatch,epoch,isCurrent,ownerId,read,save,store,loading,recoveryBlocked,recover,discover]);
  let pendingSessionIds:number[]=[];
  let retentionError=false;
  try{pendingSessionIds=Object.values(read()).filter(value=>!value.receipt&&!value.preparationEditable).map(value=>value.input.uploadSessionId);}catch{retentionError=true;}
- return {run,isCurrent,pendingSessionIds,retentionError};
+ return {run,isCurrent,pendingSessionIds,retentionError:retentionError||recoveryBlocked,loading};
 }

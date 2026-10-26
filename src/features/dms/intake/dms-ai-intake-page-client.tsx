@@ -28,6 +28,7 @@ import type { ReviewFormValues } from "./dms-ai-intake-review-form";
 import type { IntakeSessionData, IntakeAiResultRow } from "@/server/actions/dms/ai-intake";
 import {
   approveAiIntakeAndCreateDocument,
+  recoverAiIntakeApproval,
   discardAiIntake,
   retryAiIntake,
   saveAiIntakeDraft,
@@ -66,10 +67,10 @@ export function DmsAiIntakePageClient({
   const router = useRouter();
   const { activeTab, updateTabRoute, renameTab, closeTab } = useWorkspace();
   const [session] = useState<IntakeSessionData>(initialSession);
-  const approval = useNumberedAiApproval(String(initialSession.id), approveAiIntakeAndCreateDocument);
+  const approval = useNumberedAiApproval(String(initialSession.id), approveAiIntakeAndCreateDocument,session.document_id?undefined:recoverAiIntakeApproval);
   const batchApproval=useRetainedBatchFinalization({enabled:!!session.document_id,sessionId:session.id,recover:recoverDraftFinalization,submit:finalizeDraftIntake});
   const retainedApproval = session.document_id?batchApproval.pending:approval.pendingSessionIds.includes(session.id);
-  const approvalBlocked=session.document_id?(batchApproval.loading||batchApproval.blocked||batchApproval.busy):approval.retentionError;
+  const approvalBlocked=session.document_id?(batchApproval.loading||batchApproval.blocked||batchApproval.busy):(approval.retentionError||approval.loading);
   const [aiResultPatch, setAiResultPatch] = useState<Partial<IntakeAiResultRow> | null>(null);
   const aiResult = session.ai_result
     ? ({ ...session.ai_result, ...aiResultPatch } as IntakeAiResultRow)
@@ -377,7 +378,8 @@ export function DmsAiIntakePageClient({
         </div>
       </div>
 
-      {retainedApproval && <p role="status" className="mt-3 text-sm text-amber-700">An approval request is retained for recovery. Retry uses its original reviewed values, even if the form has changed. Do not discard or re-run analysis until it is reconciled.</p>}
+      {retainedApproval && <p role="status" className="mt-3 text-sm text-amber-700">An approval request is retained for recovery. Retry uses its original reviewed values, even if the form has changed. To cancel an uncommitted upload, use Discard in the Upload Inbox. Do not re-run analysis.</p>}
+      {approval.loading&&!session.document_id&&<p role="status" className="mt-3 text-sm text-muted-foreground">Checking for an earlier approval…</p>}
       {approval.retentionError && !session.document_id && <p role="alert" className="mt-3 text-sm text-destructive">The retained approval could not be read. Reopen the original workspace; a replacement request will not be created.</p>}
       {session.document_id&&batchApproval.loading&&<p role="status" className="mt-3 text-sm">Checking the original finalization request…</p>}
       {session.document_id&&batchApproval.blocked&&<p role="alert" className="mt-3 text-sm text-destructive">The original finalization could not be read. Reopen this intake after access is restored; do not submit a replacement.</p>}

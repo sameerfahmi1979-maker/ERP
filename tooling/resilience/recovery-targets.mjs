@@ -42,7 +42,7 @@ export function assessRecoveryTargets(policy, evidence, now = Date.now()) {
     if (!accepted.some(p=>p.cutoff>start&&p.cutoff<=end)) {gaps.add('daily_history_incomplete');break;}
   }
   const drill=evidence?.drill,detected=stamp(drill?.detectedAt),verified=stamp(drill?.verifiedAt);
-  const validDrill=nonempty(drill?.incidentId)&&Number.isFinite(detected)&&Number.isFinite(verified)&&verified>=detected&&verified<=now&&drill?.scope==='managed-isolated'&&drill?.allRequiredComponentsVerified===true&&drill?.permissionsAndRevocationsVerified===true;
+  const validDrill=nonempty(drill?.incidentId)&&Number.isFinite(detected)&&Number.isFinite(verified)&&verified>=detected&&verified<=now&&drill?.scope==='managed-isolated'&&drill?.allRequiredComponentsVerified===true&&drill?.permissionsAndRevocationsVerified===true&&drill?.postCutoffSecurityStateReconciled===true;
   if (!validDrill) gaps.add('managed_recovery_unverified');
   else if(verified-detected>policy.rtoMs) gaps.add('recovery_time_exceeded');
   const operator=evidence?.operator,alert=stamp(operator?.alertedAt),ack=stamp(operator?.acknowledgedAt);

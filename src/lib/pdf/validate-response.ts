@@ -6,14 +6,17 @@ export const MAX_RENDERED_PDF_PAGES = 500;
 
 /** Bounded transport read followed by an actual PDF parser, not just HTTP 200. */
 export async function readValidatedPdfResponse(response: Response): Promise<Buffer> {
-  if (!response.ok) throw new Error(`[Gotenberg] HTTP ${response.status}`);
+  if (!response.ok) {
+    void response.body?.cancel().catch(() => {});
+    throw new Error(`[Gotenberg] HTTP ${response.status}`);
+  }
   if (response.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/pdf") {
-    await response.body?.cancel();
+    void response.body?.cancel().catch(() => {});
     throw new Error("Renderer did not return an application/pdf document.");
   }
   const length = response.headers.get("content-length");
   if (length && (!/^\d+$/.test(length) || Number(length) > MAX_RENDERED_PDF_BYTES)) {
-    await response.body?.cancel();
+    void response.body?.cancel().catch(() => {});
     throw new Error("Rendered PDF exceeds the accepted size limit.");
   }
   if (!response.body) throw new Error("Renderer returned no PDF body.");
@@ -29,7 +32,7 @@ export async function readValidatedPdfResponse(response: Response): Promise<Buff
       parts.push(Buffer.from(value));
     }
   } catch (error) {
-    await reader.cancel().catch(() => {});
+    void reader.cancel().catch(() => {});
     throw error;
   } finally { reader.releaseLock(); }
   const buffer = Buffer.concat(parts);

@@ -22,7 +22,7 @@ beforeEach(() => {
   m.render.mockResolvedValue({ buffer: pdf, rendererVersion: "fixture@1" });
   m.info.mockImplementation(async () => m.object ? { data: identity, error: null } : { data: null, error: { statusCode: "404" } });
   m.upload.mockImplementation(async (_path, bytes: Buffer) => { m.object = Buffer.from(bytes); return { data: {}, error: m.loseUpload ? { statusCode: "504" } : null }; });
-  m.download.mockImplementation(async () => ({ data: new Blob([m.object!]), error: null }));
+  m.download.mockImplementation(() => ({ asStream: async () => ({ data: new Blob([new Uint8Array(m.object!)]).stream(), error: null }) }));
   m.rpc.mockImplementation(async (name: string, args: Record<string, unknown>) => {
     if (name === "f08_claim_operation") return { data: { id: 7, actorId: 11, sessionId: "f0800000-0000-4000-8000-000000000002", leaseId: args.p_lease }, error: null };
     if (name === "f08_output_actor") return { data: { actorId: 11, authSessionId: "f0800000-0000-4000-8000-000000000002" }, error: null };

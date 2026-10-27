@@ -20,9 +20,11 @@ function diagnosticBuildId(){
 const buildId=diagnosticBuildId();
 
 const nextConfig: NextConfig = {
-  // Build identity is public, bounded and secret-free; used only for safe diagnostics.
+  // Use the same public source identity for diagnostics and Next's navigation
+  // version-skew protection. Development HMR does not need deployment reloads.
   env: { NEXT_PUBLIC_ALGT_BUILD_COMMIT: buildId },
   generateBuildId: async()=>buildId,
+  deploymentId: process.env.NODE_ENV === "production" ? buildId : undefined,
   async headers() {
     return [{ source: "/:path*", headers: [
       { key: "X-ALGT-Build", value: buildId },

@@ -145,10 +145,23 @@ async function sendAccountLink(userProfileId: number, requested: "invite" | "rec
       variables: { ...variablesFor(target.display_name ?? target.full_name ?? "User"), action_link: actionLink, invitation_expires_at: invitationExpiresAt } });
     if (!result.accepted) return { success: false, error: "Delivery was not confirmed by the email provider. Check the security-email attempt before retrying; no password or account restriction was changed." };
     const now = new Date().toISOString();
-    const { error: stateError } = await admin.from("user_profiles").update({ password_reset_sent_at: now }).eq("id", target.id);
-    const audited = await securityAudit(target.id, "USER_SECURITY_EMAIL_PROVIDER_ACCEPTED", { flow, attempt_id: result.attemptId, delivery_state: "provider_accepted", inbox_receipt_verified: false });
-    revalidatePath(`/admin/users/record/${userProfileId}`);
-    return { success: true, ...(!result.recorded || stateError || !audited ? { error: "Provider accepted the message, but a record update needs review. Do not resend automatically." } : {}) };
+    // Provider acceptance cannot be undone by a later metadata/audit/cache error.
+    // Preserve that outcome so the caller does not retry a message already sent.
+    let stateSaved = false;
+    let audited = false;
+    let refreshed = false;
+    try {
+      const { error } = await admin.from("user_profiles").update({ password_reset_sent_at: now }).eq("id", target.id);
+      stateSaved = !error;
+    } catch { logger.warn("Security email accepted; timestamp update needs review", { profileId: target.id }); }
+    try {
+      audited = await securityAudit(target.id, "USER_SECURITY_EMAIL_PROVIDER_ACCEPTED", { flow, attempt_id: result.attemptId, delivery_state: "provider_accepted", inbox_receipt_verified: false });
+    } catch { logger.warn("Security email accepted; audit needs review", { profileId: target.id }); }
+    try {
+      revalidatePath(`/admin/users/record/${userProfileId}`);
+      refreshed = true;
+    } catch { logger.warn("Security email accepted; page refresh needs review", { profileId: target.id }); }
+    return { success: true, ...(!result.recorded || !stateSaved || !audited || !refreshed ? { error: "Provider accepted the message, but a record update needs review. Do not resend automatically." } : {}) };
   } catch { return { success: false, error: "The security email could not be sent or access was denied." }; }
 }
 

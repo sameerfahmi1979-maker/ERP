@@ -37,8 +37,15 @@ export async function sendSecurityTemplate(input: {
 }): Promise<SecurityEmailResult> {
   const admin = createAdminClient();
   const attemptId = randomUUID();
-  const { error: journalError } = await admin.from("erp_security_email_attempts").insert({ id: attemptId, profile_id: input.profileId, kind: input.kind, state: "requested" });
-  if (journalError) return { accepted: false, attemptId, recorded: false };
+  let requested = false;
+  try {
+    const { error } = await admin.from("erp_security_email_attempts").insert({ id: attemptId, profile_id: input.profileId, kind: input.kind, state: "requested" });
+    requested = !error;
+  } catch { /* No provider call may start without the initial journal. */ }
+  if (!requested) {
+    logger.warn("Security-email initial journal is unavailable", { attemptId, kind: input.kind });
+    return { accepted: false, attemptId, recorded: false };
+  }
   let accepted = false;
   let state: "provider_accepted" | "failed" | "unknown" = "failed";
   let transportStarted = false;
@@ -78,7 +85,15 @@ export async function sendSecurityTemplate(input: {
     state = transportStarted ? "unknown" : "failed";
     logger.warn("Security-email attempt needs review", { attemptId, kind: input.kind });
   }
-  const { error } = await admin.from("erp_security_email_attempts").update({ state, completed_at: new Date().toISOString() }).eq("id", attemptId);
-  if (error) logger.warn("Security-email receipt could not be recorded", { attemptId, accepted });
-  return { accepted, attemptId, recorded: !error };
+  // Once the provider accepts, journal failure must remain a record-recovery
+  // warning. It cannot turn into a generic send failure and invite a resend.
+  let recorded = false;
+  try {
+    const { data, error } = await admin.from("erp_security_email_attempts")
+      .update({ state, completed_at: new Date().toISOString() }).eq("id", attemptId)
+      .select("id").maybeSingle();
+    recorded = !error && data?.id === attemptId;
+  } catch { /* Preserve the independently known transport outcome. */ }
+  if (!recorded) logger.warn("Security-email receipt could not be recorded", { attemptId, accepted });
+  return { accepted, attemptId, recorded };
 }

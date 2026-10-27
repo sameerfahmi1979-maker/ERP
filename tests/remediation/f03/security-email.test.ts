@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-const state=vi.hoisted(()=>({inserts:[] as any[],updates:[] as any[],message:null as any,result:{ok:true,status:'sent'} as any,throwTransport:false,throwConfig:false,failReceipt:false}));
+const state=vi.hoisted(()=>({inserts:[] as any[],updates:[] as any[],message:null as any,result:{ok:true,status:'sent'} as any,throwTransport:false,throwConfig:false,failReceipt:false,throwReceipt:false,throwInsert:false,receiptRow:'exact' as 'exact'|'missing'|'wrong'}));
 vi.mock('server-only',()=>({}));
 vi.mock('next/headers',()=>({headers:async()=>new Headers()}));
 vi.mock('@/lib/logger',()=>({logger:{warn:vi.fn()}}));
 vi.mock('@/lib/branding/load-runtime-app-branding',()=>({loadRuntimeAppBranding:async()=>({appName:'ALGT ERP',supportEmail:'support@example.invalid',assets:{app_logo:{publicUrl:'/api/branding/public/app_logo?v=1'}}})}));
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>({from:(table:string)=>({
- insert:async(row:any)=>{state.inserts.push({table,row});return {error:null};},
- update:(row:any)=>({eq:async()=>{state.updates.push({table,row});return {error:state.failReceipt?{message:'synthetic fault'}:null};}}),
+ insert:async(row:any)=>{if(state.throwInsert)throw Error('SYNTHETIC_PRIVATE_JOURNAL');state.inserts.push({table,row});return {error:null};},
+ update:(row:any)=>({eq:()=>{const finish=async()=>{state.updates.push({table,row});if(state.throwReceipt)throw Error('SYNTHETIC_PRIVATE_RECEIPT');return {data:state.receiptRow==='missing'?null:{id:state.receiptRow==='wrong'?'synthetic-wrong-attempt':state.inserts.at(-1)?.row.id},error:state.failReceipt?{message:'synthetic fault'}:null};};const q={select:()=>q,maybeSingle:finish,then:(resolve:any,reject:any)=>finish().then(resolve,reject)};return q;}}),
  select:()=>({eq:()=>({eq:()=>({is:()=>({maybeSingle:async()=>({data:{subject_template:'Hello {{display_name}}',text_template:'{{action_link}}',html_template:'<a href="{{action_link}}">{{display_name}}</a>'},error:null})})})})}),
 })})}));
 vi.mock('@/lib/email/providers/factory',()=>({getDefaultEmailProviderSystem:async()=>{
@@ -15,7 +15,7 @@ vi.mock('@/lib/email/providers/factory',()=>({getDefaultEmailProviderSystem:asyn
 }}));
 import { sendSecurityTemplate } from '@/lib/auth/security-email';
 const input={to:'synthetic@example.invalid',profileId:42,kind:'recovery' as const,variables:{display_name:'<script>test</script>\r\nInjected:',action_link:'https://erp.invalid/auth/verify?token_hash='+'b'.repeat(56)+'&type=recovery'}};
-beforeEach(()=>{vi.stubEnv('NEXT_PUBLIC_SITE_URL','https://erp.invalid');state.inserts=[];state.updates=[];state.message=null;state.result={ok:true,status:'sent'};state.throwTransport=false;state.throwConfig=false;state.failReceipt=false;});
+beforeEach(()=>{vi.stubEnv('NEXT_PUBLIC_SITE_URL','https://erp.invalid');state.inserts=[];state.updates=[];state.message=null;state.result={ok:true,status:'sent'};state.throwTransport=false;state.throwConfig=false;state.failReceipt=false;state.throwReceipt=false;state.throwInsert=false;state.receiptRow='exact';});
 afterEach(()=>vi.unstubAllEnvs());
 it('records provider acceptance, not inbox delivery, with no link/body in journal',async()=>{
  const r=await sendSecurityTemplate(input);expect(r.accepted).toBe(true);expect(r.recorded).toBe(true);expect(state.updates[0].row.state).toBe('provider_accepted');
@@ -54,6 +54,16 @@ it('records configuration failure before transport as a non-send',async()=>{
 });
 it('keeps acceptance distinct from a failed receipt write',async()=>{
  state.failReceipt=true;const r=await sendSecurityTemplate(input);expect(r.accepted).toBe(true);expect(r.recorded).toBe(false);
+});
+it.each([true,false])('a thrown final receipt cannot change provider acceptance=%s or request a resend',async accepted=>{
+ state.result=accepted?{ok:true,status:'sent'}:{ok:false,status:'failed'};state.throwReceipt=true;
+ const r=await sendSecurityTemplate(input);expect(r.accepted).toBe(accepted);expect(r.recorded).toBe(false);expect(state.inserts).toHaveLength(1);expect(state.updates).toHaveLength(1);expect(JSON.stringify(r)).not.toContain('SYNTHETIC_PRIVATE');
+});
+it.each(['missing','wrong'] as const)('an %s receipt row cannot claim the original journal was recorded',async row=>{
+ state.receiptRow=row;const r=await sendSecurityTemplate(input);expect(r.accepted).toBe(true);expect(r.recorded).toBe(false);expect(state.updates).toHaveLength(1);
+});
+it('a failed initial journal cannot start transport and returns a safe non-send',async()=>{
+ state.throwInsert=true;expect(await sendSecurityTemplate(input)).toMatchObject({accepted:false,recorded:false});expect(state.message).toBeNull();expect(state.updates).toEqual([]);
 });
 it('always sends canonical branded HTML for invitation, independent of editable generic templates',async()=>{
  vi.stubEnv('NEXT_PUBLIC_SITE_URL','https://erp.invalid');

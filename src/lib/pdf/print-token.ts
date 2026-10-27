@@ -3,7 +3,10 @@
  * Phase: ERP PDF.1 — Production PDF Generation Framework (2026-07-23)
  *
  * Tokens allow Gotenberg to fetch a private print route without a user session.
- * They expire in 120 seconds and are single-use by design (short TTL).
+ * They expire in 120 seconds. They are bearer tokens and may be reused during
+ * that window; a short TTL does not provide single-use enforcement. The print
+ * endpoint and URL renderer are retired. These helpers do not authorize the
+ * supported governed-output pipeline.
  *
  * Env: PDF_PRINT_TOKEN_SECRET=<random-secret-min-32-chars>
  */

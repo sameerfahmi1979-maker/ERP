@@ -30,6 +30,12 @@ it.each([false,null,'true'])('rejects employee-link reads and mutations unless w
 it('does not treat scoped DMS operational permissions as shared notification configuration rights',async()=>{
  expect((await getDmsNotificationSettings()).error).toBe('Permission denied');expect((await saveDmsNotificationSettings({} as Parameters<typeof saveDmsNotificationSettings>[0])).error).toContain('Permission denied');expect(m.rpc).not.toHaveBeenCalled();expect(m.admin).not.toHaveBeenCalled();
 });
-it('does not expose or mutate global approval configuration through scoped approval authority',async()=>{
- for(const r of[await adminListApprovalRoleOptions(),await adminListApprovalWorkflows(),await adminGetApprovalWorkflow(1),await adminDeactivateApprovalWorkflow(1,'2026-01-01T00:00:00Z')])expect(r.success).toBe(false);expect(m.client).not.toHaveBeenCalled();expect(m.admin).not.toHaveBeenCalled();
+it('keeps scoped approval workflow reads and writes behind the session database boundary',async()=>{
+ // AI-MOD-04 permits company-scoped workflow administration; native RLS and
+ // f05_save_dms_workflow enforce its owner-company/branch assignment.
+ expect((await adminListApprovalRoleOptions()).success).toBe(false);
+ expect(m.admin).toHaveBeenCalledOnce();
+ m.admin.mockClear();
+ for(const r of[await adminListApprovalWorkflows(),await adminGetApprovalWorkflow(1),await adminDeactivateApprovalWorkflow(1,'2026-01-01T00:00:00Z')])expect(r.success).toBe(false);
+ expect(m.client).toHaveBeenCalledTimes(3);expect(m.admin).not.toHaveBeenCalled();
 });

@@ -72,6 +72,8 @@ async function catalog(context, required = ['hr.employees.view', 'reports.pdf.ge
     // invent wording approval to make a real official template pass.
     '@/lib/official-documents/catalogue': {officialWordingBlockers() {throw Error('No definition in this fixture');}},
     '@/lib/rbac/employee-access': employee,
+    '@/server/reads/hr-letter-integration': {hrLetterIntegrationReady: async () => true},
+    '@/lib/official-documents/hr-source-contract': {HR_LETTER_CAPABILITIES: {}, HR_INTEGRATED_LETTERS: []},
   });
   return {result: await mod.listEmployeeOutputCatalog(), calls};
 }

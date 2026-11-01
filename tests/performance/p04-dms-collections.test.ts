@@ -10,6 +10,7 @@ vi.mock("@/lib/dms/document-access",()=>({checkDocumentConfidentialityAccess:asy
 vi.mock("@/lib/dms/resolve-link-entity-display-name",()=>({resolveDmsLinkEntityDisplayNames:async()=>new Map(),formatDmsLinkEntityFallback:()=>"Synthetic"}));
 vi.mock("@/lib/supabase/server",()=>({createClient:async()=>({rpc:async(name:string,args:unknown)=>{
  s.calls.push({table:name,ops:[["rpc",[args]]]});
+ if(name==="ai_mod04_review_rules")return {data:{requiredFields:[],ready:true},error:null};
  const values=Array.from({length:s.total},(_,i)=>({id:i+1,document_id:9,definition_id:i+1,value_text:"Synthetic",value_number:null,value_date:null,value_datetime:null,value_boolean:null,value_json:null}));
  if(s.mode==="lost-snapshot")throw Error("Synthetic lost snapshot response");
  return {data:s.mode==="null"?null:{documentId:9,snapshot:s.mode==="no-snapshot-proof"?undefined:"a".repeat(64),sourceSnapshot:null,values:s.mode==="foreign-snapshot"?values.map(v=>({...v,document_id:99})):values},error:s.mode==="error"?{code:"42501",message:"private"}:null};

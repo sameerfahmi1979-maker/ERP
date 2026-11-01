@@ -197,7 +197,7 @@ function providerResponses(label: string, firstId: number) {
     risk_hint: null, metadata_filters: [], confidentiality_max: null};
   const ai: AiResponse = {success: true, data: {intent, results: [{documentId: firstId, documentNo: `DOC-${firstId}`,
     title: `${label}_AI_PRIVATE`, aiSummarySnippet: null, contentSnippet: null, matchReason: `${label} AI reason`,
-    riskLevel: null, completenessScore: null, expiryDate: null}]}};
+    riskLevel: null, completenessScore: null, expiryDate: null}], totalCount: 1}};
   const semantic: SemanticResponse = {success: true, data: [semanticResult({documentId: firstId + 1, documentNo: `DOC-${firstId + 1}`,
     title: `${label}_SEMANTIC_PRIVATE`, matchReason: `${label} semantic reason`})]};
   return {ai, semantic};

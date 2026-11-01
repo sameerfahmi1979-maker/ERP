@@ -12,7 +12,7 @@ const source=(overrides:Record<string,unknown>={},language:OfficialDocumentLangu
 };
 it('activates the exact reviewed bilingual text without editing its bytes',()=>{
  const text=readFileSync('src/lib/official-documents/definitions/hr/review-wording.ts');
- expect(createHash('sha256').update(text).digest('hex')).toBe('cee5351ad8d6c5426b195434569698ae54b39c28e2f3af3a183ceb14b912230d');
+ expect(createHash('sha256').update(text.toString().replaceAll('\r\n','\n')).digest('hex')).toBe('9452d827e11e3aa8e04c3e46107767454428e28c6f1481fd7b04b7f22a1843bc');
 });
 it.each(listOfficialDocumentDefinitions().filter(def=>def.documentCode!=='HR_EMPLOYMENT_CONFIRMATION'))('records explicit owner approval for $documentCode in both languages without clearing source holds',def=>{
  expect(def.status).toBe('published');

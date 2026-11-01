@@ -1,4 +1,5 @@
 "use client";
+import {DmsDocumentComparison} from "../dms-document-comparison";
 import {readDmsSection} from "@/features/dms/documents/section-read";
 
 import { AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, } from "@/components/ui/alert-dialog";
@@ -40,6 +41,7 @@ export function DmsDocumentVersionsSection({
   canDownload = false,
 }: DmsDocumentVersionsSectionProps) {
   const queryClient = useQueryClient();
+  const [comparisonVersion,setComparisonVersion]=useState<number|null>(null);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [unlinkTarget, setUnlinkTarget] = useState<DmsDocumentVersionRow | null>(null);
@@ -220,6 +222,8 @@ export function DmsDocumentVersionsSection({
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0">
+                    {canPreview&&!v.is_current&&!v.unlinked_at&&<Button type="button" size="sm" variant="ghost" onClick={()=>setComparisonVersion(v.id)}>Compare with current</Button>}
+                    {comparisonVersion===v.id&&<DmsDocumentComparison sources={[{documentId},{documentId,versionId:v.id}]} onClose={()=>setComparisonVersion(null)}/>}
                     {canEdit && !v.is_current && !v.unlinked_at && (
                       <Button aria-label="Set as current version"
                         type="button"

@@ -1,0 +1,6 @@
+import {defineConfig} from "vitest/config";
+import path from "node:path";
+import {fluentTestAliases,fluentTestServer} from "../remediation/fluent-test-config.mts";
+export default defineConfig({resolve:{alias:{...fluentTestAliases,"@":path.resolve("src"),"server-only":path.resolve("tests/unit/server-only.ts")}},oxc:{jsx:{runtime:"automatic"}},test:{server:fluentTestServer,environment:"node",fileParallelism:false,
+ include:["tests/performance/dms-browser-read.test.ts","tests/performance/hr-document-browser-read.test.ts","tests/performance/hr-search-read.test.ts","tests/performance/dms-approvals-read.test.ts","tests/performance/dms-entity-documents-read.test.ts","tests/performance/dms-browser-adoption.test.tsx","tests/performance/hr-document-browser-adoption.test.tsx","tests/performance/hr-search-adoption.test.tsx"],
+ setupFiles:["tests/remediation/f01/offline-setup.ts","tests/remediation/f04/browser-storage.setup.ts"]}});

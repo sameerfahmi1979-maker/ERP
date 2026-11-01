@@ -279,6 +279,15 @@ export function validateAiOutput(rawText: string): ValidateResult {
     warnings,
     rawResponse: parsed,
   };
+  const preparation = parsed.preparation;
+  if (preparation && typeof preparation === "object" && !Array.isArray(preparation)) {
+    const p = preparation as Record<string, unknown>;
+    output.preparation = {
+      summary: typeof p.summary === "string" && p.summary.trim() ? p.summary.trim().slice(0, 8000) : null,
+      tagNames: Array.isArray(p.tag_names) ? [...new Set(p.tag_names.filter((s): s is string => typeof s === "string" && !!s.trim()).map(s => s.trim().slice(0, 100)))].slice(0, 30) : [],
+      bundle: p.bundle === "single" || p.bundle === "possibly_multiple" ? p.bundle : "unknown",
+    };
+  }
 
   // Smart catching: deterministic guards for AI date mistakes (e.g. Emirates ID
   // issue/expiry swap). Mutates output in place and appends warnings.

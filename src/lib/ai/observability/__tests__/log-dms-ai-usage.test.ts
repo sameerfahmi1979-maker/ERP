@@ -52,6 +52,13 @@ describe("logDmsAiUsage", () => {
     vi.clearAllMocks();
   });
 
+  it('chooses the confirmed price effective on the Dubai calendar day',async()=>{
+    vi.useFakeTimers();vi.setSystemTime(new Date('2026-11-01T21:00:00Z'));
+    const rate=createChainableMock({data:{rate_type:'token',currency_code:'USD',requires_confirmation:false,input_cost_per_1m_tokens:1,output_cost_per_1m_tokens:2}}),log=createChainableMock({data:{id:1},error:null});
+    mockFrom.mockImplementation(table=>table==='erp_ai_model_cost_rates'?rate:log);
+    try{await logDmsAiUsage({featureArea:'assistant',operationType:'SYNTHETIC',status:'success',modelId:'SYN-MODEL',providerTypeHint:'openai',inputTokenCount:1,outputTokenCount:1});expect(rate.lte).toHaveBeenCalledWith('effective_from','2026-11-02');expect(rate.or).toHaveBeenCalledWith('effective_to.is.null,effective_to.gte.2026-11-02');}finally{vi.useRealTimers();}
+  });
+
   it("calls from() with erp_ai_usage_logs table", async () => {
     // Arrange
     const providerConfigChain = createChainableMock({ data: null, error: null });

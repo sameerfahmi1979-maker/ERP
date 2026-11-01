@@ -16,6 +16,7 @@ import { ERPRecordWorkspaceForm, ERPRecordSectionPanel } from "@/components/work
 import { RequiredLabel } from "@/components/erp/required-label";
 import type { DmsRequiredDocumentRuleRow } from "@/server/actions/common-master-data/dms-required-document-rules";
 import { createDmsRequiredDocumentRule, updateDmsRequiredDocumentRule } from "@/server/actions/common-master-data/dms-required-document-rules";
+import { masterRecordCode } from "@/lib/master-data/form-code";
 
 type Props = {
   rule?: DmsRequiredDocumentRuleRow | null;
@@ -53,7 +54,7 @@ export function DmsRequiredDocumentRuleForm({ rule, mode, documentTypes = [], co
     const form = document.getElementById(FORM_ID) as HTMLFormElement;
     const fd = new FormData(form);
     const data = {
-      rule_code: fd.get("rule_code") as string,
+      rule_code: masterRecordCode(fd, "rule_code", isEditing ? rule?.rule_code : null) as string,
       rule_name: fd.get("rule_name") as string,
       entity_type: fd.get("entity_type") as string,
       entity_subtype: (fd.get("entity_subtype") as string) || null,

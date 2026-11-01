@@ -56,7 +56,7 @@ async function estimateCost(
   if (!providerType || !modelId) return null;
 
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date(Date.now()+4*60*60*1000).toISOString().slice(0, 10);
 
     const { data: rate } = await db
       .from("erp_ai_model_cost_rates")

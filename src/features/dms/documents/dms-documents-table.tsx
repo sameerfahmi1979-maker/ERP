@@ -1,6 +1,7 @@
 "use client";
+import {DmsDocumentComparison} from "./dms-document-comparison";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition,useRef } from "react";
 
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
@@ -29,8 +30,10 @@ import { DmsExpiryBadge } from "./dms-expiry-badge";
 import { archiveDmsDocument, unarchiveDmsDocument } from "@/server/actions/dms/documents";
 import type { DmsDocumentRow } from "@/server/actions/dms/documents";
 import { DmsRiskBadge } from "./dms-risk-badge";
-import { askDmsDocumentsQuestion } from "@/server/actions/dms/ai-search";
+import { askDmsDocumentsQuestion,searchDmsDocumentsByIntent } from "@/server/actions/dms/ai-search";
+import {useReadCacheOwner,type ReadCacheOwner} from "@/components/layout/read-cache-boundary";
 import { semanticSearchDmsDocuments } from "@/server/actions/dms/semantic-search";
+import {filterSearchCandidateIds} from "@/server/actions/ai/search-candidates";
 import type { DmsAiSearchResult, DmsSearchIntent, DmsSemanticSearchResult } from "@/lib/dms/ai/types";
 import { SortColHeader } from "@/components/erp/table/sort-col-header";
 import { TablePagination } from "@/components/erp/table/table-pagination";
@@ -102,7 +105,11 @@ interface DmsDocumentsTableProps {
   canHardDelete?: boolean;
 }
 
-export function DmsDocumentsTable({
+export function DmsDocumentsTable(props:DmsDocumentsTableProps){
+  const owner=useReadCacheOwner();
+  return <DmsDocumentsTableSession key={JSON.stringify([owner?.identity,owner?.generation,owner?.isLive()])} {...props}/>;
+}
+function DmsDocumentsTableSession({
   initialSeed,
   initialDocuments,
   initialTotal,
@@ -140,10 +147,17 @@ export function DmsDocumentsTable({
   const [filterExpiry, setFilterExpiry] = usePersistentUiState<string | null>("dms-documents:expiry", null);
 
   // AI Search state
+  const [comparisonIds,setComparisonIds]=useState<number[]>([]),[comparisonOpen,setComparisonOpen]=useState(false);
   const [searchMode, setSearchMode] = useState<SearchMode>("auto");
   const [aiQuestion, setAiQuestion] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiResults, setAiResults] = useState<DmsAiSearchResult[] | null>(null);
+  const [retainedAiResults, setAiResults] = useState<DmsAiSearchResult[] | null>(null);
+  const owner=useReadCacheOwner(),searchEpoch=useRef(0);
+  const [resultOwner,setResultOwner]=useState<ReadCacheOwner|null>(null);
+  const aiResults=resultOwner===owner&&owner?.isLive()?retainedAiResults:null;
+  const [aiPage,setAiPage]=useState(1),[aiTotal,setAiTotal]=useState(0);
+  // Owner changes remount the keyed session above. Fence pending callbacks on unmount.
+  useEffect(()=>()=>{searchEpoch.current++;},[]);
   const [aiIntent, setAiIntent] = useState<DmsSearchIntent | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [showIntent, setShowIntent] = useState(false);
@@ -151,47 +165,64 @@ export function DmsDocumentsTable({
   // Semantic Search state (DMS 12.5)
   const [semanticQuery, setSemanticQuery] = useState("");
   const [semanticLoading, setSemanticLoading] = useState(false);
-  const [semanticResults, setSemanticResults] = useState<DmsSemanticSearchResult[] | null>(null);
+  const [retainedSemanticResults, setSemanticResults] = useState<DmsSemanticSearchResult[] | null>(null);
+  const semanticResults=resultOwner===owner&&owner?.isLive()?retainedSemanticResults:null;
   const [semanticError, setSemanticError] = useState<string | null>(null);
+
+  const currentSearchScope=()=>({lifecycle:lifecycleMode?"all":"current",documentTypeIds:filterType?[filterType]:undefined,categoryId:filterCategory??undefined,status:filterStatus??undefined,confidentiality:filterConfidentiality??undefined,expiryState:filterExpiry==="expired"?"expired":filterExpiry==="expiring_30"?"expiring_soon":filterExpiry==="valid"?"valid":filterExpiry==="no_expiry"?"missing_expiry":undefined} as const);
 
   async function handleSemanticSearch() {
     if (!semanticQuery.trim()) return;
     setSemanticLoading(true);
     setSemanticResults(null);
     setSemanticError(null);
+    const request=++searchEpoch.current,requestOwner=owner;
+    const current=()=>searchEpoch.current===request&&requestOwner?.isLive();
     try {
       const result = await semanticSearchDmsDocuments(semanticQuery.trim());
+      if(!current())return;
       if (result.success && result.data) {
-        setSemanticResults(result.data);
+        const allowed=await filterSearchCandidateIds({query:semanticQuery.trim(),mode:"semantic",candidateIds:result.data.map(r=>r.documentId),filters:currentSearchScope()});
+        if(!current())return;
+        if(!allowed.success||!allowed.data)throw Error("Semantic result access could not be verified");
+        setSemanticResults(result.data.filter(row=>allowed.data!.includes(row.documentId)));
+        setResultOwner(requestOwner);
       } else {
         setSemanticError(result.error ?? "Semantic search failed.");
       }
     } catch {
+      if(!current())return;
       setSemanticError("Semantic search failed. Please try again.");
     } finally {
-      setSemanticLoading(false);
+      if(current())setSemanticLoading(false);
     }
   }
 
-  async function handleAiSearch() {
+  async function handleAiSearch(page=1,reuseIntent=false) {
     if (!aiQuestion.trim()) return;
     setAiLoading(true);
     setAiResults(null);
     setAiError(null);
     setAiIntent(null);
     setShowIntent(false);
+    const request=++searchEpoch.current,requestOwner=owner;
+    const current=()=>searchEpoch.current===request&&requestOwner?.isLive();
     try {
-      const result = await askDmsDocumentsQuestion(aiQuestion.trim());
+      const searchScope=currentSearchScope();
+      const result=reuseIntent&&aiIntent?await searchDmsDocumentsByIntent(aiIntent,{page,pageSize:25},searchScope).then(r=>({success:r.success,error:r.error,data:r.data?{intent:aiIntent,results:r.data,totalCount:r.totalCount??0}:undefined})):await askDmsDocumentsQuestion(aiQuestion.trim(),searchScope);
+      if(!current())return;
       if (result.success && result.data) {
         setAiResults(result.data.results);
         setAiIntent(result.data.intent);
+        setAiTotal(result.data.totalCount);setAiPage(page);setResultOwner(requestOwner);
       } else {
         setAiError(result.error ?? "AI search failed.");
       }
     } catch {
+      if(!current())return;
       setAiError("AI search failed. Please try again.");
     } finally {
-      setAiLoading(false);
+      if(current())setAiLoading(false);
     }
   }
 
@@ -200,7 +231,8 @@ export function DmsDocumentsTable({
   const [sortKey,setSortKey]=usePersistentUiState<string|null>("dms-documents:table:sort","created_at");
   const [sortDir,setSortDir]=usePersistentUiState<"asc"|"desc">("dms-documents:table:direction","desc");
   const seed=useMemo(()=>({rows:initialDocuments,totalCount:initialTotal,page:1,pageSize:25}),[initialDocuments,initialTotal]);
-  const today=new Date().toISOString().slice(0,10);
+  const [today,setToday]=useState(()=>new Date(Date.now()+4*3600000).toISOString().slice(0,10));
+  useEffect(()=>{let timer:ReturnType<typeof setTimeout>;const schedule=()=>{timer=setTimeout(()=>{setToday(new Date(Date.now()+4*3600000).toISOString().slice(0,10));schedule();},86400000-(Date.now()+4*3600000)%86400000+50);};schedule();return()=>clearTimeout(timer);},[]);
   const filters={excludeArchived:!lifecycleMode,search:search.trim()||undefined,searchMode:searchMode==="quick"?"quick":searchMode==="safe"?"safe_fts":searchMode==="content"?"content":undefined,document_type_id:filterType??undefined,category_id:filterCategory??undefined,status:filterStatus??undefined,confidentiality:filterConfidentiality??undefined,expired:filterExpiry==="expired"?true:undefined,expiring_soon:filterExpiry==="expiring_30"?true:undefined,expiry_from:filterExpiry==="valid"?today:undefined,expiryState:filterExpiry==="no_expiry"?"missing_expiry":undefined};
   const uiReadDocuments=useServerPage<DmsDocumentRow>({resource:"dms-documents",params:{page,pageSize,sortKey:sortKey??"created_at",sortDir,filters},...(initialSeed ? {seed:initialSeed} : {seedParams:{page:1,pageSize:25,sortKey:"created_at",sortDir:"desc",filters:{excludeArchived:true}},seed,updatedAt:initialUpdatedAt})});
   const total=uiReadDocuments.data?.totalCount??0;
@@ -269,7 +301,11 @@ export function DmsDocumentsTable({
       <div className="flex flex-wrap items-center gap-2">
         {/* Search mode selector */}
         <Select value={searchMode} onValueChange={(v) => {
+          searchEpoch.current++;
           setSearchMode(v as SearchMode);
+          setAiLoading(false);
+          setSemanticLoading(false);
+          setAiIntent(null);
           setAiResults(null);
           setAiError(null);
           setSemanticResults(null);
@@ -305,7 +341,7 @@ export function DmsDocumentsTable({
             <Input
               placeholder="Describe what you're looking for, e.g. 'documents similar to a trade licence'"
               value={semanticQuery}
-              onChange={(e) => setSemanticQuery(e.target.value)}
+              onChange={(e) => {searchEpoch.current++;setSemanticQuery(e.target.value);setSemanticResults(null);setSemanticLoading(false);}}
               onKeyDown={(e) => e.key === "Enter" && !semanticLoading && handleSemanticSearch()}
               className="h-8 text-sm flex-1"
             />
@@ -328,13 +364,13 @@ export function DmsDocumentsTable({
             <Input
               placeholder="Ask a question, e.g. 'expired passports' or 'people who passed offshore medical'"
               value={aiQuestion}
-              onChange={(e) => setAiQuestion(e.target.value)}
+              onChange={(e) => {searchEpoch.current++;setAiQuestion(e.target.value);setAiResults(null);setAiIntent(null);setAiLoading(false);}}
               onKeyDown={(e) => e.key === "Enter" && !aiLoading && handleAiSearch()}
               className="h-8 text-sm flex-1"
             />
             <Button
               size="sm"
-              onClick={handleAiSearch}
+              onClick={()=>void handleAiSearch()}
               disabled={aiLoading || !aiQuestion.trim()}
               className="gap-1.5 shrink-0"
             >
@@ -359,7 +395,9 @@ export function DmsDocumentsTable({
           </div>
         )}
 
+        {comparisonOpen&&<DmsDocumentComparison sources={comparisonIds.map(documentId=>({documentId}))} onClose={()=>setComparisonOpen(false)}/>}
         <div className="ml-auto flex items-center gap-2 shrink-0">
+          {comparisonIds.length>0&&<Button type="button" variant="outline" size="sm" disabled={comparisonIds.length!==2} onClick={()=>setComparisonOpen(true)}>Compare selected ({comparisonIds.length}/2)</Button>}
           <Button variant="outline" size="sm" aria-label="Refresh documents" onClick={() => {void uiReadDocuments.refetch();}} disabled={isPending||uiReadDocuments.isBusy}>
             <RefreshCw className="h-3.5 w-3.5" />
           </Button>
@@ -374,7 +412,7 @@ export function DmsDocumentsTable({
 
       {searchMode !== "ai" && searchMode !== "semantic" && <div className="flex flex-wrap gap-2 items-center">
         <EditColumns columns={columnState.columns} defaults={DOC_COLUMNS} onApply={columnState.setColumns} />
-        <EditFilters scopeLabel="Filters apply to the permitted documents loaded into this list, not AI or semantic search results."
+        <EditFilters scopeLabel="Filters apply to permitted document records before pagination. Retained filters also constrain AI and semantic results."
           definitions={[
             {id:"type",label:"Type",type:"select",options:typeOptions.map(o=>({value:String(o.value),label:o.label}))},
             {id:"category",label:"Category",type:"select",options:categoryOptions.map(o=>({value:String(o.value),label:o.label}))},
@@ -393,7 +431,7 @@ export function DmsDocumentsTable({
             <>
               <Search className="h-3 w-3 shrink-0" />
               <span>
-                <strong>Quick:</strong> Searches document number and title for fast matches.
+                <strong>Quick:</strong> Searches permitted metadata with shared person and document-type matching.
               </span>
             </>
           )}
@@ -410,7 +448,7 @@ export function DmsDocumentsTable({
               <Search className="h-3 w-3 shrink-0" />
               <span>
                 <strong>Content Search:</strong> Searches extracted document text (OCR / uploaded content).
-                Results are only shown for documents with extracted text.
+                Metadata and extracted-text matches retain the same permissions and filters.
               </span>
             </>
           )}
@@ -419,7 +457,7 @@ export function DmsDocumentsTable({
               <Sparkles className="h-3 w-3 shrink-0 text-purple-500" />
               <span>
                 <strong>AI Search:</strong> Understands a natural-language question and returns matched documents
-                with a reason. No hallucinations — results come from the database.
+                with a reason. Matches come from permitted database records; review their source documents.
               </span>
             </>
           )}
@@ -497,8 +535,9 @@ export function DmsDocumentsTable({
               ) : (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground">
-                    Found {aiResults.length} document{aiResults.length !== 1 ? "s" : ""}
+                    Showing {aiResults.length} of {aiTotal} permitted documents
                   </p>
+                  {aiTotal>25&&<div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={aiLoading||aiPage===1} onClick={()=>void handleAiSearch(aiPage-1,true)}>Previous</Button><span className="text-xs">Page {aiPage} of {Math.ceil(aiTotal/25)}</span><Button variant="outline" size="sm" disabled={aiLoading||aiPage*25>=aiTotal} onClick={()=>void handleAiSearch(aiPage+1,true)}>Next</Button></div>}
                   {aiResults.map((r) => (
                     <div
                       key={r.documentId}
@@ -759,6 +798,7 @@ export function DmsDocumentsTable({
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1 justify-end">
+                      <input type="checkbox" aria-label={`Select ${doc.document_no} for comparison`} checked={comparisonIds.includes(doc.id)} disabled={!comparisonIds.includes(doc.id)&&comparisonIds.length>=2} onChange={e=>setComparisonIds(ids=>e.target.checked?[...ids,doc.id]:ids.filter(id=>id!==doc.id))}/>
                       <Button aria-label="Open"
                         size="icon"
                         variant="ghost"

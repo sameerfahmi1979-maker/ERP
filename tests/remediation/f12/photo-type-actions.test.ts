@@ -1,0 +1,12 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const m=vi.hoisted(()=>({auth:vi.fn(),from:vi.fn(),query:vi.fn(),eq:vi.fn(),is:vi.fn(),order:vi.fn(),limit:vi.fn()}));
+vi.mock('@/lib/rbac/check',async()=>({...await import('@/lib/rbac/scope'),getAuthContext:m.auth}));
+vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({from:m.from})}));
+import {readPhotoDocumentTypes} from '@/server/actions/hr/photo-controls';
+import {syntheticAuthContext} from '../../performance/fixtures/auth-context';
+const type={id:53,type_code:'EMPLOYEE_PHOTO',name_en:'Employee Photo',requires_expiry_tracking:false};
+beforeEach(()=>{vi.resetAllMocks();m.auth.mockResolvedValue(syntheticAuthContext(['dms.documents.create']));const query={select:m.query,eq:m.eq,is:m.is,order:m.order,limit:m.limit};m.from.mockReturnValue(query);for(const fn of [m.query,m.eq,m.is,m.order])fn.mockReturnValue(query);m.limit.mockResolvedValue({data:[type],error:null});});
+it('resolves the active canonical code through the ordinary caller client, without fuzzy names or hardcoded IDs',async()=>{expect(await readPhotoDocumentTypes()).toEqual({success:true,rows:[type]});expect(m.eq).toHaveBeenCalledWith('type_code','EMPLOYEE_PHOTO');expect(m.eq).toHaveBeenCalledWith('is_active',true);expect(m.is).toHaveBeenCalledWith('deleted_at',null);expect(m.limit).toHaveBeenCalledWith(2);});
+it.each([[],[type,type]])('does not guess a type from empty/ambiguous settings',async data=>{m.limit.mockResolvedValue({data,error:null});expect(await readPhotoDocumentTypes()).toMatchObject({success:false,rows:[],error:expect.stringContaining('Employee Photo document type is unavailable')});});
+it('does not offer configuration without upload permission',async()=>{m.auth.mockResolvedValue(syntheticAuthContext([]));expect(await readPhotoDocumentTypes()).toMatchObject({success:false,rows:[]});expect(m.from).not.toHaveBeenCalled();});
+it('does not expose raw database errors',async()=>{m.limit.mockResolvedValue({data:null,error:{message:'PRIVATE'}});const result=await readPhotoDocumentTypes();expect(result.success).toBe(false);expect(JSON.stringify(result)).not.toContain('PRIVATE');});

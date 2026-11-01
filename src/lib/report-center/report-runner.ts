@@ -1,3 +1,4 @@
+import {HR_LETTER_CAPABILITIES} from '@/lib/official-documents/hr-source-contract';
 /**
  * Global ERP Report Center — Report Runner Foundation
  * Phase: REPORT.2 — Global Report Engine + Registry + Security Foundation
@@ -194,6 +195,7 @@ export async function runReport(
   }
 
   // ── 2. Permission check ───────────────────────────────────────────────────
+  registryEntry.required_permissions=[...new Set([...registryEntry.required_permissions,...(HR_LETTER_CAPABILITIES[request.reportCode]??[])])];
   const missingPerms = registryEntry.required_permissions.filter(
     (p) => !hasPermission(actor,p) && !hasPermission(actor,p+".self") && !hasPermission(actor,p+".team")
   );

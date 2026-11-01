@@ -20,6 +20,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { currentJobClaim } from "@/lib/dms/ai-jobs/claim-scope";
+import { readReviewedIntakePreparation } from "@/server/dms-reviewed-intake-preparation";
 import { logger } from "@/lib/logger";
 import {
   buildInitialSteps,
@@ -300,6 +301,17 @@ async function runContentSyncStepSystem(
   } catch (err) {
     return { success: false, error: String(err).slice(0, 200) };
   }
+}
+
+async function reuseReviewedSummary(documentId: number, prepared: NonNullable<Awaited<ReturnType<typeof readReviewedIntakePreparation>>>) {
+  if (prepared.portrait || !prepared.summary?.trim()) return { success: true, skipped: true, error: prepared.portrait ? "Portrait summary is not applicable." : "No factual summary was prepared; explicit re-review remains available." };
+  const result = await createAdminClient().from("dms_documents").update({
+    ai_summary: prepared.summary, ai_summary_status: "complete", ai_summary_updated_at: new Date().toISOString(),
+    ai_summary_model: prepared.model, ai_summary_error: null, ai_summary_input_char_count: prepared.inputCharacters,
+    ai_summary_input_truncated: prepared.inputCharacters > 48000,
+  }).eq("id", documentId);
+  if (result.error) throw Error("Reviewed summary publication was not confirmed.");
+  return { success: true };
 }
 
 // ── Step: ai_summary ──────────────────────────────────────────────────────────
@@ -916,6 +928,8 @@ export async function runDmsAiOrchestrationPostDraftSystem(params: {
     }
 
     const startMs   = Date.now();
+    const prepared = await readReviewedIntakePreparation(documentId, uploadSessionId);
+    const portrait = prepared?.portrait === true;
     const startedAt = new Date().toISOString();
 
     await updateSessionStatus(sessionCode, {
@@ -931,40 +945,40 @@ export async function runDmsAiOrchestrationPostDraftSystem(params: {
 
     markRunning("content_sync");
     steps = mergeStepResult(steps, await runDurableStep("content_sync", () =>
-      runContentSyncStepSystem(documentId, uploadSessionId)
+      portrait ? Promise.resolve({ success: true, skipped: true, error: "Portrait text processing is not applicable." }) : runContentSyncStepSystem(documentId, uploadSessionId)
     ));
 
     // Phase 11 — enqueue semantic_document_index if flags allow (non-blocking; errors are swallowed)
-    await tryEnqueueSemanticIndexJob(documentId);
+    if (!portrait) await tryEnqueueSemanticIndexJob(documentId);
 
     // DMS AI META.2 — metadata_suggestions_check: enqueue Flow B suggestion
     // generation for zero-definition document types (non-blocking; suggests only,
     // never auto-creates definitions).
-    await tryEnqueueMetadataSuggestionsJob(documentId);
+    if (!portrait) await tryEnqueueMetadataSuggestionsJob(documentId);
 
     markRunning("ai_summary");
     steps = mergeStepResult(steps, await runDurableStep("ai_summary", () =>
-      runAiSummaryStepSystem(documentId)
+      prepared ? reuseReviewedSummary(documentId, prepared) : runAiSummaryStepSystem(documentId)
     ));
 
     markRunning("intelligence");
     steps = mergeStepResult(steps, await runDurableStep("intelligence", () =>
-      runIntelligenceStepSystem(documentId)
+      portrait ? Promise.resolve({ success: true, skipped: true, error: "Portrait document intelligence is not applicable." }) : runIntelligenceStepSystem(documentId)
     ));
 
     markRunning("embedding");
     steps = mergeStepResult(steps, await runDurableStep("embedding", () =>
-      runEmbeddingStepSystem(documentId)
+      portrait ? Promise.resolve({ success: true, skipped: true, error: "Portrait and face embeddings are not applicable." }) : runEmbeddingStepSystem(documentId)
     ));
 
     markRunning("tag_suggestions");
     steps = mergeStepResult(steps, await runDurableStep("tag_suggestions", () =>
-      runTagSuggestionsStepSystem(documentId)
+      prepared ? Promise.resolve({ success: true, skipped: true, error: "Suggestions were prepared in the reviewed intake; no repeated model call." }) : runTagSuggestionsStepSystem(documentId)
     ));
 
     markRunning("link_suggestions");
     steps = mergeStepResult(steps, await runDurableStep("link_suggestions", () =>
-      runLinkSuggestionsStepSystem(documentId)
+      prepared ? Promise.resolve({ success: true, skipped: true, error: "Links were reviewed in the accepted intake; no repeated model call." }) : runLinkSuggestionsStepSystem(documentId)
     ));
 
     // Mark ready_for_review

@@ -131,12 +131,15 @@ export async function resolveNotificationRecipients(event:NotificationEvent,db:D
   const row=z.object({id:positive,document_id:positive,reminder_id:positive,recipient_user_id:positive,status:z.string(),scheduled_for:z.string(),metadata_json:z.unknown(),global_notification_id:positive.nullable().optional()}).safeParse(r.data);
   if(!row.success||row.data.document_id!==snapshot.document_id||row.data.recipient_user_id!==snapshot.recipient_user_id||
    !(row.data.status==='pending'||['read','dismissed'].includes(row.data.status)&&!!row.data.global_notification_id))return [];
-  const reminder=await boundedQuery(db.from('dms_expiry_reminders').select('id,status,document_id').eq('id',row.data.reminder_id).maybeSingle());
+  const reminder=await boundedQuery(db.from('dms_expiry_reminders').select('id,status,document_id,reminder_date,reminder_days_before').eq('id',row.data.reminder_id).maybeSingle());
   if(reminder.error)throw Error('Reminder eligibility unavailable');if(!reminder.data||reminder.data.status!=='pending'||reminder.data.document_id!==row.data.document_id)return [];
   const due=Date.parse(row.data.scheduled_for);if(!Number.isFinite(due))throw Error('Reminder due time unavailable');if(due>Date.now())return [];
   if(snapshot.channels_resolved!==true||snapshot.channel_in_app!==true&&snapshot.channel_email!==true)return [];
   const d=await boundedQuery(db.from('dms_documents').select('expiry_date,expiry_tracking_override').eq('id',row.data.document_id).is('deleted_at',null).maybeSingle());
   if(d.error)throw Error('Reminder cycle unavailable');if(!d.data||d.data.expiry_tracking_override==='ignored')return [];
+  const cycleSource=z.object({reminder_date:z.iso.date(),reminder_days_before:z.number().int().min(0).max(365)}).safeParse(reminder.data);if(!cycleSource.success)return [];
+  const expiryCycle=new Date(`${cycleSource.data.reminder_date}T00:00:00Z`);expiryCycle.setUTCDate(expiryCycle.getUTCDate()+cycleSource.data.reminder_days_before);
+  if(expiryCycle.toISOString().slice(0,10)!==d.data.expiry_date)return [];
   const cycle=z.object({expiry_date:z.string()}).safeParse(row.data.metadata_json);if(cycle.success&&cycle.data.expiry_date!==d.data.expiry_date)return [];
   considered?.add(row.data.recipient_user_id);
   if(options.discoverOnly)return [row.data.recipient_user_id];
@@ -158,7 +161,12 @@ export async function resolveNotificationRecipients(event:NotificationEvent,db:D
    const a=await boundedQuery(db.from('dms_document_approvals').select('id,step_id,is_current').eq('id',approvalId.data).eq('document_id',docId).maybeSingle());
    if(a.error)throw Error('Approval stage unavailable');if(!a.data?.is_current)return [];
    if(a.data.step_id){const s=await boundedQuery(db.from('dms_document_workflow_steps').select('requires_role,is_active').eq('id',a.data.step_id).maybeSingle());if(s.error||!s.data?.is_active)throw Error('Required role unavailable');requiredRole=s.data.requires_role;}
-   for(const id of options.candidateIds??await candidates(db))ids.add(id);
+   const assigned=await boundedQuery(db.rpc('ai_mod04_approval_recipients',{p_approval:approvalId.data,p_document:docId}));
+   if(assigned.error)throw Error('Assigned approval recipients unavailable');
+   const routing=z.strictObject({state:z.enum(['assigned','held','stale']),profileIds:z.array(positive).max(50)}).parse(assigned.data);
+   if(routing.state==='held')throw new NotificationRoutingHold('approval_assignment_or_authority_unresolved');
+   if(routing.state==='stale')return [];
+   for(const id of routing.profileIds)ids.add(id);
   }else for(const id of [d.data.submitted_by,d.data.owner_user_id,d.data.created_by])if(positive.safeParse(id).success)ids.add(id!);
  }else if(event.source_table==='dms_review_queue'){
   docId=positive.nullable().parse(snapshot.document_id);

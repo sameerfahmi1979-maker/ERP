@@ -9,6 +9,9 @@ import { DMS_ALLOWED_EXTENSIONS, DMS_MAX_FILE_SIZE_BYTES } from "./dms-upload-co
 import type { CreateUploadSessionInput } from "@/server/actions/dms/upload-sessions";
 import { formatFileSize } from "./dms-file-size";
 import { FileTypeIcon } from "./dms-file-type-icon";
+import { checkDmsDuplicateBeforeUpload } from "@/server/actions/dms/document-preparation";
+import type { DuplicateAdvisory } from "@/lib/dms/preparation/contracts";
+import Link from "next/link";
 
 export type SelectedDmsFile = CreateUploadSessionInput & { file: File };
 
@@ -90,6 +93,8 @@ export function DmsUploadDropzone({
   const setValidationError = useCallback((error: string | null) => setValidation({ownerGeneration, error}), [ownerGeneration]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [localFiles, setSelectedFiles] = useState<SelectedDmsFile[]>([]);
+  const [pendingAdvisory, setPendingAdvisory] = useState<{ owner: unknown; files: SelectedDmsFile[]; matches: DuplicateAdvisory[]; multiple: boolean } | null>(null);
+  const advisory = pendingAdvisory?.owner === ownerGeneration ? pendingAdvisory : null;
   // Mirrors `selectedFiles` so we can compute merges without a state-updater
   // side effect (which would call the parent's setState during render).
   const selectedFiles = controlledFiles ?? localFiles;
@@ -106,6 +111,7 @@ export function DmsUploadDropzone({
   // ── Single-file mode ────────────────────────────────────────────────────────
   const processSingle = useCallback(async (file: File) => {
     const run = begin(); if (!run) return;
+    setPendingAdvisory(null);
     setValidationError(null);
     setSelectedFile(null);
     const err = validateFile(file);
@@ -116,7 +122,16 @@ export function DmsUploadDropzone({
     try {
       const sha256_hash = await computeSha256(file, run.current);
       if (!run.current()) return;
+      const advisoryResult = await checkDmsDuplicateBeforeUpload(sha256_hash, file.size);
+      if (!run.current()) return;
+      if (!advisoryResult.success || !advisoryResult.data) {
+        setValidationError("Duplicate checking is unavailable. The file has not been uploaded; try again."); return;
+      }
       setSelectedFile(file);
+      if (advisoryResult.data.status !== "no_visible_match") {
+        setPendingAdvisory({ owner: ownerGeneration, files: [{ original_filename: file.name, mime_type: file.type || "application/octet-stream", file_size_bytes: file.size, sha256_hash, file }], matches: [advisoryResult.data], multiple: false });
+        return;
+      }
       onFileSelected?.({
         original_filename: file.name,
         mime_type: file.type || "application/octet-stream",
@@ -136,11 +151,13 @@ export function DmsUploadDropzone({
   // ── Multi-file mode ─────────────────────────────────────────────────────────
   const processMultiple = useCallback(async (files: File[]) => {
     const run = begin(); if (!run) return;
+    setPendingAdvisory(null);
     setValidationError(null);
     if (files.length === 0) { run.finish(); return; }
 
     try {
       const next: SelectedDmsFile[] = [];
+      const matches: DuplicateAdvisory[] = [];
       const errors: string[] = [];
       for (const file of files) {
         const err = validateFile(file);
@@ -155,6 +172,11 @@ export function DmsUploadDropzone({
           file_size_bytes: file.size, sha256_hash,
         });
         if (!metadata.success) { errors.push(`${file.name}: File metadata is invalid.`); continue; }
+        if ([...selectedFilesRef.current, ...next].some(f => f.sha256_hash === sha256_hash)) { errors.push(`${file.name}: The same bytes are already selected.`); continue; }
+        const checked = await checkDmsDuplicateBeforeUpload(sha256_hash, file.size);
+        if (!run.current()) return;
+        if (!checked.success || !checked.data) { setValidationError("Duplicate checking is unavailable. No new files were admitted; try again."); return; }
+        if (checked.data.status !== "no_visible_match") matches.push(checked.data);
         next.push({...metadata.data, file});
       }
 
@@ -169,6 +191,7 @@ export function DmsUploadDropzone({
         merged.push(f);
       }
       if (!run.current()) return;
+      if (matches.length) { setPendingAdvisory({ owner: ownerGeneration, files: merged, matches, multiple: true }); return; }
       selectedFilesRef.current = merged;
       setSelectedFiles(merged);
       onFilesSelected?.(merged);
@@ -309,6 +332,21 @@ export function DmsUploadDropzone({
           <p className="text-xs text-destructive">{validationError}</p>
         </div>
       )}
+
+      {advisory && <div role="status" className="rounded-md border border-border bg-muted/20 p-3 space-y-2 text-sm">
+        <p>These bytes are already available. No new file has been uploaded.</p>
+        <ul className="space-y-1">{advisory.matches.map((match, i) => <li key={i}>{match.status === "existing_document" ?
+          <Link className="text-primary underline" href={`/dms/documents/record/${match.documentId}`}>{match.documentNo} — {match.title}</Link> : match.status === "retained_upload" ?
+          <Link className="text-primary underline" href="/dms/inbox">Recover your retained Inbox upload</Link> : null}</li>)}</ul>
+        {!advisory.matches.some(m => m.status === "retained_upload") && <Button type="button" size="sm" variant="outline" disabled={disabled || isHashing} onClick={() => {
+          if (advisory.owner !== ownerGeneration) return;
+          const retained = advisory; setPendingAdvisory(null);
+          if (retained.multiple) { selectedFilesRef.current = retained.files; setSelectedFiles(retained.files); onFilesSelected?.(retained.files); }
+          else onFileSelected?.(retained.files[0]);
+        }}>Continue to reviewed upload</Button>}
+        <Button type="button" size="sm" variant="ghost" onClick={() => { setPendingAdvisory(null); setSelectedFile(null); }}>Cancel selection</Button>
+        <p className="text-xs text-muted-foreground">A new version or attachment still requires its normal permissions and final integrity checks.</p>
+      </div>}
 
       {/* Single-file confirmation chip */}
       {!multiple && selectedFile && !validationError && (

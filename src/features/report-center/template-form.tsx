@@ -20,6 +20,7 @@ import { templateConfigurationReceipt } from "@/lib/report-center/template-save-
 import { FileText } from "lucide-react";
 import { useState, useRef, useLayoutEffect } from "react";
 import { toast } from "sonner";
+import {saveTemplateAmendment,getTemplateAmendment} from '@/server/actions/reports/template-amendments';
 
 interface Props {
   open: boolean;
@@ -27,6 +28,7 @@ interface Props {
   template: ReportTemplate | null;
   profiles: ReportBrandingProfile[];
   canSignGlobal?: boolean;
+  adminAmendment?: boolean;
   onSaved: (template: ReportTemplate, isNew: boolean) => void;
 }
 
@@ -88,7 +90,7 @@ export function TemplateForm(props: Props) {
   return props.open ? <TemplateFormSession key={props.template?.id ?? "new"} {...props} /> : null;
 }
 
-function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved,canSignGlobal=false }: Props) {
+function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved,canSignGlobal=false,adminAmendment=false }: Props) {
   const [form, setForm] = useState(() => template ? {
         template_code: template.template_code,
         template_name: template.template_name,
@@ -142,7 +144,7 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved,c
         pending.current??={input:structuredClone(input),contract:attempt.current.begin(input,loadedRevision),fingerprint,hadUnknown:false};
         const request=pending.current;
         let result:Awaited<ReturnType<typeof createReportTemplate>>;
-        try{result=template?await updateReportTemplate(request.input as Parameters<typeof updateReportTemplate>[0],request.contract):await createReportTemplate(request.input as Parameters<typeof createReportTemplate>[0],request.contract);}catch{request.hadUnknown=true;throw Error('Save unconfirmed. Retry the unchanged entries.');}
+        try{result=template?await (adminAmendment?saveTemplateAmendment:updateReportTemplate)(request.input as Parameters<typeof updateReportTemplate>[0],request.contract):await createReportTemplate(request.input as Parameters<typeof createReportTemplate>[0],request.contract);}catch{request.hadUnknown=true;throw Error('Save unconfirmed. Retry the unchanged entries.');}
         if(!current())return;
         if(!result||typeof result.success!=='boolean'){request.hadUnknown=true;setSaveError('Save response incomplete. Retry the unchanged entries.');return;}
         if(!result.success){const earlier=request.hadUnknown;request.hadUnknown ||= result.uncertain===true;if(!request.hadUnknown){attempt.current.resolved();pending.current=null;}setSaveError(earlier?'The earlier save is still unconfirmed. Retry the unchanged entries.':result.error??'Save unconfirmed. Retry the unchanged entries.');return;}
@@ -150,11 +152,12 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved,c
         if(!receipt.success||(template&&receipt.data.id!==template.id)){request.hadUnknown=true;setSaveError('Save response incomplete. Retry the unchanged entries.');return;}
         committed.current={id:receipt.data.id,changed:receipt.data.changed};setCommittedId(receipt.data.id);attempt.current.resolved();pending.current=null;
       }
-      const refreshed=await getReportTemplate(committed.current.id);
+      const amendment=adminAmendment?await getTemplateAmendment(committed.current.id):null;
+      const refreshed=amendment?{success:amendment.success,data:amendment.data?.template}:await getReportTemplate(committed.current.id);
       if(!current())return;
       if(!refreshed.success||!refreshed.data||refreshed.data.id!==committed.current.id){setSaveError('Saved, but the current template could not be loaded. Reload saved template; it will not create another record.');return;}
       let displayFailed=false;
-      try{toast.success(!committed.current.changed?'No changes to save':isEditing?'Template updated':'Template created');}catch{displayFailed=true;}
+      try{toast.success(!committed.current.changed?'No changes to save':adminAmendment?'Pending changes saved; published template unchanged':isEditing?'Template updated':'Template created');}catch{displayFailed=true;}
       if(current())try{onSaved(refreshed.data,!isEditing);}catch{displayFailed=true;}
       if(current()&&displayFailed)setSaveError('Saved, but the display could not be refreshed. Reload saved template.');
     }catch(e){
@@ -175,13 +178,13 @@ function TemplateFormSession({ open, onOpenChange, template, profiles, onSaved,c
       open={open}
       onOpenChange={onOpenChange}
       title={isEditing ? "Edit Report Template" : "New Report Template"}
-      subtitle="Configure template layout, orientation, and display options"
+      subtitle={adminAmendment?'Save pending changes under this template. The published version stays active until review and publication.':'Configure template layout, orientation, and display options'}
       icon={<FileText className="h-5 w-5" />}
       mode={isEditing ? "edit" : "add"}
       size="lg"
       isSubmitting={isSubmitting}
       isDirty={!committedId&&JSON.stringify(form)!==initial}
-      submitLabel={committedId?'Reload saved template':undefined}
+      submitLabel={committedId?'Reload saved template':adminAmendment?'Save pending changes':undefined}
       onSubmit={handleSubmit}
     >
       {saveError&&<div role="alert" className="mb-4 text-destructive">{saveError}</div>}

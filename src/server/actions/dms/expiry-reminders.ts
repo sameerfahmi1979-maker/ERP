@@ -488,137 +488,23 @@ export async function getDmsExpiryReminders(
 
 // ── generateDmsExpiryRemindersForDocument ─────────────────────────────────────
 
-export async function generateDmsExpiryRemindersForDocument(
-  documentId: number,
-  options?: { reminderDays?: number[] }
-): Promise<ActionResult<{ created: number; skipped: number }>> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canManageExpiry(ctx)) return { success: false, error: "Permission denied" };
-
-    const { data: doc, error: docError } = await supabase
-      .from("dms_documents")
-      .select("id, document_no, title, expiry_date, status, expiry_tracking_override")
-      .eq("id", documentId)
-      .is("deleted_at", null)
-      .single();
-
-    if (docError || !doc) return { success: false, error: "Document not found" };
-
-    const raw = doc as Record<string, unknown>;
-
-    // Never generate reminders for ignored or inactive documents
-    if (raw.expiry_tracking_override === "ignored") {
-      return { success: false, error: "Document has expiry tracking ignored — reminders not generated" };
-    }
-    if (["superseded", "archived", "deleted"].includes(raw.status as string)) {
-      return { success: false, error: `Document status is '${raw.status}' — reminders not generated` };
-    }
-
-    const expiryDate = raw.expiry_date as string | null;
-    if (!expiryDate) {
-      return { success: false, error: "Document has no expiry date set" };
-    }
-
-    const expiry = new Date(expiryDate);
-    const now = new Date();
-    let created = 0;
-    let skipped = 0;
-
-    // Use caller-provided windows, fall back to default schedule
-    const reminderDays = options?.reminderDays ?? [...DEFAULT_REMINDER_DAYS];
-
-    for (const daysBefore of reminderDays) {
-      const reminderDate = new Date(expiry);
-      reminderDate.setDate(reminderDate.getDate() - daysBefore);
-
-      const { error: upsertError } = await supabase
-        .from("dms_expiry_reminders")
-        .upsert(
-          {
-            document_id: documentId,
-            reminder_days_before: daysBefore,
-            reminder_date: reminderDate.toISOString().split("T")[0],
-            status: reminderDate < now ? "pending" : "pending",
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "document_id,reminder_days_before", ignoreDuplicates: false }
-        );
-
-      if (upsertError) {
-        skipped++;
-      } else {
-        created++;
-      }
-    }
-
-    await supabase.from("dms_document_events").insert({
-      document_id: documentId,
-      event_type: "expiry_reminders_generated",
-      description: `Expiry reminder schedule generated: ${created} reminders for expiry ${expiryDate}`,
-      performed_by: ctx.profile.id,
-      metadata_json: { expiry_date: expiryDate, created, skipped },
-    });
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_expiry_reminders",
-      entity_id: documentId,
-      entity_reference: raw.document_no as string,
-      action: "create",
-      new_values: { expiry_date: expiryDate, created, skipped },
-    });
-
-    revalidatePath("/dms/expiring");
-    revalidatePath(`/dms/documents/record/${documentId}`);
-    return { success: true, data: { created, skipped } };
-  } catch (e) {
-    logger.error("generateDmsExpiryRemindersForDocument", e);
-    return { success: false, error: String(e) };
-  }
+async function reconcileCurrentReminderCycle(documentId:number,reminderDays?:number[]){
+ if(!Number.isSafeInteger(documentId)||documentId<1)return {success:false as const,error:"Invalid document."};
+ try{
+  const ctx=await getAuthContext();if(!ctx.profile||!ctx.isAccountActive||ctx.profile.must_change_password||!canManageExpiry(ctx))return {success:false as const,error:"Current expiry management permission required."};
+  const r=await (await createClient()).rpc("ai_mod04_schedule_reminders",{p_document:documentId,p_days:reminderDays??[...DEFAULT_REMINDER_DAYS]});
+  const parsed=z.object({state:z.string(),created:z.number().int().nonnegative(),skipped:z.number().int().nonnegative(),cancelled:z.number().int().nonnegative()}).safeParse(r.data);
+  if(r.error||!parsed.success)return {success:false as const,error:"Expiry scheduling is unconfirmed. Reconcile the current cycle; do not reset its history."};
+  if(parsed.data.state!=="reconciled")return {success:false as const,error:"Expiry scheduling is held for current policy, override or source review."};
+  revalidatePath("/dms/expiring");revalidatePath(`/dms/documents/record/${documentId}`);
+  return {success:true as const,data:parsed.data};
+ }catch{return {success:false as const,error:"Expiry scheduling is unconfirmed. Retry the same current cycle."};}
 }
-
-// ── rebuildDmsExpiryReminders ──────────────────────────────────────────────────
-
-export async function rebuildDmsExpiryReminders(
-  documentId: number,
-  options?: { reminderDays?: number[] }
-): Promise<ActionResult<{ created: number; cancelled: number }>> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canManageExpiry(ctx)) return { success: false, error: "Permission denied" };
-
-    // Cancel all pending reminders first
-    const cancelResult = await supabase
-      .from("dms_expiry_reminders")
-      .update({ status: "cancelled", updated_at: new Date().toISOString() })
-      .eq("document_id", documentId)
-      .eq("status", "pending")
-      .select("id");
-    const cancelled = cancelResult.data?.length ?? 0;
-
-    // Regenerate with same windows
-    const result = await generateDmsExpiryRemindersForDocument(documentId, options);
-    if (!result.success) return { success: false, error: result.error };
-
-    await supabase.from("dms_document_events").insert({
-      document_id: documentId,
-      event_type: "expiry_schedule_rebuilt",
-      description: `Expiry reminder schedule rebuilt. ${cancelled ?? 0} old reminders cancelled.`,
-      performed_by: ctx.profile.id,
-      metadata_json: { cancelled: cancelled ?? 0, created: result.data?.created ?? 0 },
-    });
-
-    revalidatePath("/dms/expiring");
-    revalidatePath(`/dms/documents/record/${documentId}`);
-    return { success: true, data: { created: result.data?.created ?? 0, cancelled: cancelled ?? 0 } };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+export async function generateDmsExpiryRemindersForDocument(documentId:number,options?:{reminderDays?:number[]}):Promise<ActionResult<{created:number;skipped:number}>>{
+ return reconcileCurrentReminderCycle(documentId,options?.reminderDays);
+}
+export async function rebuildDmsExpiryReminders(documentId:number,options?:{reminderDays?:number[]}):Promise<ActionResult<{created:number;cancelled:number}>>{
+ return reconcileCurrentReminderCycle(documentId,options?.reminderDays);
 }
 
 // ── generateDmsExpiryRemindersBulk ────────────────────────────────────────────

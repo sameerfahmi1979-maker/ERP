@@ -2,9 +2,9 @@
  * Searchable entity options for DMS document link picker (Add Link form).
  */
 
-import { getDmsEntityTypeLabel } from "@/lib/dms/dms-entity-types";
+import {applySearchTerms} from "@/lib/ai/search/matching";
+import { DMS_ENTITY_TYPES,getDmsEntityTypeLabel } from "@/lib/dms/dms-entity-types";
 import { logger } from "@/lib/logger";
-import { literalContains, literalLike } from "@/lib/reads/search";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type DmsLinkEntityOption = {
@@ -61,9 +61,7 @@ async function searchEmployees(
     .order("id", { ascending: true }).limit(limit);
 
   if (search) {
-    query = query.or(
-      `employee_code.ilike.${literalContains(search)},full_name_en.ilike.${literalContains(search)},full_name_ar.ilike.${literalContains(search)},known_name.ilike.${literalContains(search)}`
-    );
+    query = applySearchTerms(query,["employee_code","full_name_en","full_name_ar","known_name"],search);
   }
 
   const { data, error } = await query;
@@ -96,9 +94,7 @@ async function searchParties(
     .order("id", { ascending: true }).limit(limit);
 
   if (search) {
-    query = query.or(
-      `display_name.ilike.${literalContains(search)},party_code.ilike.${literalContains(search)},legal_name_en.ilike.${literalContains(search)},trade_name_en.ilike.${literalContains(search)}`
-    );
+    query = applySearchTerms(query,["display_name","party_code","legal_name_en","trade_name_en"],search);
   }
 
   const { data, error } = await query;
@@ -130,9 +126,7 @@ async function searchCompanies(
     .order("id", { ascending: true }).limit(limit);
 
   if (search) {
-    query = query.or(
-      `trade_name.ilike.${literalContains(search)},legal_name_en.ilike.${literalContains(search)},company_code.ilike.${literalContains(search)}`
-    );
+    query = applySearchTerms(query,["trade_name","legal_name_en","company_code"],search);
   }
 
   const { data, error } = await query;
@@ -161,9 +155,7 @@ async function searchBranches(
     .order("id", { ascending: true }).limit(limit);
 
   if (search) {
-    query = query.or(
-      `branch_name_en.ilike.${literalContains(search)},branch_code.ilike.${literalContains(search)}`
-    );
+    query = applySearchTerms(query,["branch_name_en","branch_code"],search);
   }
 
   const { data, error } = await query;
@@ -193,7 +185,7 @@ async function searchBanks(
     .order("id", { ascending: true }).limit(limit);
 
   if (search) {
-    query = query.or(`bank_name_en.ilike.${literalContains(search)},bank_code.ilike.${literalContains(search)}`);
+    query = applySearchTerms(query,["bank_name_en","bank_code"],search);
   }
 
   const { data, error } = await query;
@@ -223,7 +215,7 @@ async function searchSites(
     .order("id", { ascending: true }).limit(limit);
 
   if (search) {
-    query = query.or(`site_name.ilike.${literalContains(search)},site_code.ilike.${literalContains(search)}`);
+    query = applySearchTerms(query,["site_name","site_code"],search);
   }
 
   const { data, error } = await query;
@@ -240,13 +232,8 @@ async function searchSites(
   );
 }
 
-async function searchVehicles(
-  _supabase: SupabaseClient,
-  _search: string | null,
-  _limit: number
-): Promise<DmsLinkEntityOption[]> {
-  // Fleet module tables not deployed yet — avoid querying missing `vehicles` table.
-  return [];
+async function searchVehicles(): Promise<DmsLinkEntityOption[]> {
+  throw new Error("Vehicle linking is not available until its owning module adapter is registered.");
 }
 
 async function searchPartyLicenses(
@@ -261,7 +248,7 @@ async function searchPartyLicenses(
     .order("id", { ascending: true }).limit(limit);
 
   if (search) {
-    query = query.or(`license_number.ilike.${literalContains(search)},license_code.ilike.${literalContains(search)}`);
+    query = applySearchTerms(query,["license_number","license_code"],search);
   }
 
   const { data, error } = await query;
@@ -295,7 +282,7 @@ async function searchPartyTaxRegistrations(
     .order("id", { ascending: true }).limit(limit);
 
   if (search) {
-    query = query.ilike("trn", literalLike(search));
+    query = applySearchTerms(query,["trn"],search);
   }
 
   const { data, error } = await query;
@@ -330,7 +317,7 @@ async function searchEmployeeDependents(
     .order("id", { ascending: true }).limit(limit);
 
   if (search) {
-    query = query.ilike("dependent_name_en", literalLike(search));
+    query = applySearchTerms(query,["dependent_name_en"],search);
   }
 
   const { data, error } = await query;
@@ -363,7 +350,7 @@ async function searchEmployeeIdentityDocuments(
     .order("id", { ascending: true }).limit(limit);
 
   if (search) {
-    query = query.ilike("document_number", literalLike(search));
+    query = applySearchTerms(query,["document_number"],search);
   }
 
   const { data, error } = await query;
@@ -392,6 +379,7 @@ export async function searchDmsLinkEntityOptionsForType(
   limit = DEFAULT_LIMIT
 ): Promise<DmsLinkEntityOption[]> {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50) throw new Error("Invalid entity search limit");
+  if (!(Object.values(DMS_ENTITY_TYPES) as string[]).includes(entityType)) throw new Error("Unsupported linked entity type");
   const q = sanitizeSearch(search);
 
   if (EMPLOYEE_ID_ENTITY_TYPES.has(entityType) || entityType.startsWith("employee")) {
@@ -425,7 +413,7 @@ export async function searchDmsLinkEntityOptionsForType(
       return searchSites(supabase, q, limit);
     case "vehicle":
     case "fleet_asset":
-      return searchVehicles(supabase, q, limit);
+      return searchVehicles();
     case "employee_dependent":
       return searchEmployeeDependents(supabase, q, limit);
     case "employee_identity_document":

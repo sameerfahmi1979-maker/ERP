@@ -8,6 +8,7 @@
  */
 
 import { z } from "zod";
+import {bilingualReviewDraft} from './definitions/hr/review-drafts';
 import type {
   OfficialDocumentDefinition,
   OfficialDocumentLanguage,
@@ -49,7 +50,7 @@ const ALL_DEFINITIONS: OfficialDocumentDefinition[] = [
   embassyLetterDefinition,
   handoverFormDefinition,
   leaveConfirmationDefinition,
-];
+].map(def=>def.documentCode==='HR_EMPLOYMENT_CONFIRMATION'?def:bilingualReviewDraft(def));
 
 export const OFFICIAL_DOCUMENT_DEFINITIONS: ReadonlyMap<string, OfficialDocumentDefinition> =
   new Map(ALL_DEFINITIONS.map((d) => [d.documentCode, d]));
@@ -99,6 +100,12 @@ export function validateOfficialDocumentDefinition(def: OfficialDocumentDefiniti
     }
   }
 
+  if(def.status==='draft'){
+    if(def.version<1||!def.supportedLanguages.length)errors.push(`${code}: complete drafts require a version and languages.`);
+    if(def.supportedLanguages.includes('bilingual')&&!def.bilingualLayoutType)errors.push(`${code}: bilingual drafts require a layout strategy.`);
+    if(!def.wording.en.source.trim()||(def.supportedLanguages.some(language=>language==='ar'||language==='bilingual')&&!def.wording.ar?.source.trim()))errors.push(`${code}: draft wording sources must be recorded.`);
+  }
+
   if (def.status === "disabled_pending_wording" && def.supportedLanguages.length > 0) {
     errors.push(`${code}: disabled_pending_wording definitions must not advertise supported languages.`);
   }
@@ -130,7 +137,12 @@ export function validateOfficialDocumentRegistry(): string[] {
 
 /** True when the definition may be generated at all. */
 export function isGeneratable(def: OfficialDocumentDefinition): boolean {
-  return def.status === "published" && validateOfficialDocumentDefinition(def).length === 0;
+  return !def.wordingReviewOnly && def.status === "published" && validateOfficialDocumentDefinition(def).length === 0;
+}
+
+/** Draft preview is not official issuance or evidence of business approval. */
+export function isPreviewable(def:OfficialDocumentDefinition):boolean{
+  return ['draft','published'].includes(def.status)&&validateOfficialDocumentDefinition(def).length===0;
 }
 
 /** True when the definition supports the requested language variant. */
@@ -151,9 +163,12 @@ export function buildInputsSchema(def: OfficialDocumentDefinition) {
       .trim()
       .max(input.maxLength)
       .regex(/^[^\u0000-\u001F\u007F]*$/, "Contains invalid control characters");
+    const dated = input.type === 'date' ? field.refine(value => !value || (/^\d{4}-\d{2}-\d{2}$/.test(value) &&
+      Number.isFinite(new Date(`${value}T00:00:00Z`).getTime()) && new Date(`${value}T00:00:00Z`).toISOString().slice(0,10)===value), `Choose a valid ${input.labelEn}.`) : field;
+    const checked = input.choices ? dated.refine(value => input.choices!.some(choice => choice.value === value), `Choose a valid ${input.labelEn}.`) : dated;
     shape[input.key] = input.required
-      ? field.min(1, `${input.labelEn} is required.`)
-      : field.optional().default("");
+      ? checked.refine(value => value.length > 0, `${input.labelEn} is required.`)
+      : checked.optional().default(input.defaultValue ?? "");
   }
   return z.object(shape).strict();
 }

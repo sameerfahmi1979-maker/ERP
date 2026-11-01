@@ -29,6 +29,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { callCommonAiStructuredCompletion } from "@/lib/ai/common/provider-bridge";
 import { currentJobClaim } from "../claim-scope";
+import { runDocumentPreparationJob } from "@/server/dms-preparation-worker";
 import type { DmsAiJobHandler, DmsAiJobHandlerResult } from "@/lib/dms/ai-jobs/job-types";
 import { DMS_AI_JOB_TYPE, AiReExtractionPayloadSchema } from "@/lib/dms/ai-jobs/job-types";
 
@@ -54,6 +55,8 @@ export const aiReExtractionHandler: DmsAiJobHandler = {
 
 
     try {
+      const preparation = await runDocumentPreparationJob(documentId);
+      if (preparation) return preparation;
       const db = createAdminClient();
 
       const replay = await db.rpc("f07_ai_worker", { p_action: "suggestion_read", p_data: { jobId: claim.jobId, token: claim.token } });

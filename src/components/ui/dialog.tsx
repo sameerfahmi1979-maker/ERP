@@ -42,16 +42,20 @@ function DialogOverlay({
 function DialogContent({
   className,
   overlayClassName,
+  forceOverlay = false,
   children,
   showCloseButton = true,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
   overlayClassName?: string
+  /** Base UI normally omits nested backdrops. Blocking child pickers need
+   * their own backdrop above the still-mounted parent dialog. */
+  forceOverlay?: boolean
 }) {
   return (
     <DialogPortal>
-      <DialogOverlay className={overlayClassName} />
+      <DialogOverlay className={overlayClassName} forceRender={forceOverlay} />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(

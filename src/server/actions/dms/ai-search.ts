@@ -21,7 +21,15 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { getDmsAiProvider } from "@/lib/dms/ai/factory";
 import type { DmsSearchIntent, DmsAiSearchResult } from "@/lib/dms/ai/types";
+import {aiSearchTextTerms, buildAiSearchTextQuery, matchAiSearchLookups, type AiSearchLookup} from "@/lib/dms/ai/search-text";
+import {readAllPages} from "@/server/reads/all-pages";
+import {prepareDocumentQuery,SearchClarification} from "@/server/ai/search/document-query";
+import {normalizeIdentity} from "@/lib/ai/search/vocabulary";
+import {verifySearchDelivery} from "@/server/ai/search/security";
+import {constrainDocumentQuery} from "@/server/ai/search/documents";
+import {sharedSearchSchema} from "@/lib/ai/search/vocabulary";
 import { logDmsAiUsage } from "@/lib/ai/observability/log-dms-ai-usage";
+import { logger } from "@/lib/logger";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -29,12 +37,13 @@ export type ActionResult<T = unknown> = {
   success: boolean;
   data?: T;
   error?: string;
+  totalCount?:number;
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const CONFIDENTIAL_TYPES = ["hr", "legal", "executive"] as const;
-const AI_SEARCH_PROMPT_VERSION = "v2.0";
+const AI_SEARCH_PROMPT_VERSION = "v2.1";
 const MAX_RESULTS = 25;
 
 // ── Feature flag ──────────────────────────────────────────────────────────────
@@ -64,25 +73,25 @@ function isAdminUser(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
 // ── Zod schema for DmsSearchIntent ───────────────────────────────────────────
 
 const SearchIntentSchema = z.object({
-  keywords: z.array(z.string()).default([]),
+  keywords: z.array(z.string().max(200)).max(40).default([]),
   document_type_hint: z.string().nullable().default(null),
   category_hint: z.string().nullable().default(null),
   person_name_hint: z.string().nullable().default(null),
   party_name_hint: z.string().nullable().default(null),
   person_dob_hint: z.string().nullable().default(null),
-  date_from: z.string().nullable().default(null),
-  date_to: z.string().nullable().default(null),
+  date_from: z.iso.date().nullable().default(null),
+  date_to: z.iso.date().nullable().default(null),
   expiry_state: z.enum(["expired", "expiring_soon", "valid"]).nullable().default(null),
   outcome_hint: z.string().nullable().default(null),
   risk_hint: z.enum(["high", "medium", "low"]).nullable().default(null),
   metadata_filters: z
-    .array(z.object({ field_code: z.string(), value: z.string() }))
+    .array(z.object({ field_code: z.string().regex(/^[a-z][a-z0-9_]{0,99}$/), value: z.string().min(1).max(200) }).strict()).max(20)
     .default([]),
   confidentiality_max: z
     .enum(["internal", "company", "finance", "hr", "legal", "executive"])
     .nullable()
     .default(null),
-});
+}).strict();
 
 // ── Intent extraction prompt ──────────────────────────────────────────────────
 
@@ -142,6 +151,10 @@ EXAMPLES:
   → { metadata_filters: [{ field_code: "blood_group", value: "A+" }] }
 - "people who passed offshore medical"
   → { keywords: ["offshore", "medical"], outcome_hint: "passed", document_type_hint: "offshore medical certificate" }
+- "ISO certificates"
+  → { keywords: ["ISO", "certificate"], document_type_hint: "ISO certificate" }
+- "ISO 9001 certificates"
+  → { keywords: ["ISO", "9001", "certificate"], document_type_hint: "ISO 9001 certificate" }
 - "expired passports"
   → { expiry_state: "expired", document_type_hint: "passport" }
 - "Petrofac insurance deductible"
@@ -224,195 +237,86 @@ export async function extractDmsSearchIntent(
  * Returns a set of document IDs that match ANY of the filters.
  * Empty set = no metadata filters were active, not "zero matches".
  */
-async function resolveMetadataFilterDocIds(
+async function readSearchLookups(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  intent: DmsSearchIntent
-): Promise<{ ids: Set<number>; reasons: string[] } | null> {
-  const filters: Array<{ field_code: string; value: string; isDate?: boolean; isDobPartial?: boolean }> = [];
-
-  // Generic metadata_filters from intent
-  for (const mf of intent.metadata_filters ?? []) {
-    if (mf.field_code && mf.value) {
-      filters.push({ field_code: mf.field_code, value: mf.value });
-    }
-  }
-
-  // person_dob_hint → date_of_birth field
-  if (intent.person_dob_hint) {
-    const dob = intent.person_dob_hint;
-    filters.push({
-      field_code: "date_of_birth",
-      value: dob,
-      isDate: true,
-      isDobPartial: dob.startsWith("--"),
-    });
-  }
-
-  if (filters.length === 0) return null;
-
-  // Resolve field_codes → definition_ids in one query
-  const fieldCodes = [...new Set(filters.map((f) => f.field_code))];
-  const { data: defs } = await supabase
-    .from("dms_metadata_definitions")
-    .select("id, field_code, field_type")
-    .in("field_code", fieldCodes)
-    .limit(fieldCodes.length + 5);
-
-  if (!defs || defs.length === 0) return null;
-
-  const defMap = new Map<string, { id: number; field_type: string }>();
-  for (const d of defs as { id: number; field_code: string; field_type: string }[]) {
-    defMap.set(d.field_code, { id: d.id, field_type: d.field_type });
-  }
-
-  const matchedDocIds = new Set<number>();
-  const reasons: string[] = [];
-
-  for (const f of filters) {
-    const def = defMap.get(f.field_code);
-    if (!def) continue;
-
-    let valueQuery = supabase
-      .from("dms_document_metadata_values")
-      .select("document_id")
-      .eq("definition_id", def.id)
-      .limit(500);
-
-    if (f.isDate) {
-      if (f.isDobPartial) {
-        // Partial DOB ("--MM-DD" or "--MM") — match month and optionally day from value_date
-        const parts = f.value.replace(/^--/, "").split("-");
-        const month = parts[0]?.padStart(2, "0");
-        const day = parts[1]?.padStart(2, "0");
-
-        if (month && day) {
-          // --MM-DD: match YYYY-MM-DD via text cast; PostgREST supports column::text casting
-          valueQuery = valueQuery.filter("value_date::text", "like", `%-${month}-${day}`);
-          reasons.push(`Born on day ${day} of month ${month}`);
-        } else if (month) {
-          // --MM: month-only — match YYYY-MM-*
-          valueQuery = valueQuery.filter("value_date::text", "like", `%-${month}-%`);
-          reasons.push(`Born in month ${month}`);
-        } else {
-          continue;
-        }
-      } else {
-        // Full DOB: exact date match
-        valueQuery = valueQuery.eq("value_date", f.value);
-        reasons.push(`Date of birth: ${f.value}`);
-      }
-    } else {
-      // Text field — case-insensitive contains
-      valueQuery = valueQuery.ilike("value_text", `%${f.value}%`);
-      reasons.push(`${f.field_code}: ${f.value}`);
-    }
-
-    const { data: vals } = await valueQuery;
-    for (const v of (vals ?? []) as { document_id: number }[]) {
-      matchedDocIds.add(v.document_id);
-    }
-  }
-
-  return { ids: matchedDocIds, reasons };
+  table: "dms_document_types" | "dms_document_categories",
+): Promise<AiSearchLookup[]> {
+  const columns = table === "dms_document_types"
+    ? "id,name_en,type_code"
+    : "id,name_en,type_code:category_code";
+  return readAllPages<AiSearchLookup>(async (from, to) => {
+    const {data, count, error} = await supabase.from(table)
+      .select(columns, {count: "exact"}).is("deleted_at", null)
+      .order("id").range(from, to);
+    return {data: data as unknown as AiSearchLookup[] | null, count, error};
+  }, {batchSize: 100, identity: row => row.id, maxRows: 5000});
 }
 
 // ── searchDmsDocumentsByIntent ─────────────────────────────────────────────────
 
 export async function searchDmsDocumentsByIntent(
-  intent: DmsSearchIntent
+  intent: DmsSearchIntent,paging:unknown={page:1,pageSize:MAX_RESULTS},scope:unknown={}
 ): Promise<ActionResult<DmsAiSearchResult[]>> {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "dms.documents.view")) {
     return { success: false, error: "Permission denied." };
   }
 
+  const parsedIntent = SearchIntentSchema.safeParse(intent);
+  if (!parsedIntent.success) return {success: false, error: "Invalid search filters."};
+  const parsedPage=z.strictObject({page:z.number().int().min(1).max(100000).default(1),pageSize:z.number().int().min(1).max(100).default(MAX_RESULTS)}).safeParse(paging);
+  if(!parsedPage.success)return {success:false,error:"Invalid search page."};
+  const parsedScope=sharedSearchSchema.shape.filters.safeParse(scope);if(!parsedScope.success)return {success:false,error:"Invalid search scope."};
+  intent = parsedIntent.data;
+  if(intent.confidentiality_max!==null)return {success:false,error:"A confidentiality ceiling is not supported. Use the exact confidentiality filter."};
   const isAdmin = isAdminUser(ctx);
 
   try {
     const supabase = await createClient();
 
-    // Resolve metadata filters (DOB + custom fields) → document IDs
-    const metaResult = await resolveMetadataFilterDocIds(supabase, intent);
-    const metaDocIds = metaResult?.ids ?? new Set<number>();
-    const metaReasons = metaResult?.reasons ?? [];
+    const metadataFilters=[...(intent.metadata_filters??[]),...(intent.person_dob_hint?[{field_code:"date_of_birth",value:intent.person_dob_hint}]:[])];
+    const hasMetaFilters=metadataFilters.length>0;
+    const metaReasons=metadataFilters.map(f=>f.field_code+": "+f.value);
 
-    // If metadata filters were specified but matched nothing, return empty
-    const hasMetaFilters = metaResult !== null;
-    if (hasMetaFilters && metaDocIds.size === 0) {
-      return { success: true, data: [] };
-    }
-
-    // Resolve type hint to ID
-    let typeId: number | null = null;
-    if (intent.document_type_hint) {
-      const hint = intent.document_type_hint.toLowerCase();
-      const { data: types } = await supabase
-        .from("dms_document_types")
-        .select("id, name_en, type_code")
-        .is("deleted_at", null)
-        .limit(50);
-      if (types) {
-        const match = (types as { id: number; name_en: string; type_code: string }[]).find(
-          (t) =>
-            t.name_en.toLowerCase().includes(hint) ||
-            t.type_code.toLowerCase().includes(hint)
-        );
-        if (match) typeId = match.id;
-      }
-    }
-
-    // Resolve category hint to ID
-    let categoryId: number | null = null;
-    if (intent.category_hint) {
-      const hint = intent.category_hint.toLowerCase();
-      const { data: cats } = await supabase
-        .from("dms_document_categories")
-        .select("id, name_en")
-        .is("deleted_at", null)
-        .limit(50);
-      if (cats) {
-        const match = (cats as { id: number; name_en: string }[]).find((c) =>
-          c.name_en.toLowerCase().includes(hint)
-        );
-        if (match) categoryId = match.id;
-      }
-    }
+    // Resolve every permitted configured type/category, not just the first 50.
+    // Failed/incomplete lookup reads must not silently remove a user constraint.
+    const typeRows=intent.document_type_hint?await readSearchLookups(supabase,"dms_document_types"):[];
+    const typeIds = intent.document_type_hint
+      ? matchAiSearchLookups(intent.document_type_hint,typeRows).map(row => row.id)
+      : [];
+    const categoryIds = intent.category_hint
+      ? matchAiSearchLookups(intent.category_hint,
+          await readSearchLookups(supabase, "dms_document_categories")).map(row => row.id)
+      : [];
 
     // Base query — never return content_text
-    let query = supabase
-      .from("dms_documents")
+    const planned=await prepareDocumentQuery(supabase,"",ctx,{personHint:intent.person_name_hint??intent.party_name_hint,typeHint:intent.document_type_hint,metadataFilters,types:typeRows});
+    let query = planned.query
       .select(
-        `id, document_no, title, description, document_type_id, category_id,
-         issue_date, expiry_date, confidentiality_level, ai_risk_level,
-         completeness_score, ai_summary, content_tsv,
-         dms_document_types!left(name_en),
-         dms_document_categories!left(name_en)`
+        "id,document_no,title,created_at,expiry_date,ai_risk_level,completeness_score,ai_summary"
       )
       .is("deleted_at", null)
-      .limit(MAX_RESULTS);
+      .order("created_at",{ascending:false,nullsFirst:false}).order("id",{ascending:false})
+      .range((parsedPage.data.page-1)*parsedPage.data.pageSize,parsedPage.data.page*parsedPage.data.pageSize-1);
+    query=constrainDocumentQuery(query,sharedSearchSchema.parse({query:"",filters:parsedScope.data}));
 
     // Exclude confidential documents for non-admin users
     if (!isAdmin) {
       query = query.not("confidentiality_level", "in", `(${CONFIDENTIAL_TYPES.join(",")})`);
     }
 
-    // Narrow to metadata-matched document IDs (when filters were active)
-    if (hasMetaFilters && metaDocIds.size > 0) {
-      query = query.in("id", [...metaDocIds]);
-    }
-
     // Type filter
-    if (typeId) {
-      query = query.eq("document_type_id", typeId);
+    if (typeIds.length > 0) {
+      query = query.in("document_type_id", typeIds);
     }
 
     // Category filter
-    if (categoryId) {
-      query = query.eq("category_id", categoryId);
+    if (categoryIds.length > 0) {
+      query = query.in("category_id", categoryIds);
     }
 
     // Expiry state filter
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date(Date.now()+4*3600000).toISOString().split("T")[0];
     const in30Days = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
       .toISOString()
       .split("T")[0];
@@ -422,7 +326,7 @@ export async function searchDmsDocumentsByIntent(
     } else if (intent.expiry_state === "expiring_soon") {
       query = query.gte("expiry_date", today).lte("expiry_date", in30Days);
     } else if (intent.expiry_state === "valid") {
-      query = query.or(`expiry_date.is.null,expiry_date.gte.${today}`);
+      query = query.gte("expiry_date",today).not("expiry_date","is",null);
     }
 
     // Date range filter on issue_date
@@ -438,31 +342,43 @@ export async function searchDmsDocumentsByIntent(
       query = query.eq("ai_risk_level", intent.risk_hint);
     }
 
-    // Full-text search on content_tsv when keywords exist
-    const allKeywords = [
-      ...(intent.keywords ?? []),
-      ...(intent.outcome_hint ? [intent.outcome_hint] : []),
-      ...(intent.person_name_hint ? [intent.person_name_hint] : []),
-      ...(intent.party_name_hint ? [intent.party_name_hint] : []),
-    ].filter(Boolean);
-
-    if (allKeywords.length > 0) {
-      const tsQuery = allKeywords.map((k) => k.trim().replace(/\s+/g, " & ")).join(" | ");
-      query = query.textSearch("content_tsv", tsQuery, { type: "plain", config: "simple" });
+    // Keep independent concepts conjunctive. Expand only reviewed certificate
+    // forms; the simple index deliberately does not stem multilingual text.
+    const subjectWords=new Set(planned.subject?normalizeIdentity(intent.person_name_hint??intent.party_name_hint??"").split(" "):[]);
+    const constrainedIntent=planned.subject?{...intent,keywords:intent.keywords.filter(word=>!subjectWords.has(normalizeIdentity(word))),person_name_hint:null,party_name_hint:null}:intent;
+    const allKeywords = aiSearchTextTerms(constrainedIntent, typeIds.length > 0, categoryIds.length > 0);
+    const tsQuery = buildAiSearchTextQuery(allKeywords);
+    if (tsQuery) {
+      query = query.textSearch("content_tsv", tsQuery, {config: "simple"});
     } else if (
       !hasMetaFilters &&
-      !typeId &&
-      !categoryId &&
+      !planned.subject &&
+      typeIds.length === 0 &&
+      categoryIds.length === 0 &&
       !intent.expiry_state &&
-      !intent.risk_hint
+      !intent.risk_hint &&
+      !intent.date_from &&
+      !intent.date_to
     ) {
-      // No usable filters — return empty to avoid full-table scan
       return { success: true, data: [] };
     }
 
-    const { data, error } = await query;
+    const { data, error, count } = await query;
     if (error) {
-      return { success: false, error: "Search query failed." };
+      // Database messages/details can contain search terms or confidential
+      // records. Keep only the bounded diagnostic code, never the raw error.
+      const code = typeof error.code === "string" && /^(?:[A-Z0-9]{5}|PGRST\d{3})$/.test(error.code)
+        ? error.code : "UNAVAILABLE";
+      const column = code === "42703" && typeof error.message === "string"
+        ? error.message.match(/^column (?:[a-z_][a-z0-9_]*\.)?"?([a-z_][a-z0-9_]{0,62})"? does not exist$/i)?.[1]
+        : undefined;
+      logger.error("DMS AI search query failed", { code, ...(column ? {column} : {}) });
+      const message = code === "57014"
+        ? "The search took too long. No incomplete results were returned."
+        : code === "42501"
+          ? "Search access could not be verified. Sign in again and retry."
+          : "The document search could not be completed.";
+      return { success: false, error: `${message} Reference: ${code}${column ? ` (${column})` : ""}.` };
     }
 
     const rows = (data ?? []) as Record<string, unknown>[];
@@ -473,8 +389,8 @@ export async function searchDmsDocumentsByIntent(
 
       if (metaReasons.length > 0) reasons.push(...metaReasons);
       if (allKeywords.length > 0) reasons.push(`Keywords: ${allKeywords.slice(0, 3).join(", ")}`);
-      if (typeId && intent.document_type_hint) reasons.push(`Type: ${intent.document_type_hint}`);
-      if (categoryId && intent.category_hint) reasons.push(`Category: ${intent.category_hint}`);
+      if (typeIds.length > 0 && intent.document_type_hint) reasons.push(`Type: ${intent.document_type_hint}`);
+      if (categoryIds.length > 0 && intent.category_hint) reasons.push(`Category: ${intent.category_hint}`);
       if (intent.expiry_state) reasons.push(`Expiry: ${intent.expiry_state.replace("_", " ")}`);
       if (intent.risk_hint) reasons.push(`Risk: ${intent.risk_hint}`);
       if (intent.date_from || intent.date_to) reasons.push("Date range match");
@@ -498,21 +414,24 @@ export async function searchDmsDocumentsByIntent(
       };
     });
 
-    return { success: true, data: results };
+    if(count===null||!Number.isSafeInteger(count)||results.length!==Math.min(parsedPage.data.pageSize,Math.max(0,count-(parsedPage.data.page-1)*parsedPage.data.pageSize)))return {success:false,error:"Search count or page could not be verified."};
+    await verifySearchDelivery(ctx);
+    return { success: true, data: results,totalCount:count };
   } catch (err) {
     return {
       success: false,
-      error: err instanceof Error ? err.message : "Search failed.",
+      error: err instanceof SearchClarification?err.message:err instanceof Error ? err.message : "Search failed.",
     };
   }
 }
 
 // ── askDmsDocumentsQuestion ───────────────────────────────────────────────────
 
-export async function askDmsDocumentsQuestion(question: string): Promise<
+export async function askDmsDocumentsQuestion(question: string,scope:unknown={}): Promise<
   ActionResult<{
     intent: DmsSearchIntent;
     results: DmsAiSearchResult[];
+    totalCount:number;
   }>
 > {
   const ctx = await getAuthContext();
@@ -535,7 +454,7 @@ export async function askDmsDocumentsQuestion(question: string): Promise<
   }
 
   const intent = intentResult.data;
-  const searchResult = await searchDmsDocumentsByIntent(intent);
+  const searchResult = await searchDmsDocumentsByIntent(intent,undefined,scope);
   if (!searchResult.success) {
     return { success: false, error: searchResult.error ?? "Search failed." };
   }
@@ -557,6 +476,7 @@ export async function askDmsDocumentsQuestion(question: string): Promise<
     data: {
       intent,
       results: searchResult.data ?? [],
+      totalCount:searchResult.totalCount??0,
     },
   };
 }

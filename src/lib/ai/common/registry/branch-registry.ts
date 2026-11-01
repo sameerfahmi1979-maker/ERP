@@ -1,8 +1,9 @@
 /**
- * ERP COMMON AI.1A — Stage 2 Stub: Branch Registry
+ * Branch field definitions shared by legacy generation and AI-MOD-03 form review.
  *
- * STUB ONLY — NOT available for generation in Stage 1.
- * Will be activated after Stage 1 UAT (Organization + Party) passes.
+ * AI-MOD-03 uses these fields to prepare reviewed, unsaved normal form entries.
+ * Legacy model generation/direct application remain disabled; do not enable
+ * those old paths merely because the reviewed form adapter is available.
  *
  * Do NOT use this registry for live AI generation until stage is updated to "stage_1".
  */

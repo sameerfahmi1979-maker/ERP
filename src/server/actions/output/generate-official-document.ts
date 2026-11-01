@@ -1,22 +1,24 @@
 "use server";
 
 /**
- * OUTPUT.2 — Official Document Issuance Coordinator.
+ * OUTPUT.2 â€” Official Document Issuance Coordinator.
  *
- * THE single entry point for generating Class A–D official documents:
+ * THE single entry point for generating Class Aâ€“D official documents:
  *
  *   generateOfficialDocument(outputCode, recordId, options)
  *
- * Pipeline: registry + class policy → permission/company enforcement →
- * data provider (report fetcher + redaction) → branding (versioned signed
- * assets, stamp/signature gated by reports.sign) → Executive Ledger canonical
- * HTML → Gotenberg raw-HTML render → immutable storage + exact-byte SHA-256
- * verification → issued → QR activation LAST.
+ * Pipeline: registry + class policy â†’ permission/company enforcement â†’
+ * data provider (report fetcher + redaction) â†’ branding (versioned signed
+ * assets, stamp/signature gated by reports.sign) â†’ Executive Ledger canonical
+ * HTML â†’ Gotenberg raw-HTML render â†’ immutable storage + exact-byte SHA-256
+ * verification â†’ issued â†’ QR activation LAST.
  *
  * The lifecycle/orchestration rules live in src/lib/output/issuance-engine.ts
  * (unit-tested); this file wires the real ports.
  */
 
+import {requireHrLetterIntegration} from '@/server/reads/hr-letter-integration';
+import {HR_LETTER_CAPABILITIES,hrLetterSourceFilters} from "@/lib/official-documents/hr-source-contract";
 import { getAuthContext } from "@/lib/rbac/check";
 import { getEmployeeAccess } from "@/lib/rbac/employee-access";
 import { canAccessIssuedFile, issuedFileUrl } from "@/lib/output/issued-file-access";
@@ -50,6 +52,7 @@ import type {
 } from "@/lib/official-documents/types";
 import { findUnresolvedTokens } from "@/lib/output/variable-allowlist";
 import { officialWordingBlockers } from "@/lib/official-documents/catalogue";
+import {sourceReadiness} from '@/lib/official-documents/definitions/hr/approved-source-readiness';
 import { attestStoredOutput, finalizeVerifiedOutput, activateVerifiedOutput } from "@/lib/output/verified-original";
 import { hashFinalPdfBytes, buildRequestKey, buildContentFingerprint } from "@/lib/output/idempotency";
 import {
@@ -69,12 +72,12 @@ import type {
   GenerateOfficialDocumentOutcome,
 } from "@/lib/output/types";
 
-/** "28 July 2026" — official English issue-date format. */
+/** "28 July 2026" â€” official English issue-date format. */
 function formatIssueDateEn(d: Date): string {
   return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric" }).format(d);
 }
 
-/** "٢٨ يوليو ٢٠٢٦" — official Arabic issue-date format (Arabic-Indic digits). */
+/** "Ù¢Ù¨ ÙŠÙˆÙ„ÙŠÙˆ Ù¢Ù Ù¢Ù¦" â€” official Arabic issue-date format (Arabic-Indic digits). */
 function formatIssueDateAr(d: Date): string {
   return new Intl.DateTimeFormat("ar-AE-u-nu-arab", { day: "numeric", month: "long", year: "numeric" }).format(d);
 }
@@ -114,7 +117,7 @@ export async function generateOfficialDocument(
       };
     }
 
-    // ── 1. Auth ────────────────────────────────────────────────────────────
+    // â”€â”€ 1. Auth â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const ctx = await getAuthContext();
     if (!ctx?.profile?.id) {
       return { success: false, blocked: "permission_denied", error: "Not authenticated." };
@@ -158,7 +161,7 @@ export async function generateOfficialDocument(
       }
     }
 
-    // ── 2. Registry + class policy ─────────────────────────────────────────
+    // â”€â”€ 2. Registry + class policy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const db = createAdminClient();
     const { data: registry } = await db
       .from("erp_report_registry")
@@ -178,11 +181,11 @@ export async function generateOfficialDocument(
       return {
         success: false,
         blocked: "not_registered",
-        error: `Output '${outputCode}' has no document class assigned — onboard it before official issuance.`,
+        error: `Output '${outputCode}' has no document class assigned â€” onboard it before official issuance.`,
       };
     }
 
-    const missingPerms = registry.required_permissions.filter((p) => !employeeAccess.allows(p));
+    const missingPerms = [...registry.required_permissions,...(HR_LETTER_CAPABILITIES[outputCode]??[])].filter((p) => !employeeAccess.allows(p));
     if (missingPerms.length > 0) {
       return {
         success: false,
@@ -214,10 +217,10 @@ export async function generateOfficialDocument(
       };
     }
 
-    // ── 2b. Fixed code-based definition (OFFICIAL DOCS.1) ──────────────────
+    // â”€â”€ 2b. Fixed code-based definition (OFFICIAL DOCS.1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // When a catalog definition exists for this output, it is the ONLY
     // allowed body source: wording governance, language support, and optional
-    // inputs are all enforced here — before any data is fetched.
+    // inputs are all enforced here â€” before any data is fetched.
     const definition = getOfficialDocumentDefinition(outputCode);
     const language: OfficialDocumentLanguage = options.language ?? "en";
     let parsedInputs: Record<string, string> = {};
@@ -232,7 +235,7 @@ export async function generateOfficialDocument(
           success: false,
           blocked: "validation_failed",
           error:
-            `'${registry.report_name_en}' — Pending Business Wording Approval. ` +
+            `'${registry.report_name_en}' â€” Pending Business Wording Approval. ` +
             `Official wording for this document has not been reviewed and approved yet ` +
             `(definition status: ${definition.status}). ` +
             `Generation remains blocked until explicit approved wording is provided by the business owner.`,
@@ -243,7 +246,7 @@ export async function generateOfficialDocument(
           success: false,
           blocked: "validation_failed",
           error:
-            `'${registry.report_name_en}' supports: ${definition.supportedLanguages.join(", ")} — ` +
+            `'${registry.report_name_en}' supports: ${definition.supportedLanguages.join(", ")} â€” ` +
             `'${language}' was requested.`,
         };
       }
@@ -257,13 +260,15 @@ export async function generateOfficialDocument(
         };
       }
       parsedInputs = parsed.data as Record<string, string>;
+      const inputError = definition.validateInputs?.(parsedInputs, language);
+      if (inputError) return {success:false,blocked:"validation_failed",error:inputError};
       if (policy.official) {
         const blockers = officialWordingBlockers(definition, language);
         if (blockers.length) return { success: false, blocked: "validation_failed", error: blockers.join("\n") };
       }
     }
 
-    // ── 3. Approval policy ─────────────────────────────────────────────────
+    // â”€â”€ 3. Approval policy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (policy.approvalRequired && !employeeAccess.allows("reports.pdf.approve")) {
       return {
         success: false,
@@ -279,12 +284,13 @@ export async function generateOfficialDocument(
       canOverride: employeeAccess.allows("reports.branding.override"),
       registry: registry as unknown as ReportRegistryEntry, principal: ctx });
 
-    // ── 4. Data provider (report engine: permissions, redaction, branding) ──
+    // â”€â”€ 4. Data provider (report engine: permissions, redaction, branding) â”€â”€
+    await requireHrLetterIntegration(outputCode);
     const runResult = await runReport(
       {
         reportCode: outputCode,
         outputFormat: "pdf",
-        filters: { ...(options.filters ?? {}), employee_id: String(recordId) },
+        filters: { ...(options.filters ?? {}), ...hrLetterSourceFilters(outputCode,parsedInputs), employee_id: String(recordId) },
         templateId: options.templateId,
         ownerCompanyIds: [employeeAccess.subject.owner_company_id],
         requestedByUserId: actorId,
@@ -311,26 +317,26 @@ export async function generateOfficialDocument(
 
     // Precise, user-facing missing-data errors (definition-driven).
     if (definition) {
-      const missingDataError = findMissingDataError(definition, row);
+      const missingDataError = findMissingDataError(definition, row) ?? sourceReadiness(definition,{row,rows:runResult.data.rows,inputs:parsedInputs,language});
       if (missingDataError) {
         return { success: false, blocked: "validation_failed", error: missingDataError };
       }
     }
 
-    // ── 5. Company isolation ───────────────────────────────────────────────
+    // â”€â”€ 5. Company isolation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const ownerCompanyId = Number(row.owner_company_id ?? 0);
     if (!ownerCompanyId) {
       return {
         success: false,
         blocked: "company_isolation_violation",
-        error: "Record has no owning company — cannot resolve branding safely.",
+        error: "Record has no owning company â€” cannot resolve branding safely.",
       };
     }
     if (ownerCompanyId !== employeeAccess.subject.owner_company_id) {
       return { success: false, blocked: "company_isolation_violation", error: "Report data does not match the authorized employee's company." };
     }
 
-    // ── 6. Branding (versioned signed assets; stamp/signature need reports.sign)
+    // â”€â”€ 6. Branding (versioned signed assets; stamp/signature need reports.sign)
     // Overriding the record's default template/letterhead requires the
     // dedicated audited permission (Section 10.2, seeded in OFFICIAL DOCS.1).
     const resolvedTemplateId = options.templateId ?? runResult.resolvedTemplateId ?? null;
@@ -367,7 +373,7 @@ export async function generateOfficialDocument(
       }
     }
 
-    // ── 7. Fingerprint + request key ───────────────────────────────────────
+    // â”€â”€ 7. Fingerprint + request key â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Language and validated inputs are part of the content identity: the
     // same record in a different language (or with a different NOC purpose)
     // is a different document, not a duplicate.
@@ -397,7 +403,7 @@ export async function generateOfficialDocument(
       dataSnapshot,
     });
 
-    // ── 8. Storage identity ────────────────────────────────────────────────
+    // â”€â”€ 8. Storage identity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const outputLabel = `${registry.report_name_en.replace(/[^A-Za-z0-9]+/g, "_")}_${row.employee_code ?? recordId}`;
     const storagePath = buildPdfStoragePath({
       module: registry.module_code.toLowerCase(),
@@ -409,7 +415,7 @@ export async function generateOfficialDocument(
     });
     const fileName = `${outputLabel}.pdf`;
 
-    // ── 9. Wire real ports and run the engine ──────────────────────────────
+    // â”€â”€ 9. Wire real ports and run the engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const ports = buildRealPorts({
       db,
       actorId,
@@ -445,7 +451,7 @@ export async function generateOfficialDocument(
       ports
     );
 
-    // ── 10. Map outcome ────────────────────────────────────────────────────
+    // â”€â”€ 10. Map outcome â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (outcome.kind === "duplicate_content_warning") {
       return {
         success: false,
@@ -494,9 +500,9 @@ export async function generateOfficialDocument(
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Real ports
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function buildRealPorts(deps: {
   db: ReturnType<typeof createAdminClient>;
@@ -513,14 +519,14 @@ function buildRealPorts(deps: {
   dataSnapshot: Record<string, unknown>;
   storagePath: string;
   fileName: string;
-  /** Fixed code-based definition (OFFICIAL DOCS.1) — null for legacy outputs. */
+  /** Fixed code-based definition (OFFICIAL DOCS.1) â€” null for legacy outputs. */
   definition: OfficialDocumentDefinition | null;
   language: OfficialDocumentLanguage;
   inputs: Record<string, string>;
 }): IssuancePorts {
   const { db } = deps;
 
-  // OUTPUT.4 — once a serial is reserved, every lifecycle transition must
+  // OUTPUT.4 â€” once a serial is reserved, every lifecycle transition must
   // finalize or void it (never recycle). Tracked per issuance run.
   let hasSerial = false;
   let reservedSerialNo: string | null = null;
@@ -551,7 +557,7 @@ function buildRealPorts(deps: {
       .update(update)
       .eq("id", issuanceId)
       .eq("lifecycle_state", from).select("id");
-    if (error || data?.length !== 1) throw new Error(`Lifecycle transition ${from}→${to} was not confirmed. Refresh/reconcile the original request.`);
+    if (error || data?.length !== 1) throw new Error(`Lifecycle transition ${from}â†’${to} was not confirmed. Refresh/reconcile the original request.`);
   }
 
   return {
@@ -632,7 +638,7 @@ function buildRealPorts(deps: {
     async reserveSerial({ issuanceId }) {
       // Deterministic, unique, never-recycled serial:
       //   {OUTPUT_CODE}-{COMPANY}-{YEAR}-{issuance id, zero-padded}
-      // Gaps are expected and honest — voided serials are never reused.
+      // Gaps are expected and honest â€” voided serials are never reused.
       const year = new Date().getUTCFullYear();
       const serialNo = `${deps.registry.report_code}-C${deps.ownerCompanyId}-${year}-${String(issuanceId).padStart(6, "0")}`;
       const { data, error } = await db
@@ -684,6 +690,7 @@ function buildRealPorts(deps: {
         .single();
       if (error || !data) throw new Error(`Public link creation failed: ${error?.message ?? "no data"}`);
       const qrDataUrl = await generateQrDataUrl(publicUrl);
+      if (!qrDataUrl) throw new Error('The verification QR could not be prepared. Check the public HTTPS verification address before retrying this request.');
       return { linkId: data.id as number, publicUrl, qrDataUrl };
     },
 
@@ -691,7 +698,7 @@ function buildRealPorts(deps: {
       let html: string;
       let printFrame: ReturnType<typeof renderOfficialDocumentPrintPackage> | undefined;
       if (deps.definition) {
-        // Fixed code-based template (OFFICIAL DOCS.1) — the ONLY body source
+        // Fixed code-based template (OFFICIAL DOCS.1) â€” the ONLY body source
         // for catalog documents. Deterministic build from server data only.
         const now = new Date();
         printFrame = renderOfficialDocumentPrintPackage(deps.definition, {

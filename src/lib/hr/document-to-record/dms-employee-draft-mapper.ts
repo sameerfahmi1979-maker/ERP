@@ -11,6 +11,8 @@ import type {
   HrDocumentFieldSuggestion,
   HrEmployeeDraftFromDocuments,
 } from "./types";
+import { normalizeDocumentDate } from './document-date';
+import { matchDocumentNationality, type NationalityCountry } from './document-nationality';
 
 type DocWithExtraction = {
   doc: HrDmsDocumentSelection;
@@ -110,7 +112,8 @@ function bestCandidate(
 }
 
 export function buildEmployeeDraftFromDocuments(
-  docsWithExtraction: DocWithExtraction[]
+  docsWithExtraction: DocWithExtraction[],
+  countries: readonly NationalityCountry[] = [],
 ): HrEmployeeDraftFromDocuments {
   const conflicts: HrDocumentConflict[] = [];
 
@@ -121,12 +124,16 @@ export function buildEmployeeDraftFromDocuments(
   ): HrDocumentFieldSuggestion | null {
     const candidates: FieldCandidate[] = [];
     for (const { doc, extractedFields, fieldConfidence } of docsWithExtraction) {
-      const value = pick(extractedFields, extractKeys);
+      let value = pick(extractedFields, extractKeys);
+      if (fieldName === 'date_of_birth') value = normalizeDocumentDate(value);
+      if (fieldName === 'nationality_id' && value) value = matchDocumentNationality(value, countries)?.id.toString() ?? null;
       if (!value) continue;
       const conf = confidenceFor(fieldConfidence, extractKeys);
       candidates.push({ value, confidence: conf, doc });
     }
     const { suggestion, conflict } = bestCandidate(candidates, fieldName, fieldLabel);
+    if (fieldName === 'nationality_id' && conflict) conflict.values = conflict.values.map(value => ({...value,
+      displayValue: countries.find(country => country.id.toString() === value.value)?.nationality_en ?? value.value}));
     if (conflict) conflicts.push(conflict);
     return suggestion;
   }
@@ -155,11 +162,18 @@ export function buildEmployeeDraftFromDocuments(
     "birthdate",
   ]);
 
-  const nationalityCandidate = aggregateField("nationality_name", "Nationality", [
+  const nationalityKeys = [
     "nationality",
     "nationality_name",
     "country_of_nationality",
-  ]);
+    "citizenship",
+  ];
+  const nationalityCandidate = aggregateField('nationality_id', 'Nationality', nationalityKeys);
+  const nationalityEvidence = docsWithExtraction.flatMap(({doc, extractedFields}) => {
+    const value = pick(extractedFields, nationalityKeys);
+    return value ? [{value, sourceDocumentId: doc.id, sourceDocumentTitle: doc.title,
+      matched: !!matchDocumentNationality(value, countries)}] : [];
+  });
 
   const mobile = aggregateField("mobile_number", "Mobile Number", [
     "mobile_number",
@@ -179,13 +193,13 @@ export function buildEmployeeDraftFromDocuments(
   if (!fullNameEn) missingRequiredFields.push("full_name_en");
   if (!gender) missingRequiredFields.push("gender");
   if (!dob) missingRequiredFields.push("date_of_birth");
-  if (!mobile) missingRequiredFields.push("mobile_number");
 
   const allSuggestions: HrDocumentFieldSuggestion[] = [
     fullNameEn,
     fullNameAr,
     gender,
     dob,
+    nationalityCandidate,
     mobile,
     email,
   ].filter(Boolean) as HrDocumentFieldSuggestion[];
@@ -200,7 +214,8 @@ export function buildEmployeeDraftFromDocuments(
     full_name_ar: fullNameAr,
     gender,
     date_of_birth: dob,
-    nationality_id: null, // resolved to FK server-side after user confirms nationality_name
+    nationality_id: nationalityCandidate,
+    nationalityEvidence,
     mobile_number: mobile,
     personal_email: email,
     // Employment fields — must be entered manually

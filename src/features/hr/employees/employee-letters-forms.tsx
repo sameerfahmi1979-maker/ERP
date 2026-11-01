@@ -265,10 +265,15 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
     return map;
   }, [filtered]);
 
-  /** Opens the generation panel when needed, otherwise issues in one click. */
+  /** Fixed definitions always use preparation/preview before explicit issuance. */
   const handleGenerateClick = (item: EmployeeOutputCatalogItem, autoAuthorizeReissue = false) => {
     setGenerateResult(null);
     setRepeatTarget(null);
+    if (item.outputCode === "HR_EMPLOYMENT_CONFIRMATION" || (item.canPreview && item.wordingStatus !== "legacy")) {
+      setGenAuthorizeReissue(autoAuthorizeReissue);
+      setPreview({outputCode:item.outputCode,label:item.name});
+      return;
+    }
     if (item.languages.length > 1 || item.optionalInputs.length > 0 || item.canBrandingOverride) {
       setGenTemplate(null);
       setChooseLetterhead(false);
@@ -679,7 +684,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                             variant="outline"
                             className="text-[10px] gap-0.5 border-slate-300 text-slate-500 dark:text-slate-400"
                           >
-                            <Hourglass className="h-2.5 w-2.5" /> Pending Wording Approval
+                            <Hourglass className="h-2.5 w-2.5" /> {item.wordingApproved?'Source Integration Required':'Pending Wording Approval'}
                           </Badge>
                         )}
                       </div>
@@ -696,7 +701,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                       )}
                       {item.canGenerate && !item.generatable && (
                         <p className="flex items-center gap-1 text-[11px] text-muted-foreground mt-1">
-                          <Hourglass className="h-3 w-3" /> Pending Business Wording Approval — official wording for this document must be reviewed and approved before generation is enabled.
+                          <Hourglass className="h-3 w-3" /> {item.wordingApproved?(item.sourceWorkflowReason??'Wording approved — verified source-workflow integration is required before official generation.'):'Pending Business Wording Approval — official wording for this document must be reviewed and approved before generation is enabled.'}
                         </p>
                       )}
                     </div>
@@ -708,7 +713,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                           variant="outline"
                           size="sm"
                           className="h-7 text-xs gap-1"
-                          onClick={() => setPreview({ outputCode: item.outputCode, label: item.name })}
+                          onClick={() => { setGenAuthorizeReissue(false); setGenerateResult(null); setPreview({ outputCode: item.outputCode, label: item.name }); }}
                         >
                           <Eye className="h-3 w-3" />
                           Preview draft
@@ -1033,15 +1038,16 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
             </div>
           ))}
         </div>
-      </ERPChildDialogForm>
-
-      <ReportTemplateSelectDialog authContext={authContext} open={chooseLetterhead && !!generateTarget} onOpenChange={setChooseLetterhead}
+      <ReportTemplateSelectDialog nested authContext={authContext} open={chooseLetterhead && !!generateTarget} onOpenChange={setChooseLetterhead}
         ownerCompanyIds={generateTarget?.ownerCompanyId ? [generateTarget.ownerCompanyId] : undefined} selectedTemplateId={genTemplate?.id} issuableOnly
         readGeneration={JSON.stringify([employeeId, generateTarget?.outputCode, genLanguage])} dialogTitle="Choose company letterhead"
         onSelect={(id, selected) => { const current = capture(); if (current()) setGenTemplate({ id, name: selected.template_name }); }} />
+      </ERPChildDialogForm>
 
       {/* ── Preview dialog (quick print = watermarked draft) ────────────── */}
-      <OfficialDraftPreviewDialog authContext={authContext} employeeId={employeeId} item={previewItem ?? null} open={!!preview && previewItem?.wordingStatus !== "legacy"} onOpenChange={open => { if (!open) setPreview(null); }} />
+      <OfficialDraftPreviewDialog authContext={authContext} employeeId={employeeId} item={previewItem ?? null} open={!!preview && previewItem?.wordingStatus !== "legacy"} onOpenChange={open => { if (!open) setPreview(null); }}
+        isIssuing={issuingCode !== null} issueFeedback={generateResult}
+        onIssue={previewItem ? (language, inputs, templateId) => handleOfficialIssue(previewItem,language,inputs,genAuthorizeReissue,templateId) : undefined}/>
       <LetterPreviewDialog
         authContext={authContext}
         open={!!preview && previewItem?.wordingStatus === "legacy"}

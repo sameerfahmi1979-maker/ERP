@@ -1,0 +1,4419 @@
+{
+  "description": "Schema-only offline authority fixture; no records, credentials or permission grants.",
+  "capturedDateDubai": "2026-10-30",
+  "privateSnapshotSha256": "F8E70D2027E0ACCAD5F97578240FE3FA8EAE6D6AC10A18D6901647A102AEA1DD",
+  "columns": [
+    {
+      "table": "audit_logs",
+      "field": "id",
+      "type": "bigint"
+    },
+    {
+      "table": "audit_logs",
+      "field": "actor_user_profile_id",
+      "type": "bigint"
+    },
+    {
+      "table": "audit_logs",
+      "field": "owner_company_id",
+      "type": "bigint"
+    },
+    {
+      "table": "audit_logs",
+      "field": "branch_id",
+      "type": "bigint"
+    },
+    {
+      "table": "audit_logs",
+      "field": "module_code",
+      "type": "text"
+    },
+    {
+      "table": "audit_logs",
+      "field": "entity_name",
+      "type": "text"
+    },
+    {
+      "table": "audit_logs",
+      "field": "entity_id",
+      "type": "bigint"
+    },
+    {
+      "table": "audit_logs",
+      "field": "entity_reference",
+      "type": "text"
+    },
+    {
+      "table": "audit_logs",
+      "field": "action",
+      "type": "text"
+    },
+    {
+      "table": "audit_logs",
+      "field": "old_values",
+      "type": "jsonb"
+    },
+    {
+      "table": "audit_logs",
+      "field": "new_values",
+      "type": "jsonb"
+    },
+    {
+      "table": "audit_logs",
+      "field": "ip_address",
+      "type": "text"
+    },
+    {
+      "table": "audit_logs",
+      "field": "user_agent",
+      "type": "text"
+    },
+    {
+      "table": "audit_logs",
+      "field": "created_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "branches",
+      "field": "id",
+      "type": "bigint"
+    },
+    {
+      "table": "branches",
+      "field": "owner_company_id",
+      "type": "bigint"
+    },
+    {
+      "table": "branches",
+      "field": "branch_code",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "branch_name_en",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "branch_name_ar",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "emirate",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "area",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "address_line_1",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "address_line_2",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "po_box",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "phone",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "email",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "status",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "created_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "branches",
+      "field": "updated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "branches",
+      "field": "created_by",
+      "type": "bigint"
+    },
+    {
+      "table": "branches",
+      "field": "updated_by",
+      "type": "bigint"
+    },
+    {
+      "table": "branches",
+      "field": "branch_type",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "is_main_branch",
+      "type": "boolean"
+    },
+    {
+      "table": "branches",
+      "field": "operating_status",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "city",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "makani_number",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "latitude",
+      "type": "numeric"
+    },
+    {
+      "table": "branches",
+      "field": "longitude",
+      "type": "numeric"
+    },
+    {
+      "table": "branches",
+      "field": "contact_person_name",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "contact_phone",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "contact_email",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "has_workshop",
+      "type": "boolean"
+    },
+    {
+      "table": "branches",
+      "field": "has_warehouse",
+      "type": "boolean"
+    },
+    {
+      "table": "branches",
+      "field": "has_yard",
+      "type": "boolean"
+    },
+    {
+      "table": "branches",
+      "field": "has_weighbridge",
+      "type": "boolean"
+    },
+    {
+      "table": "branches",
+      "field": "notes",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "internal_reference_number",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "opening_date",
+      "type": "date"
+    },
+    {
+      "table": "branches",
+      "field": "closing_date",
+      "type": "date"
+    },
+    {
+      "table": "branches",
+      "field": "cost_center_id",
+      "type": "bigint"
+    },
+    {
+      "table": "branches",
+      "field": "profit_center_id",
+      "type": "bigint"
+    },
+    {
+      "table": "branches",
+      "field": "default_work_calendar_id",
+      "type": "bigint"
+    },
+    {
+      "table": "branches",
+      "field": "branch_manager_user_id",
+      "type": "bigint"
+    },
+    {
+      "table": "branches",
+      "field": "legal_branch_name",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "trade_license_branch_ref",
+      "type": "text"
+    },
+    {
+      "table": "branches",
+      "field": "emirate_id",
+      "type": "bigint"
+    },
+    {
+      "table": "branches",
+      "field": "city_id",
+      "type": "bigint"
+    },
+    {
+      "table": "branches",
+      "field": "area_zone_id",
+      "type": "bigint"
+    },
+    {
+      "table": "branches",
+      "field": "workspace_revision",
+      "type": "bigint"
+    },
+    {
+      "table": "work_sites",
+      "field": "id",
+      "type": "bigint"
+    },
+    {
+      "table": "work_sites",
+      "field": "site_code",
+      "type": "text"
+    },
+    {
+      "table": "work_sites",
+      "field": "site_name",
+      "type": "text"
+    },
+    {
+      "table": "work_sites",
+      "field": "site_type",
+      "type": "text"
+    },
+    {
+      "table": "work_sites",
+      "field": "owner_company_id",
+      "type": "bigint"
+    },
+    {
+      "table": "work_sites",
+      "field": "branch_id",
+      "type": "bigint"
+    },
+    {
+      "table": "work_sites",
+      "field": "party_id",
+      "type": "bigint"
+    },
+    {
+      "table": "work_sites",
+      "field": "country_id",
+      "type": "bigint"
+    },
+    {
+      "table": "work_sites",
+      "field": "emirate_id",
+      "type": "bigint"
+    },
+    {
+      "table": "work_sites",
+      "field": "city_id",
+      "type": "bigint"
+    },
+    {
+      "table": "work_sites",
+      "field": "area_zone_id",
+      "type": "bigint"
+    },
+    {
+      "table": "work_sites",
+      "field": "address_line_1",
+      "type": "text"
+    },
+    {
+      "table": "work_sites",
+      "field": "address_line_2",
+      "type": "text"
+    },
+    {
+      "table": "work_sites",
+      "field": "po_box",
+      "type": "text"
+    },
+    {
+      "table": "work_sites",
+      "field": "makani_number",
+      "type": "text"
+    },
+    {
+      "table": "work_sites",
+      "field": "latitude",
+      "type": "numeric"
+    },
+    {
+      "table": "work_sites",
+      "field": "longitude",
+      "type": "numeric"
+    },
+    {
+      "table": "work_sites",
+      "field": "site_contact_name",
+      "type": "text"
+    },
+    {
+      "table": "work_sites",
+      "field": "site_contact_phone",
+      "type": "text"
+    },
+    {
+      "table": "work_sites",
+      "field": "site_contact_email",
+      "type": "text"
+    },
+    {
+      "table": "work_sites",
+      "field": "is_restricted_area",
+      "type": "boolean"
+    },
+    {
+      "table": "work_sites",
+      "field": "cicpa_required",
+      "type": "boolean"
+    },
+    {
+      "table": "work_sites",
+      "field": "adnoc_required",
+      "type": "boolean"
+    },
+    {
+      "table": "work_sites",
+      "field": "work_calendar_id",
+      "type": "bigint"
+    },
+    {
+      "table": "work_sites",
+      "field": "access_notes",
+      "type": "text"
+    },
+    {
+      "table": "work_sites",
+      "field": "status",
+      "type": "text"
+    },
+    {
+      "table": "work_sites",
+      "field": "opening_date",
+      "type": "date"
+    },
+    {
+      "table": "work_sites",
+      "field": "closing_date",
+      "type": "date"
+    },
+    {
+      "table": "work_sites",
+      "field": "description",
+      "type": "text"
+    },
+    {
+      "table": "work_sites",
+      "field": "created_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "work_sites",
+      "field": "updated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "work_sites",
+      "field": "created_by",
+      "type": "bigint"
+    },
+    {
+      "table": "work_sites",
+      "field": "updated_by",
+      "type": "bigint"
+    },
+    {
+      "table": "work_sites",
+      "field": "deleted_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "employee_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "document_type_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "document_number",
+      "type": "text"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "issue_date",
+      "type": "date"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "expiry_date",
+      "type": "date"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "issuing_authority",
+      "type": "text"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "issue_country_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "issuing_emirate_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "status",
+      "type": "text"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "verification_status",
+      "type": "text"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "verified_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "verified_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "dms_document_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "renewal_status",
+      "type": "text"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "emirates_id_application_no",
+      "type": "text"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "visa_file_number",
+      "type": "text"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "uid_number",
+      "type": "text"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "labour_card_number",
+      "type": "text"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "work_permit_number",
+      "type": "text"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "mohre_person_code",
+      "type": "text"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "profession_on_document",
+      "type": "text"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "sponsor_company_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "place_of_issue",
+      "type": "text"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "notes",
+      "type": "text"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "created_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "updated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "created_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "updated_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "deleted_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "deleted_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "issue_city_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "issuing_authority_party_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_identity_documents",
+      "field": "workspace_revision",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_payroll_profiles",
+      "field": "id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_payroll_profiles",
+      "field": "employee_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_payroll_profiles",
+      "field": "payroll_group_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_payroll_profiles",
+      "field": "effective_date",
+      "type": "date"
+    },
+    {
+      "table": "employee_payroll_profiles",
+      "field": "currency",
+      "type": "text"
+    },
+    {
+      "table": "employee_payroll_profiles",
+      "field": "payroll_status",
+      "type": "text"
+    },
+    {
+      "table": "employee_payroll_profiles",
+      "field": "notes",
+      "type": "text"
+    },
+    {
+      "table": "employee_payroll_profiles",
+      "field": "created_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_payroll_profiles",
+      "field": "updated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_payroll_profiles",
+      "field": "created_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_payroll_profiles",
+      "field": "updated_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_payroll_profiles",
+      "field": "deleted_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_payroll_profiles",
+      "field": "deleted_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_payroll_profiles",
+      "field": "workspace_revision",
+      "type": "bigint"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "id",
+      "type": "bigint"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "candidate_code",
+      "type": "text"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "requisition_id",
+      "type": "bigint"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "full_name_en",
+      "type": "text"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "full_name_ar",
+      "type": "text"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "gender",
+      "type": "text"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "nationality_id",
+      "type": "bigint"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "date_of_birth",
+      "type": "date"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "mobile_number",
+      "type": "text"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "email",
+      "type": "text"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "current_location",
+      "type": "text"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "source",
+      "type": "text"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "agency_name",
+      "type": "text"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "referred_by_employee_id",
+      "type": "bigint"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "current_employer",
+      "type": "text"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "current_position",
+      "type": "text"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "expected_salary",
+      "type": "numeric"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "notice_period_days",
+      "type": "integer"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "candidate_status",
+      "type": "text"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "pipeline_stage",
+      "type": "text"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "rating",
+      "type": "text"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "availability_date",
+      "type": "date"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "notes",
+      "type": "text"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "created_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "updated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "created_by",
+      "type": "bigint"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "updated_by",
+      "type": "bigint"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "deleted_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "deleted_by",
+      "type": "bigint"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "workspace_revision",
+      "type": "bigint"
+    },
+    {
+      "table": "hr_candidates",
+      "field": "joining_status",
+      "type": "text"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "id",
+      "type": "bigint"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "run_reference",
+      "type": "text"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "report_id",
+      "type": "bigint"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "report_code",
+      "type": "text"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "run_by",
+      "type": "bigint"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "run_status",
+      "type": "text"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "output_format",
+      "type": "text"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "filters_json",
+      "type": "jsonb"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "selected_template_id",
+      "type": "bigint"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "resolved_branding_profile_id",
+      "type": "bigint"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "owner_company_ids",
+      "type": "ARRAY"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "was_multi_company",
+      "type": "boolean"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "template_selected_manually",
+      "type": "boolean"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "row_count",
+      "type": "integer"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "sensitive_profile",
+      "type": "text"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "sensitive_data_included",
+      "type": "boolean"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "redaction_summary_json",
+      "type": "jsonb"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "email_sent",
+      "type": "boolean"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "email_to",
+      "type": "ARRAY"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "email_delivery_status",
+      "type": "text"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "numbering_issued",
+      "type": "text"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "started_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "completed_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "duration_ms",
+      "type": "integer"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "error_message",
+      "type": "text"
+    },
+    {
+      "table": "erp_report_runs",
+      "field": "created_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "owner_companies",
+      "field": "id",
+      "type": "bigint"
+    },
+    {
+      "table": "owner_companies",
+      "field": "legal_name_en",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "legal_name_ar",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "short_name",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "company_code",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "legal_form",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "country",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "emirate",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "trade_license_no",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "trn",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "corporate_tax_no",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "default_currency",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "status",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "primary_email",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "primary_phone",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "website",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "logo_url",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "created_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "owner_companies",
+      "field": "updated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "owner_companies",
+      "field": "created_by",
+      "type": "bigint"
+    },
+    {
+      "table": "owner_companies",
+      "field": "updated_by",
+      "type": "bigint"
+    },
+    {
+      "table": "owner_companies",
+      "field": "city",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "area",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "address_line_1",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "address_line_2",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "po_box",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "makani_number",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "trade_license_issue_date",
+      "type": "date"
+    },
+    {
+      "table": "owner_companies",
+      "field": "trade_license_expiry_date",
+      "type": "date"
+    },
+    {
+      "table": "owner_companies",
+      "field": "licensing_authority",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "chamber_membership_no",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "chamber_membership_expiry_date",
+      "type": "date"
+    },
+    {
+      "table": "owner_companies",
+      "field": "vat_registered",
+      "type": "boolean"
+    },
+    {
+      "table": "owner_companies",
+      "field": "corporate_tax_registered",
+      "type": "boolean"
+    },
+    {
+      "table": "owner_companies",
+      "field": "icv_certificate_no",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "icv_score",
+      "type": "numeric"
+    },
+    {
+      "table": "owner_companies",
+      "field": "icv_issue_date",
+      "type": "date"
+    },
+    {
+      "table": "owner_companies",
+      "field": "icv_expiry_date",
+      "type": "date"
+    },
+    {
+      "table": "owner_companies",
+      "field": "adnoc_supplier_no",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "notes",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "internal_reference_number",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "country_id",
+      "type": "bigint"
+    },
+    {
+      "table": "owner_companies",
+      "field": "emirate_id",
+      "type": "bigint"
+    },
+    {
+      "table": "owner_companies",
+      "field": "city_id",
+      "type": "bigint"
+    },
+    {
+      "table": "owner_companies",
+      "field": "area_zone_id",
+      "type": "bigint"
+    },
+    {
+      "table": "owner_companies",
+      "field": "trade_name",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "main_activity",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "established_date",
+      "type": "date"
+    },
+    {
+      "table": "owner_companies",
+      "field": "default_tax_type_id",
+      "type": "bigint"
+    },
+    {
+      "table": "owner_companies",
+      "field": "default_bank_id",
+      "type": "bigint"
+    },
+    {
+      "table": "owner_companies",
+      "field": "compliance_status",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "office_address_line_1",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "office_address_line_2",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "office_emirate_id",
+      "type": "bigint"
+    },
+    {
+      "table": "owner_companies",
+      "field": "office_city_id",
+      "type": "bigint"
+    },
+    {
+      "table": "owner_companies",
+      "field": "small_logo_url",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "stamp_url",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "signature_url",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "watermark_url",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "report_theme_primary_color",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "report_theme_secondary_color",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "report_footer_text_en",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "report_footer_text_ar",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "report_signatory_name",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "report_signatory_title_en",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "report_signatory_title_ar",
+      "type": "text"
+    },
+    {
+      "table": "owner_companies",
+      "field": "default_report_template_id",
+      "type": "bigint"
+    },
+    {
+      "table": "owner_companies",
+      "field": "default_letter_template_id",
+      "type": "bigint"
+    },
+    {
+      "table": "owner_companies",
+      "field": "workspace_revision",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "employee_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "dependent_name_en",
+      "type": "text"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "dependent_name_ar",
+      "type": "text"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "relationship_type_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "date_of_birth",
+      "type": "date"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "nationality_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "passport_number",
+      "type": "text"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "emirates_id_number",
+      "type": "text"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "residence_visa_number",
+      "type": "text"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "residence_visa_expiry",
+      "type": "date"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "is_covered_on_medical",
+      "type": "boolean"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "medical_insurance_card",
+      "type": "text"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "is_active",
+      "type": "boolean"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "dms_document_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "notes",
+      "type": "text"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "created_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "updated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "created_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "updated_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "deleted_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "deleted_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "passport_expiry",
+      "type": "date"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "emirates_id_expiry",
+      "type": "date"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "medical_insurance_provider",
+      "type": "text"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "medical_insurance_policy",
+      "type": "text"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "medical_insurance_expiry",
+      "type": "date"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "sponsored_by",
+      "type": "text"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "workspace_revision",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "photo_dms_document_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_dependents",
+      "field": "photo_framing",
+      "type": "jsonb"
+    },
+    {
+      "table": "dms_documents",
+      "field": "id",
+      "type": "bigint"
+    },
+    {
+      "table": "dms_documents",
+      "field": "document_no",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "legacy_document_code",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "migrated_from_table",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "title",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "description",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "document_type_id",
+      "type": "bigint"
+    },
+    {
+      "table": "dms_documents",
+      "field": "category_id",
+      "type": "bigint"
+    },
+    {
+      "table": "dms_documents",
+      "field": "status",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "confidentiality_level",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "owner_user_id",
+      "type": "bigint"
+    },
+    {
+      "table": "dms_documents",
+      "field": "owning_company_id",
+      "type": "bigint"
+    },
+    {
+      "table": "dms_documents",
+      "field": "owning_branch_id",
+      "type": "bigint"
+    },
+    {
+      "table": "dms_documents",
+      "field": "issue_date",
+      "type": "date"
+    },
+    {
+      "table": "dms_documents",
+      "field": "expiry_date",
+      "type": "date"
+    },
+    {
+      "table": "dms_documents",
+      "field": "reminder_policy_id",
+      "type": "bigint"
+    },
+    {
+      "table": "dms_documents",
+      "field": "current_version_id",
+      "type": "bigint"
+    },
+    {
+      "table": "dms_documents",
+      "field": "ocr_status",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "ai_status",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "review_status",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "is_archived",
+      "type": "boolean"
+    },
+    {
+      "table": "dms_documents",
+      "field": "archived_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "dms_documents",
+      "field": "created_by",
+      "type": "bigint"
+    },
+    {
+      "table": "dms_documents",
+      "field": "created_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "dms_documents",
+      "field": "updated_by",
+      "type": "bigint"
+    },
+    {
+      "table": "dms_documents",
+      "field": "updated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "dms_documents",
+      "field": "deleted_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "dms_documents",
+      "field": "ocr_last_run_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "dms_documents",
+      "field": "ocr_text_available",
+      "type": "boolean"
+    },
+    {
+      "table": "dms_documents",
+      "field": "party_id",
+      "type": "bigint"
+    },
+    {
+      "table": "dms_documents",
+      "field": "content_tsv",
+      "type": "tsvector"
+    },
+    {
+      "table": "dms_documents",
+      "field": "ai_summary",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "ai_summary_updated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "dms_documents",
+      "field": "ai_summary_model",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "ai_summary_status",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "ai_summary_error",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "ai_summary_input_char_count",
+      "type": "integer"
+    },
+    {
+      "table": "dms_documents",
+      "field": "ai_summary_input_truncated",
+      "type": "boolean"
+    },
+    {
+      "table": "dms_documents",
+      "field": "completeness_score",
+      "type": "numeric"
+    },
+    {
+      "table": "dms_documents",
+      "field": "missing_fields_json",
+      "type": "jsonb"
+    },
+    {
+      "table": "dms_documents",
+      "field": "ai_warnings_json",
+      "type": "jsonb"
+    },
+    {
+      "table": "dms_documents",
+      "field": "ai_risk_score",
+      "type": "numeric"
+    },
+    {
+      "table": "dms_documents",
+      "field": "ai_risk_level",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "ai_risk_reasons_json",
+      "type": "jsonb"
+    },
+    {
+      "table": "dms_documents",
+      "field": "ai_risk_updated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "dms_documents",
+      "field": "summary_embedding",
+      "type": "USER-DEFINED"
+    },
+    {
+      "table": "dms_documents",
+      "field": "summary_embedding_model",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "summary_embedding_status",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "summary_embedding_updated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "dms_documents",
+      "field": "summary_embedding_error",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "summary_embedding_source",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "superseded_by_document_id",
+      "type": "bigint"
+    },
+    {
+      "table": "dms_documents",
+      "field": "expiry_tracking_override",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "expiry_override_reason",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "expiry_override_by",
+      "type": "bigint"
+    },
+    {
+      "table": "dms_documents",
+      "field": "expiry_override_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "dms_documents",
+      "field": "approval_status",
+      "type": "text"
+    },
+    {
+      "table": "dms_documents",
+      "field": "submitted_by",
+      "type": "bigint"
+    },
+    {
+      "table": "dms_documents",
+      "field": "submitted_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "id",
+      "type": "bigint"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "notification_code",
+      "type": "text"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "source_module",
+      "type": "text"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "source_entity_type",
+      "type": "text"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "source_entity_id",
+      "type": "bigint"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "notification_type",
+      "type": "text"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "severity",
+      "type": "text"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "title",
+      "type": "text"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "message",
+      "type": "text"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "recipient_user_id",
+      "type": "bigint"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "recipient_role_code",
+      "type": "text"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "recipient_email",
+      "type": "text"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "channel_in_app",
+      "type": "boolean"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "channel_email",
+      "type": "boolean"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "status",
+      "type": "text"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "scheduled_for",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "read_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "dismissed_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "archived_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "action_url",
+      "type": "text"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "action_label",
+      "type": "text"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "metadata_json",
+      "type": "jsonb"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "created_by",
+      "type": "bigint"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "created_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "updated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_notifications",
+      "field": "deleted_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "parties",
+      "field": "id",
+      "type": "bigint"
+    },
+    {
+      "table": "parties",
+      "field": "party_code",
+      "type": "text"
+    },
+    {
+      "table": "parties",
+      "field": "display_name",
+      "type": "text"
+    },
+    {
+      "table": "parties",
+      "field": "legal_name_en",
+      "type": "text"
+    },
+    {
+      "table": "parties",
+      "field": "legal_name_ar",
+      "type": "text"
+    },
+    {
+      "table": "parties",
+      "field": "trade_name_en",
+      "type": "text"
+    },
+    {
+      "table": "parties",
+      "field": "trade_name_ar",
+      "type": "text"
+    },
+    {
+      "table": "parties",
+      "field": "short_name",
+      "type": "text"
+    },
+    {
+      "table": "parties",
+      "field": "party_nature_id",
+      "type": "bigint"
+    },
+    {
+      "table": "parties",
+      "field": "primary_party_type_id",
+      "type": "bigint"
+    },
+    {
+      "table": "parties",
+      "field": "parent_party_id",
+      "type": "bigint"
+    },
+    {
+      "table": "parties",
+      "field": "main_phone",
+      "type": "text"
+    },
+    {
+      "table": "parties",
+      "field": "main_mobile",
+      "type": "text"
+    },
+    {
+      "table": "parties",
+      "field": "whatsapp",
+      "type": "text"
+    },
+    {
+      "table": "parties",
+      "field": "main_email",
+      "type": "text"
+    },
+    {
+      "table": "parties",
+      "field": "alternate_email",
+      "type": "text"
+    },
+    {
+      "table": "parties",
+      "field": "website",
+      "type": "text"
+    },
+    {
+      "table": "parties",
+      "field": "country_id",
+      "type": "bigint"
+    },
+    {
+      "table": "parties",
+      "field": "emirate_id",
+      "type": "bigint"
+    },
+    {
+      "table": "parties",
+      "field": "city_id",
+      "type": "bigint"
+    },
+    {
+      "table": "parties",
+      "field": "area_zone_id",
+      "type": "bigint"
+    },
+    {
+      "table": "parties",
+      "field": "po_box",
+      "type": "text"
+    },
+    {
+      "table": "parties",
+      "field": "full_address_text",
+      "type": "text"
+    },
+    {
+      "table": "parties",
+      "field": "google_map_url",
+      "type": "text"
+    },
+    {
+      "table": "parties",
+      "field": "latitude",
+      "type": "numeric"
+    },
+    {
+      "table": "parties",
+      "field": "longitude",
+      "type": "numeric"
+    },
+    {
+      "table": "parties",
+      "field": "party_status_id",
+      "type": "bigint"
+    },
+    {
+      "table": "parties",
+      "field": "is_active",
+      "type": "boolean"
+    },
+    {
+      "table": "parties",
+      "field": "is_locked",
+      "type": "boolean"
+    },
+    {
+      "table": "parties",
+      "field": "is_system",
+      "type": "boolean"
+    },
+    {
+      "table": "parties",
+      "field": "remarks",
+      "type": "text"
+    },
+    {
+      "table": "parties",
+      "field": "deactivated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "parties",
+      "field": "deactivated_by",
+      "type": "bigint"
+    },
+    {
+      "table": "parties",
+      "field": "deactivation_reason",
+      "type": "text"
+    },
+    {
+      "table": "parties",
+      "field": "created_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "parties",
+      "field": "created_by",
+      "type": "bigint"
+    },
+    {
+      "table": "parties",
+      "field": "updated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "parties",
+      "field": "updated_by",
+      "type": "bigint"
+    },
+    {
+      "table": "parties",
+      "field": "workspace_revision",
+      "type": "bigint"
+    },
+    {
+      "table": "parties",
+      "field": "type_assignment_version",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "id",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "employee_code",
+      "type": "text"
+    },
+    {
+      "table": "employees",
+      "field": "full_name_en",
+      "type": "text"
+    },
+    {
+      "table": "employees",
+      "field": "full_name_ar",
+      "type": "text"
+    },
+    {
+      "table": "employees",
+      "field": "known_name",
+      "type": "text"
+    },
+    {
+      "table": "employees",
+      "field": "gender",
+      "type": "text"
+    },
+    {
+      "table": "employees",
+      "field": "nationality_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "date_of_birth",
+      "type": "date"
+    },
+    {
+      "table": "employees",
+      "field": "marital_status",
+      "type": "text"
+    },
+    {
+      "table": "employees",
+      "field": "mobile_number",
+      "type": "text"
+    },
+    {
+      "table": "employees",
+      "field": "personal_email",
+      "type": "text"
+    },
+    {
+      "table": "employees",
+      "field": "uae_address",
+      "type": "text"
+    },
+    {
+      "table": "employees",
+      "field": "home_country_address",
+      "type": "text"
+    },
+    {
+      "table": "employees",
+      "field": "blood_group",
+      "type": "text"
+    },
+    {
+      "table": "employees",
+      "field": "photo_dms_document_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "owner_company_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "branch_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "department_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "designation_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "employee_category_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "employment_type_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "joining_date",
+      "type": "date"
+    },
+    {
+      "table": "employees",
+      "field": "actual_joining_date",
+      "type": "date"
+    },
+    {
+      "table": "employees",
+      "field": "employee_status",
+      "type": "text"
+    },
+    {
+      "table": "employees",
+      "field": "reporting_manager_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "supervisor_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "primary_work_site_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "sponsor_company_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "mohre_establishment_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "probation_start_date",
+      "type": "date"
+    },
+    {
+      "table": "employees",
+      "field": "probation_end_date",
+      "type": "date"
+    },
+    {
+      "table": "employees",
+      "field": "contract_type",
+      "type": "text"
+    },
+    {
+      "table": "employees",
+      "field": "contract_start_date",
+      "type": "date"
+    },
+    {
+      "table": "employees",
+      "field": "contract_end_date",
+      "type": "date"
+    },
+    {
+      "table": "employees",
+      "field": "notice_period_days",
+      "type": "integer"
+    },
+    {
+      "table": "employees",
+      "field": "inactive_date",
+      "type": "date"
+    },
+    {
+      "table": "employees",
+      "field": "inactive_reason",
+      "type": "text"
+    },
+    {
+      "table": "employees",
+      "field": "emergency_contact_name",
+      "type": "text"
+    },
+    {
+      "table": "employees",
+      "field": "emergency_contact_mobile",
+      "type": "text"
+    },
+    {
+      "table": "employees",
+      "field": "emergency_contact_relationship_type_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "created_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employees",
+      "field": "updated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employees",
+      "field": "created_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "updated_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "deleted_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employees",
+      "field": "deleted_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "workspace_revision",
+      "type": "bigint"
+    },
+    {
+      "table": "employees",
+      "field": "photo_framing",
+      "type": "jsonb"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "id",
+      "type": "bigint"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "queue_code",
+      "type": "text"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "notification_id",
+      "type": "bigint"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "provider_config_id",
+      "type": "bigint"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "source_module",
+      "type": "text"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "source_entity_type",
+      "type": "text"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "source_entity_id",
+      "type": "bigint"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "priority",
+      "type": "text"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "status",
+      "type": "text"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "from_email",
+      "type": "text"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "to_emails",
+      "type": "ARRAY"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "cc_emails",
+      "type": "ARRAY"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "bcc_emails",
+      "type": "ARRAY"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "reply_to_email",
+      "type": "text"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "subject",
+      "type": "text"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "html_body",
+      "type": "text"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "text_body",
+      "type": "text"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "template_code",
+      "type": "text"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "template_variables_json",
+      "type": "jsonb"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "scheduled_for",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "processing_started_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "sent_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "cancelled_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "attempt_count",
+      "type": "integer"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "max_attempts",
+      "type": "integer"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "next_retry_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "last_error",
+      "type": "text"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "external_message_id",
+      "type": "text"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "created_by",
+      "type": "bigint"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "created_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "updated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "deleted_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "lease_owner",
+      "type": "uuid"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "lease_token",
+      "type": "uuid"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "lease_expires_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "dispatch_started_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "delivery_state",
+      "type": "text"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "paused_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "intent_key",
+      "type": "text"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "report_schedule_run_id",
+      "type": "bigint"
+    },
+    {
+      "table": "erp_email_queue",
+      "field": "source_revision",
+      "type": "text"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "employee_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "access_type_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "client_authority",
+      "type": "text"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "work_site_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "card_number",
+      "type": "text"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "application_reference",
+      "type": "text"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "issue_date",
+      "type": "date"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "expiry_date",
+      "type": "date"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "status",
+      "type": "text"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "renewal_status",
+      "type": "text"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "dms_document_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "notes",
+      "type": "text"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "created_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "updated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "created_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "updated_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "deleted_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "deleted_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_access_cards",
+      "field": "workspace_revision",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "employee_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "attendance_date",
+      "type": "date"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "attendance_type",
+      "type": "text"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "work_site_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "first_in_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "last_out_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "total_hours",
+      "type": "numeric"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "overtime_hours",
+      "type": "numeric"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "late_minutes",
+      "type": "integer"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "early_out_minutes",
+      "type": "integer"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "is_missing_punch",
+      "type": "boolean"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "approval_status",
+      "type": "text"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "approved_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "approved_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "notes",
+      "type": "text"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "created_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "updated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "created_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "updated_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "workspace_revision",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "entered_intervals",
+      "type": "jsonb"
+    },
+    {
+      "table": "employee_attendance_daily_summary",
+      "field": "worked_minutes",
+      "type": "integer"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "employee_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "eos_type",
+      "type": "text"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "case_status",
+      "type": "text"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "notice_date",
+      "type": "date"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "last_working_date",
+      "type": "date"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "reason",
+      "type": "text"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "final_settlement_status",
+      "type": "text"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "clearance_completed",
+      "type": "boolean"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "dms_document_id",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "notes",
+      "type": "text"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "created_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "updated_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "created_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "updated_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "deleted_at",
+      "type": "timestamp with time zone"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "deleted_by",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "workspace_revision",
+      "type": "bigint"
+    },
+    {
+      "table": "employee_eos_cases",
+      "field": "employment_end_date",
+      "type": "date"
+    }
+  ],
+  "permissions": [
+    {
+      "code": "dms.admin",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "dms.notifications.admin",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "ai.actions.execute_after_confirm",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.actions.prepare",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.assistant.admin",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.assistant.use",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.assistant.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.audit_explainer.admin",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.audit_explainer.use",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.audit_explainer.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.common.admin",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.common.apply",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.common.generate",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.common.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.compliance.generate",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.compliance.review",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.compliance.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.dashboard.admin",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.dashboard.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.data_quality.admin",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.data_quality.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.data_quality.review",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "hr.actions.view.self",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "ai.data_quality.scan",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.data_quality.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.duplicates.review",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.duplicates.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.field_suggestions.apply",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.field_suggestions.generate",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.field_suggestions.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.field_suggestions.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.risk.generate",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.risk.review",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.risk.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.search.use",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "ai.search.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "audit.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "branches.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "branches.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "branding.app.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "branding.app.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "branding.assets.approve",
+      "administrator_scope": "company",
+      "active": true
+    },
+    {
+      "code": "branding.assets.upload",
+      "administrator_scope": "company",
+      "active": true
+    },
+    {
+      "code": "common_md.approval_roles.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "common_md.approval_roles.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "common_md.branches.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "common_md.branches.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "common_md.departments.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "common_md.departments.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "common_md.designations.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "common_md.designations.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "common_md.dms_required_documents.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "common_md.dms_required_documents.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "common_md.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "common_md.organizations.manage",
+      "administrator_scope": "company",
+      "active": true
+    },
+    {
+      "code": "common_md.organizations.view",
+      "administrator_scope": "company",
+      "active": true
+    },
+    {
+      "code": "common_md.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "common_md.work_calendars.manage",
+      "administrator_scope": "company",
+      "active": true
+    },
+    {
+      "code": "common_md.work_calendars.view",
+      "administrator_scope": "company",
+      "active": true
+    },
+    {
+      "code": "common_md.work_sites.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "common_md.work_sites.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dashboard.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.ai_observability.admin",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "dms.ai_observability.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "dms.apply_correction.admin",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.apply_correction.create",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.apply_correction.run",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.apply_correction.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.apply_to_erp.admin",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.apply_to_erp.preview",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.apply_to_erp.run",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.apply_to_erp.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.approvals.act",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.approvals.admin",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.approvals.history.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.approvals.submit",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.approvals.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.approvals.withdraw",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.ai.retry",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.ai.run",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.ai.supersede",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.ai.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.approve",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.archive",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.delete",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.download",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.edit",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.manage_security",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.manage_tags",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "dms.documents.manage_types",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "dms.documents.ocr.retry",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.ocr.skip",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.ocr.trigger",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.ocr.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.preview",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.review_ai",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.share_external",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.upload",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.view.company",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.view.executive",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.view.finance",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.view.hr",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.view.internal",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.documents.view.legal",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.entity_matching.admin",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "dms.entity_matching.review",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.entity_matching.run",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "dms.entity_matching.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.expiry.dismiss",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.expiry.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.expiry.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.metadata.ai_suggestions.approve",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.notifications.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.notifications.settings.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "dms.notifications.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.notifications.view_own",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.ocr.admin",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "dms.renewals.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.renewals.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.review_queue.admin",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.review_queue.bulk",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.review_queue.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.review_queue.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.validation.admin",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "dms.validation.review",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.validation.run",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "dms.validation.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "dms.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "erp.admin",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "finance.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "fleet.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.actions.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.actions.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.actions.view.team",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.admin",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.ai.apply_suggestion",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.ai.fill",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.ai.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.ai.review",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.ai.use",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.ai.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.assignments.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.assignments.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.assignments.view.self",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.assignments.view.team",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.attendance.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.attendance.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.attendance.view.self",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.attendance.view.team",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.banking.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.banking.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.banking.view.self",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.banking.view.team",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.compliance.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.compliance.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.compliance.view.self",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.compliance.view.team",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.confidential.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.confidential.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.confidential.view.self",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.confidential.view.team",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.dashboard.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.employee_profile.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.employee_profile.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.employees.archive",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.employees.create",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.employees.update",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.employees.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.employees.view.self",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.employees.view.team",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.eos.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.eos.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.leave.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.leave.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.leave.view.self",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.leave.view.team",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.medical.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.medical.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.medical.view.self",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.medical.view.team",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.payroll.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.payroll.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.payroll.view.self",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.payroll.view.team",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.recruitment.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.recruitment.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.search.use",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hr.settings.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "hr.settings.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "hr.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "hse.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "inventory.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "master_data.dashboard.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.finance_basics.audit_view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.finance_basics.export",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.finance_basics.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.finance_basics.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.geography.audit_view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.geography.export",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.geography.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.geography.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.lookups.audit_view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.lookups.export",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.lookups.import",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.lookups.lock",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.lookups.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.lookups.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.approve",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.blacklist",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.create",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.deactivate",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.delete",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.edit",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.export",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.lock",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.manage_addresses",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.manage_bank_details",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.manage_compliance",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.manage_contacts",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.manage_documents",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.manage_licenses",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.manage_relationships",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.manage_services",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.manage_tax",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.manage_types",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.override_duplicate",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.print",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.verify_bank_details",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.view_audit",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.parties.view_bank_details",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.party_master.audit_view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.party_master.export",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.party_master.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.party_master.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.uom.audit_view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.uom.export",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.uom.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "master_data.uom.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "notifications.admin",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "notifications.dismiss",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "notifications.email_queue.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "notifications.email_queue.process",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "notifications.email_queue.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "notifications.logs.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "notifications.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "notifications.templates.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "notifications.templates.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "notifications.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "numbering.rules.generate",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "numbering.rules.lock",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "numbering.rules.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "numbering.rules.preview",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "numbering.rules.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "operations.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "organizations.manage",
+      "administrator_scope": "company",
+      "active": true
+    },
+    {
+      "code": "organizations.view",
+      "administrator_scope": "company",
+      "active": true
+    },
+    {
+      "code": "outputs.ops.retry",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "outputs.ops.revoke",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "outputs.ops.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "permissions.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "permissions.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "procurement.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "rental.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "reports.branding.override",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "reports.column_profiles.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "reports.email",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "reports.export",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "reports.history.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "reports.manage",
+      "administrator_scope": "company",
+      "active": true
+    },
+    {
+      "code": "reports.pdf.approve",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "reports.pdf.generate",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "reports.pdf.view_history",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "reports.publish",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "reports.run",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "reports.saved_filters.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "reports.schedule.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "reports.schedule.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "reports.sensitive_fields.approve",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "reports.sensitive_fields.use",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "reports.sign",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "reports.template.approve",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "reports.verify.admin",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "reports.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "roles.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "roles.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "settings.ai.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "settings.ai.secrets.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "settings.ai.test",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "settings.ai.usage.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "settings.ai.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "settings.email.feature_flags.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "settings.email.logs.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "settings.email.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "settings.email.secrets.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "settings.email.test",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "settings.email.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "settings.manage",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "settings.view",
+      "administrator_scope": "global",
+      "active": true
+    },
+    {
+      "code": "users.create",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "users.delete",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "users.employee_link.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "users.roles.assign",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "users.security.manage",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "users.update",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "users.view",
+      "administrator_scope": "branch",
+      "active": true
+    },
+    {
+      "code": "workshop.view",
+      "administrator_scope": "branch",
+      "active": true
+    }
+  ]
+}

@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { ErpMappingPreviewPanel } from "@/features/dms/documents/sections/dms-erp-mapping-preview-panel";
 import { invalidateDmsAiAnalysis } from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
-import { applyAiAnalysisToMetadata, markDmsAiResultSuperseded, retryDmsAiAnalysisJob, runDmsAiAnalysisForDocument, type ApplyAiMetadataSelection, type DmsAiMetadataApplyHistoryRun, type DmsAiResultRow } from "@/server/actions/dms/ai-analysis";
+import { applyAiAnalysisToMetadata, markDmsAiResultSuperseded, retryDmsAiAnalysisJob, type ApplyAiMetadataSelection, type DmsAiMetadataApplyHistoryRun, type DmsAiResultRow } from "@/server/actions/dms/ai-analysis";
 
 import { useQueryClient } from "@tanstack/react-query";
 import {useDmsSectionQuery as useQuery} from "@/features/dms/documents/section-activity";
@@ -42,6 +42,8 @@ import {
 } from "@/lib/dms/metadata/metadata-diff";
 
 import { format, parseISO } from "date-fns";
+import { DmsDocumentPreparationPanel } from "./dms-document-preparation-panel";
+import {AiFeedback} from '@/features/ai/quality/ai-feedback';
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -78,7 +80,6 @@ export function DmsDocumentAiSection({
   });
  const { data: correctionAccess } = uiRead1;
   const correctionEnabled = canProposeCorrection && (correctionAccess?.proposalsEnabled ?? false);
-  const [running, setRunning] = useState(false);
   const [expandedResult, setExpandedResult] = useState<number | null>(null);
 
   const uiRead2 = useQuery({
@@ -103,21 +104,6 @@ export function DmsDocumentAiSection({
     staleTime: 15_000,
   });
  const { data: results = [], isLoading: resultsLoading } = uiRead3;
-
-  const handleRunAnalysis = async () => {
-    setRunning(true);
-    try {
-      const result = await runDmsAiAnalysisForDocument({ documentId, jobType: "classify_extract" });
-      if (result.success) {
-        toast.success(result.data?.message ?? "AI analysis complete");
-      } else {
-        toast.error(result.error ?? "AI analysis failed");
-      }
-      invalidateDmsAiAnalysis(queryClient, documentId);
-    } finally {
-      setRunning(false);
-    }
-  };
 
   const handleRetry = async (jobId: number) => {
     const r = await retryDmsAiAnalysisJob(jobId);
@@ -160,6 +146,7 @@ export function DmsDocumentAiSection({
 
   return (
     <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3]}><div className="space-y-5">
+      <DmsDocumentPreparationPanel documentId={documentId} canRun={canRun} onApplied={handleMetadataApplied} />
       {/* ── Header bar ── */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
@@ -176,20 +163,7 @@ export function DmsDocumentAiSection({
           </div>
         </div>
 
-        {canRun && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={running || hasPendingJob}
-            onClick={handleRunAnalysis}
-            className="gap-2"
-          >
-            {running
-              ? <div className="h-3.5 w-3.5 animate-spin rounded-full border border-current border-t-transparent" />
-              : <Brain className="h-3.5 w-3.5" />}
-            {running ? "Analyzing…" : latestResult ? "Re-run AI Analysis" : "Run AI Analysis"}
-          </Button>
-        )}
+
       </div>
 
       {/* ── No results yet ── */}
@@ -199,7 +173,7 @@ export function DmsDocumentAiSection({
           <p className="font-medium">No AI analysis results yet</p>
           <p className="text-xs text-center max-w-sm">
             {canRun
-              ? "Click \"Run AI Analysis\" — the AI will read the uploaded files, classify the document type, and suggest metadata field values in one step."
+              ? "Use Re-review existing document to prepare and review suggestions from its original sources."
               : "AI analysis has not been run for this document."}
           </p>
         </div>
@@ -215,7 +189,7 @@ export function DmsDocumentAiSection({
           onToggle={() => setExpandedResult(expandedResult === latestResult.id ? null : latestResult.id)}
           onRetry={canRun ? () => handleRetry(latestResult.job_id) : undefined}
           onSupersede={canRun ? () => handleSupersede(latestResult.id) : undefined}
-          canApplyMetadata={canApplyMetadata}
+          canApplyMetadata={canApplyMetadata && latestResult.result_type !== "preparation"}
           onMetadataApplied={handleMetadataApplied}
           isLatest
         />
@@ -391,6 +365,7 @@ function AiResultCard({
                 <DmsAiConfidenceBadge label={result.classification_confidence} score={result.classification_score} />
               )}
               <AiResultStatusBadge status={result.ai_status} />
+              <AiFeedback source={{kind:'extraction',id:result.job_id,documentId}}/>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
               {format(parseISO(result.created_at), "dd MMM yyyy HH:mm")}

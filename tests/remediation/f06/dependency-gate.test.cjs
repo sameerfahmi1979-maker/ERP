@@ -60,6 +60,13 @@ test('graph cycle fails', () => {
   const value = report(); value.vulnerabilities.braces.via.push('fast-glob');
   assert.throws(() => validate(value), /cyclic audit dependency/);
 });
+test('moderate peer cycle with a real advisory remains visible and is not a high exception',()=>{
+ const value=report();value.vulnerabilities.peerA=entry('peerA','moderate',['peerB']);value.vulnerabilities.peerB=entry('peerB','moderate',['peerA',{source:81,name:'peerB',dependency:'peerB',severity:'moderate',url:'https://github.com/advisories/synthetic-moderate',range:'*'}]);
+ assert.equal(validate(recount(value)).counts.moderate,3);
+});
+test('leafless moderate peer cycle still fails',()=>{const value=report();value.vulnerabilities.peerA=entry('peerA','moderate',['peerB']);value.vulnerabilities.peerB=entry('peerB','moderate',['peerA']);assert.throws(()=>validate(recount(value)),/cyclic/);});
+test('a moderate cycle cannot launder an unrelated high chain',()=>{const value=report();value.vulnerabilities.peerA=entry('peerA','moderate',['peerB']);value.vulnerabilities.peerB=entry('peerB','moderate',['peerA',{source:81,name:'peerB',dependency:'peerB',severity:'moderate',url:'https://github.com/advisories/synthetic-moderate',range:'*'}]);value.vulnerabilities['fast-glob'].via.push('peerA');assert.throws(()=>validate(recount(value)),/unremediated high/);});
+test('contradictory severity inside a peer cycle still fails',()=>{const value=report();value.vulnerabilities.peerA=entry('peerA','low',['peerB']);value.vulnerabilities.peerB=entry('peerB','moderate',['peerA',{source:81,name:'peerB',dependency:'peerB',severity:'moderate',url:'https://github.com/advisories/synthetic-moderate',range:'*'}]);assert.throws(()=>validate(recount(value)),/severity contradicts/);});
 for (const mutation of [
   value => { value.error = { code: 'NETWORK' }; },
   value => { delete value.metadata; },

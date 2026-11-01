@@ -7,7 +7,7 @@ import {useWorkspaceFormOwner} from '@/hooks/use-workspace-form-owner';
 import {createClient} from '@/lib/supabase/client';
 import {createDmsUploadSession,acknowledgeDmsSingleUpload,completeDmsTempUpload} from '@/server/actions/dms/upload-sessions';
 import {createDocumentFromUpload} from '@/server/actions/dms/document-upload-attach';
-import {readPhotoFramingSource,readPhotoRequiredDetails,completePhotoRequiredDetails} from '@/server/actions/hr/photo-controls';
+import {readPhotoDocumentTypes,readPhotoFramingSource,readPhotoRequiredDetails,completePhotoRequiredDetails,prepareSubjectPhotoUpload} from '@/server/actions/hr/photo-controls';
 import {photoMetadataValues,type PhotoDetails} from '@/lib/hr/photo-metadata';
 import {photoUploadStateSchema,runPhotoUpload,type PhotoUploadState} from '@/lib/hr/photo-upload-workflow';
 import {photoMime,PHOTO_MAX_BYTES,PHOTO_MAX_PIXELS,defaultPhotoCrop,parsePhotoFraming,type PhotoSource} from '@/lib/hr/photo-framing';
@@ -24,7 +24,9 @@ export function useSubjectPhotoDraft(identity:string,scope:string) {
   const key=`draft:tab:${owner}:hr-photo:${scope}:${readOwner?.identity?.authUserId??'none'}`,epoch=useMemo(()=>({store,owner,identity,key,readOwner}),[store,owner,identity,key,readOwner]);
   const live=useRef<typeof epoch|null>(null),file=useRef<Local|null>(null),flight=useRef(false),selection=useRef(0);
   const [local,setLocal]=useState<(Local&{epoch:typeof epoch})|null>(null),[busy,setBusy]=useState<typeof epoch|null>(null),[,redraw]=useState(0);
-  const [typeId,setTypeId]=useState<number|null>(null),[expiry,setExpiry]=useState('');
+  const typeChoice=useRef<{epoch:typeof epoch;id:number;requiresExpiry:boolean}|null>(null);
+  const [photoType,setPhotoType]=useState<typeof typeChoice.current>(null),[expiry,setExpiry]=useState('');
+  const selectedType=()=>typeChoice.current?.epoch===epoch?typeChoice.current:null;
   const [details,setDetails]=useState<{epoch:typeof epoch;value:PhotoDetails}|null>(null);
   const journal=useRef<{epoch:typeof epoch;value:PhotoRecoveryRecord}|null>(null);
   const journalOperation=useRef<{epoch:typeof epoch;id:string}|null>(null);
@@ -75,7 +77,8 @@ export function useSubjectPhotoDraft(identity:string,scope:string) {
   const persist=async(state:PhotoUploadState)=>{if(!current())throw Error('Photo ownership changed.');localPersist(state);const result=await retainPhotoRecovery(args(),{state,save:null});if(!current())throw Error('Photo ownership changed.');if(!result.success)throw Error(result.error);adopt(result.record);};
   const seed=(values:Pick<PhotoValues,'photo_framing'>)=>{
     const prior=read();if(prior)return prior;
-    if(!typeId||!file.current)throw Error('Choose the photo and document type before saving.');
+    const typeId=selectedType()?.id;
+    if(!typeId||!file.current)throw Error('Choose the photo again so its Employee Photo settings can be verified.');
     const {file:f,source}=file.current;
     return photoUploadStateSchema.parse({request:{version:1,operationId:crypto.randomUUID(),authUserId:readOwner!.identity!.authUserId,metadata:{original_filename:f.name,mime_type:f.type,file_size_bytes:f.size,sha256_hash:source.sha256},context:null},typeId,title:f.name,expiry:expiry||null,creation:null,receipt:null,framing:parsePhotoFraming(values.photo_framing)??{version:1,source,rotation:0,crop:defaultPhotoCrop(source)}});
   };
@@ -90,7 +93,7 @@ export function useSubjectPhotoDraft(identity:string,scope:string) {
     if(!current())throw Error('Photo ownership changed.');if(result.record)adopt(result.record);
     return result.result;
   };
-  return {local:local?.epoch===epoch?local:null,busy:busy===epoch,retained,blocked,recoveryReady:!!remote?.ready,recovered:remote?.restored?remote.value:null,typeId:retained?.typeId??typeId,expiry:retained?.expiry??expiry,setTypeId,setExpiry,
+  return {local:local?.epoch===epoch?local:null,busy:busy===epoch,retained,blocked,recoveryReady:!!remote?.ready,recovered:remote?.restored?remote.value:null,typeId:retained?.typeId??(photoType?.epoch===epoch?photoType.id:null),requiresExpiry:photoType?.epoch===epoch&&photoType.requiresExpiry,expiry:retained?.expiry??expiry,setExpiry,
     details:!blocked&&details?.epoch===epoch?details.value:null,detailsDraft:blocked?{}:readDetailsDraft(),
     setDetail(id:number,value:string){if(!current()||flight.current||blocked||read()?.metadata)throw Error('Reconcile the retained details before editing.');store!.setDraft(detailsKey,{values:JSON.stringify({...readDetailsDraft(),[id]:value})});redraw(n=>n+1);},
     createdPerson,
@@ -102,7 +105,7 @@ export function useSubjectPhotoDraft(identity:string,scope:string) {
       const data=z.object({id:z.number().int().positive(),employee_id:z.number().int().positive(),operation_id:z.string().uuid(),revision:z.string(),replayed:z.boolean()}).safeParse(result.data);
       return data.success?{success:true,data:data.data}:{success:false,uncertain:true,error:'Dependent photo save needs reconciliation.'};
     },
-    validate(values:PhotoValues){if(!current()||blocked)throw Error('Photo save is unavailable.');if(!remote?.ready)throw Error('Checking photo recovery. Try Save when it is ready.');if(remote.restored&&remote.value?.savePending)throw Error('Resume the original saved request before editing its fields.');if(file.current&&!read()&&!typeId)throw Error('Choose the photo document type before saving.');if(values.photo_pending&&!file.current&&!read())throw Error('Reselect the staged photo before saving.');},
+    validate(values:PhotoValues){if(!current()||blocked)throw Error('Photo save is unavailable.');if(!remote?.ready)throw Error('Checking photo recovery. Try Save when it is ready.');if(remote.restored&&remote.value?.savePending)throw Error('Resume the original saved request before editing its fields.');if(file.current&&!read()&&!selectedType())throw Error('Choose the photo again so its Employee Photo settings can be verified.');if(values.photo_pending&&!file.current&&!read())throw Error('Reselect the staged photo before saving.');},
     rememberPerson(value:{id:number;revision:string}){if(!current())throw Error('Photo ownership changed.');const raw=JSON.stringify(personSchema.parse(value));store!.setViewState(key+':person',raw);if(store!.getViewState(key+':person')!==raw)throw Error('Created person recovery could not be retained.');redraw(n=>n+1);},
     get pending(){return !!file.current||blocked||!!read();},
     async choose(next:File){
@@ -115,6 +118,15 @@ export function useSubjectPhotoDraft(identity:string,scope:string) {
       const sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await next.arrayBuffer()))).map(v=>v.toString(16).padStart(2,'0')).join('');
       if(!current()||choosing!==selection.current)throw Error('Photo selection changed.');
       const previous=read();if(previous&&(previous.request.metadata.sha256_hash!==sha256||previous.request.metadata.original_filename!==next.name||previous.request.metadata.mime_type!==next.type||previous.request.metadata.file_size_bytes!==next.size))throw Error('Reselect the original photo to finish its retained upload before choosing another.');
+      if(!previous){
+        const result=await readPhotoDocumentTypes();
+        if(!current()||choosing!==selection.current)throw Error('Photo selection changed.');
+        if(!result.success)throw Error(result.error);
+        const type=result.rows[0];
+        if(result.rows.length!==1||!type||type.type_code!=='EMPLOYEE_PHOTO')throw Error('The Employee Photo document type could not be verified.');
+        typeChoice.current={epoch,id:type.id,requiresExpiry:type.requires_expiry_tracking};
+        setPhotoType(typeChoice.current);
+      }
       if(file.current)URL.revokeObjectURL(file.current.url);
       const value={file:next,url:URL.createObjectURL(next),source:{documentId:1,versionId:1,fileId:1,sha256,width,height},epoch};
       file.current=value;setLocal(value);return value.source;
@@ -137,12 +149,14 @@ export function useSubjectPhotoDraft(identity:string,scope:string) {
         const context={entityType:dependent===null?'employee' as const:'employee_dependent' as const,entityId:dependent??employee};
         if(state?.request.context&&JSON.stringify(state.request.context)!==JSON.stringify(context))throw Error('Retained photo belongs to another person.');
         if(!state){
-          if(!typeId||!file.current)throw Error('Choose the photo document type before saving.');
+          const typeId=selectedType()?.id;
+          if(!typeId||!file.current)throw Error('Choose the photo again so its Employee Photo settings can be verified.');
           const {file:f,source}=file.current;
           state=photoUploadStateSchema.parse({request:{version:1,operationId:crypto.randomUUID(),authUserId:readOwner!.identity!.authUserId,metadata:{original_filename:f.name,mime_type:f.type,file_size_bytes:f.size,sha256_hash:source.sha256},context},typeId,title:f.name,expiry:expiry||null,creation:null,receipt:null,framing:parsePhotoFraming(values.photo_framing)??{version:1,source,rotation:0,crop:defaultPhotoCrop(source)}});await persist(state);
         }
         if(!state.request.context){state={...state,request:{...state.request,context}};await persist(state);}
         const receipt=await runPhotoUpload(state,{current,persist,
+          prepare:()=>prepareSubjectPhotoUpload(employee,dependent,state!.request.metadata.sha256_hash,state!.request.metadata.file_size_bytes),
           admit:r=>createDmsUploadSession({...r.metadata,context:r.context??undefined},{operationId:r.operationId,authUserId:r.authUserId}),
           verify:completeDmsTempUpload,acknowledge:acknowledgeDmsSingleUpload,create:createDocumentFromUpload,
           upload:async(path,token,mime)=>{const f=file.current?.file;if(!f)throw Error('Reselect the original photo to finish its upload.');let timer:ReturnType<typeof setTimeout>|undefined;try{const result=await Promise.race([createClient().storage.from('dms-temp').uploadToSignedUrl(path,token,f,{contentType:mime,upsert:false}),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('Photo transfer is unconfirmed. Retry Save to check the original upload.')),45000);})]);if(result.error)throw Error('Photo transfer was not confirmed. Retry the same file.');}finally{clearTimeout(timer);}},

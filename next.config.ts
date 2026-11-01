@@ -18,8 +18,12 @@ function diagnosticBuildId(){
   return hash.digest("hex");
 }
 const buildId=diagnosticBuildId();
+// Isolated local checks must not replace an active development server's output.
+const distDir=process.env.ALGT_NEXT_DIST_DIR??".next";
+if(!/^\.next(?:-[a-z0-9]+)*$/.test(distDir))throw new Error("Use a dedicated Next output directory inside this project.");
 
 const nextConfig: NextConfig = {
+  distDir,
   // Use the same public source identity for diagnostics and Next's navigation
   // version-skew protection. Development HMR does not need deployment reloads.
   env: { NEXT_PUBLIC_ALGT_BUILD_COMMIT: buildId },

@@ -1,4 +1,6 @@
 import "server-only";
+import {prepareHrSearchMeaning} from "@/server/ai/search/hr-meaning";
+import {SearchClarification} from "@/server/ai/search/document-query";
 import {z} from "zod";
 import {getAuthContext, hasPermission, type AuthContext} from "@/lib/rbac/check";
 import {createClient} from "@/lib/supabase/server";
@@ -124,7 +126,8 @@ export async function readHrSearch(input: unknown, context?: AuthContext, signal
       });
       return {success: true as const, data: hrSearchSuggestionsReadSchema.parse({criteria: p, kind: "quick-suggestions", limit: 8, complete: false, rows: groups.flat()})};
     }
-    const sources = HR_SEARCH_READ_SOURCES.filter(s => allowed.includes(s.category) && (!p.categories.length || p.categories.includes(s.category)) && (!s.medical || hasPermission(ctx, "hr.medical.view")) && (!s.confidential || hasPermission(ctx, "hr.confidential.view")));
+    const meaning=allowed.includes("compliance")&&(!p.categories.length||p.categories.includes("compliance"))?await prepareHrSearchMeaning(db,p.query,ctx,signal):null;
+    const sources = HR_SEARCH_READ_SOURCES.filter(s => allowed.includes(s.category) && (!p.categories.length || p.categories.includes(s.category)) && (!s.medical || hasPermission(ctx, "hr.medical.view")) && (!s.confidential || hasPermission(ctx, "hr.confidential.view"))&&(!meaning||(meaning.bySource.get(s.key)?.length??0)>0));
     const build = (s: Source, head = false) => {
       const columns = ["id", ...s.columns];
       if (s.employee) columns.push(`employee_id,employee:employees!employee_id!inner(id,employee_code,full_name_en)`);
@@ -151,10 +154,13 @@ export async function readHrSearch(input: unknown, context?: AuthContext, signal
       if (s.status && p.status) q.eq(s.status, p.status);
       if (s.date && p.dateFrom) q.gte(s.date, p.dateFrom);
       if (s.date && p.dateTo) q.lte(s.date, p.dateTo);
-      if (p.query !== "") {
-        const clauses = s.search.map(field => `${field}.ilike.${literalContains(p.query)}`);
-        if (s.employeeSearch) {q.or(`full_name_en.ilike.${literalContains(p.query)},employee_code.ilike.${literalContains(p.query)}`, {referencedTable: "search_employee"}); clauses.push("search_employee.not.is.null");}
-        if (s.related?.search) {q.ilike(`search_related.${s.related.column}`, literalLike(p.query)); clauses.push("search_related.not.is.null");}
+      if(meaning){if(s.related)q.in(s.related.fk,meaning.bySource.get(s.key)??[]);if(meaning.employeeId)q.eq("employee_id",meaning.employeeId);
+        if(meaning.expiry==="expired")q.lt("expiry_date",today);if(meaning.expiry==="expiring_soon")q.gte("expiry_date",today).lte("expiry_date",new Date(Date.parse(today)+30*86400000).toISOString().slice(0,10));}
+      const effectiveText=meaning?.text??p.query;
+      for(const term of effectiveText.trim().split(/\s+/).filter(Boolean)) {
+        const clauses = s.search.map(field => `${field}.ilike.${literalContains(term)}`);
+        if (s.employeeSearch) {q.or(`full_name_en.ilike.${literalContains(term)},employee_code.ilike.${literalContains(term)}`, {referencedTable: "search_employee"}); clauses.push("search_employee.not.is.null");}
+        if (s.related?.search&&!meaning) {q.ilike(`search_related.${s.related.column}`, literalLike(term)); clauses.push("search_related.not.is.null");}
         if (clauses.length) q.or(clauses.join(","));
       }
       return q;
@@ -175,5 +181,5 @@ export async function readHrSearch(input: unknown, context?: AuthContext, signal
     });
     return {success: true as const, data: hrSearchPageReadSchema.parse({criteria: p, results: pages.flat(), totalCount, groupCounts,
       hasMore: p.page * p.pageSize < totalCount, ordering: "category-entity-id-v1", countScope: "authorized-matches"})};
-  } catch {signal?.throwIfAborted(); return {success: false as const, error: "HR search could not be completely loaded. Please retry."};}
+  } catch(error) {signal?.throwIfAborted(); return {success: false as const, error:error instanceof SearchClarification?error.message:"HR search could not be completely loaded. Please retry."};}
 }

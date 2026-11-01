@@ -14,21 +14,22 @@ import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types"
 import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
 import {readSalarySnapshot} from "@/server/reads/salary-snapshot";
 import {payrollToday,salaryDate} from "@/lib/hr/payroll/salary-as-of";
+import {aedAmountWords} from '@/lib/official-documents/aed-words';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared helper: load employee base data
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function loadEmployeeBase(employeeId: number, db: ReportReadClient) {
+export async function loadEmployeeBase(employeeId: number, db: ReportReadClient) {
 
   const { data, error } = await db
     .from("employees")
     .select(
-      `id, employee_code, full_name_en, full_name_ar, joining_date, employee_status,
+      `id, employee_code, full_name_en, full_name_ar, joining_date, employee_status, gender,
        owner_company_id,
        owner_company:owner_companies!employees_owner_company_id_fkey(id, legal_name_en, legal_name_ar, company_code),
        branch:branches(branch_name_en),
-       department:departments(department_name_en),
+       department:departments(department_name_en,department_name_ar),
        designation:designations(designation_name_en, designation_name_ar),
        employment_type:hr_employment_types(name_en)`
     )
@@ -38,6 +39,18 @@ async function loadEmployeeBase(employeeId: number, db: ReportReadClient) {
   if (error) throw new Error("Authorized employee source could not be loaded");
   if (!data || data.id !== employeeId) throw new Error("Authorized employee source not available");
   return data;
+}
+
+/** Permitted employee/company facts shared by the newly approved definitions.
+ * No translation, status, pay or link is inferred. Confirmation v2 stays unchanged. */
+export function approvedEmployeeFacts(emp:Awaited<ReturnType<typeof loadEmployeeBase>>){
+ const company=emp.owner_company as unknown as {legal_name_en?:string;legal_name_ar?:string}|null;
+ const designation=emp.designation as unknown as {designation_name_en?:string;designation_name_ar?:string}|null;
+ const department=emp.department as unknown as {department_name_en?:string;department_name_ar?:string}|null;
+ return {employee_name:emp.full_name_en,employee_name_ar:emp.full_name_ar??'',employee_code:emp.employee_code,
+  company_name:company?.legal_name_en??'',company_name_ar:company?.legal_name_ar??'',designation:designation?.designation_name_en??'',designation_ar:designation?.designation_name_ar??'',
+  department:department?.department_name_en??'',department_ar:department?.department_name_ar??'',
+  employee_status:emp.employee_status,gender:emp.gender,joining_date:emp.joining_date,generated_date:payrollToday(),owner_company_id:emp.owner_company_id};
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -113,6 +126,7 @@ export const employmentLetterFetcher: ReportFetcher = {
     const company = emp.owner_company as unknown as { legal_name_en: string } | null;
 
     const row = {
+      ...approvedEmployeeFacts(emp),
       employee_name: emp.full_name_en,
       employee_code: emp.employee_code,
       designation: (emp.designation as unknown as { designation_name_en: string } | null)?.designation_name_en ?? "",
@@ -145,6 +159,11 @@ export const employmentConfirmationFetcher: ReportFetcher = {
     if (!employeeId) throw new Error("employee_id is required");
 
     const emp = await loadEmployeeBase(employeeId, db);
+    // The approved wording certifies current employment, not a historical or
+    // future engagement. Hold ambiguous/suspended/inactive records for HR review.
+    if(!['active','on_leave','probation'].includes(emp.employee_status)||!emp.joining_date||salaryDate(emp.joining_date)>payrollToday()){
+      throw Error('Current employment and the joining date must be verified before issuing this confirmation. Use an experience certificate for verified former service.');
+    }
     const company = emp.owner_company as unknown as {
       legal_name_en: string;
       legal_name_ar: string | null;
@@ -160,6 +179,7 @@ export const employmentConfirmationFetcher: ReportFetcher = {
       employee_name: emp.full_name_en,
       employee_name_ar: emp.full_name_ar ?? "",
       employee_code: emp.employee_code,
+      employment_type: (emp.employment_type as unknown as { name_en: string } | null)?.name_en ?? "",
       designation: designation?.designation_name_en ?? "",
       designation_ar: designation?.designation_name_ar ?? "",
       joining_date: emp.joining_date,
@@ -254,6 +274,7 @@ export const salaryCertGeneralFetcher: ReportFetcher = {
     const company = emp.owner_company as unknown as { legal_name_en: string } | null;
 
     const row = {
+      ...approvedEmployeeFacts(emp),
       employee_name: emp.full_name_en,
       employee_code: emp.employee_code,
       designation: (emp.designation as unknown as { designation_name_en: string } | null)?.designation_name_en ?? "",
@@ -298,6 +319,7 @@ export const salaryCertWithAmountFetcher: ReportFetcher = {
     const salary = await readSalarySnapshot(db, employeeId);
 
     const row = {
+      ...approvedEmployeeFacts(emp),
       employee_name: emp.full_name_en,
       employee_code: emp.employee_code,
       designation: (emp.designation as unknown as { designation_name_en: string } | null)?.designation_name_en ?? "",
@@ -305,6 +327,9 @@ export const salaryCertWithAmountFetcher: ReportFetcher = {
       joining_date: emp.joining_date,
       basic_salary: salary.basic,
       gross_salary: salary.gross,
+      ...(salary.currency==='AED'?(()=>{const words=aedAmountWords(salary.gross);return {salary_in_words_en:words.en,salary_in_words_ar:words.ar};})():{}),
+      salary_source_fingerprint:salary.sourceFingerprint,
+      payroll_status:salary.payrollStatus,
       currency: salary.currency,
       generated_date: salary.asOf,
       owner_company_id: emp.owner_company_id,
@@ -349,6 +374,7 @@ export const nocFetcher: ReportFetcher = {
       : "[Not on record]";
 
     const row = {
+      ...approvedEmployeeFacts(emp),
       employee_name: emp.full_name_en,
       employee_code: emp.employee_code,
       designation: (emp.designation as unknown as { designation_name_en: string } | null)?.designation_name_en ?? "",
@@ -414,7 +440,7 @@ export const ppeIssueFormFetcher: ReportFetcher = {
     const emp = await loadEmployeeBase(employeeId, db);
 
 
-    const { data: ppeItems } = await db
+    const { data: ppeItems, error: ppeError } = await db
       .from("employee_ppe_issues")
       .select("ppe_item_name:ppe_item, quantity, issue_date:issued_date, issued_by_profile:user_profiles!issued_by(display_name)")
       .eq("employee_id", employeeId)
@@ -423,22 +449,25 @@ export const ppeIssueFormFetcher: ReportFetcher = {
       .order("issued_date", { ascending: false })
       .limit(50);
 
+    if(ppeError)throw Error("PPE custody records could not be verified.");
     const rows = (ppeItems ?? []).map((p) => ({
+      ...approvedEmployeeFacts(emp),
       employee_code: emp.employee_code,
       employee_name: emp.full_name_en,
       ppe_item: p.ppe_item_name,
       ppe_category: "[Not recorded]",
-      quantity: p.quantity ?? 1,
+      quantity: p.quantity,
       issue_date: p.issue_date,
       condition: "[Not recorded]",
       issued_by: (p.issued_by_profile as unknown as { display_name: string } | null)?.display_name ?? "",
+      issuer: (p.issued_by_profile as unknown as { display_name: string } | null)?.display_name ?? "",
       signature_placeholder: "[_______________________]",
       owner_company_id: emp.owner_company_id,
     }));
 
     return {
       columns: ["employee_code", "employee_name", "ppe_item", "ppe_category", "quantity", "issue_date", "condition", "issued_by", "signature_placeholder"],
-      rows: rows.length ? rows : [{ employee_code: emp.employee_code, employee_name: emp.full_name_en, ppe_item: "No items", ppe_category: "", quantity: 0, issue_date: "", condition: "", issued_by: "", signature_placeholder: "", owner_company_id: emp.owner_company_id }],
+      rows: rows.length ? rows : [{ ...approvedEmployeeFacts(emp), employee_code: emp.employee_code, employee_name: emp.full_name_en, ppe_item: "No items", ppe_category: "", quantity: 0, issue_date: "", condition: "", issued_by: "", signature_placeholder: "", owner_company_id: emp.owner_company_id }],
       meta: { sourceRecordId: emp.id, letter_type: "ppe_issue_form", ownerCompanyIds: [emp.owner_company_id] },
     };
   },
@@ -471,6 +500,7 @@ export const joiningChecklistFetcher: ReportFetcher = {
     ];
 
     const rows = checklistItems.map((item) => ({
+      ...approvedEmployeeFacts(emp),
       employee_code: emp.employee_code,
       employee_name: emp.full_name_en,
       joining_date: emp.joining_date,
@@ -528,6 +558,7 @@ export const clearanceFormFetcher: ReportFetcher = {
     const areaMap = new Map(clearanceItems.map((c) => [c.clearance_area, c.item_status]));
 
     const rows = defaultAreas.map((area) => ({
+      ...approvedEmployeeFacts(emp),
       employee_code: emp.employee_code,
       employee_name: emp.full_name_en,
       clearance_area: area,

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { readScopeVersion } from "@/lib/reads/scope-version";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { AssistantPageClient } from "@/features/ai/common/assistant";
 import {
@@ -70,6 +71,7 @@ export default async function AssistantPage({
       />
 
       <AssistantPageClient
+        initialIdentity={ctx.profile?.auth_user_id ? { authUserId: ctx.profile.auth_user_id, scopeVersion: readScopeVersion(ctx) } : null}
         initialSessions={initialSessions}
         initialEntityType={params.entityType}
         initialEntityId={params.entityId ? parseInt(params.entityId, 10) : undefined}

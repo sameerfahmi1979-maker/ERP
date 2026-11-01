@@ -110,7 +110,7 @@ export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen
         full_name_ar: d.full_name_ar?.userValue ?? "",
         gender: (d.gender?.userValue as "male" | "female" | "") ?? "",
         date_of_birth: d.date_of_birth?.userValue ?? "",
-        nationality_id: null,
+        nationality_id: d.nationality_id?.userValue ? Number(d.nationality_id.userValue) : null,
         mobile_number: d.mobile_number?.userValue ?? "",
         personal_email: d.personal_email?.userValue ?? "",
         owner_company_id: null,
@@ -144,7 +144,7 @@ export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen
         )
       );
       // Apply resolved value to the form
-      setFormState((prev) => ({ ...prev, [fieldName]: value }));
+      setFormState((prev) => ({ ...prev, [fieldName]: fieldName === 'nationality_id' ? Number(value) : value }));
     },
     []
   );
@@ -332,6 +332,7 @@ export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen
 
       {step === "employee-review" && reviewPayload && (
         <HrDocumentEmployeeReviewStep
+          authContext={authContext}
           draft={reviewPayload.employeeDraft}
           form={form}
           setForm={setForm}

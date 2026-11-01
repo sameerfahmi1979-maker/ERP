@@ -50,23 +50,50 @@ export const OFFICIAL_DOCUMENT_PAGE_MARGINS_MM = {
 } as const;
 
 /** Renderer-frame version is separate from each definition's wording version. */
-export const OFFICIAL_DOCUMENT_LAYOUT_VERSION = 3;
+export const OFFICIAL_DOCUMENT_LAYOUT_VERSION = 7;
+
+/** Owner's compact masthead: logo left, centred identity/contact block right.
+ * Shared by standalone HTML and the repeating PDF header, never duplicated. */
+function officialLetterhead(branding: OfficialDocumentRenderContext["branding"]) {
+  const logo = branding?.showLogo ? escapeImageSrc(branding.logoUrl) : "";
+  const theme = /^#[0-9a-fA-F]{6}$/.test(branding?.themePrimaryColor ?? "") ? branding!.themePrimaryColor! : "#1e293b";
+  const contact = [branding?.addressBlockEn, branding?.phone ? `Tel: ${branding.phone}` : null, branding?.email, branding?.website]
+    .filter((value): value is string => !!value?.trim()).map(value => elEscapeHtml(value.replace(/\s+/g, " ").trim()));
+  const css = `
+    .od-header { box-sizing:border-box; width:100%; padding:0 8mm 1.8mm 11mm; border-bottom:2.5px solid ${theme}; break-inside:avoid; }
+    .od-letterhead-table { width:100%; border-collapse:collapse; table-layout:fixed; direction:ltr; }
+    .od-header-logo { box-sizing:border-box; width:82mm; padding-right:18mm; padding-top:2.8mm; vertical-align:top; }
+    .od-header-logo img { display:block; width:64mm; max-width:100%; max-height:18mm; object-fit:contain; }
+    .od-header-names { min-width:0; text-align:center; vertical-align:middle; overflow-wrap:anywhere; }
+    .od-company-en { font:800 13.5pt/1.25 ${LATIN_FONT_STACK}; color:${theme}; letter-spacing:.2px; text-align:center; }
+    .od-company-ar { font:700 11.5pt/1.5 ${ARABIC_FONT_STACK}; color:${theme}; text-align:center; }
+    .od-header-contact { margin-top:1.5mm; font:7.5pt/1.5 ${LATIN_FONT_STACK}; color:#555; text-align:center; overflow-wrap:anywhere; }
+  `;
+  const markup = `<div class="od-header"><table class="od-letterhead-table" role="presentation"><tr>
+    ${logo ? `<td class="od-header-logo"><img src="${logo}" alt="Company logo"></td>` : ""}
+    <td class="od-header-names">
+      ${branding?.companyNameEn ? `<div class="od-company-en" lang="en" dir="ltr">${elEscapeHtml(branding.companyNameEn)}</div>` : ""}
+      ${branding?.companyNameAr ? `<div class="od-company-ar" lang="ar" dir="rtl">${elEscapeHtml(branding.companyNameAr)}</div>` : ""}
+      ${contact.length ? `<div class="od-header-contact" dir="ltr">${contact.join(" · ")}</div>` : ""}
+    </td></tr></table></div>`;
+  return {css, markup, theme};
+}
 
 /** Same body and text model as the HTML preview, with print-engine running
  * identity/footer zones. Page totals are filled by the engine after pagination,
  * never guessed from HTML length. All values are escaped; no external assets.
  */
 export function renderOfficialDocumentPrintPackage(definition: OfficialDocumentDefinition, ctx: OfficialDocumentRenderContext) {
-  const marginsMm = { top: 18, bottom: 20, left: 18, right: 18 };
-  const company = elEscapeHtml(ctx.language === "ar" ? ctx.branding?.companyNameAr || ctx.branding?.companyNameEn || "" : ctx.branding?.companyNameEn ?? "");
+  const marginsMm = { top: 25, bottom: 20, left: 18, right: 18 };
+  const letterhead = officialLetterhead(ctx.branding);
   const ref = elEscapeHtml(ctx.serialNo ?? "DRAFT");
   const footer = officialFooterParts(ctx.branding).join(" · ");
-  const frameFont = /[\u0600-\u06ff]/.test(company + footer) ? buildArabicFontFaceCss() : "";
-  const frameStyle = `<style>${frameFont}html,body{margin:0;padding:0;font:8pt ${ARABIC_FONT_STACK};color:#475569;width:100%;} .frame{margin:0 18mm;width:174mm;} .row{display:flex;justify-content:space-between;gap:4mm;} .identity{overflow-wrap:anywhere;unicode-bidi:plaintext;} .pages{white-space:nowrap;} .legal{font-size:7.5pt;border-top:1px solid #94a3b8;padding-top:2mm;overflow-wrap:anywhere;unicode-bidi:plaintext;}</style>`;
+  const frameFont = /[\u0600-\u06ff]/.test(letterhead.markup + footer) ? buildArabicFontFaceCss() : "";
+  const frameStyle = `<style>${frameFont}html,body{margin:0;padding:0;font:8pt ${ARABIC_FONT_STACK};color:#475569;width:100%;} .frame{margin:0 18mm;width:174mm;} .row{display:flex;justify-content:space-between;align-items:baseline;gap:4mm;} .identity{overflow-wrap:anywhere;unicode-bidi:plaintext;} .pages{white-space:nowrap;} .identity,.pages,.pageNumber,.totalPages{font:8pt/1.2 ${LATIN_FONT_STACK};} .legal{text-align:center;font-size:7.5pt;border-top:1px solid #94a3b8;padding-top:2mm;overflow-wrap:anywhere;unicode-bidi:plaintext;} ${letterhead.css}</style>`;
   return {
-    html: renderOfficialDocumentHtml(definition, ctx).replace("</head>", "<style>.od-footer{display:none}.od-page{min-height:259mm}</style></head>"),
+    html: renderOfficialDocumentHtml(definition, ctx).replace("</head>", "<style>.od-footer,.od-header{display:none}.od-page{min-height:252mm}</style></head>"),
     marginsMm,
-    headerHtml: `<html><head>${frameStyle}</head><body><div class="frame row"><span class="identity">${company}</span><span class="identity">${ref}</span></div></body></html>`,
+    headerHtml: `<html><head>${frameStyle}<style>.od-header{position:relative;top:-8pt;}</style></head><body>${letterhead.markup}</body></html>`,
     footerHtml: `<html><head>${frameStyle}</head><body><div class="frame"><div class="row"><span class="identity">${ref}</span><span class="pages">Page <span class="pageNumber"></span> of <span class="totalPages"></span></span></div><div class="legal">${footer}</div></div></body></html>`,
   };
 }
@@ -153,8 +180,8 @@ function renderFormTableBlock(
 ): string {
   const title =
     block.titleEn || block.titleAr
-      ? `<div class="od-block-title">${elEscapeHtml(block.titleEn ?? "")}${
-          language !== "en" && block.titleAr
+      ? `<div class="od-block-title">${elEscapeHtml(language==='ar'?(block.titleAr??block.titleEn??''):(block.titleEn??''))}${
+          language === "bilingual" && block.titleAr
             ? ` <span lang="ar" dir="rtl">/ ${elEscapeHtml(block.titleAr)}</span>`
             : ""
         }</div>`
@@ -199,8 +226,8 @@ function renderChecklistBlock(
     .join("");
   const title =
     block.titleEn || block.titleAr
-      ? `<div class="od-block-title">${elEscapeHtml(block.titleEn ?? "")}${
-          language !== "en" && block.titleAr
+      ? `<div class="od-block-title">${elEscapeHtml(language==='ar'?(block.titleAr??block.titleEn??''):(block.titleEn??''))}${
+          language === "bilingual" && block.titleAr
             ? ` <span lang="ar" dir="rtl">/ ${elEscapeHtml(block.titleAr)}</span>`
             : ""
         }</div>`
@@ -209,6 +236,14 @@ function renderChecklistBlock(
     ${title}
     <table class="od-chk-table">${head}<tbody>${rows}</tbody></table>
   </div>`;
+}
+
+function renderRecordTableBlock(block:Extract<OfficialBodyBlock,{kind:'record_table'}>,language:'en'|'ar'|'bilingual'):string {
+  const cell=(value:{en:string;ar:string})=>language==='ar'?`<span lang="ar" dir="rtl">${elEscapeHtml(value.ar)}</span>`:
+    language==='en'?elEscapeHtml(value.en):`${elEscapeHtml(value.en)}<br><span lang="ar" dir="rtl">${elEscapeHtml(value.ar)}</span>`;
+  return `<div class="od-form-block"><div class="od-block-title">${cell({en:block.titleEn,ar:block.titleAr})}</div>
+    <table class="od-chk-table od-record-table"><thead><tr>${block.columns.map(col=>`<th>${cell(col)}</th>`).join('')}</tr></thead>
+    <tbody>${block.rows.map(row=>`<tr class="od-chk-row">${block.columns.map((_,i)=>`<td>${cell(row[i]??{en:'',ar:''})}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 
 function renderBlocks(model: OfficialDocumentModel, language: "en" | "ar" | "bilingual"): string {
@@ -231,6 +266,7 @@ function renderBlocks(model: OfficialDocumentModel, language: "en" | "ar" | "bil
     }
     flushBilingual();
     if (block.kind === "form_table") parts.push(renderFormTableBlock(block, language));
+    else if (block.kind === "record_table") parts.push(renderRecordTableBlock(block, language));
     else if (block.kind === "checklist") parts.push(renderChecklistBlock(block, language));
     else if (block.kind === "spacer") parts.push(`<div style="height:${Math.min(block.heightMm ?? 6, 40)}mm;"></div>`);
   }
@@ -253,21 +289,11 @@ export function renderOfficialDocumentHtml(
   const pageDir = language === "ar" ? "rtl" : "ltr";
 
   // ── Branding values (pre-gated by the coordinator) ──────────────────────
-  const companyNameEn = branding?.companyNameEn ?? "";
-  const companyNameAr = branding?.companyNameAr ?? "";
-  const logoUrl = branding?.showLogo ? escapeImageSrc(branding.logoUrl) : "";
+  const letterhead = officialLetterhead(branding);
   const stampUrl = branding?.showStamp ? escapeImageSrc(branding?.stampUrl) : "";
   const signatureUrl = branding?.showSignatory ? escapeImageSrc(branding?.signatureUrl) : "";
   const letterheadBgUrl = escapeImageSrc(branding?.letterheadBackgroundUrl);
-  const themePrimary = /^#[0-9a-fA-F]{6}$/.test(branding?.themePrimaryColor ?? "")
-    ? (branding!.themePrimaryColor as string)
-    : "#1e293b";
-
-  const addressBlock = branding?.addressBlockEn ?? "";
-  const contactParts: string[] = [];
-  if (branding?.phone) contactParts.push(`Tel: ${elEscapeHtml(branding.phone)}`);
-  if (branding?.email) contactParts.push(elEscapeHtml(branding.email));
-  if (branding?.website) contactParts.push(elEscapeHtml(branding.website));
+  const themePrimary = letterhead.theme;
 
   const footerParts = officialFooterParts(branding);
 
@@ -290,14 +316,13 @@ export function renderOfficialDocumentHtml(
       : language === "bilingual"
         ? 'Ref <span lang="ar" dir="rtl">/ الرقم المرجعي</span>'
         : "Ref";
-  const dateLabel =
-    language === "ar"
-      ? "التاريخ"
-      : language === "bilingual"
-        ? 'Date <span lang="ar" dir="rtl">/ التاريخ</span>'
-        : "Date";
-  const issuedDate =
-    language === "ar" ? ctx.issuedDateAr : language === "bilingual" ? `${ctx.issuedDateEn}` : ctx.issuedDateEn;
+  // Isolate complete label/value pairs. A mixed-direction slash separated label
+  // lets the PDF bidi algorithm reorder the date and its punctuation.
+  const arabicDate = ctx.issuedDateAr.replace(/[0-9]/g, digit => "٠١٢٣٤٥٦٧٨٩"[Number(digit)]);
+  const dateEn = `<bdi lang="en" dir="ltr"><strong>Date:</strong> ${elEscapeHtml(ctx.issuedDateEn)}</bdi>`;
+  const dateAr = `<bdi lang="ar" dir="rtl"><strong>التاريخ:</strong> ${elEscapeHtml(arabicDate)}</bdi>`;
+  const issueDateHtml = language === "ar" ? dateAr : language === "en" ? dateEn
+    : `${dateEn}<span class="od-date-separator" aria-hidden="true"> — </span>${dateAr}`;
 
   const metaRows = (model.meta ?? [])
     .map((m: OfficialMetaRow) => {
@@ -417,19 +442,7 @@ export function renderOfficialDocumentHtml(
     }
 
     /* ── Zone: letterhead header ── */
-    .od-header {
-      display: flex;
-      align-items: center;
-      gap: 6mm;
-      padding-bottom: 4mm;
-      border-bottom: 2.5px solid ${themePrimary};
-      break-inside: avoid;
-    }
-    .od-header-logo img { max-height: 62px; max-width: 150px; object-fit: contain; display: block; }
-    .od-header-names { flex: 1; }
-    .od-company-en { font-size: 13.5pt; font-weight: 800; color: ${themePrimary}; letter-spacing: 0.2px; line-height: 1.25; }
-    .od-company-ar { font-size: 11.5pt; font-weight: 700; color: ${themePrimary}; line-height: 1.5; }
-    .od-header-contact { font-size: 7.5pt; color: #555; margin-top: 1.5mm; line-height: 1.5; }
+    ${letterhead.css}
 
     /* ── Zone: metadata strip ── */
     .od-meta-strip {
@@ -443,6 +456,8 @@ export function renderOfficialDocumentHtml(
       break-inside: avoid;
     }
     .od-meta-strip strong { color: #0f172a; }
+    .od-issue-date { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; direction: ltr; gap: 0.2em; }
+    .od-issue-date bdi { unicode-bidi: isolate; white-space: nowrap; }
 
     /* ── Zone: title ── */
     .od-title {
@@ -481,6 +496,8 @@ export function renderOfficialDocumentHtml(
     /* ── Form tables (bilingual labels) ── */
     .od-form-block { margin: 3mm 0 5mm; }
     .od-block-title {
+      break-after: avoid-page;
+      page-break-after: avoid;
       font-size: 9pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px;
       color: ${themePrimary}; border-bottom: 1px solid #e2e8f0; padding-bottom: 1.5mm; margin-bottom: 2.5mm;
     }
@@ -501,6 +518,7 @@ export function renderOfficialDocumentHtml(
     }
     .od-chk-row { break-inside: avoid; page-break-inside: avoid; }
     .od-chk-row td { padding: 2mm 2.5mm; border: 1px solid #e2e8f0; font-size: 9.5pt; }
+    ${model.blocks.some(block=>block.kind==='record_table')?'.od-record-table { table-layout:fixed; } .od-record-table th,.od-record-table td { overflow-wrap:anywhere; padding:1.5mm 1mm; font-size:7.5pt; letter-spacing:normal; }':''}
     .od-chk-col-n { width: 8mm; text-align: center; color: #64748b; }
     .od-chk-col-s { width: 24mm; }
     .od-chk-col-r { width: 38mm; }
@@ -549,20 +567,12 @@ export function renderOfficialDocumentHtml(
   <div class="od-page">
 
     <!-- Zone: letterhead header -->
-    <div class="od-header">
-      ${logoUrl ? `<div class="od-header-logo"><img src="${logoUrl}" alt="Company logo" onerror="this.parentElement.style.display='none'"></div>` : ""}
-      <div class="od-header-names">
-        ${companyNameEn ? `<div class="od-company-en">${elEscapeHtml(companyNameEn)}</div>` : ""}
-        ${companyNameAr ? `<div class="od-company-ar" lang="ar" dir="rtl">${elEscapeHtml(companyNameAr)}</div>` : ""}
-        ${addressBlock ? `<div class="od-header-contact">${elEscapeHtml(addressBlock)}</div>` : ""}
-        ${contactParts.length > 0 ? `<div class="od-header-contact">${contactParts.join("  ·  ")}</div>` : ""}
-      </div>
-    </div>
+    ${letterhead.markup}
 
     <!-- Zone: document metadata -->
     <div class="od-meta-strip">
       <div><strong>${refLabel}:</strong> ${elEscapeHtml(ctx.serialNo ?? "—")}</div>
-      <div><strong>${dateLabel}:</strong> ${elEscapeHtml(issuedDate)}${language === "bilingual" ? ` <span lang="ar" dir="rtl">/ ${elEscapeHtml(ctx.issuedDateAr)}</span>` : ""}</div>
+      <div class="od-issue-date">${issueDateHtml}</div>
     </div>
 
     <!-- Zone: title -->

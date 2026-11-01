@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 import {readMetadataSnapshot,saveReviewedMetadata} from "@/server/dms-reviewed-updates";
 import {
   DMS_METADATA_DEFINITION_SELECT,
@@ -81,10 +82,13 @@ export async function getMetadataDefinitionsForType(
       .order("sort_order").order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
 
 
+    const rulesResult = await supabase.rpc("ai_mod04_review_rules", { p_type: documentTypeId });
+    const rules = z.strictObject({requiredFields:z.array(z.string()).max(100),ready:z.boolean()}).safeParse(rulesResult.data);
+    if (rulesResult.error || !rules.success || (context === "intake" && !rules.data.ready)) return {success:false,error:"Document processing rules need current approval before review."};
     const mapped = (data ?? []).map((row) =>
       mapMetadataDefinitionRow(row as Record<string, unknown>)
-    );
-    const filtered = context === "detail" ? mapped.filter(row => row.show_in_detail) : filterMetadataDefinitionsByContext(mapped, context === "intake" ? "intake" : "all");
+    ).map(row => ({...row,is_required:row.is_required || rules.data.requiredFields.includes(row.field_code)}));
+    const filtered = context === "detail" ? mapped.filter(row => row.show_in_detail || row.is_required) : context === "intake" ? mapped.filter(row => row.show_in_upload_review !== false || row.is_required) : filterMetadataDefinitionsByContext(mapped,"all");
 
     return { success: true, data: filtered };
   } catch (err) {

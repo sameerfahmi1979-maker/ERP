@@ -10,6 +10,7 @@ import { DashboardSectionCard } from "./dashboard-section-card";
 import { DashboardLoadingSkeleton } from "./dashboard-loading-skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {AiQualityPanel} from '@/features/ai/quality/ai-quality-panel';
 
 interface Props {
   initialData: DailyDashboardSummary | null;
@@ -83,6 +84,7 @@ export function AiDailyDashboardPageClient({ initialData }: Props) {
       </div>
 
       {/* Generated at */}
+      <AiQualityPanel summary/>
       {data?.generatedAt && (
         <p className="text-xs text-slate-400 dark:text-slate-500">
           Generated at {new Date(data.generatedAt).toLocaleString()}

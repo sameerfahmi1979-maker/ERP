@@ -4,6 +4,8 @@ import { useState, useCallback, useTransition, useRef, useEffect } from "react";
 import { AlertTriangle, Info } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import {Button} from "@/components/ui/button";
+import {useReadCacheOwner} from "@/components/layout/read-cache-boundary";
 import { searchAcrossErp } from "@/server/actions/ai/common/search";
 import { SearchBar } from "./search-bar";
 import { SearchModeSelector } from "./search-mode-selector";
@@ -18,29 +20,36 @@ import type {
 } from "@/lib/ai/common/search/types";
 
 interface SearchPageClientProps {
+  initialRecentOwnerAuthId?:string;
   initialRecent: ErpRecentSearch[];
   aiSearchEnabled: boolean;
   semanticEnabled: boolean;
 }
 
-export function SearchPageClient({
+export function SearchPageClient(props:SearchPageClientProps){
+  const owner=useReadCacheOwner();return <SearchPageSession key={JSON.stringify([owner?.identity,owner?.generation,owner?.isLive()])} {...props}/>;
+}
+function SearchPageSession({
   initialRecent,
+  initialRecentOwnerAuthId,
   aiSearchEnabled,
   semanticEnabled,
 }: SearchPageClientProps) {
+  const owner=useReadCacheOwner();
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<ErpSearchMode>("quick_keyword");
   const [response, setResponse] = useState<ErpSearchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
-  const [recent, setRecent] = useState<ErpRecentSearch[]>(initialRecent);
+  const [recent, setRecent] = useState<ErpRecentSearch[]>(owner?.isLive()&&owner.identity?.authUserId===initialRecentOwnerAuthId?initialRecent:[]);
+  const [page,setPage]=useState(1);
   const [isPending, startTransition] = useTransition();
   const latest = useRef(0);
   useEffect(()=>()=>{latest.current++;},[]);
   const changeQuery = (value:string) => { latest.current++; setQuery(value); setResponse(null); setError(null); setHasSearched(false); };
   const changeMode = (value:ErpSearchMode) => { latest.current++; setMode(value); setResponse(null); setError(null); setHasSearched(false); };
 
-  const handleSearch = useCallback(() => {
+  const handleSearch = useCallback((nextPage=1) => {
     if (!query.trim()) return;
     setError(null);
     const request = ++latest.current;
@@ -52,9 +61,10 @@ export function SearchPageClient({
         mode,
         limit: 15,
         includeAiSignals: true,
+        page:nextPage,
       });
 
-      if (request !== latest.current) return;
+      if (request !== latest.current||!owner?.isLive()) return;
       setHasSearched(true);
 
       if (!result.success || !result.data) {
@@ -64,9 +74,10 @@ export function SearchPageClient({
       }
 
       setResponse(result.data);
+      setPage(nextPage);
       } catch { if (request === latest.current) { setError("Search could not be completed. Your search text is retained; try Search again."); setResponse(null); } }
     });
-  }, [query, mode]);
+  }, [query, mode,owner]);
 
   function handleRecentSelect(text: string) {
     changeQuery(text);
@@ -91,7 +102,7 @@ export function SearchPageClient({
       <SearchBar
         value={query}
         onChange={changeQuery}
-        onSearch={handleSearch}
+        onSearch={()=>handleSearch()}
         isSearching={isPending}
       />
 
@@ -161,7 +172,7 @@ export function SearchPageClient({
           {response.totalCount > 0 && (
             <div className="flex items-center gap-2 pb-2">
               <p className="text-sm text-muted-foreground">
-                {response.totalCount} result{response.totalCount !== 1 ? "s" : ""} shown in this search preview for{" "}
+                {response.countScope==="exact_authorized"?`${response.results.length} of ${response.totalCount} permitted results`:`${response.results.length} results shown in this search preview`} for{" "}
                 <span className="font-medium text-foreground">&ldquo;{response.query}&rdquo;</span>
               </p>
               {response.intent && (
@@ -185,6 +196,7 @@ export function SearchPageClient({
           ) : (
             <SearchEmptyState query={response.query} hasSearched={true} />
           )}
+          {response.countScope==="exact_authorized"&&response.totalCount>15&&<div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={isPending||page===1} onClick={()=>handleSearch(page-1)}>Previous</Button><span className="text-xs">Page {page} of {Math.ceil(response.totalCount/15)}</span><Button variant="outline" size="sm" disabled={isPending||!response.hasMore} onClick={()=>handleSearch(page+1)}>Next</Button></div>}
         </div>
       )}
 

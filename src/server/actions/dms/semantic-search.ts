@@ -16,6 +16,7 @@
  *  - No tags/links/metadata are auto-applied from semantic search.
  */
 
+import {filterSearchCandidateIds} from "@/server/actions/ai/search-candidates";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
@@ -564,6 +565,7 @@ export async function semanticSearchDmsDocuments(
   try {
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
+    if (!ctx.isAccountActive || ctx.profile.must_change_password) return {success:false,error:"Permission denied."};
     if (!hasPermission(ctx, "dms.documents.view") && !isAdminUser(ctx)) {
       return { success: false, error: "Permission denied." };
     }
@@ -582,7 +584,8 @@ export async function semanticSearchDmsDocuments(
     }
 
     const isAdmin = isAdminUser(ctx);
-    const queryText = question.trim().slice(0, 1_000);
+    if(question.trim().length>500)return {success:false,error:"Search is limited to 500 characters; no constraints were truncated."};
+    const queryText = question.trim();
 
     const startMs = Date.now();
     let queryEmbedding: number[] | null = null;
@@ -706,6 +709,9 @@ export async function semanticSearchDmsDocuments(
       });
     }
 
+    const allowed=await filterSearchCandidateIds({query:queryText,mode:"semantic",candidateIds:results.map(row=>row.documentId)});
+    if(!allowed.success||!allowed.data)return {success:false,error:"Semantic result constraints could not be verified."};
+    results=results.filter(row=>allowed.data!.includes(row.documentId));
     durationMs = Date.now() - startMs;
 
     // Usage log (no query text)

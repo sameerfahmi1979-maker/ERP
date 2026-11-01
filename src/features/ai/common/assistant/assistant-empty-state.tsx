@@ -3,12 +3,12 @@
 import { Bot, MessageSquare } from "lucide-react";
 
 const EXAMPLE_PROMPTS = [
-  "Show me high risk parties",
-  "Explain why company #5 is high risk",
-  "Find parties named Alliance",
-  "What are the open compliance issues for party #12?",
-  "Prepare a renewal note for license expiring soon",
-  "Open party record #42",
+  "Show ISO certificates",
+  "When does this document expire?",
+  "Who are this employee's dependents?",
+  "How many documents expire next month grouped by type?",
+  "Show my daily work briefing",
+  "How do I renew this document?",
 ];
 
 interface AssistantEmptyStateProps {

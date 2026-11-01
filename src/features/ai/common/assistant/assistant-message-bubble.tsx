@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Bot, User, AlertOctagon, Info, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AssistantDraftCard } from "./assistant-draft-card";
+import {AiFeedback} from '@/features/ai/quality/ai-feedback';
 import type { AssistantMessageRow, AssistantDraftRow } from "@/lib/ai/common/assistant/types";
 
 interface AssistantMessageBubbleProps {
@@ -67,6 +68,7 @@ export function AssistantMessageBubble({
       >
         {/* Message text — render with basic markdown-ish formatting */}
         <div className="whitespace-pre-wrap leading-relaxed">{message.messageText}</div>
+        {!isUser && (message.safeMetadataJson.ai_mod05_authority != null||message.safeMetadataJson.ai_mod05_feedbackEligible===true) && <AiFeedback source={{kind:'assistant',id:message.id,documentId:null}}/>}
 
         {/* Search results */}
         {searchResultSummary.length > 0 && (

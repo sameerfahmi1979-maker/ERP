@@ -1,0 +1,33 @@
+-- Append to the unchanged synthetic native fixture prefix, in a disconnected
+-- schema-only rehearsal. Never execute these fixtures against the live ERP.
+SET ROLE authenticated;
+SELECT pg_temp.ok(public.f03_current_session_valid(),'compatibility fixture uses a current native session');
+SELECT pg_temp.ok((SELECT count(*) FROM public.ai_mod02_search_documents('',false,NULL,NULL,ARRAY[1001]::bigint[]) WHERE deleted_at IS NULL AND content_tsv @@ to_tsquery('simple','''synthetic'''))=3,'native AI-search vector query uses the protected document reader');
+SELECT set_config('test.compat.workflow',public.f05_save_dms_workflow(NULL,NULL,jsonb_build_object('workflow_code','SYN_COMPAT','name_en','SYNTHETIC explicit route','owner_company_id',1001,'branch_id',1001,'document_type_ids',jsonb_build_array(1001),'is_active',true,'steps',jsonb_build_array(jsonb_build_object('step_code','REVIEW','step_name','Review','is_initial',true,'is_final',true,'sort_order',0,'assignee_profile_ids',jsonb_build_array(1002,1003),'decision_rule','all_assigned'))))::text,false);
+SELECT set_config('test.compat.id',(current_setting('test.compat.workflow')::jsonb->>'id'),false);
+SELECT set_config('test.compat.legacy','{"name_en":"SYNTHETIC legacy label edit","steps":[{"step_code":"REVIEW","step_name":"Review changed label","is_initial":true,"is_final":true,"sort_order":0}]}',false);
+SELECT public.f05_save_dms_workflow(current_setting('test.compat.id')::bigint,(SELECT updated_at FROM public.dms_document_workflows WHERE id=current_setting('test.compat.id')::bigint),current_setting('test.compat.legacy')::jsonb);
+SELECT pg_temp.ok((SELECT assignee_profile_ids=ARRAY[1002,1003]::bigint[] AND decision_rule='all_assigned' FROM public.dms_document_workflow_steps WHERE workflow_id=current_setting('test.compat.id')::bigint AND step_code='REVIEW'),'legacy omission preserves independent reviewers and all-assigned rule');
+SELECT pg_temp.ok((SELECT owner_company_id=1001 AND branch_id=1001 FROM public.dms_document_workflows WHERE id=current_setting('test.compat.id')::bigint),'legacy omission does not remove the reviewed company/branch');
+SELECT pg_temp.error($q$SELECT public.f05_save_dms_workflow(current_setting('test.compat.id')::bigint,(SELECT updated_at FROM public.dms_document_workflows WHERE id=current_setting('test.compat.id')::bigint),jsonb_set(current_setting('test.compat.legacy')::jsonb,'{steps,0,assignee_profile_ids}','[]'))$q$,'22023','explicit empty reviewers cannot activate an unmapped route');
+SELECT pg_temp.error($q$SELECT public.f05_save_dms_workflow(current_setting('test.compat.id')::bigint,(SELECT updated_at FROM public.dms_document_workflows WHERE id=current_setting('test.compat.id')::bigint),jsonb_set(current_setting('test.compat.legacy')::jsonb,'{steps,0,assignee_profile_ids}','null'))$q$,'22023','explicit null reviewers are invalid rather than omitted');
+SELECT pg_temp.error($q$SELECT public.f05_save_dms_workflow(current_setting('test.compat.id')::bigint,(SELECT updated_at FROM public.dms_document_workflows WHERE id=current_setting('test.compat.id')::bigint),jsonb_set(current_setting('test.compat.legacy')::jsonb,'{steps,0,decision_rule}','null'))$q$,'22023','explicit null rule is invalid rather than silently defaulted');
+SELECT pg_temp.ok((SELECT assignee_profile_ids=ARRAY[1002,1003]::bigint[] AND decision_rule='all_assigned' FROM public.dms_document_workflow_steps WHERE workflow_id=current_setting('test.compat.id')::bigint AND step_code='REVIEW'),'rejected legacy edits retain the entire original route');
+SELECT pg_temp.error($q$SELECT public.f05_save_dms_workflow(NULL,NULL,'{"workflow_code":"SYN_UNMAPPED","name_en":"SYNTHETIC unmapped legacy route","is_active":true,"steps":[{"step_code":"REVIEW","step_name":"Review","is_initial":true,"is_final":true,"sort_order":0}]}')$q$,'22023','old new-route payload remains held without guessed company or reviewers');
+INSERT INTO public.dms_expiry_reminders(document_id,reminder_days_before,reminder_date,status)VALUES(1001,30,'2027-12-01','pending')ON CONFLICT(document_id,reminder_days_before)DO UPDATE SET reminder_date=excluded.reminder_date;
+INSERT INTO public.dms_expiry_reminders(document_id,reminder_days_before,reminder_date,status)VALUES(1001,30,'2027-12-01','pending')ON CONFLICT(document_id,reminder_days_before)DO UPDATE SET reminder_date=excluded.reminder_date;
+SELECT pg_temp.ok((SELECT count(*)FROM public.dms_expiry_reminders WHERE document_id=1001 AND reminder_days_before=30)=1,'deployed two-column reminder upsert remains valid before cutover');
+SELECT pg_temp.ok(public.ai_mod04_schedule_reminders(1001,ARRAY[30])->>'state'='reconciled','new local scheduler works before the cycle-key cutover');
+SELECT pg_temp.ok(public.ai_mod04_schedule_reminders(1001,ARRAY[30])->>'created'='0','retry keeps the original current-cycle reminder');
+SELECT set_config('test.compat.reminder',(SELECT id::text FROM public.dms_expiry_reminders WHERE document_id=1001 AND reminder_days_before=30),false);
+RESET ROLE;
+UPDATE public.dms_documents SET expiry_date='2028-12-31' WHERE id=1001;
+SET ROLE authenticated;
+SELECT pg_temp.ok(public.ai_mod04_schedule_reminders(1001,ARRAY[30])->>'state'='held_historical_cycle_collision','old key explicitly holds a changed cycle without recycling history');
+SELECT pg_temp.ok((SELECT id::text=current_setting('test.compat.reminder') AND reminder_date='2027-12-01' FROM public.dms_expiry_reminders WHERE document_id=1001 AND reminder_days_before=30),'historical reminder date and identity remain intact');
+SELECT pg_temp.error($q$SELECT public.ai_mod04_schedule_reminders(999999,ARRAY[30])$q$,'42501','new scheduler rejects an unavailable document');
+SELECT pg_temp.error($q$SELECT public.ai_mod04_schedule_reminders(1001,ARRAY[]::integer[])$q$,'22023','new scheduler rejects an empty schedule');
+SELECT pg_temp.error($q$SELECT public.ai_mod04_schedule_reminders(1001,ARRAY[NULL]::integer[])$q$,'22023','new scheduler rejects null days');
+SELECT pg_temp.ok(NOT has_function_privilege('anon','public.ai_mod04_schedule_reminders(bigint,integer[])','EXECUTE') AND NOT has_function_privilege('service_role','public.ai_mod04_schedule_reminders(bigint,integer[])','EXECUTE'),'interactive scheduler is not an anonymous or worker bypass');
+SELECT jsonb_build_object('result','passed','assertions',current_setting('test.assertions')::int,'legacyNewRoute','held_without_mapping','legacyReminderWriter','compatible_before_cycle_cutover','productionChanges',false);
+ROLLBACK;

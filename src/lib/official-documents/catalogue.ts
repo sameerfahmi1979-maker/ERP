@@ -5,6 +5,7 @@ import type { OfficialDocumentDefinition, OfficialDocumentLanguage } from "./typ
 export function officialWordingBlockers(def: OfficialDocumentDefinition, language: OfficialDocumentLanguage): string[] {
   const errors = validateOfficialDocumentDefinition(def);
   if (def.status !== "published") errors.push("Approved wording is not available.");
+  if (def.wordingReviewOnly) errors.push('Source-verified workflow integration is required before official issuance.');
   if (!def.supportedLanguages.includes(language)) errors.push("The requested language is not supported.");
   const languages = language === "bilingual" ? ["en", "ar"] as const : [language];
   for (const variant of languages) {
@@ -23,6 +24,7 @@ export function officialTemplateCatalogue() {
     code: def.documentCode, version: def.version, module: def.moduleCode,
     subject: def.recordType, purpose: def.businessPurpose, titleEn: def.titleEn,
     titleAr: def.titleAr ?? null, status: def.status,
+    sourceWorkflowPending:!!def.wordingReviewOnly,sourceWorkflowReason:def.sourceWorkflowReason??null,
     outputClass: "official_document" as const, formats: ["pdf"] as const,
     page: { widthMm: 210, heightMm: 297, orientation: "portrait" as const },
     languages: def.supportedLanguages.map(language => ({ language, officialBlockers: officialWordingBlockers(def, language) })),

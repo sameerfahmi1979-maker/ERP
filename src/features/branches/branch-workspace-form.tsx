@@ -34,6 +34,7 @@ import {
   ERPRecordSectionPanel,
 } from "@/components/workspace/erp-record-workspace-form";
 import { DmsEntityDocumentsTab } from "@/features/dms/entity-documents";
+import { ReviewedFormSuggestions } from "@/features/ai/common/field-suggestions/reviewed-form-suggestions";
 
 type BranchWorkspaceFormProps = {
   branch?: BranchWithCompany | null;
@@ -337,6 +338,7 @@ function BranchWorkspaceFormFields({ branch, companies = [], mode, authContext }
       isSubmitting={isSubmitting}
     >
       <form id={FORM_ID} onSubmit={(e) => { e.preventDefault(); handleSaveAndClose(); }} onInput={syncDraft} onChange={syncDraft}>
+        {!isViewing && activeSection === "basic" && <ReviewedFormSuggestions formId={FORM_ID} entityType="branch" entityId={session.savedId} disabled={disabled} />}
         {(recoveryNotice || session.uncertain) && <p role="status" className="mb-4 text-sm text-muted-foreground">{recoveryNotice ?? session.recoveryError ?? "The last save is unconfirmed. Click Save again to recover the same submitted change."}</p>}
         <ERPRecordSectionPanel id="basic" activeId={activeSection} title="Basic Branch Details">
           <div className="grid grid-cols-12 gap-4">

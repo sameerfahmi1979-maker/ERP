@@ -9,7 +9,7 @@ import {Label} from '@/components/ui/label';
 import {Textarea} from '@/components/ui/textarea';
 import {useReadLifetime} from '@/hooks/use-read-lifetime';
 import {readSubjectPhotos} from '@/server/actions/hr/subject-photo';
-import {readPhotoDocumentTypes,readPhotoFramingSource,readSavedSubjectPhoto} from '@/server/actions/hr/photo-controls';
+import {readPhotoFramingSource,readSavedSubjectPhoto} from '@/server/actions/hr/photo-controls';
 import {defaultPhotoCrop,parsePhotoFraming,type PhotoSource} from '@/lib/hr/photo-framing';
 import type {SubjectPhotoDraft} from './use-subject-photo-draft';
 import {PhotoThumbnail} from './photo-thumbnail';
@@ -37,7 +37,6 @@ function Photo({employee,dependent=null,subject,identity,value,disabled,onValue,
  const selected=useQuery({queryKey:['hr','subject-photo',identity,employee,dependent,value],enabled:life.enabled&&saved&&value!==null,gcTime:0,staleTime:0,retry:false,refetchOnWindowFocus:false,queryFn:async()=>{const r=await readSubjectPhotos({employee,dependent,document:value});if(!life.active)throw Error('Photo opening retired.');if(!r.success)throw Error(r.error);return r.rows.find(x=>x.document_id===value)??null;}});
  const choices=useQuery({queryKey:['hr','subject-photo-choices',identity,employee,dependent,search,after],enabled:life.enabled&&saved&&!disabled,gcTime:0,staleTime:0,retry:false,refetchOnWindowFocus:false,queryFn:async()=>{const r=await readSubjectPhotos({employee,dependent,document:null,search,after});if(!life.active)throw Error('Photo opening retired.');if(!r.success)throw Error(r.error);return r;}});
  const state=useQuery({queryKey:['hr','subject-photo-state',identity,employee,dependent,value,framing],enabled:life.enabled&&saved&&value!==null,gcTime:0,staleTime:0,retry:false,queryFn:async()=>{const r=await readSavedSubjectPhoto({employee,dependent});if(!life.active||!r.success)throw Error('Photo access unavailable.');return r;}});
- const types=useQuery({queryKey:['hr','photo-types',identity],enabled:life.enabled&&!!draft&&!disabled,gcTime:0,staleTime:0,retry:false,queryFn:async()=>{const r=await readPhotoDocumentTypes();if(!life.active||!r.success)throw Error(r.success?'Photo opening retired.':r.error);return r.rows;}});
  const options=(choices.data?.rows??[]).map(x=>({value:x.document_id,label:x.label}));
  if(value!==null&&!options.some(x=>x.value===value))options.unshift({value,label:!selected.isError?selected.data?.label??'Recorded photo #'+value+' (revalidation required)':'Recorded photo #'+value+' (revalidation required)'});
  const token=selected.isSuccess&&!selected.isFetching&&selected.data?[selected.data.document_id,selected.data.version_id,selected.data.file_id].join(':'):null;
@@ -59,9 +58,8 @@ function Photo({employee,dependent=null,subject,identity,value,disabled,onValue,
  {choices.data?.hasMore&&<Button type="button" variant="outline" onClick={()=>setAfter(choices.data.rows.at(-1)!.document_id)}>More photos</Button>}{after>0&&<Button type="button" variant="outline" onClick={()=>setAfter(0)}>First photos</Button>}</>}
  {draft&&!disabled&&<>
  <label className="block text-sm">{value?'Replace photo':'Upload photo'}<Input type="file" accept="image/jpeg,image/png,image/webp" disabled={disabled||draft.busy} onChange={e=>{const f=e.target.files?.[0];if(f)void act(async()=>{const source=await draft.choose(f);if(!life.active)return;setFailed(null);onFraming?.(JSON.stringify(draft.retained?.framing??{version:1,source,rotation:0,crop:defaultPhotoCrop(source)}),true);});e.target.value='';}}/></label>
- {(draft.local||draft.retained)&&<div className="space-y-2"><ERPCombobox ariaLabel="Photo document type" value={draft.typeId} options={(types.data??[]).map(t=>({value:t.id,label:t.type_code+' — '+t.name_en}))} disabled={!!locked||types.isError} onValueChange={v=>draft.setTypeId(v?Number(v):null)}/>
- {types.data?.find(t=>t.id===draft.typeId)?.requires_expiry_tracking&&<label className="block text-sm">Photo document expiry<Input type="date" required value={draft.expiry} disabled={!!locked} onChange={e=>draft.setExpiry(e.target.value)}/></label>}
- {types.isSuccess&&types.data.length===0&&<p role="alert">No permitted photo document type is configured. An administrator must configure a suitable type before upload.</p>}
+ {(draft.local||draft.retained)&&<div className="space-y-2">
+ {draft.requiresExpiry&&!draft.retained&&<label className="block text-sm">Photo document expiry<Input type="date" required value={draft.expiry} disabled={!!locked} onChange={e=>draft.setExpiry(e.target.value)}/></label>}
  <p className="text-xs text-muted-foreground">{draft.retained?.receipt?'Photo uploaded; profile update pending. Retry Save.':draft.retained?'Upload retained. Retry Save with the same file to finish safely.':'Photo and framing are unsaved. Use the form’s Save button.'}</p></div>}
  {draft.details&&<div className="space-y-2"><p className="text-sm">Complete the required photo details, then use Save again.</p>{draft.details.definitions.filter(d=>d.is_required).map(def=>{
   const existing=draft.details!.values.find(v=>v.definition_id===def.id),old=existing?.value_text??existing?.value_number??existing?.value_date??existing?.value_datetime??existing?.value_boolean??existing?.value_json;
@@ -87,7 +85,7 @@ function Photo({employee,dependent=null,subject,identity,value,disabled,onValue,
  <p className="text-xs text-muted-foreground">Saved with this form. Removing a photo does not delete its original document. Downloads use the last saved photo.</p>
  {staleFrame&&<p role="alert" className="text-sm text-destructive">The original photo version changed. Review its framing before saving or downloading.</p>}
  {parsedFrame.invalid&&<p role="alert" className="text-sm text-destructive">The retained framing is invalid. Adjust the current photo before saving.</p>}
- {(selected.isError||choices.isError||state.isError||types.isError||token===failed&&token!==null||error||draft?.blocked)&&<p role="alert" className="text-sm text-destructive">{error||'Photo unavailable or restricted. The recorded selection is retained.'}</p>}
+ {(selected.isError||choices.isError||state.isError||token===failed&&token!==null||error||draft?.blocked)&&<p role="alert" className="text-sm text-destructive">{error||'Photo unavailable or restricted. The recorded selection is retained.'}</p>}
  </div></div>
  {editor&&!locked&&<Editor url={editor.url} source={editor.source} initial={frame?.source.sha256===editor.source.sha256?frame:null} onCancel={()=>setEditor(null)} onApply={v=>{if(life.active){onFraming?.(JSON.stringify(v),!!draft?.local);setEditor(null);}}}/ >}
  </section>;

@@ -36,7 +36,7 @@ export function HrDocumentConflictCard({ conflict, onResolve }: Props) {
                   : "border-yellow-300 bg-white dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
               )}
             >
-              <span className="block font-medium">{v.value}</span>
+              <span className="block font-medium">{v.displayValue ?? v.value}</span>
               <span className="block text-[10px] text-yellow-600 dark:text-yellow-500 mt-0.5">
                 {v.sourceDocumentTitle} · {Math.round(v.confidence * 100)}%
               </span>

@@ -5,9 +5,10 @@ import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/reac
 import {FluentProvider,webLightTheme} from '@fluentui/react-components';
 import {TemplateForm} from '@/features/report-center/template-form';
 import type {ReportTemplate,ReportBrandingProfile} from '@/lib/report-center/types';
-const m=vi.hoisted(()=>({create:vi.fn(),update:vi.fn(),read:vi.fn(),saved:vi.fn(),close:vi.fn(),toast:vi.fn()}));
+const m=vi.hoisted(()=>({create:vi.fn(),update:vi.fn(),read:vi.fn(),amend:vi.fn(),amendRead:vi.fn(),saved:vi.fn(),close:vi.fn(),toast:vi.fn()}));
 vi.mock('sonner',()=>({toast:{success:m.toast,error:vi.fn()}}));
 vi.mock('@/server/actions/reports/templates',()=>({createReportTemplate:m.create,updateReportTemplate:m.update,getReportTemplate:m.read}));
+vi.mock('@/server/actions/reports/template-amendments',()=>({saveTemplateAmendment:m.amend,getTemplateAmendment:m.amendRead}));
 const template={id:2,workspace_revision:4,template_code:'F06_TEST',template_name:'Synthetic template',template_type:'letter',branding_profile_id:null,default_orientation:'portrait',page_size:'a4',language_mode:'en',font_family:'Inter',show_logo:false,show_small_logo:false,show_address:false,show_trn:false,show_license:false,show_signatory:false,show_stamp:false,show_watermark:false,is_default:false,is_active:false,governance_status:'draft'} as ReportTemplate;
 beforeEach(()=>{vi.resetAllMocks();m.create.mockResolvedValue({success:true,data:{id:9,revision:'1',changed:true,replayed:false,owner_company_id:null}});m.update.mockResolvedValue({success:true,data:{id:2,revision:'5',changed:true,replayed:false,owner_company_id:null}});m.read.mockResolvedValue({success:true,data:{...template,workspace_revision:5,template_name:'Authoritative saved name'}});});afterEach(cleanup);
 function ui(t:ReportTemplate|null=template){return <FluentProvider theme={webLightTheme}><TemplateForm open template={t} profiles={[]} onSaved={m.saved} onOpenChange={m.close}/></FluentProvider>;}
@@ -36,4 +37,13 @@ it('signing controls are enabled only by the selected profile capability',()=>{
  const profile={id:7,owner_company_id:1,profile_name:'Company A',profile_type:'company',is_active:true,can_manage:true,can_sign:true} as ReportBrandingProfile;
  render(<FluentProvider theme={webLightTheme}><TemplateForm open template={{...template,branding_profile_id:7}} profiles={[profile]} onSaved={m.saved} onOpenChange={m.close}/></FluentProvider>);
  const stamp=screen.getByRole('switch',{name:'Show Stamp'});expect(stamp.getAttribute('aria-disabled')).not.toBe('true');fireEvent.click(stamp);expect(stamp.getAttribute('aria-checked')).toBe('true');
+});
+it('same-template edits save a private amendment and reload it rather than replacing published data',async()=>{
+ m.amend.mockResolvedValue({success:true,data:{id:2,revision:'5',changed:true,replayed:false,owner_company_id:null}});
+ m.amendRead.mockResolvedValue({success:true,data:{template:{...template,workspace_revision:'5',template_name:'Saved pending settings'}}});
+ render(<FluentProvider theme={webLightTheme}><TemplateForm open template={{...template,governance_status:'published',is_active:true}} profiles={[]} adminAmendment onSaved={m.saved} onOpenChange={m.close}/></FluentProvider>);
+ fireEvent.change(screen.getByRole('textbox',{name:'Name'}),{target:{value:'Changed pending settings'}});fireEvent.click(screen.getByRole('button',{name:'Save pending changes'}));
+ await waitFor(()=>expect(m.saved).toHaveBeenCalledWith(expect.objectContaining({id:2,template_name:'Saved pending settings'}),false));
+ expect(m.amend).toHaveBeenCalledWith(expect.objectContaining({id:2,template_name:'Changed pending settings'}),expect.objectContaining({revision:'4'}));
+ expect(m.update).not.toHaveBeenCalled();expect(m.read).not.toHaveBeenCalled();expect(m.create).not.toHaveBeenCalled();
 });

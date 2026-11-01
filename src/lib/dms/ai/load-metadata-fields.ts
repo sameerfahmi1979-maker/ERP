@@ -13,7 +13,7 @@ export async function loadMetadataFieldsForDocumentType(
   documentTypeId: number,
   context: DmsMetadataDefinitionContext = "all"
 ): Promise<DmsAiMetadataField[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("dms_metadata_definitions")
     .select(DMS_METADATA_DEFINITION_SELECT)
     .eq("document_type_id", documentTypeId)
@@ -21,6 +21,7 @@ export async function loadMetadataFieldsForDocumentType(
     .is("deleted_at", null)
     .order("sort_order", { ascending: true });
 
+  if(error)throw Error("Registered metadata definitions are unavailable.");
   const mapped = (data ?? []).map((row) =>
     mapMetadataDefinitionRow(row as Record<string, unknown>)
   );

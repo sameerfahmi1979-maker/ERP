@@ -1,5 +1,6 @@
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import type {AuthContext} from "@/lib/rbac/check";
+vi.mock("@/server/ai/search/document-query",async()=>({prepareDocumentQuery:async(db:{from:(table:string)=>{select:(s:string,o:unknown)=>{or:(s:string)=>unknown}}},query:string)=>({query:db.from("dms_documents").select("id",{count:"exact"}).or(`title.ilike."%${query}%",document_no.ilike."%${query}%"`)})}));
 type Row = Record<string, unknown>;
 type Call = {table: string; methods: unknown[][]};
 const state = vi.hoisted(() => ({ctx: {} as AuthContext, authorizations: 0, clients: 0, calls: [] as Call[], rows: {} as Record<string, Row[]>, fault: "", malformed: "", short: "", count: undefined as number | null | undefined, range416: false,
@@ -18,6 +19,10 @@ vi.mock("@/lib/supabase/server", () => ({createClient: async () => {
           if (method === "is") rows = rows.filter(row => (row[String(key)] ?? null) === value);
           if (method === "in") rows = rows.filter(row => (value as unknown[]).includes(row[String(key)]));
           if (method === "ilike") {const term = String(value).slice(1, -1).replace(/\\([%_\\])/g, "$1").toLowerCase(); rows = rows.filter(row => String(row[String(key)] ?? "").toLowerCase().includes(term));}
+          if (method === "or" && String(key).startsWith("title.ilike")) {
+            const term = String(key).match(/title\.ilike\."%([^%]*)%"/)?.[1].toLowerCase() ?? "NEVER_MATCH";
+            rows = rows.filter(row => String(row.title ?? "").toLowerCase().includes(term) || String(row.document_no ?? "").toLowerCase().includes(term));
+          }
           if (method === "or" && String(key).startsWith("employee_status")) rows = rows.filter(row => row.employee_status !== "active");
           if (method === "or" && String(key).startsWith("full_name_en")) {
             const expression = String(key), ids = expression.match(/id\.in\.\(([^)]+)\)/)?.[1].split(",").map(Number) ?? [];

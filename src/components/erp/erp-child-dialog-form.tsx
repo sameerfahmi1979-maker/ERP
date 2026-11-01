@@ -26,6 +26,7 @@ const SIZE_CLASSES: Record<string, string> = {
   md: "sm:max-w-[720px]",
   lg: "sm:max-w-[960px]",
   xl: "sm:max-w-[1120px]",
+  workbench: "sm:max-w-[85vw] h-[85dvh]",
 };
 
 export type ERPChildDialogFormProps = {
@@ -50,6 +51,9 @@ export type ERPChildDialogFormProps = {
   /** Explicit receipt-preserving recovery only; stays reachable while ordinary
    * editing/save/cancel controls are inert. Caller owns retirement/reconciliation. */
   recoveryActions?: ReactNode;
+  /** Opt-in layout/action slots for document preparation; defaults stay intact. */
+  bodyClassName?: string;
+  footerActions?: ReactNode;
   children: ReactNode;
 };
 
@@ -86,6 +90,8 @@ function ChildDialogSession({
   submitLabel,
   cancelLabel = "Cancel",
   recoveryActions,
+  bodyClassName,
+  footerActions,
   children,
 }: ERPChildDialogFormProps) {
   // Track programmatic closes (Cancel/X/Save) to block outside-click and Esc.
@@ -213,7 +219,7 @@ function ChildDialogSession({
         </div>
 
         {/* ── Body (scrollable) ───────────────────────────────────────── */}
-        <div ref={body} className="flex-1 overflow-y-auto p-6 min-h-0" inert={busy || undefined}
+        <div ref={body} className={cn("flex-1 overflow-y-auto p-6 min-h-0", bodyClassName)} inert={busy || undefined}
           onChangeCapture={event => {
             setEdited(true);
             if (!issues.length || !body.current) return;
@@ -249,6 +255,8 @@ function ChildDialogSession({
             {cancelLabel}
           </Button>
 
+          <fieldset disabled={busy || confirmDiscard} className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+          {footerActions}
           {mode !== "view" && onSubmit && (
             <Button
               type="button"
@@ -267,6 +275,7 @@ function ChildDialogSession({
               Close
             </Button>
           )}
+          </fieldset>
         </div>
       </DialogContent>
     </Dialog>

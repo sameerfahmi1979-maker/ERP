@@ -1,0 +1,12 @@
+import { beforeEach, it, expect, vi } from "vitest";
+const s = vi.hoisted(() => ({ ask: vi.fn() }));
+vi.mock("@/server/ai/assistant/questions", () => ({ answerAssistantQuestion: (...a: unknown[]) => s.ask(...a) }));
+import { POST } from "@/app/api/v1/assistant/query/route";
+const request = (value: unknown = { question: "Show ISO certificates" }) => new Request("http://local.invalid/api/v1/assistant/query", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) });
+beforeEach(() => { vi.resetAllMocks(); s.ask.mockResolvedValue({ success: true, data: { outcome: "available", answer: "Synthetic answer" } }); });
+it("uses private no-store response headers and caller cancellation", async () => { const req = request(), r = await POST(req); expect(r.status).toBe(200); expect(r.headers.get("Cache-Control")).toContain("no-store"); expect(r.headers.get("Vary")).toBe("Cookie"); expect(s.ask.mock.calls[0][1]).toBe(req.signal); });
+it("rejects oversized inputs before provider work", async () => { expect((await POST(request({ question: "x".repeat(5000) }))).status).toBe(400); expect(s.ask).not.toHaveBeenCalled(); });
+it("does not echo an internal source failure", async () => { s.ask.mockResolvedValue({ success: false, error: "SYNTHETIC secret source failure" }); const r = await POST(request()); expect(r.status).toBe(503); expect(await r.text()).not.toContain("secret source"); });
+it("preserves explicit invalid/permission outcomes", async () => { s.ask.mockResolvedValue({ success: false, error: "Permission denied" }); expect((await POST(request())).status).toBe(403); s.ask.mockResolvedValue({ success: false, error: "Invalid assistant question" }); expect((await POST(request())).status).toBe(400); });
+it("rejects invalid content types and malformed JSON", async () => { expect((await POST(new Request("http://local.invalid", { method: "POST", body: "text" }))).status).toBe(400); expect((await POST(new Request("http://local.invalid", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{" }))).status).toBe(400); expect(s.ask).not.toHaveBeenCalled(); });
+it("does not start a cancelled read", async () => { const controller = new AbortController(); controller.abort(); const req = new Request("http://local.invalid", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}", signal: controller.signal }); expect((await POST(req)).status).toBe(400); expect(s.ask).not.toHaveBeenCalled(); });

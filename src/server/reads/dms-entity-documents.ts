@@ -1,4 +1,5 @@
 import "server-only";
+import {prepareDocumentQuery} from "@/server/ai/search/document-query";
 import {z} from "zod";
 import {getAuthContext,hasPermission,type AuthContext} from "@/lib/rbac/check";
 import {createClient} from "@/lib/supabase/server";
@@ -24,7 +25,6 @@ class TooLarge extends Error{}
 class ParentUnavailable extends Error{}
 const DOC_FIELDS="id,document_no,title,status,deleted_at,legacy_document_code,description,confidentiality_level,issue_date,expiry_date,migrated_from_table,document_type_id,document_type:dms_document_types(type_code,name_en),ai_risk_level,ai_risk_score,completeness_score,created_at,updated_at";
 const batches=(ids:number[])=>Array.from({length:Math.ceil(ids.length/BATCH)},(_,i)=>ids.slice(i*BATCH,(i+1)*BATCH));
-const pattern=(s:string)=>`"%${s.replace(/\\/g,"\\\\").replace(/"/g,'\\"')}%"`;
 export const ENTITY_DOCUMENT_PARENTS:Readonly<Record<string,{table:string;soft:boolean}>>={company:{table:"owner_companies",soft:false},branch:{table:"branches",soft:false},site:{table:"work_sites",soft:true},party:{table:"parties",soft:false},employee:{table:"employees",soft:true},employee_dependent:{table:"employee_dependents",soft:true}};
 type Collection={kind:"list";rows:DmsEntityDocumentRow[]}|{kind:"attach";rows:AvailableDmsDocumentOption[]}|{kind:"summary";summary:DmsEntityDocumentComplianceSummary};
 
@@ -86,7 +86,8 @@ async function execute(input:unknown,context:AuthContext|undefined,callerSignal:
         docs=await readDocs(p.documentIds);
         if(docs.length!==p.documentIds.length||docs.some(d=>d.deleted_at!==null||d.status==="deleted"||linkedIds.includes(d.id)))return output({criteria:p,asOf,availability:"unavailable"});
       }else{
-        docs=await complete(()=>{const q=select("dms_documents",DOC_FIELDS).is("deleted_at",null).neq("status","deleted");if(p.search)q.or(`document_no.ilike.${pattern(p.search)},title.ilike.${pattern(p.search)}`);return q.order("created_at",{ascending:false}).order("id",{ascending:false});},documentSchema);
+        const shared=p.search?await prepareDocumentQuery(db,p.search,ctx,{signal}):null;
+        docs=await complete(()=>{const q=shared?shared.query.select(DOC_FIELDS).is("deleted_at",null).not("status","eq","deleted"):select("dms_documents",DOC_FIELDS).is("deleted_at",null).neq("status","deleted");return q.order("created_at",{ascending:false}).order("id",{ascending:false}) as unknown as Query;},documentSchema);
         docs=docs.filter(d=>!linkedIds.includes(d.id));
       }
       const totalCount=docs.length,window=p.operation==="selected"||legacy?docs:docs.slice(p.offset,p.offset+p.limit),rows=await enrich(window);

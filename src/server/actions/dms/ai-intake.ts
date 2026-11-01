@@ -2,6 +2,9 @@
 import {discardRetainedIntake} from '@/server/dms-intake-discard';
 import {recoverNumberedAiApproval} from '@/server/dms-ai-approval-recovery';
 import {verifyAndAttestIntakeSource} from '@/server/dms-intake-source-attestation';
+import {reviewedCall} from '@/server/dms-reviewed-updates';
+import {rerunRetainedIntakeMetadata} from "@/server/dms-intake-rereview";
+import {prepareIntakeOutput} from '@/lib/dms/preparation/intake';
 
 /**
  * DMS.11 — Option A AI-First Upload-Session Intake Server Actions
@@ -22,7 +25,6 @@ import { getAzureDocumentIntelligenceProvider, getDmsAiProvider } from "@/lib/dm
 import { loadMetadataFieldsForDocumentType } from "@/lib/dms/ai/load-metadata-fields";
 import { hashOcrText, PROMPT_VERSION } from "@/lib/dms/ai/prompt-builders";
 import type {
-  DmsAiDocumentTypeCandidate,
   DmsAiImageFile,
   DmsAiMetadataField,
   DmsAiOutput,
@@ -129,6 +131,7 @@ function canViewIntake(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type ActionResult<T = unknown> = {
+  uncertain?: boolean;
   success: boolean;
   data?: T;
   error?: string;
@@ -179,6 +182,7 @@ export type IntakeSessionData = {
   uploaded_at: string;
   ai_result?: IntakeAiResultRow | null;
   draft_values?: IntakeReviewValueRow[] | null;
+  draft_snapshot?: string | null;
 };
 
 export type IntakeReviewValueRow = {
@@ -777,6 +781,19 @@ export async function startAiIntakeFromUploadSession(
 
     // ── Store AI result ────────────────────────────────────────────────────
 
+    // Only an existing, ordinarily authorized source relationship may supply a
+    // subject name. AI-detected people, filenames and party-name matches cannot.
+    let verifiedSubject: import('@/lib/dms/preparation/contracts').PreparationSnapshot['subject'] = null;
+    if (typedSession.origin_entity_type === 'employee' && Number.isSafeInteger(typedSession.origin_entity_id)) {
+      const subject = await supabase.from('employees').select('id,full_name_en').eq('id', Number(typedSession.origin_entity_id)).is('deleted_at',null).maybeSingle();
+      if (subject.data) verifiedSubject = {kind:'employee',id:subject.data.id,name:subject.data.full_name_en};
+    } else if (typedSession.origin_entity_type === 'employee_dependent' && Number.isSafeInteger(typedSession.origin_entity_id)) {
+      const subject = await supabase.from('employee_dependents').select('id,dependent_name_en').eq('id',Number(typedSession.origin_entity_id)).is('deleted_at',null).maybeSingle();
+      if (subject.data) verifiedSubject = {kind:'employee_dependent',id:subject.data.id,name:subject.data.dependent_name_en};
+    }
+    const preparedType = suggestedTypeId ? await supabase.from("dms_document_types").select("name_en").eq("id",suggestedTypeId).is("deleted_at",null).maybeSingle() : null;
+    const prepared = prepareIntakeOutput(aiOutput,{typeCode:aiOutput.classification.suggestedTypeCode,typeName:preparedType?.data?.name_en??null,originalName:originalFilename,
+      verifiedSubject,sourceHash:String(typedSession.sha256_hash??'')});
     const resultPayload = {
         job_id: jobId,
         document_id: null,
@@ -792,12 +809,12 @@ export async function startAiIntakeFromUploadSession(
         suggested_links_json: suggestedLinks,
         issue_date_suggestion: aiOutput.extraction.issueDateSuggestion ?? null,
         expiry_date_suggestion: aiOutput.extraction.expiryDateSuggestion ?? null,
-        suggested_title: aiOutput.extraction.suggestedTitle?.slice(0, 500) ?? null,
+        suggested_title: prepared.title,
         suggested_description: aiOutput.extraction.suggestedDescription?.slice(0, 2000) ?? null,
         review_action: null,
         reviewed_by: null,
         reviewed_at: null,
-        raw_response_json: sanitizedResponse,
+        raw_response_json: {...sanitizedResponse,preparation:prepared},
         // For image-based docs (passports, Emirates IDs, certificates, scanned PDFs)
         // local OCR produces no text — use the AI's full_text_transcription instead.
         // For digital PDFs/DOCX, use the locally extracted text (more reliable).
@@ -985,13 +1002,8 @@ export async function getAiIntakeSession(
       if (resultRow) aiResult = resultRow as unknown as IntakeAiResultRow;
     }
 
-    // Load any saved draft values
-    const { data: draftRows } = await supabase
-      .from("dms_intake_review_values")
-      .select("*")
-      .eq("upload_session_id", sessionId)
-      .order("field_scope")
-      .order("field_code");
+    const draft = await reviewedCall("ai_mod04_intake_draft", {p_action:"read",p_data:{uploadSessionId:sessionId}}, z.object({uploadSessionId:z.literal(sessionId),analysisResultId:z.number().nullable(),snapshot:z.string().regex(/^[a-f0-9]{64}$/),values:z.array(z.object({upload_session_id:z.literal(sessionId),field_scope:z.string(),field_code:z.string(),reviewed_value_json:z.unknown()}).passthrough()).max(300)}).strict());
+    if (!draft.success || !draft.data || draft.data.analysisResultId !== aiResultId || (aiResultId && !aiResult)) return {success:false,error:"The saved review or analysis changed or is unavailable. Reload before editing; no saved values were replaced."};
 
     const intakeData: IntakeSessionData = {
       id: sessionId,
@@ -1014,7 +1026,8 @@ export async function getAiIntakeSession(
       discard_reason: typedSession.discard_reason as string | null,
       uploaded_at: typedSession.uploaded_at as string ?? typedSession.created_at as string,
       ai_result: aiResult,
-      draft_values: draftRows as unknown as IntakeReviewValueRow[] | null,
+      draft_values: draft.data.values as unknown as IntakeReviewValueRow[],
+      draft_snapshot: draft.data.snapshot,
     };
 
     return { success: true, data: intakeData };
@@ -1139,236 +1152,10 @@ export async function getIntakeSessionSignedUrl(
 
 // ── rerunMetadataExtractionForIntakeSession (Phase 3) ─────────────────────────
 
-const rerunExtractionSchema = z.object({
-  uploadSessionId: z.number().int().positive(),
-  documentTypeId: z.number().int().positive(),
-  mergeMode: z.enum(["fill_missing_only", "replace_ai_values", "keep_user_values"]),
-});
+export type RerunExtractionMergeMode = "fill_missing_only"|"replace_ai_values"|"keep_user_values";
 
-export type RerunExtractionMergeMode = z.infer<typeof rerunExtractionSchema>["mergeMode"];
-
-export async function rerunMetadataExtractionForIntakeSession(input: {
-  uploadSessionId: number;
-  documentTypeId: number;
-  mergeMode: RerunExtractionMergeMode;
-}): Promise<
-  ActionResult<{
-    extractedFieldsJson: Record<string, unknown>;
-    fieldConfidenceJson: Record<string, unknown>;
-    skipped: boolean;
-  }>
-> {
-  try {
-    const parsed = rerunExtractionSchema.parse(input);
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canViewIntake(ctx)) return { success: false, error: "Permission denied" };
-
-    const { data: session, error: sessionErr } = await supabase
-      .from("dms_upload_sessions")
-      .select("id, session_code, intake_status, ai_result_id, original_filename")
-      .eq("id", parsed.uploadSessionId)
-      .is("deleted_at", null)
-      .single();
-
-    if (sessionErr || !session) return { success: false, error: "Upload session not found" };
-
-    const intakeStatus = (session as Record<string, unknown>).intake_status as string;
-    if (intakeStatus === "approved" || intakeStatus === "discarded") {
-      return { success: false, error: "Cannot re-run extraction for a completed intake" };
-    }
-
-    const aiResultId = (session as Record<string, unknown>).ai_result_id as number | null;
-    if (!aiResultId) return { success: false, error: "No AI result available for this session" };
-
-    const { data: aiResult, error: resultErr } = await supabase
-      .from("dms_ai_extraction_results")
-      .select("id, raw_ocr_text, extracted_fields_json, field_confidence_json, suggested_document_type_id")
-      .eq("id", aiResultId)
-      .single();
-
-    if (resultErr || !aiResult) return { success: false, error: "AI result not found" };
-
-    const sessionCode = (session as Record<string, unknown>).session_code as string;
-    const originalFilename = (session as Record<string, unknown>).original_filename as string;
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_upload_sessions",
-      entity_id: parsed.uploadSessionId,
-      entity_reference: sessionCode,
-      action: "update",
-      new_values: {
-        event: "metadata_extraction_rerun_started",
-        document_type_id: parsed.documentTypeId,
-        merge_mode: parsed.mergeMode,
-      },
-    });
-
-    if (parsed.mergeMode === "keep_user_values") {
-      await logAudit({
-        module_code: "DMS",
-        entity_name: "dms_upload_sessions",
-        entity_id: parsed.uploadSessionId,
-        entity_reference: sessionCode,
-        action: "update",
-        new_values: { event: "metadata_extraction_values_kept", merge_mode: parsed.mergeMode },
-      });
-      return {
-        success: true,
-        data: {
-          extractedFieldsJson: (aiResult.extracted_fields_json as Record<string, unknown>) ?? {},
-          fieldConfidenceJson: (aiResult.field_confidence_json as Record<string, unknown>) ?? {},
-          skipped: true,
-        },
-      };
-    }
-
-    const ocrText = ((aiResult.raw_ocr_text as string | null) ?? "").trim();
-    if (!ocrText) {
-      return { success: false, error: "No OCR text available — cannot re-run extraction without re-running full AI intake" };
-    }
-
-    const { data: typeRow } = await supabase
-      .from("dms_document_types")
-      .select("id, type_code, name_en")
-      .eq("id", parsed.documentTypeId)
-      .single();
-
-    if (!typeRow) return { success: false, error: "Document type not found" };
-
-    const typeSpecificFields = await loadMetadataFieldsForDocumentType(
-      supabase,
-      parsed.documentTypeId,
-      "intake"
-    );
-    if (typeSpecificFields.length === 0) {
-      return { success: false, error: "No metadata fields defined for this document type" };
-    }
-
-    const { provider } = await getDmsAiProvider();
-    if (!provider.isConfigured()) {
-      return { success: false, error: "No AI provider configured" };
-    }
-
-    const typeCandidates: DmsAiDocumentTypeCandidate[] = [
-      {
-        typeCode: typeRow.type_code as string,
-        nameEn: typeRow.name_en as string,
-        description: null,
-        categoryName: null,
-      },
-    ];
-
-    let extractOutput: DmsAiOutput;
-    const rerunStartMs = Date.now();
-    try {
-      extractOutput = await provider.analyze({
-        ocrText,
-        imageFiles: [],
-        currentTypeCode: typeRow.type_code as string,
-        typeCandidates,
-        metadataFields: typeSpecificFields,
-        originalFilename,
-      });
-    } catch (err) {
-      return { success: false, error: String(err) };
-    }
-
-    // SPEED.2M: log rerun token counts + duration (non-fatal)
-    await logDmsAiUsage({
-      featureArea: "dms_intake",
-      operationType: "intake_extract_rerun",
-      modelId: provider.modelId ?? null,
-      status: "success",
-      inputTokenCount: extractOutput.promptTokens ?? null,
-      outputTokenCount: extractOutput.completionTokens ?? null,
-      durationMs: Date.now() - rerunStartMs,
-      uploadSessionId: parsed.uploadSessionId,
-      createdBy: ctx.profile.id,
-      metadata: { type_code: typeRow.type_code, merge_mode: parsed.mergeMode, prompt_version: PROMPT_VERSION },
-    });
-
-    const existingExtracted = (aiResult.extracted_fields_json as Record<string, unknown>) ?? {};
-    const existingConfidence = (aiResult.field_confidence_json as Record<string, unknown>) ?? {};
-
-    const newExtracted: Record<string, unknown> = { ...existingExtracted };
-    const newConfidence: Record<string, unknown> = { ...existingConfidence };
-
-    for (const field of extractOutput.extraction.fields) {
-      const existingVal = existingExtracted[field.fieldCode];
-      const isEmpty =
-        existingVal == null ||
-        (typeof existingVal === "string" && existingVal.trim() === "");
-
-      if (parsed.mergeMode === "fill_missing_only" && !isEmpty) continue;
-
-      newExtracted[field.fieldCode] = field.value;
-      newConfidence[field.fieldCode] = {
-        score: field.confidenceScore,
-        label: field.confidenceLabel,
-        source_snippet: field.sourceSnippet ?? null,
-      };
-    }
-
-    if (extractOutput.extraction.additionalFields.length > 0) {
-      newExtracted.__additional_fields = extractOutput.extraction.additionalFields.map((a) => ({
-        label: a.label,
-        value: a.value,
-        confidence: a.confidenceScore,
-      }));
-    }
-
-    const { error: updateErr } = await supabase
-      .from("dms_ai_extraction_results")
-      .update({
-        extracted_fields_json: newExtracted,
-        field_confidence_json: newConfidence,
-      })
-      .eq("id", aiResultId);
-
-    if (updateErr) return { success: false, error: updateErr.message };
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_upload_sessions",
-      entity_id: parsed.uploadSessionId,
-      entity_reference: sessionCode,
-      action: "update",
-      new_values: {
-        event: "metadata_extraction_rerun_completed",
-        merge_mode: parsed.mergeMode,
-        fields_updated: extractOutput.extraction.fields.length,
-        document_type_id: parsed.documentTypeId,
-      },
-    });
-
-    if (parsed.mergeMode === "replace_ai_values") {
-      await logAudit({
-        module_code: "DMS",
-        entity_name: "dms_upload_sessions",
-        entity_id: parsed.uploadSessionId,
-        entity_reference: sessionCode,
-        action: "update",
-        new_values: { event: "metadata_extraction_values_replaced" },
-      });
-    }
-
-    revalidatePath(`/dms/intake/${sessionCode}`);
-
-    return {
-      success: true,
-      data: {
-        extractedFieldsJson: newExtracted,
-        fieldConfidenceJson: newConfidence,
-        skipped: false,
-      },
-    };
-  } catch (e) {
-    logger.error("rerunMetadataExtractionForIntakeSession error", e);
-    return { success: false, error: String(e) };
-  }
+export async function rerunMetadataExtractionForIntakeSession(input:{uploadSessionId:number;documentTypeId:number;mergeMode:RerunExtractionMergeMode}) {
+  return rerunRetainedIntakeMetadata(input);
 }
 
 // ── saveAiIntakeDraft ─────────────────────────────────────────────────────────
@@ -1386,64 +1173,11 @@ export async function saveAiIntakeDraft(
     confidenceLabel?: string | null;
     sourceSnippet?: string | null;
     reviewStatus?: string;
-  }[]
-): Promise<ActionResult> {
-  try {
-    const supabase = await createClient();
-    const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canViewIntake(ctx)) return { success: false, error: "Permission denied" };
-
-    // Verify session belongs to a valid intake
-    const { data: session, error: sessionError } = await supabase
-      .from("dms_upload_sessions")
-      .select("id, intake_status")
-      .eq("id", uploadSessionId)
-      .is("deleted_at", null)
-      .single();
-
-    if (sessionError || !session) return { success: false, error: "Upload session not found" };
-
-    const intakeStatus = (session as Record<string, unknown>).intake_status as string;
-    if (intakeStatus === "approved" || intakeStatus === "discarded") {
-      return { success: false, error: "Cannot save draft for a completed or discarded intake" };
-    }
-
-    const now = new Date().toISOString();
-
-    // Upsert each field value
-    for (const v of draftValues) {
-      await supabase
-        .from("dms_intake_review_values")
-        .upsert(
-          {
-            upload_session_id: uploadSessionId,
-            field_scope: v.fieldScope,
-            field_code: v.fieldCode,
-            field_label: v.fieldLabel ?? null,
-            field_type: v.fieldType ?? null,
-            suggested_value_json: v.suggestedValueJson ?? null,
-            reviewed_value_json: v.reviewedValueJson,
-            confidence_score: v.confidenceScore ?? null,
-            confidence_label: v.confidenceLabel ?? null,
-            source_snippet: v.sourceSnippet ?? null,
-            review_status: v.reviewStatus ?? "edited",
-            updated_at: now,
-          },
-          { onConflict: "upload_session_id,field_scope,field_code" }
-        );
-    }
-
-    // Update review status
-    await supabase
-      .from("dms_upload_sessions")
-      .update({ review_status: "in_review", updated_at: now })
-      .eq("id", uploadSessionId);
-
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: String(e) };
-  }
+  }[],
+  review?: {requestId:string;snapshot:string}
+): Promise<ActionResult<{snapshot:string}>> {
+  if (!review || !z.uuid().safeParse(review.requestId).success || !z.string().regex(/^[a-f0-9]{64}$/).safeParse(review.snapshot).success || !Number.isSafeInteger(uploadSessionId) || uploadSessionId<1 || draftValues.length>300) return {success:false,error:"Reload the saved review before saving a draft."};
+  return reviewedCall("ai_mod04_intake_draft",{p_action:"save",p_data:{uploadSessionId,requestId:review.requestId,snapshot:review.snapshot,values:draftValues}},z.object({uploadSessionId:z.literal(uploadSessionId),requestId:z.literal(review.requestId),savedCount:z.literal(draftValues.length),snapshot:z.string().regex(/^[a-f0-9]{64}$/)}).strict());
 }
 
 // ── retryAiIntake ─────────────────────────────────────────────────────────────

@@ -15,7 +15,7 @@ export function formatDateAr(value: unknown): string {
   if (!value) return "—";
   const d = new Date(String(value));
   if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleDateString("ar-AE", { day: "2-digit", month: "long", year: "numeric" });
+  return d.toLocaleDateString("ar-AE-u-nu-arab", { day: "2-digit", month: "long", year: "numeric" });
 }
 
 /** Safe string coercion for row values. */

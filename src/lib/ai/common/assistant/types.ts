@@ -118,6 +118,8 @@ export interface AssistantActionDraftPayload {
   navigationRoute?: string;
   /** Safe notes/instructions for human reviewer */
   reviewNotes?: string;
+  /** Internal source-authorization receipt; never a business field or grant. */
+  historyBinding?: import("./history-access").AssistantHistoryBinding;
 }
 
 // ── Blocked action record ──────────────────────────────────────────────────────
@@ -148,6 +150,10 @@ export interface AssistantTurnResult {
   /** Whether a blocked action was detected */
   wasBlocked?: boolean;
   blockedActions?: AssistantBlockedAction[];
+  /** Internal source references, not model-supplied authority. */
+  sourceReferences?: import("@/lib/ai/foundation/contracts").AiEntityReference[];
+  historyReplayAllowed?: boolean;
+  guidance?: import("@/lib/ai/assistant-guidance/contracts").GuidanceAnswer;
   /** Safe metadata for audit logging (no user text, no AI output) */
   safeAuditMeta: {
     actionCodes: AssistantActionCode[];
@@ -174,6 +180,7 @@ export interface StartAssistantSessionInput {
 export interface SendAssistantMessageInput {
   sessionId: number;
   userMessage: string;
+  requestId?: string;
 }
 
 export interface GetAssistantSessionsInput {

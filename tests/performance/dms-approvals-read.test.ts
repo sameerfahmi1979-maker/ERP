@@ -227,10 +227,10 @@ describe("subject-bound history and action hints", () => {
       .toMatchObject({success: true, data: {record: {canWithdraw: false}}});
     expect(calls.find(c => c.source === "f05_document_approval_capabilities")?.args).toEqual({document_ids: [1]});
   });
-  it("preserves a native subject-scoped administrator's ability to act on their own submission", async () => {
+  it("never advertises self-approval even when the legacy administrator predicate allows it", async () => {
     scopedState({pending: true, own: true, canAct: true, canWithdraw: true});
     expect(await readDmsApprovals({mode: "state", documentId: 1}, context(["dms.documents.view", "dms.approvals.admin"])))
-      .toMatchObject({success: true, data: {record: {canApprove: true, canWithdraw: true, selfApprovalBlocked: false}}});
+      .toMatchObject({success: true, data: {record: {canApprove: false, canWithdraw: true, selfApprovalBlocked: true}}});
   });
   it("reports self-approval blocking when an administrator grant belongs to another scope", async () => {
     scopedState({pending: true, own: true, canWithdraw: true});

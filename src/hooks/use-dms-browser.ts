@@ -7,10 +7,10 @@ import {hasPermission} from "@/lib/rbac/scope";
 import {readJson, ReadError, retryAuthorizedRead} from "@/lib/reads/client";
 import {canonicalReadParams} from "./use-server-page";
 import {dmsBrowserCriteriaSchema, dmsBrowserIdentity, dmsBrowserSearchCriteria, dmsBrowserSearchPage, dmsBrowserFilesPage,
-  dmsBrowserFilesUnavailable, dmsBrowserTypesPage, dmsBrowserTooLarge, type DmsBrowserCriteria} from "@/lib/reads/dms-browser-schema";
+  dmsBrowserFilesUnavailable, dmsBrowserTypesPage, dmsBrowserTooLarge,dmsBrowserClarification, type DmsBrowserCriteria} from "@/lib/reads/dms-browser-schema";
 
 export const dmsBrowserPrefix = (identity: string) => ["dms", "browser", identity] as const;
-const searchResponse = z.union([dmsBrowserSearchPage, dmsBrowserTooLarge.refine(v => v.criteria.operation === "search")]);
+const searchResponse = z.union([dmsBrowserSearchPage, dmsBrowserTooLarge.refine(v => v.criteria.operation === "search"),dmsBrowserClarification]);
 const schemas = {types: z.union([dmsBrowserTypesPage, dmsBrowserTooLarge.refine(v => v.criteria.operation === "types")]), files: z.union([dmsBrowserFilesPage, dmsBrowserFilesUnavailable])};
 const canRead = (auth: AuthContext) => hasPermission(auth, "dms.documents.view") || hasPermission(auth, "dms.admin");
 const isDenied = (error: unknown) => error instanceof ReadError && [401, 403].includes(error.status);

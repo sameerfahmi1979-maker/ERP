@@ -81,7 +81,7 @@ export async function processNextDmsAiJobs(input: { limit: number; workerId: str
     if (recovered.error || recovered.data?.success !== true) throw new Error("Recovery unavailable");
     // Claim just in time, not a batch whose leases expire while earlier jobs run.
     for (let i = 0; i < input.limit; i++) {
-      const { data, error } = await db.rpc("f07_ai_worker", { p_action: "claim", p_data: { workerId: input.workerId, limit: 1 } });
+      const { data, error } = await db.rpc("f07_ai_worker", { p_action: "claim", p_data: { workerId: input.workerId, limit: 1, preparationVersion:1 } });
       const parsed = z.array(claimSchema).max(1).safeParse(data);
       if (error || !parsed.success) throw new Error("Claim unavailable");
       const row = parsed.data[0];

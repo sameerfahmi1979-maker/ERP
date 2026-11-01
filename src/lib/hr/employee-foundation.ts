@@ -10,7 +10,7 @@ const rule=(label:string,group:EmployeeFieldGroup,required=false,extra:Partial<F
 export const EMPLOYEE_FOUNDATION_FIELDS = {
  full_name_en:rule('Full Name (English)','person',true),full_name_ar:rule('Full Name (Arabic)','person'),known_name:rule('Known Name','person'),
  gender:rule('Gender','person',true),nationality_id:rule('Nationality','person',false,{source:'countries'}),date_of_birth:rule('Date of Birth','person',true,{date:'fact'}),
- marital_status:rule('Marital Status','person'),mobile_number:rule('Mobile Number','person',true),personal_email:rule('Personal Email','person'),
+ marital_status:rule('Marital Status','person'),mobile_number:rule('Mobile Number','person'),personal_email:rule('Personal Email','person'),
  uae_address:rule('UAE Address','person'),home_country_address:rule('Home Country Address','person'),blood_group:rule('Blood Group','person',false,{sensitive:'medical'}),photo_framing:rule('Photo framing','person'),photo_dms_document_id:rule('Photo','person',false,{source:'dms_documents'}),
  owner_company_id:rule('Employer Company','employment',true,{source:'owner_companies'}),employee_category_id:rule('Employee Category','employment',true,{source:'hr_employee_categories'}),employment_type_id:rule('Employment Type','employment',false,{source:'hr_employment_types'}),
  joining_date:rule('Joining Date','employment',true,{date:'employment'}),actual_joining_date:rule('Actual Joining Date','employment',false,{date:'employment'}),employee_status:rule('Employment Status','employment'),
@@ -19,7 +19,7 @@ export const EMPLOYEE_FOUNDATION_FIELDS = {
  contract_type:rule('Contract Type','employment'),contract_start_date:rule('Contract Start Date','employment',false,{date:'employment'}),contract_end_date:rule('Contract End Date','employment',false,{date:'employment'}),notice_period_days:rule('Notice Period (Days)','employment'),
  branch_id:rule('Branch','organisation',false,{source:'branches'}),department_id:rule('Department','organisation',false,{source:'departments'}),designation_id:rule('Designation','organisation',false,{source:'designations'}),
  reporting_manager_id:rule('Reporting Manager','organisation',false,{source:'employees'}),supervisor_id:rule('Supervisor','organisation',false,{source:'employees'}),primary_work_site_id:rule('Primary Work Site','organisation',false,{source:'work_sites'}),
- emergency_contact_name:rule('Emergency Contact Name','emergency',true),emergency_contact_mobile:rule('Emergency Contact Mobile','emergency',true),emergency_contact_relationship_type_id:rule('Emergency Relationship','emergency',false,{source:'hr_relationship_types'}),
+ emergency_contact_name:rule('Emergency Contact Name','emergency'),emergency_contact_mobile:rule('Emergency Contact Mobile','emergency'),emergency_contact_relationship_type_id:rule('Emergency Relationship','emergency',false,{source:'hr_relationship_types'}),
 } satisfies Record<EmployeeField,FieldRule>;
 
 export type EmploymentFacts=Partial<Record<typeof EMPLOYMENT_FIELDS[number]|'inactive_date'|'inactive_reason',unknown>>;

@@ -8,7 +8,7 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
-import { hasGlobalPermission } from "@/lib/rbac/scope";
+
 
 // ── Result type (matches project pattern) ─────────────────────────────────────
 
@@ -64,6 +64,9 @@ const workflowCreateSchema = z.object({
   name_en: z.string().min(1).max(200),
   name_ar: z.string().max(200).optional(),
   description: z.string().max(1000).optional(),
+  owner_company_id: positiveInt.nullable().optional(),
+  branch_id: positiveInt.nullable().optional(),
+  is_active: z.boolean().optional(),
   document_type_ids: z.array(positiveInt).optional(),
   steps: z.array(z.object({
     step_code: z.string().min(1).max(100),
@@ -71,6 +74,8 @@ const workflowCreateSchema = z.object({
     is_initial: z.boolean().default(false),
     is_final: z.boolean().default(false),
     requires_role: z.string().max(100).optional(),
+    assignee_profile_ids: z.array(positiveInt).max(50).optional(),
+    decision_rule: z.enum(["one_assigned", "all_assigned"]).optional(),
     sort_order: z.number().int().min(0),
   })).optional(),
 });
@@ -206,6 +211,9 @@ export type WorkflowRow = {
   stepCount: number;
   createdAt: string;
   updatedAt: string;
+  ownerCompanyId?: number | null;
+  branchId?: number | null;
+  configurationVersion?: number;
 };
 
 export type WorkflowWithSteps = WorkflowRow & {
@@ -218,6 +226,8 @@ export type WorkflowWithSteps = WorkflowRow & {
     requiresRole: string | null;
     sortOrder: number;
     isActive: boolean;
+    assigneeProfileIds?: number[];
+    decisionRule?: "one_assigned" | "all_assigned";
   }[];
 };
 
@@ -279,7 +289,7 @@ export async function getDocumentApprovalState(
     } | null;
 
     const profileId = ctx.profile.id;
-    const isSelfApproval = d.submitted_by !== null && d.submitted_by === profileId && !isDmsAdmin(ctx);
+    const isSelfApproval = d.submitted_by !== null && d.submitted_by === profileId;
     const actionable = !approvalReadError && !!ca?.id && ca.action === "submitted";
     const stepCapability = actionable ? await supabase.rpc("f05_can_act_document_approval", { document_id: documentId, step_id: ca?.step_id ?? null }) : null;
     const canActOnStep = !stepCapability?.error && stepCapability?.data === true;
@@ -445,7 +455,7 @@ export async function approveDocument(
       return { success: false, error: "Cannot approve an archived or deleted document" };
     }
     // Self-approval check
-    if (d.submitted_by === profileId && !isDmsAdmin(ctx)) {
+    if (d.submitted_by === profileId) {
       return { success: false, error: "Self-approval is not allowed. You submitted this document for approval." };
     }
 
@@ -532,7 +542,7 @@ export async function rejectDocument(
     if (["archived", "deleted"].includes(d.status)) {
       return { success: false, error: "Cannot reject an archived or deleted document" };
     }
-    if (d.submitted_by === profileId && !isDmsAdmin(ctx)) {
+    if (d.submitted_by === profileId) {
       return { success: false, error: "Self-approval is not allowed. You submitted this document for approval." };
     }
 
@@ -884,12 +894,12 @@ async function resolveWorkflow(
     .eq("is_active", true)
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(2);
 
-  if (!wf) return null;
+  // This legacy type-only lookup cannot choose a company/branch route.
+  if (!wf || wf.length !== 1) return null;
 
-  const w = wf as unknown as {
+  const w = wf[0] as unknown as {
     id: number; workflow_code: string; name_en: string; name_ar: string | null;
     description: string | null; is_active: boolean;
     created_at: string; updated_at: string;
@@ -955,7 +965,7 @@ export async function getApprovalWorkflowForDocumentType(
 export async function adminListApprovalRoleOptions(): Promise<ActionResult<Array<{ code: string; name: string }>>> {
   try {
     const ctx = await getAuthContext();
-    if (!hasGlobalPermission(ctx, "dms.admin") && !hasGlobalPermission(ctx, "dms.approvals.admin")) return { success: false, error: "Permission denied" };
+    if (!hasPermission(ctx, "dms.admin") && !hasPermission(ctx, "dms.approvals.admin")) return { success: false, error: "Permission denied" };
     // Configuration is global. This does not grant document access or expose role members.
     const { data, error } = await createAdminClient().from("roles").select("role_code,role_name").eq("is_active", true).order("role_name").limit(1000);
     if (error) return { success: false, error: "Could not load approval roles" };
@@ -965,17 +975,28 @@ export async function adminListApprovalRoleOptions(): Promise<ActionResult<Array
   }
 }
 
+export async function adminListApprovalAssigneeOptions(): Promise<ActionResult<Array<{ id: number; label: string }>>> {
+  try {
+    const ctx = await getAuthContext();
+    if (!ctx.profile || (!hasPermission(ctx, "dms.admin") && !hasPermission(ctx, "dms.approvals.admin"))) return { success: false, error: "Permission denied" };
+    const db = await createClient();
+    const rows = await readAllPages<{ id: number; user_code: string | null; display_name: string | null; full_name: string | null }>(async (from, to) =>
+      await db.from("user_profiles").select("id,user_code,display_name,full_name").eq("status", "active").eq("must_change_password", false).order("id").range(from, to), { identity: row => row.id, maxRows: 5000 });
+    return { success: true, data: rows.map(row => ({ id: row.id, label: [row.user_code, row.display_name || row.full_name || "User"].filter(Boolean).join(" — ") })) };
+  } catch { return { success: false, error: "Assigned-user options are unavailable. No assignments were changed." }; }
+}
+
 export async function adminListApprovalWorkflows(): Promise<ActionResult<WorkflowRow[]>> {
   try {
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!(hasGlobalPermission(ctx, "dms.admin") || hasGlobalPermission(ctx, "dms.approvals.admin"))) return { success: false, error: "Permission denied" };
+    if (!(hasPermission(ctx, "dms.admin") || hasPermission(ctx, "dms.approvals.admin"))) return { success: false, error: "Permission denied" };
 
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("dms_document_workflows")
       .select(`
-        id, workflow_code, name_en, name_ar, description, is_active,
+        id, workflow_code, name_en, name_ar, description, is_active, owner_company_id, branch_id, configuration_version,
         created_at, updated_at,
         doc_types:dms_workflow_document_types!workflow_id(
           document_type_id,
@@ -1030,19 +1051,19 @@ export async function adminGetApprovalWorkflow(id: number): Promise<ActionResult
 
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!(hasGlobalPermission(ctx, "dms.admin") || hasGlobalPermission(ctx, "dms.approvals.admin"))) return { success: false, error: "Permission denied" };
+    if (!(hasPermission(ctx, "dms.admin") || hasPermission(ctx, "dms.approvals.admin"))) return { success: false, error: "Permission denied" };
 
     const supabase = await createClient();
     const { data: wf, error } = await supabase
       .from("dms_document_workflows")
       .select(`
-        id, workflow_code, name_en, name_ar, description, is_active,
+        id, workflow_code, name_en, name_ar, description, is_active, owner_company_id, branch_id, configuration_version,
         created_at, updated_at,
         doc_types:dms_workflow_document_types!workflow_id(
           document_type_id,
           doc_type:dms_document_types!document_type_id(name_en)
         ),
-        steps:dms_document_workflow_steps!workflow_id(id, step_code, step_name, is_initial, is_final, requires_role, sort_order, is_active)
+        steps:dms_document_workflow_steps!workflow_id(id, step_code, step_name, is_initial, is_final, requires_role, sort_order, is_active, assignee_profile_ids, decision_rule)
       `)
       .eq("id", id)
       .is("deleted_at", null)
@@ -1052,17 +1073,20 @@ export async function adminGetApprovalWorkflow(id: number): Promise<ActionResult
 
     const w = wf as unknown as {
       id: number; workflow_code: string; name_en: string; name_ar: string | null;
+      owner_company_id: number | null; branch_id: number | null; configuration_version: number;
       description: string | null; is_active: boolean;
       created_at: string; updated_at: string;
       doc_types: Array<{ document_type_id: number; doc_type: { name_en: string } | null }>;
       steps: Array<{
         id: number; step_code: string; step_name: string; is_initial: boolean;
         is_final: boolean; requires_role: string | null; sort_order: number; is_active: boolean;
+        assignee_profile_ids: number[]; decision_rule: "one_assigned" | "all_assigned";
       }>;
     };
 
     const docTypes = w.doc_types ?? [];
     const result: WorkflowWithSteps = {
+      ownerCompanyId: w.owner_company_id, branchId: w.branch_id, configurationVersion: w.configuration_version,
       id: w.id,
       workflowCode: w.workflow_code,
       nameEn: w.name_en,
@@ -1085,6 +1109,7 @@ export async function adminGetApprovalWorkflow(id: number): Promise<ActionResult
           requiresRole: s.requires_role,
           sortOrder: s.sort_order,
           isActive: s.is_active,
+          assigneeProfileIds: s.assignee_profile_ids, decisionRule: s.decision_rule,
         })),
     };
 
@@ -1124,7 +1149,7 @@ export async function adminDeactivateApprovalWorkflow(id: number, expectedUpdate
 async function saveWorkflowConfiguration(id: number | null, expected: string | null, input: Record<string, unknown>): Promise<ActionResult<{ id: number }>> {
   try {
     const ctx = await getAuthContext();
-    if (!ctx.profile || !(hasGlobalPermission(ctx, "dms.admin") || hasGlobalPermission(ctx, "dms.approvals.admin"))) return { success: false, error: "Permission denied" };
+    if (!ctx.profile || !(hasPermission(ctx, "dms.admin") || hasPermission(ctx, "dms.approvals.admin"))) return { success: false, error: "Permission denied" };
     const supabase = await createClient();
     const result = await supabase.rpc("f05_save_dms_workflow", { p_id: id, p_expected_updated_at: expected, p_input: input });
     if (result.error || !result.data) {

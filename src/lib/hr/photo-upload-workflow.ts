@@ -21,6 +21,7 @@ type Ports={
   verify:(id:number)=>Promise<{success:boolean;error?:string}>;
   acknowledge:(r:SingleUploadRequest,id:number)=>Promise<{success:boolean;error?:string}>;
   create:(input:z.input<typeof uploadCreationInputSchema>,contract:z.infer<typeof uploadCreationContractSchema>)=>Promise<UploadCreationResult>;
+  prepare?:()=>Promise<{success:boolean;title?:string;error?:string}>;
 };
 /** Retains original admission, allocation and receipt through lost responses.
  * Signed capabilities and bytes never enter the retained journal. */
@@ -31,6 +32,7 @@ export async function runPhotoUpload(raw:PhotoUploadState,p:Ports) {
   current();
   if(s.receipt)return s.receipt;
   if(!s.creation){
+    if(p.prepare){const prepared=await p.prepare();current();if(!prepared.success||!prepared.title)throw Error(prepared.error??'Photo subject preparation unavailable.');s={...s,title:prepared.title};await retain();}
     let admission=await p.admit(s.request);current();
     if(admission.recovery){
       const r=admission.recovery;

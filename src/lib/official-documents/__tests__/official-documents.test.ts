@@ -40,6 +40,7 @@ const FIXTURE_ROW: Record<string, unknown> = {
   passport_number_masked: "AB****12",
   warning_level: "First",
   warning_reason: "Late attendance",
+  verified_conduct_description_en: "Verified late attendance",
   incident_date: "2026-07-01",
   incident_description: "Repeated late arrival.",
   clearance_area: "Department",
@@ -147,18 +148,19 @@ describe("official document registry governance", () => {
     expect(errors.some((e) => e.includes("Arabic wording is not verified"))).toBe(true);
   });
 
-  it("disabled_pending_wording documents are not generatable and cannot render", () => {
+  it("integrated definitions still require verified source data before issuance", () => {
     for (const code of ["HR_BANK_SALARY_TRANSFER", "HR_EMBASSY_LETTER", "HR_HANDOVER_FORM", "HR_LEAVE_CONFIRMATION"]) {
       const def = getOfficialDocumentDefinition(code)!;
-      expect(def.status).toBe("disabled_pending_wording");
-      expect(isGeneratable(def)).toBe(false);
-      expect(() => def.build(ctx())).toThrow(/disabled pending approved wording/);
+      expect(def.status).toBe("published");
+      expect(isGeneratable(def)).toBe(true);
+      expect(def.validateSource?.({...ctx(),inputs:{}})).not.toBeNull();
+      expect(def.build(ctx()).blocks.length).toBeGreaterThan(0);
     }
   });
 
-  it("published documents are generatable", () => {
+  it("publication enables only definitions without a source workflow hold", () => {
     for (const def of listOfficialDocumentDefinitions().filter((d) => d.status === "published")) {
-      expect(isGeneratable(def)).toBe(true);
+      expect(isGeneratable(def)).toBe(!def.wordingReviewOnly);
     }
   });
 
@@ -168,8 +170,8 @@ describe("official document registry governance", () => {
     expect(supportsLanguage(conf, "ar")).toBe(true);
     expect(supportsLanguage(conf, "bilingual")).toBe(true);
     const salary = getOfficialDocumentDefinition("HR_SALARY_CERT_WITH_AMOUNT")!;
-    expect(supportsLanguage(salary, "ar")).toBe(false);
-    expect(supportsLanguage(salary, "bilingual")).toBe(false);
+    expect(supportsLanguage(salary, "ar")).toBe(true);
+    expect(supportsLanguage(salary, "bilingual")).toBe(true);
   });
 });
 
@@ -181,7 +183,7 @@ describe("optional input validation", () => {
     const schema = buildInputsSchema(noc);
     expect(schema.safeParse({}).success).toBe(false);
     expect(schema.safeParse({ purpose: "" }).success).toBe(false);
-    expect(schema.safeParse({ purpose: "applying for a driving licence" }).success).toBe(true);
+    expect(schema.safeParse({ purpose: "applying for a driving licence", valid_until: "2026-11-29" }).success).toBe(true);
     expect(schema.safeParse({ purpose: "x", hacked_field: "1" }).success).toBe(false);
   });
 
@@ -211,12 +213,12 @@ describe("missing-data validation", () => {
 // ─── Gate 3 (unit): layout rendering ─────────────────────────────────────────
 
 describe("official document HTML rendering", () => {
-  it("renders the English employment certificate with verified prose", () => {
+  it("renders the proposed English employment certificate using source employee facts", () => {
     const def = getOfficialDocumentDefinition("HR_EMPLOYMENT_LETTER")!;
     const html = renderOfficialDocumentHtml(def, ctx());
     expect(html).toContain('dir="ltr"');
     expect(html).toContain("This is to certify that Test Employee (FIXTURE)");
-    expect(html).toContain("issued upon the employee&#x27;s request for official purposes only");
+    expect(html).toContain("issued at the employee&#x27;s request for official purposes");
     expect(html).toContain("od-footer");
     expect(html).toContain("TRN: 100000000000003");
   });
@@ -226,7 +228,7 @@ describe("official document HTML rendering", () => {
     const html = renderOfficialDocumentHtml(def, ctx({ language: "ar" }));
     expect(html).toContain('<html lang="ar" dir="rtl">');
     expect(html).toContain("إلى من يهمه الأمر");
-    expect(html).toContain("خطاب تأكيد التوظيف");
+    expect(html).toContain("شهادة إثبات عمل");
   });
 
   it("renders bilingual confirmation as synchronized two-column rows", () => {
@@ -236,11 +238,11 @@ describe("official document HTML rendering", () => {
     expect(html).toContain('class="od-bi-row"');
     expect(html).toContain('class="od-bi-en"');
     expect(html).toContain('class="od-bi-ar"');
-    expect(html).toContain("To Whom It May Concern,");
-    expect(html).toContain("إلى من يهمه الأمر،");
+    expect(html).toContain("TO WHOM IT MAY CONCERN");
+    expect(html).toContain("إلى من يهمه الأمر");
     // Shared single title with both languages
-    expect(html).toContain("Employment Confirmation Letter");
-    expect(html).toContain("خطاب تأكيد التوظيف");
+    expect(html).toContain("Employment Confirmation Certificate");
+    expect(html).toContain("شهادة إثبات عمل");
     // Exactly one header, one footer, one signature zone
     expect(html.match(/od-header"/g)?.length).toBe(1);
     expect(html.match(/class="od-footer"/g)?.length).toBe(1);
@@ -262,27 +264,27 @@ describe("official document HTML rendering", () => {
     expect(html).toContain("&lt;script&gt;");
   });
 
-  it("renders the verified salary certificate wording with amount", () => {
+  it("renders the proposed salary certificate with its recorded amount and without a credit guarantee", () => {
     const def = getOfficialDocumentDefinition("HR_SALARY_CERT_WITH_AMOUNT")!;
     const html = renderOfficialDocumentHtml(def, ctx());
     expect(html).toContain("TO WHOM IT MAY CONCERN");
-    expect(html).toContain("holding Employee No. FIX-0001");
-    expect(html).toContain("Monthly Salary: AED 12,500.00");
+    expect(html).toContain("AED 12,500.00");
+    expect(html).toContain("does not constitute a guarantee of any personal loan");
   });
 
-  it("NOC includes the purpose and conditional validity sentence", () => {
+  it("NOC includes the specific activity and explicitly reviewed expiry", () => {
     const def = getOfficialDocumentDefinition("HR_NOC")!;
     const withValidity = renderOfficialDocumentHtml(
       def,
-      ctx({ inputs: { purpose: "applying for a UAE driving licence", validity_period: "90 days" } })
+      ctx({ inputs: { purpose: "applying for a UAE driving licence", valid_until: "2026-11-29" } })
     );
-    expect(withValidity).toContain("has no objection to Test Employee (FIXTURE)");
-    expect(withValidity).toContain("valid for 90 days from the date of issue");
+    expect(withValidity).toContain("has no objection to the employee applying for a UAE driving licence");
+    expect(withValidity).toContain("valid until 29 November 2026");
     const withoutValidity = renderOfficialDocumentHtml(
       def,
       ctx({ inputs: { purpose: "applying for a UAE driving licence" } })
     );
-    expect(withoutValidity).not.toContain("from the date of issue");
+    expect(withoutValidity).not.toContain("29 November 2026");
   });
 
   it("bilingual clearance form uses bilingual labels in one shared table", () => {
@@ -293,8 +295,8 @@ describe("official document HTML rendering", () => {
     }));
     const html = renderOfficialDocumentHtml(def, ctx({ language: "bilingual", rows }));
     expect(html).toContain("اسم الموظف");
-    expect(html).toContain("رقم الموظف");
-    expect(html).toContain("نموذج تسوية الموظف");
+    expect(html).toContain("الرقم الوظيفي");
+    expect(html).toContain("نموذج إخلاء طرف الموظف");
     expect(html).toContain("Finance");
     // Form rows must be pagination-safe
     expect(html).toContain("od-form-row");
@@ -346,12 +348,12 @@ describe("official document HTML rendering", () => {
     expect(renderOfficialDocumentHtml(def, ctx({ watermarkText: "DRAFT" }))).toContain('class="od-watermark"');
   });
 
-  it("warning letter renders the verified disciplinary wording", () => {
+  it("warning draft preserves recorded facts without inventing a termination penalty", () => {
     const def = getOfficialDocumentDefinition("HR_WARNING_LETTER")!;
     const html = renderOfficialDocumentHtml(def, ctx());
-    expect(html).toContain("official first warning regarding: Late attendance");
-    expect(html).toContain("Employee Acknowledgment Required.");
-    expect(html).toContain("up to and including termination");
+    expect(html).toContain("Verified late attendance");
+    expect(html).toContain("confirms receipt");
+    expect(html).not.toContain("up to and including termination");
   });
 
   it("salary certificate addressee line is conditional", () => {
@@ -362,7 +364,8 @@ describe("official document HTML rendering", () => {
       def,
       ctx({ inputs: { addressee: "Fixture Bank PJSC" } })
     );
-    expect(withAddressee).toContain("To: Fixture Bank PJSC");
+    expect(withAddressee).toContain("Fixture Bank PJSC");
+    expect(withAddressee).not.toContain("TO WHOM IT MAY CONCERN");
   });
 
   it("PPE form renders the verified empty-state paragraph when no items are issued", () => {

@@ -48,7 +48,7 @@ const OCR_TAIL_CHARS = 8_000;
  *     (recurring Emirates ID issue/expiry swap). Deterministic swap guard also
  *     added post-extraction in date-sanity.ts.
  */
-const PROMPT_VERSION = "v3.5";
+const PROMPT_VERSION = "v3.6-preparation";
 
 export { PROMPT_VERSION };
 
@@ -207,6 +207,11 @@ JSON output format:
       "role": "<role in document if clear, e.g. 'holder', 'landlord', 'tenant', 'vendor', 'customer'>"
     }
   ],
+  "preparation": {
+    "summary": "<concise factual summary based only on this document, or null>",
+    "tag_names": ["<suggested business tags; do not create master definitions>"],
+    "bundle": "<single|possibly_multiple|unknown — never invent split page boundaries>"
+  },
   "warnings": ["<any extraction concerns, e.g. low image quality, partially visible text, expired document, only one date visible, MRZ decode mismatch>"]
 }
 

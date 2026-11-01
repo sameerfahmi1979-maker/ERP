@@ -6,6 +6,7 @@ import {
 } from "@/server/actions/ai/common/data-quality";
 import { AiDataQualityPageClient } from "@/features/ai/common/data-quality";
 import type { DataQualityPermissionState } from "@/lib/ai/common/data-quality/types";
+import {AiQualityPanel} from '@/features/ai/quality/ai-quality-panel';
 
 export const metadata = {
   title: "AI Data Quality Monitor | ERP",
@@ -54,10 +55,10 @@ export default async function DataQualityPage() {
   const initialSummary = summaryResult.data ?? null;
 
   return (
-    <AiDataQualityPageClient
+    <><AiQualityPanel/><AiDataQualityPageClient
       initialSummary={initialSummary}
       permissions={permissions}
       isEnabled={isEnabled}
-    />
+    /></>
   );
 }

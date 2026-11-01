@@ -163,9 +163,13 @@ export function getAssistantActionDefinition(
 }
 
 export function isBlockedDangerousRequest(userMessage: string): boolean {
+  // Workflow questions are informational; a second imperative remains blocked.
+  const informational = /^\s*(?:how\b|where\b|who\b|why\b|what\b|when\b|explain\b|tell me (?:how|who|why|where)\b)/i.test(userMessage);
+  const separateCommand = /(?:[;\n]|\b(?:then|also|and|please)\s+)(?:\s*(?:please\s+)?)(?:delete|remove|approve|send|merge|waive|resolve|apply|update)\b/i.test(userMessage);
+  if (informational && !separateCommand) return false;
   return BLOCKED_KEYWORD_PATTERNS.some((p) => p.test(userMessage));
 }
 
 export function isApprovedAction(code: AssistantActionCode): boolean {
-  return !BLOCKED_DANGEROUS_ACTIONS.has(code) && code in ASSISTANT_ACTION_REGISTRY;
+  return !BLOCKED_DANGEROUS_ACTIONS.has(code) && Object.hasOwn(ASSISTANT_ACTION_REGISTRY, code);
 }

@@ -10,11 +10,18 @@
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import {beginQualityTurn,finishQualityTurn} from '@/server/ai/quality-turn';
+import {withAiQualityUsage} from '@/server/ai/quality-usage-scope';
+import { isFollowUp } from "@/lib/ai/assistant-guidance/planner";
+import { entityReferenceSchema } from "@/lib/ai/foundation/contracts";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { canUseApplication } from "@/lib/rbac/scope";
 import { logAudit } from "@/server/actions/audit";
 import { runAssistantTurn, MAX_USER_MESSAGE_LENGTH } from "@/lib/ai/common/assistant/assistant-engine";
 import { sanitizeForStorage } from "@/lib/ai/common/assistant/response-builder";
+import { normalizeAssistantReference, readAuthorizedAssistantEntity } from "@/lib/ai/common/assistant/entity-access";
+import { createAssistantHistoryBinding, createAssistantHistoryVerifier, HISTORY_WITHHELD, verifyAssistantSessionNow } from "@/lib/ai/common/assistant/history-access";
+import type { AiEntityReference } from "@/lib/ai/foundation/contracts";
 import type {
   AssistantSessionRow,
   AssistantMessageRow,
@@ -55,14 +62,14 @@ async function isAssistantFeatureEnabled(): Promise<boolean> {
 type AuthCtx = Awaited<ReturnType<typeof getAuthContext>>;
 
 function canUseAssistant(ctx: AuthCtx): boolean {
-  return (
+  return canUseApplication(ctx) && (
     hasPermission(ctx, "ai.assistant.use") ||
     ctx.roleCodes.includes("system_admin")
   );
 }
 
 function canViewAssistant(ctx: AuthCtx): boolean {
-  return (
+  return canUseApplication(ctx) && (
     hasPermission(ctx, "ai.assistant.use") ||
     hasPermission(ctx, "ai.assistant.view") ||
     hasPermission(ctx, "ai.assistant.admin") ||
@@ -70,15 +77,8 @@ function canViewAssistant(ctx: AuthCtx): boolean {
   );
 }
 
-function isAdmin(ctx: AuthCtx): boolean {
-  return (
-    hasPermission(ctx, "ai.assistant.admin") ||
-    ctx.roleCodes.includes("system_admin")
-  );
-}
-
 function canPrepareDraft(ctx: AuthCtx): boolean {
-  return (
+  return canUseApplication(ctx) && (
     hasPermission(ctx, "ai.actions.prepare") ||
     ctx.roleCodes.includes("system_admin")
   );
@@ -90,11 +90,12 @@ const startSessionSchema = z.object({
   title: z.string().max(200).optional(),
   contextEntityType: z.string().max(100).optional(),
   contextEntityId: z.coerce.number().int().positive().optional(),
-});
+}).refine(v => (v.contextEntityType === undefined) === (v.contextEntityId === undefined), "Supply both context type and record identity");
 
 const sendMessageSchema = z.object({
   sessionId: z.coerce.number().int().positive(),
   userMessage: z.string().min(1).max(MAX_USER_MESSAGE_LENGTH),
+  requestId:z.uuid().optional(),
 });
 
 const sessionIdSchema = z.object({
@@ -130,6 +131,8 @@ export async function startAssistantSession(
     return { success: false, error: parsed.error.issues[0]?.message ?? "Invalid input", code: "VALIDATION_ERROR" };
 
   const { title, contextEntityType, contextEntityId } = parsed.data;
+  await verifyAssistantSessionNow();
+  if (contextEntityType && contextEntityId && !await readAuthorizedAssistantEntity(contextEntityType, contextEntityId)) return { success: false, error: "Record context is unavailable", code: "FORBIDDEN" };
   const profileId = ctx.profile.id;
   const supabase = await createClient();
 
@@ -191,7 +194,7 @@ export async function getAssistantSession(
   if (sessionError || !session)
     return { success: false, error: "Session not found", code: "NOT_FOUND" };
 
-  if (!isAdmin(ctx) && (session as Record<string, unknown>).owner_user_profile_id !== profileId)
+  if ((session as Record<string, unknown>).owner_user_profile_id !== profileId)
     return { success: false, error: "Access denied", code: "FORBIDDEN" };
 
   const [messagesRes, draftsRes] = await Promise.all([
@@ -209,12 +212,31 @@ export async function getAssistantSession(
       .order("created_at"),
   ]);
 
+  if (messagesRes.error || draftsRes.error || !Array.isArray(messagesRes.data) || !Array.isArray(draftsRes.data)) return { success: false, error: "Conversation history could not be verified", code: "DB_ERROR" };
+  await verifyAssistantSessionNow();
+  const context = session.context_entity_type && session.context_entity_id ? await readAuthorizedAssistantEntity(session.context_entity_type as string, session.context_entity_id as number) : null;
+  if ((session.context_entity_type || session.context_entity_id) && !context) return { success: false, error: "Record context is unavailable", code: "FORBIDDEN" };
+  const verifyHistory = createAssistantHistoryVerifier(ctx, sessionId);
+  const messages: AssistantMessageRow[] = [];
+  for (const row of messagesRes.data ?? []) {
+    const mapped = mapMessageRow(row as Record<string, unknown>);
+    const valid = await verifyHistory((row.safe_metadata_json as Record<string, unknown> | null)?.ai_mod01_binding);
+    messages.push(valid ? mapped : { ...mapped, messageText: HISTORY_WITHHELD, outputType: "blocked_notice", safeMetadataJson: {} });
+  }
+  const drafts: AssistantDraftRow[] = [];
+  for (const row of draftsRes.data ?? []) {
+    const mapped = mapDraftRow(row as Record<string, unknown>);
+    const valid = await verifyHistory((row.draft_payload_json as Record<string, unknown> | null)?.historyBinding);
+    drafts.push(valid ? mapped : { ...mapped, targetEntityType: null, targetEntityId: null, draftPayloadJson: { summary: HISTORY_WITHHELD } });
+  }
+
   return {
     success: true,
     data: {
       ...mapSessionRow(session as Record<string, unknown>),
-      messages: (messagesRes.data ?? []).map(r => mapMessageRow(r as Record<string, unknown>)),
-      drafts: (draftsRes.data ?? []).map(r => mapDraftRow(r as Record<string, unknown>)),
+      title: context?.label ?? null,
+      messages,
+      drafts,
     },
   };
 }
@@ -229,7 +251,9 @@ export async function getAssistantSessions(
   if (!canViewAssistant(ctx))
     return { success: false, error: "Insufficient permissions", code: "FORBIDDEN" };
 
-  const limit = Math.min(raw?.limit ?? 20, 50);
+  const limitInput = z.number().int().min(1).max(50).safeParse(raw?.limit ?? 20);
+  if (!limitInput.success) return { success: false, error: "Invalid session limit", code: "VALIDATION_ERROR" };
+  const limit = limitInput.data;
   const profileId = ctx.profile.id;
   const supabase = await createClient();
 
@@ -244,14 +268,19 @@ export async function getAssistantSessions(
     query = query.neq("status", "archived");
   }
 
-  if (!isAdmin(ctx)) {
-    query = query.eq("owner_user_profile_id", profileId);
-  }
+  query = query.eq("owner_user_profile_id", profileId);
 
   const { data, error } = await query;
   if (error) return { success: false, error: "Failed to load sessions", code: "DB_ERROR" };
 
-  return { success: true, data: (data ?? []).map(r => mapSessionRow(r as Record<string, unknown>)) };
+  await verifyAssistantSessionNow();
+  const sessions: AssistantSessionRow[] = [];
+  for (const row of data ?? []) {
+    const context = row.context_entity_type && row.context_entity_id ? await readAuthorizedAssistantEntity(row.context_entity_type, row.context_entity_id) : null;
+    if ((row.context_entity_type || row.context_entity_id) && !context) continue;
+    sessions.push({ ...mapSessionRow(row as Record<string, unknown>), title: context?.label ?? null });
+  }
+  return { success: true, data: sessions };
 }
 
 // ── archiveAssistantSession ────────────────────────────────────────────────────
@@ -277,12 +306,14 @@ export async function archiveAssistantSession(
     .maybeSingle();
 
   if (!session) return { success: false, error: "Session not found", code: "NOT_FOUND" };
-  if (!isAdmin(ctx) && (session as Record<string, unknown>).owner_user_profile_id !== profileId)
+  if ((session as Record<string, unknown>).owner_user_profile_id !== profileId)
     return { success: false, error: "Access denied", code: "FORBIDDEN" };
 
   const { error } = await supabase
     .from("erp_ai_assistant_sessions")
-    .update({ status: "archived", deleted_at: new Date().toISOString() })
+    // Archive is a retained status, not a soft-delete that conflicts with
+    // the owner's existing SELECT policy or hides the retained audit record.
+    .update({ status: "archived" })
     .eq("id", sessionId);
 
   if (error) return { success: false, error: "Failed to archive session", code: "DB_ERROR" };
@@ -296,6 +327,8 @@ export async function sendAssistantMessage(
   raw: SendAssistantMessageInput
 ): Promise<ActionResult<{
   responseText: string;
+  messageId?:number;
+  feedbackEligible?:boolean;
   draftIds?: number[];
   navigationLinks?: Array<{ label: string; route: string }>;
   searchResultSummary?: Array<{ title: string; subtitle?: string | null; route: string; resultType: string }>;
@@ -313,7 +346,7 @@ export async function sendAssistantMessage(
   if (!parsed.success)
     return { success: false, error: parsed.error.issues[0]?.message ?? "Invalid input", code: "VALIDATION_ERROR" };
 
-  const { sessionId, userMessage } = parsed.data;
+  const { sessionId, userMessage, requestId } = parsed.data;
   const profileId = ctx.profile.id;
   const supabase = await createClient();
 
@@ -327,7 +360,7 @@ export async function sendAssistantMessage(
   if (!session) return { success: false, error: "Session not found", code: "NOT_FOUND" };
   const sessionRow = session as Record<string, unknown>;
 
-  if (sessionRow.owner_user_profile_id !== profileId && !isAdmin(ctx))
+  if (sessionRow.owner_user_profile_id !== profileId)
     return { success: false, error: "Access denied", code: "FORBIDDEN" };
   if (sessionRow.status !== "active")
     return { success: false, error: "Session is not active", code: "SESSION_INACTIVE" };
@@ -338,25 +371,23 @@ export async function sendAssistantMessage(
       code: "SESSION_FULL",
     };
 
-  // Persist user message (append-only)
-  await supabase.from("erp_ai_assistant_messages").insert({
-    session_id: sessionId,
-    role: "user",
-    message_text: sanitizeForStorage(userMessage),
-    output_type: "text",
-    safe_metadata_json: {},
-  });
+  await verifyAssistantSessionNow();
+  const contextReference = sessionRow.context_entity_type && sessionRow.context_entity_id ? normalizeAssistantReference(sessionRow.context_entity_type as string, sessionRow.context_entity_id as number) : null;
+  if ((sessionRow.context_entity_type || sessionRow.context_entity_id) && (!contextReference || !await readAuthorizedAssistantEntity(contextReference.entityType, contextReference.entityId))) return { success: false, error: "Record context is unavailable", code: "FORBIDDEN" };
 
   const userPermissions = ctx.permissionCodes;
 
   const persistDraft = async (
     sid: number,
     actionCode: AssistantActionCode,
-    payload: AssistantActionDraftPayload
+    payload: AssistantActionDraftPayload,
+    sources: readonly AiEntityReference[] = [],
   ): Promise<number | null> => {
     if (!canPrepareDraft(ctx)) return null;
-    const adminClient = await createAdminClient();
-    const { data, error } = await adminClient
+    const historyBinding = await createAssistantHistoryBinding(ctx, sid, [...sources, ...(contextReference ? [contextReference] : [])]);
+    if (!historyBinding) return null;
+    await verifyAssistantSessionNow();
+    const { data, error } = await supabase
       .from("erp_ai_assistant_action_drafts")
       .insert({
         session_id: sid,
@@ -364,7 +395,7 @@ export async function sendAssistantMessage(
         safety_class: "draft_only",
         target_entity_type: null,
         target_entity_id: null,
-        draft_payload_json: payload,
+        draft_payload_json: { ...payload, historyBinding },
         status: "draft",
       })
       .select("id")
@@ -386,17 +417,45 @@ export async function sendAssistantMessage(
     return draftId;
   };
 
-  const turnResult = await runAssistantTurn({
+  // Follow-ups reuse only a server-retained, owner/scope/source-version bound
+  // subject. Neither model IDs nor an unbound old transcript confer context.
+  let followUpReference = contextReference;
+  if (isFollowUp(userMessage) && !followUpReference) {
+    const previous = await supabase.from("erp_ai_assistant_messages").select("safe_metadata_json")
+      .eq("session_id", sessionId).eq("role", "assistant").order("created_at", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle();
+    if (previous.error) return { success: false, error: "Conversation context is unavailable", code: "DB_ERROR" };
+    const meta = previous.data?.safe_metadata_json as Record<string, unknown> | undefined;
+    const ref = entityReferenceSchema.safeParse(meta?.ai_mod03_subject);
+    if (ref.success && await createAssistantHistoryVerifier(ctx, sessionId)(meta?.ai_mod03_subject_binding)) followUpReference = ref.data;
+  }
+  let qualityAdmission:Awaited<ReturnType<typeof beginQualityTurn>>;
+  try{qualityAdmission=await beginQualityTurn(supabase,sessionId,requestId,userMessage);}catch{return {success:false,error:'This turn is paused, limited or retained for recovery. Reload the original conversation before sending again.',code:'HISTORY_UNCONFIRMED'};}
+  const measured = await withAiQualityUsage(profileId,()=>runAssistantTurn({
     userMessage,
     sessionId,
-    contextEntityType: sessionRow.context_entity_type as string | null,
-    contextEntityId: sessionRow.context_entity_id as number | null,
+    contextEntityType: followUpReference?.entityType ?? null,
+    contextEntityId: followUpReference?.entityId ?? null,
     userPermissions,
     persistDraft,
-  });
+  }));
+  const turnResult=measured.result;
 
-  // Persist assistant response (append-only)
-  await supabase.from("erp_ai_assistant_messages").insert({
+  await verifyAssistantSessionNow();
+  const refs = [...(turnResult.sourceReferences ?? []), ...(contextReference ? [contextReference] : [])];
+  const checkedBinding = await createAssistantHistoryBinding(ctx, sessionId, refs);
+  if (refs.length && !checkedBinding) return { success: false, error: "Source access changed while processing; reopen the record before continuing", code: "FORBIDDEN" };
+  const binding = turnResult.historyReplayAllowed === false ? null : checkedBinding;
+  if (turnResult.guidance && checkedBinding && turnResult.guidance.evidence.some(item => {
+    const current = checkedBinding.sources.find(s => s.reference.entityType === item.reference.entityType && s.reference.entityId === item.reference.entityId);
+    return current && current.sourceVersion !== item.sourceVersion;
+  })) return { success: false, error: "Source changed before conversation save. Reopen the current record.", code: "FORBIDDEN" };
+  const followUp = turnResult.guidance?.subject;
+  const subjectBinding = followUp ? await createAssistantHistoryBinding(ctx, sessionId, [followUp]) : null;
+  // Append the pair atomically after its actual source binding is known.
+  const saved = await supabase.from("erp_ai_assistant_messages").insert([{
+    session_id: sessionId, role: "user", message_text: sanitizeForStorage(userMessage), output_type: "text",
+    safe_metadata_json: { ai_mod01_binding: binding },
+  }, {
     session_id: sessionId,
     role: "assistant",
     message_text: turnResult.responseText.slice(0, 4000),
@@ -407,8 +466,17 @@ export async function sendAssistantMessage(
       blocked: turnResult.wasBlocked ?? false,
       ai_call_count: turnResult.safeAuditMeta.aiCallCount,
       duration_ms: turnResult.safeAuditMeta.durationMs,
+      ai_mod01_binding: binding,
+      ai_mod05_versions:{contract:'erp-ai/1',rules:'ai-mod05/1',model:measured.provenance.models.length===1?measured.provenance.models[0]:null,prompt:measured.provenance.prompts.length===1?measured.provenance.prompts[0]:null,models:measured.provenance.models,prompts:measured.provenance.prompts},
+      ai_mod05_turn_request:requestId??null,
+      ai_mod05_authority:qualityAdmission?.authorityHash??null,
+      ai_mod03_subject: subjectBinding ? followUp : null,
+      ai_mod03_subject_binding: subjectBinding,
+      ai_mod03_links: binding ? turnResult.navigationLinks ?? [] : [],
     },
-  });
+  }]).select('id,role');
+  if (saved.error) return { success: false, error: "Conversation save is unconfirmed. Reconcile this session before retrying; processing must not be repeated automatically.", code: "HISTORY_UNCONFIRMED" };
+  if(!await finishQualityTurn(supabase,qualityAdmission))return {success:false,error:'The saved conversation is retained; completion is unconfirmed. Reload it before sending another request.',code:'HISTORY_UNCONFIRMED'};
 
   if (turnResult.wasBlocked) {
     await supabase.from("erp_ai_assistant_messages").insert({
@@ -459,6 +527,8 @@ export async function sendAssistantMessage(
     success: true,
     data: {
       responseText: turnResult.responseText,
+      messageId:saved.data?.find(row=>row.role==='assistant')?.id,
+      feedbackEligible:binding!==null&&qualityAdmission!==null,
       draftIds: turnResult.draftIds,
       navigationLinks: turnResult.navigationLinks,
       searchResultSummary: turnResult.searchResultSummary,
@@ -480,17 +550,8 @@ export async function getAssistantActionDrafts(
   if (!parsed.success)
     return { success: false, error: parsed.error.issues[0]?.message ?? "Invalid input", code: "VALIDATION_ERROR" };
 
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("erp_ai_assistant_action_drafts")
-    .select()
-    .eq("session_id", sessionId)
-    .is("deleted_at", null)
-    .order("created_at");
-
-  if (error) return { success: false, error: "Failed to load drafts", code: "DB_ERROR" };
-
-  return { success: true, data: (data ?? []).map(r => mapDraftRow(r as Record<string, unknown>)) };
+  const session = await getAssistantSession(sessionId);
+  return session.success && session.data ? { success: true, data: session.data.drafts } : { success: false, error: session.error ?? "Drafts unavailable", code: session.code };
 }
 
 // ── dismissAssistantActionDraft ────────────────────────────────────────────────
@@ -532,13 +593,16 @@ async function updateDraftStatus(
 
   const { data: draft } = await supabase
     .from("erp_ai_assistant_action_drafts")
-    .select("id, session_id, status")
+    .select("id, session_id, status, draft_payload_json")
     .eq("id", draftId)
     .is("deleted_at", null)
     .maybeSingle();
 
   if (!draft) return { success: false, error: "Draft not found", code: "NOT_FOUND" };
   const draftRow = draft as Record<string, unknown>;
+
+  await verifyAssistantSessionNow();
+  if (newStatus !== "dismissed" && !await createAssistantHistoryVerifier(ctx, Number(draftRow.session_id))((draftRow.draft_payload_json as Record<string, unknown> | null)?.historyBinding)) return { success: false, error: "Draft source access is unavailable; reopen the permitted record before reviewing this draft", code: "FORBIDDEN" };
 
   const { data: session } = await supabase
     .from("erp_ai_assistant_sessions")
@@ -547,7 +611,7 @@ async function updateDraftStatus(
     .maybeSingle();
 
   if (!session) return { success: false, error: "Session not found", code: "NOT_FOUND" };
-  if ((session as Record<string, unknown>).owner_user_profile_id !== profileId && !isAdmin(ctx))
+  if ((session as Record<string, unknown>).owner_user_profile_id !== profileId)
     return { success: false, error: "Access denied", code: "FORBIDDEN" };
 
   // Only update status/review fields — never draft_payload_json, action_code, safety_class

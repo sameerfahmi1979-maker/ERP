@@ -1,3 +1,4 @@
+import {reviewedExperienceFetcher,reviewedWarningFetcher,reviewedPpeFetcher,reviewedHandoverFetcher} from '@/server/actions/reports/hr/reviewed-letter-sources';
 /**
  * Global ERP Report Center — Report Fetcher Dispatch Map
  * Phase: REPORT.4 — HR.11 Reports + Letters + Forms Library
@@ -7,6 +8,7 @@
 
 import type { ReportFetcher, ReportDataResult } from "./types";
 import type { ReportReadClient } from "./scoped-read-client";
+import {bankSalaryLetterFetcher,embassyLetterFetcher,leaveConfirmationFetcher,verifiedClearanceFetcher} from "@/server/actions/reports/hr/approved-letter-sources";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN_PERMISSION_MATRIX fetcher
@@ -61,17 +63,14 @@ import { eosCasesFetcher } from "@/server/actions/reports/hr/eos-cases-report";
 import { ppeIssueReportFetcher } from "@/server/actions/reports/hr/ppe-issue-report";
 import { assetIssueReportFetcher } from "@/server/actions/reports/hr/asset-issue-report";
 import {
-  experienceLetterFetcher,
   employmentLetterFetcher,
   employmentConfirmationFetcher,
-  warningLetterFetcher,
   salaryCertGeneralFetcher,
   salaryCertWithAmountFetcher,
   nocFetcher,
   employeeIdCardFetcher,
-  ppeIssueFormFetcher,
   joiningChecklistFetcher,
-  clearanceFormFetcher,
+
 } from "@/server/actions/reports/hr/hr-letter-documents";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -105,15 +104,19 @@ export const REPORT_FETCHERS: Record<string, ReportFetcher> = {
   HR_ASSET_ISSUE_REPORT: assetIssueReportFetcher,
 
   // HR Letters / Certificates / Forms
-  HR_EXPERIENCE_LETTER: experienceLetterFetcher,
+  HR_EXPERIENCE_LETTER: reviewedExperienceFetcher,
   HR_EMPLOYMENT_LETTER: employmentLetterFetcher,
   HR_EMPLOYMENT_CONFIRMATION: employmentConfirmationFetcher,
-  HR_WARNING_LETTER: warningLetterFetcher,
+  HR_WARNING_LETTER: reviewedWarningFetcher,
   HR_SALARY_CERT_GENERAL: salaryCertGeneralFetcher,
   HR_SALARY_CERT_WITH_AMOUNT: salaryCertWithAmountFetcher,
   HR_NOC: nocFetcher,
   HR_EMPLOYEE_ID_CARD: employeeIdCardFetcher,
-  HR_PPE_ISSUE_FORM: ppeIssueFormFetcher,
+  HR_PPE_ISSUE_FORM: reviewedPpeFetcher,
   HR_JOINING_CHECKLIST: joiningChecklistFetcher,
-  HR_CLEARANCE_FORM: clearanceFormFetcher,
+  HR_HANDOVER_FORM: reviewedHandoverFetcher,
+  HR_CLEARANCE_FORM: verifiedClearanceFetcher,
+  HR_BANK_SALARY_TRANSFER: bankSalaryLetterFetcher,
+  HR_EMBASSY_LETTER: embassyLetterFetcher,
+  HR_LEAVE_CONFIRMATION: leaveConfirmationFetcher,
 };

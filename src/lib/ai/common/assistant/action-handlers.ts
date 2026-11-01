@@ -14,6 +14,7 @@ import {
 } from "./handler-queries";
 import type { AssistantActionDraftPayload, AssistantTurnResult, AssistantIntent } from "./types";
 import { buildEntityRoute } from "./route-builder";
+import { normalizeAssistantReference, readAuthorizedAssistantEntity } from "./entity-access";
 
 // ── Max constants ──────────────────────────────────────────────────────────────
 
@@ -45,11 +46,16 @@ export async function runSearchErpAction(intent: AssistantIntent): Promise<Parti
     };
   }
 
-  const topResults = result.data.results.slice(0, MAX_SEARCH_RESULTS);
+  const topResults = [];
+  for (const candidate of result.data.results.slice(0, MAX_SEARCH_RESULTS)) {
+    const source = await readAuthorizedAssistantEntity(candidate.entityType ?? candidate.resultType, candidate.entityId);
+    const route = source ? buildEntityRoute(source.reference.entityType, candidate.entityId) : null;
+    if (source && route) topResults.push({ ...candidate, title: source.label, subtitle: source.businessCode, route });
+  }
   if (topResults.length === 0) {
     return {
-      responseText: `No records found matching "${query}". Try different keywords or check the spelling.`,
-      outputType: "text",
+      responseText: result.data.partialResults || result.data.results.length > 0 ? "The permitted search preview could not be fully verified. An empty preview does not establish that no records match." : `No records found matching "${query}". Try different keywords or check the spelling.`,
+      outputType: result.data.partialResults || result.data.results.length > 0 ? "error" : "text",
     };
   }
 
@@ -58,7 +64,7 @@ export async function runSearchErpAction(intent: AssistantIntent): Promise<Parti
   );
 
   return {
-    responseText: `Found ${result.data.totalCount} result(s) for "${query}":\n\n${summaryLines.join("\n")}`,
+    responseText: `Showing ${topResults.length} result(s) from a bounded search preview for "${query}"${result.data.partialResults ? "; some sources are unavailable" : ""}:\n\n${summaryLines.join("\n")}`,
     outputType: "search_results",
     searchResultSummary: topResults.map((r) => ({
       title: r.title,
@@ -66,6 +72,8 @@ export async function runSearchErpAction(intent: AssistantIntent): Promise<Parti
       route: r.route,
       resultType: r.resultType,
     })),
+    sourceReferences: topResults.flatMap(r => { const ref = normalizeAssistantReference(r.entityType ?? r.resultType, r.entityId); return ref ? [ref] : []; }),
+    historyReplayAllowed: topResults.every(r => !!normalizeAssistantReference(r.entityType ?? r.resultType, r.entityId)),
   };
 }
 
@@ -83,18 +91,20 @@ export async function runOpenRecordAction(intent: AssistantIntent): Promise<Part
     };
   }
 
-  const route = buildEntityRoute(entityType, entityId);
+  const record = await readAuthorizedAssistantEntity(entityType, entityId);
+  const route = record ? buildEntityRoute(record.reference.entityType, entityId) : null;
   if (!route) {
     return {
-      responseText: `I don't have a known route for entity type "${entityType}". Please navigate manually.`,
+      responseText: "The record is unavailable or its access could not be verified.",
       outputType: "text",
     };
   }
 
   return {
-    responseText: `Here is a link to open the ${entityType} record (ID: ${entityId}):`,
+    responseText: `Here is the permitted record: ${record!.label}${record!.businessCode ? ` (${record!.businessCode})` : ""}.`,
     outputType: "navigation_link",
-    navigationLinks: [{ label: `Open ${entityType} #${entityId}`, route }],
+    navigationLinks: [{ label: `Open ${record!.businessCode ?? record!.label}`, route }],
+    sourceReferences: [record!.reference],
   };
 }
 
@@ -119,6 +129,8 @@ export async function runExplainRiskAction(intent: AssistantIntent): Promise<Par
     };
   }
 
+  const source = await readAuthorizedAssistantEntity(entityType, entityId);
+  if (!source) return { responseText: "The source record is unavailable.", outputType: "error" };
   const result = await getRiskScoreForEntity({
     entityType: entityType as "company" | "party" | "branch" | "site" | "dms_document",
     entityId,
@@ -126,8 +138,8 @@ export async function runExplainRiskAction(intent: AssistantIntent): Promise<Par
 
   if (!result.success || !result.data) {
     return {
-      responseText: "No risk score found for this entity. The risk engine may not have processed it yet.",
-      outputType: "text",
+      responseText: "The risk information could not be verified. Missing information is not a low-risk result.",
+      outputType: "error",
     };
   }
 
@@ -143,6 +155,8 @@ export async function runExplainRiskAction(intent: AssistantIntent): Promise<Par
       `Review the full risk detail in the AI Risk page.`,
     outputType: "explanation",
     navigationLinks: [{ label: "View AI Risk Detail", route: "/admin/ai/risk" }],
+    sourceReferences: [source.reference],
+    historyReplayAllowed: false,
   };
 }
 
@@ -163,15 +177,16 @@ export async function runExplainComplianceAction(intent: AssistantIntent): Promi
 
   if (findings.length === 0) {
     return {
-      responseText: `No open compliance findings for this ${entityType} (ID: ${entityId}). This is a good sign.`,
+      responseText: "No open findings were returned by this authorized check. This does not certify compliance.",
       outputType: "text",
+      historyReplayAllowed: false,
     };
   }
 
   const critical = findings.filter((f) => f.severity === "critical");
   const high = findings.filter((f) => f.severity === "high");
 
-  let summary = `Found **${findings.length}** open compliance finding(s)`;
+  let summary = `Showing **${findings.length}** open compliance finding(s) from a bounded preview`;
   if (critical.length > 0) summary += ` including **${critical.length} critical**`;
   if (high.length > 0) summary += ` and **${high.length} high severity**`;
   summary += ".\n\n";
@@ -183,6 +198,8 @@ export async function runExplainComplianceAction(intent: AssistantIntent): Promi
     responseText: summary,
     outputType: "explanation",
     navigationLinks: [{ label: "View Compliance Findings", route: "/admin/ai/compliance" }],
+    sourceReferences: [normalizeAssistantReference(entityType, entityId)!],
+    historyReplayAllowed: false,
   };
 }
 
@@ -203,14 +220,15 @@ export async function runExplainDuplicateAction(intent: AssistantIntent): Promis
 
   if (candidates.length === 0) {
     return {
-      responseText: `No pending duplicate candidates found for this ${entityType} (ID: ${entityId}).`,
+      responseText: "No pending duplicate candidates were returned by this authorized check.",
       outputType: "text",
+      historyReplayAllowed: false,
     };
   }
 
   const pending = candidates.filter((c) => c.status === "pending");
   const summary =
-    `Found **${pending.length}** pending duplicate candidate(s) for this ${entityType}.\n\n` +
+    `Showing **${pending.length}** permitted pending duplicate candidate(s) from a bounded preview.\n\n` +
     pending
       .slice(0, 5)
       .map(
@@ -223,6 +241,8 @@ export async function runExplainDuplicateAction(intent: AssistantIntent): Promis
     responseText: summary,
     outputType: "explanation",
     navigationLinks: [{ label: "View Duplicate Candidates", route: "/admin/ai/duplicates" }],
+    sourceReferences: candidates.flatMap(c => c.sourceReferences),
+    historyReplayAllowed: false,
   };
 }
 
@@ -246,8 +266,8 @@ export async function runExplainDocumentAction(intent: AssistantIntent): Promise
         ? "AI Document Understanding is not enabled. Open the document record Understanding tab for details."
         : result.code === "PERMISSION_DENIED"
           ? "You do not have permission to view this document's AI understanding."
-          : "No AI understanding is available for this document yet. Run AI analysis or open the document record Understanding tab.";
-    return { responseText: message, outputType: "text" };
+          : "Document understanding could not be verified. A failed read does not establish that analysis is missing.";
+    return { responseText: message, outputType: "error", historyReplayAllowed: false };
   }
 
   const u = result.data;
@@ -289,6 +309,8 @@ export async function runExplainDocumentAction(intent: AssistantIntent): Promise
     navigationLinks: [
       { label: "Open Document Record", route: `/dms/documents/record/${documentId}` },
     ],
+    sourceReferences: [{ entityType: "dms_document", entityId: documentId }],
+    historyReplayAllowed: false,
   };
 }
 
@@ -300,6 +322,8 @@ export async function runPrepareFieldUpdateDraftAction(
 ): Promise<Partial<AssistantTurnResult & { draftPayload: AssistantActionDraftPayload }>> {
   const entityType = intent.targetEntityType;
   const entityId = intent.targetEntityId;
+  const source = entityType && entityId ? await readAuthorizedAssistantEntity(entityType, entityId) : null;
+  if ((entityType || entityId) && !source) return { responseText: "The draft source is unavailable.", outputType: "error" };
   const hint = (intent.draftHint ?? userMessage).slice(0, 200);
 
   const payload: AssistantActionDraftPayload = {
@@ -309,7 +333,7 @@ export async function runPrepareFieldUpdateDraftAction(
       "Entity type": entityType ?? "unknown",
       "Entity ID": entityId?.toString() ?? "not specified",
     },
-    navigationRoute: entityType && entityId ? buildEntityRoute(entityType, entityId) ?? undefined : undefined,
+    navigationRoute: source ? buildEntityRoute(source.reference.entityType, source.reference.entityId) ?? undefined : undefined,
     reviewNotes:
       "AI draft — requires human review. Apply changes manually via the entity record form.",
   };
@@ -321,6 +345,7 @@ export async function runPrepareFieldUpdateDraftAction(
       `This is an AI draft only. No changes have been made. Please review and apply manually.`,
     outputType: "draft_created",
     draftPayload: payload,
+    sourceReferences: source ? [source.reference] : [],
   };
 }
 
@@ -333,6 +358,8 @@ export async function runPrepareEmailDraftAction(
   const hint = (intent.draftHint ?? userMessage).slice(0, 200);
   const entityType = intent.targetEntityType;
   const entityId = intent.targetEntityId;
+  const source = entityType && entityId ? await readAuthorizedAssistantEntity(entityType, entityId) : null;
+  if ((entityType || entityId) && !source) return { responseText: "The draft source is unavailable.", outputType: "error" };
 
   const payload: AssistantActionDraftPayload = {
     summary: `Email draft: ${hint}`,
@@ -351,6 +378,7 @@ export async function runPrepareEmailDraftAction(
       `This is an AI draft only. No email has been sent.`,
     outputType: "draft_created",
     draftPayload: payload,
+    sourceReferences: source ? [source.reference] : [],
   };
 }
 
@@ -363,6 +391,8 @@ export async function runPrepareRenewalNoteAction(
   const hint = (intent.draftHint ?? userMessage).slice(0, 200);
   const entityType = intent.targetEntityType;
   const entityId = intent.targetEntityId;
+  const source = entityType && entityId ? await readAuthorizedAssistantEntity(entityType, entityId) : null;
+  if ((entityType || entityId) && !source) return { responseText: "The draft source is unavailable.", outputType: "error" };
 
   const payload: AssistantActionDraftPayload = {
     summary: `Renewal note for ${entityType ?? "record"}${entityId ? ` #${entityId}` : ""}: ${hint}`,
@@ -372,7 +402,7 @@ export async function runPrepareRenewalNoteAction(
       "Entity ID": entityId?.toString() ?? "not specified",
       Note: `Renewal required for ${entityType ?? "this record"}. ${hint}. Please initiate via the relevant renewal workflow.`,
     },
-    navigationRoute: entityType && entityId ? buildEntityRoute(entityType, entityId) ?? undefined : undefined,
+    navigationRoute: source ? buildEntityRoute(source.reference.entityType, source.reference.entityId) ?? undefined : undefined,
     reviewNotes:
       "AI renewal note draft — requires human review. No renewal request has been created automatically.",
   };
@@ -384,6 +414,7 @@ export async function runPrepareRenewalNoteAction(
       `This is an AI draft only. Initiate the renewal manually via the entity record.`,
     outputType: "draft_created",
     draftPayload: payload,
+    sourceReferences: source ? [source.reference] : [],
   };
 }
 
@@ -399,11 +430,13 @@ export async function runShowNextActionsAction(
   const summaryLines: string[] = [];
 
   if (entityType && entityId) {
+    if (!await readAuthorizedAssistantEntity(entityType, entityId)) return { responseText: "The source record is unavailable.", outputType: "error" };
     // Check risk
     const riskResult = await getRiskScoreForEntity({
       entityType: entityType as "company" | "party" | "branch" | "site" | "dms_document",
       entityId,
     });
+    if (!riskResult.success) return { responseText: "Risk information is unavailable; next actions cannot be fully verified.", outputType: "error" };
     if (riskResult.success && riskResult.data) {
       const level = riskResult.data.riskLevel ?? "none";
       if (level !== "none" && level !== "low") {
@@ -428,7 +461,7 @@ export async function runShowNextActionsAction(
   }
 
   if (summaryLines.length === 0) {
-    summaryLines.push("No urgent AI signals found. The entity appears to be in good standing.");
+    summaryLines.push("No urgent signals were returned by this bounded check. This does not certify good standing.");
   }
 
   recommendations.push({ label: "AI Field Suggestions", route: "/admin/ai/field-suggestions" });
@@ -437,5 +470,6 @@ export async function runShowNextActionsAction(
     responseText: summaryLines.join("\n"),
     outputType: "explanation",
     navigationLinks: recommendations,
+    historyReplayAllowed: false,
   };
 }

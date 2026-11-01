@@ -22,12 +22,22 @@ export function useReportTemplateSelection(auth: AuthContext, options: {ownerCom
   const input = (value: string) => ({search: value, page, ownerCompanyIds: options.ownerCompanyIds ?? [], issuableOnly: options.issuableOnly ?? false, ...(options.selectedId != null ? {selectedId: options.selectedId} : {})});
   const current = reportTemplateSelectionCriteriaSchema.safeParse(input(search)), delayed = reportTemplateSelectionCriteriaSchema.safeParse(input(delayedSearch));
   const params = canonicalReadParams(delayed.success ? delayed.data : input(delayedSearch));
+  const listParams = (criteria: unknown) => {
+    const parsed = reportTemplateSelectionCriteriaSchema.safeParse(criteria);
+    if (!parsed.success) return null;
+    const {search, page, pageSize, ownerCompanyIds, issuableOnly} = parsed.data;
+    return canonicalReadParams({search, page, pageSize, ownerCompanyIds, issuableOnly});
+  };
   const aligned = current.success && delayed.success && canonicalReadParams(current.data) === params;
   const permitted = hasPermission(auth, "reports.view") || hasPermission(auth, "reports.manage");
   const admitted = !!generation && permitted && options.enabled !== false && deniedOwner !== owner && aligned;
   const key = [...prefix, params];
   const live = useRef<{generation: object | null; owner: string; params: string; admitted: boolean; ready: boolean; selected: ReportTemplateSelectionRow | null} | null>(null);
-  const query = useQuery({queryKey: key, enabled: admitted, gcTime: 0, staleTime: 0, retry: retryAuthorizedRead, refetchOnWindowFocus: true,
+  const query = useQuery<ReturnType<typeof reportTemplateSelectionPageSchema.parse>>({queryKey: key, enabled: admitted, gcTime: 0, staleTime: 0, retry: retryAuthorizedRead, refetchOnWindowFocus: true,
+    // Keep only the same authorized list visible during a selection-only
+    // point check. Placeholder metadata must never authorize confirmation.
+    placeholderData: (previous, previousQuery) => previousQuery?.queryKey[1] === owner &&
+      delayed.success && listParams(previous?.criteria) === listParams(delayed.data) ? previous : undefined,
     queryFn: async ({signal}) => {
       if (!current.success || !delayed.success || !admitted) throw new ReadError("Invalid template selection criteria", 400);
       signal.throwIfAborted(); const response = await readJson<{success: true; data: unknown}>("report-template-selection", delayed.data, signal);
@@ -37,8 +47,9 @@ export function useReportTemplateSelection(auth: AuthContext, options: {ownerCom
     }});
   const serverDenied = query.error instanceof ReadError && [401, 403].includes(query.error.status);
   if (serverDenied && deniedOwner !== owner) setDeniedOwner(owner);
-  const denied = !permitted || deniedOwner === owner || serverDenied, ready = admitted && !denied && query.isSuccess && !query.isFetching && !query.isError;
+  const denied = !permitted || deniedOwner === owner || serverDenied, ready = admitted && !denied && query.isSuccess && !query.isPlaceholderData && !query.isFetching && !query.isError;
   const data = ready ? query.data : undefined;
+  const visibleList = data ?? (admitted && !denied && !query.isError && query.isPlaceholderData ? query.data : undefined);
   useLayoutEffect(() => {live.current = {generation, owner, params, admitted: admitted && !denied, ready, selected: data?.selected ?? null}; return () => {if (live.current?.generation === generation) live.current = null;};});
   useLayoutEffect(() => () => {
     if (live.current?.generation === generation) live.current = null;
@@ -48,7 +59,7 @@ export function useReportTemplateSelection(auth: AuthContext, options: {ownerCom
     if (denied || options.enabled === false) {const queryKey = ["report-template-selection", owner]; void qc.cancelQueries({queryKey}); qc.removeQueries({queryKey});}
   }, [denied, options.enabled, qc, owner]);
   const belongs = () => !!generation && live.current?.generation === generation && live.current.owner === owner && live.current.params === params;
-  return {owner, rows: data?.rows ?? [], selected: data?.selected ?? null, totalCount: data?.totalCount ?? null, search, page, pageSize: 25,
+  return {owner, rows: visibleList?.rows ?? [], selected: data?.selected ?? null, totalCount: visibleList?.totalCount ?? null, search, page, pageSize: 25,
     busy: permitted && options.enabled !== false && !denied && current.success && (!aligned || query.isPending || query.isFetching), ready, denied, invalid: !current.success,
     error: admitted && query.isError ? query.error : null,
     selectionUnavailable: ready && options.selectedId != null && !data?.selected,

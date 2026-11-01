@@ -23,6 +23,7 @@ import { AiProviderConfigList } from "./ai-provider-config-list";
 import { AiFeatureFlagsPanel } from "./ai-feature-flags-panel";
 import { AiUsageLogTable } from "./ai-usage-log-table";
 import { AiProviderFormDialog } from "./ai-provider-form-dialog";
+import {AiQualityPanel} from '@/features/ai/quality/ai-quality-panel';
 
 type UsageLogRow = {
   id: number;
@@ -126,6 +127,7 @@ export function AiSettingsPageClient({
             <BarChart3 className="h-4 w-4" />
             Usage Logs
           </TabsTrigger>}
+          <TabsTrigger value="quality">Quality and operations</TabsTrigger>
         </TabsList>
 
         {permissions.canViewProviders && <TabsContent value="providers" className="mt-4">
@@ -139,6 +141,7 @@ export function AiSettingsPageClient({
         <TabsContent value="usage" className="mt-4">
           {permissions.canViewUsage && <AiUsageLogTable logs={usageLogs} />}
         </TabsContent>
+        <TabsContent value="quality" className="mt-4"><AiQualityPanel/></TabsContent>
       </Tabs>
 
       {addOpen && permissions.canManage && (

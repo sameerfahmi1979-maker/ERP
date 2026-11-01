@@ -116,6 +116,13 @@ export function SecurityReviewBadge({
 // ─────────────────────────────────────────────────────────────────────────────
 
 const EVENT_LABELS: Record<string, string> = {
+  template_amendment_save: "Pending changes saved — published version unchanged",
+  template_amendment_submit: "Pending changes submitted for review",
+  template_amendment_approve: "Pending changes independently approved",
+  template_amendment_reject: "Pending changes rejected",
+  template_amendment_publish: "Changes published under the same template",
+  template_amendment_withdraw: "Changes returned to draft",
+  template_amendment_discard: "Pending changes discarded — history retained",
   template_created: "Created",
   template_updated: "Updated",
   template_submitted_for_review: "Submitted for Review",

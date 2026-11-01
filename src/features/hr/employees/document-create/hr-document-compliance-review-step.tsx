@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { HrComplianceRecordSuggestion } from "@/lib/hr/document-to-record/types";
 import { HrDocumentConfidenceBadge } from "./hr-document-confidence-badge";
+import { documentDateLabel } from '@/lib/hr/document-to-record/document-date';
 
 type Props = {
   suggestions: HrComplianceRecordSuggestion[];
@@ -21,11 +22,13 @@ function FieldRow({
   value,
   confidence,
   onChange,
+  isDate = false,
 }: {
   label: string;
   value: string | number | boolean | null;
   confidence?: number;
   onChange: (v: string) => void;
+  isDate?: boolean;
 }) {
   const displayValue = value == null ? "" : String(value);
   return (
@@ -35,11 +38,14 @@ function FieldRow({
         {confidence != null && <HrDocumentConfidenceBadge confidence={confidence} />}
       </div>
       <Input
+        type={isDate ? 'date' : 'text'}
+        lang={isDate ? 'en-GB' : undefined}
         aria-label={label}
         value={displayValue}
         onChange={(e) => onChange(e.target.value)}
         className="h-7 text-xs"
       />
+      {isDate && displayValue && <p className="mt-0.5 text-xs text-muted-foreground">{documentDateLabel(displayValue)} (day/month/year)</p>}
     </div>
   );
 }
@@ -134,14 +140,15 @@ function SuggestionCard({
 
       {/* Fields (only shown when included) */}
       {suggestion.included && (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {showFields.map((f) => (
             <FieldRow
               key={f}
               label={fieldLabels[f] ?? f}
+              isDate={f.endsWith('_date')}
               value={suggestion.fields[f] ?? null}
               confidence={suggestion.fieldConfidence[f]}
-              onChange={(v) => onFieldChange(f, v)}
+              onChange={(v) => onFieldChange(f, f.endsWith('_date') && !v ? null : v)}
             />
           ))}
           {suggestion.kind==='medical_insurance'&&(['employee_covered','dependent_coverage_included'] as const).map(field=><label key={field} className="text-xs font-medium">
@@ -195,6 +202,7 @@ export function HrDocumentComplianceReviewStep({
           These compliance records were extracted from the selected documents. Toggle each one to
           include or exclude. Edit fields as needed. Only included records will be created.
         </p>
+        <p className="mt-1 text-xs text-muted-foreground">Use the calendar to change dates. Document dates use day/month/year; saved values retain the same calendar day.</p>
       </div>
 
       {suggestions.length === 0 ? (

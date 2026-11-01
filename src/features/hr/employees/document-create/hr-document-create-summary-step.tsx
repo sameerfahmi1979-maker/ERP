@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import type { HrComplianceRecordSuggestion } from "@/lib/hr/document-to-record/types";
 import type { HrDmsDocumentSelection } from "@/lib/hr/document-to-record/types";
 import type { EmployeeFormState } from "./hr-document-employee-review-step";
+import { documentDateLabel } from '@/lib/hr/document-to-record/document-date';
 
 type Props = {
   form: EmployeeFormState;
@@ -46,11 +47,11 @@ export function HrDocumentCreateSummaryStep({
           <SummaryField label="Full Name" value={form.full_name_en} />
           {form.full_name_ar && <SummaryField label="Arabic Name" value={form.full_name_ar} />}
           <SummaryField label="Gender" value={form.gender} />
-          <SummaryField label="Date of Birth" value={form.date_of_birth} />
+          <SummaryField label="Date of Birth" value={documentDateLabel(form.date_of_birth)} />
           <SummaryField label="Mobile" value={form.mobile_number} />
           {form.personal_email && <SummaryField label="Email" value={form.personal_email} />}
-          <SummaryField label="Joining Date" value={form.joining_date} />
-          <SummaryField label="Emergency Contact" value={`${form.emergency_contact_name} · ${form.emergency_contact_mobile}`} />
+          <SummaryField label="Joining Date" value={documentDateLabel(form.joining_date)} />
+          <SummaryField label="Emergency Contact" value={[form.emergency_contact_name,form.emergency_contact_mobile].filter(Boolean).join(' · ')} />
         </div>
       </div>
 

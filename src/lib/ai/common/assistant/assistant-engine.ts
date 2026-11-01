@@ -40,12 +40,16 @@ import type {
   AssistantActionCode,
   AssistantBlockedAction,
   AssistantActionDraftPayload,
+  AssistantIntent,
 } from "./types";
+import { AI_TURN_LIMITS } from "@/lib/ai/foundation/budget";
+import { answerAssistantQuestion } from "@/server/ai/assistant/questions";
+import { normalizeAssistantReference } from "./entity-access";
 
 // ── Limits ─────────────────────────────────────────────────────────────────────
 
 export const MAX_USER_MESSAGE_LENGTH = 1000; // also defined as ASSISTANT_MAX_USER_MESSAGE_LENGTH in types.ts
-const MAX_AI_CALLS = 2;
+const MAX_AI_CALLS = AI_TURN_LIMITS.modelCalls;
 
 // ── Engine input ───────────────────────────────────────────────────────────────
 
@@ -59,7 +63,8 @@ export interface AssistantEngineInput {
   persistDraft: (
     sessionId: number,
     actionCode: AssistantActionCode,
-    payload: AssistantActionDraftPayload
+    payload: AssistantActionDraftPayload,
+    sources?: readonly import("@/lib/ai/foundation/contracts").AiEntityReference[],
   ) => Promise<number | null>;
 }
 
@@ -96,12 +101,24 @@ export async function runAssistantTurn(
   }
 
   // Step 3: Extract intent (AI call 1)
+  // Existing specialised explain/draft actions keep their owning workflows.
+  // General factual questions use the shared current-source adapter, not model prose.
+  if (!/\b(?:risk|compliance|duplicate|summari[sz]e|explain document|prepare.*(?:draft|email|note)|draft.*(?:email|update|note)|(?:open|find|search)\b.*\b(?:party|parties|company|companies|branch|site|record))\b/i.test(safeMsg)) {
+    const context = input.contextEntityType && input.contextEntityId ? normalizeAssistantReference(input.contextEntityType, input.contextEntityId) : null;
+    const read = await answerAssistantQuestion({ question: safeMsg, ...(context ? { context } : {}) });
+    if (!read.success) return makeErrorResult(read.error, start, read.modelCalls ?? 0, []);
+    const data = read.data;
+    return finalResult({ responseText: data.answer, outputType: data.outcome === "unavailable" ? "error" : "explanation",
+      navigationLinks: data.links, guidance: data, sourceReferences: data.evidence.slice(0, 8).map(e => e.reference), historyReplayAllowed: data.replayable,
+    }, start, data.modelCalls, ["SEARCH_ERP"], [], []);
+  }
   aiCallCount++;
-  const intent = await extractAssistantIntent(
-    safeMsg,
-    input.contextEntityType,
-    input.contextEntityId
-  );
+  let intent: AssistantIntent;
+  try {
+    intent = await extractAssistantIntent(safeMsg, input.contextEntityType, input.contextEntityId);
+  } catch {
+    return makeErrorResult("Language interpretation is unavailable. Please retry or open the permitted record.", start, aiCallCount, []);
+  }
 
   // Step 4: Handle blocked dangerous intent
   if (intent.intentType === "blocked_dangerous") {
@@ -164,7 +181,7 @@ export async function runAssistantTurn(
 
   const code = primaryActionCode as AssistantActionCode;
 
-  switch (code) {
+  try { switch (code) {
     case "SEARCH_ERP":
       partial = await runSearchErpAction(intent);
       break;
@@ -200,6 +217,8 @@ export async function runAssistantTurn(
         responseText: "I'm not sure how to help with that. Try asking me to search for a record.",
         outputType: "text",
       };
+  } } catch {
+    return makeErrorResult("The source information could not be verified. Please retry or open the permitted record; a failed check is not evidence of no findings.", start, aiCallCount, executedActions);
   }
 
   // Step 8: Persist draft if applicable
@@ -208,11 +227,12 @@ export async function runAssistantTurn(
     input.sessionId &&
     aiCallCount < MAX_AI_CALLS
   ) {
-    const draftId = await input.persistDraft(
-      input.sessionId,
-      code,
-      partial.draftPayload
-    );
+    let draftId: number | null;
+    try {
+      draftId = await input.persistDraft(input.sessionId, code, partial.draftPayload, partial.sourceReferences);
+    } catch {
+      return makeErrorResult("Draft creation was not confirmed. Reconcile this session before retrying.", start, aiCallCount, executedActions);
+    }
     if (draftId) {
       draftIds.push(draftId);
       const draftPartial = buildDraftCreatedResponse(
@@ -229,6 +249,7 @@ export async function runAssistantTurn(
         draftIds
       );
     }
+    return makeErrorResult("Draft creation was not confirmed. Reconcile this session before retrying.", start, aiCallCount, executedActions);
   }
 
   return finalResult(partial, start, aiCallCount, executedActions, blockedActionCodes, draftIds);
@@ -252,6 +273,9 @@ function finalResult(
     searchResultSummary: partial.searchResultSummary,
     wasBlocked: partial.wasBlocked ?? false,
     blockedActions: partial.blockedActions,
+    sourceReferences: partial.sourceReferences,
+    historyReplayAllowed: partial.historyReplayAllowed,
+    guidance: partial.guidance,
     safeAuditMeta: {
       actionCodes,
       draftCount: draftIds.length,

@@ -1,8 +1,9 @@
 /**
- * ERP COMMON AI.1A — Stage 2 Stub: Work Site Registry
+ * Work-site field definitions shared by legacy generation and AI-MOD-03 form review.
  *
- * STUB ONLY — NOT available for generation in Stage 1.
- * Will be activated after Stage 1 UAT (Organization + Party) passes.
+ * AI-MOD-03 prepares selected metadata values in the normal unsaved form.
+ * Legacy model generation/direct application remain disabled; the registry's
+ * legacy stage flag must not be flipped to enable an unreviewed apply path.
  *
  * Do NOT use this registry for live AI generation until stage is updated to "stage_1".
  * site_code is NEVER registered.
@@ -71,7 +72,7 @@ export const SITE_REGISTRY: ErpAiEntityRegistry = {
     {
       entityType: ENTITY_TYPE,
       targetTable: TARGET_TABLE,
-      targetField: "access_restrictions",
+      targetField: "access_notes",
       fieldLabel: "Access Restrictions",
       fieldType: "text",
       documentTypeHints: ["SITE_PERMIT", "HSE_PLAN"],
@@ -80,7 +81,7 @@ export const SITE_REGISTRY: ErpAiEntityRegistry = {
       description: "Any access restrictions or special requirements for this site.",
       maxLength: 1000,
       allowOverwrite: true,
-      applyHandlerKey: `${APPLY_KEY_PREFIX}_access_restrictions`,
+      applyHandlerKey: `${APPLY_KEY_PREFIX}_access_notes`,
     },
   ],
 };

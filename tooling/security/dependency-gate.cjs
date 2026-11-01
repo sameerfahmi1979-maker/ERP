@@ -48,7 +48,20 @@ function validateAudit(audit, rawExit, verifiedPaths) {
   const memo = new Map();
   const ranks = new Map();
   const walk = name => {
-    if (active.has(name)) fail(`cyclic audit dependency: ${name}`);
+    if (active.has(name)) {
+      // npm may report real moderate/low advisories through a peer-dependency
+      // cycle. Keep them visible and ineligible for the reviewed-high exception.
+      // High/critical cycles and leafless/malformed cycles still fail closed.
+      const cycle = [...active].slice([...active].indexOf(name));
+      if (cycle.some(node => levels.indexOf(graph[node].severity) >= levels.indexOf('high'))) fail(`cyclic audit dependency: ${name}`);
+      const pending = [name], seen = new Set(); let hasAdvisory = false;
+      while (pending.length) { const node = pending.pop(); if (seen.has(node)) continue; seen.add(node);
+        for (const via of graph[node].via) { if (typeof via === 'string') pending.push(via); else hasAdvisory = true; }
+      }
+      if (!hasAdvisory) fail(`cyclic audit dependency: ${name}`);
+      ranks.set(name, levels.indexOf(graph[name].severity));
+      return false;
+    }
     if (memo.has(name)) return memo.get(name);
     active.add(name);
     const item = graph[name];

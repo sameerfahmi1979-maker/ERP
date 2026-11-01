@@ -70,6 +70,7 @@ function MetadataFieldInput({
   if (def.field_type === "textarea") {
     return (
       <Textarea
+        id={`intake-metadata-${def.id}`} name={def.field_code} required={def.is_required}
         value={currentValue}
         onChange={(e) => onChange(def.id, def.field_type, e.target.value)}
         rows={2}
@@ -87,6 +88,7 @@ function MetadataFieldInput({
   }
   return (
     <Input
+      id={`intake-metadata-${def.id}`} name={def.field_code} required={def.is_required}
       type={
         def.field_type === "date"
           ? "date"

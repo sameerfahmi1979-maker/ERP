@@ -1,7 +1,7 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -40,6 +40,9 @@ import type { ERPComboboxOption } from "@/components/erp/combobox/types";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { DMS_CONFIDENTIALITY_LEVELS, DMS_CONFIDENTIALITY_LABELS } from "@/features/dms/documents/dms-document-constants";
+import { DmsPreparationReviewFields, type ExistingDocumentReviewProps } from "./dms-preparation-review-fields";
+import { getDmsPreparationTagOptions } from "@/server/actions/dms/document-preparation";
+import {AiFeedback} from '@/features/ai/quality/ai-feedback';
 
 const CONFIDENTIALITY_OPTIONS = DMS_CONFIDENTIALITY_LEVELS.map(value => ({ value, label: DMS_CONFIDENTIALITY_LABELS[value] }));
 const EMPTY_DOCUMENT_TYPES: DmsDocumentTypeRow[] = [];
@@ -56,6 +59,7 @@ export type ReviewFormValues = {
   owningCompanyId: number | null;
   owningBranchId: number | null;
   metadataValues: Record<number, { fieldType: string; rawValue: string }>;
+  tagIds?: number[];
 };
 
 interface DmsAiIntakeReviewFormProps {
@@ -64,7 +68,7 @@ interface DmsAiIntakeReviewFormProps {
   onChange: (patch: Partial<ReviewFormValues>) => void;
   initialDocTypes?: DmsDocumentTypeRow[];
   aiResultOverride?: IntakeAiResultRow | null;
-  onAiResultPatch?: (patch: Partial<IntakeAiResultRow>) => void;
+  onAiResultPatch?: (patch: Partial<IntakeAiResultRow>,draftSnapshot?:string) => void;
 }
 
 function stripExtension(filename: string): string {
@@ -72,7 +76,11 @@ function stripExtension(filename: string): string {
   return lastDot > 0 ? filename.slice(0, lastDot) : filename;
 }
 
-export function DmsAiIntakeReviewForm({
+export function DmsAiIntakeReviewForm(props: DmsAiIntakeReviewFormProps | ExistingDocumentReviewProps) {
+  return "mode" in props && props.mode === "existing_document" ? <DmsPreparationReviewFields {...props} /> : <DmsIntakeReviewFields {...props as DmsAiIntakeReviewFormProps} />;
+}
+
+function DmsIntakeReviewFields({
   session,
   values,
   onChange,
@@ -81,6 +89,17 @@ export function DmsAiIntakeReviewForm({
   onAiResultPatch,
 }: DmsAiIntakeReviewFormProps) {
   const aiResult = aiResultOverride ?? session.ai_result;
+  const rawPreparation = aiResult?.raw_response_json?.preparation;
+  const prepared = rawPreparation && typeof rawPreparation === "object" && !Array.isArray(rawPreparation) ? rawPreparation as Record<string, unknown> : null;
+  const proposedTagNames = useMemo(()=>Array.isArray(prepared?.tagNames) ? prepared.tagNames.filter((n): n is string => typeof n === "string").slice(0, 30) : [],[prepared]);
+  const tagsQuery = useQuery({ queryKey: ["dms", "preparation-tag-options"], enabled: !!prepared, queryFn: async () => {
+    const result = await getDmsPreparationTagOptions(); if (!result.success || !result.data) throw Error(result.error ?? "Tag catalogue unavailable"); return result.data;
+  }, retry: false, staleTime: 30000, refetchOnWindowFocus: false });
+  const proposedTags = useMemo(()=>tagsQuery.isError ? [] : (tagsQuery.data ?? []).filter(tag => proposedTagNames.some(n => n.normalize("NFKC").toLocaleLowerCase() === tag.tag_name.normalize("NFKC").toLocaleLowerCase())),[tagsQuery.data,tagsQuery.isError,proposedTagNames]);
+  useEffect(() => {
+    if (!prepared || values.tagIds !== undefined || !tagsQuery.isSuccess) return;
+    onChange({ tagIds: proposedTags.map(tag => tag.id) });
+  }, [prepared, values.tagIds, tagsQuery.isSuccess, proposedTags, onChange]);
   const extractedFields = aiResult?.extracted_fields_json ?? {};
   const fieldConf = aiResult?.field_confidence_json ?? {};
   const typesQuery = useQuery({
@@ -135,9 +154,12 @@ export function DmsAiIntakeReviewForm({
         return;
       }
       onAiResultPatch?.({
+        id:result.data.resultId,
+        suggested_document_type_id:typeId,
+        raw_response_json:{...(aiResult?.raw_response_json??{}),preparation:result.data.preparation},
         extracted_fields_json: result.data.extractedFieldsJson,
         field_confidence_json: result.data.fieldConfidenceJson,
-      });
+      },result.data.draftSnapshot);
       toast.success("Metadata extraction updated for the selected type");
     });
   };
@@ -190,6 +212,16 @@ export function DmsAiIntakeReviewForm({
 
   return (
     <div className="space-y-5">
+      {aiResult&&<AiFeedback source={{kind:'intake',id:aiResult.id,documentId:null}}/>}
+      {prepared && <div className="rounded border border-border p-3 space-y-2 text-sm">
+        <p className="font-medium">Document preparation — review before saving</p>
+        {typeof prepared.summary === "string" && <p dir="auto" className="whitespace-pre-wrap break-words">{prepared.summary}</p>}
+        {prepared.split === "held_unverified_boundaries" && <p className="text-xs text-muted-foreground">Possible bundle: the original is retained. Splitting needs verified page boundaries.</p>}
+        {tagsQuery.isError && <p role="status" className="text-xs text-destructive">Suggested tags could not be verified. No new tag definition will be created.</p>}
+        {proposedTags.map(tag => <label key={tag.id} className="flex items-center gap-2"><input type="checkbox" checked={(values.tagIds ?? []).includes(tag.id)} onChange={e => onChange({ tagIds: e.target.checked ? [...(values.tagIds ?? []), tag.id] : (values.tagIds ?? []).filter(id => id !== tag.id) })} />{tag.tag_name}</label>)}
+        {proposedTagNames.length > proposedTags.length && tagsQuery.isSuccess && <p className="text-xs text-muted-foreground">Some suggested tag names are unregistered and require a separate authorized master-data review.</p>}
+        <p className="text-xs text-muted-foreground">Metadata and links below remain reviewable. Reminder and search preparation follow the accepted document and configured policies; no employee data is changed automatically.</p>
+      </div>}
       {/* Document Classification */}
       <div className="space-y-4">
         <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
@@ -471,7 +503,7 @@ export function buildInitialReviewValues(session: IntakeSessionData): ReviewForm
   const aiResult = session.ai_result;
   const extractedFields = aiResult?.extracted_fields_json ?? {};
 
-  return {
+  const initial: ReviewFormValues = {
     title: aiResult?.suggested_title ?? stripExtension(session.original_filename),
     standardFileName: "",
     documentTypeId: aiResult?.suggested_document_type_id ?? null,
@@ -484,4 +516,18 @@ export function buildInitialReviewValues(session: IntakeSessionData): ReviewForm
     owningBranchId: session.owning_branch_id ?? null,
     metadataValues: {},
   };
+  for (const row of session.draft_values ?? []) {
+    const value = row.reviewed_value_json;
+    if(row.field_scope === "metadata" && /^[1-9][0-9]*$/.test(row.field_code) && typeof value === "string") {
+      initial.metadataValues[Number(row.field_code)] = {fieldType:row.field_type ?? "text",rawValue:value};
+      continue;
+    }
+    if(row.field_scope !== "document") continue;
+    const strings: Record<string, keyof ReviewFormValues> = {title:"title",standard_file_name:"standardFileName",description:"description",issue_date:"issueDate",expiry_date:"expiryDate",confidentiality_level:"confidentialityLevel"};
+    const numbers: Record<string, "documentTypeId"|"owningCompanyId"|"owningBranchId"> = {document_type_id:"documentTypeId",owning_company_id:"owningCompanyId",owning_branch_id:"owningBranchId"};
+    if(strings[row.field_code] && typeof value === "string") Object.assign(initial,{[strings[row.field_code]]:value});
+    if(numbers[row.field_code] && (value === null || (typeof value === "number" && Number.isSafeInteger(value) && value>0))) initial[numbers[row.field_code]]=value as number|null;
+    if(row.field_code === "tag_ids" && Array.isArray(value) && value.every(id=>typeof id==="number" && Number.isSafeInteger(id) && id>0)) initial.tagIds=value;
+  }
+  return initial;
 }

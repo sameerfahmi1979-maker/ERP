@@ -19,7 +19,9 @@ function compile(text, globals = {}) {
   return compiledModule.exports;
 }
 const {hasPermission} = compile(read('src/lib/rbac/scope.ts'));
-const tableFunction = table.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'DmsDocumentsTable');
+// The outer component now only binds the read-cache identity. The capability
+// defaults and callbacks belong to the mounted session component.
+const tableFunction = table.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'DmsDocumentsTableSession');
 assert.ok(tableFunction?.body);
 function find(root, predicate) {
   const result = [];

@@ -10,6 +10,7 @@ import {
 } from "@/server/actions/ai/common/assistant";
 import { ShieldAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useReadCacheOwner, type ReadCacheIdentity } from "@/components/layout/read-cache-boundary";
 import { AssistantActionChips } from "./assistant-action-chips";
 import { AssistantChatInput } from "./assistant-chat-input";
 import { AssistantEmptyState } from "./assistant-empty-state";
@@ -28,19 +29,29 @@ interface MessageWithExtras extends AssistantMessageRow {
 }
 
 interface AssistantPageClientProps {
+  initialIdentity?: ReadCacheIdentity | null;
   initialSessions: AssistantSessionRow[];
   initialEntityType?: string;
   initialEntityId?: number;
 }
 
-export function AssistantPageClient({
+export function AssistantPageClient(props: AssistantPageClientProps) {
+  const owner = useReadCacheOwner();
+  return <AssistantPageSession key={JSON.stringify([owner?.identity, owner?.generation, owner?.isLive()])} {...props} initialSessions={owner?.admits(props.initialIdentity) ? props.initialSessions : []} />;
+}
+function AssistantPageSession({
   initialSessions,
   initialEntityType,
   initialEntityId,
 }: AssistantPageClientProps) {
+  const preferredSession = initialEntityType && initialEntityId ? initialSessions.find(s => s.contextEntityType === initialEntityType && s.contextEntityId === initialEntityId)?.id ?? null : initialSessions[0]?.id ?? null;
+  const owner = useReadCacheOwner(), epoch = useRef(0), selectedSession = useRef<number | null>(preferredSession), sendLease = useRef(0);
+  const live = () => owner?.isLive() === true;
+  const [notice, setNotice] = useState<string | null>(null), [uncertain, setUncertain] = useState(false);
+  useEffect(() => () => { epoch.current++; }, []);
   const [sessions, setSessions] = useState<AssistantSessionRow[]>(initialSessions);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(
-    initialSessions[0]?.id ?? null
+    preferredSession
   );
   const [messages, setMessages] = useState<MessageWithExtras[]>([]);
   const [drafts, setDrafts] = useState<AssistantDraftRow[]>([]);
@@ -54,24 +65,31 @@ export function AssistantPageClient({
 
   // Load session on selection
   const loadSession = useCallback(async (sessionId: number) => {
+    const ticket = epoch.current;
     const result = await getAssistantSession(sessionId);
+    if (ticket !== epoch.current || !owner?.isLive() || selectedSession.current !== sessionId) return;
     if (result.success && result.data) {
       setMessages(result.data.messages as MessageWithExtras[]);
       setDrafts(result.data.drafts);
+      setUncertain(false); setNotice(null);
+    } else {
+      setMessages([]); setDrafts([]); setNotice(result.error ?? "Session access could not be verified.");
     }
-  }, []);
+  }, [owner]);
 
   useEffect(() => {
     if (!activeSessionId) return;
+    selectedSession.current = activeSessionId;
+    const ticket = ++epoch.current;
     let cancelled = false;
     getAssistantSession(activeSessionId).then(result => {
-      if (!cancelled && result.success && result.data) {
+      if (!cancelled && ticket === epoch.current && owner?.isLive() && result.success && result.data) {
         setMessages(result.data.messages as MessageWithExtras[]);
         setDrafts(result.data.drafts);
       }
     }).catch(() => { if (!cancelled) toast.error("Failed to load session"); });
     return () => { cancelled = true; };
-  }, [activeSessionId]);
+  }, [activeSessionId, owner]);
 
   useEffect(() => {
     scrollToBottom();
@@ -80,40 +98,49 @@ export function AssistantPageClient({
   // Refresh sessions list
   const refreshSessions = useCallback(async () => {
     const result = await getAssistantSessions({ limit: 20 });
-    if (result.success && result.data) {
+    if (owner?.isLive() && result.success && result.data) {
       setSessions(result.data);
     }
-  }, []);
+  }, [owner]);
 
   const handleNewSession = async () => {
+    if (!live() || isCreating || isLoading) return;
+    const ticket = ++epoch.current;
     setIsCreating(true);
-    const result = await startAssistantSession({
-      contextEntityType: initialEntityType,
-      contextEntityId: initialEntityId,
-    });
+    let result;
+    try { result = await startAssistantSession({ contextEntityType: initialEntityType, contextEntityId: initialEntityId }); }
+    catch { if (ticket === epoch.current && live()) { setIsCreating(false); setNotice("Session creation is unconfirmed. Reload the session list before creating another."); } return; }
+    if (ticket !== epoch.current || !live()) return;
     setIsCreating(false);
 
     if (result.success && result.data) {
       setSessions((prev) => [result.data!, ...prev]);
       setActiveSessionId(result.data.id);
+      selectedSession.current = result.data.id; setNotice(null); setUncertain(false);
       setMessages([]);
       setDrafts([]);
     }
   };
 
   const handleSelectSession = (session: AssistantSessionRow) => {
+    epoch.current++; selectedSession.current = session.id;
+    sendLease.current = 0;
+    setMessages([]); setDrafts([]); setNotice(null); setIsLoading(false); setIsCreating(false); setUncertain(false);
     setActiveSessionId(session.id);
   };
 
-  const handleSend = async (userMessage: string) => {
-    if (!activeSessionId || isLoading) return;
+  const handleSend = async (userMessage: string, explicitSessionId?: number) => {
+    const sid = explicitSessionId ?? selectedSession.current;
+    if (!sid || isLoading || sendLease.current || uncertain || !live()) return;
+    const ticket = ++epoch.current;
+    sendLease.current = ticket;
 
     setIsLoading(true);
 
     // Optimistically add user message
     const tempUserMsg: MessageWithExtras = {
       id: Date.now(),
-      sessionId: activeSessionId,
+      sessionId: sid,
       role: "user",
       messageText: userMessage,
       outputType: "text",
@@ -122,12 +149,17 @@ export function AssistantPageClient({
     };
     setMessages((prev) => [...prev, tempUserMsg]);
 
-    const result = await sendAssistantMessage({ sessionId: activeSessionId, userMessage });
+    let result;
+    try { result = await sendAssistantMessage({ sessionId: sid, userMessage, requestId:crypto.randomUUID() }); }
+    catch { if (ticket === epoch.current && live() && selectedSession.current === sid) { sendLease.current = 0; setIsLoading(false); setUncertain(true); setNotice("The response or conversation save is unconfirmed. Reload this session before retrying; do not automatically repeat processing."); } return; }
+    if (ticket !== epoch.current || !live() || selectedSession.current !== sid) return;
+    sendLease.current = 0;
     setIsLoading(false);
 
     if (result.success && result.data) {
-      // Reload the full session to get persisted messages
-      await loadSession(activeSessionId);
+      // Display the freshly authorised turn. Composite historical answers may
+      // intentionally be withheld on later replay until they can be rebound.
+      setMessages(prev => [...prev, { id: result.data!.messageId??Date.now() + 1, sessionId: sid, role: "assistant", messageText: result.data!.responseText, outputType: "explanation", safeMetadataJson: {ai_mod05_feedbackEligible:!!result.data!.messageId&&result.data!.feedbackEligible===true}, createdAt: new Date().toISOString() }]);
       // Store extras on last assistant message — we merge them in display
       setMessages((prev) => {
         const last = [...prev];
@@ -145,44 +177,54 @@ export function AssistantPageClient({
         return last;
       });
       if (result.data.draftIds?.length) {
-        await loadSession(activeSessionId);
+        const loaded = await getAssistantSession(sid);
+        if (ticket === epoch.current && live() && selectedSession.current === sid && loaded.success && loaded.data) setDrafts(loaded.data.drafts);
       }
       await refreshSessions();
     } else {
-      // Remove optimistic message on error
-      setMessages((prev) => prev.filter((m) => m.id !== tempUserMsg.id));
+      setNotice(result.error ?? "The response could not be verified.");
+      setUncertain(result.code === "HISTORY_UNCONFIRMED");
+      if (result.code !== "HISTORY_UNCONFIRMED") setMessages((prev) => prev.filter((m) => m.id !== tempUserMsg.id));
     }
   };
 
   const handleChipClick = (prompt: string) => {
-    // Pre-fill the chat input (we can't directly set the textarea here but we can trigger send if complete)
-    // For a better UX we just call handleSend if the prompt ends with content, otherwise we'd need input ref
-    if (!activeSessionId) {
-      handleNewSession().then(() => {});
-    }
+    void handlePromptClick(prompt);
   };
 
   const handlePromptClick = async (prompt: string) => {
+    if (!live() || isLoading || isCreating || uncertain) return;
     if (!activeSessionId) {
+      const ticket = ++epoch.current;
       // Create session first, then send
       setIsCreating(true);
-      const result = await startAssistantSession({
-        contextEntityType: initialEntityType,
-        contextEntityId: initialEntityId,
-      });
+      let result;
+      try { result = await startAssistantSession({ contextEntityType: initialEntityType, contextEntityId: initialEntityId }); }
+      catch { if (ticket === epoch.current && live()) { setIsCreating(false); setNotice("Session creation is unconfirmed. Reload the session list before creating another."); } return; }
+      if (ticket !== epoch.current || !live()) return;
       setIsCreating(false);
       if (result.success && result.data) {
+        if (!live()) return;
         setSessions((prev) => [result.data!, ...prev]);
         setActiveSessionId(result.data.id);
+        selectedSession.current = result.data.id;
         setMessages([]);
         setDrafts([]);
-        // Give state time to settle
-        setTimeout(() => handleSend(prompt), 100);
+        // The first send follows the selected session effect; no stale state closure.
+        setPendingPrompt({ sessionId: result.data.id, text: prompt });
       }
       return;
     }
     await handleSend(prompt);
   };
+  const [pendingPrompt, setPendingPrompt] = useState<{ sessionId: number; text: string } | null>(null);
+  useEffect(() => {
+    if (!pendingPrompt || pendingPrompt.sessionId !== activeSessionId) return;
+    const pending = pendingPrompt; setPendingPrompt(null);
+    void handleSend(pending.text, pending.sessionId);
+    // The pending request is consumed exactly once; retries remain explicit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingPrompt, activeSessionId]);
 
   const getDraftsForMessage = (msg: MessageWithExtras): AssistantDraftRow[] => {
     if (!msg.extras?.draftIds?.length) return [];
@@ -208,7 +250,7 @@ export function AssistantPageClient({
         <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted">
           <div>
             <h2 className="text-sm font-semibold text-foreground">
-              {activeSession?.title ?? (activeSessionId ? `Session #${activeSessionId}` : "AI Assistant")}
+              {activeSession?.title ?? activeSession?.sessionCode ?? "AI Assistant"}
             </h2>
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <ShieldAlert className="h-3 w-3 text-amber-500 dark:text-amber-300" />
@@ -219,6 +261,7 @@ export function AssistantPageClient({
 
         {/* Action chips */}
         <AssistantActionChips onChipClick={handleChipClick} />
+        {notice && <div role="status" className="px-4 py-2 text-sm text-muted-foreground">{notice}{uncertain && activeSessionId && <button type="button" className="underline ml-2" onClick={() => void loadSession(activeSessionId)}>Reload retained session</button>}</div>}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -250,7 +293,7 @@ export function AssistantPageClient({
         <AssistantChatInput
           onSend={handleSend}
           isLoading={isLoading}
-          disabled={!activeSessionId}
+          disabled={!activeSessionId || uncertain || !live()}
         />
       </div>
     </div>

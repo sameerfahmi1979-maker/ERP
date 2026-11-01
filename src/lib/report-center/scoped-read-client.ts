@@ -1,3 +1,4 @@
+import {HR_LETTER_CAPABILITIES} from "@/lib/official-documents/hr-source-contract";
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertAccountActive, hasGlobalPermission, hasPermissionInScope, isGlobalAdmin, type AuthContext } from "@/lib/rbac/check";
@@ -31,6 +32,7 @@ export async function createScopedReportReadClient(ctx:AuthContext, reportCode:s
  let verifyEmployeeScope:(fresh:AuthContext)=>Promise<void>=async fresh=>{assertAccountActive(fresh);if(fresh.profile?.id!==ctx.profile?.id)throw Error('Report collection actor changed.');};
  if(reportCode.startsWith("HR_")) {
   const requiredEmployee=required.filter(c=>(c.startsWith("hr.")||c.startsWith("reports."))&&!['hr.employees.view','hr.employee_profile.view','hr.recruitment.view'].includes(c));
+  requiredEmployee.push(...(HR_LETTER_CAPABILITIES[reportCode]??[]));
   if(reportCode==='HR_SALARY_CERT_WITH_AMOUNT') requiredEmployee.push('hr.payroll.view');
   if(reportCode==='HR_WPS_READINESS') requiredEmployee.push('hr.payroll.view','hr.banking.view');
   if(reportCode==='HR_WARNING_LETTER'||reportCode==='HR_DISCIPLINARY_SUMMARY') requiredEmployee.push('hr.confidential.view');

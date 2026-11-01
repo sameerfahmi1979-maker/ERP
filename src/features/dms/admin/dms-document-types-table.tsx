@@ -1,4 +1,5 @@
 "use client";
+import {DmsPreparationProfile} from "./dms-preparation-profile";
 
 import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
 import { ConfiguredRow } from "@/components/erp/table/list-controls";
@@ -190,6 +191,7 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
   const router = useRouter();
   const manage = canManage(authContext);
 
+  const [profileType,setProfileType]=useState<number|null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<DmsDocumentTypeRow | null>(null);
   const [form, setForm] = useState<FormState>({ ...emptyForm });
@@ -446,6 +448,7 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
                   {manage && (
                     <td data-column="actions" className="px-4 py-2.5">
                       <div className="flex items-center gap-0.5 justify-end">
+                        <Button size="sm" variant="ghost" onClick={()=>setProfileType(row.id)}>AI rules</Button>
                         <Button aria-label="Edit" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(row)} title="Edit">
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
@@ -473,6 +476,7 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
         />
       </div>
 
+      {profileType!==null&&<DmsPreparationProfile documentTypeId={profileType} onClose={()=>setProfileType(null)}/>}
       {/* Add / Edit Dialog */}
       <ERPChildDialogForm
         open={dialogOpen}

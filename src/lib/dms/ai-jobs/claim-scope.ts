@@ -24,7 +24,7 @@ export const JOB_OUTPUT_TABLES = new Set([
   "dms_document_content_chunks", "dms_ai_tag_suggestions", "dms_ai_link_suggestions",
   "dms_upload_sessions", "dms_document_types", "dms_review_queue", "erp_ai_usage_logs",
 ]);
-const JOB_RPCS = new Set(["f07_ai_worker", "f07_ai_metadata_suggestions"]);
+const JOB_RPCS = new Set(["f07_ai_worker", "f07_ai_metadata_suggestions", "ai_mod04_preparation_worker", "ai_mod05_model_gate"]);
 export function jobScopedFetch(base: typeof fetch): typeof fetch {
   return async (input, init) => {
     const claim = currentJobClaim();

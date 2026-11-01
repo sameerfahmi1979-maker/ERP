@@ -127,6 +127,8 @@ export interface DmsAiOutput {
   /** Persons/companies detected in the document, for matching against ERP records. */
   detectedEntities: DmsDetectedEntity[];
   warnings: string[];
+  /** Optional candidates from the same classify/extract response; never accepted state. */
+  preparation?: { summary: string | null; tagNames: string[]; bundle: "single" | "possibly_multiple" | "unknown" };
   rawResponse?: Record<string, unknown>;
   /** Phase 14 — Token counts from the AI provider response (analyze call only). */
   promptTokens?: number | null;

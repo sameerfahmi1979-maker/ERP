@@ -14,12 +14,10 @@ import type {
   HrEmployeeDraftFromDocuments,
 } from "@/lib/hr/document-to-record/types";
 import { cn } from "@/lib/utils";
-import { listDepartments } from "@/server/actions/common-master-data/departments";
-import { listDesignations } from "@/server/actions/common-master-data/designations";
-import {
-  listHrEmployeeCategories,
-  listHrEmploymentTypes,
-} from "@/server/actions/hr/settings";
+import type {AuthContext} from '@/lib/rbac/check';
+import {hrReadIdentity} from '@/lib/reads/hr-read-identity';
+import {readJson,retryAuthorizedRead} from '@/lib/reads/client';
+import {employeeProfileChoices,type EmployeeChoiceKind} from '@/lib/hr/employee-profile-choices';
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Info, ShieldAlert, User } from "lucide-react";
 import { HrDocumentConfidenceBadge } from "./hr-document-confidence-badge";
@@ -45,6 +43,7 @@ type EmployeeFormState = {
 };
 
 type Props = {
+  authContext: AuthContext;
   draft: HrEmployeeDraftFromDocuments;
   form: EmployeeFormState;
   setForm: (patch: Partial<EmployeeFormState>) => void;
@@ -86,6 +85,8 @@ function SuggestedField({
         )}
       </div>
       <Input
+        aria-label={label}
+        required={required}
         type={inputType}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -97,6 +98,7 @@ function SuggestedField({
 }
 
 export function HrDocumentEmployeeReviewStep({
+  authContext,
   draft,
   form,
   setForm,
@@ -116,67 +118,25 @@ export function HrDocumentEmployeeReviewStep({
     enabled: !!form.owner_company_id,
   });
 
-  // Department
-  const uiRead1 = useQuery({
-    queryKey: ["departments", "list"],
-    queryFn: async () => {
-      const r = await listDepartments({ is_active: true });
-      if(!r.success)throw new Error('Department choices could not be loaded.');
-      return (r.data ?? []).map((d) => ({
-        value: d.id,
-        label: d.department_name_en,
-        description: d.department_code ?? undefined,
-      }));
-    },
+  // Reuse the canonical employee-profile selector: company, branch, effective
+  // dates, department and shared designations follow the native save rules.
+  // New employees have no historical selections to grandfather into choices.
+  const criteria={companyId:form.owner_company_id,branchId:form.branch_id,departmentId:form.department_id,
+    selected:{departments:null,designations:null,sites:null,categories:null,employment:null,mohre:null,relationships:null}};
+  const choices=useQuery({queryKey:['hr','document-employee-choices',hrReadIdentity(authContext),criteria],
+    staleTime:0,gcTime:0,retry:retryAuthorizedRead,queryFn:async({signal})=>{
+      const result=await readJson<{success:true;data:unknown}>('employee-profile-choices',criteria,signal);
+      return employeeProfileChoices.parse(result.data);
+    }});
+  const options=(kind:EmployeeChoiceKind)=>{const group=choices.data?.[kind];return group?.status==='ready'?group.options:[];};
+  const available=(kind:EmployeeChoiceKind)=>choices.data?.[kind].status==='ready'&&!choices.isError&&!choices.isFetching;
+  const selectionValid=(kind:EmployeeChoiceKind,id:number|null,required=false)=>id===null?!required:
+    available(kind)&&options(kind).some(option=>option.value===id&&!option.disabled);
+  const departmentOptions=options('departments'),designationOptions=options('designations'),categoryOptions=options('categories'),employmentTypeOptions=options('employment');
+  const invalidChoice=(['departments','designations','categories','employment'] as const).some(kind=>{
+    const id={departments:form.department_id,designations:form.designation_id,categories:form.employee_category_id,employment:form.employment_type_id}[kind];
+    return id!==null&&available(kind)&&!selectionValid(kind,id);
   });
-  const { data: departmentOptions } = uiRead1;
-
-  // Designation
-  const uiRead2 = useQuery({
-    queryKey: ["designations", "list"],
-    queryFn: async () => {
-      const r = await listDesignations({ is_active: true });
-      if(!r.success)throw new Error('Designation choices could not be loaded.');
-      return (r.data ?? []).map((d) => ({
-        value: d.id,
-        label: d.designation_name_en,
-        description: d.designation_code ?? undefined,
-      }));
-    },
-  });
-  const { data: designationOptions } = uiRead2;
-
-  // Employee Category
-  const uiRead3 = useQuery({
-    queryKey: ["hr", "settings", "employee-categories"],
-    queryFn: async () => {
-      const r = await listHrEmployeeCategories({ is_active: true });
-      if(!r.success)throw new Error('Employee category choices could not be loaded.');
-      const rows = r.success && r.data ? r.data.data : [];
-      return rows.map((c) => ({
-        value: c.id,
-        label: c.name_en,
-        description: c.code ?? undefined,
-      }));
-    },
-  });
-  const { data: categoryOptions } = uiRead3;
-
-  // Employment Type
-  const uiRead4 = useQuery({
-    queryKey: ["hr", "settings", "employment-types"],
-    queryFn: async () => {
-      const r = await listHrEmploymentTypes({ is_active: true });
-      if(!r.success)throw new Error('Employment type choices could not be loaded.');
-      const rows = r.success && r.data ? r.data.data : [];
-      return rows.map((t) => ({
-        value: t.id,
-        label: t.name_en,
-        description: t.code ?? undefined,
-      }));
-    },
-  });
-  const { data: employmentTypeOptions } = uiRead4;
 
   const hasBlockingIdentityDuplicates = identityDocDuplicates.some(
     (d) => d.severity === "block"
@@ -186,18 +146,23 @@ export function HrDocumentEmployeeReviewStep({
     form.full_name_en.trim() &&
     (form.gender === "male" || form.gender === "female") &&
     form.date_of_birth.trim() &&
-    form.mobile_number.trim() &&
     form.owner_company_id &&
     form.employee_category_id &&
     form.joining_date.trim() &&
-    form.emergency_contact_name.trim() &&
-    form.emergency_contact_mobile.trim() &&
+    selectionValid('departments',form.department_id) &&
+    selectionValid('designations',form.designation_id) &&
+    selectionValid('categories',form.employee_category_id,true) &&
+    selectionValid('employment',form.employment_type_id) &&
     !hasBlockingIdentityDuplicates;
 
   const unresolvedConflicts = conflicts.filter((c) => !c.resolvedValue);
 
   return (
-    <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3,uiRead4]}><div className="space-y-5">
+    <QueryReadBoundary queries={[choices]}><div className="space-y-5">
+      {invalidChoice&&<p role="alert" className="text-sm text-destructive">Choose a current department, designation and employment category/type for the selected employer and branch. A previous selection is no longer available.</p>}
+      {(['departments','designations','categories','employment'] as const).map(kind=>{
+        const group=choices.data?.[kind];return group&&group.status!=='ready'?<p key={kind} role="alert" className="text-sm text-destructive">{kind}: {group.error} <button type="button" className="underline" onClick={()=>void choices.refetch()}>Retry choices</button></p>:null;
+      })}
       <div>
         <div className="flex items-center gap-2">
           <User className="h-4 w-4 text-muted-foreground" />
@@ -339,6 +304,9 @@ export function HrDocumentEmployeeReviewStep({
               searchPlaceholder="Search..."
               allowClear
             />
+            {draft.nationalityEvidence?.map(evidence => <p key={evidence.sourceDocumentId} className="mt-1 text-xs text-muted-foreground">
+              {evidence.value} — {evidence.sourceDocumentTitle}{!evidence.matched && ' (not matched; select nationality)'}
+            </p>)}
           </div>
           <div className="col-span-6">
             <SuggestedField
@@ -346,7 +314,6 @@ export function HrDocumentEmployeeReviewStep({
               suggestion={draft.mobile_number}
               value={form.mobile_number}
               onChange={(v) => setForm({ mobile_number: v })}
-              required
             />
           </div>
           <div className="col-span-6">
@@ -383,6 +350,8 @@ export function HrDocumentEmployeeReviewStep({
                 setForm({
                   owner_company_id: v == null ? null : Number(v),
                   branch_id: null,
+                  department_id: null,
+                  designation_id: null,
                 });
               }}
               options={companyOptions}
@@ -406,7 +375,7 @@ export function HrDocumentEmployeeReviewStep({
             <Label className="text-xs font-medium mb-1 block">Branch</Label>
             <ERPCombobox ariaLabel="Branch"
               value={form.branch_id}
-              onValueChange={(v) => setForm({ branch_id: v == null ? null : Number(v) })}
+              onValueChange={(v) => setForm({ branch_id: v == null ? null : Number(v),department_id:null,designation_id:null })}
               options={branchOptions}
               placeholder={form.owner_company_id ? "Select branch..." : "Select company first"}
               searchPlaceholder="Search..."
@@ -418,11 +387,12 @@ export function HrDocumentEmployeeReviewStep({
             <Label className="text-xs font-medium mb-1 block">Department</Label>
             <ERPCombobox ariaLabel="Department"
               value={form.department_id}
-              onValueChange={(v) => setForm({ department_id: v == null ? null : Number(v) })}
+              onValueChange={(v) => setForm({ department_id: v == null ? null : Number(v),designation_id:null })}
               options={departmentOptions ?? []}
               placeholder="Select department..."
               searchPlaceholder="Search..."
               allowClear
+              disabled={!form.owner_company_id||!available('departments')}
             />
           </div>
           <div className="col-span-6">
@@ -434,10 +404,11 @@ export function HrDocumentEmployeeReviewStep({
               placeholder="Select designation..."
               searchPlaceholder="Search..."
               allowClear
+              disabled={!form.owner_company_id||!available('designations')}
             />
           </div>
           <div className="col-span-6">
-            <Label className="text-xs font-medium mb-1 block">Employee Category</Label>
+            <Label className="text-xs font-medium mb-1 block">Employee Category <span className="text-destructive">*</span></Label>
             <ERPCombobox ariaLabel="Employee Category"
               value={form.employee_category_id}
               onValueChange={(v) => setForm({ employee_category_id: v == null ? null : Number(v) })}
@@ -445,6 +416,7 @@ export function HrDocumentEmployeeReviewStep({
               placeholder="Select category..."
               searchPlaceholder="Search..."
               allowClear
+              disabled={!available('categories')}
             />
           </div>
           <div className="col-span-6">
@@ -456,6 +428,7 @@ export function HrDocumentEmployeeReviewStep({
               placeholder="Select employment type..."
               searchPlaceholder="Search..."
               allowClear
+              disabled={!available('employment')}
             />
           </div>
         </div>
@@ -469,9 +442,9 @@ export function HrDocumentEmployeeReviewStep({
         <div className="grid grid-cols-12 gap-3">
           <div className="col-span-6">
             <Label className="text-xs font-medium mb-1 block">
-              Contact Name <span className="text-destructive">*</span>
+              Contact Name (optional)
             </Label>
-            <Input aria-label="Contact Name" required
+            <Input aria-label="Contact Name"
               value={form.emergency_contact_name}
               onChange={(e) => setForm({ emergency_contact_name: e.target.value })}
               className="h-8 text-sm"
@@ -480,9 +453,9 @@ export function HrDocumentEmployeeReviewStep({
           </div>
           <div className="col-span-6">
             <Label className="text-xs font-medium mb-1 block">
-              Contact Mobile <span className="text-destructive">*</span>
+              Contact Mobile (optional)
             </Label>
-            <Input aria-label="Contact Mobile" required
+            <Input aria-label="Contact Mobile"
               value={form.emergency_contact_mobile}
               onChange={(e) => setForm({ emergency_contact_mobile: e.target.value })}
               className="h-8 text-sm"
@@ -496,7 +469,7 @@ export function HrDocumentEmployeeReviewStep({
         <Button variant="outline" size="sm" onClick={onBack}>
           Back
         </Button>
-        <Button size="sm" onClick={onNext} disabled={!isValid}>
+        <Button size="sm" onClick={onNext} disabled={!isValid || unresolvedConflicts.length > 0}>
           Review Compliance Records
         </Button>
       </div>

@@ -10,6 +10,7 @@
  */
 
 import { z } from "zod";
+import {updateTemplateSchema} from "@/lib/report-center/template-config-schema";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { brandingPermission, canViewReportBrandingAssets, canManageReportBrandingAssets, canUploadBrandingAssets } from "@/lib/branding/asset-permissions";
@@ -70,31 +71,7 @@ const selectionRowsSchema = z.array(z.object({
   }).nullable(),
 }));
 
-const updateTemplateSchema = z.object({
-  id: z.number().int().positive(),
-  template_name: z.string().trim().min(2).max(200),
-  template_type: z.enum(['report','letter','certificate','form','checklist','badge','external_submission','group_summary']),
-  default_orientation: z.enum(["portrait", "landscape"]).optional(),
-  page_size: z.enum(["a4", "letter", "legal"]).optional(),
-  font_family: z.string().trim().min(1).max(100).optional(),
-  language_mode: z.enum(["en", "ar", "bilingual"]).optional(),
-  show_logo: z.boolean().optional(),
-  show_small_logo: z.boolean().optional(),
-  show_address: z.boolean().optional(),
-  show_trn: z.boolean().optional(),
-  show_license: z.boolean().optional(),
-  show_signatory: z.boolean().optional(),
-  show_stamp: z.boolean().optional(),
-  show_watermark: z.boolean().optional(),
-  watermark_text: z.string().max(100).nullable().optional(),
-  body_html_en: z.string().max(1000000).nullable().optional(),
-  body_html_ar: z.string().max(1000000).nullable().optional(),
-  custom_css: z.string().max(50000).nullable().optional(),
-  branding_profile_id: z.number().int().positive().nullable().optional(),
-  is_default: z.boolean().optional(),
-  is_active: z.boolean().optional(),
-}).strict();
-
+// Shared strict configuration schema also guards same-identity amendments.
 const createTemplateSchema = updateTemplateSchema.omit({ id: true }).extend({
   template_code: z.string().min(2).max(100).regex(/^[A-Z0-9_]+$/, "Code must be UPPER_SNAKE_CASE"),
   template_name: z.string().min(2).max(200),

@@ -42,6 +42,7 @@ export default async function SearchPage() {
 
       <SearchPageClient
         initialRecent={initialRecent}
+        initialRecentOwnerAuthId={ctx.profile?.auth_user_id??undefined}
         aiSearchEnabled={flags.enabled}
         semanticEnabled={flags.semanticEnabled}
       />

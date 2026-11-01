@@ -72,8 +72,8 @@ export async function readDmsApprovals(input: unknown, context?: AuthContext, si
         })),
       ]);
       signal?.throwIfAborted();
-      const canActOnStep = access.get(p.documentId)?.can_act === true;
-      const self = d.submitted_by !== null && d.submitted_by === ctx.profile.id && !canActOnStep;
+      const self = d.submitted_by !== null && d.submitted_by === ctx.profile.id;
+      const canActOnStep = access.get(p.documentId)?.can_act === true && !self;
       return {success: true as const, data: dmsApprovalStateResponseSchema.parse({criteria: p, record: {
         documentId: d.id, documentNo: d.document_no, title: d.title, documentTypeId: d.document_type_id, documentTypeName: d.document_type?.name_en ?? null,
         documentStatus: d.status, approvalStatus: d.approval_status, submittedBy: d.submitted_by, submittedByName: d.submitter?.display_name ?? null, submittedAt: d.submitted_at,
@@ -158,7 +158,7 @@ export async function readDmsApprovals(input: unknown, context?: AuthContext, si
       return {documentId: d.id, documentNo: visible ? d.document_no : "—", title: visible ? d.title : "[Restricted Document]",
         documentTypeName: visible ? d.document_type?.name_en ?? null : null, ownerName: d.owner?.display_name ?? null, submittedByName: d.submitter?.display_name ?? null,
         submittedAt: d.submitted_at, approvalStatus: d.approval_status, currentApprovalId: currentIds.get(d.id) ?? null,
-        daysPending: days, canAct: allowed.get(d.id)!.can_act === true, canWithdraw: allowed.get(d.id)!.can_withdraw === true, isRedacted: !visible};
+        daysPending: days, canAct: !own && allowed.get(d.id)!.can_act === true, canWithdraw: allowed.get(d.id)!.can_withdraw === true, isRedacted: !visible};
     });
     return {success: true as const, data: dmsApprovalQueuePageSchema.parse({criteria: p, rows, totalCount: total})};
   } catch {

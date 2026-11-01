@@ -20,6 +20,7 @@ vi.mock('@/lib/supabase/client',()=>({createClient:()=>({storage:{from:()=>({upl
 vi.mock('@/server/actions/dms/batch-intake',()=>({createDmsUploadBatch:m.batch,startAiIntakeAndCreateDraft:m.draft,prepareDmsUploadBatchMemberDraft:m.prepare,readDmsUploadBatchDraftRecovery:m.read,recoverDmsBatchMemberUpload:m.member,verifyDmsBatchUpload:m.verify,bootstrapDmsBatchOrigin:m.bootstrap,discoverDmsBatchAdmissions:m.discover,recoverDmsUploadBatch:m.whole}));
 vi.mock('@/server/actions/dms/ai-intake',()=>({startAiIntakeFromUploadSession:m.ai}));
 vi.mock('@/server/actions/dms/upload-sessions',()=>({cancelDmsUploadSession:vi.fn(),createDmsUploadSession:vi.fn()}));
+vi.mock('@/server/actions/dms/document-preparation',()=>({checkDmsDuplicateBeforeUpload:async()=>({success:true,data:{status:'no_visible_match'}})}));
 vi.mock('@/features/dms/admin/dms-admin-file-storage-panel',()=>({DmsAdminFileStoragePanel:()=>null}));
 vi.mock('@/features/dms/upload/dms-batch-upload-progress',()=>({DmsBatchUploadProgress:()=>null}));
 vi.mock('@/features/dms/upload/dms-create-document-from-upload-dialog',()=>({DmsCreateDocumentFromUploadDialog:()=>null}));

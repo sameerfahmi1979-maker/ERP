@@ -26,6 +26,11 @@ it('visible edit and governance actions use each row company, not aggregate page
  expect(JSON.parse(screen.getByTestId('governance-11').textContent!)).toEqual({manage:true,approve:false,publish:false});expect(JSON.parse(screen.getByTestId('governance-12').textContent!)).toEqual({manage:false,approve:true,publish:true});
  expect((screen.getByRole('button',{name:'Edit template A approved'}) as HTMLButtonElement).disabled).toBe(true);expect(screen.getAllByText('Inactive').length).toBeGreaterThan(0);
 });
+it('explicit system-editor capability enables same-template editing without enabling other-company row actions',()=>{
+ render(wrap(<ReportTemplatesPageClient initialProfiles={profiles} initialTemplates={rows} canManage canUpload canApprove canPublish canEditPublished/>));
+ expect((screen.getByRole('button',{name:'Edit template A approved'}) as HTMLButtonElement).disabled).toBe(false);
+ expect(screen.queryByRole('button',{name:'Edit template B draft'})).toBeNull();
+});
 it('the governance queue only offers approval for its actually authorized company',()=>{
  render(wrap(<GovernanceDashboardClient counts={{in_review:2}} inReviewTemplates={[{...rows[0],governance_status:'in_review'},{...rows[1],governance_status:'in_review'}]} failedSecurityReviewTemplates={[]} canApprove canPublish canManage profiles={profiles}/>));
  expect(screen.getAllByRole('button',{name:'Approve',exact:true})).toHaveLength(1);expect(screen.getAllByRole('button',{name:'Reject',exact:true})).toHaveLength(1);

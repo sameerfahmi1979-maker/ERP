@@ -74,7 +74,7 @@ const REDACTION_RULES: Record<ReportSensitiveProfile, FieldRule[]> = {
     {
       fields: [
         "basic_salary",
-        "gross_salary",
+        "gross_salary", "final_wage", "salary_in_words_en", "salary_in_words_ar",
         "net_salary",
         "salary_amount",
         "housing_allowance",
@@ -114,7 +114,7 @@ const REDACTION_RULES: Record<ReportSensitiveProfile, FieldRule[]> = {
         "disciplinary_notes",
         "violation_details",
         "penalty_details",
-        "warning_notes",
+        "warning_notes", "warning_subject_en", "warning_subject_ar", "verified_conduct_description_en", "verified_conduct_description_ar", "specific_corrective_action_en", "specific_corrective_action_ar", "policy_reference_en", "policy_reference_ar",
         "termination_reason",
         "action_details",
       ],

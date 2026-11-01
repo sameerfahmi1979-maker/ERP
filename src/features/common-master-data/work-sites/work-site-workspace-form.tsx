@@ -19,7 +19,9 @@ import { EmirateSelect } from "@/components/erp/geography/emirate-select";
 import { CitySelect } from "@/components/erp/geography/city-select";
 import type { WorkSiteRow } from "@/server/actions/common-master-data/work-sites";
 import { createWorkSite, updateWorkSite } from "@/server/actions/common-master-data/work-sites";
+import { masterRecordCode } from "@/lib/master-data/form-code";
 import { DmsEntityDocumentsTab } from "@/features/dms/entity-documents";
+import { ReviewedFormSuggestions } from "@/features/ai/common/field-suggestions/reviewed-form-suggestions";
 
 type Props = {
   site?: WorkSiteRow | null;
@@ -78,7 +80,7 @@ export function WorkSiteWorkspaceForm({ site, mode, companies = [], authContext 
       }
 
       const data = {
-        site_code: fd.get("site_code") as string,
+        site_code: masterRecordCode(fd, "site_code", isEditing ? site?.site_code : null) as string,
         site_name: fd.get("site_name") as string,
         site_type: fd.get("site_type") as "office" | "yard" | "workshop" | "camp" | "warehouse" | "project_site" | "client_site" | "weighbridge" | "fuel_point" | "storage_area" | "other",
         owner_company_id: ownerCompanyIdRaw,
@@ -151,6 +153,7 @@ export function WorkSiteWorkspaceForm({ site, mode, companies = [], authContext 
       isSubmitting={isSubmitting}
     >
       <form id={FORM_ID} onSubmit={(e) => { e.preventDefault(); handleSaveAndClose(); }} onInput={syncDraft} onChange={syncDraft}>
+        {!isViewing && activeSection === "basic" && <ReviewedFormSuggestions formId={FORM_ID} entityType="site" entityId={site?.id ?? null} disabled={disabled} />}
         <ERPRecordSectionPanel id="basic" activeId={activeSection} title="Work Site Details">
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-6 space-y-1.5">

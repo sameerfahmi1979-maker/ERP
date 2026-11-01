@@ -22,11 +22,20 @@ export function generateVerificationToken(): string {
 
 /**
  * Build the public URL for a verification link.
- * Uses NEXT_PUBLIC_SITE_URL env var (consistent with rest of app),
- * falling back to NEXT_PUBLIC_APP_URL, then empty string.
+ * The public verification host is independent of local sign-in redirects.
+ * Local frontends using live ERP data set PUBLIC_VERIFICATION_BASE_URL to the
+ * public ERP HTTPS origin; auth and local navigation keep their local origin.
  */
 export function buildVerificationUrl(token: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "";
+  const override = process.env.PUBLIC_VERIFICATION_BASE_URL;
+  if (override !== undefined) {
+    const parsed = new URL(override);
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== '/') {
+      throw new Error('Public verification requires a valid HTTPS origin.');
+    }
+    return `${parsed.origin}${buildVerificationPath(token)}`;
+  }
+  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, '');
   return `${baseUrl}/verify/${token}`;
 }
 

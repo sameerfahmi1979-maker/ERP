@@ -25,6 +25,13 @@ export type TemplateSecurityReviewStatus =
   | "skipped";
 
 export type TemplateEventType =
+  | "template_amendment_save"
+  | "template_amendment_submit"
+  | "template_amendment_approve"
+  | "template_amendment_reject"
+  | "template_amendment_publish"
+  | "template_amendment_withdraw"
+  | "template_amendment_discard"
   | "template_created"
   | "template_updated"
   | "template_submitted_for_review"

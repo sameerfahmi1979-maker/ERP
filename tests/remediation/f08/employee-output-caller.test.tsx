@@ -15,8 +15,8 @@ vi.mock('sonner',()=>({toast:{success:m.toast,error:m.toast}}));
 vi.mock('@/components/ui/button',()=>({Button:({children,variant:_,size:__,...props}:React.ButtonHTMLAttributes<HTMLButtonElement>&{variant?:string;size?:string})=><button {...props}>{children}</button>}));
 vi.mock('@/components/ui/badge',()=>({Badge:({children}:{children:ReactNode})=><span>{children}</span>}));
 vi.mock('@/features/report-center/letter-preview-dialog',()=>({LetterPreviewDialog:()=>null}));
-vi.mock('@/features/report-center/official-draft-preview-dialog',()=>({OfficialDraftPreviewDialog:()=>null}));
-vi.mock('@/components/report-center/report-template-select-dialog',()=>({ReportTemplateSelectDialog:({open,onSelect}:{open:boolean;onSelect:(id:number,t:unknown)=>void})=>open?<button onClick={()=>onSelect(3,{template_name:'Synthetic letterhead'})}>Select synthetic letterhead</button>:null}));
+vi.mock('@/features/report-center/official-draft-preview-dialog',()=>({OfficialDraftPreviewDialog:({open,onIssue}:{open:boolean;onIssue?:(language:string,inputs:Record<string,string>,templateId?:number)=>Promise<void>})=>open?<button onClick={()=>void onIssue?.('bilingual',{purpose:'Reviewed synthetic purpose'},3)}>Issue reviewed synthetic document</button>:null}));
+vi.mock('@/components/report-center/report-template-select-dialog',()=>({ReportTemplateSelectDialog:({open,onSelect,onOpenChange}:{open:boolean;onSelect:(id:number,t:unknown)=>void;onOpenChange:(open:boolean)=>void})=>open?<button type="button" onClick={()=>{onSelect(3,{template_name:'Synthetic letterhead'});onOpenChange(false);}}>Select synthetic letterhead</button>:null}));
 // Lightweight child shell here tests actual caller handlers, not layout or native-dialog accessibility.
 vi.mock('@/components/erp/erp-child-dialog-form',()=>({ERPChildDialogForm:({open,children,onSubmit,submitLabel,isSubmitting}:{open:boolean;children:ReactNode;onSubmit:()=>void;submitLabel:string;isSubmitting:boolean})=>open?<section><form onSubmit={e=>{e.preventDefault();onSubmit();}}>{children}<button disabled={isSubmitting}>{submitLabel}</button></form></section>:null}));
 vi.mock('@/components/erp/table/record-collection',()=>({RecordCollection:({rows,renderRecord}:{rows:unknown[];renderRecord:(r:unknown)=>ReactNode})=><>{rows.map(renderRecord)}</>}));
@@ -30,6 +30,12 @@ const success={success:true,issuanceId:7,qr:{status:'not_requested'},requestKey:
 beforeEach(()=>{vi.resetAllMocks();m.owner.isLive=()=>true; m.catalog.mockResolvedValue({success:true,data:[item]});m.history.mockResolvedValue({success:true,data:{items:[row],canRevoke:true,canReissue:true,canDelete:false}});m.generate.mockResolvedValue(success);m.recover.mockResolvedValue(success);m.intent.mockResolvedValue({key:'opaque-key',token:'opaque-token'});});
 afterEach(cleanup);
 async function panel(){fireEvent.click(await screen.findByRole('button',{name:'Generate',exact:true}));await screen.findByLabelText('Recipient');fireEvent.change(screen.getByLabelText('Recipient'),{target:{value:'Synthetic recipient'}});}
+it('routes eligible fixed letters through preparation and retains the existing durable issue handler',async()=>{
+ m.catalog.mockResolvedValue({success:true,data:[{...item,outputCode:'HR_NOC',canPreview:true,previewLanguages:['en','ar','bilingual']}]});render(page());
+ fireEvent.click(await screen.findByRole('button',{name:'Generate',exact:true}));expect(m.generate).not.toHaveBeenCalled();
+ fireEvent.click(await screen.findByRole('button',{name:'Issue reviewed synthetic document'}));await waitFor(()=>expect(m.generate).toHaveBeenCalled());
+ expect(m.generate.mock.calls[0]).toEqual(['HR_NOC',1,expect.objectContaining({language:'bilingual',inputs:{purpose:'Reviewed synthetic purpose'},templateId:3,clientRequestToken:'opaque-token'})]);
+});
 it('retains the approved compact history and aligns serial, status and issue date',async()=>{
  render(page());await screen.findByText('F08-SERIAL-7');const table=screen.getByRole('table');expect(table.dataset.presentation).toBe('embedded');
  const cells=within(table).getAllByRole('cell');expect(cells[1].textContent).toBe('F08-SERIAL-7');expect(cells[2].textContent?.trim()).toBe('Issued');expect(cells[3].textContent).toContain('18 Oct 2026');

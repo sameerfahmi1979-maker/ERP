@@ -4,7 +4,8 @@ import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import type {AuthContext} from "@/lib/rbac/check";
 import type {DmsAiSearchResult, DmsSemanticSearchResult, DmsSearchIntent} from "@/lib/dms/ai/types";
-const state = vi.hoisted(() => ({read: vi.fn(), legacy: vi.fn(), ai: vi.fn(), semantic: vi.fn(), realPreview: false, openTab: vi.fn()}));
+const state = vi.hoisted(() => ({read: vi.fn(), legacy: vi.fn(), ai: vi.fn(), semantic: vi.fn(), candidates: vi.fn(), realPreview: false, openTab: vi.fn()}));
+vi.mock("@/server/actions/ai/search-candidates",()=>({filterSearchCandidateIds:(...args:unknown[])=>state.candidates(...args)}));
 vi.mock("@/lib/reads/client", async () => ({...await vi.importActual("@/lib/reads/client"), readJson: (...args: unknown[]) => state.read(...args)}));
 vi.mock("@/server/actions/dms/browser", () => ({searchDmsBrowser: (...args: unknown[]) => state.legacy(...args)}));
 vi.mock("@/server/actions/dms/ai-search", () => ({askDmsDocumentsQuestion: (...args: unknown[]) => state.ai(...args)}));
@@ -40,7 +41,7 @@ function mount(authContext = ctx) {
   const ui = (auth: AuthContext) => <QueryClientProvider client={client}><DmsBrowserPageClient authContext={auth}/></QueryClientProvider>;
   const view = render(ui(authContext)); return {...view, client, replace: (auth: AuthContext) => view.rerender(ui(auth))};
 }
-beforeEach(() => {state.realPreview = false; state.read.mockImplementation((_r, p) => Promise.resolve(response(p))); state.legacy.mockRejectedValue(Error("Legacy action must not be called")); state.ai.mockResolvedValue({success: false}); state.semantic.mockResolvedValue({success: false});});
+beforeEach(() => {state.realPreview = false; state.candidates.mockReset();state.candidates.mockImplementation(async(p:{candidateIds:number[]})=>({success:true,data:p.candidateIds}));state.read.mockImplementation((_r, p) => Promise.resolve(response(p))); state.legacy.mockRejectedValue(Error("Legacy action must not be called")); state.ai.mockResolvedValue({success: false}); state.semantic.mockResolvedValue({success: false});});
 afterEach(() => {cleanup(); clients.splice(0).forEach(c => c.clear()); vi.clearAllMocks(); state.legacy.mockReset(); state.read.mockReset(); state.ai.mockReset(); state.semantic.mockReset();});
 it("actual parent shows a retryable failure instead of a successful zero", async () => {
   state.read.mockImplementation((_r, p: DmsBrowserCriteria) => p.operation === "search" ? Promise.reject(new ReadError("SYNTHETIC_PRIVATE_FAILURE", 503)) : Promise.resolve(response(p))); mount();
@@ -177,6 +178,17 @@ it("provider additions stay visibly top-N and do not corrupt the exact base coun
   mount(); enter("find some synthetic documents"); await screen.findByRole("button", {name: /AI suggestion/}); expect(screen.getByText("1 exact matches")).toBeTruthy(); expect(screen.queryByText("3 exact matches")).toBeNull(); expect(screen.queryByRole("button", {name: /Duplicate base/})).toBeNull(); expect(screen.getByText(/not an exact total/)).toBeTruthy(); expect(state.ai).toHaveBeenCalledExactlyOnceWith("find some synthetic documents");
   fireEvent.click(screen.getByRole("button", {name: /AI suggestion/})); await screen.findByText("Synthetic 2.pdf"); expect(calls("files").at(-1)?.[1]).toMatchObject({documentId: 2});
 });
+it("provider suggestions are narrowed by the current hard filters before rendering",async()=>{
+ state.ai.mockResolvedValue({success:true,data:{intent:null,results:[{documentId:2,documentNo:"SYN-2",title:"Allowed suggestion"},{documentId:3,documentNo:"SYN-3",title:"FILTERED_PRIVATE"}]}});
+ state.candidates.mockResolvedValue({success:true,data:[2]});mount();fireEvent.click(await screen.findByRole("button",{name:"Expired filter"}));enter("find some synthetic documents");await screen.findByRole("button",{name:"Allowed suggestion"});expect(screen.queryByText("FILTERED_PRIVATE")).toBeNull();expect(state.candidates).toHaveBeenCalledWith(expect.objectContaining({query:"find some synthetic documents",candidateIds:[2,3],filters:expect.objectContaining({status:"expired"})}));
+});
+it("a late candidate-authority response cannot repaint a retired query",async()=>{
+ let complete!:(v:unknown)=>void;state.ai.mockResolvedValue({success:true,data:{intent:null,results:[{documentId:3,documentNo:"SYN-3",title:"RETIRED_CANDIDATE"}]}});
+ state.candidates.mockImplementation(()=>new Promise(resolve=>{complete=resolve;}));mount();enter("find some synthetic documents");await waitFor(()=>expect(complete).toBeTypeOf("function"));enter("new");await act(async()=>complete({success:true,data:[3]}));expect(screen.queryByText("RETIRED_CANDIDATE")).toBeNull();
+});
+it("candidate authorization failure cannot erase the exact base or display suggestions",async()=>{
+ state.ai.mockResolvedValue({success:true,data:{intent:null,results:[{documentId:3,documentNo:"SYN-3",title:"PRIVATE_CANDIDATE"}]}});state.candidates.mockResolvedValue({success:false});mount();enter("find some synthetic documents");await screen.findByText(/Some suggestions could not be loaded/);expect(screen.queryByText("PRIVATE_CANDIDATE")).toBeNull();expect(screen.getByRole("button",{name:"Document 1"})).toBeTruthy();
+});
 type AiResponse = Awaited<ReturnType<typeof import("@/server/actions/dms/ai-search").askDmsDocumentsQuestion>>;
 type SemanticResponse = Awaited<ReturnType<typeof import("@/server/actions/dms/semantic-search").semanticSearchDmsDocuments>>;
 function providerResponses(label: string, firstId: number) {
@@ -185,7 +197,7 @@ function providerResponses(label: string, firstId: number) {
     risk_hint: null, metadata_filters: [], confidentiality_max: null};
   const ai: AiResponse = {success: true, data: {intent, results: [{documentId: firstId, documentNo: `DOC-${firstId}`,
     title: `${label}_AI_PRIVATE`, aiSummarySnippet: null, contentSnippet: null, matchReason: `${label} AI reason`,
-    riskLevel: null, completenessScore: null, expiryDate: null}]}};
+    riskLevel: null, completenessScore: null, expiryDate: null}], totalCount: 1}};
   const semantic: SemanticResponse = {success: true, data: [semanticResult({documentId: firstId + 1, documentNo: `DOC-${firstId + 1}`,
     title: `${label}_SEMANTIC_PRIVATE`, matchReason: `${label} semantic reason`})]};
   return {ai, semantic};

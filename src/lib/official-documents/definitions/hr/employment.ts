@@ -13,6 +13,7 @@
 
 import type { OfficialDocumentDefinition } from "../../types";
 import { formatDateAr, formatDateEn, str } from "../helpers";
+import {EMPLOYMENT_RECIPIENT_FIELDS, employmentAddressee, employmentRecipientError} from "../../employment-recipient";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HR_EMPLOYMENT_LETTER — Employment Certificate (EN)
@@ -85,13 +86,13 @@ export const employmentCertificateDefinition: OfficialDocumentDefinition = {
 
 export const employmentConfirmationDefinition: OfficialDocumentDefinition = {
   documentCode: "HR_EMPLOYMENT_CONFIRMATION",
-  version: 1,
+  version: 2,
   moduleCode: "HR",
   recordType: "employee",
-  titleEn: "Employment Confirmation Letter",
-  titleAr: "خطاب تأكيد التوظيف",
+  titleEn: "Employment Confirmation Certificate",
+  titleAr: "شهادة إثبات عمل",
   businessPurpose:
-    "Confirms active full-time employment to third parties, available in English, Arabic, and synchronized bilingual layout.",
+    "Confirms employment using employee/company records, with a general or named recipient and English, Arabic or bilingual output.",
   status: "published",
   supportedLanguages: ["en", "ar", "bilingual"],
   bilingualLayoutType: "narrative_two_column",
@@ -102,20 +103,29 @@ export const employmentConfirmationDefinition: OfficialDocumentDefinition = {
     joining_date:
       "Employment Confirmation cannot be generated because the employee's joining date is missing. Update the employee's employment details first.",
   },
-  optionalInputs: [],
+  optionalInputs: EMPLOYMENT_RECIPIENT_FIELDS,
+  validateInputs: employmentRecipientError,
   sensitiveFields: [],
   wording: {
     en: {
-      source: "src/components/erp/print/templates/bilingual-sample.tsx",
-      provenance: "verified_code",
-      businessApprovalStatus: "pending_business_approval",
-      note: "ERP PDF.1 bilingual template EN prose, migrated verbatim. Business-owner approval not yet formally recorded.",
+      source: "src/lib/official-documents/definitions/hr/employment.ts (owner-supplied wording, 2026-10-29)",
+      provenance: "verified_prompt",
+      businessApprovalStatus: "approved",
+      approvedBy: "System owner",
+      approvalDate: "2026-10-30",
+      approvalReference: "Explicit owner instruction in ERP chat, 30 October 2026",
+      approvalNotes: "Keep the English wording as supplied; approve Employment Confirmation Certificate and enable official generation locally. No push or deployment.",
+      note: "Owner-supplied wording retained unchanged; local activation authorized.",
     },
     ar: {
-      source: "src/components/erp/print/templates/bilingual-sample.tsx",
-      provenance: "verified_code",
-      businessApprovalStatus: "pending_business_approval",
-      note: "ERP PDF.1 bilingual template AR prose, migrated verbatim. Business-owner approval not yet formally recorded.",
+      source: "src/lib/official-documents/definitions/hr/employment.ts (owner-supplied wording, 2026-10-29)",
+      provenance: "verified_prompt",
+      businessApprovalStatus: "approved",
+      approvedBy: "System owner",
+      approvalDate: "2026-10-30",
+      approvalReference: "Explicit owner instruction in ERP chat, 30 October 2026",
+      approvalNotes: "Keep the Arabic wording as supplied; approve Employment Confirmation Certificate and enable official generation locally. No push or deployment.",
+      note: "Owner-supplied Arabic wording retained unchanged; local activation authorized.",
     },
   },
   build: (ctx) => {
@@ -125,35 +135,39 @@ export const employmentConfirmationDefinition: OfficialDocumentDefinition = {
     const titleArV = str(ctx.row.designation_ar) || titleEnV;
     const joiningEn = formatDateEn(ctx.row.joining_date);
     const joiningAr = formatDateAr(ctx.row.joining_date);
+    const companyEn = str(ctx.row.company_name);
+    const companyAr = str(ctx.row.company_name_ar) || companyEn;
+    const honorific = ctx.inputs.employee_title;
+    const prefixEn = honorific === "Mr." || honorific === "Ms." ? `${honorific} ` : "";
+    const prefixAr = honorific === "Mr." ? "السيد/ " : honorific === "Ms." ? "السيدة/ " : "";
+    const employment = str(ctx.row.employment_type);
+    const kind = employment.toLowerCase().replace(/[^a-z]/g, "");
+    const basisEn = kind === "fulltime" ? " on a full-time basis" : kind === "parttime" ? " on a part-time basis" : employment ? ` on a ${employment} basis` : "";
+    const basisAr = kind === "fulltime" ? "، وذلك بنظام الدوام الكامل" : kind === "parttime" ? "، وذلك بنظام الدوام الجزئي" : employment ? `، وذلك بنظام ${employment}` : "";
     return {
-      titleEn: "Employment Confirmation Letter",
-      titleAr: "خطاب تأكيد التوظيف",
-      meta: [
-        {
-          labelEn: "Employee Name",
-          labelAr: "اسم الموظف",
-          value: ctx.language === "ar" ? nameAr : nameEn,
-        },
-        { labelEn: "Employee Number", labelAr: "رقم الموظف", value: str(ctx.row.employee_code) },
-      ],
+      titleEn: employmentAddressee(ctx.inputs, "en"),
+      titleAr: employmentAddressee(ctx.inputs, "ar"),
       blocks: [
         {
           kind: "paragraph",
           emphasis: "salutation",
-          en: "To Whom It May Concern,",
-          ar: "إلى من يهمه الأمر،",
+          en: "Subject: Employment Confirmation Certificate",
+          ar: "الموضوع: شهادة إثبات عمل",
         },
         {
           kind: "paragraph",
-          en: `This letter confirms that ${nameEn}, holding the position of ${titleEnV}, is a full-time employee of this organization. The employee's tenure commenced on ${joiningEn} and remains active as of the date of this letter.`,
-          ar: `يُقر هذا الخطاب بأن السيد/السيدة ${nameAr}، الذي يشغل منصب ${titleArV}، موظف بدوام كامل لدى هذه المنظمة. بدأت خدمة الموظف في ${joiningAr} ولا تزال سارية حتى تاريخ هذا الخطاب.`,
+          en: `This is to certify that ${prefixEn}${nameEn} has been employed with ${companyEn} since ${joiningEn} and currently holds the position of ${titleEnV}${basisEn}.`,
+          ar: `تشهد شركة ${companyAr} بأن ${prefixAr}${nameAr} يعمل لديها منذ تاريخ ${joiningAr}، ولا يزال على رأس عمله حتى تاريخ إصدار هذه الشهادة، ويشغل حالياً منصب ${titleArV}${basisAr}.`,
         },
         {
           kind: "paragraph",
-          en: "This document is issued upon the employee's request for official use only.",
-          ar: "يُصدر هذا الخطاب بناءً على طلب الموظف للاستخدام الرسمي فقط.",
+          en: "This certificate is issued at the employee's request for official purposes, without any liability or financial obligation on the part of the Company.",
+          ar: "وقد أُصدرت هذه الشهادة بناءً على طلب الموظف لتقديمها إلى الجهات الرسمية والمعنية، دون أن يترتب على الشركة أي التزامات أو مسؤوليات مالية نتيجة إصدارها.",
         },
+        {kind: "paragraph", ar: "وتفضلوا بقبول فائق الاحترام والتقدير."},
       ],
+      closingEn: `For and on behalf of ${companyEn}`,
+      closingAr: `عن شركة ${companyAr}`,
       showSignature: true,
     };
   },

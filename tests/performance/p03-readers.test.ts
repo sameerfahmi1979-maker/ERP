@@ -64,9 +64,9 @@ it("DMS combined filters and unique full-result order survive paging",async()=>{
  responses=[{data:[{id:26}],count:26,error:null}];
  const r=await readDmsDocumentPage({page:2,sortKey:"title",sortDir:"asc",filters:{excludeArchived:true,category_id:4,document_type_id:8,confidentiality:"company",expiry_from:"2026-01-01"}});
  expect(r.data?.totalCount).toBe(26);
- expect(operations).toContainEqual({table:"dms_documents",method:"not",args:["status","in",'("archived","superseded")']});
- expect(operations).toContainEqual({table:"dms_documents",method:"order",args:["id",{ascending:true}]});
- expect(operations).toContainEqual({table:"dms_documents",method:"range",args:[25,49]});
+ expect(operations).toContainEqual({table:"ai_mod02_search_documents",method:"not",args:["status","in",'("archived","superseded")']});
+ expect(operations).toContainEqual({table:"ai_mod02_search_documents",method:"order",args:["id",{ascending:true}]});
+ expect(operations).toContainEqual({table:"ai_mod02_search_documents",method:"range",args:[25,49]});
  expect(String(operations.find(o=>o.method==="select")?.args[0])).not.toMatch(/content_tsv|summary_embedding|ai_summary/);
 });
 it("content lookup failure cannot be relabelled an empty document result",async()=>{
@@ -103,17 +103,19 @@ it("file/content existence filters stay in the database and strip child metadata
  responses=[{data:[{id:1,content_match:[{document_id:1}],perf_document_has_files:true,perf_document_has_extracted_text:true}],count:1,error:null}];
  const r=await readDmsDocumentPage({filters:{hasExtractedText:true,has_files:true}});
  expect(r.success).toBe(true);expect(r.data?.rows).toEqual([{id:1}]);
- expect(operations.every(o=>o.table==="dms_documents")).toBe(true);
- expect(operations).toContainEqual({table:"dms_documents",method:"eq",args:["perf_document_has_extracted_text",true]});
- expect(operations).toContainEqual({table:"dms_documents",method:"eq",args:["perf_document_has_files",true]});
+ expect(operations.every(o=>o.table==="ai_mod02_search_documents")).toBe(true);
+ expect(operations).toContainEqual({table:"ai_mod02_search_documents",method:"eq",args:["perf_document_has_extracted_text",true]});
+ expect(operations).toContainEqual({table:"ai_mod02_search_documents",method:"eq",args:["perf_document_has_files",true]});
 });
 it("missing extracted text is the complement of non-null extracted text",async()=>{
  responses=[{data:[],count:0,error:null}];expect((await readDmsDocumentPage({filters:{hasExtractedText:false,has_files:false}})).success).toBe(true);
- expect(operations).toContainEqual({table:"dms_documents",method:"eq",args:["perf_document_has_extracted_text",false]});
- expect(operations).toContainEqual({table:"dms_documents",method:"eq",args:["perf_document_has_files",false]});
+ expect(operations).toContainEqual({table:"ai_mod02_search_documents",method:"eq",args:["perf_document_has_extracted_text",false]});
+ expect(operations).toContainEqual({table:"ai_mod02_search_documents",method:"eq",args:["perf_document_has_files",false]});
 });
 it("content search passes only bounded text to the protected invoker RPC",async()=>{
- responses=[{data:[{id:1}],count:1,error:null}];expect((await readDmsDocumentPage({filters:{search:" Arabic عربي ",searchMode:"content"}})).success).toBe(true);
- expect(operations).toContainEqual({table:"perf_search_documents_content",method:"rpc",args:[{search_text:"Arabic عربي"},{get:true,count:"exact"}]});
- expect(operations.every(o=>o.table==="perf_search_documents_content")).toBe(true);
+ // The AI query reads permitted type vocabulary and checks an ambiguous
+ // person hint before the protected search. Keep each result distinct.
+ responses=[{data:[],count:0,error:null},{data:[],error:null},{data:[{id:1}],count:1,error:null}];expect((await readDmsDocumentPage({filters:{search:" Arabic عربي ",searchMode:"content"}})).success).toBe(true);
+ expect(operations).toContainEqual({table:"ai_mod02_search_documents",method:"rpc",args:[{text_query:"Arabic عربي",include_content:true,document_type_ids:[],metadata_filters:"[]"},{get:true,count:"exact"}]});
+ expect(operations.some(o=>o.table==="dms_documents"||o.table==="perf_search_documents_content")).toBe(false);
 });

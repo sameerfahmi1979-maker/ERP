@@ -1,0 +1,229 @@
+{
+  "sources": [
+    {
+      "facts": [
+        {
+          "key": "date_of_birth",
+          "kind": "date",
+          "unit": null,
+          "value": "1990-01-01",
+          "currency": null,
+          "evidence": []
+        },
+        {
+          "key": "dob",
+          "kind": "date",
+          "unit": null,
+          "value": null,
+          "currency": null,
+          "evidence": []
+        },
+        {
+          "key": "emirates_id_number",
+          "kind": "text",
+          "unit": null,
+          "value": "784-1990-1234567-8",
+          "currency": null,
+          "evidence": []
+        },
+        {
+          "key": "full_name_en",
+          "kind": "text",
+          "unit": null,
+          "value": "SYNTHETIC wrong recorded person",
+          "currency": null,
+          "evidence": []
+        },
+        {
+          "key": "number",
+          "kind": "text",
+          "unit": null,
+          "value": "NEW",
+          "currency": null,
+          "evidence": []
+        },
+        {
+          "key": "document.title",
+          "kind": "text",
+          "unit": null,
+          "value": "SYNTHETIC reviewed title",
+          "currency": null,
+          "evidence": []
+        },
+        {
+          "key": "document.issue_date",
+          "kind": "date",
+          "unit": null,
+          "value": "2026-01-01",
+          "currency": null,
+          "evidence": []
+        },
+        {
+          "key": "document.expiry_date",
+          "kind": "date",
+          "unit": null,
+          "value": "2027-12-31",
+          "currency": null,
+          "evidence": []
+        }
+      ],
+      "profile": {
+        "status": "active",
+        "revision": 4,
+        "criticalFields": [
+          "number",
+          "date_of_birth",
+          "dob",
+          "full_name_en",
+          "emirates_id_number"
+        ]
+      },
+      "complete": true,
+      "passages": [
+        {
+          "name": "SYNTHETIC-one.pdf",
+          "page": null,
+          "text": "Passport NEW رقم عربي",
+          "fileId": 1001,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "versionId": 1001,
+          "locationPrecision": "snippet"
+        }
+      ],
+      "versionId": 1001,
+      "documentId": 1001,
+      "documentNo": "SYN-DOC-1001",
+      "sourceHash": "f950f0c1ef48ba77d305b097d9551bc97bb959c2559f1e7ad4b9492ed5cbb5c7",
+      "subjectKey": "employee:1301"
+    },
+    {
+      "facts": [
+        {
+          "key": "date_of_birth",
+          "kind": "date",
+          "unit": null,
+          "value": null,
+          "currency": null,
+          "evidence": []
+        },
+        {
+          "key": "dob",
+          "kind": "date",
+          "unit": null,
+          "value": "1991-01-01",
+          "currency": null,
+          "evidence": []
+        },
+        {
+          "key": "emirates_id_number",
+          "kind": "text",
+          "unit": null,
+          "value": "784-1990-1234567-9",
+          "currency": null,
+          "evidence": []
+        },
+        {
+          "key": "full_name_en",
+          "kind": "text",
+          "unit": null,
+          "value": "SYNTHETIC verified person",
+          "currency": null,
+          "evidence": []
+        },
+        {
+          "key": "number",
+          "kind": "text",
+          "unit": null,
+          "value": "SYN-REVIEWED",
+          "currency": null,
+          "evidence": []
+        },
+        {
+          "key": "document.title",
+          "kind": "text",
+          "unit": null,
+          "value": "SYNTHETIC unconfigured route",
+          "currency": null,
+          "evidence": []
+        },
+        {
+          "key": "document.issue_date",
+          "kind": "date",
+          "unit": null,
+          "value": null,
+          "currency": null,
+          "evidence": []
+        },
+        {
+          "key": "document.expiry_date",
+          "kind": "date",
+          "unit": null,
+          "value": "2029-12-31",
+          "currency": null,
+          "evidence": []
+        }
+      ],
+      "profile": {
+        "status": "active",
+        "revision": 4,
+        "criticalFields": [
+          "number",
+          "date_of_birth",
+          "dob",
+          "full_name_en",
+          "emirates_id_number"
+        ]
+      },
+      "complete": true,
+      "passages": [
+        {
+          "name": "SYNTHETIC-three.pdf",
+          "page": null,
+          "text": "Original three",
+          "fileId": 1003,
+          "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "versionId": 1003,
+          "locationPrecision": "snippet"
+        }
+      ],
+      "versionId": 1003,
+      "documentId": 1003,
+      "documentNo": "SYN-DOC-1003",
+      "sourceHash": "221e5b64a6548c5bab8d99263c4b669a3c99104b3821cfb1206ee315b0886e6c",
+      "subjectKey": "employee:1301"
+    }
+  ],
+  "findings": [
+    {
+      "id": 1,
+      "rule": "AI_MOD04_PERSON_BIRTH_DATE",
+      "field": "date_of_birth"
+    },
+    {
+      "id": 2,
+      "rule": "AI_MOD04_PERSON_EMIRATES_ID",
+      "field": "emirates_id_number"
+    },
+    {
+      "id": 3,
+      "rule": "AI_MOD04_PERSON_NAME_EN",
+      "field": "full_name_en"
+    },
+    {
+      "id": 4,
+      "rule": "AI_MOD04_ERP_PERSON_NAME_EN",
+      "field": "full_name_en"
+    },
+    {
+      "id": 5,
+      "rule": "AI_MOD04_ERP_PERSON_BIRTH_DATE",
+      "field": "dob"
+    },
+    {
+      "id": 6,
+      "rule": "AI_MOD04_ERP_PERSON_EMIRATES_ID",
+      "field": "emirates_id_number"
+    }
+  ],
+  "findingScope": "supported_critical_and_authorized_erp_facts"
+}

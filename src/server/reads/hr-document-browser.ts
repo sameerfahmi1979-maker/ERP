@@ -1,4 +1,6 @@
 import "server-only";
+import {prepareDocumentQuery} from "@/server/ai/search/document-query";
+import {matchesSearchText} from "@/lib/ai/search/vocabulary";
 import {z} from "zod";
 import {getAuthContext, hasPermission, type AuthContext} from "@/lib/rbac/check";
 import {createClient} from "@/lib/supabase/server";
@@ -179,8 +181,14 @@ export async function readHrDocumentBrowser(input: unknown, context?: AuthContex
         status: r.status ?? d?.status ?? null, issueDate: r.issue_date ?? d?.issue_date ?? null, expiryDate: r.expiry_date ?? d?.expiry_date ?? null, source: "hr_identity"});
     }
     if (rows.length > MAX_COMPOSITION) throw new CompositionTooLarge();
+    let matchingIds:Set<number>|null=null;
+    if(p.search){
+      const shared=await prepareDocumentQuery(db,p.search,ctx,{subject:{type:p.entityType,id:p.entityId},content:true,signal});
+      const matching=await complete(()=>shared.query.select("id").order("id").abortSignal(signal??AbortSignal.timeout(15000)) as unknown as Query,z.object({id}),signal);
+      matchingIds=new Set(matching.map(r=>r.id));
+    }
     const filtered = rows.filter(row => HR_BROWSER_DOCUMENT_FIELDS.every(key => !p.columnFilters[key] || contains(row[key], p.columnFilters[key]!))
-      && (!p.search || HR_BROWSER_DOCUMENT_FIELDS.some(key => contains(row[key], p.search))));
+      && (!p.search || (row.id!==null?matchingIds?.has(row.id):matchesSearchText(`${row.title} ${row.typeNameEn??""}`,p.search))));
     filtered.sort((a, b) => {
       if (p.sortKey === "expiryDate") {
         if (a.expiryDate && b.expiryDate) return a.expiryDate.localeCompare(b.expiryDate) * (p.sortDir === "asc" ? 1 : -1);

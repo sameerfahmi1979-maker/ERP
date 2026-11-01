@@ -11,6 +11,7 @@ import { LoadError } from "@/components/erp/load-error";
 import { getAuthContext, hasPermission,hasGlobalPermission } from "@/lib/rbac/check";
 import { ReportTemplatesPageClient } from "@/features/report-center/report-templates-page-client";
 import { listBrandingProfiles, listReportTemplates } from "@/server/actions/reports/templates";
+import {canEditPublishedTemplate} from '@/lib/report-center/template-amendment';
 
 export default async function ReportTemplatesPage() {
   const ctx = await getAuthContext();
@@ -36,6 +37,7 @@ export default async function ReportTemplatesPage() {
       initialProfiles={profilesResult.data ?? []}
       initialTemplates={templatesResult.data ?? []}
       canManage={canManage}
+      canEditPublished={canEditPublishedTemplate(ctx)}
       canUpload={canUpload}
       canApprove={canApprove}
       canPublish={canPublish}

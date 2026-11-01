@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { GovernanceStatusBadge, SecurityReviewBadge, GovernanceActionsDropdown } from "./template-governance-actions";
 import Link from "next/link";
 import {templateCapabilities,noTemplateCapabilities,type TemplateCapabilities} from '@/lib/report-center/template-capabilities';
+import {TemplateAmendmentDialog} from './template-amendment-dialog';
 
 const profileTypeColors: Record<string, "default" | "secondary" | "outline"> = {
   company: "default",
@@ -36,6 +37,7 @@ interface Props {
   initialProfiles: ReportBrandingProfile[];
   initialTemplates: ReportTemplate[];
   canManage: boolean;
+  canEditPublished?: boolean;
   canUpload: boolean;
   canApprove: boolean;
   canPublish: boolean;
@@ -47,6 +49,7 @@ export function ReportTemplatesPageClient({
   initialProfiles,
   initialTemplates,
   canManage,
+  canEditPublished=false,
   canUpload,
   canApprove,
   canPublish,
@@ -61,6 +64,7 @@ export function ReportTemplatesPageClient({
 
   const [templateDrawerOpen, setTemplateDrawerOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ReportTemplate | null>(null);
+  const [amendingTemplate,setAmendingTemplate]=useState<ReportTemplate|null>(null);
 
   const [isBackfilling, startBackfill] = useTransition();
   const backfillFlight = useRef(false);
@@ -414,14 +418,15 @@ export function ReportTemplatesPageClient({
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              disabled={!['draft','rejected'].includes(row.original.governance_status??'draft')}
-              title={!['draft','rejected'].includes(row.original.governance_status??'draft')?'Create a new draft version to change a reviewed template.':undefined}
+              disabled={!['draft','rejected'].includes(row.original.governance_status??'draft')&&!(canEditPublished&&row.original.is_active&&['approved','published'].includes(row.original.governance_status))}
+              title={canEditPublished&&['approved','published'].includes(row.original.governance_status)?'Edit pending changes under the same template. Published settings remain active.':!['draft','rejected'].includes(row.original.governance_status??'draft')?'Create a new draft version to change a reviewed template.':undefined}
               aria-label={`Edit template ${row.original.template_name}`}
-              onClick={() => { setEditingTemplate(row.original); setTemplateDrawerOpen(true); }}
+              onClick={() => { if(['approved','published'].includes(row.original.governance_status)){setAmendingTemplate(row.original);}else{setEditingTemplate(row.original); setTemplateDrawerOpen(true);} }}
             >
               <Pencil className="h-3.5 w-3.5" />
             </Button>
           )}
+          {row.original.is_active&&['approved','published'].includes(row.original.governance_status)&&(canEditPublished||canApprove&&capability.approve||canPublish&&capability.publish)&&<Button variant="outline" size="sm" onClick={()=>setAmendingTemplate(row.original)}>Template changes</Button>}
           {/* OFFICIAL DOCS.1 Package 8: Template Studio link retired — official
               documents use fixed code-based templates (src/lib/official-documents). */}
           {(capability.manage || capability.approve || capability.publish) && (
@@ -569,6 +574,11 @@ export function ReportTemplatesPageClient({
         canSignGlobal={globalTemplateCapabilities.sign}
         onSaved={handleTemplateSaved}
       />
+      {amendingTemplate&&<TemplateAmendmentDialog open onOpenChange={open=>{if(!open)setAmendingTemplate(null);}}
+        template={amendingTemplate} profiles={profiles} canEdit={canEditPublished}
+        canApprove={canApprove&&templateCapabilities(amendingTemplate,profiles,globalTemplateCapabilities).approve}
+        canPublish={canPublish&&templateCapabilities(amendingTemplate,profiles,globalTemplateCapabilities).publish}
+        canSignGlobal={globalTemplateCapabilities.sign} onPublished={handleTemplateGovernanceUpdated}/>}
     </div>
   );
 }

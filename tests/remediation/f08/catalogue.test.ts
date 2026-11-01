@@ -4,16 +4,20 @@ import { officialTemplateCatalogue, officialWordingBlockers } from "@/lib/offici
 
 describe("F08 fixed catalogue governance", () => {
   const definitions = listOfficialDocumentDefinitions();
-  it("retains fourteen identities, ten technically published and four wording-pending", () => {
+  it("retains fourteen identities with all explicitly approved wording published and source holds separate", () => {
     const catalogue = officialTemplateCatalogue();
     expect(catalogue).toHaveLength(14);
-    expect(catalogue.filter(def => def.status === "published")).toHaveLength(10);
-    expect(catalogue.filter(def => def.status === "disabled_pending_wording")).toHaveLength(4);
+    expect(catalogue.filter(def => def.status === "published")).toHaveLength(14);
+    expect(catalogue.filter(def => def.status === "draft")).toHaveLength(0);
     expect(new Set(catalogue.map(def => def.code)).size).toBe(14);
     expect(JSON.stringify(catalogue)).not.toContain('"build"');
   });
-  it.each(definitions)("does not invent approval for $documentCode", def => {
-    for (const language of def.supportedLanguages) expect(officialWordingBlockers(def, language).length).toBeGreaterThan(0);
+  it.each(definitions)("records wording approval separately from source eligibility for $documentCode", def => {
+    for (const language of def.supportedLanguages){
+      expect(def.wording.en.businessApprovalStatus).toBe('approved');
+      if(def.wordingReviewOnly)expect(officialWordingBlockers(def,language)).toEqual(['Source-verified workflow integration is required before official issuance.']);
+      else expect(officialWordingBlockers(def,language)).toEqual([]);
+    }
   });
   it("returns all missing employee fields together, including non-finite salary", () => {
     const def = definitions.find(def => def.documentCode === "HR_SALARY_CERT_WITH_AMOUNT")!;

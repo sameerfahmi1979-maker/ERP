@@ -40,6 +40,7 @@ async function bridgeSource(dmsNotificationId:number,options:{forceEmail?:boolea
   if(doc.is_archived||['archived','superseded','deleted'].includes(doc.status)||doc.expiry_tracking_override==='ignored')return {success:false,error:'The current document lifecycle does not permit delivery.'};
   const cycle=z.object({expiry_date:z.string()}).safeParse(row.metadata_json);
   if(cycle.success&&cycle.data.expiry_date!==doc.expiry_date)return {success:false,error:'The expiry cycle has changed. Review the original reminder; no replacement was created.'};
+  if(row.reminder_id){const bound=z.object({reminder_days_before:z.number().int().min(0).max(365),reminder_date:z.iso.date()}).safeParse(row.reminder);if(!bound.success)return {success:false,error:'The original reminder cycle cannot be verified.'};const expiryCycle=new Date(`${bound.data.reminder_date}T00:00:00Z`);expiryCycle.setUTCDate(expiryCycle.getUTCDate()+bound.data.reminder_days_before);if(expiryCycle.toISOString().slice(0,10)!==doc.expiry_date)return {success:false,error:'The original reminder belongs to another expiry cycle.'};}
   const expired=['expired_document','document_expired'].includes(String(row.notification_type));
   // Preserve explicitly assigned people. Never turn an external address into a
   // guessed user or a broadcast; only the existing no-address owner fallback.

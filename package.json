@@ -7,6 +7,7 @@
   },
   "packageManager": "npm@10.9.9",
   "scripts": {
+    "predev": "node tooling/local/ensure-pdf-service.mjs",
     "dev": "cross-env NODE_OPTIONS=\"--use-system-ca --max-old-space-size=16384\" next dev",
     "build": "cross-env NODE_OPTIONS=--max-old-space-size=16384 next build --webpack",
     "start": "cross-env NODE_OPTIONS=--max-old-space-size=16384 next start",

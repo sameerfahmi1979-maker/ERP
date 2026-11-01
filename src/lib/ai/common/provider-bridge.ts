@@ -13,6 +13,7 @@
  */
 
 import { getDmsAiProvider } from "@/lib/dms/ai/factory";
+import {admitAiQualityModelCall,recordAiQualityCall} from '@/server/ai/quality-usage-scope';
 
 // ── Provider call result ──────────────────────────────────────────────────────
 
@@ -48,11 +49,11 @@ export type CommonAiCallOutcome =
 export async function callCommonAiStructuredCompletion(
   systemPrompt: string,
   userPrompt: string,
-  options?: { maxTokens?: number; temperature?: number }
+  options?: { maxTokens?: number; temperature?: number; promptVersion?:string; selectedProvider?:Awaited<ReturnType<typeof getDmsAiProvider>> }
 ): Promise<CommonAiCallOutcome> {
   const start = Date.now();
 
-  const { provider, configCode, configId } = await getDmsAiProvider();
+  const { provider, configCode, configId } = options?.selectedProvider??await getDmsAiProvider();
 
   if (!provider.isConfigured()) {
     return {
@@ -63,13 +64,15 @@ export async function callCommonAiStructuredCompletion(
     };
   }
 
+  try{admitAiQualityModelCall();}catch{return {success:false,error:'This turn has reached its model-call limit.',isProviderNotConfigured:false,durationMs:Date.now()-start};}
   try {
     const result = await provider.callStructuredCompletion(
       systemPrompt,
       userPrompt,
-      options ?? { maxTokens: 4000, temperature: 0 }
+      {maxTokens:options?.maxTokens??4000,temperature:options?.temperature??0}
     );
 
+    await recordAiQualityCall({providerConfigId:configId,model:result.model??null,promptVersion:options?.promptVersion,success:true,inputTokens:result.promptTokens??null,outputTokens:result.completionTokens??null,durationMs:Date.now()-start});
     return {
       success: true,
       rawJson: result.rawJson,
@@ -82,6 +85,7 @@ export async function callCommonAiStructuredCompletion(
       durationMs: Date.now() - start,
     };
   } catch {
+    await recordAiQualityCall({providerConfigId:configId,model:provider.modelId??null,promptVersion:options?.promptVersion,success:false,inputTokens:null,outputTokens:null,durationMs:Date.now()-start});
     return {
       success: false,
       error: "AI provider could not complete this request. Try again later or contact your administrator.",

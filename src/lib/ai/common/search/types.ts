@@ -111,6 +111,8 @@ export interface ErpSearchResultGroup {
 // ── Full search response ───────────────────────────────────────────────────────
 
 export interface ErpSearchResponse {
+  countScope?: "exact_authorized" | "bounded_preview";
+  hasMore?:boolean;
   query: string;
   mode: ErpSearchMode;
   intent?: ErpSearchIntent | null;

@@ -5,9 +5,9 @@
  * SINGLE source of truth for official letter/form wording and layout:
  *
  * - No in-app editing of wording or layout (Report Designer is retired).
- * - Wording is migrated only from verified repository sources; documents with
- *   incomplete wording carry status `disabled_pending_wording` and can never
- *   be generated.
+ * - Official wording requires verified source and explicit business approval.
+ *   Owner-requested new wording remains a versioned draft, previewable without
+ *   issuance. Incomplete definitions cannot be previewed or generated.
  * - Definitions plug into the existing Global Output Framework coordinator
  *   (generateOfficialDocument) — they replace only the HTML body construction,
  *   never numbering/QR/storage/hash/lifecycle.
@@ -96,6 +96,8 @@ export interface OfficialDocumentInputField {
   maxLength: number;
   placeholder?: string;
   helpText?: string;
+  choices?: {value: string; labelEn: string}[];
+  defaultValue?: string;
 }
 
 /** One bilingual label/value row of a form-table block. */
@@ -122,6 +124,8 @@ export type OfficialBodyBlock =
       emphasis?: "salutation" | "normal";
     }
   | { kind: "form_table"; titleEn?: string; titleAr?: string; rows: OfficialFormRow[] }
+  | { kind: "record_table"; titleEn: string; titleAr: string;
+      columns: {en:string;ar:string}[]; rows: {en:string;ar:string}[][] }
   | {
       kind: "checklist";
       titleEn?: string;
@@ -178,6 +182,13 @@ export interface OfficialDocumentRenderContext {
 
 /** A fixed, versioned, code-based official document definition. */
 export interface OfficialDocumentDefinition {
+  /** Pure record-readiness check; wording approval never supplies missing facts. */
+  validateSource?: (context: Pick<OfficialDocumentRenderContext,'row'|'rows'|'inputs'|'language'>) => string|null;
+  /** Draft text is reviewable; verified business-source integration remains held. */
+  wordingReviewOnly?: boolean;
+  sourceWorkflowReason?:string;
+  /** Cross-field/language rules run for drafts and official issuance alike. */
+  validateInputs?: (inputs: Record<string, string>, language: OfficialDocumentLanguage) => string | null;
   /** Must equal the erp_report_registry.report_code of the output. */
   documentCode: string;
   /** Template version — bump on ANY wording/layout change (never edit in place). */

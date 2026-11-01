@@ -16,6 +16,7 @@ import { ERPRecordWorkspaceForm, ERPRecordSectionPanel } from "@/components/work
 import { RequiredLabel } from "@/components/erp/required-label";
 import type { DesignationRow } from "@/server/actions/common-master-data/designations";
 import { createDesignation, updateDesignation } from "@/server/actions/common-master-data/designations";
+import { masterRecordCode } from "@/lib/master-data/form-code";
 
 type Props = {
   designation?: DesignationRow | null;
@@ -60,7 +61,7 @@ export function DesignationWorkspaceForm({ designation, mode, companies = [] }: 
     const form = document.getElementById(FORM_ID) as HTMLFormElement;
     const fd = new FormData(form);
     const data = {
-      designation_code: fd.get("designation_code") as string,
+      designation_code: masterRecordCode(fd, "designation_code", isEditing ? designation?.designation_code : null) as string,
       designation_name_en: fd.get("designation_name_en") as string,
       designation_name_ar: (fd.get("designation_name_ar") as string) || null,
       owner_company_id: fd.get("owner_company_id") ? parseInt(fd.get("owner_company_id") as string) : null,

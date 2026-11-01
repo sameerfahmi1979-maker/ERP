@@ -15,6 +15,7 @@ import { AiPipelineHealth } from "./sections/ai-pipeline-health";
 import { AiRecentUsageEventsTable } from "./sections/ai-recent-usage-events-table";
 import { AiErrorBreakdown } from "./sections/ai-error-breakdown";
 import { AiCostRateAdmin } from "./ai-cost-rate-admin";
+import {AiQualityPanel} from '@/features/ai/quality/ai-quality-panel';
 
 interface Props {
   config: ObservabilityConfig;
@@ -76,6 +77,7 @@ export function DmsAiObservabilityPageClient({ config }: Props) {
       </div>
 
       {/* Filters */}
+      <AiQualityPanel summary/>
       <AiObservabilityFilters filters={filters} onChange={setFilters} />
 
       {/* Usage Overview */}

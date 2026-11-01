@@ -1,4 +1,5 @@
 import "server-only";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { getAuthContext } from "@/lib/rbac/check";
 import { resolveTemplateForExport } from "@/lib/report-center/template-export";
@@ -10,6 +11,7 @@ import { renderExecutiveLedgerHtml } from "@/lib/executive-ledger/html-renderer"
 import { buildLetterExecutiveLedgerDocument } from "./letter-document-builder";
 import { isOfficialIssuanceEnabled } from "./feature-flags";
 import type { EffectiveOutputPolicy } from "./class-policy";
+import {sourceReadiness} from "@/lib/official-documents/definitions/hr/approved-source-readiness";
 export const renderPlanSchema = z.object({ html: z.string().min(1).max(16777216), headerHtml: z.string().max(1000000).optional(), footerHtml: z.string().max(1000000).optional(), marginsMm: z.object({ top: z.number().min(0).max(50), bottom: z.number().min(0).max(50), left: z.number().min(0).max(50), right: z.number().min(0).max(50) }).optional(), layoutVersion: z.number().int().nonnegative() }).strict();
 export type RecoveryRenderPlan = z.infer<typeof renderPlanSchema>;
 export interface RecoveryDocument {
@@ -29,6 +31,11 @@ export function assertRecoveryReady(doc: RecoveryDocument) {
         doc.data_snapshot_json.definition_version !== definition.version || doc.data_snapshot_json.layout_version !== OFFICIAL_DOCUMENT_LAYOUT_VERSION) {
       throw Error("The original definition requires approved wording/version reconciliation before recovery.");
     }
+    if(definition.validateSource){
+      const row=z.record(z.string(),z.unknown()).parse(doc.data_snapshot_json.row),rows=z.array(z.record(z.string(),z.unknown())).parse(doc.data_snapshot_json.rows);
+      const inputs=z.record(z.string(),z.string()).parse(doc.data_snapshot_json.inputs);
+      const error=sourceReadiness(definition,{row,rows,inputs,language});if(error)throw Error(error);
+    }
   }
 }
 export async function buildRetainedRenderPlan(doc: RecoveryDocument, verification?: { publicUrl: string; qrDataUrl: string }) : Promise<RecoveryRenderPlan> {
@@ -45,7 +52,9 @@ export async function buildRetainedRenderPlan(doc: RecoveryDocument, verificatio
     if (!doc.template_id) throw Error("Original branding identity is incomplete.");
     const ctx = await getAuthContext();
     branding = await resolveTemplateForExport({ templateId: doc.template_id, reportCode: doc.output_code, principalId: ctx.profile!.id, forIssuance: true }) ?? undefined;
-    if (!branding || JSON.stringify(issuedBrandingSnapshot(branding)) !== JSON.stringify(doc.branding_snapshot_json)) throw Error("Original branding revision is unavailable. No newer brand was substituted.");
+    // PostgreSQL jsonb canonicalizes object key order. Compare the exact values,
+    // including revisions and asset identities, rather than serialized ordering.
+    if (!branding || !isDeepStrictEqual(issuedBrandingSnapshot(branding), doc.branding_snapshot_json)) throw Error("Original branding revision is unavailable. No newer brand was substituted.");
   }
   const definition = getOfficialDocumentDefinition(doc.output_code);
   const date = new Date(doc.generated_at);

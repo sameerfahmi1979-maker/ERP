@@ -2,6 +2,8 @@ import {beforeEach, expect, it, vi} from "vitest";
 import {readFileSync} from "node:fs";
 import {createHash} from "node:crypto";
 import type {AuthContext} from "@/lib/rbac/check";
+import {literalContains} from "@/lib/reads/search";
+vi.mock("@/server/ai/search/document-query",()=>({prepareDocumentQuery:async(db:{from:(table:string)=>{or:(s:string)=>unknown}},query:string)=>({query:db.from("dms_documents").or(`document_no.ilike.${literalContains(query.trim())},title.ilike.${literalContains(query.trim())}`)})}));
 type Row = Record<string, unknown>;
 type Call = {table: string; methods: unknown[][]};
 const s = vi.hoisted(() => ({ctx: {} as AuthContext, calls: [] as Call[], rows: {} as Record<string, Row[]>, fault: "", nullCount: "", short: "", admin: 0, clients: 0, global: false, preview: false, extraction: false, findings:false,rpcFault: false, after: undefined as undefined | ((c: Call) => void)}));
@@ -76,7 +78,7 @@ it("attach excludes the complete linked set beyond 1000 before exact count and s
 });
 it("attach native search is applied before complete paging and preserves quoted wildcard grammar",async()=>{
   s.rows.dms_documents=[doc(1),doc(2,{title:"Needle"})];const r=entityDocumentsAttachPage.parse((await read("attach",{search:"  needle  "})).data);expect(r.rows.map(d=>d.id)).toEqual([2]);
-  s.calls=[];await read("attach",{search:'a%,title.eq."secret"_\\tail'});expect(s.calls.find(c=>c.table==="dms_documents")?.methods.find(m=>m[0]==="or")?.[1]).toBe('document_no.ilike."%a%,title.eq.\\"secret\\"_\\\\tail%",title.ilike."%a%,title.eq.\\"secret\\"_\\\\tail%"');
+  const literal='a%,title.eq."secret"_\\tail';s.calls=[];await read("attach",{search:literal});expect(s.calls.find(c=>c.table==="dms_documents")?.methods.find(m=>m[0]==="or")?.[1]).toBe('document_no.ilike.'+literalContains(literal)+',title.ilike.'+literalContains(literal));
 });
 it.each(["employees","dms_document_links","dms_documents","dms_document_files"])("%s errors are explicit, sanitized and never partial/empty success",async table=>{
   s.rows.dms_document_links=[link(1)];s.fault=table;const r=await read();expect(r.success).toBe(false);expect(r.data).toBeUndefined();expect(JSON.stringify(r)).not.toContain("PRIVATE_");

@@ -16,6 +16,7 @@ import { ERPRecordWorkspaceForm, ERPRecordSectionPanel } from "@/components/work
 import { RequiredLabel } from "@/components/erp/required-label";
 import type { ApprovalRoleRow } from "@/server/actions/common-master-data/approval-roles";
 import { createApprovalRole, updateApprovalRole } from "@/server/actions/common-master-data/approval-roles";
+import { masterRecordCode } from "@/lib/master-data/form-code";
 
 type Props = {
   role?: ApprovalRoleRow | null;
@@ -53,7 +54,7 @@ export function ApprovalRoleWorkspaceForm({ role, mode, companies = [], allRoles
     const form = document.getElementById(FORM_ID) as HTMLFormElement;
     const fd = new FormData(form);
     const data = {
-      role_code: fd.get("role_code") as string,
+      role_code: masterRecordCode(fd, "role_code", isEditing ? role?.role_code : null) as string,
       role_name: fd.get("role_name") as string,
       level_number: parseInt(fd.get("level_number") as string),
       scope: (fd.get("scope") as "company" | "branch" | "department" | "site" | "module" | "global") || "company",

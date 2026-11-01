@@ -246,7 +246,10 @@ export async function aggregateEmployeeDraftFromDmsDocuments(
       });
 
     // Build employee draft
-    const employeeDraft = buildEmployeeDraftFromDocuments(docsWithExtraction);
+    const {data: countries, error: countriesError} = await supabase.from('countries')
+      .select('id,name_en,name_ar,nationality_en,nationality_ar,country_code,iso3_code').eq('is_active', true).order('id').range(0, 999);
+    if (countriesError || !countries || countries.length === 1000) return {success:false,error:'Nationality choices could not be verified. Retry preparation.'};
+    const employeeDraft = buildEmployeeDraftFromDocuments(docsWithExtraction, countries);
 
     // Build compliance suggestions
     const complianceSuggestions = buildComplianceSuggestions(docsWithExtraction, hrIdentityTypeMap);

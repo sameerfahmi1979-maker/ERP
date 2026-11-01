@@ -1,4 +1,7 @@
 import "server-only";
+import {requireHrLetterIntegration} from "@/server/reads/hr-letter-integration";
+import {needsLetterReview} from "@/lib/official-documents/hr-source-review";
+import {readApprovedLetterReview} from "@/server/reads/hr-letter-review";
 import { randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
@@ -40,14 +43,28 @@ export async function recoverDurableOutput(issuanceId: number): Promise<RunIssua
     assertRecoveryReady(doc);
     let sha = state.sha, size = state.size, renderer = state.renderer;
     if (doc.lifecycle_state !== "issued") {
+      await requireHrLetterIntegration(doc.output_code);
+      if(needsLetterReview(doc.output_code)){
+        const row=z.record(z.string(),z.unknown()).parse(doc.data_snapshot_json.row);
+        const review=await readApprovedLetterReview(doc.source_record_id,doc.output_code,row.source_review_id);
+        if(review.fingerprint!==row.source_review_fingerprint)throw Error('The original source or evidence changed. Reconcile the retained request; no newer facts were substituted.');
+      }
       let bytes: Buffer;
       if (state.pdf !== null) {
         bytes = Buffer.from(state.pdf, "base64");
         if (!sha || !size || !renderer || bytes.length !== size || hashFinalPdfBytes(bytes) !== sha) throw Error("Original rendered checkpoint integrity failed.");
       } else {
         if (sha) throw Error("Original checkpoint bytes are missing; automatic re-render is unsafe.");
-        const verification = state.link ? { publicUrl: buildVerificationUrl(state.link.token), qrDataUrl: (await generateQrDataUrl(buildVerificationUrl(state.link.token)))! } : undefined;
+        let verification: {publicUrl:string;qrDataUrl:string}|undefined;
+        if (state.link) {
+          const publicUrl=buildVerificationUrl(state.link.token),qrDataUrl=await generateQrDataUrl(publicUrl);
+          if (!qrDataUrl) throw Error('The verification QR could not be prepared. Check the public HTTPS verification address and retry this retained request; no replacement was created.');
+          verification={publicUrl,qrDataUrl};
+        }
         const plan = state.plan ?? await buildRetainedRenderPlan(doc, verification);
+        if (verification && !/<img\b(?=[^>]*\bsrc=["']data:image\/(?:png|svg\+xml);base64,)(?=[^>]*\balt=["'][^"']*QR)[^>]*>/i.test(plan.html)) {
+          throw Error('The retained render plan does not contain its verification QR. Reconcile the original request; its checkpoint was not replaced.');
+        }
         if (!state.plan) {
           await renew(); const frozen = await admin.rpc("f08_checkpoint_operation", { ...args, p_plan: plan });
           if (frozen.error || frozen.data?.id !== issuanceId) throw Error("Render-plan checkpoint was not confirmed. The original request is retained.");

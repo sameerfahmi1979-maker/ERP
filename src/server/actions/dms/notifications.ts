@@ -166,6 +166,9 @@ export async function generateDmsExpiryNotifications(
       const remId = rem.id as number;
       const daysBefore = rem.reminder_days_before as number;
       const expiryDate = doc.expiry_date as string | null;
+      const cycleDate = new Date(`${String(rem.reminder_date)}T00:00:00Z`);
+      cycleDate.setUTCDate(cycleDate.getUTCDate()+daysBefore);
+      if(!expiryDate||!Number.isFinite(cycleDate.getTime())||cycleDate.toISOString().slice(0,10)!==expiryDate){skipped++;continue;}
 
       const isExpired = !!expiryDate&&expiryDate<today;
       const subject = isExpired

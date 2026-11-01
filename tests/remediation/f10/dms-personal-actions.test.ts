@@ -25,7 +25,7 @@ it.each(['read','dismissed'] as const)('DMS %s adopts the checked canonical pers
 it('a supplied business note is not silently discarded as a personal-state update',async()=>{
  expect((await dismissDmsNotification(8,'business note')).success).toBe(false);expect(s.change).not.toHaveBeenCalled();
 });
-const due={id:1,document_id:7,reminder_days_before:7,document:{id:7,document_no:'Synthetic',title:'Synthetic',expiry_date:'2099-01-01',created_by:2,owner_user_id:2,status:'active',is_archived:false,expiry_tracking_override:null}};
+const due={id:1,document_id:7,reminder_days_before:7,reminder_date:'2098-12-25',document:{id:7,document_no:'Synthetic',title:'Synthetic',expiry_date:'2099-01-01',created_by:2,owner_user_id:2,status:'active',is_archived:false,expiry_tracking_override:null}};
 function generator(){s.auth.mockResolvedValue(syntheticAuthContext(['dms.notifications.manage'],{id:7}));s.results=[{data:[due],error:null}];}
 it('settings outage never supplies a guessed default owner/creator recipient',async()=>{
  generator();s.settings.mockResolvedValue(null);expect((await generateDmsExpiryNotifications()).success).toBe(false);expect(s.calls.some(c=>c[0]==='insert')).toBe(false);

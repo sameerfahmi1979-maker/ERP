@@ -5,6 +5,25 @@ import {createClient} from '@/lib/supabase/server';
 import {getAuthContext,hasPermission} from '@/lib/rbac/check';
 import {getMetadataDefinitionsForType,getDmsDocumentMetadataValues,saveDmsDocumentMetadataValues} from '@/server/actions/dms/document-metadata-values';
 import {photoMetadataRequest} from '@/lib/hr/photo-metadata';
+import {checkDmsDuplicateBeforeUpload} from '@/server/actions/dms/document-preparation';
+
+export async function prepareSubjectPhotoUpload(employee:number,dependent:number|null,sha256:string,size:number){
+ const parsed=photoSubjectSchema.safeParse({employee,dependent});
+ if(!parsed.success)return {success:false as const,error:'Choose a saved person before preparing the photo.'};
+ try{
+  const db=await createClient();
+  const subject=dependent===null
+   ? await db.from('employees').select('full_name_en').eq('id',employee).is('deleted_at',null).maybeSingle()
+   : await db.from('employee_dependents').select('dependent_name_en').eq('id',dependent).eq('employee_id',employee).is('deleted_at',null).maybeSingle();
+  if(subject.error||!subject.data)return {success:false as const,error:'The photo subject could not be verified.'};
+  const name='full_name_en' in subject.data?subject.data.full_name_en:subject.data.dependent_name_en;
+  if(!name?.trim())return {success:false as const,error:'The verified person needs a display name before photo upload.'};
+  const duplicate=await checkDmsDuplicateBeforeUpload(sha256,size);
+  if(!duplicate.success||!duplicate.data)return {success:false as const,error:'The photo duplicate check is unavailable. No new upload was started.'};
+  if(duplicate.data.status==='existing_document')return {success:false as const,error:`These photo bytes already exist in ${duplicate.data.documentNo}. Select the permitted existing photo instead of uploading again.`};
+  return {success:true as const,title:`${dependent===null?'Employee':'Dependent'} Photo — ${name.trim()}`.slice(0,500)};
+ }catch{return {success:false as const,error:'Photo preparation could not be verified. Retain the original request.'};}
+}
 
 const photoDetailsSubject=photoSubjectSchema.extend({document:z.number().int().positive().safe(),type:z.number().int().positive().safe()}).strict();
 export async function readPhotoRequiredDetails(raw:unknown){
@@ -31,8 +50,9 @@ export async function readPhotoDocumentTypes() {
   const ctx=await getAuthContext();
   if(!ctx.profile||!ctx.isAccountActive||ctx.profile.must_change_password||!hasPermission(ctx,'dms.documents.create'))return {success:false as const,error:'Photo upload permission is required.',rows:[]};
   const client=await createClient();
-  const result=await client.from('dms_document_types').select('id,type_code,name_en,requires_expiry_tracking').is('deleted_at',null).eq('is_active',true).or('name_en.ilike.%photo%,type_code.ilike.%photo%').order('id').limit(100);
+  const result=await client.from('dms_document_types').select('id,type_code,name_en,requires_expiry_tracking').is('deleted_at',null).eq('is_active',true).eq('type_code','EMPLOYEE_PHOTO').order('id').limit(2);
   if(result.error)return {success:false as const,error:'Photo document settings could not be loaded.',rows:[]};
+  if(result.data?.length!==1)return {success:false as const,error:'The Employee Photo document type is unavailable. Ask an administrator to check its configuration.',rows:[]};
   return {success:true as const,rows:result.data??[]};
 }
 

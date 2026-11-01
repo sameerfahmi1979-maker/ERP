@@ -14,7 +14,7 @@ const payload={documentId:7,source:'admin_manual_retry'};
 let failedTable:string|undefined;
 beforeEach(()=>{
  vi.clearAllMocks();failedTable=undefined;
- mock.rpc.mockImplementation(async(name)=>({error:null,data:name==='f07_ai_worker'?{success:true,resultId:null}:{success:true,resultId:12}}));
+ mock.rpc.mockImplementation(async(name)=>({error:null,data:name==='ai_mod04_preparation_worker'?{success:true,preparation:false}:name==='f07_ai_worker'?{success:true,resultId:null}:{success:true,resultId:12}}));
  mock.from.mockImplementation((table:string)=>{
    const response={error:table===failedTable?{code:'XX000'}:null,data:table==='dms_documents'?{id:7,document_type_id:8,deleted_at:null}:table==='dms_metadata_definitions'?[{id:9,field_code:'name',field_type:'text',field_label_en:'Name'}]:table==='dms_document_metadata_values'?[]:{content_text:'Synthetic source'}};
    const q:Record<string,unknown>={select:()=>q,eq:()=>q,is:()=>q,maybeSingle:async()=>response,then:(resolve:(v:unknown)=>void)=>Promise.resolve(response).then(resolve)};return q;
@@ -32,7 +32,7 @@ describe('T07 suggestion-only real handler',()=>{
   failedTable=table;expect((await runWithJobClaim(claim,()=>aiReExtractionHandler.handle(payload,claim))).success).toBe(false);expect(mock.provider).not.toHaveBeenCalled();
  });
  it('does not rerun a provider for a durably published suggestion',async()=>{
-  mock.rpc.mockResolvedValue({data:{success:true,resultId:12},error:null});expect((await runWithJobClaim(claim,()=>aiReExtractionHandler.handle(payload,claim))).success).toBe(true);expect(mock.provider).not.toHaveBeenCalled();
+  mock.rpc.mockImplementation(async name=>({data:name==='ai_mod04_preparation_worker'?{success:true,preparation:false}:{success:true,resultId:12},error:null}));expect((await runWithJobClaim(claim,()=>aiReExtractionHandler.handle(payload,claim))).success).toBe(true);expect(mock.provider).not.toHaveBeenCalled();
  });
  it('does not hide provider-not-configured failure',async()=>{
   mock.provider.mockResolvedValue({success:false,isProviderNotConfigured:true});const r=await runWithJobClaim(claim,()=>aiReExtractionHandler.handle(payload,claim));expect(r).toMatchObject({success:false,retryable:false});

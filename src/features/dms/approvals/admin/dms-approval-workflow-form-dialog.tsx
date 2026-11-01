@@ -13,10 +13,13 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { OwnerCompanySelect } from "@/components/erp/organizations/owner-company-select";
+import { BranchSelect } from "@/components/erp/organizations/branch-select";
 
 import {
   adminCreateApprovalWorkflow,
   adminListApprovalRoleOptions,
+  adminListApprovalAssigneeOptions,
   adminUpdateApprovalWorkflow,
   type WorkflowWithSteps,
 } from "@/server/actions/dms/document-approvals";
@@ -33,6 +36,8 @@ type StepDraft = {
   is_final: boolean;
   requires_role: string;
   is_active: boolean;
+  assignee_profile_ids?: number[];
+  decision_rule?: "one_assigned" | "all_assigned";
 };
 
 function newStep(index: number): StepDraft {
@@ -44,6 +49,7 @@ function newStep(index: number): StepDraft {
     is_initial: index === 0,
     is_final: false,
     requires_role: "",
+    assignee_profile_ids: [], decision_rule: "one_assigned",
     is_active: true,
   };
 }
@@ -111,7 +117,9 @@ function WorkflowFormSession({
   const [nameAr, setNameAr] = useState(editing?.nameAr ?? "");
   const [description, setDescription] = useState(editing?.description ?? "");
   const [docTypeIds, setDocTypeIds] = useState<number[]>(editing?.documentTypeIds ?? []);
-  const [isActive, setIsActive] = useState(editing?.isActive ?? true);
+  const [companyId, setCompanyId] = useState<number | null>(editing?.ownerCompanyId ?? null);
+  const [branchId, setBranchId] = useState<number | null>(editing?.branchId ?? null);
+  const [isActive, setIsActive] = useState(editing?.isActive ?? false);
   const [steps, setSteps] = useState<StepDraft[]>(
     editing?.steps?.length
       ? editing.steps.map((s, i) => ({
@@ -122,6 +130,7 @@ function WorkflowFormSession({
           is_initial: s.isInitial,
           is_final: s.isFinal,
           requires_role: s.requiresRole ?? "",
+          assignee_profile_ids: s.assigneeProfileIds ?? [], decision_rule: s.decisionRule ?? "one_assigned",
           is_active: s.isActive,
         }))
       : [{ ...newStep(0), is_initial: true }, { ...newStep(1), is_final: true }],
@@ -131,6 +140,13 @@ function WorkflowFormSession({
   const [roleOptions, setRoleOptions] = useState<Array<{ code: string; name: string }>>([]);
   const [rolesState, setRolesState] = useState<"loading" | "loaded" | "failed">("loading");
   const [roleAttempt, setRoleAttempt] = useState(0);
+  const [assigneeOptions, setAssigneeOptions] = useState<Array<{ id: number; label: string }>>([]);
+  const [assigneesAvailable, setAssigneesAvailable] = useState(false);
+  useEffect(() => {
+    let current = true;
+    void adminListApprovalAssigneeOptions().then(result => { if (current) { setAssigneesAvailable(result.success); setAssigneeOptions(result.data ?? []); } }).catch(() => { if (current) setAssigneesAvailable(false); });
+    return () => { current = false; };
+  }, []);
   useEffect(() => {
     let current = true;
     void adminListApprovalRoleOptions().then(result => {
@@ -161,6 +177,7 @@ function WorkflowFormSession({
               is_initial: s.isInitial,
               is_final: s.isFinal,
               requires_role: s.requiresRole ?? "",
+              assignee_profile_ids: s.assigneeProfileIds ?? [], decision_rule: s.decisionRule ?? "one_assigned",
               is_active: s.isActive,
             }))
           : [{ ...newStep(0), is_initial: true }, { ...newStep(1), is_final: true }],
@@ -212,6 +229,9 @@ function WorkflowFormSession({
     setValidationError(null);
     const err = validate(code, nameEn, steps);
     if (err) { setValidationError(err); return; }
+    if (isActive && (!companyId || !docTypeIds.length || steps.filter(s => s.is_active).some(s => !s.assignee_profile_ids?.length))) {
+      setValidationError("Active workflows need a company, document types and named approvers for every step."); return;
+    }
 
     setSubmitting(true);
     try {
@@ -222,6 +242,7 @@ function WorkflowFormSession({
         is_initial: s.is_initial,
         is_final: s.is_final,
         requires_role: s.requires_role.trim() || undefined,
+        assignee_profile_ids: s.assignee_profile_ids ?? [], decision_rule: s.decision_rule ?? "one_assigned",
       }));
 
       let result: { success: boolean; error?: string };
@@ -233,6 +254,7 @@ function WorkflowFormSession({
           name_ar: nameAr.trim() || undefined,
           description: description.trim() || undefined,
           document_type_ids: docTypeIds,
+          owner_company_id: companyId, branch_id: branchId,
           is_active: isActive,
           steps: activeSteps,
         });
@@ -243,6 +265,7 @@ function WorkflowFormSession({
           name_ar: nameAr.trim() || undefined,
           description: description.trim() || undefined,
           document_type_ids: docTypeIds,
+          owner_company_id: companyId, branch_id: branchId, is_active: isActive,
           steps: activeSteps,
         });
       }
@@ -320,13 +343,18 @@ function WorkflowFormSession({
             <Switch aria-label="Workflow active"
               checked={isActive}
               onCheckedChange={setIsActive}
-              disabled={submitting || !isEdit}
+              disabled={submitting}
             />
             <span className="text-sm text-muted-foreground">{isActive ? "Active" : "Inactive"}</span>
           </div>
         </div>
 
         <div className="col-span-12 sm:col-span-6">
+          <Label>Company applicability</Label>
+          <OwnerCompanySelect value={companyId} onValueChange={value => { setCompanyId(value); setBranchId(null); }} disabled={submitting} />
+          <Label>Branch applicability</Label>
+          <BranchSelect value={branchId} ownerCompanyId={companyId} onValueChange={setBranchId} allowClear disabled={submitting || !companyId} placeholder="All branches in this company" />
+          <p className="text-xs text-muted-foreground">One exact company/type route. Overlapping branch routes are rejected. No global workflow fallback.</p>
           <Label className="text-xs text-muted-foreground">Workflow Name (AR) <span className="text-muted-foreground/60">(optional)</span></Label>
           <Input aria-label="Workflow Name (AR)"
             value={nameAr}
@@ -478,10 +506,24 @@ function WorkflowFormSession({
                           className="h-9 min-w-36 max-w-56 rounded border bg-background px-2 text-sm"
                           disabled={submitting || rolesState !== "loaded"}
                         >
-                          <option value="">Any authorized reviewer</option>
+                          <option value="">No additional role restriction</option>
                           {step.requires_role && !roleOptions.some(r => r.code === step.requires_role) && <option value={step.requires_role}>Current role (unavailable)</option>}
                           {roleOptions.map(role => <option key={role.code} value={role.code}>{role.name}</option>)}
                         </select>
+                        <label className="block text-xs mt-2">Assigned approvers
+                          <select multiple aria-label={`Step ${idx + 1} assigned approvers`} className="block w-full rounded border bg-background text-foreground px-2 py-1" disabled={submitting || !assigneesAvailable}
+                            value={(step.assignee_profile_ids ?? []).map(String)} onChange={e => updateStep(step._id, { assignee_profile_ids: Array.from(e.target.selectedOptions, o => Number(o.value)) })}>
+                            {(step.assignee_profile_ids ?? []).filter(id => !assigneeOptions.some(o => o.id === id)).map(id => <option key={id} value={id}>Current assignee (unavailable)</option>)}
+                            {assigneeOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                          </select>
+                        </label>
+                        <label className="block text-xs mt-2">Decision rule
+                          <select aria-label={`Step ${idx + 1} decision rule`} className="block w-full rounded border bg-background text-foreground px-2 py-1" value={step.decision_rule ?? "one_assigned"} disabled={submitting}
+                            onChange={e => updateStep(step._id, { decision_rule: e.target.value as "one_assigned" | "all_assigned" })}>
+                            <option value="one_assigned">One assigned approver</option><option value="all_assigned">All assigned approvers</option>
+                          </select>
+                        </label>
+                        {!assigneesAvailable && <p role="status" className="text-xs text-destructive">Assigned-user options unavailable. Save inactive or retry after access is restored.</p>}
                       </td>
                       <td className="px-3 py-2 text-center">
                         <input

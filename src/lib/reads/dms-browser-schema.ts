@@ -34,6 +34,7 @@ export const dmsBrowserTypesPage = z.object({criteria: dmsBrowserTypesCriteria, 
   .refine(v => v.rows.length === v.totalCount && new Set(v.rows.map(r => r.id)).size === v.rows.length);
 // This is an execution-safety ceiling, not a business limit or a partial page.
 export const dmsBrowserTooLarge = z.object({criteria: z.union([dmsBrowserSearchCriteria, dmsBrowserTypesCriteria]), asOf: z.iso.datetime(), availability: z.literal("too_large")}).strict();
-export const dmsBrowserResponseSchema = z.union([dmsBrowserSearchPage, dmsBrowserFilesPage, dmsBrowserFilesUnavailable, dmsBrowserTypesPage, dmsBrowserTooLarge]);
+export const dmsBrowserClarification=z.object({criteria:dmsBrowserSearchCriteria,asOf:z.iso.datetime(),availability:z.literal("clarification_required"),message:z.string().max(300)}).strict();
+export const dmsBrowserResponseSchema = z.union([dmsBrowserSearchPage, dmsBrowserFilesPage, dmsBrowserFilesUnavailable, dmsBrowserTypesPage, dmsBrowserTooLarge,dmsBrowserClarification]);
 export type DmsBrowserResponse = z.infer<typeof dmsBrowserResponseSchema>;
 export type DmsBrowserRow = z.infer<typeof dmsBrowserRowSchema>;

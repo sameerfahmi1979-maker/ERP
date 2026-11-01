@@ -94,7 +94,7 @@ it("employee scope/status filters occur before count and page and retain literal
   await readHrSearch(full({query, categories: ["employees"], ownerCompanyId: 1, branchId: 2, departmentId: 3, designationId: 4, status: "active"}));
   for (const e of calls) {
     for (const [column, value] of [["owner_company_id", 1], ["branch_id", 2], ["department_id", 3], ["designation_id", 4], ["employee_status", "active"]]) expect(e.calls).toContainEqual(["eq", column, value]);
-    expect(e.calls).toContainEqual(["or", ["employee_code", "full_name_en", "full_name_ar", "known_name", "mobile_number", "personal_email"].map(c => `${c}.ilike.${literalContains(query)}`).join(",")]);
+    for(const term of query.trim().split(/\s+/))expect(e.calls).toContainEqual(["or", ["employee_code", "full_name_en", "full_name_ar", "known_name", "mobile_number", "personal_email"].map(c => `${c}.ilike.${literalContains(term)}`).join(",")]);
   }
 });
 it("child matching uses filtered left aliases but independently authorized display labels and an inner scoped employee", async () => {
@@ -104,7 +104,7 @@ it("child matching uses filtered left aliases but independently authorized displ
   expect(e.calls).toContainEqual(["eq", "employee.owner_company_id", 1]); expect(e.calls).toContainEqual(["eq", "employee.branch_id", 2]);
   expect(e.calls).toContainEqual(["in", "employee.employee_status", ["active", "probation", "on_leave"]]);
   expect(e.calls).toContainEqual(["or", "search_employee.not.is.null,search_related.not.is.null"]);
-  expect(e.calls).toContainEqual(["ilike", "search_related.name_en", literalLike(" a% ")]);
+  expect(e.calls).toContainEqual(["ilike", "search_related.name_en", literalLike("a%")]);
 });
 it("hidden optional labels are masked rather than dropping lawful rows or replacing them with raw foreign-table data", async () => {
   tables.employee_assignments = [{...row(), work_site: null}]; tables.hr_onboarding_tasks = [{...row(), candidate: null}];

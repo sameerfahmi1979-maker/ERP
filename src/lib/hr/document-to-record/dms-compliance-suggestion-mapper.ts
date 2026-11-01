@@ -6,6 +6,7 @@
  */
 
 import { nanoid } from "nanoid";
+import { normalizeDocumentDate as normalizeDate } from './document-date';
 import type {
   HrComplianceRecordSuggestion,
   HrDmsDocumentSelection,
@@ -40,19 +41,6 @@ function conf(obj: Record<string, unknown>, keys: string[]): number {
     }
   }
   return 0.5;
-}
-
-function normalizeDate(v: string | undefined | null): string | null {
-  if (!v) return null;
-  const trimmed = v.trim();
-  // Accept YYYY-MM-DD or similar
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
-  // Try to parse
-  const d = new Date(trimmed);
-  if (!isNaN(d.getTime())) {
-    return d.toISOString().slice(0, 10);
-  }
-  return null;
 }
 
 function buildIdentityDocumentSuggestion(

@@ -258,14 +258,13 @@ export function EmployeeProfileTab({
             {employee?.medical_field_unavailable&&<p role="alert" className="text-sm text-destructive">This medical field could not be verified. Other profile details remain available; reload to retry it.</p>}
           </div>
           <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
-            <RequiredLabel htmlFor="mobile_number">Mobile Number</RequiredLabel>
+            <Label htmlFor="mobile_number">Mobile Number</Label>
             <Input
               id="mobile_number"
               name="mobile_number"
               value={form.mobile_number}
               onChange={event => setForm(previous => ({...previous, mobile_number: event.target.value}))}
               disabled={disabled}
-              required
             />
           </div>
           <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
@@ -563,25 +562,23 @@ export function EmployeeProfileTab({
         </h3>
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
-            <RequiredLabel htmlFor="emergency_contact_name">Contact Name</RequiredLabel>
+            <Label htmlFor="emergency_contact_name">Contact Name</Label>
             <Input
               id="emergency_contact_name"
               name="emergency_contact_name"
               value={form.emergency_contact_name}
               onChange={event => setForm(previous => ({...previous, emergency_contact_name: event.target.value}))}
               disabled={disabled}
-              required
             />
           </div>
           <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
-            <RequiredLabel htmlFor="emergency_contact_mobile">Contact Mobile</RequiredLabel>
+            <Label htmlFor="emergency_contact_mobile">Contact Mobile</Label>
             <Input
               id="emergency_contact_mobile"
               name="emergency_contact_mobile"
               value={form.emergency_contact_mobile}
               onChange={event => setForm(previous => ({...previous, emergency_contact_mobile: event.target.value}))}
               disabled={disabled}
-              required
             />
           </div>
           <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">

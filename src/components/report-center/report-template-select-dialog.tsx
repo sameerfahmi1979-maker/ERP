@@ -19,7 +19,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { ReportTemplateForSelection } from "@/server/actions/reports/templates";
@@ -49,6 +48,9 @@ export interface ReportTemplateSelectDialogProps {
   dialogTitle?: string;
   /** Description shown below the title */
   dialogDescription?: string;
+  /** Render inside an ERP child dialog's React tree. Its portal must sit
+   * above that parent's 100/110 overlay/content pair, with nested focus. */
+  nested?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -82,11 +84,12 @@ function ReportTemplateSelection({
   readGeneration,
   dialogTitle = "Select Report Template",
   dialogDescription = "Choose the branding template to use for this export.",
+  nested = false,
 }: ReportTemplateSelectDialogProps) {
   const [selectedId, setSelectedId] = useState<number | null>(selectedTemplateId ?? null);
   const read = useReportTemplateSelection(authContext, {ownerCompanyIds, issuableOnly, selectedId, enabled: open, generation: readGeneration});
   const templates = [...read.rows, ...(read.selected && !read.rows.some(row => row.id === read.selected!.id) ? [read.selected] : [])];
-  const isLoading = read.busy;
+  const isLoading = read.busy && templates.length === 0;
 
   const handleConfirm = () => {
     const template = read.getSelectedNow();
@@ -97,8 +100,8 @@ function ReportTemplateSelection({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
+      <DialogContent className={cn("flex max-h-[calc(100dvh-2rem)] min-w-0 flex-col overflow-hidden sm:max-w-2xl",nested&&"z-[130]")} overlayClassName={nested?"z-[120]":undefined} forceOverlay={nested}>
+        <DialogHeader className="min-w-0 shrink-0 pr-8">
           <DialogTitle className="flex items-center gap-2">
             <Layers className="h-5 w-5 text-primary" />
             {dialogTitle}
@@ -106,7 +109,7 @@ function ReportTemplateSelection({
           <DialogDescription>{dialogDescription}</DialogDescription>
         </DialogHeader>
 
-        <div className="py-2">
+        <div className="min-h-0 min-w-0 overflow-y-auto py-2">
           <Input aria-label="Search report templates" value={read.search} onChange={event => read.setSearch(event.target.value)} placeholder="Search templates…" className="mb-3" disabled={read.denied} />
           {read.denied ? <p role="alert">Your access to report templates could not be verified.</p> : read.invalid ? <p role="alert">Template search is too long or its criteria are invalid.</p> : read.error ? <div role="alert"><p>Could not load report templates.</p><Button variant="outline" onClick={read.retry}>Retry templates</Button></div> : isLoading ? (
             <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
@@ -119,8 +122,8 @@ function ReportTemplateSelection({
               <p className="text-sm">No active templates match these choices.</p>
             </div>
           ) : (
-            <ScrollArea className="max-h-80">
-              <div className="flex flex-col gap-2 pr-2">
+            <div role="group" aria-label="Available letterheads" aria-busy={read.busy} className="max-h-[50dvh] min-w-0 overflow-y-auto overscroll-contain">
+              <div className="flex min-w-0 flex-col gap-2 p-1">
                 {templates.map((tpl) => {
                   const isSelected = selectedId === tpl.id;
                   const profileMeta = profileTypeBadge[tpl.branding_profile_type ?? "neutral"] ?? profileTypeBadge.neutral;
@@ -129,10 +132,11 @@ function ReportTemplateSelection({
                     <button
                       key={tpl.id}
                       type="button"
+                      aria-pressed={isSelected}
                       disabled={!tpl.selectable}
                       onClick={() => setSelectedId(tpl.id)}
                       className={cn(
-                        "flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors w-full",
+                        "flex w-full min-w-0 items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors",
                         isSelected
                           ? "border-primary bg-primary/5 ring-1 ring-primary"
                           : "border-border hover:bg-muted/60"
@@ -159,7 +163,7 @@ function ReportTemplateSelection({
                       {/* Template details */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium">{tpl.template_name}</span>
+                          <span className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">{tpl.template_name}</span>
                           {!tpl.selectable && <Badge variant="outline">Unavailable for new output</Badge>}
                           {tpl.is_default && (
                             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
@@ -174,7 +178,7 @@ function ReportTemplateSelection({
                           {tpl.branding_profile_name ?? "No branding profile"}
                           {tpl.company_name && ` — ${tpl.company_name}`}
                         </p>
-                        <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+                        <p className="text-[10px] text-muted-foreground/70 mt-0.5 break-words [overflow-wrap:anywhere]">
                           {tpl.template_type} · {tpl.template_code}
                         </p>
                       </div>
@@ -186,21 +190,22 @@ function ReportTemplateSelection({
                   );
                 })}
               </div>
-            </ScrollArea>
+            </div>
           )}
+          {read.busy && !isLoading && <p role="status" className="mt-2 text-sm text-muted-foreground">Checking selected letterhead…</p>}
           {read.selectionUnavailable && <p role="status" className="mt-2 text-sm">The previous template is unavailable or no longer authorized. Choose another template.</p>}
-          {read.totalCount !== null && <div className="mt-3 flex items-center justify-between gap-2 text-sm">
+          {read.totalCount !== null && <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
             <Button variant="outline" disabled={!read.ready || read.page <= 1} onClick={() => read.move(read.page - 1)}>Previous</Button>
             <span>{read.totalCount} templates · Page {read.page}</span>
             <Button variant="outline" disabled={!read.ready || read.page * read.pageSize >= read.totalCount} onClick={() => read.move(read.page + 1)}>Next</Button>
           </div>}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="shrink-0">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleConfirm} disabled={!read.ready || !read.selected?.selectable}>
+          <Button type="button" onClick={handleConfirm} disabled={!read.ready || !read.selected?.selectable}>
             Use Template
           </Button>
         </DialogFooter>

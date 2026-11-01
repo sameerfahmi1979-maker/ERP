@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useCallback } from "react";
+import { useState, useTransition, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { useNumberedAiApproval } from "@/hooks/use-numbered-ai-approval";
@@ -79,6 +79,7 @@ export function DmsAiIntakePageClient({
   const displaySession: IntakeSessionData = {
     ...session,
     ai_result: aiResult,
+    ai_result_id:aiResult?.id??session.ai_result_id,
   };
   const [formValues, setFormValues] = useState<ReviewFormValues>(() =>
     buildInitialReviewValues(initialSession)
@@ -146,16 +147,27 @@ export function DmsAiIntakePageClient({
     return null;
   };
 
+  const draftSnapshot = useRef(session.draft_snapshot ?? null);
+  const draftRequest = useRef<{values:Parameters<typeof saveAiIntakeDraft>[1];review:{requestId:string;snapshot:string}}|null>(null);
+  const [draftUncertain,setDraftUncertain]=useState(false);
+
   // ── Save draft ────────────────────────────────────────────────────────────
 
   const handleSaveDraft = () => {
     if (retainedApproval || approvalBlocked) return;
     startTransition(async () => {
-      const draftPayload = buildDraftPayload(formValues);
-      const result = await saveAiIntakeDraft(session.id, draftPayload);
+      if(!draftSnapshot.current){toast.error("Reload the saved review before saving.");return;}
+      draftRequest.current ??= {values:buildDraftPayload(formValues),review:{requestId:crypto.randomUUID(),snapshot:draftSnapshot.current}};
+      const original=draftRequest.current;
+      let result;
+      try { result=await saveAiIntakeDraft(session.id,original.values,original.review); }
+      catch { setDraftUncertain(true);toast.error("Draft save is unconfirmed. Retry Save draft to recover the same values.");return; }
+      if(session.document_id?!batchApproval.isCurrent():!approval.isCurrent())return;
       if (result.success) {
+        draftSnapshot.current=result.data?.snapshot??null;draftRequest.current=null;setDraftUncertain(false);
         toast.success("Draft saved");
       } else {
+        setDraftUncertain(result.uncertain===true);if(!result.uncertain)draftRequest.current=null;
         toast.error(result.error ?? "Failed to save draft");
       }
     });
@@ -164,7 +176,7 @@ export function DmsAiIntakePageClient({
   // ── Approve & Save ────────────────────────────────────────────────────────
 
   const handleApprove = () => {
-    if(approvalBlocked)return;
+    if(approvalBlocked || draftUncertain)return;
     startTransition(async () => {
       const error = retainedApproval ? null : await validate();
       if (error) {
@@ -197,6 +209,7 @@ export function DmsAiIntakePageClient({
           rawValue: v.rawValue,
         })).filter((v) => v.rawValue !== ""),
         // HR.DOCLINK.1A — ticked suggestions + manual links, written by the approve saga
+        tagIds: formValues.tagIds ?? [],
         links: entityLinks.map((l) => ({ entityType: l.entityType, entityId: l.entityId })),
         aiResultId: aiResult?.id ?? null,
         allowDuplicate:fileReview?.confirmed===true&&fileReview.override===true,
@@ -236,7 +249,7 @@ export function DmsAiIntakePageClient({
   // ── Retry AI ──────────────────────────────────────────────────────────────
 
   const handleRetry = () => {
-    if (retainedApproval || approvalBlocked) return;
+    if (retainedApproval || approvalBlocked || draftUncertain) return;
     startTransition(async () => {
       const result = await retryAiIntake(session.id);
       if (result.success) {
@@ -251,7 +264,7 @@ export function DmsAiIntakePageClient({
   // ── Discard ───────────────────────────────────────────────────────────────
 
   const handleDiscard = () => {
-    if (retainedApproval) return;
+    if (retainedApproval || draftUncertain) return;
     if (!discardDialogOpen) {
       setDiscardDialogOpen(true);
       return;
@@ -353,7 +366,7 @@ export function DmsAiIntakePageClient({
               <Button
                 size="sm"
                 onClick={handleApprove}
-                disabled={isPending || approvalBlocked}
+                disabled={isPending || approvalBlocked || draftUncertain}
                 className="bg-green-600 hover:bg-green-700 text-white"
               >
                 {isPending ? (
@@ -378,6 +391,7 @@ export function DmsAiIntakePageClient({
         </div>
       </div>
 
+      {draftUncertain && <p role="status" className="mt-3 text-sm">Draft save is unconfirmed. Retry Save draft to recover its original reviewed values before approval, analysis or discard.</p>}
       {retainedApproval && <p role="status" className="mt-3 text-sm text-amber-700">An approval request is retained for recovery. Retry uses its original reviewed values, even if the form has changed. To cancel an uncommitted upload, use Discard in the Upload Inbox. Do not re-run analysis.</p>}
       {approval.loading&&!session.document_id&&<p role="status" className="mt-3 text-sm text-muted-foreground">Checking for an earlier approval…</p>}
       {approval.retentionError && !session.document_id && <p role="alert" className="mt-3 text-sm text-destructive">The retained approval could not be read. Reopen the original workspace; a replacement request will not be created.</p>}
@@ -637,16 +651,14 @@ export function DmsAiIntakePageClient({
                   </Badge>
                 )}
               </div>
-              <fieldset disabled={retainedApproval}>
+              <fieldset disabled={retainedApproval || draftUncertain}>
               <DmsAiIntakeReviewForm
                 session={displaySession}
                 values={formValues}
                 onChange={handleFormChange}
                 initialDocTypes={documentTypes}
                 aiResultOverride={aiResult}
-                onAiResultPatch={(patch) =>
-                  setAiResultPatch((prev) => ({ ...(prev ?? {}), ...patch }))
-                }
+                onAiResultPatch={(patch,snapshot) => {setAiResultPatch((prev) => ({ ...(prev ?? {}), ...patch }));setFileReview(null);if(snapshot)draftSnapshot.current=snapshot;}}
               />
               </fieldset>
             </div>
@@ -681,7 +693,7 @@ export function DmsAiIntakePageClient({
             <Button
               size="sm"
               onClick={handleApprove}
-              disabled={isPending || approvalBlocked}
+              disabled={isPending || approvalBlocked || draftUncertain}
               className="bg-green-600 hover:bg-green-700 text-white"
             >
               {isPending ? (
@@ -709,7 +721,7 @@ function buildDraftPayload(values: ReviewFormValues) {
     suggestedValue?: unknown,
     fieldType = "text"
   ) => {
-    if (reviewedValue !== null && reviewedValue !== undefined && reviewedValue !== "") {
+    if (reviewedValue !== undefined) {
       payload.push({
         fieldScope: "document",
         fieldCode,
@@ -731,8 +743,10 @@ function buildDraftPayload(values: ReviewFormValues) {
   addField("owning_company_id", values.owningCompanyId, null, "number");
   addField("owning_branch_id", values.owningBranchId, null, "number");
 
+  if(values.tagIds !== undefined) addField("tag_ids",values.tagIds,null,"json");
+
   for (const [id, mv] of Object.entries(values.metadataValues)) {
-    if (mv.rawValue) {
+    {
       payload.push({
         fieldScope: "metadata",
         fieldCode: id,

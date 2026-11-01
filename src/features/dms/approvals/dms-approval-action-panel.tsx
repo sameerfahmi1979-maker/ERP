@@ -1,4 +1,5 @@
 "use client";
+import {DmsApprovalRouting} from "./dms-approval-routing";
 
 import { useContext, useState } from "react";
 import {DmsSectionActivity} from "@/features/dms/documents/section-activity";
@@ -95,6 +96,7 @@ function DmsApprovalActionSession({ documentId, authContext }: DmsApprovalAction
   return (
     <>{dialogNode}
     <div className="space-y-4">
+      <DmsApprovalRouting documentId={documentId} onChanged={refresh}/>
       {/* Status summary card */}
       <div className="rounded-md border border-border bg-muted/5 p-4 space-y-3">
         <div className="flex items-start justify-between gap-3 flex-wrap">

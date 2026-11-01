@@ -46,6 +46,55 @@ it("actual dialog performs complete paging, point-verifies selection then confir
   expect(state.choose).toHaveBeenCalledWith(26, template(26)); expect(state.close).toHaveBeenCalledWith(false);
   expect(state.read.mock.calls.at(-1)?.[1]).toMatchObject({page: 2, selectedId: 26, ownerCompanyIds: [1]});
 });
+it("keeps the list and its choice mounted during selection verification, without enabling premature confirmation", async () => {
+  let finish: (() => void) | undefined;
+  state.read.mockImplementation(async (_r, p) => {
+    if (p.selectedId) await new Promise<void>(resolve => {finish = resolve;});
+    return response(p);
+  });
+  mount(); const original = await screen.findByText("Template 1"); const button = choice(1);
+  fireEvent.click(button);
+  await waitFor(() => expect(finish).toBeDefined());
+  expect(screen.getByText("Template 1")).toBe(original);
+  expect(choice(1)).toBe(button); expect(button.getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getByRole("status").textContent).toContain("Checking selected letterhead");
+  expect(confirmDisabled()).toBe(true);
+  fireEvent.click(screen.getByRole("button", {name: "Use Template"})); expect(state.choose).not.toHaveBeenCalled();
+  await act(async () => finish!());
+  await waitFor(() => expect(confirmDisabled()).toBe(false));
+  expect(choice(1)).toBe(button);
+  fireEvent.click(screen.getByRole("button", {name: "Use Template"}));
+  expect(state.choose).toHaveBeenCalledTimes(1);
+});
+it("denial during selection verification removes the retained list and cannot confirm it", async () => {
+  let fail: ((error: unknown) => void) | undefined;
+  state.read.mockImplementation(async (_r, p) => {
+    if (p.selectedId) await new Promise((_resolve, reject) => {fail = reject;});
+    return response(p);
+  });
+  mount(); await screen.findByText("Template 1"); fireEvent.click(choice(1));
+  await waitFor(() => expect(fail).toBeDefined()); expect(screen.getByText("Template 1")).toBeTruthy();
+  await act(async () => fail!(new ReadError("Denied", 403)));
+  await screen.findByText("Your access to report templates could not be verified.");
+  expect(screen.queryByText("Template 1")).toBeNull(); expect(confirmDisabled()).toBe(true);
+  expect(state.choose).not.toHaveBeenCalled();
+});
+it("changing search during a pending selection hides old choices and rejects the late selection", async () => {
+  let finish: (() => void) | undefined;
+  state.read.mockImplementation(async (_r, p) => {
+    if (p.selectedId && !p.search) await new Promise<void>(resolve => {finish = resolve;});
+    const result = response(p);
+    return p.search ? {...result, data: {...result.data, rows: [], selected: null, totalCount: 0}} : result;
+  });
+  mount(); await screen.findByText("Template 1"); fireEvent.click(choice(1));
+  await waitFor(() => expect(finish).toBeDefined());
+  fireEvent.change(screen.getByRole("textbox", {name: "Search report templates"}), {target: {value: "different"}});
+  expect(screen.queryByText("Template 1")).toBeNull(); expect(confirmDisabled()).toBe(true);
+  await act(async () => finish!());
+  await screen.findByText("No active templates match these choices.");
+  expect(screen.queryByText("Template 1")).toBeNull(); expect(confirmDisabled()).toBe(true);
+  expect(state.choose).not.toHaveBeenCalled();
+});
 it("retained inactive selected choice is labelled and disabled, not silently removed or newly offered", async () => {
   state.read.mockImplementation(async (_r, p) => {const r = response(p); return {...r, data: {...r.data, selected: {...template(900), selectable: false}}};}); mount(900);
   await screen.findByText("Template 900"); expect(choice(900).disabled).toBe(true); expect(choice(900).textContent).toContain("Unavailable for new output");

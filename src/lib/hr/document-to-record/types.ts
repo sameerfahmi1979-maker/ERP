@@ -81,6 +81,7 @@ export type HrDocumentConflict = {
   fieldLabel: string;
   values: Array<{
     value: string;
+    displayValue?: string;
     sourceDocumentId: number;
     sourceDocumentTitle: string;
     confidence: number;
@@ -101,6 +102,7 @@ export type HrEmployeeDraftFromDocuments = {
   gender: HrDocumentFieldSuggestion | null;
   date_of_birth: HrDocumentFieldSuggestion | null;
   nationality_id: HrDocumentFieldSuggestion | null;
+  nationalityEvidence?: Array<{value: string; sourceDocumentId: number; sourceDocumentTitle: string; matched: boolean}>;
   mobile_number: HrDocumentFieldSuggestion | null;
   personal_email: HrDocumentFieldSuggestion | null;
 
@@ -252,7 +254,7 @@ export const createEmployeeFromDmsDocumentsInputSchema = z.object({
   gender: z.enum(["male", "female"]),
   date_of_birth: z.string().min(1, "Date of birth is required"),
   nationality_id: z.number().int().positive().nullish(),
-  mobile_number: z.string().min(1, "Mobile number is required"),
+  mobile_number: z.string().trim().default(""),
   personal_email: z.string().email("Invalid email").nullish().or(z.literal("").transform(() => null)),
   // Employment
   owner_company_id: z.number().int().positive({ message: "Employer company is required" }),
@@ -265,8 +267,8 @@ export const createEmployeeFromDmsDocumentsInputSchema = z.object({
   employee_status: z.enum(["active", "inactive", "on_leave", "probation", "suspended", "terminated", "archived"]).default("active"),
   reporting_manager_id: z.number().int().positive().nullish(),
   // Emergency
-  emergency_contact_name: z.string().min(1, "Emergency contact name is required"),
-  emergency_contact_mobile: z.string().min(1, "Emergency contact mobile is required"),
+  emergency_contact_name: z.string().trim().default(""),
+  emergency_contact_mobile: z.string().trim().default(""),
   emergency_contact_relationship_type_id: z.number().int().positive().nullish(),
   // Compliance records to create (user-confirmed, included only)
   complianceRecords: z.array(

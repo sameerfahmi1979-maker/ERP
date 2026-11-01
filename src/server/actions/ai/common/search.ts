@@ -90,7 +90,7 @@ const SearchInputSchema = z.object({
   mode: SearchModeSchema.optional().default("quick_keyword"),
   entityTypes: z.array(EntityTypeSchema).optional(),
   riskLevel: z.enum(["none", "low", "medium", "high", "critical"]).optional(),
-  page: z.number().int().min(1).max(10).optional().default(1),
+  page: z.number().int().min(1).max(100000).optional().default(1),
   limit: z.number().int().min(1).max(25).optional().default(10),
   includeAiSignals: z.boolean().optional().default(true),
 });
@@ -135,6 +135,8 @@ export async function searchAcrossErp(
       mode: input.mode as ErpSearchMode,
       entityTypes: input.entityTypes as ErpSearchEntityType[] | undefined,
       limit: input.limit,
+      page: input.page,
+      riskLevel:input.riskLevel,
       includeAiSignals: input.includeAiSignals,
     };
 

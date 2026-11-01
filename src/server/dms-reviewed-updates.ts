@@ -14,7 +14,7 @@ export async function reviewedCall<T>(rpc:string,args:Record<string,unknown>,sch
  try{
   const db=await createClient(),r=await db.rpc(rpc,args);
   if(r.error){
-   const code=r.error.code??'',known=typeof code==='string'&&code.length===5&&(/^(?:22|23|42|P0)[A-Z0-9]{3}$/.test(code)||['PT409','PT404','40001','40P01'].includes(code));
+   const code=r.error.code??'',known=typeof code==='string'&&code.length===5&&(/^(?:22|23|42|P0)[A-Z0-9]{3}$/.test(code)||['PT409','PT404','40001','40P01','55000','55P03'].includes(code));
    return {success:false,uncertain:!known,errorCode:code==='42501'?'permission_denied':code==='PT409'?'conflict_detected':'server_error',
     error:code==='42501'?'Document or source access is unavailable, or this feature is disabled.':code==='PT409'?'The reviewed document, values or definitions changed. Reload and review again.':known?'No change was committed. Check required fields, types, allowed selections and confirmation.':uncertain};
   }

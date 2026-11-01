@@ -13,6 +13,7 @@ import {DmsBrowserResizeHandle} from "./dms-browser-resize-handle";
 import {DmsBrowserIntentBanner} from "./dms-browser-intent-banner";
 import type {DmsBrowserDocument} from "@/server/actions/dms/browser";
 import {askDmsDocumentsQuestion} from "@/server/actions/dms/ai-search";
+import {filterSearchCandidateIds} from "@/server/actions/ai/search-candidates";
 import {semanticSearchDmsDocuments} from "@/server/actions/dms/semantic-search";
 import type {DmsAiSearchResult, DmsSemanticSearchResult, DmsSearchIntent} from "@/lib/dms/ai/types";
 
@@ -92,17 +93,23 @@ function BrowserSession({authContext}: {authContext: AuthContext}) {
   // top-N suggestions, never part of the exact metadata/content total. No retry.
   const runProviders = useCallback((query: string, active: DmsBrowserActiveFilters, token: number) => {
     const current = () => mounted.current && epoch.current === token;
+    const constrain=async<T extends DmsAiSearchResult|DmsSemanticSearchResult>(rows:T[],mode:"content"|"semantic"="content")=>{
+      if(!current()||!rows.length)return [];
+      const allowed=await filterSearchCandidateIds({query,mode,candidateIds:rows.map(r=>r.documentId),filters:{documentTypeIds:active.documentTypeIds,status:active.status&&active.status!=="all"?active.status:undefined,issueFrom:active.issueDateFrom||undefined,issueTo:active.issueDateTo||undefined,linkedType:active.linkedEntityType||undefined}});
+      if(!allowed.success||!allowed.data)throw Error("Suggestion scope unavailable");
+      return current()?rows.filter(r=>allowed.data!.includes(r.documentId)):[];
+    };
     if (query.trim().split(/\s+/).filter(Boolean).length >= AI_WORD_THRESHOLD) {
       setIsAiSearching(true);
-      void askDmsDocumentsQuestion(query).then(result => {
+      void askDmsDocumentsQuestion(query).then(async result => {
         if (!current()) return;
-        if (result.success && result.data) {setAiRows(result.data.results.map(row => suggestion(row, row.matchReason || row.contentSnippet))); setAiIntent(result.data.intent);} else setProviderFailed(true);
+        if (result.success && result.data) {const rows=await constrain(result.data.results);if(current()){setAiRows(rows.map(row => suggestion(row, row.matchReason || row.contentSnippet))); setAiIntent(result.data.intent);}} else setProviderFailed(true);
       }).catch(() => {if (current()) setProviderFailed(true);}).finally(() => {if (current()) setIsAiSearching(false);});
     }
     if (active.semanticOn && query.trim()) {
-      void semanticSearchDmsDocuments(query).then(result => {
+      void semanticSearchDmsDocuments(query).then(async result => {
         if (!current()) return;
-        if (result.success && result.data) setSemanticRows(result.data.map(row => suggestion(row, row.aiSummarySnippet || row.matchReason))); else setProviderFailed(true);
+        if (result.success && result.data) {const rows=await constrain(result.data,"semantic");if(current())setSemanticRows(rows.map(row => suggestion(row, row.aiSummarySnippet || row.matchReason)));} else setProviderFailed(true);
       }).catch(() => {if (current()) setProviderFailed(true);});
     }
   }, []);
@@ -127,13 +134,14 @@ function BrowserSession({authContext}: {authContext: AuthContext}) {
         : !parsed.success ? <ReadNotice>Search criteria are invalid. Use up to 200 characters and valid dates.</ReadNotice>
         : hasQuery && search.failed ? <ReadNotice retry={search.retry} label="Retry search">Documents could not be completely loaded. Please retry.</ReadNotice>
         : search.data?.availability === "too_large" ? <ReadNotice>Too many matching records to verify safely. Refine your search or filters; no partial results are shown.</ReadNotice>
+        : search.data?.availability === "clarification_required" ? <ReadNotice>Choose the exact person or business record, or enter its full name/code. No broader results were returned.</ReadNotice>
         : <>
           <div className="flex-1 min-h-0 overflow-hidden"><DmsBrowserResultsList rows={rows} total={search.data?.totalCount ?? 0} selectedId={selectedId} onSelect={selectDocument}
             isLoading={hasQuery && !search.data && !search.failed} isLoadingMore={search.isFetchingNextPage}
             hasMore={visible && search.hasNextPage} onLoadMore={search.loadMore} query={currentQuery} hasQuery={hasQuery}/></div>
           {visible && (aiIntent || isAiSearching) && <DmsBrowserIntentBanner intent={aiIntent} isLoading={isAiSearching} resultCount={aiRows.length}/>}
           {visible && (additions.length > 0 || providerFailed) && <section aria-label="Limited search suggestions" className="border-t border-border/60 p-3 max-h-48 overflow-y-auto space-y-2">
-            <p className="text-xs text-muted-foreground">AI and semantic suggestions are limited to the provider’s top 25 results each. They are not an exact total and may use different filters.</p>
+            <p className="text-xs text-muted-foreground">AI and semantic suggestions are limited to the provider’s top 25 results each and checked against the same search constraints. They are not an exact total.</p>
             {providerFailed && <p role="status" className="text-xs">Some suggestions could not be loaded. The exact search above is unchanged.</p>}
             {additions.map(row => <button key={row.id} onClick={() => selectDocument(row)} className="block text-left text-sm w-full rounded p-2 hover:bg-muted">{row.title}<span className="block text-xs text-muted-foreground">{row.contentExcerpt}</span></button>)}
           </section>}

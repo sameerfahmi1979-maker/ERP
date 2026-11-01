@@ -28,7 +28,7 @@ export const HISTORICAL_RAW_IMPACT={
 // Historical F06 evidence remains unchanged; this map pins the reviewed integration.
 export const IMPACT={...HISTORICAL_RAW_IMPACT,
  'tooling/security/verify-vendor-patches.cjs':'40aedab3cfb75fc56493e39f84dbbc8c203a6f226ee055f2524e9d0b7242e8f5',
- 'tooling/security/dependency-gate.cjs':'39f9c7257572cde7476e88e3921114d6b54129c3b46f89ff9f5cbbaf5a129ef6',
+ 'tooling/security/dependency-gate.cjs':'3b42385cefb29af308b11c5cdf1f1a9977bc73d54e854f22bb943935e09f7738',
  'vendor/PATCH-MANIFEST.json':'17827374ccd33b2c3c4261ca6f9493a5299c094d097a7b0dfbc4ef49c8d51304',
  'vendor/sprintf-js-artifact.json':'1eea80a9b3117f87d0b4b5fed26e529d3539ec977a9614c94554bf6f19c7b678',
  'vendor/braces-artifact.json':'8219a0badc659d073d61de4d98fe7a5527e6e5cc2119b9f4c6a6e994a954a78a',
@@ -43,7 +43,7 @@ export const IMPACT={...HISTORICAL_RAW_IMPACT,
  'vendor/shadcn/tailwind.css':'146941ac3ff65496fdf1cb306e697255328e4dadc7c105d66e36bb031b00f6d6',
  // Reviewed photo framing adds react-easy-crop 6.2.4 / normalize-wheel 1.0.1.
  // Preserve F12 security fixes, pinned Node/npm and historical receipts above.
- 'package.json':'b134c5e13d6281b4fbc7bf40fb95cbb36ef552368765fe6eae3fd15811b78edf',
+ 'package.json':'4c73e1f4218eb0f00c0b2f4d5ba67209b8629c9887e62f7e99cac53237a5aa9c',
  'package-lock.json':'4f5b037d114caa7a21c6a77028ba158fbae2883167bd71588ac83123cade2b82',
  'src/lib/branding/constants.ts':'70a0e8005ce9b8ec76334643b8a345a2908944169252b2fcd59db33f41236e14',
  // Reviewed Arabic OCR successor; preserve historical F06 hashes above.

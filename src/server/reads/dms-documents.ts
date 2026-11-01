@@ -1,9 +1,9 @@
 import "server-only";
+import {prepareDocumentQuery} from "@/server/ai/search/document-query";
 import {getReadAuthContext} from "./read-context";
 import {getAuthContext,hasPermission,type AuthContext} from "@/lib/rbac/check";
 import {createClient} from "@/lib/supabase/server";
 import {logger} from "@/lib/logger";
-import {literalContains} from "@/lib/reads/search";
 import {readAllPages} from "./all-pages";
 import {dmsReadSchema} from "./dms-document-schema";
 import type {ActionResult,DmsDocumentRow,DmsDocumentFilters} from "@/server/actions/dms/documents";
@@ -69,9 +69,8 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
         tags:dms_document_tags(tag_id, tag:dms_tags(tag_name, color_hex)),
         perf_document_tag_count${joins.length ? ',' + joins.join(',') : ''}
       `;
-    let query = (contentSearch
-      ? supabase.rpc("perf_search_documents_content",{search_text:filters.search!.trim()},{get:true,count:"exact"}).select(projection)
-      : supabase.from("dms_documents").select(projection,{count:"exact"})).is("deleted_at", null);
+    const prepared = await prepareDocumentQuery(supabase,filters.search?.trim()??"",ctx,{content:contentSearch});
+    let query = prepared.query.select(projection).is("deleted_at", null);
 
     // DMS.3C — enforce confidentiality: show only allowed levels OR docs the user owns/created
     if (!isAdmin) {
@@ -85,36 +84,7 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
       }
     }
 
-    // ── Search ───────────────────────────────────────────────────────────────────
-    if (filters?.search) {
-      const searchTerm = filters.search.trim();
-      const mode = filters.searchMode;
-
-      if (mode === "quick") {
-        // Explicit quick mode — always ILIKE
-        const s = literalContains(searchTerm);
-        query = query.or(`document_no.ilike.${s},title.ilike.${s},description.ilike.${s},legacy_document_code.ilike.${s}`);
-      } else if (mode === "safe_fts") {
-        // Explicit safe FTS — uses content_tsv (doc_no, title, description, ai_summary)
-        query = query.textSearch("content_tsv", searchTerm, { type: "plain", config: "simple" });
-      } else if (mode === "content") {
-        // DMS 12.3 — content search: find document IDs from dms_document_content that match,
-        // then filter dms_documents. Never returns content_text.
-        // Applied inside perf_search_documents_content above.
-      } else {
-        // Auto mode (no explicit mode): short query → ILIKE, long → safe_fts
-        const wordCount = searchTerm.split(/\s+/).filter(Boolean).length;
-        const hasDigits = /\d{4,}/.test(searchTerm);
-        const isShortQuery = wordCount <= 3 || hasDigits;
-
-        if (isShortQuery) {
-          const s = literalContains(searchTerm);
-          query = query.or(`document_no.ilike.${s},title.ilike.${s},description.ilike.${s},legacy_document_code.ilike.${s}`);
-        } else {
-          query = query.textSearch("content_tsv", searchTerm, { type: "plain", config: "simple" });
-        }
-      }
-    }
+    // All modes share subject/type/literal constraints from prepareDocumentQuery.
 
     // ── Standard filters ──────────────────────────────────────────────────────
     if (filters?.document_type_id) {

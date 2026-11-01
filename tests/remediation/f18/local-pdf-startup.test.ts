@@ -23,7 +23,7 @@ function harness(){
  });
  const fetcher=vi.fn(async()=>new Response('ok',{status:200}));
  const log=vi.fn();
- const options={env:{GOTENBERG_URL:'http://127.0.0.1:16430'},platform:'win32',run,fetcher,sleep:async(ms:number)=>{state.time+=ms;},now:()=>state.time,log};
+ const options={env:{GOTENBERG_URL:'http://127.0.0.1:16430'},platform:'win32' as const,run,fetcher,sleep:async(ms:number)=>{state.time+=ms;},now:()=>state.time,log};
  return {state,run,fetcher,log,options};
 }
 it('accepts the configured loopback renderer and the existing example port',()=>{

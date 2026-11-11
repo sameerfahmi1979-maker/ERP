@@ -45,6 +45,17 @@ function member(prepared:boolean){return {position:0,upload_session_id:17,sessio
 function anchors(){return {version:1,admission_operation_id:receipt.operation_id,admission_fingerprint:receipt.fingerprint,auth_user_id:auth,profile_id:7,batch_id:18,owning_company_id:20,owning_branch_id:21};}
 function prepared(){return {success:true,receipt,preparation:{...anchors(),member:member(true)}};}
 const ui=()=> <DmsUploadInboxPageClient initialSessions={[]} documents={[]} documentTypes={[]} batchEnabled/>;
+async function openReadyBatchRecovery(){
+ const open=await screen.findByRole<HTMLButtonElement>('button',{name:'Open original batch recovery'});
+ await waitFor(()=>expect(open.disabled).toBe(false));
+ fireEvent.click(open);
+ const input=await screen.findByLabelText<HTMLInputElement>('Choose document files');
+ await waitFor(()=>{
+  expect(screen.getByRole<HTMLButtonElement>('button',{name:'Recover retained batch'}).disabled).toBe(false);
+  expect(input.disabled).toBe(false);
+ });
+ return input;
+}
 it('recovers all nine missing files with stable operations and no duplicates on replay',async()=>{
  const bytesFor=(p:number)=>new TextEncoder().encode(`%PDF-1.7 synthetic offline fixture ${p}`);
  const files=Array.from({length:9},(_,position)=>({position,original_filename:`Synthetic-${position}.pdf`,mime_type:'application/pdf',file_size_bytes:bytesFor(position).length,sha256_hash:createHash('sha256').update(bytesFor(position)).digest('hex')}));
@@ -57,10 +68,8 @@ it('recovers all nine missing files with stable operations and no duplicates on 
  m.prepare.mockImplementation(async({position:p}:{position:number})=>{preparedPositions.add(p);return {success:true,receipt,preparation:{...anchors(),member:envelope(p)}}});
  m.draft.mockImplementation(async(i:BatchDraftInput,c:WorkspaceSaveContract)=>{const replayed=saved.has(c.operationId);saved.add(c.operationId);return {success:true,data:{documentId:100+i.uploadSessionId,documentNo:`DMS-${i.uploadSessionId}`,status:'pending_ai_review',confidence:'high',operation_id:c.operationId,upload_session_id:i.uploadSessionId,replayed}}});
  render(<DmsUploadInboxPageClient initialSessions={[]} documents={[]} documentTypes={[]} batchEnabled recoveryReceipt={receipt}/>);
- await waitFor(()=>expect((screen.getByRole('button',{name:'Open original batch recovery'}) as HTMLButtonElement).disabled).toBe(false));
- fireEvent.click(screen.getByRole('button',{name:'Open original batch recovery'}));
- await waitFor(()=>expect(screen.getByRole('button',{name:'Recover retained batch'})).toBeTruthy());
- fireEvent.change(screen.getByLabelText('Choose document files'),{target:{files:files.map(f=>new File([bytesFor(f.position)],f.original_filename,{type:f.mime_type}))}});
+ const input=await openReadyBatchRecovery();
+ fireEvent.change(input,{target:{files:files.map(f=>new File([bytesFor(f.position)],f.original_filename,{type:f.mime_type}))}});
  await waitFor(()=>expect(screen.getByText('Selected files (9/10)')).toBeTruthy());
  fireEvent.click(screen.getByRole('button',{name:'Recover retained batch'}));
  await waitFor(()=>expect(screen.getByText('9 of 9 drafts confirmed')).toBeTruthy());
@@ -76,11 +85,9 @@ it('opens the original recovery and uploads matching bytes without admitting a r
  const request:BatchRequest={manifest:{version:1,context:null,files:[{position:0,original_filename:'Synthetic.pdf',mime_type:'application/pdf',file_size_bytes:1,sha256_hash:createHash('sha256').update('x').digest('hex')}]},contract:{operationId:operation,revision:null}};
  receipt=receiptFor(request);
  render(<DmsUploadInboxPageClient initialSessions={[]} documents={[]} documentTypes={[]} batchEnabled recoveryReceipt={receipt}/>);
- await waitFor(()=>expect((screen.getByRole('button',{name:'Open original batch recovery'}) as HTMLButtonElement).disabled).toBe(false));
- fireEvent.click(screen.getByRole('button',{name:'Open original batch recovery'}));
- await waitFor(()=>expect(screen.getByRole('button',{name:'Recover retained batch'})).toBeTruthy());
+ const input=await openReadyBatchRecovery();
  const file=new File(['x'],'Synthetic.pdf',{type:'application/pdf'});
- fireEvent.change(screen.getByLabelText('Choose document files'),{target:{files:[file]}});
+ fireEvent.change(input,{target:{files:[file]}});
  await waitFor(()=>expect(screen.getByText('Selected files (1/10)')).toBeTruthy());
  fireEvent.click(screen.getByRole('button',{name:'Recover retained batch'}));
  await waitFor(()=>expect(m.draft).toHaveBeenCalledOnce());

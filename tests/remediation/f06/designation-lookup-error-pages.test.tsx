@@ -19,9 +19,10 @@ import DesignationsPage from '@/app/(protected)/admin/common-master-data/designa
 import DashboardPage from '@/app/(protected)/admin/master-data/page';
 
 const secret='PRIVATE_PAGE_READ_DETAIL';
-function context(codes:string[]):AuthContext{
-  return {profile:{id:41,must_change_password:false},isAccountActive:true,roleCodes:[],permissionCodes:codes,globalPermissionCodes:[],
-    roleAssignments:[{roleCode:'synthetic_reader',ownerCompanyId:7,branchId:8,permissionCodes:codes}]} as unknown as AuthContext;
+function context(codes:string[],globalCodes:string[]=[]):AuthContext{
+  return {profile:{id:41,must_change_password:false},isAccountActive:true,roleCodes:[],permissionCodes:[...codes,...globalCodes],globalPermissionCodes:globalCodes,
+    roleAssignments:[{roleCode:'synthetic_reader',ownerCompanyId:7,branchId:8,permissionCodes:codes},
+      ...(globalCodes.length ? [{roleCode:'synthetic_global',ownerCompanyId:null,branchId:null,permissionCodes:globalCodes}] : [])]} as unknown as AuthContext;
 }
 function zeroStats():LookupDashboardStats{return {total_categories:0,active_categories:0,inactive_categories:0,locked_categories:0,total_values:0,active_values:0,inactive_values:0,locked_values:0,recently_updated:[]};}
 function rows():DesignationRow[]{return [{id:12,designation_code:'RETAINED',designation_name_en:'Retained inactive title',designation_name_ar:null,
@@ -98,13 +99,19 @@ it.each([{},'not an array'])('designation malformed successful payload %j does n
   render(await DesignationsPage());expect(screen.getByRole('alert')).toBeTruthy();expect(port.props).toBeNull();
   expect(screen.queryByText('No designations yet')).toBeNull();expect(screen.queryByRole('link',{name:/Add Designation/})).toBeNull();
 });
-it.each([{manage:[]},{manage:['common_md.manage']},{manage:['common_md.designations.manage']}])('genuine designation empty keeps unchanged management gate $manage',async({manage})=>{
-  port.auth.mockResolvedValue(context(['common_md.designations.view',...manage]));render(await DesignationsPage());
+it.each([
+  {scoped:[],global:[]},
+  {scoped:['common_md.manage'],global:[]},
+  {scoped:['common_md.designations.manage'],global:[]},
+  {scoped:[],global:['common_md.manage']},
+  {scoped:[],global:['common_md.designations.manage']},
+])('genuine designation empty exposes creation only for global management $scoped $global',async({scoped,global})=>{
+  port.auth.mockResolvedValue(context(['common_md.designations.view',...scoped],global));render(await DesignationsPage());
   expect(screen.getByText('No designations yet')).toBeTruthy();expect(screen.getByText('Create your first job title.')).toBeTruthy();
-  expect(screen.queryByRole('alert')).toBeNull();expect(!!screen.queryByRole('link',{name:/Add Designation/})).toBe(manage.length>0);
+  expect(screen.queryByRole('alert')).toBeNull();expect(!!screen.queryByRole('link',{name:/Add Designation/})).toBe(global.length>0);
 });
 it.each([false,true])('verified rows and canManage=%s reach the unchanged success consumer',async manage=>{
-  const data=rows(),before=structuredClone(data);port.auth.mockResolvedValue(context(['common_md.view',...(manage?['common_md.manage']:[])]));
+  const data=rows(),before=structuredClone(data);port.auth.mockResolvedValue(context(['common_md.view'],manage?['common_md.manage']:[]));
   port.designations.mockResolvedValue({success:true,data});render(await DesignationsPage());
   expect(port.props?.designations).toBe(data);expect(port.props?.canManage).toBe(manage);expect(data).toEqual(before);
   expect(screen.getByText('Retained inactive title')).toBeTruthy();expect(screen.queryByRole('alert')).toBeNull();expect(port.designations).toHaveBeenCalledWith({});

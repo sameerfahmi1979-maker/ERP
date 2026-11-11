@@ -11,7 +11,7 @@ function eq(a:unknown,b:unknown){if(JSON.stringify(a)!==JSON.stringify(b))throw 
 const request=()=>new Request('http://127.0.0.1/scheduler?mode=run',{method:'POST',headers:{'x-dms-scheduler-secret':secret}});
 const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const settings={is_enabled:true,in_app_enabled:true,email_enabled:false,include_document_owner:false,include_document_creator:true,recipient_roles:['reviewer'],recipient_user_ids:[4,3]};
-const reminder={id:1,document_id:2,reminder_days_before:0,document:{id:2,document_no:'SYNTHETIC',title:'Synthetic',status:'active',owner_user_id:3,created_by:3,expiry_date:today}};
+const reminder={id:1,document_id:2,reminder_days_before:0,reminder_date:today,document:{id:2,document_no:'SYNTHETIC',title:'Synthetic',status:'active',owner_user_id:3,created_by:3,expiry_date:today}};
 type Receipt={writes:Record<string,unknown>[];markers:number;unexpected:number};
 function arrange(overrides:{settings?:unknown;rolesError?:boolean;insertFailure?:boolean}={}):Receipt{
  const receipt:Receipt={writes:[],markers:0,unexpected:0};

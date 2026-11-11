@@ -88,7 +88,7 @@ it("All Documents restores its 44px ZIP column only for permitted users", () => 
   expect(localStorage.getItem(preferenceKey)).toContain('"width":380');
   expect(screen.getByRole("table", { name: "Documents" }).style.minWidth).toBe("850px");
   expect(screen.getByRole("columnheader", { name: "Actions" })).toBeTruthy();
-  expect(ui.container.querySelector("col:last-child")?.style.width).toBe("104px");
+  expect(ui.container.querySelector<HTMLTableColElement>("col:last-child")?.style.width).toBe("104px");
   Object.defineProperty(screen.getByRole("region", { name: "Scrollable documents" }), "scrollTo", { value: vi.fn() });
   fireEvent.click(screen.getByRole("button", { name: "Fit to screen" }));
   expect(screen.getByRole("columnheader", { name: "Title" }).style.width).toBe("380px");

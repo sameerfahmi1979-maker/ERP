@@ -32,6 +32,8 @@ import {ErpMappingPreviewPanel} from "@/features/dms/documents/sections/dms-erp-
 import {DmsLinkVersionDialog} from "@/features/dms/documents/sections/dms-link-version-dialog";
 import {DmsApprovalActionPanel} from "@/features/dms/approvals/dms-approval-action-panel";
 import {DmsDocumentExpirySection} from "@/features/dms/documents/sections/dms-document-expiry-section";
+const tagsSection=<DmsDocumentTagsSection documentId={9} isViewing changes={{added:[],removed:[]}}
+ onChange={()=>{}} onPickerOpenChange={()=>{}} isSaving={false}/>;
 const cases=[
  ["expiry",<DmsDocumentExpirySection documentId={9} documentNo="SYN-9" documentTitle="Synthetic" issueDate={null} expiryDate="2026-12-01" requiresExpiryTracking/>],
  ["ai",<DmsDocumentAiSection documentId={9}/>],
@@ -45,7 +47,7 @@ const cases=[
  ["metadata",<DmsDocumentMetadataSection documentId={9} documentTypeId={2} isViewing={false}/>],
  ["ocr",<DmsDocumentOcrSection documentId={9}/>],
  ["semantic",<DmsDocumentSemanticSection documentId={9}/>],
- ["tags",<DmsDocumentTagsSection documentId={9} isViewing/>],
+ ["tags",tagsSection],
  ["understanding",<DmsDocumentUnderstandingSection documentId={9}/>],
  ["versions",<DmsDocumentVersionsSection documentId={9}/>],
  ["mapping",<ErpMappingPreviewPanel documentId={9}/>],
@@ -78,11 +80,11 @@ it("metadata editor hides its portal on a denied recheck and restores the retain
 it("empty tag polling stops after a denied read instead of repeating indefinitely",async()=>{
  vi.useFakeTimers();
  try{
-  render(wrap(<DmsDocumentTagsSection documentId={9} isViewing/>));
+  render(wrap(tagsSection));
   await act(async()=>{await vi.advanceTimersByTimeAsync(100);});
-  expect(calls).toHaveLength(3);
+  expect(calls.map(call=>call.kind).sort()).toEqual(["getDmsDocumentTags","getDmsTagSuggestions"]);
   expect(client.getQueryCache().getAll().every(q=>q.state.status==="error")).toBe(true);
   await act(async()=>{await vi.advanceTimersByTimeAsync(60000);});
-  expect(calls).toHaveLength(3);
+  expect(calls).toHaveLength(2);
  }finally{vi.useRealTimers();}
 });

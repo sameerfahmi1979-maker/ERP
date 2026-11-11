@@ -58,8 +58,8 @@ it('merges the shared labels into permitted departments and sites without duplic
  state.shared.departments=[{id:1,label:'Synthetic',code:'SYNTH',active:true},{id:77,label:'Shared department',code:'SD',active:true}];
  state.shared.sites=[{id:88,label:'Shared site',code:'SS',active:true}];
  const result=await readEmployeeProfileChoices(input());
- expect(result.data?.departments.options?.map(option=>option.value)).toEqual([77,1]);
- expect(result.data?.sites.options?.map(option=>option.value)).toEqual([88,1]);
+ expect(result.data?.departments).toMatchObject({status:'ready',options:[{value:77},{value:1}]});
+ expect(result.data?.sites).toMatchObject({status:'ready',options:[{value:88},{value:1}]});
  expect(state.rpc).toHaveBeenCalledWith('shared_employee_assignment_choices',{p_kind:'departments',p_company:3,p_branch:4,p_selected:null});
 });
 it('preserves owned choices before the migration and surfaces unexpected catalogue failures',async()=>{

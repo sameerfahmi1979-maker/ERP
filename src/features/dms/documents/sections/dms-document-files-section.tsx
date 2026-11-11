@@ -7,11 +7,14 @@ import { ConfiguredRow } from "@/components/erp/table/list-controls";
 import { Badge } from "@/components/ui/badge";
 import { DmsLoadError } from "@/features/dms/dms-load-error";
 import { Button } from "@/components/ui/button";
+import {Checkbox} from '@/components/ui/checkbox';
+import {useDmsSelectedDownload} from '@/hooks/use-dms-selected-download';
+import {DmsDocumentPreparationPanel} from './dms-document-preparation-panel';
 import { DmsOcrStatusBadge } from "@/features/dms/ocr/dms-ocr-status-badge";
 import { DmsFileIntegrityBadge } from "@/features/dms/upload/dms-file-integrity-badge";
 import { FileSize } from "@/features/dms/upload/dms-file-size";
 import { FileTypeIcon, getMimeTypeLabel } from "@/features/dms/upload/dms-file-type-icon";
-import { invalidateDmsDocumentFiles, invalidateDmsOcr } from "@/lib/query/invalidation";
+import { invalidateDmsDocumentFiles, invalidateDmsDocumentRecord, invalidateDmsOcr } from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
 import { getDmsDocumentFileSignedUrl, type DmsDocumentFileRow } from "@/server/actions/dms/document-files";
 import { triggerDmsOcrForFile } from "@/server/actions/dms/ocr";
@@ -53,6 +56,8 @@ interface DmsDocumentFilesSectionProps {
   canPreview?: boolean;
   canDownload?: boolean;
   canTriggerOcr?: boolean;
+  canRunAi?: boolean;
+  aiBlockedReason?: string;
 }
 
 // ── Preview panel ─────────────────────────────────────────────────────────────
@@ -62,9 +67,10 @@ interface PreviewPanelProps {
   onClose: () => void;
   onDownload: () => void;
   canDownload: boolean;
+  aiAction?: React.ReactNode;
 }
 
-function PreviewPanel({ file, onClose, onDownload, canDownload }: PreviewPanelProps) {
+function PreviewPanel({ file, onClose, onDownload, canDownload, aiAction }: PreviewPanelProps) {
   const [imageScale, setImageScale] = useState(1);
   const { data: signedUrl, isPending: loading, error: queryError } = useQuery({
     queryKey: ["dms-file-preview", file.id],
@@ -93,7 +99,8 @@ function PreviewPanel({ file, onClose, onDownload, canDownload }: PreviewPanelPr
           </div>
         </div>
 
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex flex-wrap items-center gap-1">
+          {aiAction}
           {isImage(mime) && signedUrl && (
             <>
               <Button aria-label="Zoom in"
@@ -222,6 +229,7 @@ function PreviewPanel({ file, onClose, onDownload, canDownload }: PreviewPanelPr
 const DMS_LIST_FIELDS: DmsListField[] = [
   {
     "id": "indicator",
+    "required": true,
     "label": "Preview indicator",
     "type": "text",
     "width": 160
@@ -296,7 +304,11 @@ export function DmsDocumentFilesSection({
   canPreview = false,
   canDownload = false,
   canTriggerOcr = false,
+  canRunAi = false,
+  aiBlockedReason,
 }: DmsDocumentFilesSectionProps) {
+  const [downloadIds,setDownloadIds]=useState<Set<number>>(new Set());
+  const zip=useDmsSelectedDownload();
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   // Undefined selects an initial preview. Null explicitly closes it.
   const [selectedFileId, setSelectedFileId] = useState<number | null | undefined>(undefined);
@@ -314,6 +326,7 @@ export function DmsDocumentFilesSection({
   });
 
   const listView = useDmsListView("document-files", files, DMS_LIST_FIELDS, {presentation:"embedded"});
+  const downloadFiles=listView.rows.filter(f=>downloadIds.has(f.id));
   const selectedFile = selectedFileId === undefined
     ? files.find((f) => isPreviewable(f.mime_type)) ?? files[0] ?? null
     : files.find((f) => f.id === selectedFileId) ?? null;
@@ -388,13 +401,19 @@ export function DmsDocumentFilesSection({
 
   return (
     <div className="space-y-3">
+      {canDownload&&<div className="flex flex-wrap items-center gap-2">
+        <Button type="button" size="sm" variant="outline" disabled={!downloadFiles.length||zip.busy} onClick={()=>void zip.download(async()=>downloadFiles.map(f=>({id:f.id,name:f.file_name,size:f.file_size_bytes})))}>Download selected ZIP ({downloadFiles.length})</Button>
+        {zip.busy&&<Button type="button" size="sm" variant="ghost" onClick={zip.cancel}>Cancel download</Button>}
+        {zip.progress&&<p role="status" className="text-xs text-muted-foreground">{zip.progress}</p>}
+        {zip.error&&<p role="alert" className="text-sm text-destructive">{zip.error}</p>}
+      </div>}
       {actionError && <p role="alert" className="rounded-sm border border-destructive/40 p-3 text-sm">{actionError}</p>}
       {/* ── File list table ── */}
       <><DmsListTools view={listView} search /><div className="rounded-md border border-border overflow-hidden">
         <div role="region" aria-label="document-files table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ width: "100%", tableLayout: "auto" }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: undefined }} />)}</colgroup>
           <thead>
             <ConfiguredRow columns={listView.columns} className="border-b border-border bg-muted/20">
-              <th data-column="indicator" className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide w-6" />
+              <th data-column="indicator" className="text-left px-3 py-2 w-10">{canDownload&&<Checkbox aria-label="Select loaded files for ZIP" checked={listView.rows.length>0&&downloadFiles.length===listView.rows.length} disabled={zip.busy} onCheckedChange={checked=>setDownloadIds(checked?new Set(listView.rows.map(f=>f.id)):new Set())}/>}</th>
               <th data-column="file_name" className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">File</th>
               <th data-column="mime_type" className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Type</th>
               <th data-column="file_size_bytes" className="text-left px-3 py-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Size</th>
@@ -424,6 +443,7 @@ export function DmsDocumentFilesSection({
                 >
                   {/* Selection indicator */}
                   <td data-column="indicator" className="px-2 py-2 w-6">
+                    {canDownload&&<span onClick={e=>e.stopPropagation()}><Checkbox aria-label={`Select ${f.file_name} for ZIP`} checked={downloadIds.has(f.id)} disabled={zip.busy} onCheckedChange={checked=>setDownloadIds(old=>{const next=new Set(old);if(checked)next.add(f.id);else next.delete(f.id);return next;})}/></span>}
                     {isSelected ? (
                       <ChevronRight className="h-3.5 w-3.5 text-primary" />
                     ) : canPrev ? (
@@ -486,6 +506,7 @@ export function DmsDocumentFilesSection({
                   {/* Actions — stop propagation so row click doesn't fire */}
                   <td data-column="actions" className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
+
                       {canPreview && canPrev && (
                         <Button aria-label={isSelected ? "Hide preview" : "Preview"}
                           size="icon"
@@ -545,6 +566,7 @@ export function DmsDocumentFilesSection({
         <PreviewPanel
           key={selectedFile.id}
           file={selectedFile}
+          aiAction={canRunAi && selectedFile.file_role === 'original' ? <DmsDocumentPreparationPanel documentId={documentId} selectedFileId={selectedFile.id} canRun compact blockedReason={aiBlockedReason} onApplied={() => { invalidateDmsDocumentRecord(queryClient, documentId); invalidateDmsDocumentFiles(queryClient, documentId); }} /> : undefined}
           canDownload={canDownload}
           onClose={() => setSelectedFileId(null)}
           onDownload={() => handleDownload(selectedFile)}

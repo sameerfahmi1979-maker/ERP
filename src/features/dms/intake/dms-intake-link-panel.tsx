@@ -42,6 +42,7 @@ const ENTITY_TYPE_OPTIONS = DMS_ENTITY_TYPES.map((t) => ({
 }));
 
 type DmsIntakeLinkPanelProps = {
+  suggestionsOverride?:IntakeLinkSuggestion[];
   sessionCode: string;
   /** True while AI analysis is still running — suggestions load after it settles */
   aiReady: boolean;
@@ -56,6 +57,7 @@ export function DmsIntakeLinkPanel({
   disabled = false,
   value,
   onChange,
+  suggestionsOverride,
 }: DmsIntakeLinkPanelProps) {
   const [manualType, setManualType] = useState<string>("employee");
   const [manualId, setManualId] = useState<number | null>(null);
@@ -67,10 +69,10 @@ export function DmsIntakeLinkPanel({
       const r = await suggestIntakeEntityLinks(sessionCode);
       if (!r.success) throw new Error("Records could not be loaded."); return r.success ? r.data ?? [] : [];
     },
-    enabled: aiReady,
+    enabled: aiReady && suggestionsOverride===undefined,
     staleTime: 60_000,
   });
- const { data: suggestions = [], isLoading } = uiRead1;
+ const suggestions=suggestionsOverride??uiRead1.data??[],isLoading=suggestionsOverride===undefined&&uiRead1.isLoading;
 
   // D2 — pre-tick exact identity-number matches ONCE when suggestions arrive.
   // If the reviewer unticks them afterwards, we never re-add.
@@ -136,7 +138,7 @@ export function DmsIntakeLinkPanel({
   );
 
   return (
-    <QueryReadBoundary queries={[uiRead1]}><div className="rounded-lg border bg-card p-4 space-y-3">
+    <QueryReadBoundary queries={suggestionsOverride===undefined?[uiRead1]:[]}><div className="rounded-lg border bg-card p-4 space-y-3">
       <div className="flex items-center gap-2">
         <LinkIcon className="h-4 w-4 text-blue-500 shrink-0" />
         <span className="text-sm font-medium">Link to ERP Records</span>

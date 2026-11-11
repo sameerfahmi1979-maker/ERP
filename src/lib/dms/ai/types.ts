@@ -240,6 +240,7 @@ export interface DmsEmbeddingOutput {
  */
 export interface DmsStructuredCompletionOutput {
   rawJson: string;
+  responseIssue?: "provider_refusal" | "provider_output_incomplete" | "provider_output_invalid";
   model: string | null;
   promptTokens?: number;
   completionTokens?: number;
@@ -390,7 +391,7 @@ export interface IDmsAiProvider {
   callStructuredCompletion(
     systemPrompt: string,
     userMessage: string,
-    opts?: { maxTokens?: number; temperature?: number }
+    opts?: { maxTokens?: number; temperature?: number; responseSchema?: { name: string; schema: Record<string, unknown> } }
   ): Promise<DmsStructuredCompletionOutput>;
   /**
    * Generate a dense embedding vector for the given text — DMS 12.5.

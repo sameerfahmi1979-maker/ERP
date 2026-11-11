@@ -6,24 +6,8 @@ import { useWorkspace } from "@/hooks/use-workspace";
 import { useNumberedAiApproval } from "@/hooks/use-numbered-ai-approval";
 import {useRetainedBatchFinalization} from '@/hooks/use-retained-batch-finalization';
 import { toast } from "sonner";
-import {
-  Bot,
-  FileText,
-  RefreshCw,
-  CheckCircle2,
-  XCircle,
-  RotateCcw,
-  Save,
-  AlertTriangle,
-  FileIcon,
-  ExternalLink,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
-import { DmsAiIntakeStatusBadge } from "./dms-ai-intake-status-badge";
-import { DmsAiConfidenceBadge } from "@/features/dms/ai/dms-ai-confidence-badge";
-import { DmsAiIntakeReviewForm, buildInitialReviewValues } from "./dms-ai-intake-review-form";
+import {DmsAiIntakeView} from "./dms-ai-intake-view";
+import { buildInitialReviewValues } from "./dms-ai-intake-review-form";
 import type { ReviewFormValues } from "./dms-ai-intake-review-form";
 import type { IntakeSessionData, IntakeAiResultRow } from "@/server/actions/dms/ai-intake";
 import {
@@ -36,20 +20,15 @@ import {
 } from "@/server/actions/dms/ai-intake";
 import { finalizeDraftIntake, discardDraftIntake,recoverDraftFinalization } from "@/server/actions/dms/batch-intake";
 import { previewDmsStandardFileName } from "@/server/actions/dms/standard-file-name";
+import { getMetadataDefinitionsForType } from "@/server/actions/dms/document-metadata-values";
 import type { DmsDocumentTypeRow } from "@/server/actions/dms/document-types";
-import { DmsOrchestrationProgressCard } from "@/features/dms/orchestration";
-import { DmsIntakeLinkPanel, type IntakeLinkChip } from "@/features/dms/intake/dms-intake-link-panel";
-import {DmsExactFileReview} from './dms-exact-file-review';
+import { aiApprovalInputSchema, type AiApprovalInput } from "@/lib/dms/numbered-ai-approval";
+import { type IntakeLinkChip } from "@/features/dms/intake/dms-intake-link-panel";
 import {confirmExactIntakeReview} from '@/server/actions/dms/intake-review';
 import type {IntakeReviewConfirmation} from '@/lib/dms/intake-review';
 
 // ── Format file size ──────────────────────────────────────────────────────────
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -87,11 +66,13 @@ export function DmsAiIntakePageClient({
   const [isPending, startTransition] = useTransition();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
-  const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
+  const [discardAnchor, setDiscardAnchor] = useState<"header"|"footer"|null>(null);
   const [discardReason, setDiscardReason] = useState("");
   // HR.DOCLINK.1A — ticked ERP record links, applied on Approve
   const [entityLinks, setEntityLinks] = useState<IntakeLinkChip[]>([]);
   const [fileReview,setFileReview]=useState<IntakeReviewConfirmation|null>(null);
+  const [reviewBlockReason,setReviewBlockReason]=useState<string|null>(null);
+  const [approvalError, setApprovalError] = useState<{ message: string; fieldId?: number } | null>(null);
 
   const isFailed = session.intake_status === "failed";
   const isProcessing = ["ocr_pending", "ocr_processing", "ai_pending", "ai_processing"].includes(session.intake_status);
@@ -100,6 +81,7 @@ export function DmsAiIntakePageClient({
   // ── Form change handler ───────────────────────────────────────────────────
 
   const handleFormChange = useCallback((patch: Partial<ReviewFormValues>) => {
+    setApprovalError(null);
     setFormValues((prev) => {
       // Metadata values must be MERGED (not replaced) because per-field onChange
       // callbacks close over a potentially stale snapshot of values.metadataValues.
@@ -118,10 +100,37 @@ export function DmsAiIntakePageClient({
 
   // ── Validate before approve ───────────────────────────────────────────────
 
-  const validate = async (): Promise<string | null> => {
-    if (!formValues.title.trim()) return "Title is required";
-    if (!formValues.documentTypeId) return "Document type is required";
-    if (!formValues.standardFileName.trim()) return "Standard file name is required";
+  const validate = async (): Promise<{ error: string; fieldId?: number } | { metadataValues: AiApprovalInput["metadataValues"] }> => {
+    if (!formValues.title.trim()) return { error: "Title is required" };
+    if (!formValues.documentTypeId) return { error: "Document type is required" };
+    if (!formValues.standardFileName.trim()) return { error: "Standard file name is required" };
+
+    const definitions = await getMetadataDefinitionsForType(formValues.documentTypeId, "intake");
+    if (!definitions.success || !definitions.data) {
+      return { error: "The metadata requirements could not be checked. Keep this review and try approving again." };
+    }
+    // Metadata from a previous type may still be in the draft. Submit only fields
+    // defined for the selected type and check the required values before approval.
+    const missing = definitions.data.filter(field => field.is_required && !formValues.metadataValues[field.id]?.rawValue.trim());
+    if (missing.length) return {
+      error: `Complete required metadata before approving: ${missing.map(field => field.field_label_en).join(", ")}.`,
+      fieldId: missing[0].id,
+    };
+    const changedField = definitions.data.find(field => {
+      const value = formValues.metadataValues[field.id];
+      return value?.rawValue.trim() && value.fieldType !== field.field_type;
+    });
+    if (changedField) return {
+      error: `The configuration for ${changedField.field_label_en} changed. Review and re-enter its value before approving.`,
+      fieldId: changedField.id,
+    };
+    const metadata = aiApprovalInputSchema.shape.metadataValues.safeParse(definitions.data.flatMap(field => {
+      const value = formValues.metadataValues[field.id];
+      if (!value?.rawValue.trim()) return [];
+      return [{ definitionId: field.id, fieldType: field.field_type, rawValue: value.rawValue }];
+    }));
+    if (!metadata.success) return { error: "Review the metadata values for this document type before approving." };
+    const metadataValues = metadata.data;
 
     const docType = documentTypes.find((t) => t.id === formValues.documentTypeId);
     if (docType) {
@@ -131,20 +140,17 @@ export function DmsAiIntakePageClient({
         expiryDate: formValues.expiryDate || null,
         originalFilename: session.original_filename,
         extractedFields: aiResult?.extracted_fields_json ?? null,
-        metadataValues: Object.entries(formValues.metadataValues).map(([id, v]) => ({
-          definitionId: parseInt(id, 10),
-          rawValue: v.rawValue,
-        })),
+        metadataValues,
         uploadSessionId: session.id,
         standardFileNameOverride: formValues.standardFileName,
         suggestedDescription: formValues.description || session.ai_result?.suggested_description || null,
         suggestedTitle: formValues.title || session.ai_result?.suggested_title || null,
       });
       if (preview.success && preview.data && !preview.data.validation.valid) {
-        return `Standard file name is incomplete (missing: ${preview.data.validation.missing.join(", ")})`;
+        return { error: `Standard file name is incomplete (missing: ${preview.data.validation.missing.join(", ")})` };
       }
     }
-    return null;
+    return { metadataValues };
   };
 
   const draftSnapshot = useRef(session.draft_snapshot ?? null);
@@ -177,16 +183,20 @@ export function DmsAiIntakePageClient({
 
   const handleApprove = () => {
     if(approvalBlocked || draftUncertain)return;
+    setApprovalError(null);
     startTransition(async () => {
-      const error = retainedApproval ? null : await validate();
-      if (error) {
-        toast.error(error);
+      const validated: Awaited<ReturnType<typeof validate>> = retainedApproval ? { metadataValues: [] } : await validate().catch(() => ({
+        error: "Approval checks could not be completed. Keep this review and try again.",
+      }));
+      if (session.document_id ? !batchApproval.isCurrent() : !approval.isCurrent()) return;
+      if ("error" in validated) {
+        setApprovalError({ message: validated.error, fieldId: validated.fieldId });
         return;
       }
 
       if(!retainedApproval){
         if(!fileReview||fileReview.sessionId!==session.id||fileReview.typeId!==formValues.documentTypeId||fileReview.expiryDate!==(formValues.expiryDate||null)){
-          toast.error('Verify and explicitly confirm the original file, selected type and expiry date before approval.');return;
+          toast.error(reviewBlockReason ?? 'The review details changed. Verify the original file and confirm the current values before approving.');return;
         }
         const reviewed=await confirmExactIntakeReview(fileReview);
         if(!reviewed.success){toast.error(reviewed.error);return;}
@@ -203,11 +213,7 @@ export function DmsAiIntakePageClient({
         confidentialityLevel: formValues.confidentialityLevel,
         owningCompanyId: formValues.owningCompanyId,
         owningBranchId: formValues.owningBranchId,
-        metadataValues: Object.entries(formValues.metadataValues).map(([id, v]) => ({
-          definitionId: parseInt(id),
-          fieldType: v.fieldType,
-          rawValue: v.rawValue,
-        })).filter((v) => v.rawValue !== ""),
+        metadataValues: validated.metadataValues,
         // HR.DOCLINK.1A — ticked suggestions + manual links, written by the approve saga
         tagIds: formValues.tagIds ?? [],
         links: entityLinks.map((l) => ({ entityType: l.entityType, entityId: l.entityId })),
@@ -264,11 +270,7 @@ export function DmsAiIntakePageClient({
   // ── Discard ───────────────────────────────────────────────────────────────
 
   const handleDiscard = () => {
-    if (retainedApproval || draftUncertain) return;
-    if (!discardDialogOpen) {
-      setDiscardDialogOpen(true);
-      return;
-    }
+    if (retainedApproval || draftUncertain || isPending || !discardAnchor) return;
     startTransition(async () => {
       // Batch drafts have a draft document that must be soft-deleted per the DMS
       // delete standard; single-file intake has no document yet.
@@ -276,7 +278,9 @@ export function DmsAiIntakePageClient({
         ? await discardDraftIntake({ uploadSessionId: session.id, reason: discardReason || undefined })
         : await discardAiIntake(session.id, discardReason || undefined);
       if (result.success) {
-        toast.success("Intake discarded");
+        toast.success(session.document_id
+          ? "Intake cancelled. Its unapproved draft is archived and its files and history are retained."
+          : "Intake cancelled and removed from the active Inbox. Its history is retained; you can upload the file again.");
         // Close this tab and let the workspace return to wherever it came
         // from (e.g. the Batch Review Queue), instead of always landing on
         // the Upload Inbox.
@@ -311,403 +315,11 @@ export function DmsAiIntakePageClient({
 
   // ── Confidence summary ─────────────────────────────────────────────────────
 
-  const classificationConf = aiResult?.classification_confidence ?? null;
-  const classificationScore = aiResult?.classification_score ?? null;
 
-  return (
-    <div className="flex flex-col min-h-0 gap-0">
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4 pb-4 border-b">
-        <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/30 text-violet-600">
-            <Bot className="h-5 w-5" />
-          </div>
-          <div>
-            <h1 className="text-base font-semibold">AI-Assisted Document Intake</h1>
-            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-              <span className="text-xs text-muted-foreground font-mono">{session.session_code}</span>
-              <DmsAiIntakeStatusBadge status={session.intake_status} />
-              {classificationConf && (
-                <DmsAiConfidenceBadge label={classificationConf} score={classificationScore} />
-              )}
-              {session.is_duplicate && (
-                <Badge variant="outline" className="text-[10px] border-orange-300 text-orange-700 bg-orange-50">
-                  Duplicate File Detected
-                </Badge>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Header actions */}
-        <div className="flex items-center gap-2 shrink-0">
-          {(isFailed || isReady) && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRetry}
-              disabled={isPending || retainedApproval}
-            >
-              <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
-              Re-run AI
-            </Button>
-          )}
-          {isReady && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSaveDraft}
-                disabled={isPending || retainedApproval}
-              >
-                <Save className="h-3.5 w-3.5 mr-1.5" />
-                Save Draft
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleApprove}
-                disabled={isPending || approvalBlocked || draftUncertain}
-                className="bg-green-600 hover:bg-green-700 text-white"
-              >
-                {isPending ? (
-                  <RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-                )}
-                {retainedApproval ? "Retry retained approval" : "Approve & Save"}
-              </Button>
-            </>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setDiscardDialogOpen((v) => !v)}
-            disabled={isPending || retainedApproval}
-            className="text-destructive hover:text-destructive"
-          >
-            <XCircle className="h-3.5 w-3.5 mr-1.5" />
-            Discard
-          </Button>
-        </div>
-      </div>
-
-      {draftUncertain && <p role="status" className="mt-3 text-sm">Draft save is unconfirmed. Retry Save draft to recover its original reviewed values before approval, analysis or discard.</p>}
-      {retainedApproval && <p role="status" className="mt-3 text-sm text-amber-700">An approval request is retained for recovery. Retry uses its original reviewed values, even if the form has changed. To cancel an uncommitted upload, use Discard in the Upload Inbox. Do not re-run analysis.</p>}
-      {approval.loading&&!session.document_id&&<p role="status" className="mt-3 text-sm text-muted-foreground">Checking for an earlier approval…</p>}
-      {approval.retentionError && !session.document_id && <p role="alert" className="mt-3 text-sm text-destructive">The retained approval could not be read. Reopen the original workspace; a replacement request will not be created.</p>}
-      {session.document_id&&batchApproval.loading&&<p role="status" className="mt-3 text-sm">Checking the original finalization request…</p>}
-      {session.document_id&&batchApproval.blocked&&<p role="alert" className="mt-3 text-sm text-destructive">The original finalization could not be read. Reopen this intake after access is restored; do not submit a replacement.</p>}
-      {/* ── Discard confirmation ────────────────────────────────────────────── */}
-      {discardDialogOpen && (
-        <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-medium text-destructive">
-            <AlertTriangle className="h-4 w-4" />
-            Confirm Discard Intake
-          </div>
-          <p className="text-xs text-muted-foreground">
-            This will discard the AI intake session. The uploaded file will remain in staging and no document will be created.
-          </p>
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={discardReason}
-              onChange={(e) => setDiscardReason(e.target.value)}
-              placeholder="Reason (optional)"
-              className="flex-1 h-8 text-xs rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-destructive/30"
-            />
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={handleDiscard}
-              disabled={isPending || retainedApproval}
-            >
-              Confirm Discard
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setDiscardDialogOpen(false)}
-              disabled={isPending}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Processing state ─────────────────────────────────────────────────── */}
-      {isProcessing && (
-        <div className="mt-6 flex flex-col items-center justify-center gap-4 py-16">
-          <div className="h-12 w-12 rounded-full border-4 border-violet-500 border-t-transparent animate-spin" />
-          <div className="text-center">
-            <p className="text-sm font-medium">AI is analyzing your document…</p>
-            <p className="text-xs text-muted-foreground mt-1">This may take 10–30 seconds depending on file size and AI provider.</p>
-          </div>
-          <DmsAiIntakeStatusBadge status={session.intake_status} />
-        </div>
-      )}
-
-      {/* ── Failed state ──────────────────────────────────────────────────────── */}
-      {isFailed && (
-        <div className="mt-6 rounded-lg border border-destructive/30 bg-destructive/5 p-6 space-y-3">
-          <div className="flex items-center gap-2 font-medium text-destructive">
-            <AlertTriangle className="h-5 w-5" />
-            AI Analysis Failed
-          </div>
-          <p className="text-sm text-muted-foreground">
-            The AI could not analyze your document. You can retry the analysis or create the document manually.
-          </p>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={handleRetry} disabled={isPending}>
-              <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
-              Retry AI
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => router.push("/dms/documents/record/new")}
-            >
-              <FileText className="h-3.5 w-3.5 mr-1.5" />
-              Create Manually
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* ── AI Orchestration Progress Card (ORCH.1) ───────────────────────────── */}
-      {isReady && session.document_id && (
-        <div className="mt-4">
-          <DmsOrchestrationProgressCard
-            sessionCode={session.session_code}
-            documentId={session.document_id}
-            autoTrigger
-          />
-        </div>
-      )}
-
-      {/* ── Review layout ─────────────────────────────────────────────────────── */}
-      {isReady && (
-        <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          {/* ── Left panel: File info + AI summary ──────────────────────────── */}
-          <div className="lg:col-span-1 space-y-4">
-            {/* File info card */}
-            <div className="rounded-lg border bg-card p-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <FileIcon className="h-4 w-4 text-muted-foreground shrink-0" />
-                <span className="text-sm font-medium truncate">{session.original_filename}</span>
-              </div>
-              <Separator />
-              <dl className="space-y-1.5 text-xs">
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Size</dt>
-                  <dd className="font-mono">{formatBytes(session.file_size_bytes)}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Type</dt>
-                  <dd className="font-mono truncate">{session.mime_type}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Intake</dt>
-                  <dd><DmsAiIntakeStatusBadge status={session.intake_status} /></dd>
-                </div>
-                {session.is_duplicate && (
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Duplicate</dt>
-                    <dd>
-                      <Badge variant="outline" className="text-[10px] border-orange-300 text-orange-700 bg-orange-50">
-                        Yes
-                      </Badge>
-                    </dd>
-                  </div>
-                )}
-              </dl>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full text-xs"
-                onClick={handlePreview}
-                disabled={isLoadingPreview}
-              >
-                {isLoadingPreview ? (
-                  <RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                ) : (
-                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                )}
-                Preview File
-              </Button>
-            </div>
-
-            {/* AI Summary card */}
-            {aiResult && (
-              <div className="rounded-lg border bg-card p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Bot className="h-4 w-4 text-violet-500 shrink-0" />
-                  <span className="text-sm font-medium">AI Analysis Summary</span>
-                </div>
-                <Separator />
-                <dl className="space-y-2 text-xs">
-                  {aiResult.suggested_type && (
-                    <div>
-                      <dt className="text-muted-foreground mb-0.5">Suggested Type</dt>
-                      <dd className="font-medium">{aiResult.suggested_type.name_en}</dd>
-                    </div>
-                  )}
-                  {aiResult.classification_reason && (
-                    <div>
-                      <dt className="text-muted-foreground mb-0.5">Classification Reason</dt>
-                      <dd className="text-muted-foreground italic text-[11px] leading-relaxed line-clamp-3">
-                        {aiResult.classification_reason}
-                      </dd>
-                    </div>
-                  )}
-                  <div>
-                    <dt className="text-muted-foreground mb-0.5">Classification Confidence</dt>
-                    <dd>
-                      <DmsAiConfidenceBadge
-                        label={aiResult.classification_confidence}
-                        score={aiResult.classification_score}
-                      />
-                    </dd>
-                  </div>
-                  {aiResult.expiry_date_suggestion && (
-                    <div>
-                      <dt className="text-muted-foreground mb-0.5">Suggested Expiry</dt>
-                      <dd className="font-mono">{aiResult.expiry_date_suggestion}</dd>
-                    </div>
-                  )}
-                  {aiResult.extracted_fields_json && (
-                    <div>
-                      <dt className="text-muted-foreground mb-0.5">Extracted Fields</dt>
-                      <dd>{Object.keys(aiResult.extracted_fields_json).filter((k) => k !== "__additional_fields").length} field(s)</dd>
-                    </div>
-                  )}
-                </dl>
-              </div>
-            )}
-
-            {/* HR.DOCLINK.1A — Link to ERP Records (suggestions + manual picker).
-                Replaces the old display-only "Matched Parties" card: party matches
-                now appear here as actionable checkbox suggestions. */}
-            <DmsIntakeLinkPanel
-              sessionCode={session.session_code}
-              aiReady={isReady}
-              disabled={isPending || retainedApproval || approvalBlocked}
-              value={entityLinks}
-              onChange={setEntityLinks}
-            />
-
-            {/* AI warnings */}
-            {(() => {
-              const raw = aiResult?.raw_response_json as { warnings?: unknown } | null | undefined;
-              const warnings = Array.isArray(raw?.warnings)
-                ? (raw!.warnings as unknown[]).filter((w): w is string => typeof w === "string")
-                : [];
-              if (warnings.length === 0) return null;
-              return (
-                <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 p-4 space-y-1.5">
-                  <div className="flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-400">
-                    <AlertTriangle className="h-4 w-4" />
-                    AI Notes
-                  </div>
-                  <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-700 dark:text-amber-400">
-                    {warnings.map((w, i) => <li key={i}>{w}</li>)}
-                  </ul>
-                </div>
-              );
-            })()}
-
-            {/* Duplicate warning */}
-            {session.is_duplicate && session.duplicate_document_id && (
-              <div className="rounded-lg border border-orange-300 bg-orange-50 dark:bg-orange-950/20 p-4 space-y-2">
-                <div className="flex items-center gap-2 text-sm font-medium text-orange-700 dark:text-orange-400">
-                  <AlertTriangle className="h-4 w-4" />
-                  Duplicate File
-                </div>
-                <p className="text-xs text-orange-600 dark:text-orange-500">
-                  A document with the same file hash already exists in the system.
-                  You can still approve this intake to create a new document.
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-xs border-orange-300"
-                  onClick={() => router.push(`/dms/documents/record/${session.duplicate_document_id}`)}
-                >
-                  View Existing Document
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* ── Right panel: Review form ───────────────────────────────────── */}
-          <div className="lg:col-span-2">
-            <div className="rounded-lg border bg-card p-5">
-              <div className="flex items-center gap-2 mb-5">
-                <FileText className="h-4 w-4 text-muted-foreground" />
-                <h3 className="text-sm font-semibold">Review &amp; Correct AI-Filled Fields</h3>
-                {aiResult && (
-                  <Badge variant="outline" className="text-[10px] bg-violet-50 text-violet-700 border-violet-200 ml-auto">
-                    AI Pre-filled
-                  </Badge>
-                )}
-              </div>
-              <fieldset disabled={retainedApproval || draftUncertain}>
-              <DmsAiIntakeReviewForm
-                session={displaySession}
-                values={formValues}
-                onChange={handleFormChange}
-                initialDocTypes={documentTypes}
-                aiResultOverride={aiResult}
-                onAiResultPatch={(patch,snapshot) => {setAiResultPatch((prev) => ({ ...(prev ?? {}), ...patch }));setFileReview(null);if(snapshot)draftSnapshot.current=snapshot;}}
-              />
-              </fieldset>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isReady&&!retainedApproval&&<DmsExactFileReview sessionId={session.id} typeId={formValues.documentTypeId??undefined} expiryDate={formValues.expiryDate||null} reviewKey={JSON.stringify({formValues,entityLinks})} disabled={isPending} onChange={setFileReview}/>}
-      {/* ── Footer ─────────────────────────────────────────────────────────── */}
-      {isReady && (
-        <div className="mt-6 flex items-center justify-between border-t pt-4">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setDiscardDialogOpen(true)}
-            className="text-destructive border-destructive/30 hover:bg-destructive/5"
-            disabled={isPending || retainedApproval}
-          >
-            <XCircle className="h-3.5 w-3.5 mr-1.5" />
-            Discard Intake
-          </Button>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSaveDraft}
-              disabled={isPending || retainedApproval}
-            >
-              <Save className="h-3.5 w-3.5 mr-1.5" />
-              Save Draft
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleApprove}
-              disabled={isPending || approvalBlocked || draftUncertain}
-              className="bg-green-600 hover:bg-green-700 text-white"
-            >
-              {isPending ? (
-                <RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-              ) : (
-                <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-              )}
-              {retainedApproval ? "Retry retained approval" : "Approve & Save"}
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  return <DmsAiIntakeView {...{session,displaySession,aiResult,documentTypes,formValues,handleFormChange,entityLinks,setEntityLinks,isReady,isFailed,isProcessing,isPending,retainedApproval,approvalBlocked,draftUncertain,handleRetry,handleSaveDraft,handleApprove,handleDiscard,handlePreview,isLoadingPreview,discardAnchor,setDiscardAnchor,discardReason,setDiscardReason,setFileReview,setReviewBlockReason}}
+    approvalError={approvalError}
+    approvalLoading={approval.loading} retentionError={approval.retentionError} batchLoading={batchApproval.loading} batchBlocked={batchApproval.blocked} navigate={url=>router.push(url)}
+    onAiResultPatch={(patch,snapshot)=>{setAiResultPatch(prev=>({...prev,...patch}));setFileReview(null);if(snapshot)draftSnapshot.current=snapshot;}}/>;
 }
 
 // ── Build draft payload ────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission, hasPermission } from "@/lib/rbac/check";
 import { redirect, notFound } from "next/navigation";
 import { getDesignationById } from "@/server/actions/common-master-data/designations";
 import { DesignationWorkspaceForm } from "@/features/common-master-data/designations/designation-workspace-form";
@@ -15,7 +15,7 @@ export default async function DesignationRecordPage({ params, searchParams }: Pr
   if (isNaN(numericId)) notFound();
   const result = await getDesignationById(numericId);
   if (!result.success || !result.data) notFound();
-  const canManage = hasPermission(ctx, "common_md.manage") || hasPermission(ctx, "common_md.designations.manage");
+  const canManage = hasGlobalPermission(ctx, "common_md.manage") || hasGlobalPermission(ctx, "common_md.designations.manage");
   const mode = modeParam === "edit" && canManage ? "edit" : "view";
   const supabase = await createClient();
   const { data: companies } = await supabase.from("owner_companies").select("id, legal_name_en, company_code").eq("status", "active").order("legal_name_en");

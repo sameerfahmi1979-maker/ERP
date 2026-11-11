@@ -1,4 +1,7 @@
 "use client";
+
+import { WorklistColgroup, WorklistFitControl, WorklistScrollRegion } from "@/components/erp/table/worklist-fit-control";
+import { HrIconButton } from "@/features/hr/employees/hr-icon-button";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import {EMPLOYEE_QUALITY_FILTERS,type EmployeeQualityFilter}from '@/lib/hr/employee-foundation';
 
@@ -147,9 +150,10 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
   const canUpdate = hasPermission(authContext, "hr.employees.update");
   const canArchive = hasPermission(authContext, "hr.employees.archive");
 
-  const columnState = useListColumns("hr-employees", EMP_COLUMNS);
+  const columnState = useListColumns("hr-employees", EMP_COLUMNS, "hr-employees", { trailingWidth: 104 });
   const showNationality = true; // ConfiguredRow owns visibility and ordering.
-  const colWidths = Object.fromEntries(columnState.columns.map(column => [column.id, column.width])) as Record<EmpColKey, number>;
+  const { viewport } = columnState;
+  const colWidths = Object.fromEntries(viewport.columns.map(column => [column.id, column.width])) as Record<EmpColKey, number>;
 
   const companyRead = useEmployeeFilterChoices("companies", {selectedId:filters.companyId??undefined});
   const countryRead = useEmployeeFilterChoices("countries", {selectedId:filters.nationalityId??undefined});
@@ -308,8 +312,9 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
 
         <div className="ml-0 flex w-full min-w-0 flex-wrap items-center gap-2 md:ml-auto md:w-auto md:flex-nowrap">
           <EditColumns columns={columnState.columns} defaults={EMP_COLUMNS} onApply={columnState.setColumns} />
+          <WorklistFitControl viewport={viewport} />
 
-          <Button aria-label="Refresh"
+          <HrIconButton aria-label="Refresh"
             variant="outline"
             size="sm"
             onClick={() => {void uiReadEmployees.refetch();}}
@@ -317,7 +322,7 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
             title="Refresh"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${fetching ? "animate-spin" : ""}`} />
-          </Button>
+          </HrIconButton>
 
           {canCreate && (
             <>
@@ -359,14 +364,15 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
       </div>
 
       {/* Table */}
-      <div role="region" aria-label="Scrollable employees" tabIndex={0} aria-busy={fetching} inert={fetching||undefined} className="rounded-md border border-border overflow-x-auto relative">
+      <WorklistScrollRegion attach={viewport.attachViewport} aria-label="Scrollable employees" aria-busy={fetching} inert={fetching||undefined} className="rounded-md border border-border relative">
         {fetching && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/50">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         )}
 
-        <table aria-label="Employees" className="w-full text-sm table-fixed" style={{minWidth: columnState.visible.reduce((sum,col)=>sum+col.width,104)}}>
+        <table aria-label="Employees" className="w-full text-sm table-fixed" {...viewport.tableProps}>
+          <WorklistColgroup viewport={viewport} />
           <thead>
             <ConfiguredRow columns={columnState.columns} className="border-b border-border bg-muted/30">
               <SortColHeader data-column="code"
@@ -441,7 +447,7 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
               >
                 Company
               </SortColHeader>
-              <th className="px-3 py-2" style={{ width: 104 }} />
+              <th className="px-3 py-2 text-right font-medium">Actions</th>
             </ConfiguredRow>
           </thead>
           <tbody>
@@ -474,7 +480,7 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
                     <button
                       type="button"
                       onClick={() => openView(emp)}
-                      className="hover:underline truncate block max-w-full"
+                      className="hover:underline block max-w-full"
                     >
                       {emp.employee_code}
                     </button>
@@ -506,9 +512,9 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
                   <td data-column="company" className="px-3 py-2 text-muted-foreground truncate">
                     {emp.owner_company?.company_code ?? "—"}
                   </td>
-                  <td className="px-3 py-2">
+                  <td data-worklist-actions className="px-3 py-2">
                     <div className="flex items-center gap-1 justify-end">
-                      <Button aria-label="View"
+                      <HrIconButton aria-label="View"
                         size="icon"
                         variant="ghost"
                         className="h-11 w-11 sm:h-8 sm:w-8"
@@ -516,9 +522,9 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
                         title="View"
                       >
                         <ExternalLink className="h-3 w-3" />
-                      </Button>
+                      </HrIconButton>
                       {canUpdate && (
-                        <Button aria-label="Edit"
+                        <HrIconButton aria-label="Edit"
                           size="icon"
                           variant="ghost"
                           className="h-11 w-11 sm:h-8 sm:w-8"
@@ -526,10 +532,10 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
                           title="Edit"
                         >
                           <Edit className="h-3 w-3" />
-                        </Button>
+                        </HrIconButton>
                       )}
                       {canArchive && (
-                        <Button aria-label="Archive"
+                        <HrIconButton aria-label="Archive"
                           size="icon"
                           variant="ghost"
                           className="h-11 w-11 sm:h-8 sm:w-8 text-destructive hover:text-destructive"
@@ -537,7 +543,7 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
                           title="Archive"
                         >
                           <Archive className="h-3 w-3" />
-                        </Button>
+                        </HrIconButton>
                       )}
                     </div>
                   </td>
@@ -557,7 +563,7 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
           }}
           total={totalCount}
         />
-      </div>
+      </WorklistScrollRegion>
 
       <div className="text-xs text-muted-foreground">
         {uiReadEmployees.isError ? "Employee count unavailable" : totalCount === 0

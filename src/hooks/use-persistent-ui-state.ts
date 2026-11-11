@@ -22,15 +22,21 @@ export function createUiPreferenceStore<T>(fallback: T) {
 
 type MemoryStores = Map<string, ReturnType<typeof createUiPreferenceStore<unknown>>>;
 const MemoryContext = createContext<MemoryStores | null>(null);
+const LayoutOwnerContext = createContext<string | undefined>(undefined);
+
+export function useWorklistLayoutOwner() {
+  return useContext(LayoutOwnerContext);
+}
 
 /** Remounted for each authenticated principal; never serializes arbitrary UI/search values to disk. */
-export function WorkspaceUiMemoryProvider({children}:{children:ReactNode}) {
+export function WorkspaceUiMemoryProvider({ children, principalId }: { children: ReactNode; principalId?: string }) {
   const [stores]=useState<MemoryStores>(()=>new Map());
   useEffect(()=>{
     // Retire only owned, legacy PII-bearing keys. Never clear browser/auth storage wholesale.
     try { Object.keys(localStorage).filter(key=>key.startsWith("algt_erp_workspace_page_state:") || key.startsWith("erp_table_prefs:v2:")).forEach(key=>localStorage.removeItem(key)); } catch { /* unavailable storage */ }
   },[]);
-  return createElement(MemoryContext.Provider,{value:stores},children);
+  return createElement(LayoutOwnerContext.Provider, { value: principalId },
+    createElement(MemoryContext.Provider, { value: stores }, children));
 }
 
 /** Compatibility name; arbitrary page/table state is now session memory only. */

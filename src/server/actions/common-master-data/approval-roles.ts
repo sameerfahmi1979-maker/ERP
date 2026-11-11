@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { hasGlobalPermission } from "@/lib/rbac/scope";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
@@ -59,7 +60,7 @@ function canView(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
   return hasPermission(ctx, "common_md.view") || hasPermission(ctx, "common_md.approval_roles.view");
 }
 function canManage(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
-  return hasPermission(ctx, "common_md.manage") || hasPermission(ctx, "common_md.approval_roles.manage");
+  return hasGlobalPermission(ctx, "common_md.manage") || hasGlobalPermission(ctx, "common_md.approval_roles.manage");
 }
 
 export async function listApprovalRoles(filters?: { owner_company_id?: number; scope?: string; is_active?: boolean; search?: string }): Promise<ActionResult<ApprovalRoleRow[]>> {
@@ -132,12 +133,15 @@ export async function updateApprovalRole(input: UpdateInput): Promise<ActionResu
     if (!canManage(ctx)) return { success: false, error: "Permission denied" };
     const { id, ...rest } = parsed.data;
     const supabase = await createClient();
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("approval_roles")
       .update({ ...rest, updated_by: ctx.profile?.id ?? null, updated_at: new Date().toISOString() })
-      .eq("id", id!)
-      .is("deleted_at", null);
+      .eq("id", id)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
     if (error) return { success: false, error: error.message };
+    if (!data) return { success: false, error: "This record is unavailable or you no longer have permission to edit it." };
     await logAudit({ module_code: "common_md", entity_name: "approval_roles", entity_id: id!, entity_reference: String(id), action: "update", new_values: rest });
     revalidatePath("/admin/common-master-data/approval-roles");
     revalidatePath(`/admin/common-master-data/approval-roles/record/${id}`);

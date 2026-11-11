@@ -1,4 +1,5 @@
 "use server";
+import { requireDmsFilePipelineAccess } from "@/server/dms-file-pipeline-access";
 import {readAllPages} from "@/server/reads/all-pages";
 
 /**
@@ -19,13 +20,14 @@ import {readAllPages} from "@/server/reads/all-pages";
  */
 
 import { z } from "zod";
+import {checkDocumentConfidentialityAccess} from '@/lib/dms/document-access';
 import { logger } from "@/lib/logger";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
-import {admitBatch, bootstrapBatchOrigin, discoverBatchAdmissions, verifyBatchUpload, bindBatchAdmission, refreshBatchAdmission, recoverBatchMemberUpload, verifySelectedBatchUpload} from "@/server/dms-batch-admission";
+import {admitBatch, findBatchAdmission, bootstrapBatchOrigin, discoverBatchAdmissions, verifyBatchUpload, bindBatchAdmission, refreshBatchAdmission, recoverBatchMemberUpload, verifySelectedBatchUpload} from "@/server/dms-batch-admission";
 import {batchMemberRequestSchema,batchRequestSchema,type BatchMemberUploadResult,type BatchAdmissionResult, type BatchBootstrapResult, type BatchDiscoveryResult, type BatchObjectResult, type BatchRequest} from "@/lib/dms/batch-admission";
 import {
   startAiIntakeFromUploadSession,
@@ -197,6 +199,14 @@ export async function createDmsUploadBatch(input: BatchRequest): Promise<BatchAd
 
 export async function recoverDmsUploadBatch(input: BatchRequest): Promise<BatchAdmissionResult> {
   return createDmsUploadBatch(input);
+}
+
+export async function createDmsUploadBatchForContinuation(input:BatchRequest):Promise<BatchAdmissionResult>{
+  return admitBatch(input,true);
+}
+
+export async function findDmsBatchAdmission(batchCode:string):Promise<BatchDiscoveryResult>{
+  return findBatchAdmission(batchCode);
 }
 
 export async function discoverDmsBatchAdmissions(): Promise<BatchDiscoveryResult> {
@@ -640,6 +650,23 @@ export async function discardDraftIntakeBulk(
 // ════════════════════════════════════════════════════════════════════════════
 // 5. rerunBatchDraftAi  (one draft only)
 // ════════════════════════════════════════════════════════════════════════════
+
+export async function getBatchDraftFileForAiRerun(uploadSessionId:number):Promise<ActionResult<{documentId:number;fileId:number}>>{
+ if(!Number.isSafeInteger(uploadSessionId)||uploadSessionId<1)return {success:false,error:'Invalid batch file.'};
+ try{
+  const ctx=await getAuthContext();
+  if(!ctx.profile||!ctx.isAccountActive||ctx.profile.must_change_password||!['dms.documents.ai.run','dms.documents.review_ai','dms.admin'].some(cap=>hasPermission(ctx,cap)))return {success:false,error:'Current AI review access is required.'};
+  const db=await createClient();const source=await db.from('dms_upload_sessions').select('document_id,sha256_hash,file_size_bytes,intake_status').eq('id',uploadSessionId).is('deleted_at',null).single();
+  if(source.error||!source.data?.document_id||!source.data.sha256_hash||source.data.intake_status==='discarded')return {success:false,error:'Recover the original file and confirm its draft before rerunning AI.'};
+  const denied=await requireDmsFilePipelineAccess(source.data.document_id);
+ if(denied)return {success:false,error:denied};
+ const cap=hasPermission(ctx,'dms.documents.ai.run')?'dms.documents.ai.run':hasPermission(ctx,'dms.documents.review_ai')?'dms.documents.review_ai':'dms.admin';
+  if(!(await checkDocumentConfidentialityAccess(db,source.data.document_id,ctx,cap)).allowed)return {success:false,error:'Current document access is unavailable.'};
+  const files=await db.from('dms_document_files').select('id').eq('document_id',source.data.document_id).eq('sha256_hash',source.data.sha256_hash).eq('file_size_bytes',source.data.file_size_bytes).eq('file_role','original').is('deleted_at',null).limit(2);
+  if(files.error||files.data?.length!==1)return {success:false,error:'The exact original file is unavailable or ambiguous. Open the document Files section to review it.'};
+  return {success:true,data:{documentId:source.data.document_id,fileId:files.data[0].id}};
+ }catch{return {success:false,error:'The original file could not be verified for AI review.'};}
+}
 
 export async function rerunBatchDraftAi(
   uploadSessionId: number

@@ -12,7 +12,7 @@ vi.mock('next/navigation',()=>({usePathname:()=>'/test',useRouter:()=>({refresh:
 vi.mock('@/components/workspace/workspace-provider',()=>({useWorkspaceContext:()=>({state:{activeTabId:'owner',tabs:[{id:'owner',route:'/test'}]},dispatch:ctx.dispatch})}));
 vi.mock('@/components/workspace/workspace-draft-provider',()=>({useWorkspaceDraftStoreContext:()=>ctx.store}));
 vi.mock('@/hooks/use-workspace-form-navigation',()=>({useWorkspaceFormNavigation:()=>({activeTab:{id:'owner'},markDirty:ctx.markDirty,closeTab:vi.fn(),forceCloseActiveTab:vi.fn(),updateTabRoute:vi.fn(),renameTab:vi.fn(),isTabActive:()=>true})}));
-vi.mock('@/components/workspace/erp-record-workspace-form',()=>({ERPRecordWorkspaceForm:({children,onSave,isDirty,isSubmitting}:any)=><div>{children}<output>{isDirty?'Unsaved':'Clean'}</output><button disabled={isSubmitting} onClick={onSave}>Test save</button></div>,ERPRecordSectionPanel:({children}:any)=><section>{children}</section>}));
+vi.mock('@/components/workspace/erp-record-workspace-form',()=>({ERPRecordWorkspaceForm:({children,onSave,isDirty,isSubmitting,headerActions}:any)=><div>{headerActions}{children}<output>{isDirty?'Unsaved':'Clean'}</output><button disabled={isSubmitting} onClick={onSave}>Test save</button></div>,ERPRecordSectionPanel:({children}:any)=><section>{children}</section>}));
 vi.mock('@/features/dms/entity-documents',()=>({DmsEntityDocumentsTab:()=>null}));
 vi.mock('@/components/erp/geography/country-select',()=>({CountrySelect:({value,onValueChange}:any)=><select aria-label="Country" value={value??''} onChange={e=>onValueChange(e.target.value?Number(e.target.value):null)}><option value="">Clear</option><option value="1">One</option><option value="2">Two</option></select>}));
 vi.mock('@/components/erp/geography/emirate-select',()=>({EmirateSelect:({value,onValueChange}:any)=><select aria-label="Emirate" value={value??''} onChange={e=>onValueChange(e.target.value?Number(e.target.value):null)}><option value="">Clear</option><option value="10">Ten</option><option value="20">Twenty</option></select>}));
@@ -70,6 +70,26 @@ it('organization child keeps its entries after request rejection and respects an
  ctx.sigSave.mockReset().mockRejectedValueOnce(Error('offline'));const ui=org(signatoryAuth);fireEvent.click(ui.getByRole('button',{name:'Add Signatory'}));fireEvent.change(ui.getByLabelText('Full Name *'),{target:{value:'F04 CHILD ACCEPTANCE'}});fireEvent.click(ui.getByRole('checkbox',{name:'Active',exact:true}));fireEvent.change(document.getElementById('sig_notes')!,{target:{value:'Retained notes'}});fireEvent.click(ui.getByRole('button',{name:'Save',exact:true}));await waitFor(()=>expect(ctx.sigSave).toHaveBeenCalledTimes(1));expect(ctx.sigSave.mock.calls[0][0]).toMatchObject({full_name:'F04 CHILD ACCEPTANCE',is_active:false,notes:'Retained notes'});expect((ui.getByLabelText('Full Name *') as HTMLInputElement).value).toBe('F04 CHILD ACCEPTANCE');expect(ctx.save).not.toHaveBeenCalled();
 });
 const worksite=()=>render(<WorkSiteWorkspaceForm site={site} mode="edit" authContext={auth} companies={companies}/>);
+it('shares a work site while retaining its owner even if an ownership change was staged first',async()=>{
+ const admin:AuthContext={...administrationAuth,roleCodes:['system_admin'],roleAssignments:[{roleId:1,roleCode:'system_admin',ownerCompanyId:null,branchId:null,permissionCodes:[]}]};
+ const ui=render(<WorkSiteWorkspaceForm site={{...site,branch_id:2}} mode="edit" authContext={admin}
+  companies={[...companies,{id:2,legal_name_en:'Other company',company_code:'OTHER'}]}/>);
+ fireEvent.change(ui.getByLabelText(/Organization/),{target:{value:'2'}});
+ fireEvent.change(ui.getByLabelText('Availability'),{target:{value:'all'}});
+ expect(ui.getByLabelText(/Organization/)).toHaveProperty('value','1');
+ fireEvent.click(ui.getByText('Test save'));
+ await waitFor(()=>expect(ctx.save).toHaveBeenCalledWith(expect.objectContaining({id:50,owner_company_id:1,available_to_all_organizations:true})));
+ expect(ctx.save.mock.calls[0][0]).not.toHaveProperty('branch_id');
+ await waitFor(()=>expect(ui.getByLabelText('Availability')).toHaveProperty('disabled',true));
+});
+it('opens the work-site editor from a permitted read-only record',()=>{
+ const workSiteAuth:AuthContext={...administrationAuth,roleAssignments:[{roleId:1,roleCode:'site_editor',ownerCompanyId:1,branchId:2,permissionCodes:['common_md.work_sites.manage']}]};
+ const row={...site,branch_id:2};
+ const ui=render(<WorkSiteWorkspaceForm site={row} mode="view" authContext={workSiteAuth} companies={companies}/>);
+ expect(ui.getByRole('link',{name:'Edit'}).getAttribute('href')).toBe('/admin/common-master-data/work-sites/record/50?mode=edit');
+ ui.rerender(<WorkSiteWorkspaceForm site={{...row,branch_id:3}} mode="view" authContext={workSiteAuth} companies={companies}/>);
+ expect(ui.queryByRole('link',{name:'Edit'})).toBeNull();
+});
 const branchForm=()=>render(<BranchWorkspaceForm branch={branch} mode="edit" authContext={administrationAuth} companies={companies}/>);
 it('branch stored relationship IDs win over ambiguous legacy text without rewriting them on unrelated save',async()=>{
  ctx.db.mockResolvedValue({data:{country_id:1,name_en:'Stored region'},error:null});

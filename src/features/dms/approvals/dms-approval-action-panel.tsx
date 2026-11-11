@@ -208,7 +208,7 @@ function DmsApprovalActionSession({ documentId, authContext }: DmsApprovalAction
             </Button>
           )}
 
-          {!state.canSubmit && !state.canApprove && !state.canReject && !state.canWithdraw && !state.approvalStatus && (
+          {!state.actionUnavailableReason && !state.canSubmit && !state.canApprove && !state.canReject && !state.canWithdraw && !state.approvalStatus && (
             <p className="text-xs text-muted-foreground py-1">
               You do not have permission to submit this document for approval.
             </p>

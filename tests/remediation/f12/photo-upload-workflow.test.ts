@@ -9,6 +9,22 @@ function harness(){
  return {get state(){return state;},ports:ports as unknown as Parameters<typeof runPhotoUpload>[1],mocks:ports,retire:()=>{live=false;}};
 }
 it('persists preparation before allocation; never stores signed capabilities',async()=>{const h=harness();await runPhotoUpload(h.state,h.ports);expect(h.mocks.create).toHaveBeenCalledTimes(2);expect(h.state.receipt?.documentId).toBe(8);expect(JSON.stringify(h.state)).not.toContain('transient-capability');expect(photoUploadStateSchema.safeParse(h.state).success).toBe(true);});
+it('subject preparation preserves the immutable retained title through save and retry',async()=>{
+ const h=harness(),title=h.state.title,originalPersist=h.ports.persist;
+ h.ports.prepare=vi.fn(async()=>({success:true,title:'Employee Photo — Synthetic person'}));
+ h.ports.persist=async state=>{if(state.title!==title)throw Error('Retained photo identity changed');await originalPersist(state);};
+ h.mocks.verify.mockRejectedValueOnce(Error('response lost'));
+ await expect(runPhotoUpload(h.state,h.ports)).rejects.toThrow('response lost');
+ await runPhotoUpload(h.state,h.ports);
+ expect(h.state.title).toBe(title);expect(h.state.creation?.input.title).toBe(title);
+ expect(h.state.request.operationId).toBe(op);expect(h.ports.prepare).toHaveBeenCalledTimes(2);
+ expect(h.state.receipt?.documentId).toBe(8);
+});
+it('failed subject preparation still prevents upload and document creation',async()=>{
+ const h=harness();h.ports.prepare=async()=>({success:false,error:'Subject access changed'});
+ await expect(runPhotoUpload(h.state,h.ports)).rejects.toThrow('Subject access changed');
+ expect(h.mocks.admit).not.toHaveBeenCalled();expect(h.mocks.create).not.toHaveBeenCalled();
+});
 it.each(['upload','verify','acknowledge','create'] as const)('retry retains original operation after lost %s response',async stage=>{const h=harness();h.mocks[stage].mockRejectedValueOnce(Error('response lost'));await expect(runPhotoUpload(h.state,h.ports)).rejects.toThrow();const original=h.state.creation?.contract.operationId??h.state.request.operationId;await runPhotoUpload(h.state,h.ports);expect(stage==='create'?h.state.creation!.contract.operationId:h.state.request.operationId).toBe(original);});
 it('byte validation failure prevents acknowledgement and document creation',async()=>{const h=harness();h.mocks.verify.mockResolvedValue({success:false});await expect(runPhotoUpload(h.state,h.ports)).rejects.toThrow('bytes');expect(h.mocks.acknowledge).not.toHaveBeenCalled();expect(h.mocks.create).not.toHaveBeenCalled();});
 it('a confirmed receipt avoids every repeat mutation',async()=>{const h=harness();await runPhotoUpload(h.state,h.ports);const count=h.mocks.create.mock.calls.length;await runPhotoUpload(h.state,h.ports);expect(h.mocks.create).toHaveBeenCalledTimes(count);expect(h.mocks.upload).toHaveBeenCalledOnce();});

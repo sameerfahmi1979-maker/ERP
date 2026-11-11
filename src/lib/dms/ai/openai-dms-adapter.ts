@@ -1,5 +1,5 @@
 import { resolveAiProviderSecret } from "@/lib/settings/resolve-ai-secret";
-import { aiEndpoint, providerApiVersion, ProviderConfigurationError, safeProviderFailure } from "@/lib/settings/provider-endpoints";
+import { aiEndpoint, providerApiVersion, ProviderConfigurationError } from "@/lib/settings/provider-endpoints";
 /**
  * DMS.10 — OpenAI DMS Adapter
  *
@@ -20,6 +20,7 @@ import type {
 import { buildCombinedPrompt } from "./prompt-builders";
 import { validateAiOutput } from "./result-validator";
 import { dmsCompletionParameters } from "./completion-parameters";
+import { StructuredAiFailure, structuredHttpFailure } from "./structured-failure";
 
 const COMPLETION_TIMEOUT_MS = 120_000; // 120 seconds — vision + full transcription requests take longer
 const MAX_TOKENS = 16_000;            // GPT-4.1 supports up to 16,384 output tokens — raised to capture long transcriptions
@@ -71,7 +72,10 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
     else headers.Authorization = `Bearer ${key}`;
     try {
       return await fetch(url, {method: "POST", headers, body: JSON.stringify(body), redirect: "error", signal: AbortSignal.timeout(timeout)});
-    } catch (error) { throw new Error(safeProviderFailure(error)); }
+    } catch (error) {
+      throw new StructuredAiFailure(error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name)
+        ? "provider_timeout" : "network_error");
+    }
   }
 
   async analyze(input: DmsAiInput): Promise<DmsAiOutput> {
@@ -177,7 +181,7 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
   async callStructuredCompletion(
     systemPrompt: string,
     userMessage: string,
-    opts?: { maxTokens?: number; temperature?: number }
+    opts?: { maxTokens?: number; temperature?: number; responseSchema?: { name: string; schema: Record<string, unknown> } }
   ): Promise<DmsStructuredCompletionOutput> {
     // Preserve the configured model/deployment identifier exactly.
     const model = this.modelId ?? "gpt-4.1";
@@ -189,26 +193,32 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
         { role: "user", content: userMessage },
       ],
       ...dmsCompletionParameters(model, opts?.maxTokens ?? STRUCTURED_DEFAULT_MAX_TOKENS, opts?.temperature ?? 0.0),
-      response_format: { type: "json_object" },
+      response_format: opts?.responseSchema
+        ? { type: "json_schema", json_schema: { ...opts.responseSchema, strict: true } }
+        : { type: "json_object" },
     };
 
     const response = await this.request("chat/completions", model, requestBody, STRUCTURED_TIMEOUT_MS);
 
-    if (!response.ok) {
-      throw new Error(`AI provider request failed (HTTP ${response.status}). External error details are withheld.`);
-    }
+    if (!response.ok) throw structuredHttpFailure(response.status);
 
     const data = (await response.json()) as {
-      choices?: { message?: { content?: string } }[];
+      choices?: { finish_reason?: string; message?: { content?: string; refusal?: string } }[];
       usage?: { prompt_tokens?: number; completion_tokens?: number };
       model?: string;
     };
 
     const rawJson = data.choices?.[0]?.message?.content?.trim() ?? "";
-    if (!rawJson) throw new Error("AI provider returned an empty structured response.");
+    const choice = data.choices?.[0];
+    const responseIssue = choice?.message?.refusal || choice?.finish_reason === "content_filter" ? "provider_refusal" as const
+      : choice?.finish_reason && choice.finish_reason !== "stop" ? "provider_output_incomplete" as const
+      : !rawJson ? "provider_output_invalid" as const : undefined;
+    // Preparation persists the received response before interpreting it. Other callers retain fail-closed behavior.
+    if (responseIssue && !opts?.responseSchema) throw new StructuredAiFailure(responseIssue);
 
     return {
       rawJson,
+      ...(responseIssue ? { responseIssue } : {}),
       model: data.model ?? model,
       promptTokens: data.usage?.prompt_tokens,
       completionTokens: data.usage?.completion_tokens,

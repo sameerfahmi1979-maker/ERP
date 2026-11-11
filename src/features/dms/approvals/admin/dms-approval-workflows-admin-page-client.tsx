@@ -1,4 +1,5 @@
 "use client";
+import { WorklistColgroup, WorklistScrollRegion } from "@/components/erp/table/worklist-fit-control";
 
 import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
 import { ConfiguredRow } from "@/components/erp/table/list-controls";
@@ -388,8 +389,8 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <div role="region" aria-label="workflow-admin table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
+          <div className="min-w-0">
+            <WorklistScrollRegion attach={listView.viewport.attachViewport} aria-label="workflow-admin table"><table className="w-full table-fixed text-sm" {...listView.viewport.tableProps}><WorklistColgroup viewport={listView.viewport} />
               <thead className="bg-muted/40 border-b border-border">
                 <ConfiguredRow columns={listView.columns}>
                   <SortHeader data-column="workflowCode" field="workflowCode" label="Code" sortKey={sortKey} sortDir={sortDir} onSort={toggle} />
@@ -483,7 +484,7 @@ export function DmsApprovalWorkflowsAdminPageClient({ initialWorkflows, document
                   </ConfiguredRow>
                 ))}
               </tbody>
-            </table></div>
+            </table></WorklistScrollRegion>
           </div>
         )}
       </div>

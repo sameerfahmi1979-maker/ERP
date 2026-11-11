@@ -14,11 +14,14 @@
 
 import { getDmsAiProvider } from "@/lib/dms/ai/factory";
 import {admitAiQualityModelCall,recordAiQualityCall} from '@/server/ai/quality-usage-scope';
+import { StructuredAiFailure, type StructuredFailureCode } from "@/lib/dms/ai/structured-failure";
+import type { DmsStructuredCompletionOutput } from "@/lib/dms/ai/types";
 
 // ── Provider call result ──────────────────────────────────────────────────────
 
 export interface CommonAiCallResult {
   rawJson: string;
+  responseIssue?: DmsStructuredCompletionOutput["responseIssue"];
   model: string | null;
   promptTokens: number | null;
   completionTokens: number | null;
@@ -30,6 +33,7 @@ export interface CommonAiCallResult {
 
 export interface CommonAiCallError {
   error: string;
+  errorCode?: StructuredFailureCode;
   isProviderNotConfigured: boolean;
   durationMs: number;
 }
@@ -49,7 +53,7 @@ export type CommonAiCallOutcome =
 export async function callCommonAiStructuredCompletion(
   systemPrompt: string,
   userPrompt: string,
-  options?: { maxTokens?: number; temperature?: number; promptVersion?:string; selectedProvider?:Awaited<ReturnType<typeof getDmsAiProvider>> }
+  options?: { maxTokens?: number; temperature?: number; promptVersion?:string; selectedProvider?:Awaited<ReturnType<typeof getDmsAiProvider>>; responseSchema?: { name: string; schema: Record<string, unknown> } }
 ): Promise<CommonAiCallOutcome> {
   const start = Date.now();
 
@@ -58,6 +62,7 @@ export async function callCommonAiStructuredCompletion(
   if (!provider.isConfigured()) {
     return {
       success: false,
+      errorCode: "provider_not_configured",
       error: "AI provider is not configured. Configure a provider in Settings → AI Settings.",
       isProviderNotConfigured: true,
       durationMs: Date.now() - start,
@@ -69,13 +74,15 @@ export async function callCommonAiStructuredCompletion(
     const result = await provider.callStructuredCompletion(
       systemPrompt,
       userPrompt,
-      {maxTokens:options?.maxTokens??4000,temperature:options?.temperature??0}
+      {maxTokens:options?.maxTokens??4000,temperature:options?.temperature??0,
+        ...(options?.responseSchema ? { responseSchema: options.responseSchema } : {})}
     );
 
     await recordAiQualityCall({providerConfigId:configId,model:result.model??null,promptVersion:options?.promptVersion,success:true,inputTokens:result.promptTokens??null,outputTokens:result.completionTokens??null,durationMs:Date.now()-start});
     return {
       success: true,
       rawJson: result.rawJson,
+      ...(result.responseIssue ? { responseIssue: result.responseIssue } : {}),
       model: result.model,
       promptTokens: result.promptTokens ?? null,
       completionTokens: result.completionTokens ?? null,
@@ -84,10 +91,11 @@ export async function callCommonAiStructuredCompletion(
       configId,
       durationMs: Date.now() - start,
     };
-  } catch {
+  } catch (error) {
     await recordAiQualityCall({providerConfigId:configId,model:provider.modelId??null,promptVersion:options?.promptVersion,success:false,inputTokens:null,outputTokens:null,durationMs:Date.now()-start});
     return {
       success: false,
+      errorCode: error instanceof StructuredAiFailure ? error.code : "provider_unavailable",
       error: "AI provider could not complete this request. Try again later or contact your administrator.",
       isProviderNotConfigured: false,
       durationMs: Date.now() - start,

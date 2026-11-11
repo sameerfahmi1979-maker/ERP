@@ -1,4 +1,5 @@
 "use server";
+import { requireDmsFilePipelineAccess } from "@/server/dms-file-pipeline-access";
 
 /**
  * ERP DMS AI ORCH.1 — Orchestration Server Actions
@@ -604,7 +605,7 @@ export async function runDmsBatchOrchestration(input: {
     if (!isOwner && !isAdmin) return { success: false, error: "Access denied to this batch." };
 
     // Load draft sessions in the batch that have a document_id
-    const { data: sessions } = await supabase
+    const { data: sessions, error: sessionsError } = await supabase
       .from("dms_upload_sessions")
       .select("session_code, document_id, orchestration_status")
       .eq("batch_id", batchTyped.id as number)
@@ -612,7 +613,13 @@ export async function runDmsBatchOrchestration(input: {
       .not("document_id", "is", null);
 
     const sessionList = (sessions ?? []) as Array<{ session_code: string; document_id: number; orchestration_status: string }>;
+    if(sessionsError)return {success:false,error:'Batch draft access is unavailable. Refresh before retrying.'};
+    if(sessionList.length===0)return {success:false,error:'No confirmed drafts are ready for AI enrichment. Recover the original batch uploads first.'};
 
+    for (const member of sessionList) {
+      const denied = await requireDmsFilePipelineAccess(member.document_id);
+      if (denied) return { success: false, error: denied };
+    }
     const results: Array<{ sessionCode: string; documentId: number | null; orchestrationStatus: string }> = [];
 
     for (const s of sessionList) {

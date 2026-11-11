@@ -37,3 +37,13 @@ it('document entry rechecks its feature/access gate before atomic dispatch',asyn
  expect(await mutateHrChild({kind:'identity-document',employeeId:7,id:null,revision:null,action:'create',values:{document_type_id:1,document_number:'Synthetic',entry_source:'document',source_document_ids:[41]}},{operationId,revision:null})).toMatchObject({success:false,accessDenied:true});
  expect(m.entry).toHaveBeenCalledOnce();expect(m.rpc).not.toHaveBeenCalled();
 });
+it.each([
+ 'Certificate Number is required for the selected training type',
+ 'Provider is required for the selected training type',
+ 'The training category does not match the selected training type. Reload the training choices and use the configured category',
+])('returns actionable training validation without retry: %s',async message=>{
+ m.rpc.mockResolvedValue({error:{code:'23514',message},data:null});
+ const result=await mutateHrChild({kind:'training-certificate',employeeId:7,id:17,revision:'4',action:'update',values:{notes:'Synthetic'}},contract);
+ expect(result).toMatchObject({success:false,uncertain:false,error:message+'.'});
+ expect(m.rpc).toHaveBeenCalledTimes(1);
+});

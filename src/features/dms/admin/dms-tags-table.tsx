@@ -1,4 +1,5 @@
 "use client";
+import { WorklistColgroup, WorklistScrollRegion } from "@/components/erp/table/worklist-fit-control";
 
 import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
 import { ConfiguredRow } from "@/components/erp/table/list-controls";
@@ -262,7 +263,7 @@ export function DmsTagsTable({ rows, authContext }: Props) {
 
       <DmsListTools view={listView} />
 <div className="rounded-md border overflow-hidden">
-        <div role="region" aria-label="tags table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
+        <WorklistScrollRegion attach={listView.viewport.attachViewport} aria-label="tags table"><table className="w-full table-fixed text-sm" {...listView.viewport.tableProps}><WorklistColgroup viewport={listView.viewport} />
           <thead className="bg-muted/50 border-b">
             <ConfiguredRow columns={listView.columns}>
               <SortColHeader data-column="tag_name" field="tag_name" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort}>Tag</SortColHeader>
@@ -344,7 +345,7 @@ export function DmsTagsTable({ rows, authContext }: Props) {
               </ConfiguredRow>
             ))}
           </tbody>
-        </table></div>
+        </table></WorklistScrollRegion>
         <TablePagination
           page={table.page}
           totalPages={table.totalPages}

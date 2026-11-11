@@ -113,6 +113,8 @@ export interface ERPTableConfig<TData> {
   resultsLabel?: string;
   /** Unique table ID for preferences */
   tableId: string;
+  /** Approved stable layout ID when the in-memory table ID contains a view or record key. */
+  columnPreferenceId?: string | null;
   /** Column definitions */
   columns: ColumnDef<TData, unknown>[];
   /** Table data */

@@ -23,3 +23,5 @@ Do not release an inheritance change while an active administrator scope is malf
 A user may have multiple companies and branches. Store one assignment per company or branch and evaluate their exact union. The profile home company is not the maximum access boundary. Do not widen grants because two branches share a name. Preserve other assignments when one is revoked.
 
 The existing remediation CI suite runs administrator-capability-contract.test.ts. It checks register/migration parity, fail-closed defaults and explicit classification in new literal permission inserts. It does not replace consumer review, generated/dynamic SQL review or native allow/deny acceptance. A passing contract test is not release approval.
+
+Same-identity edits to approved/published report templates are a reserved `system_admin` capability at Global System scope, not a new inherited permission or a bypass of independent approval. See [REPORT_TEMPLATE_AMENDMENT_STANDARD.md](REPORT_TEMPLATE_AMENDMENT_STANDARD.md). Company/branch administrators and legacy `group_admin` retain their existing template capabilities; they do not acquire this special editor.

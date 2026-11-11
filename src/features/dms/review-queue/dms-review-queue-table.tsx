@@ -1,5 +1,7 @@
 "use client";
 
+import { WorklistColgroup, WorklistFitControl, WorklistScrollRegion } from "@/components/erp/table/worklist-fit-control";
+
 import { useMemo, useState } from "react";
 import { ConfiguredRow, EditColumns, useListColumns, type ListColumn } from "@/components/erp/table/list-controls";
 import { Input } from "@/components/ui/input";
@@ -171,7 +173,7 @@ const COLUMNS:ListColumn[]=[
 ];
 
 export function DmsReviewQueueTable({ items, isLoading, onViewItem }: Props) {
-  const {columns,visible,setColumns}=useListColumns("dms:review-queue:v1",COLUMNS);
+  const {columns,visible,setColumns,viewport}=useListColumns("dms:review-queue:v1",COLUMNS);
   const [search,setSearch]=usePersistentUiState("dms:review-queue:page-search","");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -220,9 +222,9 @@ export function DmsReviewQueueTable({ items, isLoading, onViewItem }: Props) {
 
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
-      <div className="flex flex-wrap items-center gap-2 p-3"><Input aria-label="Search current review page" placeholder="Search current page…" value={search} onChange={e=>setSearch(e.target.value)} className="sm:max-w-xs"/><EditColumns columns={columns} defaults={COLUMNS} onApply={setColumns}/><p className="w-full text-xs text-muted-foreground">{sorted.length} of {items.length} loaded items match. Keyword search and column sorting apply to this page only; use Edit filters for server-wide criteria.</p></div>
-      <div role="region" aria-label="Review queue table" tabIndex={0} className="overflow-x-auto">
-        <table className="w-full table-fixed text-sm" style={{minWidth:visible.reduce((sum,column)=>sum+column.width,0)}}><colgroup>{visible.map(column=><col key={column.id} style={{width:column.width}}/>)}</colgroup>
+      <div className="flex flex-wrap items-center gap-2 p-3"><Input aria-label="Search current review page" placeholder="Search current page…" value={search} onChange={e=>setSearch(e.target.value)} className="sm:max-w-xs"/><EditColumns columns={columns} defaults={COLUMNS} onApply={setColumns}/><WorklistFitControl viewport={viewport} /><p className="w-full text-xs text-muted-foreground">{sorted.length} of {items.length} loaded items match. Keyword search and column sorting apply to this page only; use Edit filters for server-wide criteria.</p></div>
+      <WorklistScrollRegion attach={viewport.attachViewport} aria-label="Review queue table">
+        <table className="w-full table-fixed text-sm" {...viewport.tableProps}><WorklistColgroup viewport={viewport} />
           <thead>
             <ConfiguredRow columns={columns} className="border-b border-border bg-muted text-left">
               <RQSortHeader data-column="id" field="id" label="#" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="w-8" />
@@ -260,7 +262,7 @@ export function DmsReviewQueueTable({ items, isLoading, onViewItem }: Props) {
               <RQSortHeader data-column="confidence" field="confidence" label="Conf." sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
               <RQSortHeader data-column="status" field="status" label="Status" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
               <RQSortHeader data-column="age" field="queuedAt" label="Age / Due" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-              <th data-column="actions" className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground w-16">Actions</th>
+              <th data-column="actions" className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Actions</th>
             </ConfiguredRow>
           </thead>
           <tbody>{sorted.length===0&&<tr><td colSpan={visible.length} className="p-4 text-center">No items on this page match your search.</td></tr>}
@@ -348,7 +350,7 @@ export function DmsReviewQueueTable({ items, isLoading, onViewItem }: Props) {
             })}
           </tbody>
         </table>
-      </div>
+      </WorklistScrollRegion>
     </div>
   );
 }

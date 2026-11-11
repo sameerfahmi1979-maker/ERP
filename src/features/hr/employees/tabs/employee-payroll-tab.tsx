@@ -1,4 +1,5 @@
 "use client";
+import { HrIconButton } from "@/features/hr/employees/hr-icon-button";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import {PayrollReadScope,usePayrollReadScope, usePayrollPoint, usePayrollRecords} from "@/hooks/use-hr-payroll-records";
@@ -242,12 +243,12 @@ function SalaryComponentsSection({employeeId,authContext,canManage,onChildOpen}:
               </div>
               {canManage && (
                 <div className="flex items-center gap-1 shrink-0">
-                  <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" disabled={uiRead1.detailPending} onClick={() => void openEdit(comp)}>
+                  <HrIconButton aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" disabled={uiRead1.detailPending} onClick={() => void openEdit(comp)}>
                     <Edit2 className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleArchive(comp.id)}>
+                  </HrIconButton>
+                  <HrIconButton aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleArchive(comp.id)}>
                     <Archive className="h-3.5 w-3.5" />
-                  </Button>
+                  </HrIconButton>
                 </div>
               )}
             </div>
@@ -445,9 +446,9 @@ function PayrollHoldsSection({employeeId,authContext,canManage,onChildOpen}:{emp
                     </Button>
                   )}
                   {!hold.is_active && (
-                    <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleArchive(hold.id)} disabled={isPending}>
+                    <HrIconButton aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleArchive(hold.id)} disabled={isPending}>
                       <Archive className="h-3.5 w-3.5" />
-                    </Button>
+                    </HrIconButton>
                   )}
                 </div>
               )}

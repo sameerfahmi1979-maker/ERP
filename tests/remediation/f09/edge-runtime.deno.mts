@@ -29,10 +29,12 @@ Deno.test('settings failure cannot default to enabled or report successful proce
 });
 Deno.test('partial recipient failure leaves source eligible and does not hide the failure',async()=>{
  const prior=globalThis.fetch;let inserts=0,markers=0;
+ const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+ const expiry=new Date(`${today}T00:00:00Z`);expiry.setUTCDate(expiry.getUTCDate()+7);
  globalThis.fetch=async(input,init)=>{
   const url=String(input),method=init?.method??'GET';
   if(url.includes('/dms_notification_settings'))return Response.json({is_enabled:true,email_enabled:false,include_document_owner:true,include_document_creator:true});
-  if(url.includes('/dms_expiry_reminders')&&method==='GET')return Response.json([{id:1,document_id:2,reminder_days_before:7,document:{id:2,document_no:'SYNTHETIC',title:'Synthetic',status:'active',owner_user_id:3,created_by:4,expiry_date:'2099-01-01'}}]);
+  if(url.includes('/dms_expiry_reminders')&&method==='GET')return Response.json([{id:1,document_id:2,reminder_days_before:7,reminder_date:today,document:{id:2,document_no:'SYNTHETIC',title:'Synthetic',status:'active',owner_user_id:3,created_by:4,expiry_date:expiry.toISOString().slice(0,10)}}]);
   if(url.includes('/dms_expiry_reminders')&&method==='PATCH'){markers++;return Response.json(null);}
   if(url.includes('/dms_notification_queue')&&method==='POST'){inserts++;return inserts===1?new Response(null,{status:201}):Response.json({message:'PRIVATE INSERT ERROR'},{status:400});}
   if(url.includes('/dms_notification_queue')&&method==='GET')return Response.json([]);

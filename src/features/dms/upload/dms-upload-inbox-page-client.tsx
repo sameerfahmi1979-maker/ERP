@@ -8,6 +8,7 @@ import { DmsAdminFileStoragePanel } from "@/features/dms/admin/dms-admin-file-st
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { useDmsBatchAdmission } from "@/hooks/use-dms-batch-admission";
+import type {BatchReceipt} from '@/lib/dms/batch-admission';
 import {DmsUploadScopePicker} from './dms-upload-scope-picker';
 import type {UploadOwningScope} from '@/lib/dms/single-upload-admission';
 import {useDmsSingleUploadAdmission} from '@/hooks/use-dms-single-upload-admission';
@@ -43,6 +44,7 @@ interface Props {
   batchEnabled?: boolean;
   /** SPEED.2A — when true, AI analysis starts automatically after upload. */
   autoStartEnabled?: boolean;
+  recoveryReceipt?: BatchReceipt;
 }
 
 type UploadState =
@@ -72,7 +74,22 @@ function estimateAiDuration(fileSizeBytes: number): string {
 
 type UploadMode = "single" | "batch";
 
-export function DmsUploadInboxPageClient({ initialSessions, documents, documentTypes, entityContext, isAdmin = false, batchEnabled = false, autoStartEnabled = false }: Props) {
+function batchMemberProgress(phase: string): { value: number; label: string; terminal?: "complete" | "failed" | "warning" } {
+  switch (phase) {
+    case "uploading": return { value: 25, label: "Uploading" };
+    case "analysis": return { value: 60, label: "Preparing AI draft" };
+    case "processing": return { value: 80, label: "AI analysis running" };
+    case "confirmed": return { value: 100, label: "Draft ready", terminal: "complete" };
+    case "rejected": return { value: 0, label: "Rejected", terminal: "failed" };
+    case "unconfirmed": return { value: 0, label: "Needs reconciliation", terminal: "warning" };
+    case "unavailable": return { value: 0, label: "Unavailable", terminal: "failed" };
+    case "needs_file": return { value: 0, label: "File required", terminal: "warning" };
+    case "historical": return { value: 0, label: "Reconcile in batch queue", terminal: "warning" };
+    default: return { value: 0, label: "Waiting" };
+  }
+}
+
+export function DmsUploadInboxPageClient({ initialSessions, documents, documentTypes, entityContext, isAdmin = false, batchEnabled = false, autoStartEnabled = false, recoveryReceipt }: Props) {
   const router = useRouter();
   const qc=useQueryClient();
   const [inboxReadAvailable,setInboxReadAvailable]=useState(true);
@@ -86,7 +103,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
   const [discardBusy,setDiscardBusy]=useState(false);
   const discardFlight=useRef(false);
 
-  const [uploadMode, setUploadMode] = useState<UploadMode>("single");
+  const [uploadMode, setUploadMode] = useState<UploadMode>(recoveryReceipt ? "batch" : "single");
   const [owningScope,setOwningScope]=useState<UploadOwningScope|null>(null);
   const singleAdmission=useDmsSingleUploadAdmission(entityContext,entityContext?undefined:owningScope);
   const selectedOwningScope=owningScope??singleAdmission.retainedScope;
@@ -94,6 +111,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
   const batch = useDmsBatchAdmission({
     enabled: batchEnabled && uploadMode === "batch",
     context: entityContext,
+    recoveryBatchCode: recoveryReceipt?.batch_code,
     upload: async (capability, body, mime) => {
       const {error} = await createSupabaseClient().storage.from("dms-temp")
         .uploadToSignedUrl(capability.path, capability.token, body.type===mime?body:new Blob([body],{type:mime}), {contentType: mime, upsert: false});
@@ -500,9 +518,13 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
               onFilesSelected={batch.setFiles}
             />
             <div className="mt-3 flex flex-wrap items-center gap-2">
+              {recoveryReceipt && !batch.attempt && <div className="w-full rounded border border-border p-3 text-sm">
+                <p>Continue original batch {recoveryReceipt.batch_code}. Select the original files; names, sizes and hashes must match. Existing stored files and drafts will be reused.</p>
+                <Button type="button" size="sm" disabled={!batch.ready || batch.busy} onClick={() => void batch.adopt(recoveryReceipt)}>Open original batch recovery</Button>
+              </div>}
               {!batch.attempt ? (
                 <Button type="button" size="sm" onClick={() => void batch.start()}
-                  disabled={!batch.ready || batch.busy || batch.files.length === 0}>
+                  disabled={!!recoveryReceipt || !batch.ready || batch.busy || batch.files.length === 0}>
                   <Bot className="h-3.5 w-3.5 mr-1.5" />
                   Upload &amp; AI Fill All ({batch.files.length})
                 </Button>
@@ -513,7 +535,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
               )}
               <Button type="button" size="sm" variant="outline" onClick={() => void batch.discover()} disabled={!batch.ready || batch.busy}>Find recent admissions</Button>
               {batch.canStartAnother && <Button type="button" size="sm" variant="outline" onClick={batch.startAnother} disabled={!batch.ready || batch.busy}>Start another batch</Button>}
-              {batch.attempt?.receipt && <Button type="button" size="sm" variant="outline" onClick={() => router.push(`/dms/inbox/batch/${batch.attempt!.receipt!.batch_code}`)}>Open batch queue</Button>}
+              {batch.attempt?.receipt && <Button type="button" size="sm" variant="outline" disabled={batch.busy} onClick={() => router.push(`/dms/inbox/batch/${batch.attempt!.receipt!.batch_code}`)}>Open batch queue</Button>}
             </div>
             <p className="mt-2 text-xs text-muted-foreground">Only confirmed drafts are ready for review. Approve each one individually — no bulk approval.</p>
             {batch.busy && <p role="status" className="mt-2 text-sm">Working on the retained batch…</p>}
@@ -531,7 +553,33 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
             {batch.items.length > 0 && (
               <section aria-label="Batch member results" className="mt-3 rounded-md border p-3">
                 <p className="text-sm font-medium">{batch.items.filter(i => i.phase === "confirmed").length} of {batch.items.length} drafts confirmed</p>
-                <ul className="mt-2 space-y-2">{batch.items.map(item => <li key={item.position} className="text-sm"><span className="font-medium">{item.name}</span><p className="text-muted-foreground">{item.message}</p></li>)}</ul>
+                <p className="mt-1 text-xs text-muted-foreground">Each bar shows the file’s current processing stage; AI does not provide an exact percentage.</p>
+                <ul className="mt-2 space-y-3">{batch.items.map(item => {
+                  const progress = batchMemberProgress(item.phase);
+                  return <li key={item.position} className="space-y-1.5 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="min-w-0 truncate font-medium" title={item.name}>{item.name}</span>
+                      <span className={cn("shrink-0 text-xs", progress.terminal === "complete" ? "text-green-700 dark:text-green-300" : progress.terminal === "failed" ? "text-destructive" : progress.terminal === "warning" ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground")}>
+                        {progress.label}
+                      </span>
+                    </div>
+                    <div
+                      role="progressbar"
+                      aria-label={`${item.name}: ${progress.label}`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={progress.value}
+                      className="h-2 overflow-hidden rounded-full bg-muted"
+                    >
+                      <div
+                        className={cn("h-full rounded-full transition-[width] duration-500", progress.terminal === "complete" ? "bg-green-600 dark:bg-green-400" : progress.terminal === "failed" ? "bg-destructive" : progress.terminal === "warning" ? "bg-amber-500 dark:bg-amber-400" : "bg-violet-600 dark:bg-violet-400", item.phase === "uploading" || item.phase === "analysis" || item.phase === "processing" ? "animate-pulse" : "")}
+                        style={{ width: `${progress.value}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">{item.message}</p>
+                    {['unavailable','unconfirmed','rejected','needs_file','historical','processing'].includes(item.phase)&&<Button type="button" size="sm" variant="outline" disabled={!batch.ready||batch.busy} onClick={()=>void batch.resume(item.position)}>Recover file {item.position+1}</Button>}
+                  </li>;
+                })}</ul>
               </section>
             )}
             {batch.recent.length > 0 && <section aria-label="Recent admissions" className="mt-3 space-y-2">

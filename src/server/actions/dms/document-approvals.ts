@@ -1,10 +1,12 @@
 "use server";
 import {readAllPages} from "@/server/reads/all-pages";
+import { readDmsSubmissionBlocker } from "@/server/reads/dms-approval-route";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { hasPermissionInScope } from "@/lib/rbac/scope";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
@@ -17,6 +19,7 @@ export type ActionResult<T = unknown> = {
   data?: T;
   error?: string;
   uncertain?: boolean;
+  failure?: "workflow";
 };
 
 // ── Revalidation paths ────────────────────────────────────────────────────────
@@ -124,11 +127,14 @@ function isDmsAdmin(ctx: AuthCtx) {
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 type ApprovalTransition = { approvalId: number; approvalStatus: string; pending: boolean; requiresRole: string | null };
+const workflowUnavailable = "The approval workflow is unavailable or has no eligible assigned reviewer. Ask your DMS administrator to check the workflow, then refresh.";
+
 async function transitionApproval(documentId:number, approvalId:number|null, operation:string, comment?:string, reason?:string):Promise<ActionResult<ApprovalTransition>> {
   let dispatched=false;
   try{
     const supabase = await createClient();dispatched=true;
     const {data,error} = await supabase.rpc("f05_transition_document_approval", {document_id:documentId,approval_id:approvalId,operation,comment_text:comment??null,reason_text:reason??null});
+    if (error?.code === "55000" && operation === "submit") return { success: false, failure: "workflow", error: workflowUnavailable };
     if (error) return {success:false,uncertain:!(/^(?:22|23|42|P0|PT)[A-Z0-9]{3}$/.test(error.code??'')||error.code==='55000'),error:error.code==="PT409" ? "The reviewed content, workflow or approval changed. Refresh; withdraw and resubmit an outdated review before deciding." : error.code==="55000" ? "The workflow needs administrator review before this action can continue." : "The approval action was not confirmed. Check your access and refresh the document before retrying."};
     const parsed=z.object({approvalId:positiveInt,approvalStatus:z.enum(['pending_approval','approved','rejected','withdrawn']),pending:z.boolean(),requiresRole:z.string().nullable()}).strict().safeParse(data);
     if(!parsed.success||parsed.data.pending!==(parsed.data.approvalStatus==='pending_approval'))return {success:false,uncertain:true,error:'The approval outcome could not be verified. Refresh before another action.'};
@@ -256,8 +262,9 @@ export async function getDocumentApprovalState(
       .select(`
         id, document_no, title, status,
         approval_status, submitted_by, submitted_at,
-        document_type_id,
+        document_type_id, owning_company_id, owning_branch_id,
         owner_user_id, created_by,
+        company:owner_companies!owning_company_id(company_code),
         document_type:dms_document_types!document_type_id(name_en),
         submitter:user_profiles!submitted_by(display_name)
       `)
@@ -271,6 +278,8 @@ export async function getDocumentApprovalState(
       id: number; document_no: string; title: string; status: string;
       approval_status: string | null; submitted_by: number | null; submitted_at: string | null;
       document_type_id: number | null; owner_user_id: number | null; created_by: number | null;
+      owning_company_id: number | null; owning_branch_id: number | null;
+      company: { company_code: string } | null;
       document_type: { name_en: string } | null;
       submitter: { display_name: string } | null;
     };
@@ -293,6 +302,13 @@ export async function getDocumentApprovalState(
     const actionable = !approvalReadError && !!ca?.id && ca.action === "submitted";
     const stepCapability = actionable ? await supabase.rpc("f05_can_act_document_approval", { document_id: documentId, step_id: ca?.step_id ?? null }) : null;
     const canActOnStep = !stepCapability?.error && stepCapability?.data === true;
+    const companyId = d.owning_company_id;
+    const hasSubmissionAccess = companyId === null ? canSubmit(ctx)
+      : ["dms.approvals.submit", "dms.documents.edit", "dms.admin"].some(code =>
+          hasPermissionInScope(ctx, code, companyId, d.owning_branch_id));
+    const canRequest = hasSubmissionAccess && !approvalReadError && !ca && ["draft", "rejected", "withdrawn", null].includes(d.approval_status)
+      && !["archived", "superseded", "deleted"].includes(d.status);
+    const submissionBlocker = canRequest ? await readDmsSubmissionBlocker(d) : null;
 
     const state: ApprovalState = {
       documentId: d.id,
@@ -309,11 +325,11 @@ export async function getDocumentApprovalState(
       currentApprovalAction: ca?.action ?? null,
       currentWorkflowId: ca?.workflow_id ?? null,
       currentStepId: ca?.step_id ?? null,
-      canSubmit: canSubmit(ctx) && ["draft", "rejected", "withdrawn", null].includes(d.approval_status) && !["archived", "deleted"].includes(d.status),
+      canSubmit: canRequest && !submissionBlocker,
       canApprove: actionable && canActOnStep && d.approval_status === "pending_approval" && !isSelfApproval,
       canReject: actionable && canActOnStep && d.approval_status === "pending_approval" && !isSelfApproval,
       canWithdraw: actionable && d.approval_status === "pending_approval" && (canWithdraw(ctx) || d.submitted_by === profileId),
-      actionUnavailableReason: d.approval_status === "pending_approval" && !actionable ? "The current approval request is unavailable. Refresh or ask your administrator to check approval access before taking action." : null,
+      actionUnavailableReason: d.approval_status === "pending_approval" && !actionable ? "The current approval request is unavailable. Refresh or ask your administrator to check approval access before taking action." : submissionBlocker,
       canViewHistory: canViewApprovals(ctx),
       selfApprovalBlocked: isSelfApproval && d.approval_status === "pending_approval",
       selfApprovalBlockReason: isSelfApproval ? "You submitted this document for approval and cannot act on it." : null,
@@ -975,14 +991,69 @@ export async function adminListApprovalRoleOptions(): Promise<ActionResult<Array
   }
 }
 
-export async function adminListApprovalAssigneeOptions(): Promise<ActionResult<Array<{ id: number; label: string }>>> {
+const assigneeCriteria = z.strictObject({
+  companyId: positiveInt,
+  branchId: positiveInt.nullable(),
+  requiredRole: z.string().max(100),
+});
+
+const assigneeProfile = z.object({
+  id: positiveInt,
+  user_code: z.string().nullable(),
+  display_name: z.string().nullable(),
+  full_name: z.string().nullable(),
+  assignments: z.array(z.object({
+    owner_company_id: positiveInt.nullable(),
+    branch_id: positiveInt.nullable(),
+    is_active: z.boolean(),
+    role: z.object({
+      role_code: z.string(),
+      is_active: z.boolean(),
+      grants: z.array(z.object({ permission: z.object({ permission_code: z.string(), is_active: z.boolean() }).nullable() })),
+    }).nullable(),
+  })),
+});
+
+export async function adminListApprovalAssigneeOptions(criteria: z.input<typeof assigneeCriteria>): Promise<ActionResult<Array<{ id: number; label: string }>>> {
   try {
+    const parsed = assigneeCriteria.safeParse(criteria);
+    if (!parsed.success) return { success: false, error: "Choose a valid company and branch." };
+    const { companyId, branchId, requiredRole } = parsed.data;
     const ctx = await getAuthContext();
-    if (!ctx.profile || (!hasPermission(ctx, "dms.admin") && !hasPermission(ctx, "dms.approvals.admin"))) return { success: false, error: "Permission denied" };
-    const db = await createClient();
-    const rows = await readAllPages<{ id: number; user_code: string | null; display_name: string | null; full_name: string | null }>(async (from, to) =>
-      await db.from("user_profiles").select("id,user_code,display_name,full_name").eq("status", "active").eq("must_change_password", false).order("id").range(from, to), { identity: row => row.id, maxRows: 5000 });
-    return { success: true, data: rows.map(row => ({ id: row.id, label: [row.user_code, row.display_name || row.full_name || "User"].filter(Boolean).join(" — ") })) };
+    if (!hasPermissionInScope(ctx, "dms.admin", companyId, branchId) &&
+        !hasPermissionInScope(ctx, "dms.approvals.admin", companyId, branchId)) {
+      return { success: false, error: "Permission denied" };
+    }
+    const db = createAdminClient();
+    if (branchId !== null) {
+      const { data, error } = await db.from("branches").select("id")
+        .eq("id", branchId).eq("owner_company_id", companyId).eq("status", "active").maybeSingle();
+      if (error || !data) return { success: false, error: "The branch is unavailable for this company." };
+    }
+    const rows = await readAllPages(async (from, to) => {
+      const { data, count, error } = await db.from("user_profiles").select(`
+        id,user_code,display_name,full_name,
+        assignments:user_roles!user_roles_user_profile_id_fkey(
+          owner_company_id,branch_id,is_active,
+          role:roles!role_id(role_code,is_active,grants:role_permissions(permission:permissions!permission_id(permission_code,is_active)))
+        )
+      `, { count: "exact" }).eq("status", "active").eq("must_change_password", false).order("id").range(from, to);
+      return { data: data === null ? null : z.array(assigneeProfile).parse(data), count, error };
+    }, { identity: row => row.id, maxRows: 5000 });
+    const options = rows.filter(row => {
+      const scoped = row.assignments.filter(assignment => assignment.is_active && assignment.role?.is_active &&
+        (assignment.owner_company_id === null && assignment.branch_id === null ||
+          assignment.owner_company_id === companyId && (assignment.branch_id === null || assignment.branch_id === branchId)));
+      if (requiredRole && !scoped.some(assignment => assignment.role?.role_code === requiredRole)) return false;
+      if (scoped.some(assignment => assignment.owner_company_id === null && assignment.branch_id === null &&
+          ["system_admin", "group_admin"].includes(assignment.role?.role_code ?? ""))) return true;
+      const permissions = new Set(scoped.flatMap(assignment => assignment.role?.grants
+        .flatMap(grant => grant.permission?.is_active ? [grant.permission.permission_code] : []) ?? []));
+      return ["dms.documents.view", "dms.documents.preview", "notifications.view"].every(code => permissions.has(code)) &&
+        ["dms.approvals.act", "dms.documents.approve", "dms.approvals.admin", "dms.admin"].some(code => permissions.has(code));
+    });
+    // The save and submission RPCs recheck live identity, permissions and independence.
+    return { success: true, data: options.map(row => ({ id: row.id, label: [row.user_code, row.display_name || row.full_name || "User"].filter(Boolean).join(" — ") })) };
   } catch { return { success: false, error: "Assigned-user options are unavailable. No assignments were changed." }; }
 }
 

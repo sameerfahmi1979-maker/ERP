@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { hasRole } from "@/lib/rbac/scope";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
@@ -14,6 +15,7 @@ export type WorkSiteRow = {
   site_name: string;
   site_type: string;
   owner_company_id: number;
+  available_to_all_organizations?: boolean;
   branch_id: number | null;
   party_id: number | null;
   country_id: number | null;
@@ -53,6 +55,7 @@ const createSchema = z.object({
   site_name: z.string().min(1).max(200),
   site_type: z.enum(SITE_TYPES),
   owner_company_id: z.number().int().positive(),
+  available_to_all_organizations: z.boolean().optional(),
   branch_id: z.number().int().positive().optional().nullable(),
   party_id: z.number().int().positive().optional().nullable(),
   country_id: z.number().int().positive().optional().nullable(),
@@ -80,6 +83,7 @@ const createSchema = z.object({
 });
 
 const updateSchema = createSchema.partial().extend({ id: z.number().int().positive() });
+const saveReceiptSchema = z.object({ id: z.number().int().positive(), available_to_all_organizations: z.boolean().optional() });
 
 type CreateInput = z.infer<typeof createSchema>;
 type UpdateInput = z.infer<typeof updateSchema>;
@@ -139,16 +143,21 @@ export async function createWorkSite(input: CreateInput): Promise<ActionResult<{
     if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
     const ctx = await getAuthContext();
     if (!canManage(ctx)) return { success: false, error: "Permission denied" };
+    if (parsed.data.available_to_all_organizations !== undefined && !hasRole(ctx, "system_admin"))
+      return { success: false, error: "Only a System Administrator can change organization availability." };
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("work_sites")
       .insert({ ...parsed.data, created_by: ctx.profile?.id ?? null, updated_by: ctx.profile?.id ?? null })
-      .select("id")
+      .select(parsed.data.available_to_all_organizations ? "id, available_to_all_organizations" : "id")
       .single();
     if (error) return { success: false, error: error.message };
-    await logAudit({ module_code: "common_md", entity_name: "work_sites", entity_id: data.id, entity_reference: parsed.data.site_code, action: "create", new_values: parsed.data });
+    const receipt = saveReceiptSchema.safeParse(data);
+    if (!receipt.success || (parsed.data.available_to_all_organizations && receipt.data.available_to_all_organizations !== true))
+      return { success: false, error: "Creation could not be confirmed. Check the work sites list before retrying." };
+    await logAudit({ module_code: "common_md", entity_name: "work_sites", entity_id: receipt.data.id, entity_reference: parsed.data.site_code, action: "create", new_values: parsed.data });
     revalidatePath("/admin/common-master-data/work-sites");
-    return { success: true, data: { id: data.id } };
+    return { success: true, data: { id: receipt.data.id } };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : String(e) };
   }
@@ -160,15 +169,23 @@ export async function updateWorkSite(input: UpdateInput): Promise<ActionResult> 
     if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
     const ctx = await getAuthContext();
     if (!canManage(ctx)) return { success: false, error: "Permission denied" };
+    if (parsed.data.available_to_all_organizations !== undefined && !hasRole(ctx, "system_admin"))
+      return { success: false, error: "Only a System Administrator can change organization availability." };
     const { id, ...rest } = parsed.data;
     const supabase = await createClient();
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("work_sites")
       .update({ ...rest, updated_by: ctx.profile?.id ?? null, updated_at: new Date().toISOString() })
-      .eq("id", id!)
-      .is("deleted_at", null);
+      .eq("id", id)
+      .is("deleted_at", null)
+      .select(rest.available_to_all_organizations ? "id, available_to_all_organizations" : "id")
+      .maybeSingle();
     if (error) return { success: false, error: error.message };
-    await logAudit({ module_code: "common_md", entity_name: "work_sites", entity_id: id!, entity_reference: String(id), action: "update", new_values: rest });
+    if (!data) return { success: false, error: "This work site is unavailable or you no longer have permission to edit it." };
+    const receipt = saveReceiptSchema.safeParse(data);
+    if (!receipt.success || receipt.data.id !== id || (rest.available_to_all_organizations && receipt.data.available_to_all_organizations !== true))
+      return { success: false, error: "The update could not be confirmed. Reopen the work site to check its saved values." };
+    await logAudit({ module_code: "common_md", entity_name: "work_sites", entity_id: id, entity_reference: String(id), action: "update", new_values: rest });
     revalidatePath("/admin/common-master-data/work-sites");
     revalidatePath(`/admin/common-master-data/work-sites/record/${id}`);
     return { success: true };

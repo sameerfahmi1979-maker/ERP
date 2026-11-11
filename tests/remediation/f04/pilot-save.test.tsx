@@ -50,7 +50,7 @@ vi.mock("@/components/workspace/erp-record-workspace-form", () => ({
     return <div data-testid="shell" data-dirty={props.isDirty}>
       <button onClick={() => {void props.onSave?.();}}>Save</button>
       <button onClick={() => {void props.onSaveAndClose?.();}}>Save and close</button>
-      <button onClick={props.onRequestClose}>Cancel</button>
+      <button onClick={props.onCancel ?? props.onRequestClose}>Cancel</button>
       <button onClick={() => props.onSectionChange("profile")}>Profile</button>
       {props.children}
     </div>;
@@ -169,7 +169,7 @@ for (const pilot of ["candidate","employee"] as const) {
   function fill() {fireEvent.change(screen.getByLabelText("Pilot name"),{target:{value:"Synthetic Person"}});if(pilot==="employee")fireEvent.click(screen.getByText("Fill selections"));}
   describe(pilot+" pilot",()=>{
     it("validates before calling the server", async()=>{mount();await save();expect(mock.create).not.toHaveBeenCalled();expect(mock.shell?.activeSection).toBe("profile");});
-    it("tracks edits and Cancel closes only the owner through its guard",()=>{mount();fill();expect(mock.shell?.isDirty).toBe(true);mock.active="destination";fireEvent.click(screen.getByText("Cancel"));expect(mock.closeTab).toHaveBeenCalledWith("owner");});
+    it("tracks edits and Cancel closes only the owner through its guard",()=>{mount();fill();expect(mock.shell?.isDirty).toBe(true);mock.active="destination";fireEvent.click(screen.getByText("Cancel"));expect(mock.closeTab).toHaveBeenCalledTimes(1);if(pilot==="employee")expect(mock.closeTab).toHaveBeenCalledWith("owner",{force:true});else expect(mock.closeTab).toHaveBeenCalledWith("owner");});
     it("restores values and selected section after unmount",()=>{const first=mount();fill();fireEvent.click(screen.getByText("Profile"));first.unmount();mount();expect((screen.getByLabelText("Pilot name") as HTMLInputElement).value).toBe("Synthetic Person");expect(mock.shell?.isDirty).toBe(true);expect(mock.shell?.activeSection).toBe("profile");});
     it("creates once then updates returned identity in the same mounted form",async()=>{mount();fill();await save();await save();expect(mock.create).toHaveBeenCalledTimes(1);expect(mock.update).toHaveBeenCalledWith(7001,expect.objectContaining({full_name_en:"Synthetic Person"}),expect.objectContaining({revision:"1"}));});
     it("blocks double submission without dropping edits made during the request",async()=>{

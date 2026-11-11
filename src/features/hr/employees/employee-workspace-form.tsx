@@ -266,7 +266,17 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
     };
   }, [saveSession, retire]);
 
-  const handleRequestClose = () => { if(photoDraft.retained||photoDraft.busy||photoDraft.blocked){toast.error('Finish the retained photo save before closing.');return;}if (owner) closeTab(owner.id); };
+  const closeIsBlocked = isSubmitting || photoDraft.busy || saveSession.hasPending;
+  const requestClose = (discardEdits = false) => {
+    if (closeIsBlocked || saveSession.hasPending || childDialogOpen || complianceChildLeases.size > 0) {
+      toast.error('Finish the active dialog or reconcile the pending save before closing.');
+      return;
+    }
+    // An idle photo journal is durable on the server and is recovered on the
+    // next opening. Cancel discards form edits, never the retained upload.
+    if (owner) closeTab(owner.id, discardEdits ? { force: true } : undefined);
+  };
+  const handleRequestClose = () => requestClose();
 
   const handleSave = async (closeAfter = false): Promise<boolean> => {
     if(photoDraft.recovered&&isAdding&&(photoDraft.recovered.employee||photoDraft.recovered.savePending)){toast.error('Resume the original photo save and open its saved employee before another entry.');return false;}
@@ -402,8 +412,9 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
       onSave={isViewing || !canEdit ? undefined : () => handleSave()}
       onSaveAndClose={isViewing || !canEdit ? undefined : () => handleSave(true)}
       onRequestClose={handleRequestClose}
+      onCancel={() => requestClose(true)}
       isSubmitting={isSubmitting}
-      closeBlocked={!!photoDraft.retained||photoDraft.blocked}
+      closeBlocked={closeIsBlocked}
       isChildDialogOpen={childDialogOpen || complianceChildLeases.size > 0}
     >
       <form

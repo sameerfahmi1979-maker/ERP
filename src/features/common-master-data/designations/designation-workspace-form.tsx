@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -8,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Briefcase, ScrollText } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
+import { hasGlobalPermission } from "@/lib/rbac/scope";
 import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
 import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
 import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
@@ -36,7 +39,7 @@ const MGMT_LEVELS = [
   { value: "c_level", label: "C-Level" },
 ];
 
-export function DesignationWorkspaceForm({ designation, mode, companies = [] }: Props) {
+export function DesignationWorkspaceForm({ designation, mode, authContext, companies = [] }: Props) {
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const sections = [
@@ -71,7 +74,7 @@ export function DesignationWorkspaceForm({ designation, mode, companies = [] }: 
       is_authorized_signatory: fd.get("is_authorized_signatory") === "on",
       has_approval_authority: fd.get("has_approval_authority") === "on",
       is_safety_critical: fd.get("is_safety_critical") === "on",
-      is_active: fd.get("is_active") !== "off",
+      is_active: fd.has("is_active"),
       description: (fd.get("description") as string) || null,
     };
     try {
@@ -92,6 +95,9 @@ export function DesignationWorkspaceForm({ designation, mode, companies = [] }: 
       title={isViewing ? "View Designation" : isEditing ? "Edit Designation" : "New Designation"}
       subtitle={designation ? `${designation.designation_name_en} (${designation.designation_code})` : "Create a new job title / designation"}
       recordCode={designation?.designation_code}
+      headerActions={isViewing && designation && (hasGlobalPermission(authContext, "common_md.manage") || hasGlobalPermission(authContext, "common_md.designations.manage")) ? (
+        <Link className={buttonVariants({ size: "sm" })} href={`/admin/common-master-data/designations/record/${designation.id}?mode=edit`}>Edit</Link>
+      ) : undefined}
       sections={sections}
       activeSection={activeSection}
       onSectionChange={setActiveSection}
@@ -113,6 +119,9 @@ export function DesignationWorkspaceForm({ designation, mode, companies = [] }: 
               <select id="owner_company_id" name="owner_company_id" defaultValue={getDraftDefault("owner_company_id", designation?.owner_company_id ?? "")} disabled={disabled} className="flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40">
                 <option value="">All Organizations</option>
                 {companies.map(c => <option key={c.id} value={c.id}>{c.legal_name_en}</option>)}
+                {designation?.owner_company_id != null && !companies.some(c => c.id === designation.owner_company_id) && (
+                  <option value={designation.owner_company_id}>{designation.owner_company?.legal_name_en ?? "Current organization"} (retained)</option>
+                )}
               </select>
             </div>
             <div className="col-span-6 space-y-1.5">

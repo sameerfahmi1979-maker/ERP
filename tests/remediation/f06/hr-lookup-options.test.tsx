@@ -7,6 +7,7 @@ import {FluentProvider,webLightTheme} from '@fluentui/react-components';
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {WorkspaceUiMemoryProvider} from '@/hooks/use-persistent-ui-state';
 import {HrSettingsLookupPage,type HrSettingsLookupProps} from '@/features/hr/settings/hr-settings-lookup-page';
+import {HrTrainingCategoryControl} from '@/features/hr/settings/hr-training-category-control';
 import {hrLookupOptionFields,initialHrLookupOptions,hrLookupOptionPayload} from '@/lib/hr/lookup-option-fields';
 import type {HrLookupTable} from '@/lib/hr/settings-save-contract';
 const m=vi.hoisted(()=>({create:vi.fn(),update:vi.fn(),list:vi.fn(),categories:vi.fn()}));
@@ -68,16 +69,38 @@ it('blank optional validity is null, not zero',async()=>{
 });
 for(const entity of Object.keys(hrLookupOptionFields) as HrLookupTable[])it(entity+': all approved configuration controls are rendered and submitted',async()=>{
  m.create.mockResolvedValue({success:true,data:{id:20,entity,revision:'1',changed:true,replayed:false}});
+ if(entity==='hr_training_types')m.categories.mockResolvedValue({success:true,data:{data:[{...base,id:72,name_en:'Safety',is_active:true}],total:1}});
  view({entity,title:'Configuration Records'});open();
  for(const field of hrLookupOptionFields[entity]??[]){
   if(field.kind==='flag')expect(screen.getByRole('switch',{name:field.label,exact:true})).toBeTruthy();
   else expect(screen.getByLabelText(field.label,{exact:true})).toBeTruthy();
  }
  await waitFor(()=>expect((screen.getByRole('button',{name:'Add',exact:true}) as HTMLButtonElement).disabled).toBe(false));
+ if(entity==='hr_training_types'){await screen.findByRole('option',{name:'Safety'});fireEvent.change(screen.getByLabelText('Training category'),{target:{value:'72'}});}
  fireEvent.click(screen.getByRole('button',{name:'Add',exact:true}));
  await waitFor(()=>expect(m.create).toHaveBeenCalledOnce());
- expect(m.create.mock.calls[0][0]).toMatchObject(hrLookupOptionPayload(entity,initialHrLookupOptions(entity)));
+ expect(m.create.mock.calls[0][0]).toMatchObject({...hrLookupOptionPayload(entity,initialHrLookupOptions(entity)),...(entity==='hr_training_types'?{training_category_id:72}:{})});
  await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
+});
+it('active training type requires its one category control next to the name',async()=>{
+ view({entity:'hr_training_types',title:'Training Types'});open();
+ await waitFor(()=>expect((screen.getByLabelText('Training category') as HTMLSelectElement).disabled).toBe(false));
+ const category=screen.getByLabelText('Training category') as HTMLSelectElement;
+ expect(category.required).toBe(true);expect(screen.getAllByLabelText('Training category')).toHaveLength(1);
+ expect(screen.getByLabelText('Name (English)').compareDocumentPosition(category)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Add',exact:true}));expect(m.create).not.toHaveBeenCalled();
+});
+it('a category reassignment warns and reports preserved certificate history',async()=>{
+ m.categories.mockResolvedValue({success:true,data:{data:[{...base,id:72,name_en:'Safety',is_active:true},{...base,id:73,name_en:'Health',is_active:true}],total:2}});
+ m.update.mockResolvedValue({success:true,data:{id:20,entity:'hr_training_types',revision:'5',changed:true,replayed:false}});
+ view({entity:'hr_training_types',title:'Training Types',initialData:[{...base,is_active:true,training_category_id:72,training_category:{id:72,name_en:'Safety'}}]});
+ expect(screen.getByText('Training category: Safety')).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Edit record'}));await screen.findByRole('option',{name:'Health'});
+ fireEvent.change(screen.getByLabelText('Training category'),{target:{value:'73'}});
+ expect(screen.getByRole('note').textContent).toContain('will not rewrite existing employee certificates');
+ fireEvent.click(screen.getByRole('button',{name:'Save',exact:true}));await waitFor(()=>expect(m.update).toHaveBeenCalledOnce());
+ expect(m.update.mock.calls[0][1].training_category_id).toBe(73);
+ expect(await screen.findByText(/Existing employee certificates were preserved/)).toBeTruthy();
 });
 it('uncertain option changes freeze every control and recover the exact original submission',async()=>{
  m.create.mockRejectedValueOnce(Error('Synthetic response loss'));view();open();
@@ -94,4 +117,19 @@ it('an incomplete edit projection disables missing options and leaves them out o
  fireEvent.change(screen.getByLabelText('Name (English)'),{target:{value:'Only name changed'}});
  fireEvent.click(screen.getByRole('button',{name:'Save',exact:true}));await waitFor(()=>expect(m.update).toHaveBeenCalledOnce());
  for(const key of ['is_paid','requires_approval','reset_basis','default_entitlement_days'])expect(m.update.mock.calls[0][1]).not.toHaveProperty(key);
+});
+it('category dropdown retains native affordance and uniquely associated labels across open forms',async()=>{
+ m.categories.mockResolvedValue({success:true,data:{data:[{...base,id:72,name_en:'Safety',is_active:true}],total:1}});
+ const createChange=vi.fn(),editChange=vi.fn(),ready=vi.fn();
+ render(<><HrTrainingCategoryControl value="" required disabled={false} missing={false} onChange={createChange} onReady={ready}/><HrTrainingCategoryControl value="72" existingId={72} existingName="Safety" required disabled={false} missing={false} onChange={editChange} onReady={ready}/></>);
+ const [create,edit]=screen.getAllByRole('combobox',{name:'Training category'}) as HTMLSelectElement[];
+ await waitFor(()=>expect(create.disabled||edit.disabled).toBe(false));
+ expect(create.id).not.toBe(edit.id);
+ for(const control of [create,edit]){
+  expect(control.tagName).toBe('SELECT');expect(control.style.appearance).toBe('auto');
+  expect(control.labels?.length).toBe(1);
+  expect(document.getElementById(control.getAttribute('aria-describedby')!)?.textContent).toContain('Choose a category from the list');
+ }
+ expect(edit.value).toBe('72');fireEvent.change(create,{target:{value:'72'}});
+ expect(createChange).toHaveBeenCalledWith('72');expect(editChange).not.toHaveBeenCalled();
 });

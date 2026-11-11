@@ -32,7 +32,9 @@ export async function runPhotoUpload(raw:PhotoUploadState,p:Ports) {
   current();
   if(s.receipt)return s.receipt;
   if(!s.creation){
-    if(p.prepare){const prepared=await p.prepare();current();if(!prepared.success||!prepared.title)throw Error(prepared.error??'Photo subject preparation unavailable.');s={...s,title:prepared.title};await retain();}
+    // Preparation rechecks the subject's current authority; the retained title
+    // is immutable. Renaming it here makes the durable journal reject a retry.
+    if(p.prepare){const prepared=await p.prepare();current();if(!prepared.success||!prepared.title)throw Error(prepared.error??'Photo subject preparation unavailable.');}
     let admission=await p.admit(s.request);current();
     if(admission.recovery){
       const r=admission.recovery;

@@ -4,15 +4,15 @@ vi.mock("@/lib/rbac/check", async () => ({...await import("@/lib/rbac/scope"), g
 vi.mock("@/server/reads/hr-dashboard", () => ({readHrDashboard: state.read}));
 vi.mock("next/navigation", () => ({redirect: (path: string) => {throw Error(`REDIRECT:${path}`);}}));
 vi.mock("@/features/hr/dashboard/hr-dashboard-page-client", () => ({HrDashboardPageClient: () => null}));
+vi.mock("@/features/hr/dashboard/hr-dashboard-workspace", () => ({HrDashboardWorkspace: () => null}));
 import Page from "@/app/(protected)/admin/hr/dashboard/page";
-import {hrDashboardReadIdentity} from "@/lib/reads/hr-dashboard-schema";
 import type {AuthContext} from "@/lib/rbac/check";
 const ctx = {profile: {id: 1, auth_user_id: "synthetic"}, isAccountActive: true, accountStatus: "active", permissionCodes: ["hr.dashboard.view"], roleCodes: [], roleAssignments: []} as unknown as AuthContext;
 afterEach(() => {vi.clearAllMocks();});
-it("SSR passes one validated context directly to composition and seeds exactly that identity", async () => {
+it("SSR passes the validated identity to the single DMS-style client read path without a private seed", async () => {
   const data = {synthetic: true}; state.auth.mockResolvedValue(ctx); state.read.mockResolvedValue({success: true, data});
-  const page = await Page(); expect(state.auth).toHaveBeenCalledTimes(1); expect(state.read).toHaveBeenCalledExactlyOnceWith({}, ctx);
-  expect(page.props.authContext).toBe(ctx); expect(page.props.initialRead).toEqual({identity: hrDashboardReadIdentity(ctx), data});
+  const page = await Page(); expect(state.auth).toHaveBeenCalledTimes(1); expect(state.read).not.toHaveBeenCalled();
+  expect(page.props.authContext).toBe(ctx); expect(page.props.initialRead).toBeUndefined();
 });
 it("SSR failure is not serialized as successful empty initialData", async () => {
   state.auth.mockResolvedValue(ctx); state.read.mockResolvedValue({success: false, error: "Unavailable"});

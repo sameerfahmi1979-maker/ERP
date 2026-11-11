@@ -1,4 +1,5 @@
 "use client";
+import { WorklistColgroup, WorklistScrollRegion } from "@/components/erp/table/worklist-fit-control";
 import {useState,useEffect,useRef} from "react";
 import {useQueryClient} from "@tanstack/react-query";
 import {useServerPage,canonicalReadParams} from "@/hooks/use-server-page";
@@ -94,7 +95,7 @@ const DMS_LIST_FIELDS: DmsListField[] = [
     "id": "actions",
     "label": "Actions",
     "type": "text",
-    "width": 160
+    "width": 340
   }
 ];
 
@@ -139,7 +140,7 @@ export function DmsUploadSessionTable({
     <><DmsListTools view={listView} search /><p className="text-xs text-muted-foreground">Search file name, session code or status. Date filters use UTC dates.</p>
     {read.isBusy&&<p role="status">Loading upload sessions…</p>}
     <div className="flex items-center gap-2 mb-2"><Button variant="outline" disabled={!ready||page<=1} onClick={()=>setPosition({criteria,page:page-1})}>Previous</Button><span>Page {page}{ready?` of ${pages}`:""}</span><Button variant="outline" disabled={!ready||page>=pages} onClick={()=>setPosition({criteria,page:page+1})}>Next</Button><Button variant="outline" disabled={read.isBusy} onClick={()=>read.refetch()}>Refresh sessions</Button></div><div className="rounded-md border border-border overflow-auto">
-      <div role="region" aria-label="upload-sessions table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
+      <WorklistScrollRegion attach={listView.viewport.attachViewport} aria-label="upload-sessions table"><table className="w-full table-fixed text-sm" {...listView.viewport.tableProps}><WorklistColgroup viewport={listView.viewport} />
         <thead>
           <ConfiguredRow columns={listView.columns} className="border-b border-border bg-muted/30">
             <th data-column="original_filename" className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">File</th>
@@ -148,7 +149,7 @@ export function DmsUploadSessionTable({
             <th data-column="is_duplicate" className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Duplicate</th>
             <th data-column="uploaded_at" className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Uploaded</th>
             <th data-column="expires_at" className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Expires</th>
-            <th data-column="actions" className="px-4 py-2.5 w-48" />
+            <th data-column="actions" className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">Actions</th>
           </ConfiguredRow>
         </thead>
         <tbody className="divide-y divide-border/50">{listView.rows.length === 0 && <tr><td colSpan={listView.visible.length} className="p-4 text-center text-sm text-muted-foreground">No loaded records match your filters.</td></tr>}
@@ -214,13 +215,13 @@ export function DmsUploadSessionTable({
                 </td>
                 <td data-column="actions" className="px-4 py-2.5">
                   {isActionable && (
-                    <div className="flex items-center gap-1 justify-end">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5 [&>button]:max-w-full [&>button]:h-auto [&>button]:min-h-7 [&>button]:whitespace-normal [&>button]:py-1">
                       {/* AI review already complete — show direct Review link instead of re-running AI */}
                       {isAiReviewed ? (
-                        <Link href={`/dms/intake/${s.session_code}`}>
+                        <Link className="min-w-0 max-w-full" href={`/dms/intake/${s.session_code}`}>
                           <Button aria-label="AI review is ready — click to review and create document"
                             size="sm"
-                            className="h-7 text-xs gap-1 bg-green-600 hover:bg-green-700 text-white"
+                            className="h-auto min-h-7 max-w-full whitespace-normal py-1 text-xs gap-1 bg-green-600 hover:bg-green-700 text-white"
                             title="AI review is ready — click to review and create document"
                           >
                             <ClipboardCheck className="h-3 w-3" />
@@ -239,7 +240,7 @@ export function DmsUploadSessionTable({
                           >
                             {isAiRunning ? (
                               <>
-                                <div className="h-3 w-3 rounded-full border border-white border-t-transparent animate-spin" />
+                                <div aria-hidden="true" className="h-3 w-3 shrink-0 rounded-full border border-white border-t-transparent animate-spin" />
                                 AI Running…
                               </>
                             ) : (
@@ -304,7 +305,7 @@ export function DmsUploadSessionTable({
             );
           })}
         </tbody>
-      </table></div>
+      </table></WorklistScrollRegion>
     </div></>
   );
 }

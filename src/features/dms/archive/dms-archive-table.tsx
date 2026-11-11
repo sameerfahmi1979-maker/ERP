@@ -1,4 +1,5 @@
 "use client";
+import { WorklistColgroup, WorklistScrollRegion } from "@/components/erp/table/worklist-fit-control";
 
 import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
 import { ConfiguredRow } from "@/components/erp/table/list-controls";
@@ -345,7 +346,7 @@ export function DmsArchiveTable({
       {archiveRead.isBusy && <p role="status">Loading matching archived documents…</p>}
       {archiveRead.isError && <div role="alert">Archived documents could not be loaded. <Button onClick={()=>void archiveRead.refetch()}>Retry archive</Button></div>}
 <div className="rounded-md border border-border overflow-hidden">
-        <div role="region" aria-label="archive table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
+        <WorklistScrollRegion attach={listView.viewport.attachViewport} aria-label="archive table"><table className="w-full table-fixed text-sm" {...listView.viewport.tableProps}><WorklistColgroup viewport={listView.viewport} />
           <thead>
             <ConfiguredRow columns={listView.columns} className="bg-muted/40 border-b border-border">
               <SortColHeader data-column="document_no"
@@ -504,7 +505,7 @@ export function DmsArchiveTable({
               ))
             )}
           </tbody>
-        </table></div>
+        </table></WorklistScrollRegion>
       </div>
 
       <TablePagination

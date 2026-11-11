@@ -2,7 +2,11 @@
 import {useCallback,useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useQuery} from '@tanstack/react-query';
-import {Button} from '@/components/ui/button';
+import {Button,buttonVariants} from '@/components/ui/button';
+import {Tooltip,TooltipContent,TooltipProvider,TooltipTrigger} from '@/components/ui/tooltip';
+import {Crop,Download,Eye,EyeOff,FileDown,RefreshCw,Trash2,type LucideIcon} from 'lucide-react';
+import {HrIconButton} from './hr-icon-button';
+import {cn} from '@/lib/utils';
 import {Input} from '@/components/ui/input';
 import {ERPCombobox} from '@/components/erp/combobox';
 import {Label} from '@/components/ui/label';
@@ -14,13 +18,21 @@ import {defaultPhotoCrop,parsePhotoFraming,type PhotoSource} from '@/lib/hr/phot
 import type {SubjectPhotoDraft} from './use-subject-photo-draft';
 import {PhotoThumbnail} from './photo-thumbnail';
 const Editor=dynamic(()=>import('./photo-framing-editor'),{ssr:false,loading:()=> <p>Loading photo controls…</p>});
+
+function PhotoAction({label,icon:Icon,href,onClick,busy=false}:{label:string;icon:LucideIcon;href?:string;onClick?:()=>void;busy?:boolean}){
+ const icon=<Icon aria-hidden="true" className={busy?'size-4 animate-spin motion-reduce:animate-none':'size-4'}/>;
+ const className='size-11 sm:size-9';
+ return <Tooltip><TooltipTrigger render={href
+  ? <a href={href} aria-label={label} className={cn(buttonVariants({variant:'outline',size:'icon'}),className)}>{icon}</a>
+  : <Button type="button" variant="outline" size="icon" className={className} aria-label={label} aria-busy={busy||undefined} disabled={busy} onClick={onClick}>{icon}</Button>}/><TooltipContent>{label}</TooltipContent></Tooltip>;
+}
 type Props={employee:number|null;dependent?:number|null;subject?:'employee'|'dependent';identity:string;value:number|null;disabled:boolean;onValue:(id:number|null)=>void;
  framing?:string;onFraming?:(frame:string,pending?:boolean)=>void;draft?:SubjectPhotoDraft};
 export function SubjectPhoto(props:Props){return <Photo key={props.identity+':'+(props.subject??'employee')} {...props}/>;}
 /** Read-only dependent cards hydrate private photos only on explicit opening. */
 export function SubjectPhotoReadOnly(props:Pick<Props,'employee'|'dependent'|'subject'|'identity'>){
  const [open,setOpen]=useState(false);
- return <div className="mt-2"><Button type="button" variant="outline" size="sm" aria-expanded={open} onClick={()=>setOpen(v=>!v)}>{open?'Hide photo':'View photo'}</Button>{open&&<ReadOnlyPhoto {...props}/>}</div>;
+ return <div className="mt-2"><HrIconButton aria-label={open?'Hide photo':'View photo'} aria-expanded={open} onClick={()=>setOpen(v=>!v)}>{open?<EyeOff className="size-4"/>:<Eye className="size-4"/>}</HrIconButton>{open&&<ReadOnlyPhoto {...props}/>}</div>;
 }
 function ReadOnlyPhoto(props:Pick<Props,'employee'|'dependent'|'subject'|'identity'>){
  const life=useReadLifetime(props.identity+':readonly-photo:'+props.employee+':'+props.dependent);
@@ -32,6 +44,7 @@ function ReadOnlyPhoto(props:Pick<Props,'employee'|'dependent'|'subject'|'identi
 }
 function Photo({employee,dependent=null,subject,identity,value,disabled,onValue,framing='',onFraming,draft}:Props){
  const [search,setSearch]=useState(''),[after,setAfter]=useState(0),[failed,setFailed]=useState<string|null>(null),[error,setError]=useState('');
+ const [removeOpen,setRemoveOpen]=useState(false);
  const [editor,setEditor]=useState<{source:PhotoSource;url:string}|null>(null),life=useReadLifetime(identity+':'+employee+':'+dependent+':photo');
  const saved=!!employee&&(subject!=='dependent'||!!dependent),locked=disabled||draft?.busy||!!draft?.retained||draft?.blocked;
  const selected=useQuery({queryKey:['hr','subject-photo',identity,employee,dependent,value],enabled:life.enabled&&saved&&value!==null,gcTime:0,staleTime:0,retry:false,refetchOnWindowFocus:false,queryFn:async()=>{const r=await readSubjectPhotos({employee,dependent,document:value});if(!life.active)throw Error('Photo opening retired.');if(!r.success)throw Error(r.error);return r.rows.find(x=>x.document_id===value)??null;}});
@@ -54,7 +67,7 @@ function Photo({employee,dependent=null,subject,identity,value,disabled,onValue,
  {preview&&failed!=='local'?<PhotoThumbnail url={preview} frame={staleFrame?null:frame} label={label} onError={previewFailed}/>:<div className="flex h-28 w-24 items-center justify-center rounded border border-border text-center text-xs text-muted-foreground">{value===null?'No photo':selected.isFetching?'Checking photo…':'Photo unavailable'}</div>}
  <div className="min-w-0 flex-1 space-y-2">
  {!saved&&<p className="text-sm text-muted-foreground">{draft?'Choose a photo here. Save creates the person first, then finishes the photo.':'Save the person first to select a linked private photo.'}</p>}
- {saved&&!disabled&&<><ERPCombobox ariaLabel={label} value={value} options={options} allowClear disabled={!!locked||choices.isPending||choices.isError||!!draft?.local} filterFn={()=>true} onSearchQueryChange={v=>{setSearch(v);setAfter(0);}} onValueChange={v=>{if(life.active){onValue(v?Number(v):null);onFraming?.('');setFailed(null);setEditor(null);}}}/>
+ {saved&&!disabled&&<><ERPCombobox ariaLabel={label} value={value} options={options} allowClear disabled={!!locked||choices.isPending||choices.isError||!!draft?.local} filterFn={()=>true} onSearchQueryChange={v=>{setSearch(v);setAfter(0);}} onValueChange={v=>{if(life.active){onValue(v?Number(v):null);onFraming?.('');setFailed(null);setEditor(null);setRemoveOpen(false);}}}/>
  {choices.data?.hasMore&&<Button type="button" variant="outline" onClick={()=>setAfter(choices.data.rows.at(-1)!.document_id)}>More photos</Button>}{after>0&&<Button type="button" variant="outline" onClick={()=>setAfter(0)}>First photos</Button>}</>}
  {draft&&!disabled&&<>
  <label className="block text-sm">{value?'Replace photo':'Upload photo'}<Input type="file" accept="image/jpeg,image/png,image/webp" disabled={disabled||draft.busy} onChange={e=>{const f=e.target.files?.[0];if(f)void act(async()=>{const source=await draft.choose(f);if(!life.active)return;setFailed(null);onFraming?.(JSON.stringify(draft.retained?.framing??{version:1,source,rotation:0,crop:defaultPhotoCrop(source)}),true);});e.target.value='';}}/></label>
@@ -76,12 +89,13 @@ function Photo({employee,dependent=null,subject,identity,value,disabled,onValue,
   </label>;
  })}</div>}
  </>}
- <div className="flex flex-wrap gap-2">
- {onFraming&&!locked&&preview&&<Button type="button" variant="outline" onClick={()=>void act(async()=>{const source=draft?.local?.source??(await readPhotoFramingSource({employee,dependent,document:value}));if(!life.active)return;if('success' in source){if(!source.success)throw Error(source.error);setEditor({source:source.source,url:preview});}else setEditor({source,url:preview});})}>Adjust framing</Button>}
- {!locked&&(value!==null||draft?.local)&&<Button type="button" variant="outline" onClick={()=>void act(async()=>{draft?.discard();onValue(null);onFraming?.('',false);setEditor(null);setFailed(null);})}>Remove photo</Button>}
- {download&&<><a className="text-sm text-primary underline" href={url+'&mode=download'}>Download saved photo</a><a className="text-sm text-primary underline" href={url+'&mode=original'}>Download original</a></>}
- {saved&&<Button type="button" variant="outline" size="sm" onClick={()=>{setFailed(null);void selected.refetch();if(value!==null)void state.refetch();if(!disabled)void choices.refetch();}}>Refresh permitted photos</Button>}
- </div>
+ <TooltipProvider delay={250}><div role="group" aria-label={`${label} actions`} className="flex flex-wrap gap-1.5">
+ {onFraming&&!locked&&preview&&<PhotoAction label="Adjust photo framing" icon={Crop} onClick={()=>void act(async()=>{const source=draft?.local?.source??(await readPhotoFramingSource({employee,dependent,document:value}));if(!life.active)return;if('success' in source){if(!source.success)throw Error(source.error);setEditor({source:source.source,url:preview});}else setEditor({source,url:preview});})}/>}
+ {!locked&&(value!==null||draft?.local)&&<PhotoAction label={`Remove photo from ${label==='Dependent photo'?'dependent':'employee'}`} icon={Trash2} onClick={()=>setRemoveOpen(v=>!v)}/>}
+ {download&&<><PhotoAction label="Download saved photo" icon={Download} href={url+'&mode=download'}/><PhotoAction label="Download original" icon={FileDown} href={url+'&mode=original'}/></>}
+ {saved&&<PhotoAction label="Refresh available photos" icon={RefreshCw} busy={selected.isFetching||state.isFetching||choices.isFetching} onClick={()=>{setFailed(null);void selected.refetch();if(value!==null)void state.refetch();if(!disabled)void choices.refetch();}}/>}
+ </div></TooltipProvider>
+ {removeOpen&&!locked&&(value!==null||draft?.local)&&<div role="alert" className="w-fit max-w-full space-y-2 rounded border border-border bg-muted p-3 text-sm"><p>Remove this photo from the form? Its original document will be kept.</p><div className="flex flex-wrap gap-2"><Button type="button" variant="destructive" size="sm" onClick={()=>void act(async()=>{if(!life.active)return;draft?.discard();onValue(null);onFraming?.('',false);setEditor(null);setFailed(null);setRemoveOpen(false);})}>Remove photo</Button><Button type="button" variant="outline" size="sm" onClick={()=>setRemoveOpen(false)}>Keep photo</Button></div></div>}
  <p className="text-xs text-muted-foreground">Saved with this form. Removing a photo does not delete its original document. Downloads use the last saved photo.</p>
  {staleFrame&&<p role="alert" className="text-sm text-destructive">The original photo version changed. Review its framing before saving or downloading.</p>}
  {parsedFrame.invalid&&<p role="alert" className="text-sm text-destructive">The retained framing is invalid. Adjust the current photo before saving.</p>}

@@ -1,5 +1,7 @@
 "use client";
 
+import { WorklistColgroup, WorklistFitControl, WorklistScrollRegion } from "@/components/erp/table/worklist-fit-control";
+
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, ClipboardCheck, ExternalLink, RefreshCw, Undo2, XCircle } from "lucide-react";
@@ -103,7 +105,7 @@ const COLUMNS: ListColumn[] = [
   { id: "submitter", label: "Submitted by", width: 160, visible: true },
   { id: "status", label: "Status", width: 160, visible: true },
   { id: "pending", label: "Pending", width: 110, visible: true },
-  { id: "actions", label: "Actions", width: 160, visible: true },
+  { id: "actions", label: "Actions", width: 160, visible: true, required: true },
 ];
 
 // ── Main page client ──────────────────────────────────────────────────────────
@@ -238,6 +240,7 @@ function DmsApprovalsQueueSession({ authContext }: Props) {
 
         <div className="flex flex-wrap gap-2">
           <EditColumns columns={listColumns.columns} defaults={COLUMNS} onApply={listColumns.setColumns} />
+          <WorklistFitControl viewport={listColumns.viewport} />
           <EditFilters definitions={[{ id: "status", label: "Approval status", type: "select", options: STATUS_TABS }, { id: "search", label: "Search", type: "text" }]}
             values={{ status: filters.status === "all" ? "" : filters.status, search: filters.search }}
             onApply={values => applyFilters({ status: STATUS_TABS.some(tab => tab.value === values.status) ? values.status as StatusFilter : "all", search: values.search ?? "" })}
@@ -278,8 +281,8 @@ function DmsApprovalsQueueSession({ authContext }: Props) {
               </p>
             </div>
           ) : (
-            <div role="region" aria-label="Approval queue table" tabIndex={0} className="max-w-full overflow-x-auto">
-              <table className="w-full table-fixed text-sm" style={{ minWidth: listColumns.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listColumns.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
+            <WorklistScrollRegion attach={listColumns.viewport.attachViewport} aria-label="Approval queue table">
+              <table className="w-full table-fixed text-sm" {...listColumns.viewport.tableProps}><WorklistColgroup viewport={listColumns.viewport} />
                 <thead className="bg-muted/40 border-b border-border">
                   <ConfiguredRow columns={listColumns.columns}>
                     <SortHeader data-column="document_no" field="document_no" label="Doc No" sortBy={filters.sortBy} sortDir={filters.sortDir} onSort={handleSort} className="w-32" />
@@ -443,7 +446,7 @@ function DmsApprovalsQueueSession({ authContext }: Props) {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </WorklistScrollRegion>
           )}
         </div>
 

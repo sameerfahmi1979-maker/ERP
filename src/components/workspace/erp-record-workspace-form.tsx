@@ -102,6 +102,8 @@ export interface ERPRecordWorkspaceFormProps {
    * workspace.closeTab(activeTabId), triggering the 4B dirty dialog if needed.
    */
   onRequestClose?: () => void;
+  /** Explicit Cancel may discard edits; X/Close keeps the normal dirty guard. */
+  onCancel?: () => void;
 
   // ── Child dialog inert support ─────────────────────────────────────────────
   /**
@@ -146,6 +148,7 @@ export function ERPRecordWorkspaceForm({
   onSave,
   onSaveAndClose,
   onRequestClose,
+  onCancel,
   isChildDialogOpen = false,
   isInlineTaskOpen = false,
   closeBlocked = false,
@@ -289,7 +292,7 @@ export function ERPRecordWorkspaceForm({
           {/* Footer */}
           <ERPRecordFormFooter
             mode={mode}
-            onCancel={pending || childTaskOpen || closeBlocked ? undefined : onRequestClose}
+            onCancel={pending || childTaskOpen || closeBlocked ? undefined : onCancel ?? onRequestClose}
             onSave={onSave && !isInlineTaskOpen ? () => { void runSave(onSave); } : undefined}
             onSaveAndClose={onSaveAndClose && !isInlineTaskOpen ? () => { void runSave(onSaveAndClose); } : undefined}
             hasUnsavedChanges={isDirty}

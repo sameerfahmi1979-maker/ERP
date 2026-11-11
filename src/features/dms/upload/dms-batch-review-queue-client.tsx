@@ -1,7 +1,9 @@
 "use client";
+import { WorklistColgroup, WorklistScrollRegion } from "@/components/erp/table/worklist-fit-control";
 import {useQuery,useQueryClient} from "@tanstack/react-query";
 import {readJson,retryAuthorizedRead} from "@/lib/reads/client";
 import {DmsLoadError} from "@/features/dms/dms-load-error";
+import {DmsBatchFileAiRerun} from './dms-batch-file-ai-rerun';
 import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
 import { ConfiguredRow } from "@/components/erp/table/list-controls";
 
@@ -14,7 +16,6 @@ import {
   RefreshCw,
   CheckCircle2,
   XCircle,
-  RotateCcw,
   ArrowRight,
   ArrowUpDown,
   ArrowUp,
@@ -30,10 +31,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DmsDocumentStatusBadge } from "@/features/dms/documents/dms-document-status-badge";
 import { DmsAiConfidenceBadge } from "@/features/dms/ai/dms-ai-confidence-badge";
 import { cn } from "@/lib/utils";
+import {batchIntakeProgress} from '@/lib/dms/batch-progress';
 import {
   discardDraftIntake,
   discardDraftIntakeBulk,
-  rerunBatchDraftAi,
   getNextPendingDraftInBatch,
   type DmsUploadBatchRow,
   type DmsBatchDraftRow,
@@ -42,6 +43,7 @@ import { runDmsBatchOrchestration } from "@/server/actions/dms/orchestration";
 import { Sparkles } from "lucide-react";
 
 interface Props {
+  canRunPipeline?: boolean;
   batch: DmsUploadBatchRow;
   initialDrafts: DmsBatchDraftRow[];
   initialUpdatedAt?: number;
@@ -80,7 +82,7 @@ function draftStatusSortLabel(d: DmsBatchDraftRow): string {
   if (d.intakeStatus === "failed") return "Failed";
   if (d.intakeStatus === "discarded") return "Discarded";
   if (d.documentStatus) return d.documentStatus;
-  return "Processing";
+  return batchIntakeProgress(d.intakeStatus).label;
 }
 
 function SortableTh({
@@ -126,7 +128,7 @@ function SortableTh({
 const BATCH_FIELDS: DmsListField[] = [{"id":"selection","label":"Selection","required":true,"width":48},{"id":"index","label":"Row","width":48},{"id":"title","label":"File / AI title","path":"searchTitle","required":true,"width":260},{"id":"docNo","label":"Document number","path":"documentNo","width":160},{"id":"type","label":"Type","path":"documentTypeName","width":160},{"id":"confidence","label":"Confidence","path":"confidenceLabel","width":140},{"id":"status","label":"Status","path":"searchStatus","width":160},{"id":"actions","label":"Actions","required":true,"width":180}];
 
 export function DmsBatchReviewQueueClient(props:Props){return <BatchReviewSession key={props.batch.id} {...props} />;}
-function BatchReviewSession({ batch, initialDrafts, initialUpdatedAt=0 }: Props) {
+function BatchReviewSession({ batch, initialDrafts, initialUpdatedAt=0, canRunPipeline=false }: Props) {
   const router = useRouter();
   const { openTab } = useWorkspace();
   const batchReviewRoute = `/dms/inbox/batch/${batch.batch_code}`;
@@ -145,7 +147,7 @@ function BatchReviewSession({ batch, initialDrafts, initialUpdatedAt=0 }: Props)
   },[initialDrafts,initialUpdatedAt,batch.id,qc]);
   const ready=read.isSuccess&&!read.isFetching;
   const drafts=ready?read.data:[];
-  const listView = useDmsListView(`batch-review:${batch.id}`, drafts.map(d => ({ ...d, searchTitle: `${d.aiTitle ?? ""} ${d.originalFilename}`, searchStatus: draftStatusSortLabel(d) })), BATCH_FIELDS);
+  const listView = useDmsListView(`batch-review:${batch.id}`, drafts.map(d => ({ ...d, searchTitle: `${d.aiTitle ?? ""} ${d.originalFilename}`, searchStatus: draftStatusSortLabel(d) })), BATCH_FIELDS, { columnPreferenceId: "batch-review" });
   const [isPending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<number | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -173,6 +175,9 @@ function BatchReviewSession({ batch, initialDrafts, initialUpdatedAt=0 }: Props)
   const approved = drafts.filter((d) => d.documentStatus === "active").length;
   const discarded = drafts.filter((d) => d.intakeStatus === "discarded").length;
   const failed = drafts.filter((d) => d.intakeStatus === "failed").length;
+  const unfinished = drafts.filter(d=>!d.documentId&&!['discarded','approved','expired','cancelled'].includes(d.intakeStatus));
+  const pipelineReady = drafts.some(d=>!!d.documentId&&!['discarded','failed'].includes(d.intakeStatus));
+  const visibleBatchStatus=ready&&drafts.length>0&&drafts.every(d=>!d.documentId&&d.intakeStatus==='uploaded')?'Upload incomplete':batch.status.replace(/_/g,' ');
 
   // A draft can be discarded unless it's already approved (active) or discarded.
   const isDiscardable = useCallback(
@@ -313,23 +318,6 @@ function BatchReviewSession({ batch, initialDrafts, initialUpdatedAt=0 }: Props)
     });
   }, [router]);
 
-  const handleRerun = useCallback((sessionId: number) => {
-    if (flight.current) return;
-    flight.current = true; setFailure(null);
-    setBusyId(sessionId);
-    startTransition(async () => {
-      try {
-      const res = await rerunBatchDraftAi(sessionId);
-      if (res.success) {
-        toast.success("AI re-run started");
-        router.refresh();
-      } else {
-        setFailure("AI could not be restarted. Refresh the batch and check your access.");
-      }
-      } catch { setFailure("The AI request could not be confirmed. Refresh the batch before retrying."); }
-      finally { flight.current = false; setBusyId(null); }
-    });
-  }, [router]);
 
   if(read.isError)return <DmsLoadError subject="batch drafts" pending={read.isFetching} retry={()=>read.refetch()} />;
   if(!ready)return <p role="status">Loading batch drafts…</p>;
@@ -347,16 +335,17 @@ function BatchReviewSession({ batch, initialDrafts, initialUpdatedAt=0 }: Props)
               variant="outline"
               className={cn("text-[10px] border", BATCH_STATUS_STYLES[batch.status] ?? "bg-muted text-foreground border-border")}
             >
-              {batch.status.replace(/_/g, " ")}
+              {visibleBatchStatus}
             </Badge>
           </div>
           <div className="flex items-center gap-2">
+            {unfinished.length>0&&<Button type="button" size="sm" variant="outline" disabled={isPending||isOrchRunning} onClick={()=>router.push(`/dms/inbox?recoverBatch=${encodeURIComponent(batch.batch_code)}`)}>Recover original uploads</Button>}
             {/* AI Pipeline button (ORCH.1) — runs best-effort AI on all drafts */}
             <Button aria-label="Run full AI pipeline (summary, intelligence, embedding, tags, links) on all pending drafts. One-by-one approval is still required."
               size="sm"
               variant="outline"
               onClick={handleRunBatchOrchestration}
-              disabled={isOrchRunning || isPending}
+              disabled={!canRunPipeline || !ready || !pipelineReady || isOrchRunning || isPending}
               className="border-violet-200 text-violet-700 hover:bg-violet-50 gap-1.5 dark:border-violet-800 dark:text-violet-200 dark:hover:bg-violet-950"
               title="Run full AI pipeline (summary, intelligence, embedding, tags, links) on all pending drafts. One-by-one approval is still required."
             >
@@ -394,6 +383,8 @@ function BatchReviewSession({ batch, initialDrafts, initialUpdatedAt=0 }: Props)
           </div>
         </div>
 
+        {unfinished.length>0&&<p role="status" className="text-sm text-muted-foreground">{unfinished.length} file(s) have no confirmed draft yet. Recover the original uploads to check stored files and continue. If files are missing, reselect the exact originals. AI enrichment becomes available after a draft exists.</p>}
+
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
           <StatCard label="Total" value={batch.total_files} />
           <StatCard label="Processed" value={batch.processed_files} />
@@ -415,9 +406,9 @@ function BatchReviewSession({ batch, initialDrafts, initialUpdatedAt=0 }: Props)
 
       {/* Drafts table */}
       <DmsListTools view={listView} search />
-      <div role="region" aria-label="Batch drafts" tabIndex={0} className="rounded-sm border bg-card max-w-full overflow-x-auto">
-        <table className="w-full text-sm table-fixed" style={{ minWidth: listView.visible.reduce((sum,c)=>sum+c.width,0) }}>
-          <colgroup>{listView.visible.map(c=><col key={c.id} style={{width:c.width}} />)}</colgroup>
+      <WorklistScrollRegion attach={listView.viewport.attachViewport} aria-label="Batch drafts" className="rounded-sm border bg-card">
+        <table className="w-full text-sm table-fixed" {...listView.viewport.tableProps}>
+          <WorklistColgroup viewport={listView.viewport} />
           <thead className="bg-muted/40 text-xs text-muted-foreground">
             <ConfiguredRow columns={listView.columns}>
               <th data-column="selection" className="px-3 py-2">
@@ -474,7 +465,6 @@ function BatchReviewSession({ batch, initialDrafts, initialUpdatedAt=0 }: Props)
               const isPendingReview = d.documentStatus === "pending_ai_review";
               const isFailed = d.intakeStatus === "failed";
               const isDiscarded = d.intakeStatus === "discarded";
-              const rowBusy = busyId === d.sessionId && isPending;
               const canDiscardRow = isDiscardable(d);
               return (
                 <ConfiguredRow columns={listView.columns} key={d.sessionId} className="border-t hover:bg-muted/20">
@@ -522,7 +512,10 @@ function BatchReviewSession({ batch, initialDrafts, initialUpdatedAt=0 }: Props)
                     ) : d.documentStatus ? (
                       <DmsDocumentStatusBadge status={d.documentStatus} />
                     ) : (
-                      <Badge variant="outline" className="text-[10px]">Processing</Badge>
+                      <div className="space-y-1">
+                        <Badge variant="outline" className="text-[10px] whitespace-normal">{batchIntakeProgress(d.intakeStatus).label}</Badge>
+                        <div role="progressbar" aria-label={`${d.originalFilename}: ${batchIntakeProgress(d.intakeStatus).label}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={batchIntakeProgress(d.intakeStatus).value} aria-valuetext={batchIntakeProgress(d.intakeStatus).label} className="h-1.5 rounded bg-muted overflow-hidden"><div className="h-full bg-primary" style={{width:`${batchIntakeProgress(d.intakeStatus).value}%`}} /></div>
+                      </div>
                     )}
                   </td>
                   <td data-column="actions" className="px-3 py-2">
@@ -539,18 +532,8 @@ function BatchReviewSession({ batch, initialDrafts, initialUpdatedAt=0 }: Props)
                           Review
                         </Button>
                       )}
-                      {(isPendingReview || isFailed) && (
-                        <Button aria-label="Re-run AI for this draft"
-                          size="sm"
-                          variant="outline"
-                          className="h-7 w-7 p-0"
-                          onClick={() => handleRerun(d.sessionId)}
-                          disabled={isPending}
-                          title="Re-run AI for this draft"
-                        >
-                          {rowBusy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-                        </Button>
-                      )}
+                      {canRunPipeline&&!isDiscarded&&d.documentId&&<DmsBatchFileAiRerun sessionId={d.sessionId}/>}
+                      {!isDiscarded&&!d.documentId&&<Button type="button" size="sm" variant="outline" disabled={isPending} onClick={()=>router.push(`/dms/inbox?recoverBatch=${encodeURIComponent(batch.batch_code)}`)}>Recover / start AI</Button>}
                       {!isDiscarded && d.documentStatus !== "active" && (
                         <Button aria-label="Discard this draft"
                           size="sm"
@@ -586,7 +569,7 @@ function BatchReviewSession({ batch, initialDrafts, initialUpdatedAt=0 }: Props)
             })}
           </tbody>
         </table>
-      </div>
+      </WorklistScrollRegion>
     </div>
   );
 }

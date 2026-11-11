@@ -10,7 +10,7 @@ import {entityDocumentsCriteriaSchema,entityDocumentsResponseSchema,entityDocume
   type EntityDocumentsCriteria,type EntityDocumentsResponse,type DmsEntityDocumentRow,type AvailableDmsDocumentOption,type DmsEntityDocumentComplianceSummary} from "@/lib/reads/dms-entity-documents-schema";
 const id=z.number().int().positive().refine(Number.isSafeInteger),text=z.string().nullable();
 const linkSchema=z.object({id,document_id:id,is_primary:z.boolean(),link_role:text,linked_at:z.string()}).strip();
-const documentSchema=z.object({id,document_no:z.string(),title:z.string(),status:z.string(),deleted_at:text,legacy_document_code:text,description:text,confidentiality_level:z.string(),issue_date:text,expiry_date:text,migrated_from_table:text,
+const documentSchema=z.object({id,document_no:z.string(),title:z.string(),status:z.string(),is_archived:z.boolean(),deleted_at:text,legacy_document_code:text,description:text,confidentiality_level:z.string(),issue_date:text,expiry_date:text,migrated_from_table:text,
   document_type_id:id.nullable(),document_type:z.object({type_code:text,name_en:text}).strip().nullable(),ai_risk_level:text,ai_risk_score:z.number().finite().nullable(),completeness_score:z.number().finite().nullable(),created_at:z.string(),updated_at:z.string(),
 }).strip();
 type Document=z.infer<typeof documentSchema>;
@@ -23,7 +23,7 @@ export const ENTITY_DOCUMENTS_TIMEOUT_MS=15000;
 const MAX_REQUESTS=250,BATCH=200;
 class TooLarge extends Error{}
 class ParentUnavailable extends Error{}
-const DOC_FIELDS="id,document_no,title,status,deleted_at,legacy_document_code,description,confidentiality_level,issue_date,expiry_date,migrated_from_table,document_type_id,document_type:dms_document_types(type_code,name_en),ai_risk_level,ai_risk_score,completeness_score,created_at,updated_at";
+const DOC_FIELDS="id,document_no,title,status,is_archived,deleted_at,legacy_document_code,description,confidentiality_level,issue_date,expiry_date,migrated_from_table,document_type_id,document_type:dms_document_types(type_code,name_en),ai_risk_level,ai_risk_score,completeness_score,created_at,updated_at";
 const batches=(ids:number[])=>Array.from({length:Math.ceil(ids.length/BATCH)},(_,i)=>ids.slice(i*BATCH,(i+1)*BATCH));
 export const ENTITY_DOCUMENT_PARENTS:Readonly<Record<string,{table:string;soft:boolean}>>={company:{table:"owner_companies",soft:false},branch:{table:"branches",soft:false},site:{table:"work_sites",soft:true},party:{table:"parties",soft:false},employee:{table:"employees",soft:true},employee_dependent:{table:"employee_dependents",soft:true}};
 type Collection={kind:"list";rows:DmsEntityDocumentRow[]}|{kind:"attach";rows:AvailableDmsDocumentOption[]}|{kind:"summary";summary:DmsEntityDocumentComplianceSummary};
@@ -94,11 +94,16 @@ async function execute(input:unknown,context:AuthContext|undefined,callerSignal:
       if(legacy&&p.operation==="attach")return {success:true,collection:{kind:"attach",rows}};
       return output(p.operation==="selected"?{criteria:p,asOf,availability:"available",rows}:{criteria:p,asOf,availability:"available",totalCount,rows});
     }
-    const docs=await readDocs(linkedIds),byId=new Map(docs.map(d=>[d.id,d]));
+    const docs = await readDocs(linkedIds);
+    const excludedEmployeeDocumentIds = new Set(
+      p.entityType === "employee"
+        ? docs.filter(d => d.is_archived || d.deleted_at !== null || ["archived", "superseded", "deleted"].includes(d.status)).map(d => d.id)
+        : []
+    );
+    // Keep the complete protected read for coverage checks. Use the same
+    // current-document set for the employee list and its compliance counts.
+    const byId = new Map(docs.filter(d => !excludedEmployeeDocumentIds.has(d.id)).map(d => [d.id, d]));
     if(p.operation==="summary"){
-      // Preserve the original summary's link cardinality and status treatment
-      // for visible documents; unlike the list, archived/deleted statuses were
-      // not filtered here. An invisible document is never counted as visible.
       const visible=links.flatMap(l=>{const d=byId.get(l.document_id);return d?[d]:[];});
       const global=await scalar("current_user_is_global_admin");let missingRequiredDocuments:number|null=null;
       if(global){
@@ -114,8 +119,18 @@ async function execute(input:unknown,context:AuthContext|undefined,callerSignal:
       // so a company-only assignment is restricted, never a fabricated zero.
       const canFindings=global||await scalar("current_user_has_permission",{permission_code:"ai.compliance.view"})||await scalar("current_user_has_permission",{permission_code:"ai.common.admin"})||await scalar("current_user_has_role",{role_code:"system_admin"});
       if(canFindings){
-        const r=await select("erp_ai_compliance_findings","id",true).eq("entity_type",p.entityType).eq("entity_id",p.entityId).eq("status","open").is("deleted_at",null);
-        signal.throwIfAborted();if(r.error||r.count===null||!Number.isSafeInteger(r.count)||r.count<0)throw Error("Findings unavailable");openComplianceFindings=r.count;
+        const findingsQuery = (fields: string, head = false) => select("erp_ai_compliance_findings", fields, head)
+          .eq("entity_type", p.entityType).eq("entity_id", p.entityId).eq("status", "open").is("deleted_at", null);
+        if (excludedEmployeeDocumentIds.size) {
+          const findings = await complete(() => findingsQuery("id,document_id").order("id", { ascending: true }),
+            z.object({ id, document_id: id.nullable() }));
+          openComplianceFindings = findings.filter(f => f.document_id === null || !excludedEmployeeDocumentIds.has(f.document_id)).length;
+        } else {
+          const r = await findingsQuery("id", true);
+          signal.throwIfAborted();
+          if (r.error || r.count === null || !Number.isSafeInteger(r.count) || r.count < 0) throw Error("Findings unavailable");
+          openComplianceFindings = r.count;
+        }
       }
       const now=new Date(asOf),soon=new Date(now);soon.setDate(soon.getDate()+30);
       const summary:DmsEntityDocumentComplianceSummary={totalDocuments:visible.length,expiredDocuments:0,expiringSoonDocuments:0,missingRequiredDocuments,openComplianceFindings,highRiskDocuments:0,criticalRiskDocuments:0,latestExpiryDate:null,scope:"visible_documents"};

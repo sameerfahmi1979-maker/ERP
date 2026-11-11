@@ -1,3 +1,4 @@
+import { canRunDmsFilePipeline } from '@/lib/dms/file-pipeline-access';
 import { notFound, redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import {
@@ -48,7 +49,7 @@ export default async function DmsBatchReviewPage({ params }: BatchPageProps) {
         ]}
       />
 
-      {!draftsResult.success ? <DmsLoadError /> : <DmsBatchReviewQueueClient batch={batch} initialDrafts={drafts} initialUpdatedAt={draftsResult.updatedAt} />}
+      {!draftsResult.success ? <DmsLoadError /> : <DmsBatchReviewQueueClient canRunPipeline={canRunDmsFilePipeline(ctx)} batch={batch} initialDrafts={drafts} initialUpdatedAt={draftsResult.updatedAt} />}
     </div>
   );
 }

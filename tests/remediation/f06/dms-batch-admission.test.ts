@@ -11,7 +11,7 @@ vi.mock("@/server/actions/audit", () => ({logAudit: m.audit}));
 vi.mock("@/server/actions/dms/ai-intake", () => ({startAiIntakeFromUploadSession: m.analysis, retryAiIntake: vi.fn()}));
 vi.mock("@/server/actions/dms/standard-file-name", () => ({resolveStandardFileNameForIntakeApprove: vi.fn()}));
 vi.mock("@/lib/dms/approve/approve-ai-intake", () => ({runApproveAiIntakeSaga: vi.fn()}));
-import {bootstrapDmsBatchOrigin, createDmsUploadBatch, recoverDmsUploadBatch, discoverDmsBatchAdmissions, verifyDmsBatchUpload, recoverDmsBatchMemberUpload} from "@/server/actions/dms/batch-intake";
+import {bootstrapDmsBatchOrigin, createDmsUploadBatch, createDmsUploadBatchForContinuation, findDmsBatchAdmission, recoverDmsUploadBatch, discoverDmsBatchAdmissions, verifyDmsBatchUpload, recoverDmsBatchMemberUpload} from "@/server/actions/dms/batch-intake";
 import {createDmsUploadSession} from "@/server/actions/dms/upload-sessions";
 import {
   batchAdmissionResultSchema, batchMemberUploadResultSchema, batchContractSchema, batchFingerprint, batchManifestSchema,
@@ -240,6 +240,30 @@ describe("ordinary-auth atomic batch server adapter", () => {
   afterEach(() => {vi.useRealTimers();});
   const verify = () => verifyDmsBatchUpload({request: currentRequest, position: 0});
 
+  it('admits nine files without preparing unused whole-batch capabilities',async()=>{
+    fixture(9);
+    const result=await createDmsUploadBatchForContinuation(currentRequest);
+    expect(result).toMatchObject({state:'admitted',receipt:currentReceipt,capabilityState:'incomplete',capabilities:[],issuance_may_be_partial:false});
+    expect(m.info).not.toHaveBeenCalled();expect(m.sign).not.toHaveBeenCalled();expect(m.admin).not.toHaveBeenCalled();
+  });
+  it('continuation admission fails closed if current authority is lost',async()=>{
+    m.rpc.mockImplementation(async(name:string)=>name==='dms_upload_batch_eligibility'?{data:null,error:{code:'42501'}}:rpc(name));
+    expect(await createDmsUploadBatchForContinuation(currentRequest)).toMatchObject({state:'unconfirmed'});
+    expect(m.sign).not.toHaveBeenCalled();
+  });
+  it('finds the exact original admission without mutation or signing',async()=>{
+    const chain:any={select:vi.fn(),eq:vi.fn(),is:vi.fn(),single:vi.fn().mockResolvedValue({data:{admission_operation_id:operation},error:null})};
+    chain.select.mockReturnValue(chain);chain.eq.mockReturnValue(chain);chain.is.mockReturnValue(chain);m.from.mockReturnValue(chain);
+    expect(await findDmsBatchAdmission(currentReceipt.batch_code)).toEqual({success:true,receipts:[currentReceipt]});
+    expect(m.rpc.mock.calls.every(c=>c[0]==='read_dms_upload_batch_admission')).toBe(true);
+    expect(m.admin).not.toHaveBeenCalled();expect(m.sign).not.toHaveBeenCalled();
+    expect(await findDmsBatchAdmission('OTHER')).toMatchObject({success:false});
+  });
+  it('withholds recovery if receipt belongs to a different owner',async()=>{
+    const chain:any={select:()=>chain,eq:()=>chain,is:()=>chain,single:async()=>({data:{admission_operation_id:operation},error:null})};m.from.mockReturnValue(chain);
+    m.rpc.mockResolvedValue({data:{...currentReceipt,auth_user_id:'ffffffff-ffff-4fff-8fff-ffffffffffff'},error:null});
+    expect(await findDmsBatchAdmission(currentReceipt.batch_code)).toMatchObject({success:false});expect(m.sign).not.toHaveBeenCalled();
+  });
   describe("W22 singular chosen-member recovery", () => {
     it("recovers only eligible unfinished sibling with cleaned historical bytes elsewhere", async () => {
       fixture(2); eligible=[1];

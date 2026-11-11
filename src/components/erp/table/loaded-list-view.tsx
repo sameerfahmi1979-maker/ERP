@@ -5,6 +5,7 @@ import { EditColumns, EditFilters, useListColumns, type ListColumn, type ListFil
 import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
 import { Input } from "@/components/ui/input";
 import type { ListPresentation } from "./embedded-list-navigation";
+import { WorklistFitControl } from "./worklist-fit-control";
 
 export type LoadedListField = { id: string; label: string; path?: string; width?: number; required?: boolean; type?: ListFilter["type"]; options?: ListFilter["options"] };
 export function loadedListValue(row: unknown, path: string): string {
@@ -26,12 +27,15 @@ export function filterLoadedRows<T>(rows: T[], fields: LoadedListField[], filter
 }
 
 /** UI-only filtering of supplied authorized rows. No second cache or durable record storage. */
-export function useLoadedListView<T>(key: string, rows: T[], fields: LoadedListField[], options: {serverFiltered?:boolean;totalCount?:number;presentation?:ListPresentation} = {}) {
+export function useLoadedListView<T>(key: string, rows: T[], fields: LoadedListField[], options: {serverFiltered?:boolean;totalCount?:number;presentation?:ListPresentation;columnPreferenceId?:string} = {}) {
   const embedded = options.presentation === "embedded";
   const [filters,setFilters] = usePersistentUiState<FilterValues>(`dms-list:${key}:filters`,{});
   const [search,setSearch] = usePersistentUiState<string>(`dms-list:${key}:search`,"");
-  const defaults: ListColumn[] = fields.map(field => ({ id:field.id,label:field.label,width:field.width ?? 160,visible:true,required:field.required }));
-  const columnState = useListColumns(`dms:${key}:v1`,defaults);
+  const defaults: ListColumn[] = fields.map(field => ({
+    id: field.id, label: field.label, width: field.width ?? 160, visible: true,
+    required: field.required || field.id === "actions",
+  }));
+  const columnState = useListColumns(`dms:${key}:v1`, defaults, embedded ? null : `dms:${options.columnPreferenceId ?? key}:v1`, { enabled: !embedded });
   const filtered = useMemo(()=>embedded || options.serverFiltered?rows:filterLoadedRows(rows,fields,filters,search),[rows,fields,filters,search,options.serverFiltered,embedded]);
   // Compact sections must not inherit now-invisible column/filter preferences.
   return { ...columnState,...(embedded ? {columns:defaults,visible:defaults} : {}),embedded,defaults,fields,filters:embedded ? {} : filters,setFilters,search:embedded ? "" : search,setSearch,rows:filtered,loadedCount:rows.length,serverFiltered:options.serverFiltered,totalCount:options.totalCount };
@@ -43,6 +47,7 @@ export function LoadedListTools<T>({ view, search = false }: { view: ReturnType<
     <div className="flex flex-wrap items-center gap-2">
       {search && <Input aria-label={view.serverFiltered ? "Search permitted records" : "Search loaded records"} placeholder={view.serverFiltered ? "Search permitted records…" : "Search loaded records…"} value={view.search} onChange={e=>view.setSearch(e.target.value)} className="w-full sm:max-w-xs" />}
       <EditColumns columns={view.columns} defaults={view.defaults} onApply={view.setColumns} />
+      <WorklistFitControl viewport={view.viewport} />
       <EditFilters definitions={view.fields.filter(field=>field.path).map(field=>({id:field.id,label:field.label,type:field.type??"text",options:field.options}))}
         values={view.filters} onApply={view.setFilters} scopeLabel={view.serverFiltered?"Filters query the complete permitted result, together with the page criteria and search.":"Filters apply to the records loaded in this view, together with any page criteria or search."} />
     </div>

@@ -5,13 +5,13 @@ import {Textarea} from '@/components/ui/textarea';
 import {prepareExactIntakeReview} from '@/server/actions/dms/intake-review';
 import type {IntakeReviewPlan,IntakeReviewConfirmation} from '@/lib/dms/intake-review';
 import {useReadCacheOwner} from '@/components/layout/read-cache-boundary';
-type Props={sessionId:number;typeId?:number;expiryDate?:string|null;documentId?:number;disabled?:boolean;reviewKey?:string;onChange:(v:IntakeReviewConfirmation|null)=>void};
+type Props={sessionId:number;typeId?:number;expiryDate?:string|null;documentId?:number;disabled?:boolean;reviewKey?:string;onChange:(v:IntakeReviewConfirmation|null)=>void;onBlockReason?:(reason:string|null)=>void};
 export function DmsExactFileReview(props:Props){
  const owner=useReadCacheOwner(),live=owner?.isLive()??false;
  const identity=JSON.stringify([owner?.identity,owner?.generation,live,props.sessionId,props.typeId,props.expiryDate,props.documentId,props.reviewKey]);
  return <ReviewPanel key={identity} {...props} disabled={props.disabled||!live} active={live}/>;
 }
-function ReviewPanel({sessionId,typeId,expiryDate,documentId,disabled,onChange,active}:Props&{active:boolean}){
+function ReviewPanel({sessionId,typeId,expiryDate,documentId,disabled,onChange,onBlockReason,active}:Props&{active:boolean}){
  const [plan,setPlan]=useState<IntakeReviewPlan|null>(null),[confirmed,setConfirmed]=useState(false),[override,setOverride]=useState(false),[reason,setReason]=useState(''),[pending,setPending]=useState(false),[error,setError]=useState<string|null>(null);
  const identity=JSON.stringify({sessionId,typeId,expiryDate:expiryDate||null,documentId});
  const [preparedIdentity,setPreparedIdentity]=useState('');
@@ -19,7 +19,8 @@ function ReviewPanel({sessionId,typeId,expiryDate,documentId,disabled,onChange,a
   const current=plan&&preparedIdentity===identity;
   onChange(current&&confirmed&&(!plan.requiresOverride||override&&plan.canOverride&&reason.trim().length>=20)
    ?{...plan,confirmed:true,override,reasonText:override?reason.trim():null}:null);
- },[plan,confirmed,override,reason,preparedIdentity,identity,onChange]);
+  onBlockReason?.(!active?'Your account or access is changing. Wait for access to be ready.':pending?'Original-file verification is running. Please wait.':error?error:!current?'Choose “Verify original for review”, then confirm the details before approving.':plan.requiresOverride&&(!override||!plan.canOverride)?`${plan.reason ?? 'This review needs additional verification.'} Your checkbox alone cannot resolve this. Keep the saved review for reconciliation; do not upload again.`:override&&reason.trim().length<20?'Enter at least 20 characters explaining the authorized manual override.':!confirmed?'Confirm that you checked the original file, selected type, expiry date and saved values.':null);
+ },[plan,confirmed,override,reason,preparedIdentity,identity,onChange,onBlockReason,active,pending,error]);
  async function verify(){
   setPending(true);setConfirmed(false);setPlan(null);setError(null);
   try{const r=await prepareExactIntakeReview({sessionId,...(documentId?{documentId}:{typeId,expiryDate:expiryDate||null})});

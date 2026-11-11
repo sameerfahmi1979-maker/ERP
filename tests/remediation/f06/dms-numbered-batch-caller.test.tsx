@@ -16,7 +16,7 @@ vi.mock('@/components/layout/read-cache-boundary',()=>({useReadCacheOwner:()=>m.
 vi.mock('next/navigation',()=>({useRouter:()=>({push:m.push,refresh:m.refresh})}));
 vi.mock('sonner',()=>({toast:{success:m.success,error:m.error,info:vi.fn()}}));
 vi.mock('@/lib/supabase/client',()=>({createClient:()=>({storage:{from:()=>({uploadToSignedUrl:m.upload})}})}));
-vi.mock('@/server/actions/dms/batch-intake',()=>({createDmsUploadBatch:m.batch,startAiIntakeAndCreateDraft:m.draft,prepareDmsUploadBatchMemberDraft:m.prepare,readDmsUploadBatchDraftRecovery:m.read,recoverDmsBatchMemberUpload:m.member,verifyDmsBatchUpload:m.verify,bootstrapDmsBatchOrigin:m.bootstrap,discoverDmsBatchAdmissions:m.discover,recoverDmsUploadBatch:m.whole}));
+vi.mock('@/server/actions/dms/batch-intake',()=>({createDmsUploadBatch:m.batch,createDmsUploadBatchForContinuation:m.batch,startAiIntakeAndCreateDraft:m.draft,prepareDmsUploadBatchMemberDraft:m.prepare,readDmsUploadBatchDraftRecovery:m.read,recoverDmsBatchMemberUpload:m.member,verifyDmsBatchUpload:m.verify,bootstrapDmsBatchOrigin:m.bootstrap,discoverDmsBatchAdmissions:m.discover,recoverDmsUploadBatch:m.whole}));
 vi.mock('@/server/actions/dms/ai-intake',()=>({startAiIntakeFromUploadSession:vi.fn(()=>{throw Error('No single-file provider calls');})}));
 vi.mock('@/server/actions/dms/upload-sessions',()=>({cancelDmsUploadSession:vi.fn(),createDmsUploadSession:vi.fn()}));
 vi.mock('@/features/dms/admin/dms-admin-file-storage-panel',()=>({DmsAdminFileStoragePanel:()=>null}));

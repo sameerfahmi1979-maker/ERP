@@ -3,7 +3,7 @@
 // Mutations, child UI and workspace/navigation boundaries are synthetic; no native writes.
 import "../remediation/f05/setup";
 import React from "react";
-import {act, cleanup, fireEvent, render, screen} from "@testing-library/react";
+import {act, cleanup, fireEvent, render, screen, waitFor} from "@testing-library/react";
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import {QueryClient, QueryClientProvider, QueryObserver} from "@tanstack/react-query";
 import type {ERPRecordWorkspaceFormProps} from "@/components/workspace/erp-record-workspace-form";
@@ -13,16 +13,20 @@ import type {WorkspaceSaveContract} from "@/lib/workspace/save-contract";
 import {createWorkspaceDraftStore} from "@/lib/workspace/workspace-draft-store";
 
 const m = vi.hoisted(() => ({store: null as ReturnType<typeof createWorkspaceDraftStore> | null, shell: null as ERPRecordWorkspaceFormProps | null,
-  create: vi.fn(), update: vi.fn(), link: vi.fn(), replace: vi.fn(), close: vi.fn(), rename: vi.fn(), route: vi.fn(), dirty: vi.fn(), dispatch: vi.fn(),
+  typeReview: vi.fn(), typeSave: vi.fn(), create: vi.fn(), update: vi.fn(), link: vi.fn(), replace: vi.fn(), close: vi.fn(), rename: vi.fn(), route: vi.fn(), dirty: vi.fn(), dispatch: vi.fn(),
   path: "/dms/documents/record/11", approvalProps: null as {documentId: number | null; authContext: AuthContext} | null}));
 vi.mock("next/navigation", () => ({usePathname: () => m.path, useRouter: () => ({replace: m.replace})}));
 vi.mock("@/components/workspace/workspace-provider", () => ({useWorkspaceContext: () => ({state: {activeTabId: "owner", tabs: [{id: "owner", route: m.path}]}, dispatch: m.dispatch})}));
 vi.mock("@/components/workspace/workspace-draft-provider", () => ({useWorkspaceDraftStoreContext: () => m.store}));
 vi.mock("@/hooks/use-workspace-form-navigation", () => ({useWorkspaceFormNavigation: () => ({activeTab: {id: "owner"}, markDirty: m.dirty, closeTab: m.close, renameTab: m.rename, updateTabRoute: m.route})}));
 vi.mock("@/components/workspace/erp-record-workspace-form", () => ({ERPRecordWorkspaceForm: (props: ERPRecordWorkspaceFormProps) => {m.shell = props; return <div>{props.children}</div>;},
-  ERPRecordSectionPanel: ({children, id, activeId}: {children: React.ReactNode; id: string; activeId: string}) => id === activeId ? <section>{children}</section> : null}));
+  ERPRecordSectionPanel: function Panel({children, id, activeId}: {children: React.ReactNode; id: string; activeId: string}) {
+    const visited = React.useRef(false); if (id === activeId) visited.current = true;
+    return visited.current ? <section hidden={id !== activeId}>{children}</section> : null;
+  }}));
 vi.mock("sonner", () => ({toast: {error: vi.fn(), success: vi.fn(), warning: vi.fn()}}));
 vi.mock("@/server/actions/dms/documents", () => ({createDmsDocument: m.create, updateDmsDocument: m.update}));
+vi.mock("@/server/actions/dms/document-type-change",()=>({readDocumentTypeChange:m.typeReview,saveDocumentTypeChange:m.typeSave}));
 vi.mock("@/server/actions/dms/entity-documents", () => ({linkDmsDocumentToEntity: m.link}));
 vi.mock("@/features/dms/documents/sections/dms-document-ai-section", () => ({DmsDocumentAiSection: () => null}));
 vi.mock("@/features/dms/documents/sections/dms-document-ai-summary-section", () => ({DmsDocumentAiSummarySection: () => null}));
@@ -35,7 +39,7 @@ vi.mock("@/features/dms/documents/sections/dms-document-expiry-section", () => (
 vi.mock("@/features/dms/documents/sections/dms-document-files-section", () => ({DmsDocumentFilesSection: () => null}));
 vi.mock("@/features/dms/documents/sections/dms-document-intelligence-section", () => ({DmsDocumentIntelligenceSection: () => null}));
 vi.mock("@/features/dms/documents/sections/dms-document-links-section", () => ({DmsDocumentLinksSection: () => null}));
-vi.mock("@/features/dms/documents/sections/dms-document-metadata-section", () => ({DmsDocumentMetadataSection: () => null}));
+vi.mock("@/features/dms/documents/sections/dms-document-metadata-section", () => ({initialMetadata:()=>({1010:""}),MetadataField:({id,def,value,onChange}:{id:string;def:{id:number;field_label_en:string};value:string;onChange:(v:string)=>void})=><input id={id} data-metadata-id={def.id} aria-label={def.field_label_en} value={value} onChange={e=>onChange(e.target.value)}/>,DmsDocumentMetadataSection: ({documentTypeId}: {documentTypeId: number}) => <output data-testid="metadata-type">{documentTypeId}</output>}));
 vi.mock("@/features/dms/documents/sections/dms-document-ocr-section", () => ({DmsDocumentOcrSection: () => null}));
 vi.mock("@/features/dms/documents/sections/dms-document-semantic-section", () => ({DmsDocumentSemanticSection: () => null}));
 vi.mock("@/features/dms/documents/sections/dms-document-tags-section", () => ({DmsDocumentTagsSection: () => null}));
@@ -45,7 +49,8 @@ vi.mock("@/features/dms/documents/sections/dms-document-overview-section", () =>
   getDraftDefault: (field: string, fallback: string) => string; doc: {title: string} | null;
   setDocumentTypeId: (id: number) => void; setCategoryId: (id: number) => void;
 }) => <><input aria-label="Synthetic document title" name="title" defaultValue={props.getDraftDefault("title", props.doc?.title ?? "")} />
-  <button type="button" onClick={() => {props.setDocumentTypeId(1); props.setCategoryId(2);}}>Set synthetic selections</button></>}));
+  <button type="button" onClick={() => {props.setDocumentTypeId(1); props.setCategoryId(2);}}>Set synthetic selections</button>
+  <button type="button" onClick={() => props.setDocumentTypeId(2)}>Change synthetic type</button></>}));
 
 import {DmsDocumentRecordForm, type DmsEntityContext} from "@/features/dms/documents/dms-document-record-form";
 
@@ -80,9 +85,84 @@ async function save(close = false) {await act(async () => {await (close ? m.shel
 function deferred<T>() {let resolve!: (value: T) => void; const promise = new Promise<T>(done => {resolve = done;}); return {promise, resolve};}
 
 beforeEach(() => {vi.clearAllMocks(); m.store = createWorkspaceDraftStore(); m.shell = null; m.approvalProps = null;
+  m.typeReview.mockResolvedValue({success:true,data:{documentId:11,documentTypeId:2,snapshot:'a'.repeat(64),definitions:[{id:1010,document_type_id:2,field_label_en:'Issuing Authority',field_type:'text',is_required:true}],values:[]}});
+  m.typeSave.mockResolvedValue({success:true,data:{documentId:11,documentTypeId:2}});
   m.create.mockImplementation(async (_payload: unknown, contract: WorkspaceSaveContract) => ({success: true, data: {id: 11, document_no: "SYNTHETIC-DOC-11", operation_id: contract.operationId, replayed: false}}));
   m.update.mockResolvedValue({success: true}); m.link.mockResolvedValue({success: true, data: {id: 91}});
   vi.spyOn(console, "error").mockImplementation(() => {});
+});
+
+async function openTypeChange(){
+ mount();fireEvent.click(screen.getByRole('button',{name:'Change synthetic type'}));
+ await act(async()=>m.shell?.onSectionChange('metadata'));
+ await screen.findByRole('textbox',{name:'Issuing Authority'});
+}
+it('loads new required fields before save and prevents an empty issuer from reaching any mutation',async()=>{
+ await openTypeChange();
+ await act(async()=>fireEvent.click(screen.getByRole('button',{name:'Save document and metadata'})));
+ expect(screen.getByRole('alert').textContent).toContain('Issuing Authority: This field is required');
+ expect(m.update).not.toHaveBeenCalled();expect(m.typeSave).not.toHaveBeenCalled();
+ expect(screen.queryByTestId('metadata-type')).toBeNull();
+ fireEvent.change(screen.getByRole('textbox',{name:'Issuing Authority'}),{target:{value:'Synthetic issuing body'}});
+ await act(async()=>fireEvent.click(screen.getByRole('button',{name:'Save document and metadata'})));
+ expect(m.typeSave).toHaveBeenCalledOnce();
+ expect(m.typeSave.mock.calls[0][0]).toMatchObject({documentId:11,documentTypeId:2,values:[{definition_id:1010,value_text:'Synthetic issuing body'}]});
+ expect(m.update).not.toHaveBeenCalled();expect(screen.getByTestId('metadata-type').textContent).toBe('2');
+});
+it('uncertain save retains the original request and retries it without a fresh update',async()=>{
+ m.typeSave.mockResolvedValueOnce({success:false,uncertain:true,error:'Unconfirmed'});
+ await openTypeChange();fireEvent.change(screen.getByRole('textbox',{name:'Issuing Authority'}),{target:{value:'Retained body'}});
+ await act(async()=>fireEvent.click(screen.getByRole('button',{name:'Save document and metadata'})));
+ const original=structuredClone(m.typeSave.mock.calls[0][0]);
+ expect(m.store!.getDraft(draftKey)?.type_change_request).toBe(JSON.stringify(original));
+ expect(screen.queryByTestId('metadata-type')).toBeNull();
+ await act(async()=>fireEvent.click(screen.getByRole('button',{name:'Retry retained save'})));
+ expect(m.typeSave.mock.calls[1][0]).toEqual(original);expect(m.update).not.toHaveBeenCalled();
+ expect(screen.getByTestId('metadata-type').textContent).toBe('2');
+});
+it('definitive rejection keeps entered metadata available for correction',async()=>{
+ m.typeSave.mockResolvedValueOnce({success:false,uncertain:false,error:'Rejected'});
+ await openTypeChange();fireEvent.change(screen.getByRole('textbox',{name:'Issuing Authority'}),{target:{value:'Review body'}});
+ await act(async()=>fireEvent.click(screen.getByRole('button',{name:'Save document and metadata'})));
+ expect((screen.getByRole('textbox',{name:'Issuing Authority'}) as HTMLInputElement).value).toBe('Review body');
+ expect(screen.getByRole('button',{name:'Save document and metadata'})).toBeTruthy();
+ expect(m.store!.hasDraft(draftKey)).toBe(true);
+});
+it('save from Overview directs the user to metadata without attempting the old dead-end write',async()=>{
+ mount();fireEvent.click(screen.getByRole('button',{name:'Change synthetic type'}));await save();
+ await screen.findByRole('textbox',{name:'Issuing Authority'});
+ expect(m.typeSave).not.toHaveBeenCalled();expect(m.update).not.toHaveBeenCalled();
+});
+it('changing back to the saved type opens ordinary metadata without a write',async()=>{
+ await openTypeChange();fireEvent.click(screen.getByRole('button',{name:'Set synthetic selections',hidden:true}));
+ expect(screen.getByTestId('metadata-type').textContent).toBe('1');expect(m.typeSave).not.toHaveBeenCalled();
+});
+it('pending atomic save stays locked until the transaction is confirmed',async()=>{
+ const pending=deferred<unknown>();m.typeSave.mockReturnValueOnce(pending.promise);
+ await openTypeChange();fireEvent.change(screen.getByRole('textbox',{name:'Issuing Authority'}),{target:{value:'Pending body'}});
+ fireEvent.click(screen.getByRole('button',{name:'Save document and metadata'}));
+ await waitFor(()=>expect(m.typeSave).toHaveBeenCalledOnce());
+ expect((screen.getByRole('button',{name:'Saving document…'}) as HTMLButtonElement).disabled).toBe(true);
+ expect(screen.queryByTestId('metadata-type')).toBeNull();
+ await act(async()=>pending.resolve({success:true,data:{documentId:11,documentTypeId:2}}));
+ expect(screen.getByTestId('metadata-type').textContent).toBe('2');
+});
+it('type-specific entries survive switching back and forth without a save',async()=>{
+ await openTypeChange();fireEvent.change(screen.getByRole('textbox',{name:'Issuing Authority'}),{target:{value:'Keep this issuer'}});
+ fireEvent.click(screen.getByRole('button',{name:'Set synthetic selections',hidden:true}));
+ fireEvent.click(screen.getByRole('button',{name:'Change synthetic type',hidden:true}));
+ expect((await screen.findByRole('textbox',{name:'Issuing Authority'}) as HTMLInputElement).value).toBe('Keep this issuer');
+ expect(m.typeSave).not.toHaveBeenCalled();
+});
+it('restores an unconfirmed request on remount and replays its original values',async()=>{
+ m.typeSave.mockResolvedValueOnce({success:false,uncertain:true,error:'Unconfirmed'});
+ await openTypeChange();fireEvent.change(screen.getByRole('textbox',{name:'Issuing Authority'}),{target:{value:'Retained after remount'}});
+ await act(async()=>fireEvent.click(screen.getByRole('button',{name:'Save document and metadata'})));
+ const original=structuredClone(m.typeSave.mock.calls[0][0]);
+ cleanup();
+ const q=new QueryClient({defaultOptions:{queries:{retry:false}}});clients.push(q);
+ render(<QueryClientProvider client={q}><DmsDocumentRecordForm mode="edit" doc={doc} authContext={auth} documentTypes={[]} categories={[]}/></QueryClientProvider>);
+ await save();expect(m.typeSave.mock.calls[1][0]).toEqual(original);expect(m.update).not.toHaveBeenCalled();
 });
 afterEach(() => {cleanup(); clients.splice(0).forEach(q => q.clear()); vi.restoreAllMocks();});
 

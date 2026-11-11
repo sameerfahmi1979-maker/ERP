@@ -9,8 +9,11 @@
  */
 
 import { DraftRestoredNotice } from "@/components/workspace/draft-restored-notice";
+import { Button } from "@/components/ui/button";
 import {useQueryClient} from "@tanstack/react-query";
 import {invalidateDmsDocumentRecord, invalidateDmsEntityDocuments} from "@/lib/query/invalidation";
+import { queryKeys } from "@/lib/query/query-keys";
+import { applyDmsDocumentTagChanges } from "@/server/actions/dms/document-tags";
 import type { ERPRecordSection } from "@/components/workspace/erp-record-section-nav";
 import { ERPRecordSectionPanel as BaseSectionPanel, ERPRecordWorkspaceForm } from "@/components/workspace/erp-record-workspace-form";
 import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
@@ -20,9 +23,13 @@ import { useWorkspaceScrollState } from "@/hooks/use-workspace-scroll-state";
 import { useWorkspaceSectionState } from "@/hooks/use-workspace-section-state";
 import { useWorkspaceTabDirty } from "@/hooks/use-workspace-tab-dirty";
 import type { AuthContext } from "@/lib/rbac/check";
+import { canRunDmsFilePipeline } from '@/lib/dms/file-pipeline-access';
 import { hasPermission } from "@/lib/rbac/scope";
-import type { DmsDocumentRecordData } from "@/server/actions/dms/documents";
+import type { DmsDocumentRecordData, CreateDmsDocumentInput } from "@/server/actions/dms/documents";
 import { createDmsDocument, updateDmsDocument } from "@/server/actions/dms/documents";
+import {saveDocumentTypeChange} from '@/server/actions/dms/document-type-change';
+import {restoreTypeChangeRequest,type DocumentTypeChangeRequest} from '@/lib/dms/document-type-change';
+import {DmsDocumentTypeChange,type TypeChangeHandle} from './sections/dms-document-type-change';
 import {dmsCreationOriginSchema} from '@/lib/dms/numbered-document-create';
 import {
   Activity,
@@ -64,7 +71,7 @@ import { DmsDocumentMetadataSection } from "./sections/dms-document-metadata-sec
 import { DmsDocumentOcrSection } from "./sections/dms-document-ocr-section";
 import { DmsDocumentOverviewSection } from "./sections/dms-document-overview-section";
 import { DmsDocumentSemanticSection } from "./sections/dms-document-semantic-section";
-import { DmsDocumentTagsSection } from "./sections/dms-document-tags-section";
+import { DmsDocumentTagsSection, type DmsTagChanges } from "./sections/dms-document-tags-section";
 import { DmsDocumentUnderstandingSection } from "./sections/dms-document-understanding-section";
 import { DmsDocumentVersionsSection } from "./sections/dms-document-versions-section";
 import { useDmsCreationSession } from "./use-dms-creation-session";
@@ -98,12 +105,13 @@ export type DmsDocumentRecordFormProps = {
   documentTypes: DocumentType[];
   categories: Category[];
   entityContext?: DmsEntityContext | null;
+  emailDestination?: { notice: number; section: "approvals" | "overview" };
 };
 
 export function DmsDocumentRecordForm(props: DmsDocumentRecordFormProps) {
   return (
     <DmsDocumentRecordFormInner
-      key={`${props.authContext.profile?.id ?? "unknown"}-${props.mode}-${props.doc?.id ?? "new"}-${props.entityContext?.entityType ?? ""}-${props.entityContext?.entityId ?? ""}`}
+      key={`${props.authContext.profile?.id ?? "unknown"}-${props.mode}-${props.doc?.id ?? "new"}-${props.entityContext?.entityType ?? ""}-${props.entityContext?.entityId ?? ""}-${props.emailDestination?.notice ?? ""}`}
       {...props}
     />
   );
@@ -116,6 +124,7 @@ function DmsDocumentRecordFormInner({
   documentTypes,
   categories,
   entityContext,
+  emailDestination,
 }: DmsDocumentRecordFormProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -133,11 +142,17 @@ function DmsDocumentRecordFormInner({
   const [activeSubmitAction, setActiveSubmitAction] = useState<"save" | "saveAndClose" | null>(null);
 
   // ── Section nav ──────────────────────────────────────────────────────────────
-  const [activeSection, setActiveSection] = useWorkspaceSectionState(
+  const [storedSection, setStoredSection] = useWorkspaceSectionState(
     doc?.id
       ? { key: "active-section", initialSection: "overview", scope: "record", recordType: "dms-document", recordId: doc.id }
       : { key: "active-section", initialSection: "overview", scope: "tab", identifier: activeTab?.id ?? "new-dms-doc" }
   );
+  const [emailSection, setEmailSection] = useState(emailDestination?.section);
+  const activeSection = emailSection ?? storedSection;
+  const setActiveSection = (section: string) => {
+    setEmailSection(undefined);
+    setStoredSection(section);
+  };
 
   // ── Scroll state ─────────────────────────────────────────────────────────────
   const bodyScrollRef = useRef<HTMLDivElement>(null);
@@ -152,7 +167,10 @@ function DmsDocumentRecordFormInner({
   const effectiveDocId = doc?.id ?? createdDocId;
 
   // ── Dirty tracking ────────────────────────────────────────────────────────────
-  const { isDirty, resetDirty } = useFormDirty({ formId: "dms-doc-workspace-form", enabled: !isViewing });
+  const { isDirty: fieldsDirty, resetDirty } = useFormDirty({ formId: "dms-doc-workspace-form", enabled: !isViewing });
+  const [tagChanges, setTagChanges] = useState<DmsTagChanges>({ added: [], removed: [] });
+  const hasTagChanges = tagChanges.added.length > 0 || tagChanges.removed.length > 0;
+  const isDirty = fieldsDirty || hasTagChanges;
   useWorkspaceTabDirty({ isDirty, enabled: !isViewing });
 
   // ── Draft preservation (UI.4E.2) ──────────────────────────────────────────────
@@ -160,11 +178,24 @@ function DmsDocumentRecordFormInner({
     formId: "dms-doc-workspace-form",
     enabled: !isViewing,
   });
+  const typeChangeEditor=useRef<TypeChangeHandle>(null);
+  const [typeChangeRecovery,setTypeChangeRecovery]=useState(()=>restoreTypeChangeRequest(getDraftDefault('type_change_request',''),effectiveDocId));
+  const pendingTypeChange=typeChangeRecovery.pending;
+  const [typeMetadataDrafts,setTypeMetadataDrafts]=useState<Record<number,string>>({});
 
   // ── Controlled fields ────────────────────────────────────────────────────────
   const [documentTypeId, setDocumentTypeId] = useState<number | null>(() => {
     return creation.pending?.payload.document_type_id ?? getDraftNullableId("document_type_id", doc?.document_type_id);
   });
+  // Draft type and persisted type are different identities until save is confirmed.
+  // Never fetch/edit the new type's metadata against the old saved document.
+  const serverDocumentTypeId = doc?.document_type_id ?? null;
+  const [savedType, setSavedType] = useState({serverType: serverDocumentTypeId, value: serverDocumentTypeId});
+  if (savedType.serverType !== serverDocumentTypeId) {
+    // Reconcile refreshed server props before children can read the previous type.
+    setSavedType({serverType: serverDocumentTypeId, value: serverDocumentTypeId});
+  }
+  const savedDocumentTypeId = savedType.serverType === serverDocumentTypeId ? savedType.value : serverDocumentTypeId;
   const [categoryId, setCategoryId] = useState<number | null>(() => {
     return creation.pending?.payload.category_id ?? getDraftNullableId("category_id", doc?.category_id);
   });
@@ -225,6 +256,7 @@ function DmsDocumentRecordFormInner({
   // ── Core save logic ───────────────────────────────────────────────────────────
   const performSave = async (): Promise<boolean> => {
     if (isViewing || !creation.isCurrent()) return false;
+    if(typeChangeRecovery.invalid){toast.error('The retained type change could not be verified. Reopen the record and check its saved type before continuing.');return false;}
 
     const form = document.getElementById("dms-doc-workspace-form") as HTMLFormElement | null;
     if (!form) return false;
@@ -242,7 +274,7 @@ function DmsDocumentRecordFormInner({
 
     const origin=currentMode==='add'&&entityContext?dmsCreationOriginSchema.safeParse({entityType:entityContext.entityType,entityId:entityContext.entityId}):null;
     if(origin&&!origin.success){toast.error('The original document subject is invalid. Reopen the source record.');return false;}
-    const payload = creation.pending?.payload ?? {
+    const payload:CreateDmsDocumentInput = pendingTypeChange?.document ?? creation.pending?.payload ?? {
       ...(origin?.success?{originContext:origin.data}:{}),
       title: (fd.get("title") as string) || "",
       description: (fd.get("description") as string) || null,
@@ -267,7 +299,23 @@ function DmsDocumentRecordFormInner({
       let result;
       if (currentMode === "edit" && (doc || createdDocId)) {
         const id = doc?.id ?? createdDocId!;
-        result = await updateDmsDocument({ id, ...payload });
+        if(pendingTypeChange||documentTypeId!==savedDocumentTypeId){
+          let request:DocumentTypeChangeRequest|null=pendingTypeChange;
+          if(!request){
+            if(doc&&(['status','confidentiality_level','owning_company_id','owning_branch_id','party_id'] as const).some(field=>(payload[field]??null)!==(doc[field]??null))){
+              toast.error('Save ownership, confidentiality and status changes separately using the original document type, then change its type.');return false;
+            }
+            setActiveSection('metadata');
+            const review=typeChangeEditor.current?.review();
+            if(!review){toast.error('Complete the required fields in Metadata before saving the new document type.');return false;}
+            request={documentId:id,documentTypeId:payload.document_type_id,document:payload,...review,requestId:crypto.randomUUID()};
+            writeDraftField('type_change_request',JSON.stringify(request));
+            setTypeChangeRecovery({pending:request,invalid:false});
+          }
+          result=await saveDocumentTypeChange(request);
+          if(!creation.isCurrent())return false;
+          if(result.success||!result.uncertain){setTypeChangeRecovery({pending:null,invalid:false});writeDraftField('type_change_request','');}
+        }else result = await updateDmsDocument({ id, ...payload });
       } else {
         result = await creation.create(payload, createDmsDocument);
       }
@@ -275,9 +323,25 @@ function DmsDocumentRecordFormInner({
 
       if (result.success) {
         committed = true;
+        setSavedType({serverType: serverDocumentTypeId, value: payload.document_type_id});
         const savedId = currentMode === "edit" ? doc?.id ?? createdDocId : result.data && "id" in result.data ? Number(result.data.id) : null;
+        if (savedId && hasTagChanges) {
+          const tagResult = await applyDmsDocumentTagChanges({
+            documentId: savedId, add: tagChanges.added.map(tag => tag.id), remove: tagChanges.removed,
+          }).catch(() => ({ success: false, error: "Tag changes could not be confirmed. Try saving again.", data: undefined }));
+          if (!creation.isCurrent()) return false;
+          if (!tagResult.success || !tagResult.data) {
+            invalidateDmsDocumentRecord(queryClient, savedId);
+            toast.error(`Document saved. ${tagResult.error ?? "Tag changes could not be saved. Try saving again."}`);
+            return false;
+          }
+          queryClient.setQueryData(queryKeys.dms.documentTags(savedId), tagResult.data);
+          setTagChanges({ added: [], removed: [] });
+        }
         if (savedId) invalidateDmsDocumentRecord(queryClient, savedId);
         toast.success(`Document ${currentMode === "edit" ? "updated" : "created"} successfully`);
+        // A retry commits the retained values, never later edits made behind it.
+        if(pendingTypeChange){toast.success('The retained type change is saved.');}
         clearDraft();
         resetDirty();
 
@@ -412,12 +476,17 @@ function DmsDocumentRecordFormInner({
           <DraftRestoredNotice visible={!isViewing && restoredFromDraft} className="mb-3" />
           <DmsDocumentOverviewSection
             doc={doc ?? null}
-            isViewing={isViewing || (currentMode === "add" && (isSubmitting || creation.uncertain || !!creation.recoveryError))}
+            isViewing={isViewing || !!pendingTypeChange || isSubmitting || (currentMode === "add" && (creation.uncertain || !!creation.recoveryError))}
             getDraftDefault={(field, fallback) => creation.pending && field in creation.pending.payload ? String(creation.pending.payload[field as keyof typeof creation.pending.payload] ?? "") : getDraftDefault(field, fallback)}
             documentTypes={documentTypes}
             categories={categories}
             documentTypeId={documentTypeId}
-            setDocumentTypeId={(id) => { setDocumentTypeId(id); writeDraftField("document_type_id", id); }}
+            setDocumentTypeId={(id) => {
+              if(pendingTypeChange||isSubmitting)return;
+              setDocumentTypeId(id); writeDraftField("document_type_id", id);
+              const target=documentTypes.find(type=>type.id===id);
+              if(target?.category_id){setCategoryId(target.category_id);writeDraftField('category_id',target.category_id);}
+            }}
             categoryId={categoryId}
             setCategoryId={(id) => { setCategoryId(id); writeDraftField("category_id", id); }}
             confidentialityLevel={confidentialityLevel}
@@ -435,11 +504,19 @@ function DmsDocumentRecordFormInner({
 
         {/* ── Metadata ── */}
         <ERPRecordSectionPanel id="metadata" activeId={activeSection} lazyMount>
-          <DmsDocumentMetadataSection
+          {effectiveDocId && documentTypeId && documentTypeId !== savedDocumentTypeId ? <div className="space-y-3 rounded-md border bg-muted/30 p-4">
+            <DmsDocumentTypeChange key={`${effectiveDocId}:${documentTypeId}`} ref={typeChangeEditor} documentId={effectiveDocId} documentTypeId={documentTypeId} disabled={isSubmitting||isViewing||!!pendingTypeChange}
+              draft={typeMetadataDrafts[documentTypeId]??getDraftDefault(`type_metadata_${documentTypeId}`,'')}
+              onDraft={value=>{setTypeMetadataDrafts(old=>({...old,[documentTypeId]:value}));writeDraftField(`type_metadata_${documentTypeId}`,value);}} onDirty={()=>markDirty(activeTab?.id??'',true)}/>
+            {pendingTypeChange&&<p role="status">The save is unconfirmed. Retry to recover the same document type and values; do not submit another change.</p>}
+            <Button type="button" variant="outline" disabled={isSubmitting || isViewing} onClick={handleSave}>
+              {isSubmitting ? "Saving document…" : pendingTypeChange ? "Retry retained save" : "Save document and metadata"}
+            </Button>
+          </div> : <DmsDocumentMetadataSection
             documentId={effectiveDocId}
             documentTypeId={documentTypeId}
             isViewing={isViewing}
-          />
+          />}
         </ERPRecordSectionPanel>
 
         {/* ── Links ── */}
@@ -449,7 +526,8 @@ function DmsDocumentRecordFormInner({
 
         {/* ── Tags ── */}
         <ERPRecordSectionPanel id="tags" activeId={activeSection} lazyMount>
-          <DmsDocumentTagsSection documentId={effectiveDocId} isViewing={isViewing} />
+          <DmsDocumentTagsSection documentId={effectiveDocId} isViewing={isViewing} isSaving={isSubmitting}
+            changes={tagChanges} onChange={setTagChanges} onPickerOpenChange={setChildDialogOpen} />
         </ERPRecordSectionPanel>
 
         {/* ── Versions ── */}
@@ -474,7 +552,9 @@ function DmsDocumentRecordFormInner({
         <ERPRecordSectionPanel id="files" activeId={activeSection} lazyMount>
           {effectiveDocId ? (
             <DmsDocumentFilesSection
+              aiBlockedReason={isDirty ? 'Save or cancel your document changes before running AI review.' : undefined}
               documentId={effectiveDocId}
+              canRunAi={!!doc && canRunDmsFilePipeline(authContext, doc.owning_company_id, doc.owning_branch_id)}
               canPreview={canPreviewFiles}
               canDownload={canDownloadFiles}
               canTriggerOcr={
@@ -618,6 +698,8 @@ function DmsDocumentRecordFormInner({
         <ERPRecordSectionPanel id="ai" activeId={activeSection} lazyMount>
           {effectiveDocId ? (
             <DmsDocumentAiSection
+              aiBlockedReason={isDirty ? 'Save or cancel your document changes before running AI review.' : undefined}
+              canRunPipeline={!!doc && canRunDmsFilePipeline(authContext, doc.owning_company_id, doc.owning_branch_id)}
               documentId={effectiveDocId}
               documentTypeId={documentTypeId}
               canRun={

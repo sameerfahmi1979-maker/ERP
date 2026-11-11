@@ -41,3 +41,27 @@ it('W18 does not coerce an object into a mapped SQLSTATE',async()=>{
 });
 
 function w18Expected(label:string){return ['save_hr_lookup',{p_table:label==='matrix'?'hr_grades':label.split('/')[0],p_id:9,p_operation:contract.operationId,p_revision:'2',p_data:label==='matrix'?{name_en:'Name'}:{},p_action:label==='matrix'?'save':label.split('/')[1]}];}
+
+it('active training type creation requires a category before dispatch',async()=>{
+ expect(await saveHrLookup('hr_training_types',null,{code:'TRAINING',name_en:'Training'},{...contract,revision:null})).toMatchObject({success:false,error:expect.stringContaining('Choose a training category')});expect(m.rpc).not.toHaveBeenCalled();
+});
+it('active training type cannot explicitly clear its category',async()=>{
+ expect((await saveHrLookup('hr_training_types',9,{is_active:true,training_category_id:null},contract)).success).toBe(false);expect(m.rpc).not.toHaveBeenCalled();
+});
+it.each([
+ ['hr_training_types_active_category_required','Choose a training category before saving or activating'],
+ ['Choose an active training category before saving this training type','Choose a training category that is active'],
+])('maps the native training category rejection safely: %s',async(message,guidance)=>{
+ m.rpc.mockResolvedValue({data:null,error:{code:'23514',message,details:'PRIVATE'}});
+ const result=await saveHrLookup('hr_training_types',9,{is_active:true},contract);
+ expect(result).toMatchObject({success:false,uncertain:false,error:expect.stringContaining(guidance)});expect(JSON.stringify(result)).not.toContain('PRIVATE');
+});
+it('category-only changes preserve partial-update semantics and database authority',async()=>{
+ m.rpc.mockResolvedValue({data:{id:9,revision:'3',entity:'hr_training_types',changed:true,replayed:false},error:null});
+ expect((await saveHrLookup('hr_training_types',9,{training_category_id:2},contract)).success).toBe(true);
+ expect(m.rpc.mock.calls[0][1].p_data).toEqual({training_category_id:2});
+});
+it('existing reference-trigger failure identifies an unavailable category',async()=>{
+ m.rpc.mockResolvedValue({data:null,error:{code:'23503',message:'Choose an active HR catalogue record'}});
+ expect(await saveHrLookup('hr_training_types',9,{training_category_id:2},contract)).toMatchObject({success:false,uncertain:false,error:expect.stringContaining('Choose a training category that is active')});
+});

@@ -1,4 +1,5 @@
 "use client";
+import { HrIconButton } from "@/features/hr/employees/hr-icon-button";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import{LeavePeriodBalances}from'../leave-period-balances';
@@ -222,13 +223,13 @@ function AttendanceSection({employeeId,authContext,canManage,onChildOpen,onSubje
                       <RefreshCw className="h-3.5 w-3.5 mr-1" /> Correct
                     </Button>
                   )}
-                  <Button aria-label="Show correction history" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setShowCorrections(showCorrections === row.id ? null : row.id)}>
+                  <HrIconButton aria-label="Show correction history" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setShowCorrections(showCorrections === row.id ? null : row.id)}>
                     {showCorrections === row.id ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  </Button>
+                  </HrIconButton>
                   {canManage && dailyRead.access.canManage && (
-                    <Button aria-label="Edit record" size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={!admission.ready} onClick={() => void openSummary(row.id)}>
+                    <HrIconButton aria-label="Edit record" size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={!admission.ready} onClick={() => void openSummary(row.id)}>
                       <Edit2 className="h-3.5 w-3.5" />
-                    </Button>
+                    </HrIconButton>
                   )}
                 </div>
               </div>
@@ -309,12 +310,12 @@ function ShiftCalendarSection({employeeId,authContext,canManage,onChildOpen,onSu
               {!row.attendance_required && <Badge variant="outline" className="text-xs">No Att. Req.</Badge>}
               {canManage && recordRead.access.canManage && (
                 <div className="flex gap-1 shrink-0">
-                  <Button aria-label="Edit record" size="sm" variant="ghost" className="h-7 px-2" disabled={!admission.ready} onClick={() => void openEdit(row.id)}>
+                  <HrIconButton aria-label="Edit record" size="sm" variant="ghost" className="h-7 px-2" disabled={!admission.ready} onClick={() => void openEdit(row.id)}>
                     <Edit2 className="h-3.5 w-3.5" />
-                  </Button>
-                    <Button aria-label="Archive record" size="sm" variant="ghost" className="h-7 px-2 text-destructive" onClick={() => handleArchive(row.id)} disabled={isPending || !admission.ready}>
+                  </HrIconButton>
+                    <HrIconButton aria-label="Archive record" size="sm" variant="ghost" className="h-7 px-2 text-destructive" onClick={() => handleArchive(row.id)} disabled={isPending || !admission.ready}>
                     <Archive className="h-3.5 w-3.5" />
-                  </Button>
+                  </HrIconButton>
                 </div>
               )}
             </div>
@@ -460,14 +461,14 @@ function OvertimeSection({employeeId,authContext,canManage,onChildOpen,onSubject
                         <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-destructive" disabled={!admission.ready} onClick={() => void openRecord(row.id, true)}>
                           <XCircle className="h-3.5 w-3.5 mr-1" /> Reject
                         </Button>
-                        <Button aria-label="Edit record" size="sm" variant="ghost" className="h-7 px-2" disabled={!admission.ready} onClick={() => void openRecord(row.id)}>
+                        <HrIconButton aria-label="Edit record" size="sm" variant="ghost" className="h-7 px-2" disabled={!admission.ready} onClick={() => void openRecord(row.id)}>
                           <Edit2 className="h-3.5 w-3.5" />
-                        </Button>
+                        </HrIconButton>
                       </>
                     )}
-                    <Button aria-label="Archive record" size="sm" variant="ghost" className="h-7 px-2 text-destructive" onClick={() => handleArchive(row.id)} disabled={isPending || !admission.ready}>
+                    <HrIconButton aria-label="Archive record" size="sm" variant="ghost" className="h-7 px-2 text-destructive" onClick={() => handleArchive(row.id)} disabled={isPending || !admission.ready}>
                       <Archive className="h-3.5 w-3.5" />
-                    </Button>
+                    </HrIconButton>
                   </div>
                 )}
               </div>

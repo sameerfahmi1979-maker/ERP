@@ -1,0 +1,27 @@
+-- Runs after synthetic preparation fixture, before the full atomic-save suite.
+SAVEPOINT stale_rerun;
+RESET ROLE;
+UPDATE public.dms_metadata_definitions SET is_required=NOT is_required WHERE id=1001;
+UPDATE public.dms_ai_job_queue SET job_status='failed' WHERE id=current_setting('test.job')::bigint;
+UPDATE erp_private.f07_job_claims SET preparation_context=jsonb_set(preparation_context,'{state}','"queued"') WHERE job_id=current_setting('test.job')::bigint;
+SET ROLE authenticated;
+SELECT pg_temp.ok(public.ai_mod04_preparation('status',jsonb_build_object('documentId',1001,'jobId',current_setting('test.job')::bigint))->>'sourceCurrent'='false','field-rule change correctly invalidates old preparation');
+SELECT pg_temp.error($q$SELECT public.ai_mod04_preparation('start',current_setting('test.start')::jsonb||jsonb_build_object('snapshot',public.ai_mod04_preparation('snapshot','{"documentId":1001}')->>'snapshot','requestId','00000000-0000-4000-8000-000000009001'))$q$,'PT409','stale job must be reconciled before replacement');
+SAVEPOINT uncertain_provider;
+RESET ROLE;
+UPDATE erp_private.f07_job_claims SET preparation_stages=preparation_stages||'{"uncertain-analysis":{"state":"started"}}' WHERE job_id=current_setting('test.job')::bigint;
+SET ROLE authenticated;
+SELECT pg_temp.error($q$SELECT public.ai_mod04_preparation('cancel',jsonb_build_object('documentId',1001,'jobId',current_setting('test.job')::bigint))$q$,'55000','uncertain provider work cannot be cancelled into a duplicate paid request');
+ROLLBACK TO SAVEPOINT uncertain_provider;
+SET ROLE authenticated;
+SELECT pg_temp.ok(public.ai_mod04_preparation('cancel',jsonb_build_object('documentId',1001,'jobId',current_setting('test.job')::bigint))->>'state'='cancelled','confirmed failed stale job can be cancelled without accepting stale source');
+SELECT pg_temp.ok(public.ai_mod04_preparation('cancel',jsonb_build_object('documentId',1001,'jobId',current_setting('test.job')::bigint))->>'state'='cancelled','lost cancellation response is idempotent');
+SELECT set_config('test.rerun',jsonb_build_object('documentId',1001,'requestId','00000000-0000-4000-8000-000000009001','snapshot',public.ai_mod04_preparation('snapshot','{"documentId":1001}')->>'snapshot','mode','reread_files','fileIds',jsonb_build_array(1001))::text,false);
+SELECT set_config('test.rerun_job',public.ai_mod04_preparation('start',current_setting('test.rerun')::jsonb)->>'jobId',false);
+SELECT pg_temp.ok(current_setting('test.rerun_job')<>current_setting('test.job'),'replacement receives its own operation identity');
+SELECT pg_temp.ok(public.ai_mod04_preparation('start',current_setting('test.rerun')::jsonb)->>'jobId'=current_setting('test.rerun_job'),'repeated replacement submission recovers same job');
+SELECT pg_temp.ok((SELECT count(*)=3 FROM public.dms_documents) AND (SELECT count(*)=3 FROM public.dms_document_files),'rerun creates no duplicate document or file');
+SELECT pg_temp.ok((SELECT title='SYNTHETIC accepted title' AND document_no='SYN-DOC-1001' FROM public.dms_documents WHERE id=1001),'rerun leaves accepted document and number unchanged');
+SELECT 'SAVED_RERUN_NATIVE_PASS assertions='||current_setting('test.assertions');
+ROLLBACK TO SAVEPOINT stale_rerun;
+SET ROLE authenticated;

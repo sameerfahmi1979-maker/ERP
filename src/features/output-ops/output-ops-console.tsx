@@ -1,5 +1,7 @@
 "use client";
 
+import { WorklistColgroup, WorklistFitControl, WorklistScrollRegion } from "@/components/erp/table/worklist-fit-control";
+
 /**
  * OUTPUT.6 (WP10) — Global Output Operations Console.
  *
@@ -381,13 +383,14 @@ function OutputOpsSession() {
       {loadFailed && <p role="alert" className="border border-destructive p-3 text-sm">Output operations could not be refreshed. Displayed records may be outdated. Refresh before taking action.</p>}
       <div className="flex flex-wrap gap-2">
         <EditColumns columns={columns.columns} defaults={OPS_COLUMNS} onApply={columns.setColumns}/>
+        <WorklistFitControl viewport={columns.viewport} />
         <EditFilters definitions={[{id:'state',label:'Lifecycle state',type:'select',options:LIFECYCLE_STATES.map(value=>({value,label:value.replaceAll('_',' ')}))},{id:'class',label:'Document class',type:'select',options:CLASSES.map(value=>({value,label:'Class '+value}))},{id:'search',label:'Serial, file or output',type:'text'}]}
           values={{state:stateFilter,class:classFilter,search}} scopeLabel="Filters are applied on the server across authorized issuance history, not just this page."
           onApply={values=>{setPage(0);setStateFilter(values.state??'');setClassFilter(values.class??'');setSearch(values.search??'');}}/>
       </div>
-      <div role="region" aria-label="Output issuance history" tabIndex={0} className="rounded-sm border overflow-x-auto">
-        <table className="w-full table-fixed text-sm" style={{minWidth:columns.visible.reduce((sum,c)=>sum+c.width,0)}}>
-          <colgroup>{columns.visible.map(c=><col key={c.id} style={{width:c.width}}/>)}</colgroup>
+      <WorklistScrollRegion attach={columns.viewport.attachViewport} aria-label="Output issuance history" className="rounded-sm border">
+        <table className="w-full table-fixed text-sm" {...columns.viewport.tableProps}>
+          <WorklistColgroup viewport={columns.viewport} />
           <thead className="bg-muted/40 text-muted-foreground">
             <ConfiguredRow columns={columns.columns}>
               <th data-column="id" className="px-3 py-2 text-left font-medium">ID</th>
@@ -464,7 +467,7 @@ function OutputOpsSession() {
             ))}
           </tbody>
         </table>
-      </div>
+      </WorklistScrollRegion>
 
       {/* ── Pagination ──────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between text-xs text-muted-foreground">

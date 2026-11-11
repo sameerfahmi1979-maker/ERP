@@ -1,4 +1,5 @@
 "use client";
+import { WorklistColgroup, WorklistScrollRegion } from "@/components/erp/table/worklist-fit-control";
 
 import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
 import { ConfiguredRow } from "@/components/erp/table/list-controls";
@@ -156,7 +157,7 @@ export function DmsRenewalRequestsTable({ filter = {}, canManage = false }: DmsR
         <DmsListTools view={listView} />
         {isError ? <DmsLoadError subject="renewal requests" retry={refetch} pending={isFetching} /> : isLoading ? <div role="status" className="py-8 text-center text-sm text-muted-foreground">Loading…</div> : <>
 <div className="rounded-md border border-border overflow-auto">
-          <div role="region" aria-label="renewals table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
+          <WorklistScrollRegion attach={listView.viewport.attachViewport} aria-label="renewals table"><table className="w-full table-fixed text-sm" {...listView.viewport.tableProps}><WorklistColgroup viewport={listView.viewport} />
             <thead>
               <ConfiguredRow columns={listView.columns} className="bg-muted/20 border-b border-border">
                 <SortColHeader data-column="renewal_no" field="renewal_no" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2">Renewal No</SortColHeader>
@@ -245,7 +246,7 @@ export function DmsRenewalRequestsTable({ filter = {}, canManage = false }: DmsR
               );
             })}
               </tbody>
-            </table></div>
+            </table></WorklistScrollRegion>
             <TablePagination
               page={table.page}
               totalPages={table.totalPages}

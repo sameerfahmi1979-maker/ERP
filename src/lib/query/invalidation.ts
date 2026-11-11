@@ -530,6 +530,17 @@ export function invalidateDmsRenewals(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: ["dms", "renewals"] });
 }
 
+export function invalidateHrComplianceRenewals(queryClient: QueryClient, employeeId?: number): void {
+  const filters = {
+    queryKey: ["hr", "compliance", "document-renewals"],
+    predicate: (query: { queryKey: readonly unknown[] }) => employeeId === undefined || query.queryKey[4] === employeeId,
+  };
+  notifyManager.batch(() => {
+    void queryClient.cancelQueries(filters);
+    void queryClient.invalidateQueries({ ...filters, refetchType: "active" });
+  });
+}
+
 export function invalidateDmsDocumentRenewals(queryClient: QueryClient, documentId: number): void {
   invalidateDmsDashboard(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["dms", "renewals", "doc", documentId] });
@@ -1596,11 +1607,13 @@ export function invalidateHrDashboard(queryClient: QueryClient): void {
 /** Invalidate only the top KPI summary bar. */
 export function invalidateHrDashboardSummary(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: ["hr", "dashboard", "summary"] });
+  void queryClient.invalidateQueries({ queryKey: ["hr", "dashboard", "workspace"] });
 }
 
 /** Invalidate only the attention items list. */
 export function invalidateHrDashboardAttention(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: ["hr", "dashboard", "attention-items"] });
+  void queryClient.invalidateQueries({ queryKey: ["hr", "dashboard", "workspace"] });
 }
 
 // ── HR Search (HR.10) ──────────────────────────────────────────────────────

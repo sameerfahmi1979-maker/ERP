@@ -48,7 +48,7 @@ import {getDmsDocumentsByEntity, getAvailableDmsDocumentsForLink} from "@/server
 import {readDmsEntityDocuments,ENTITY_DOCUMENTS_TIMEOUT_MS} from "@/server/reads/dms-entity-documents";
 import {entityDocumentsCriteriaSchema,entityDocumentsResponseSchema,entityDocumentsListPage,entityDocumentsAttachPage,entityDocumentsSelectedPage,entityDocumentsSummaryPage} from "@/lib/reads/dms-entity-documents-schema";
 import {GET,POST} from "@/app/api/reads/dms-entity-documents/route";
-const doc=(id:number, extra:Row={})=>({id,document_no:`DOC-${id}`,title:`Document ${id}`,status:"active",issue_date:null,expiry_date:null,created_at:"2026-01-01T00:00:00Z",updated_at:"2026-01-01T00:00:00Z",deleted_at:null,legacy_document_code:null,description:null,confidentiality_level:"internal",migrated_from_table:null,document_type_id:1,document_type:{type_code:"TEST",name_en:"Evidence"},ai_risk_level:null,ai_risk_score:null,completeness_score:null,...extra});
+const doc=(id:number, extra:Row={})=>({id,document_no:`DOC-${id}`,title:`Document ${id}`,status:"active",is_archived:false,issue_date:null,expiry_date:null,created_at:"2026-01-01T00:00:00Z",updated_at:"2026-01-01T00:00:00Z",deleted_at:null,legacy_document_code:null,description:null,confidentiality_level:"internal",migrated_from_table:null,document_type_id:1,document_type:{type_code:"TEST",name_en:"Evidence"},ai_risk_level:null,ai_risk_score:null,completeness_score:null,...extra});
 const link=(id:number,extra:Row={})=>({id,document_id:id,entity_type:"employee",entity_id:1,is_primary:false,link_role:null,linked_at:"2026-01-01T00:00:00Z",deleted_at:null,document:doc(id),...extra});
 beforeEach(()=>{Object.assign(s,{calls:[],admin:0,clients:0,fault:"",nullCount:"",short:"",global:false,preview:false,extraction:false,findings:false,rpcFault:false,after:undefined,
   rows:{employees:[{id:1,deleted_at:null}],dms_documents:[doc(1)],dms_document_links:[],dms_document_files:[],dms_ai_extraction_results:[]}});
@@ -67,9 +67,25 @@ it("native composition counts all authorized links, pages late rows and counts f
   expect(s.calls.filter(c=>c.table==="dms_document_links")).toHaveLength(3);expect(s.calls.filter(c=>c.table==="dms_document_files")).toHaveLength(3);expect(s.admin).toBe(0);
   for(const c of s.calls.filter(c=>c.table==="dms_documents"))expect((c.methods.find(m=>m[0]==="in")?.[2] as number[]).length).toBeLessThanOrEqual(200);
 });
-it("list retains archived and superseded records but omits deleted/invisible documents without leaking their count",async()=>{
-  s.rows.dms_document_links=[link(1),link(2),link(3),link(4),link(5)];s.rows.dms_documents=[doc(1,{status:"archived"}),doc(2,{status:"superseded"}),doc(3,{status:"deleted"}),doc(4,{deleted_at:"2026-01-01"})];
-  const r=entityDocumentsListPage.parse((await read()).data);expect(r.totalCount).toBe(2);expect(r.rows.map(d=>d.document_id)).toEqual([2,1]);expect(r.rows.every(d=>d.ai_summary===null)).toBe(true);
+it("employee list excludes history before counting and paging while retaining current expired documents", async () => {
+  s.rows.dms_document_links = [1, 2, 3, 4, 5, 6, 7, 8].map(id => link(id));
+  s.rows.dms_documents = [
+    doc(1), doc(2, { status: "expired", expiry_date: "2000-01-01" }),
+    doc(3, { status: "archived" }), doc(4, { status: "superseded" }), doc(5, { is_archived: true }),
+    doc(6, { status: "deleted" }), doc(7, { deleted_at: "2026-01-01" }),
+  ];
+  const result = entityDocumentsListPage.parse((await read("list", { limit: 1 })).data);
+  expect(result.totalCount).toBe(2);
+  expect(result.rows.map(d => d.document_id)).toEqual([2]);
+  expect(result.rows[0]).toMatchObject({ status: "expired", ai_summary: null });
+  expect((await getDmsDocumentsByEntity("employee", 1)).data?.map(d => d.document_id)).toEqual([2, 1]);
+});
+it("non-employee linked lists retain their existing history view", async () => {
+  s.rows.parties = [{ id: 1 }];
+  s.rows.dms_document_links = [link(1, { entity_type: "party" }), link(2, { entity_type: "party" })];
+  s.rows.dms_documents = [doc(1, { status: "archived" }), doc(2, { status: "superseded" })];
+  const result = entityDocumentsListPage.parse((await read("list", { entityType: "party" })).data);
+  expect(result.rows.map(d => d.document_id)).toEqual([2, 1]);
 });
 it("attach excludes the complete linked set beyond 1000 before exact count and server paging",async()=>{
   s.rows.dms_document_links=Array.from({length:1107},(_,i)=>link(i+1));s.rows.dms_documents=Array.from({length:1160},(_,i)=>doc(i+1));
@@ -133,9 +149,32 @@ it("latest extraction tie is deterministic, name fallback and OCR are projected 
 });
 it.each(["dms_ai_extraction_results","dms_document_files"])("%s enrichment failure never becomes false absence",async table=>{s.preview=s.extraction=true;s.fault=table;expect((await read("attach")).success).toBe(false);});
 it("capability lookup failure is not treated as permission denial or false absence",async()=>{s.rpcFault=true;expect((await read("attach")).success).toBe(false);});
-it("scoped compliance preserves visible link totals, expiry/status and restricted missing/findings",async()=>{
-  s.rows.dms_document_links=[link(1),link(2),link(3)];s.rows.dms_documents=[doc(1,{expiry_date:"2000-01-01",ai_risk_level:"critical",status:"archived"}),doc(2,{expiry_date:"2999-01-01",ai_risk_level:"high"})];
-  const r=entityDocumentsSummaryPage.parse((await read("summary")).data);expect(r.summary).toMatchObject({totalDocuments:2,expiredDocuments:1,expiringSoonDocuments:0,missingRequiredDocuments:null,openComplianceFindings:null,highRiskDocuments:1,criticalRiskDocuments:1,latestExpiryDate:"2999-01-01",scope:"visible_documents"});expect(s.admin).toBe(0);
+it("scoped employee compliance excludes history from totals, expiry and risk and preserves restricted metrics", async () => {
+  s.rows.dms_document_links = [1, 2, 3, 4, 5, 6].map(id => link(id));
+  s.rows.dms_documents = [
+    doc(1, { status: "superseded", expiry_date: "2000-01-01", ai_risk_level: "critical" }),
+    doc(2, { expiry_date: "2998-01-01", ai_risk_level: "high" }),
+    doc(3, { status: "archived", expiry_date: "2000-01-01" }),
+    doc(4, { is_archived: true, expiry_date: "2999-01-01" }),
+    doc(5, { status: "expired", expiry_date: "2001-01-01" }),
+  ];
+  const result = entityDocumentsSummaryPage.parse((await read("summary")).data);
+  expect(result.summary).toMatchObject({
+    totalDocuments: 2, expiredDocuments: 1, expiringSoonDocuments: 0, missingRequiredDocuments: null,
+    openComplianceFindings: null, highRiskDocuments: 1, criticalRiskDocuments: 0, latestExpiryDate: "2998-01-01",
+    scope: "visible_documents",
+  });
+  expect(s.admin).toBe(0);
+});
+it("employee findings omit findings for archived or replaced linked records and keep employee-level findings", async () => {
+  s.findings = true;
+  s.rows.dms_document_links = [1, 2, 3].map(id => link(id));
+  s.rows.dms_documents = [doc(1, { status: "superseded" }), doc(2), doc(3, { is_archived: true })];
+  s.rows.erp_ai_compliance_findings = [1, 2, 3, null].map((document_id, index) => ({
+    id: index + 1, entity_type: "employee", entity_id: 1, status: "open", deleted_at: null, document_id,
+  }));
+  const result = entityDocumentsSummaryPage.parse((await read("summary")).data);
+  expect(result.summary.openComplianceFindings).toBe(2);
 });
 it("global compliance uses complete native rules and the original deterministic missing-document helper",async()=>{
   s.global=true;s.rows.dms_document_links=[link(1)];s.rows.dms_required_document_rules=[{id:1,rule_code:"A",rule_name:"Present",entity_type:"employee",document_type_id:1,is_required:true,is_active:true,deleted_at:null},{id:2,rule_code:"B",rule_name:"Missing",entity_type:"employee",document_type_id:2,is_required:true,is_active:true,deleted_at:null}];

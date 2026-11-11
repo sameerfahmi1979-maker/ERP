@@ -43,8 +43,8 @@ function buildReviewWarning(
 ): string | null {
   const warnings: string[] = [];
   const trimmed = currentValue.trim();
-  if (def.review_required_if_missing && !trimmed) {
-    warnings.push("Required for review — value is missing");
+  if (!trimmed && (def.is_required || def.review_required_if_missing)) {
+    warnings.push("Enter a value before approving.");
   }
   if (
     def.review_required_if_low_confidence &&
@@ -71,6 +71,7 @@ function MetadataFieldInput({
     return (
       <Textarea
         id={`intake-metadata-${def.id}`} name={def.field_code} required={def.is_required}
+        aria-invalid={def.is_required && !currentValue.trim() || undefined}
         value={currentValue}
         onChange={(e) => onChange(def.id, def.field_type, e.target.value)}
         rows={2}
@@ -89,6 +90,7 @@ function MetadataFieldInput({
   return (
     <Input
       id={`intake-metadata-${def.id}`} name={def.field_code} required={def.is_required}
+      aria-invalid={def.is_required && !currentValue.trim() || undefined}
       type={
         def.field_type === "date"
           ? "date"
@@ -207,7 +209,8 @@ export function DmsAiIntakeMetadataSection({
             <h5 className="text-xs font-semibold text-muted-foreground border-b pb-1">{group}</h5>
           )}
           {items.map((def) => {
-            const aiValue = extractedFieldsJson?.[def.field_code] as string | null | undefined;
+            const extracted = extractedFieldsJson?.[def.field_code];
+            const aiValue = extracted == null ? null : String(extracted);
             const confEntry = fieldConfidenceJson?.[def.field_code] as FieldConfidenceEntry | undefined;
             const currentValue = values[def.id]?.rawValue ?? aiValue ?? "";
             const reviewWarning = buildReviewWarning(def, currentValue, confEntry);
@@ -222,6 +225,7 @@ export function DmsAiIntakeMetadataSection({
                 )}
                 <DmsAiIntakeFieldRow
                   label={label}
+                  htmlFor={`intake-metadata-${def.id}`}
                   required={def.is_required}
                   aiSuggestedValue={aiValue}
                   confidenceLabel={confEntry?.label}

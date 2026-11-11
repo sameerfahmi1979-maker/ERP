@@ -12,6 +12,7 @@ import {
 
 interface DmsAiIntakeFieldRowProps {
   label: string;
+  htmlFor?: string;
   required?: boolean;
   aiSuggestedValue?: string | null;
   confidenceLabel?: string | null;
@@ -24,6 +25,7 @@ interface DmsAiIntakeFieldRowProps {
 
 export function DmsAiIntakeFieldRow({
   label,
+  htmlFor,
   required,
   aiSuggestedValue,
   confidenceLabel,
@@ -40,7 +42,7 @@ export function DmsAiIntakeFieldRow({
   return (
     <div className={cn("space-y-1", className)}>
       <div className="flex items-center justify-between gap-2">
-        <label className="text-sm font-medium text-foreground">
+        <label htmlFor={htmlFor} className="text-sm font-medium text-foreground">
           {label}
           {required && <span className="text-destructive ml-0.5">*</span>}
         </label>

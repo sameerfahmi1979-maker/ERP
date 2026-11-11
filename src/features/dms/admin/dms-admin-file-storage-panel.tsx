@@ -1,4 +1,5 @@
 "use client";
+import { WorklistColgroup, WorklistScrollRegion } from "@/components/erp/table/worklist-fit-control";
 
 import { DmsListTools, useDmsListView, type DmsListField } from "@/features/dms/dms-list-view";
 import { ConfiguredRow } from "@/components/erp/table/list-controls";
@@ -249,7 +250,7 @@ export function DmsAdminFileStoragePanel() {
             </div>
           ) : (
             <div className="rounded-md border border-border overflow-hidden">
-              <div role="region" aria-label="storage-inspector table" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{ minWidth: listView.visible.reduce((sum, column) => sum + column.width, 0) }}><colgroup>{listView.visible.map(column => <col key={column.id} style={{ width: column.width }} />)}</colgroup>
+              <WorklistScrollRegion attach={listView.viewport.attachViewport} aria-label="storage-inspector table"><table className="w-full table-fixed text-sm" {...listView.viewport.tableProps}><WorklistColgroup viewport={listView.viewport} />
                 <thead>
                   <ConfiguredRow columns={listView.columns} className="border-b border-border bg-muted/20">
                     <th data-column="file" className="text-left px-3 py-2 font-medium text-muted-foreground uppercase tracking-wide">File</th>
@@ -368,7 +369,7 @@ export function DmsAdminFileStoragePanel() {
                     );
                   })}
                 </tbody>
-              </table></div>
+              </table></WorklistScrollRegion>
               {total > rows.length && (
                 <div className="px-3 py-2 text-xs text-muted-foreground border-t border-border/50 bg-muted/10">
                   Showing {rows.length} of {total} records. Load more from the database if needed.

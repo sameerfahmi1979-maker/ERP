@@ -3,6 +3,7 @@ import {z} from "zod";
 import {getAuthContext, hasPermission, type AuthContext} from "@/lib/rbac/check";
 import {createClient} from "@/lib/supabase/server";
 import {literalContains} from "@/lib/reads/search";
+import {readDmsSubmissionBlocker} from "./dms-approval-route";
 import {canReadDmsApprovals, dmsApprovalRequestSchema, dmsApprovalQueuePageSchema, dmsApprovalStateResponseSchema, dmsApprovalHistoryPageSchema} from "@/lib/reads/dms-approvals-schema";
 
 const id = z.number().int().positive().refine(Number.isSafeInteger), text = z.string().nullable(), nullableId = id.nullable();
@@ -10,7 +11,8 @@ const label = z.object({display_name: text}).nullable(), typeLabel = z.object({n
 const document = z.object({id, document_no: z.string(), title: z.string(), approval_status: text, submitted_by: nullableId, submitted_at: text,
   owner_user_id: nullableId, created_by: nullableId, document_type: typeLabel, submitter: label});
 const queueDocument = document.extend({confidentiality_level: text, owner: label});
-const stateDocument = document.extend({status: z.string(), document_type_id: nullableId});
+const stateDocument = document.extend({status: z.string(), document_type_id: nullableId,
+  owning_company_id: nullableId, owning_branch_id: nullableId, company: z.object({company_code: text}).nullable()});
 const currentApproval = z.object({id, action: z.string(), workflow_id: nullableId, step_id: nullableId, reason: text, comments: text});
 const historyRow = z.object({id, document_id: id, action: z.string(), actioned_by: nullableId, actioned_at: z.string(), submitted_by: nullableId,
   submitted_at: text, reason: text, comments: text, is_current: z.boolean(), workflow_id: nullableId, step_id: nullableId, created_at: z.string(),
@@ -47,7 +49,7 @@ export async function readDmsApprovals(input: unknown, context?: AuthContext, si
       return new Map(access.map(a => [a.document_id, a]));
     };
     if (p.mode === "state") {
-      const docResult = await attach(db.from("dms_documents").select(docColumns + ",status,document_type_id", {count: "exact"})
+      const docResult = await attach(db.from("dms_documents").select(docColumns + ",status,document_type_id,owning_company_id,owning_branch_id,company:owner_companies!owning_company_id(company_code)", {count: "exact"})
         .eq("id", p.documentId).is("deleted_at", null).range(0, 0)); signal?.throwIfAborted();
       if (docResult.error) throw Error("Approval subject read failed");
       if (docResult.count === 0 && Array.isArray(docResult.data) && docResult.data.length === 0) return denied();
@@ -58,7 +60,7 @@ export async function readDmsApprovals(input: unknown, context?: AuthContext, si
       if (current.error || !Array.isArray(current.data) || ![0, 1].includes(current.count ?? -1) || current.data.length !== current.count) throw Error("Current approval unverified");
       const ca = current.data[0] ? currentApproval.parse(current.data[0]) : null;
       const actionable = !!ca && ca.action === "submitted";
-      const mutable = !["archived", "deleted"].includes(d.status);
+      const mutable = !["archived", "superseded", "deleted"].includes(d.status);
       const submittable = mutable && !ca && ["draft", "rejected", "withdrawn", null].includes(d.approval_status);
       // The context provides coarse route admission, not a grant on this subject.
       // Reuse the existing F03/F05 predicates used by the atomic transition.
@@ -72,17 +74,19 @@ export async function readDmsApprovals(input: unknown, context?: AuthContext, si
         })),
       ]);
       signal?.throwIfAborted();
+      const canRequest = submittable && submission.some(Boolean);
+      const submissionBlocker = canRequest ? await readDmsSubmissionBlocker(d, signal) : null;
       const self = d.submitted_by !== null && d.submitted_by === ctx.profile.id;
       const canActOnStep = access.get(p.documentId)?.can_act === true && !self;
       return {success: true as const, data: dmsApprovalStateResponseSchema.parse({criteria: p, record: {
         documentId: d.id, documentNo: d.document_no, title: d.title, documentTypeId: d.document_type_id, documentTypeName: d.document_type?.name_en ?? null,
         documentStatus: d.status, approvalStatus: d.approval_status, submittedBy: d.submitted_by, submittedByName: d.submitter?.display_name ?? null, submittedAt: d.submitted_at,
         currentApprovalId: ca?.id ?? null, currentApprovalAction: ca?.action ?? null, currentWorkflowId: ca?.workflow_id ?? null, currentStepId: ca?.step_id ?? null,
-        canSubmit: submittable && submission.some(Boolean),
+        canSubmit: canRequest && !submissionBlocker,
         canApprove: mutable && actionable && canActOnStep && d.approval_status === "pending_approval",
         canReject: mutable && actionable && canActOnStep && d.approval_status === "pending_approval",
         canWithdraw: mutable && actionable && d.approval_status === "pending_approval" && access.get(p.documentId)?.can_withdraw === true,
-        actionUnavailableReason: d.approval_status === "pending_approval" && !actionable ? "The current approval request is unavailable. Refresh or ask your administrator to check approval access before taking action." : null,
+        actionUnavailableReason: d.approval_status === "pending_approval" && !actionable ? "The current approval request is unavailable. Refresh or ask your administrator to check approval access before taking action." : submissionBlocker,
         canViewHistory: canView, selfApprovalBlocked: self && d.approval_status === "pending_approval",
         selfApprovalBlockReason: self ? "You submitted this document for approval and cannot act on it." : null,
         latestComments: ca?.comments ?? null, latestReason: ca?.reason ?? null,

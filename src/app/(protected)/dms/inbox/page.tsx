@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 
 import { getDmsNewDocumentDefaults } from "@/server/actions/dms/documents";
-import { isDmsBatchIntakeEnabled } from "@/server/actions/dms/batch-intake";
+import { isDmsBatchIntakeEnabled, findDmsBatchAdmission } from "@/server/actions/dms/batch-intake";
 import { isDmsAiAutoStartEnabled } from "@/server/actions/dms/ai-intake";
 import { DmsUploadInboxPageClient } from "@/features/dms/upload/dms-upload-inbox-page-client";
 import type { DmsDocumentTypeOption, DmsEntityContext } from "@/features/dms/upload/dms-create-document-from-upload-dialog";
@@ -29,7 +29,13 @@ export default async function DmsInboxPage({
   const params = await searchParams;
   const parsedContext=parseDmsUploadContext(params);
   if(!parsedContext.success)return <div role="alert" className="p-6">This upload link has an invalid, conflicting or unsupported subject. Return to the original record and open its Documents section. No unlinked upload was substituted.</div>;
-  const entityContext:DmsEntityContext|null=parsedContext.context;
+  const recoverCode=params.recoverBatch;
+  const recovery=typeof recoverCode==='string'?await findDmsBatchAdmission(recoverCode):undefined;
+  if(recoverCode!==undefined&&(!recovery?.success||recovery.receipts.length!==1))return <div role="alert" className="p-6">The original batch or its current access is unavailable. No replacement batch was created.</div>;
+  const recoveryReceipt=recovery?.success?recovery.receipts[0]:undefined;
+  const originalContext=recoveryReceipt?.manifest.context;
+  if(recoveryReceipt&&parsedContext.context&&JSON.stringify({type:parsedContext.context.entityType,id:parsedContext.context.entityId})!==JSON.stringify(originalContext))return <div role="alert" className="p-6">This recovery link conflicts with the original batch subject. No replacement was created.</div>;
+  const entityContext:DmsEntityContext|null=originalContext?{entityType:originalContext.type,entityId:originalContext.id}:parsedContext.context;
 
   const [defaultsResult, batchEnabled, autoStartEnabled] = await Promise.all([
     getDmsNewDocumentDefaults(),
@@ -48,6 +54,7 @@ export default async function DmsInboxPage({
       />
 
       {!defaultsResult.success ? <DmsLoadError /> : <DmsUploadInboxPageClient
+        key={recoveryReceipt?.operation_id??'inbox'}
         initialSessions={[]}
         documents={[]}
         documentTypes={documentTypes}
@@ -55,6 +62,7 @@ export default async function DmsInboxPage({
         isAdmin={hasPermission(authContext, "dms.admin")}
         batchEnabled={batchEnabled}
         autoStartEnabled={autoStartEnabled}
+        recoveryReceipt={recoveryReceipt}
       />}
     </div>
   );

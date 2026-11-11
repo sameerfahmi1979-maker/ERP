@@ -44,7 +44,17 @@ export async function approveNumberedAiIntake(input:unknown,contract?:WorkspaceS
   const client=await createClient(),request=parsed.data;
   if(!request.prepared){
    const prepared=await client.rpc('prepare_numbered_ai_intake',{p_request:request});
-   if(prepared.error)return preparationFailure(failure(prepared.error.code));
+   if(prepared.error){
+    const {code,message}=prepared.error;
+    const guidance=code==='22023'&&message==='Complete the required metadata before approval'
+     ?'Complete the required fields in Metadata Fields and approve this same intake again.'
+     :code==='23503'&&message==='Metadata definition unavailable or changed'
+      ?'Metadata fields changed. Review the fields for the selected document type and approve this same intake again.'
+      :code==='PT409'&&message==='Explicit review of these exact bytes, type and expiry is required'
+       ?'The original, type or expiry needs a current confirmation. Verify and confirm this same intake again.'
+       :null;
+    return preparationFailure(guidance?{success:false,error:guidance}:failure(code));
+   }
    const snapshot=aiApprovalSnapshotSchema.safeParse(prepared.data);
    if(!snapshot.success||snapshot.data.source.id!==request.uploadSessionId||snapshot.data.type.id!==request.documentTypeId)return {success:false,error:'The approval context could not be verified.'};
    if(request.standardFileName&&!validateStandardFileName(request.standardFileName,{requiresExpiryTracking:snapshot.data.type.requires_expiry_tracking}).valid)return preparationFailure({success:false,error:'Standard file name is incomplete. Review it before approving.'});

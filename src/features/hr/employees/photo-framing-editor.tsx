@@ -1,4 +1,6 @@
 'use client';
+import { HrIconButton } from "@/features/hr/employees/hr-icon-button";
+import { ZoomOut, ZoomIn, RotateCw, RotateCcw } from "lucide-react";
 import {useState} from 'react';
 import Cropper from 'react-easy-crop';
 import 'react-easy-crop/react-easy-crop.css';
@@ -20,14 +22,14 @@ export default function PhotoFramingEditor({url,source,initial,onApply,onCancel}
         keyboardStep={4} disableAutomaticStylesInjection cropperProps={{'aria-label':'Move photo with arrow keys'}} />
     </div>
     <label className="block text-sm">Zoom
-      <span className="flex items-center gap-2"><Button type="button" variant="outline" aria-label="Zoom out" onClick={()=>setZoom(v=>Math.max(1,v-0.1))}>−</Button>
+      <span className="flex items-center gap-2"><HrIconButton type="button" variant="outline" aria-label="Zoom out" onClick={()=>setZoom(v=>Math.max(1,v-0.1))}><ZoomOut className="size-4" /></HrIconButton>
       <input aria-label="Photo zoom" type="range" min="1" max="5" step="0.01" value={zoom} onChange={e=>setZoom(Number(e.target.value))} className="min-w-0 flex-1 accent-primary"/>
-      <Button type="button" variant="outline" aria-label="Zoom in" onClick={()=>setZoom(v=>Math.min(5,v+0.1))}>+</Button></span>
+      <HrIconButton type="button" variant="outline" aria-label="Zoom in" onClick={()=>setZoom(v=>Math.min(5,v+0.1))}><ZoomIn className="size-4" /></HrIconButton></span>
     </label>
     {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
     <div className="flex flex-wrap gap-2">
-      <Button type="button" variant="outline" onClick={()=>reset(((rotation+90)%360) as PhotoFraming['rotation'])}>Rotate 90°</Button>
-      <Button type="button" variant="outline" onClick={()=>reset(0)}>Reset</Button>
+      <HrIconButton aria-label="Rotate 90°" type="button" variant="outline" onClick={()=>reset(((rotation+90)%360) as PhotoFraming['rotation'])}><RotateCw className="size-4" /></HrIconButton>
+      <HrIconButton aria-label="Reset" type="button" variant="outline" onClick={()=>reset(0)}><RotateCcw className="size-4" /></HrIconButton>
       <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
       <Button type="button" onClick={()=>{const result=photoFramingSchema.safeParse({version:1,source,rotation,crop});if(result.success)onApply(result.data);else setError(result.error.issues[0].message);}}>Use this framing</Button>
     </div>

@@ -121,7 +121,7 @@ function DmsApprovalActionDialogSession({
     saving.current = true;
     setSubmitting(true);
     try {
-      let result: { success: boolean; error?: string; data?: unknown };
+      let result: { success: boolean; error?: string; data?: unknown; failure?: "workflow" };
 
       if (mode === "submit") {
         result = await submitDocumentForApproval(documentId, { comment: comment.trim() || undefined });
@@ -148,6 +148,8 @@ function DmsApprovalActionDialogSession({
         setComment("");
         onOpenChange(false);
         onSuccess();
+      } else if (result.failure === "workflow" && result.error) {
+        setValidationError(result.error);
       } else {
         setValidationError("The action was not completed. Your entries are retained. Refresh the document status and check your access before retrying.");
       }

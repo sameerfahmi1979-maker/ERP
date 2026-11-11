@@ -8,6 +8,16 @@ import { ERPRecordSectionPanel, ERPRecordWorkspaceForm } from '@/components/work
 import { collectWorkspaceFieldIssues } from '@/lib/workspace/form-validation';
 import { reportWorkspaceFieldErrors, workspaceValidationFailure } from '@/lib/workspace/field-errors';
 afterEach(cleanup);
+it('explicit Cancel uses its own discard handler without changing ordinary Close',()=>{
+ const cancel=vi.fn(),close=vi.fn();
+ const ui=render(<ERPRecordWorkspaceForm title="Synthetic cancel" mode="edit" isDirty sections={[]} activeSection="profile" onSectionChange={()=>{}} onCancel={cancel} onRequestClose={close}><form><input defaultValue="Unsaved"/></form></ERPRecordWorkspaceForm>);
+ fireEvent.click(ui.getByRole('button',{name:'Cancel',exact:true}));expect(cancel).toHaveBeenCalledOnce();expect(close).not.toHaveBeenCalled();
+});
+it.each(['child','saving','recovery'] as const)('explicit Cancel cannot bypass %s protection',blocked=>{
+ const cancel=vi.fn();
+ const ui=render(<ERPRecordWorkspaceForm title="Synthetic guarded cancel" mode="edit" isDirty sections={[]} activeSection="profile" onSectionChange={()=>{}} onCancel={cancel} isChildDialogOpen={blocked==='child'} isSubmitting={blocked==='saving'} closeBlocked={blocked==='recovery'}><form><input defaultValue="Retained"/></form></ERPRecordWorkspaceForm>);
+ fireEvent.click(ui.getByRole('button',{name:'Cancel',exact:true}));expect(cancel).not.toHaveBeenCalled();
+});
 it('retained multipart recovery blocks close but keeps Save available',async()=>{
  const save=vi.fn(),close=vi.fn();const ui=render(<ERPRecordWorkspaceForm title="Synthetic recovery" mode="edit" isDirty sections={[]} activeSection="profile" onSectionChange={()=>{}} onSave={save} onRequestClose={close} closeBlocked><form><input defaultValue="Retained"/></form></ERPRecordWorkspaceForm>);
  const cancel=ui.queryByRole('button',{name:'Cancel'});if(cancel)fireEvent.click(cancel);expect(close).not.toHaveBeenCalled();fireEvent.click(ui.getByRole('button',{name:'Save',exact:true}));await waitFor(()=>expect(save).toHaveBeenCalledOnce());

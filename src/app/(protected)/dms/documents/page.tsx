@@ -52,6 +52,7 @@ export default async function DmsDocumentsPage() {
         canCreate={hasPermission(authContext, "dms.documents.upload") || hasPermission(authContext, "dms.admin")}
         canEdit={hasPermission(authContext, "dms.documents.edit") || hasPermission(authContext, "dms.admin")}
         canArchive={hasPermission(authContext, "dms.documents.archive") || hasPermission(authContext, "dms.admin")}
+        canDownload={hasPermission(authContext, 'dms.documents.download')||hasPermission(authContext,'dms.admin')}
       />}
     </div>
   );

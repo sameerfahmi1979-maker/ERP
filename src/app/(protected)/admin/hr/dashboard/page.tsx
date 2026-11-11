@@ -1,9 +1,6 @@
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
-import { HrDashboardPageClient } from "@/features/hr/dashboard/hr-dashboard-page-client";
-import type { HrDashboardPermissions } from "@/features/hr/dashboard/hr-dashboard-page-client";
-import {readHrDashboard} from "@/server/reads/hr-dashboard";
-import {hrDashboardReadIdentity} from "@/lib/reads/hr-dashboard-schema";
+import {HrDashboardWorkspace} from '@/features/hr/dashboard/hr-dashboard-workspace';
 
 export const metadata = { title: "HR Dashboard" };
 
@@ -14,20 +11,6 @@ export default async function HrDashboardPage() {
     redirect("/admin/hr/employees");
   }
 
-  const permissions: HrDashboardPermissions = {
-    canViewEmployees: hasPermission(ctx, "hr.employees.view"),
-    canViewCompliance: hasPermission(ctx, "hr.compliance.view"),
-    canViewMedical: hasPermission(ctx, "hr.medical.view"),
-    canViewAttendance: hasPermission(ctx, "hr.attendance.view"),
-    canViewLeave: hasPermission(ctx, "hr.leave.view"),
-    canViewPayroll: hasPermission(ctx, "hr.payroll.view"),
-    canViewAssignments: hasPermission(ctx, "hr.assignments.view"),
-    canViewActions: hasPermission(ctx, "hr.actions.view"),
-    canViewEos: hasPermission(ctx, "hr.eos.view"),
-    canViewRecruitment: hasPermission(ctx, "hr.recruitment.view"),
-  };
-
-  const result = await readHrDashboard({}, ctx);
-  return <HrDashboardPageClient authContext={ctx} permissions={permissions}
-    initialRead={result.success && result.data ? {identity: hrDashboardReadIdentity(ctx), data: result.data} : undefined} />;
+  // Match DMS: one identity-scoped read path, no second private SSR snapshot.
+  return <HrDashboardWorkspace authContext={ctx}/>;
 }

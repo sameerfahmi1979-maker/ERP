@@ -1,4 +1,5 @@
 "use client";
+import { HrIconButton } from "@/features/hr/employees/hr-icon-button";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import type { AuthContext } from "@/lib/rbac/check";
 import { reportTemplateSelectionIdentity } from "@/lib/reads/report-template-selection-schema";
@@ -613,14 +614,14 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                 </div>
               )}
           </div>
-          <button
+          <HrIconButton
             type="button"
             aria-label="Dismiss"
             className="shrink-0 opacity-60 hover:opacity-100"
             onClick={() => { setGenerateResult(null); setRepeatTarget(null); }}
           >
             <X className="h-3.5 w-3.5" />
-          </button>
+          </HrIconButton>
         </div>
       )}
 
@@ -709,15 +710,12 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                   {(item.canPreview || (item.canGenerate && item.generatable)) && (
                     <div className="flex items-center gap-1.5 mt-2.5 justify-end">
                       {(item.canPreview || item.wordingStatus === "legacy") && (
-                        <Button
+                        <HrIconButton aria-label="Preview draft"
                           variant="outline"
                           size="sm"
                           className="h-7 text-xs gap-1"
                           onClick={() => { setGenAuthorizeReissue(false); setGenerateResult(null); setPreview({ outputCode: item.outputCode, label: item.name }); }}
-                        >
-                          <Eye className="h-3 w-3" />
-                          Preview draft
-                        </Button>
+                        ><Eye className="h-3 w-3" /></HrIconButton>
                       )}
                       {item.official && item.canGenerate && item.generatable && (
                         <Button
@@ -776,9 +774,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                 />
               </div>
             )}
-            <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => refreshHistory()}>
-              <RefreshCw className="h-3 w-3" /> Refresh
-            </Button>
+            <HrIconButton aria-label="Refresh" variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => refreshHistory()}><RefreshCw className="h-3 w-3" /></HrIconButton>
           </div>
         </div>
 
@@ -807,7 +803,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                       </span></>},{id:"actions",header:"Actions",enableHiding:true,size:200,enableSorting:false,meta:{exportable:false},cell:({row:{original:item}})=><><div className="flex items-center gap-0.5 justify-end flex-nowrap">
                         {/* Download — any status with a stored file */}
                         {item.can_recover && <Button type="button" variant="outline" size="sm" disabled={issuingCode !== null} onClick={() => void handleRecover(item)} title="Resume the same original request, file and serial">Recover original</Button>}
-                        <Button aria-label="Download / Reprint Original PDF"
+                        <HrIconButton aria-label="Download / Reprint Original PDF"
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7"
@@ -820,7 +816,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                           ) : (
                             <Download className="h-3.5 w-3.5" />
                           )}
-                        </Button>
+                        </HrIconButton>
 
                         {/* Generate New — creates a separate new issuance with current data.
                             Distinct from Reissue/Supersede: the original is NOT marked superseded.
@@ -831,7 +827,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                             return catItem?.canGenerate && catItem?.generatable &&
                               (item.status === "issued" || item.status === "revoked" || item.status === "superseded");
                           })() && (
-                          <Button aria-label="Generate New — create a fresh independent issuance with current ERP data"
+                          <HrIconButton aria-label="Generate New — create a fresh independent issuance with current ERP data"
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/30"
@@ -844,12 +840,12 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                             ) : (
                               <RefreshCw className="h-3.5 w-3.5" />
                             )}
-                          </Button>
+                          </HrIconButton>
                         )}
 
                         {/* Reissue — formally supersedes the original and links both records */}
                         {item.status === "issued" && canReissue && (
-                          <Button aria-label="Reissue / Supersede (formal linked replacement)"
+                          <HrIconButton aria-label="Reissue / Supersede (formal linked replacement)"
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
@@ -857,12 +853,12 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                             onClick={() => { setActionReason(""); setReissueTarget(item); }}
                           >
                             <RotateCcw className="h-3.5 w-3.5" />
-                          </Button>
+                          </HrIconButton>
                         )}
 
                         {/* Revoke */}
                         {item.status === "issued" && canRevoke && (
-                          <Button aria-label="Revoke document"
+                          <HrIconButton aria-label="Revoke document"
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30"
@@ -870,12 +866,12 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                             onClick={() => { setActionReason(""); setRevokeTarget(item); }}
                           >
                             <XCircle className="h-3.5 w-3.5" />
-                          </Button>
+                          </HrIconButton>
                         )}
 
                         {/* Remove failed artifact — system admin only, never for issued/revoked/superseded */}
                         {canDelete && (item.status === "failed" || item.status === "cancelled") && (
-                          <Button aria-label="Remove failed generation artifact"
+                          <HrIconButton aria-label="Remove failed generation artifact"
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
@@ -883,7 +879,7 @@ function EmployeeLettersFormsSession({ employeeId, employeeName, authContext }: 
                             onClick={() => setDeleteTarget(item)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          </HrIconButton>
                         )}
                       </div></>}]} enableRowSelection={false} initialPageSize={10} searchPlaceholder="Search loaded records…"/>
 

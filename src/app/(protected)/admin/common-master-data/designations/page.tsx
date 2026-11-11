@@ -1,4 +1,4 @@
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { ERPEmptyState } from "@/components/erp/empty-state";
@@ -14,7 +14,7 @@ export default async function DesignationsPage() {
   if (!hasPermission(ctx, "common_md.view") && !hasPermission(ctx, "common_md.designations.view")) {
     redirect("/access-denied");
   }
-  const canManage = hasPermission(ctx, "common_md.manage") || hasPermission(ctx, "common_md.designations.manage");
+  const canManage = hasGlobalPermission(ctx, "common_md.manage") || hasGlobalPermission(ctx, "common_md.designations.manage");
   let result: Awaited<ReturnType<typeof listDesignations>> | undefined;
   try {
     result = await listDesignations({});

@@ -74,7 +74,7 @@ function MetadataSection({ documentId, documentTypeId, isViewing }: Props) {
   </div>;
 }
 
-function initialMetadata(defs: DmsMetadataDefinitionRow[], rows: DmsMetadataValueRow[]) {
+export function initialMetadata(defs: DmsMetadataDefinitionRow[], rows: DmsMetadataValueRow[]) {
   return Object.fromEntries(defs.map(def => {
     const row = rows.find(value => value.definition_id === def.id);
     let value = row?.value_text ?? "";
@@ -141,7 +141,7 @@ function MetadataEditor({ ready, documentId, snapshot, onClose, onSaved }: { rea
   </ERPChildDialogForm>;
 }
 
-function MetadataField({ id, def, value, onChange }: { id: string; def: DmsMetadataDefinitionRow; value: string; onChange: (value: string) => void }) {
+export function MetadataField({ id, def, value, onChange }: { id: string; def: DmsMetadataDefinitionRow; value: string; onChange: (value: string) => void }) {
   const rawOptions = (def.options_json as { values?: unknown })?.values;
   const options = Array.isArray(rawOptions) ? [...new Set(rawOptions.filter((item): item is string => typeof item === "string" && !!item))] : [];
   const native = { id, name: `metadata_${def.id}`, "data-metadata-id": def.id, required: def.is_required, "aria-label": def.field_label_en };

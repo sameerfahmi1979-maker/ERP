@@ -41,10 +41,10 @@ export const IMPACT={...HISTORICAL_RAW_IMPACT,
  '.dockerignore':'bb90a159cf4df305ac432d5fb4aedfabbf1c2a05abff28d784fe1f63af4ec09c',
  // Preserve the approved local UI stylesheet in the build, not the runtime tree.
  'vendor/shadcn/tailwind.css':'146941ac3ff65496fdf1cb306e697255328e4dadc7c105d66e36bb031b00f6d6',
- // Reviewed photo framing adds react-easy-crop 6.2.4 / normalize-wheel 1.0.1.
- // Preserve F12 security fixes, pinned Node/npm and historical receipts above.
- 'package.json':'4c73e1f4218eb0f00c0b2f4d5ba67209b8629c9887e62f7e99cac53237a5aa9c',
- 'package-lock.json':'4f5b037d114caa7a21c6a77028ba158fbae2883167bd71588ac83123cade2b82',
+ // DMS ZIP download declares the already locked jszip 3.10.1 directly.
+ // Resolved package versions and integrity hashes stay pinned.
+ 'package.json':'725e9fc515e98a7e6b37c75a4a39aad24b8642e26eab6794c91c6a011d9fdc45',
+ 'package-lock.json':'a06e0cbe8842980f7c3dee68fe043f1c9d39c2eee8dc6e2ecaa77a86a31e2d28',
  'src/lib/branding/constants.ts':'70a0e8005ce9b8ec76334643b8a345a2908944169252b2fcd59db33f41236e14',
  // Reviewed Arabic OCR successor; preserve historical F06 hashes above.
  'src/lib/dms/file-content-extractor.ts':'db6b17688166fac42bfbaea474b86d57084d81d9fae7a7966c45ae6539a0391f',
@@ -54,7 +54,7 @@ export const IMPACT={...HISTORICAL_RAW_IMPACT,
  'src/lib/log-context.ts':'8b90e656f51f09d1342febe516ecce239a5f2b3f208da549962cdfd8b464f803',
  'tooling/dms/validate-intake.cjs':'d524803ef5049bf600ca16e37ef74229b7dd494792df677326a1e7765f1764c6'
 };
-export const LOCK_GRAPH_SHA='757f14da8658513d02839ef388ffbb2bb41f657eecd82c967501bf5573f86763';
+export const LOCK_GRAPH_SHA='a63cff42fff5b437800ac679fd290bb2fc290d441041a4f2332b2302494c6989';
 export const TRUST_ROOTS=['/etc/ssl/certs','/usr/local/share/ca-certificates','/etc/ca-certificates.conf','/usr/local/etc/npmrc','/etc/npmrc','/root/.npmrc','/home/node/.npmrc','/root/.npm','/home/node/.npm'];
 // F07 ships exactly one reviewed parser subprocess, not the developer tooling
 // tree. Keep strict runtime layout/hash checks and all original trust gates.

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -8,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { ShieldCheck, ScrollText } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
+import { hasGlobalPermission } from "@/lib/rbac/scope";
 import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
 import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
 import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
@@ -29,7 +32,7 @@ type Props = {
 const FORM_ID = "approval-role-workspace-form";
 const SCOPES = ['company','branch','department','site','module','global'];
 
-export function ApprovalRoleWorkspaceForm({ role, mode, companies = [], allRoles = [] }: Props) {
+export function ApprovalRoleWorkspaceForm({ role, mode, authContext, companies = [], allRoles = [] }: Props) {
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const sections = [
@@ -61,12 +64,12 @@ export function ApprovalRoleWorkspaceForm({ role, mode, companies = [], allRoles
       module_code: (fd.get("module_code") as string) || null,
       amount_limit: fd.get("amount_limit") ? Number(fd.get("amount_limit")) : null,
       currency_code: (fd.get("currency_code") as string) || "AED",
-      can_approve: fd.get("can_approve") !== "off",
-      can_reject: fd.get("can_reject") !== "off",
+      can_approve: fd.has("can_approve"),
+      can_reject: fd.has("can_reject"),
       can_delegate: fd.get("can_delegate") === "on",
       escalation_role_id: fd.get("escalation_role_id") ? parseInt(fd.get("escalation_role_id") as string) : null,
       owner_company_id: fd.get("owner_company_id") ? parseInt(fd.get("owner_company_id") as string) : null,
-      is_active: fd.get("is_active") !== "off",
+      is_active: fd.has("is_active"),
       description: (fd.get("description") as string) || null,
     };
     try {
@@ -87,6 +90,9 @@ export function ApprovalRoleWorkspaceForm({ role, mode, companies = [], allRoles
       title={isViewing ? "View Approval Role" : isEditing ? "Edit Approval Role" : "New Approval Role"}
       subtitle={role ? `L${role.level_number} — ${role.role_name} (${role.role_code})` : "Define a new approval authority level"}
       recordCode={role?.role_code}
+      headerActions={isViewing && role && (hasGlobalPermission(authContext, "common_md.manage") || hasGlobalPermission(authContext, "common_md.approval_roles.manage")) ? (
+        <Link className={buttonVariants({ size: "sm" })} href={`/admin/common-master-data/approval-roles/record/${role.id}?mode=edit`}>Edit</Link>
+      ) : undefined}
       sections={sections}
       activeSection={activeSection}
       onSectionChange={setActiveSection}
@@ -134,6 +140,9 @@ export function ApprovalRoleWorkspaceForm({ role, mode, companies = [], allRoles
               <select id="owner_company_id" name="owner_company_id" defaultValue={getDraftDefault("owner_company_id", role?.owner_company_id ?? "")} disabled={disabled} className="flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40">
                 <option value="">All Organizations</option>
                 {companies.map(c => <option key={c.id} value={c.id}>{c.legal_name_en}</option>)}
+                {role?.owner_company_id != null && !companies.some(c => c.id === role.owner_company_id) && (
+                  <option value={role.owner_company_id}>{role.owner_company?.legal_name_en ?? "Current organization"} (retained)</option>
+                )}
               </select>
             </div>
             <div className="col-span-12 space-y-1.5">
@@ -141,6 +150,9 @@ export function ApprovalRoleWorkspaceForm({ role, mode, companies = [], allRoles
               <select id="escalation_role_id" name="escalation_role_id" defaultValue={getDraftDefault("escalation_role_id", role?.escalation_role_id ?? "")} disabled={disabled} className="flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40">
                 <option value="">None</option>
                 {allRoles.filter(r => r.id !== role?.id).map(r => <option key={r.id} value={r.id}>{r.role_name} ({r.role_code})</option>)}
+                {role?.escalation_role_id != null && !allRoles.some(item => item.id === role.escalation_role_id) && (
+                  <option value={role.escalation_role_id}>{role.escalation_role?.role_name ?? "Current escalation role"} (retained)</option>
+                )}
               </select>
             </div>
             <div className="col-span-12 grid grid-cols-4 gap-2">

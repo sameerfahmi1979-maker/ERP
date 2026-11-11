@@ -19,7 +19,7 @@ export async function readEmployeeProfileChoices(input:unknown,signal?:AbortSign
   if(['departments','designations','sites'].includes(kind)&&!['common_md.view',`common_md.${s.table}.view`].some(code=>hasPermission(ctx,code)))return {status:'restricted' as const,error:'Choice catalogue permission is required; the saved reference is retained.'};
   if(['departments','sites','mohre'].includes(kind)&&p.companyId===null)return {status:'ready' as const,options:[]};
   try{
-   const values=await readAllPages(async(from,to)=>{
+   const owned=readAllPages(async(from,to)=>{
     let q=db.from(s.table).select(`id,label:${s.label},code:${s.code},active:${s.active}`,{count:'exact'}).is('deleted_at',null).order(s.label).order('id');
     let active=`${s.active}.eq.${s.active==='status'?'active':'true'}`;
     if(kind==='departments'){const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());active=`and(${active},or(effective_from.is.null,effective_from.lte.${today}),or(effective_to.is.null,effective_to.gte.${today}))`;}
@@ -31,6 +31,22 @@ export async function readEmployeeProfileChoices(input:unknown,signal?:AbortSign
     q=q.or(`and(${predicates.join(',')})`);
     const r=await q.range(from,to).abortSignal(bounded);return {...r,data:r.error?null:z.array(row).parse(r.data)};
    },{identity:r=>r.id,maxRows:5000});
+   const shared = (kind === 'departments' || kind === 'sites') && p.companyId !== null
+    ? (async () => {
+       const result = await db.rpc('shared_employee_assignment_choices', {
+        p_kind: kind, p_company: p.companyId, p_branch: p.branchId, p_selected: selected,
+       }).abortSignal(bounded);
+       if (result.error?.code === 'PGRST202') return [];
+       if (result.error) throw result.error;
+       return z.array(row).max(5000).parse(result.data);
+      })()
+    : [];
+   const [ownedRows, sharedRows] = await Promise.all([owned, shared]);
+   const unique = new Map([...ownedRows, ...sharedRows].map(record => [record.id, record]));
+   if (unique.size > 5000) throw new Error('Assignment catalogue exceeds its completeness limit');
+   const values = sharedRows.length
+    ? [...unique.values()].sort((a, b) => a.label.localeCompare(b.label) || a.id - b.id)
+    : ownedRows;
    return {status:'ready' as const,options:values.map(r=>({value:r.id,label:r.label+((r.active===true||r.active==='active')?'':' (inactive)'),code:r.code,disabled:!(r.active===true||r.active==='active')}))};
   }catch{return {status:'failed' as const,error:'This catalogue could not be completely loaded. Retry it; saved values are retained.'};}
  };

@@ -20,6 +20,7 @@ import {hrLookupSchemas,hrLookupSaveReceipt,type HrLookupTable,type HrLookupForm
 import {initialHrLookupOptions,hrLookupOptionPayload,type HrLookupOptionState} from "@/lib/hr/lookup-option-fields";
 import {HrLookupOptionControls} from './hr-lookup-option-controls';
 import {HrSettingsLifecycle,type HrArchiveTarget} from './hr-settings-lifecycle';
+import {HrTrainingCategoryControl} from './hr-training-category-control';
 
 type LookupRecord = HrSettingsRow & {training_category_id?:number|null;training_category?:{id:number;name_en:string}|null};
 
@@ -77,6 +78,7 @@ function HrSettingsLookupSession({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [readFailed, setReadFailed] = useState(false);
   const [saveFailure, setSaveFailure] = useState<string | null>(null);
+  const [categoryNotice,setCategoryNotice]=useState<string|null>(null);
   const [uncertain,setUncertain] = useState(false);
   const [archiveTarget,setArchiveTarget]=useState<HrArchiveTarget|null>(null),[archiveBusy,setArchiveBusy]=useState(false);
   const attempt = useRef(createWorkspaceSaveAttempt());
@@ -153,6 +155,9 @@ function HrSettingsLookupSession({
           setUncertain(true);setSaveFailure('Save response incomplete. Retry the same unchanged entries to recover the result.');return;
         }
         confirmed=true;attempt.current.resolved();pending.current=null;retry.current=null;setUncertain(false);
+        if(entity==='hr_training_types'&&row&&Object.hasOwn(updatedFields,'training_category_id')&&updatedFields.training_category_id!==row.training_category_id){
+          setCategoryNotice(`${row.name_en}: category updated. Existing employee certificates were preserved. Open Training & Certifications to review certificates marked “Category review required”.`);
+        }
         if(request.id!==null)setRows(current=>current.map(item=>item.id===request.id?{...item,...updatedFields,workspace_revision:receipt.data.revision}:item));
         try{toast.success(!receipt.data.changed?'No changes to save':request.toggle?(request.payload.is_active?'Activated':'Deactivated'):request.id!==null?'Updated successfully':'Created successfully');}catch{setSaveFailure('Saved. The confirmation message could not be displayed.');}
         if(active.retired)return;
@@ -165,7 +170,7 @@ function HrSettingsLookupSession({
         setUncertain(request.hadUnknown);
         if(!request.hadUnknown){attempt.current.resolved();pending.current=null;retry.current=null;}
         // Only the server's known safe messages may cross this UI boundary.
-        const safe=res.error&&/^(This HR record|This record changed|You no longer have permission|This HR code|A selected record|The change was rejected|Reopen this record|Global HR configuration)/.test(res.error);
+        const safe=res.error&&/^(This HR record|This record changed|You no longer have permission|This HR code|A selected record|The change was rejected|Reopen this record|Global HR configuration|Choose a training category)/.test(res.error);
         setSaveFailure(request.hadUnknown?'Save unconfirmed. Retry the same unchanged entries to recover the result.':safe?res.error!:"The record was not saved. Check your permissions and the entered values, then try again. Your entries are retained.");
       }
     } catch { if(active.retired)return;if(confirmed){setSaveFailure('Saved. Reopen the list to refresh the display.');return;}if(pending.current)pending.current.hadUnknown=true;setUncertain(true);setSaveFailure("Save unconfirmed. Retry the same unchanged entries to recover the result."); }
@@ -177,7 +182,9 @@ function HrSettingsLookupSession({
   const handleSubmit=async()=>{
     if(uncertain){await retry.current?.();return;}
     if(readFailed||!referenceReady)return;
-    const payload={...form,...hrLookupOptionPayload(entity,options),code:editing?.code??form.code.trim().toUpperCase(),name_ar:form.name_ar.trim()||null,description:form.description.trim()||null,sort_order:form.sort_order.trim()===''?NaN:Number(form.sort_order)};
+    const configuration=hrLookupOptionPayload(entity,options);
+    const payload={...form,...configuration,code:editing?.code??form.code.trim().toUpperCase(),name_ar:form.name_ar.trim()||null,description:form.description.trim()||null,sort_order:form.sort_order.trim()===''?NaN:Number(form.sort_order)};
+    if(entity==='hr_training_types'&&form.is_active&&!configuration.training_category_id){setSaveFailure('Choose a training category before saving an active training type.');return;}
     // Legacy codes are immutable, displayed unchanged and omitted from updates.
     const parsed=hrLookupSchemas[entity].safeParse({...payload,code:editing?'EXISTING':payload.code});
     if(!parsed.success){setSaveFailure('Check the required fields and configuration values. Your entries are retained.');return;}
@@ -186,6 +193,7 @@ function HrSettingsLookupSession({
 
   const handleToggle = async (row: LookupRecord) => {
     if(!onToggle||!canManage||readFailed||uncertain||mutation.current)return;
+    if(entity==='hr_training_types'&&!row.is_active&&!row.training_category_id){setSaveFailure('Choose a training category in Edit before activating this training type.');return;}
     await run(row,{code:row.code,name_en:row.name_en,name_ar:row.name_ar,description:row.description,is_active:!row.is_active,sort_order:row.sort_order},true);
   };
 
@@ -226,7 +234,7 @@ function HrSettingsLookupSession({
           <ERPEmptyState icon={Settings2} title={`No ${title.toLowerCase()} yet`} description={canManage ? "Click Add to create the first entry." : "No records found."} />
         ) : (
           <div className="divide-y">
-            <RecordCollection presentation="worklist" id="hr.hr-settings-lookup-page.HrSettingsLookupPage.rows" rows={rows} fields={[{"id":"code","path":"code","label":"Code"},{"id":"name_en","path":"name_en","label":"Name En"},{"id":"is_active","path":"is_active","label":"Is Active"}]} renderRecord={row => (
+            <RecordCollection presentation="worklist" id="hr.hr-settings-lookup-page.HrSettingsLookupPage.rows" columnPreferenceId={`hr.lookup:${entity}`} rows={rows} fields={[{"id":"code","path":"code","label":"Code"},{"id":"name_en","path":"name_en","label":"Name En"},...(entity==='hr_training_types'?[{id:'training_category',path:'training_category.name_en',label:'Training Category'}]:[]),{"id":"is_active","path":"is_active","label":"Is Active"}]} renderRecord={row => (
               <div key={row.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -235,6 +243,7 @@ function HrSettingsLookupSession({
                     {!row.is_active && <Badge variant="destructive" className="text-[10px]">Inactive</Badge>}
                   </div>
                   {row.name_ar && <p className="text-xs text-muted-foreground" dir="rtl">{row.name_ar}</p>}
+                  {entity==='hr_training_types'&&<p className="text-xs mt-1">Training category: {row.training_category_id ? row.training_category?.id===row.training_category_id ? row.training_category.name_en : 'Category unavailable — reopen to check' : <span className={row.is_active?'text-destructive':'text-muted-foreground'}>{row.is_active?'Missing — select a category':'Not assigned (inactive)'}</span>}</p>}
                   {row.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{row.description}</p>}
                 </div>
                 {canManage && (
@@ -259,6 +268,7 @@ function HrSettingsLookupSession({
       {canManage&&<HrSettingsLifecycle entity={entity} target={archiveTarget} onTargetChange={setArchiveTarget} onBusyChange={setArchiveBusy} disabled={dialogOpen||isSubmitting||uncertain||readFailed} onChanged={()=>{refresh();onAfterMutate?.();}}/>}
 
       {!canManage && <p role="note" className="text-sm text-muted-foreground">Read-only: these HR settings are shared across companies. Changing them requires global HR configuration permission; company or branch access alone does not allow changes.</p>}
+      {categoryNotice&&<p role="status" className="text-sm border border-border rounded p-3">{categoryNotice}</p>}
       {isPending && <p className="text-xs text-muted-foreground text-center">Loading...</p>}
 
       {canManage && (
@@ -293,6 +303,10 @@ function HrSettingsLookupSession({
               <Label className="text-xs font-medium mb-1 block">Name (English) <span className="text-destructive">*</span></Label>
               <Input aria-label="Name (English)" required pattern=".*\S.*" value={form.name_en} onChange={e => f("name_en", e.target.value)} placeholder="Enter English name" maxLength={200} />
             </div>
+            {entity==='hr_training_types'&&dialogOpen&&<div className="col-span-12">
+              <HrTrainingCategoryControl value={String(options.training_category_id??'')} existingId={editing?.training_category_id} existingName={editing?.training_category?.name_en} disabled={isSubmitting||uncertain} missing={!Object.hasOwn(options,'training_category_id')} required={form.is_active} onChange={value=>setOptions(current=>({...current,training_category_id:value}))} onReady={setReferenceReady}/>
+              {editing&&Object.hasOwn(options,'training_category_id')&&(String(options.training_category_id)||null)!==(editing.training_category_id==null?null:String(editing.training_category_id))&&<p role="note" className="text-sm mt-2">Changing this category will not rewrite existing employee certificates. Any different recorded categories will be flagged for review in Training & Certifications.</p>}
+            </div>}
             <div className="col-span-12">
               <Label className="text-xs font-medium mb-1 block">Name (Arabic)</Label>
               <Input aria-label="Name (Arabic)" value={form.name_ar} onChange={e => f("name_ar", e.target.value)} placeholder="Enter Arabic name" dir="rtl" maxLength={200} />
@@ -309,7 +323,7 @@ function HrSettingsLookupSession({
               <Switch id="is_active" checked={form.is_active} onCheckedChange={v => f("is_active", v)} />
               <Label htmlFor="is_active" className="text-sm cursor-pointer">Active</Label>
             </div>
-            {dialogOpen&&<HrLookupOptionControls entity={entity} values={options} disabled={isSubmitting||uncertain} existingTrainingCategoryId={editing?.training_category_id} existingTrainingCategoryName={editing?.training_category?.name_en} onReferenceReady={setReferenceReady} onChange={(key,value)=>setOptions(current=>({...current,[key]:value}))}/>}
+            {dialogOpen&&<HrLookupOptionControls entity={entity} values={options} disabled={isSubmitting||uncertain} excludeTrainingCategory={entity==='hr_training_types'} existingTrainingCategoryId={editing?.training_category_id} existingTrainingCategoryName={editing?.training_category?.name_en} onReferenceReady={setReferenceReady} onChange={(key,value)=>setOptions(current=>({...current,[key]:value}))}/>}
           </fieldset>
         </ERPChildDialogForm>
       )}

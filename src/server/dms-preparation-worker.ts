@@ -10,9 +10,18 @@ import { callCommonAiStructuredCompletion } from "@/lib/ai/common/provider-bridg
 import { readVerifiedIntakeSource } from "@/server/dms-verified-intake-source";
 import { getDmsAiProvider } from "@/lib/dms/ai/factory";
 import { routeOcr } from "@/lib/dms/ocr/ocr-router";
+import { preparationResponseSchema } from "@/lib/dms/preparation/response-schema";
+import { StructuredAiFailure, structuredFailureCodes } from "@/lib/dms/ai/structured-failure";
 import type { DmsAiJobHandlerResult } from "@/lib/dms/ai-jobs/job-types";
 const analysisReceipt = z.strictObject({ output: modelPreparationSchema, provider: z.string(), model: z.string().nullable(), configId: z.number().int().positive().nullable(),
   promptVersion: z.literal("dms-preparation/1"), schemaVersion: z.literal("dms-preparation/1"), inputHash: z.string().regex(/^[a-f0-9]{64}$/), promptTokens: z.number().int().nonnegative().nullable(), completionTokens: z.number().int().nonnegative().nullable(), durationMs: z.number().nonnegative() });
+// Preserve received output before parsing or quality validation. Legacy validated receipts remain replayable.
+const receivedAnalysisReceipt = analysisReceipt.omit({ output: true }).extend({
+  receiptVersion: z.literal(2), rawJson: z.string().max(131072),
+  responseIssue: z.enum(["provider_refusal", "provider_output_incomplete", "provider_output_invalid"]).optional(),
+});
+const storedAnalysisReceipt = z.union([analysisReceipt, receivedAnalysisReceipt]);
+const safePreparationCodes = new Set<string>([...structuredFailureCodes, "quality_evaluation_held", "preparation_outcome_unconfirmed", "source_changed", "database_error"]);
 const ocrReceipt = z.strictObject({ text: z.string().max(100000), provider: z.string(), model: z.string().nullable(), method: z.string(), pageCount: z.number().int().positive().nullable(), sha256: z.string().regex(/^[a-f0-9]{64}$/) });
 const targetSchema = z.strictObject({ documentTypeId: z.number().int().positive(), typeCode: z.string(), typeName: z.string(), categoryId: z.number().int().positive(), categoryName: z.string().nullable(),
   profile: preparationSnapshotSchema.shape.profile, profileHash: preparationSnapshotSchema.shape.profileHash, schemaHash: preparationSnapshotSchema.shape.profileHash, fields: preparationSnapshotSchema.shape.fields, canApply: z.boolean(), holdReason: z.string().nullable() });
@@ -24,7 +33,7 @@ export async function runDocumentPreparationJob(documentId: number): Promise<Dms
   const db = createAdminClient();
   const rpc = async (action: string, extra: Record<string, unknown> = {}) => {
     const r = await db.rpc("ai_mod04_preparation_worker", { p_action: action, p_data: { jobId: claim.jobId, token: claim.token, ...extra } });
-    if (r.error) throw Error("preparation_publication_unconfirmed");
+    if (r.error) throw Error(["42501", "PT409", "40001"].includes(r.error.code) ? "source_changed" : "database_error");
     return r.data;
   };
   try {
@@ -73,19 +82,30 @@ export async function runDocumentPreparationJob(documentId: number): Promise<Dms
       const prompt = preparationPrompt(input, candidates), inputHash = createHash("sha256").update(prompt.system).update(prompt.user).digest("hex");
       const selected=portrait?null:await getDmsAiProvider();
       const quote=selected?.configId&&selected.provider.modelId?{configId:selected.configId,model:selected.provider.modelId,inputByteCeiling:Buffer.byteLength(prompt.system,'utf8')+Buffer.byteLength(prompt.user,'utf8'),outputTokenCeiling:6000}:undefined;
-      return runPreparationStage(rpc, stage, analysisReceipt, async () => {
+      // Reject a local policy hold before marking any model request as started.
+      if (!portrait) {
+        if (!selected) throw new StructuredAiFailure("provider_not_configured");
+        const gate = await db.rpc("ai_mod05_model_gate", { p_job: claim.jobId, p_token: claim.token, p_model: selected.provider.modelId, p_prompt: "dms-preparation/1" });
+        if ((gate.error && !["PGRST202", "42883"].includes(gate.error.code)) || (!gate.error && gate.data?.success !== true)) throw Error("quality_evaluation_held");
+      }
+      const received = await runPreparationStage(rpc, stage, storedAnalysisReceipt, async () => {
       if (portrait) return { output: { documentTypeCode: source.typeCode, title: null, description: null, summary: null, issueDate: null, expiryDate: null, fields: [], tagNames: [], warnings: [], bundle: "single" as const }, provider: "not_applicable", model: null, configId: null, promptVersion: "dms-preparation/1" as const, schemaVersion: "dms-preparation/1" as const, inputHash, promptTokens: null, completionTokens: null, durationMs: 0 };
       if(!selected)throw Error('provider_configuration_unavailable');
-      const gate=await db.rpc('ai_mod05_model_gate',{p_job:claim.jobId,p_token:claim.token,p_model:selected.provider.modelId,p_prompt:'dms-preparation/1'});
-      if(gate.error&&!['PGRST202','42883'].includes(gate.error.code))throw Error('quality_evaluation_held');
-      if(!gate.error&&gate.data?.success!==true)throw Error('quality_evaluation_unavailable');
-      const result = await callCommonAiStructuredCompletion(prompt.system, prompt.user, { maxTokens: 6000, temperature: 0, selectedProvider:selected });
-      if (!result.success) throw Error("provider_result_unconfirmed");
-      const actualGate=await db.rpc('ai_mod05_model_gate',{p_job:claim.jobId,p_token:claim.token,p_model:result.model,p_prompt:'dms-preparation/1'});
-      if(actualGate.error&&!['PGRST202','42883'].includes(actualGate.error.code))throw Error('actual_model_quality_held');
-      if(!actualGate.error&&actualGate.data?.success!==true)throw Error('actual_model_quality_unavailable');
-      return { output: modelPreparationSchema.parse(JSON.parse(result.rawJson)), provider: result.providerCode, model: result.model, configId: result.configId, promptVersion: "dms-preparation/1" as const, schemaVersion: "dms-preparation/1" as const, inputHash, promptTokens: result.promptTokens, completionTokens: result.completionTokens, durationMs: result.durationMs };
+      const result = await callCommonAiStructuredCompletion(prompt.system, prompt.user, { maxTokens: 6000, temperature: 0, selectedProvider:selected, responseSchema: preparationResponseSchema });
+      if (!result.success) throw new StructuredAiFailure(result.errorCode ?? "provider_unavailable");
+      return { receiptVersion: 2 as const, rawJson: result.rawJson,
+        ...(result.responseIssue ? { responseIssue: result.responseIssue } : {}),
+        provider: result.providerCode, model: result.model, configId: result.configId, promptVersion: "dms-preparation/1" as const, schemaVersion: "dms-preparation/1" as const, inputHash, promptTokens: result.promptTokens, completionTokens: result.completionTokens, durationMs: result.durationMs };
       },quote);
+      if (received.inputHash !== inputHash) throw Error("source_changed");
+      if (!portrait) {
+        const actualGate = await db.rpc("ai_mod05_model_gate", { p_job: claim.jobId, p_token: claim.token, p_model: received.model, p_prompt: "dms-preparation/1" });
+        if ((actualGate.error && !["PGRST202", "42883"].includes(actualGate.error.code)) || (!actualGate.error && actualGate.data?.success !== true)) throw Error("quality_evaluation_held");
+      }
+      if ("output" in received) return received;
+      if (received.responseIssue) throw new StructuredAiFailure(received.responseIssue);
+      try { return { ...received, output: modelPreparationSchema.parse(JSON.parse(received.rawJson)) }; }
+      catch { throw new StructuredAiFailure("provider_output_invalid"); }
     };
     let analyzed = await analyze("analysis", source, types), working = source;
     let target: z.infer<typeof targetSchema> | null = null;
@@ -111,9 +131,12 @@ export async function runDocumentPreparationJob(documentId: number): Promise<Dms
       provenance: { provider: analyzed.provider, model: analyzed.model, configId: analyzed.configId, promptVersion: analyzed.promptVersion, schemaVersion: analyzed.schemaVersion, inputHash: analyzed.inputHash, promptTokens: analyzed.promptTokens, completionTokens: analyzed.completionTokens, durationMs: analyzed.durationMs },
       candidateText: working.files.map(f => f.text ?? "").join("\n\n").slice(0, 100000) }));
     return { success: published.success, modelName: analyzed.model, providerCode: analyzed.provider, inputTokenCount: analyzed.promptTokens, outputTokenCount: analyzed.completionTokens };
-  } catch {
+  } catch (error) {
     // A retained uncertain stage needs reconciliation, not a fresh paid request.
     // The job's ordinary retry does not admit another model/OCR call.
-    return { success: false, errorCode: "preparation_review_required", safeMessage: "Preparation is held. Recover the retained request; accepted document data is unchanged.", retryable: false };
+    const code = error instanceof StructuredAiFailure ? error.code
+      : error instanceof Error && safePreparationCodes.has(error.message) ? error.message
+      : error instanceof z.ZodError ? "validation_error" : "unexpected";
+    return { success: false, errorCode: code, safeMessage: `Preparation is held. Reference: ${code}. Accepted document data is unchanged.`, retryable: false };
   }
 }

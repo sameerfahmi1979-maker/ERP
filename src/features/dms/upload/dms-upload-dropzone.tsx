@@ -172,7 +172,7 @@ export function DmsUploadDropzone({
           file_size_bytes: file.size, sha256_hash,
         });
         if (!metadata.success) { errors.push(`${file.name}: File metadata is invalid.`); continue; }
-        if ([...selectedFilesRef.current, ...next].some(f => f.sha256_hash === sha256_hash)) { errors.push(`${file.name}: The same bytes are already selected.`); continue; }
+        if ([...selectedFilesRef.current, ...next].some(f => f.sha256_hash === sha256_hash)) { errors.push(`${file.name}: This file is already selected.`); continue; }
         const checked = await checkDmsDuplicateBeforeUpload(sha256_hash, file.size);
         if (!run.current()) return;
         if (!checked.success || !checked.data) { setValidationError("Duplicate checking is unavailable. No new files were admitted; try again."); return; }
@@ -334,10 +334,12 @@ export function DmsUploadDropzone({
       )}
 
       {advisory && <div role="status" className="rounded-md border border-border bg-muted/20 p-3 space-y-2 text-sm">
-        <p>These bytes are already available. No new file has been uploaded.</p>
+        <p>{advisory.multiple ? "Some selected files already exist in the system. Open the matching document or intake below to continue." :
+          advisory.matches.some(m => m.status === "retained_upload") ? "This file has already been uploaded. Open its existing intake below to continue reviewing it." :
+          "This file already exists in the system. Open the existing document below."} No new file has been uploaded.</p>
         <ul className="space-y-1">{advisory.matches.map((match, i) => <li key={i}>{match.status === "existing_document" ?
           <Link className="text-primary underline" href={`/dms/documents/record/${match.documentId}`}>{match.documentNo} — {match.title}</Link> : match.status === "retained_upload" ?
-          <Link className="text-primary underline" href="/dms/inbox">Recover your retained Inbox upload</Link> : null}</li>)}</ul>
+          <Link className="text-primary underline" href={`/dms/intake/${encodeURIComponent(match.sessionCode)}`}>Open existing intake</Link> : null}</li>)}</ul>
         {!advisory.matches.some(m => m.status === "retained_upload") && <Button type="button" size="sm" variant="outline" disabled={disabled || isHashing} onClick={() => {
           if (advisory.owner !== ownerGeneration) return;
           const retained = advisory; setPendingAdvisory(null);

@@ -1,7 +1,10 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContextForProfileId } from "@/lib/rbac/check";
+import { getEmployeeAccess } from "@/lib/rbac/employee-access";
+import { hasPermissionInScope } from "@/lib/rbac/scope";
 import {requireDmsNoticeAccess,DMS_NOTICE,confirmedDeliveryMailbox} from './dms-policy';
+import { dmsEmailDocumentLabel, dmsEmailEvent, isContextualDmsEmail, renderDmsEmail } from "./dms-notice";
 import {notificationDocumentSubjectsAllowed} from '@/server/notification-document-authority';
 import {boundedQuery} from './runtime-limits';
 import { DeliveryPolicyError, requireQueuePermission } from "./policy";
@@ -24,9 +27,7 @@ export interface DeliveryClaim extends EmailClaim {
     text_body: string | null;
     reply_to_email: string | null;
 }
-/** DMS machine events send only a generic notification, never stale document
- * titles, medical/payroll text, attachments or deep links from the queue.
- * Detailed confidential output belongs to the reviewed F08 source adapter. */
+/** Queue rows retain stable intent and recipients. Details come from the live event. */
 async function prepareDmsNotice(q: DeliveryClaim): Promise<EmailMessageInput> {
     const db = createAdminClient();
     const settings = await db.from("dms_notification_settings").select("is_enabled,email_enabled").eq("id", 1).maybeSingle();
@@ -36,7 +37,8 @@ async function prepareDmsNotice(q: DeliveryClaim): Promise<EmailMessageInput> {
         throw new DeliveryPolicyError();
     if (!q.notification_id || q.cc_emails?.length || q.bcc_emails?.length || q.to_emails.length !== 1)
         throw new DeliveryPolicyError();
-    const { data: n, error } = await db.from("erp_notifications").select("*")
+    const { data: n, error } = await db.from("erp_notifications")
+        .select("id,source_module,source_entity_type,source_entity_id,notification_type,recipient_user_id")
         .eq("id", q.notification_id).is("deleted_at", null).maybeSingle();
     if (error)
         throw new Error("Notification lookup failed");
@@ -47,18 +49,16 @@ async function prepareDmsNotice(q: DeliveryClaim): Promise<EmailMessageInput> {
         throw new DeliveryPolicyError();
     const recipient = await getAuthContextForProfileId(n.recipient_user_id);
     const { data: doc, error: docError } = await db.from("dms_documents")
-        .select("id,owning_company_id,owning_branch_id,confidentiality_level,status,is_archived,expiry_tracking_override").eq("id", n.source_entity_id)
+        .select("id,owning_company_id,owning_branch_id,confidentiality_level,status,is_archived,expiry_tracking_override,updated_at").eq("id", n.source_entity_id)
         .is("deleted_at", null).maybeSingle();
     if (docError)
         throw new Error("Source lookup failed");
-    if(!doc||doc.is_archived||['archived','superseded','deleted'].includes(doc.status)||doc.expiry_tracking_override==='ignored')throw new DeliveryPolicyError();
-    const eligibility=await boundedQuery(db.rpc('f10_dms_notification_delivery_eligible',{notification_id:n.id}));
-    if(eligibility.error)throw Error('Current reminder eligibility unavailable');
-    if(eligibility.data!==true)throw new DeliveryPolicyError();
+    if(!doc||doc.is_archived||['archived','superseded','deleted'].includes(doc.status))throw new DeliveryPolicyError();
     requireDmsNoticeAccess(recipient,doc);
     if(!await notificationDocumentSubjectsAllowed(recipient,doc.id))throw new DeliveryPolicyError();
+    if (!recipient.profile?.auth_user_id) throw new DeliveryPolicyError();
     // Independently check the current confirmed auth mailbox; never use metadata as authorization.
-    const { data: auth, error: authError } = await db.auth.admin.getUserById(recipient.profile!.auth_user_id);
+    const { data: auth, error: authError } = await db.auth.admin.getUserById(recipient.profile.auth_user_id);
     if (authError)
         throw new Error("Recipient lookup failed");
     const email = confirmedDeliveryMailbox(auth.user);
@@ -69,7 +69,42 @@ async function prepareDmsNotice(q: DeliveryClaim): Promise<EmailMessageInput> {
         requireQueuePermission(sender, "manage");
         requireQueuePermission(sender, "process");
     }
-    return { to: [email],...DMS_NOTICE };
+    if (n.notification_type === "approval_withdrawn") throw new DeliveryPolicyError();
+    if (!isContextualDmsEmail(n.notification_type)) {
+        if (doc.expiry_tracking_override === "ignored") throw new DeliveryPolicyError();
+        const eligibility = await boundedQuery(db.rpc("f10_dms_notification_delivery_eligible", { notification_id: n.id }));
+        if (eligibility.error) throw Error("Current reminder eligibility unavailable");
+        if (eligibility.data !== true) throw new DeliveryPolicyError();
+        return { to: [email], ...DMS_NOTICE };
+    }
+
+    if (!hasPermissionInScope(recipient, "notifications.view", doc.owning_company_id, doc.owning_branch_id))
+        throw new DeliveryPolicyError();
+    const current = await boundedQuery(db.rpc("dms_contextual_email_event", { p_notification: n.id }));
+    if (current.error) throw Error("Current DMS email event unavailable");
+    const event = dmsEmailEvent.safeParse(current.data);
+    if (!event.success || event.data.documentId !== doc.id || event.data.recipientId !== n.recipient_user_id ||
+        Date.parse(event.data.documentUpdatedAt ?? "") !== Date.parse(doc.updated_at ?? ""))
+        throw new DeliveryPolicyError();
+    const employeeId = event.data.employeeId;
+    let employee: { name: string; code: string } | undefined;
+    if (employeeId && dmsEmailDocumentLabel(event.data.typeCode)) {
+        const access = await getEmployeeAccess(recipient, employeeId).catch((error: unknown) => {
+            if (error instanceof Error && error.message === "Employee unavailable or access denied") return null;
+            throw error;
+        });
+        if (access?.allows("hr.compliance.view") && access.subject.owner_company_id === doc.owning_company_id
+            && (doc.owning_branch_id === null || access.subject.branch_id === doc.owning_branch_id)) {
+            const subject = await boundedQuery(db.from("employees").select("full_name_en,employee_code")
+                .eq("id", employeeId).eq("owner_company_id", doc.owning_company_id).is("deleted_at", null).maybeSingle());
+            if (subject.error) throw Error("Current DMS employee reference unavailable");
+            const row = subject.data;
+            if (row?.full_name_en?.trim() && /^EMP-[0-9]{1,12}$/.test(row.employee_code ?? "")) {
+                employee = { name: row.full_name_en.trim().replace(/[\r\n\t]+/g, " ").slice(0, 160), code: row.employee_code };
+            }
+        }
+    }
+    return { to: [email], ...renderDmsEmail(event.data, n.id, employee) };
 }
 export async function prepareQueueMessage(q: DeliveryClaim, signal: AbortSignal): Promise<EmailMessageInput> {
     signal.throwIfAborted();

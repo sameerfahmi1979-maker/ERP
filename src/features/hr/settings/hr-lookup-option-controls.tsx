@@ -8,11 +8,12 @@ import type {HrLookupTable} from '@/lib/hr/settings-save-contract';
 import {hrLookupOptionFields,type HrLookupOptionState} from '@/lib/hr/lookup-option-fields';
 import {HrTrainingCategoryControl} from './hr-training-category-control';
 
-export function HrLookupOptionControls({entity,values,onChange,disabled,existingTrainingCategoryId,existingTrainingCategoryName,onReferenceReady}:{
+export function HrLookupOptionControls({entity,values,onChange,disabled,existingTrainingCategoryId,existingTrainingCategoryName,onReferenceReady,excludeTrainingCategory=false}:{
  entity:HrLookupTable;values:HrLookupOptionState;onChange:(key:string,value:string|boolean)=>void;disabled:boolean;
  existingTrainingCategoryId?:number|null;existingTrainingCategoryName?:string;onReferenceReady:(ready:boolean)=>void;
+ excludeTrainingCategory?:boolean;
 }) {
- const fields=hrLookupOptionFields[entity]??[];
+ const fields=(hrLookupOptionFields[entity]??[]).filter(field=>!excludeTrainingCategory||field.key!=='training_category_id');
  if(!fields.length)return null;
  return <div className="col-span-12 border-t pt-4">
   <h3 className="text-sm font-semibold mb-3">Configuration</h3>

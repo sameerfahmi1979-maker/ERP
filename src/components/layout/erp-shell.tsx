@@ -64,7 +64,7 @@ export function ErpShell({
   return (
     // WorkspaceDraftProvider must wrap WorkspaceProvider so it can consume the draft
     // store context to clear drafts on tab close.
-    <WorkspaceUiMemoryProvider key={principalId}><WorkspaceDraftProvider key={principalId}>
+    <WorkspaceUiMemoryProvider key={principalId} principalId={principalId}><WorkspaceDraftProvider key={principalId}>
       <WorkspaceProvider defaultRoute={defaultRoute} principalId={principalId} canRestoreRoute={route => canAccessRoute(route.split("?")[0], permissionCodes, isGlobalAdmin)}>
         <RealtimeProvider>
           <div className="algt-shell">

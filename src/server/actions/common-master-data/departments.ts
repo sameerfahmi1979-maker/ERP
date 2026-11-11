@@ -6,6 +6,7 @@ import { workspaceValidationFailure } from "@/lib/workspace/field-errors";
 
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { hasRole } from "@/lib/rbac/scope";
 import { revalidatePath } from "next/cache";
 import {setMasterArchived} from "@/server/master-lifecycle";
 import { z } from "zod";
@@ -21,6 +22,7 @@ export type DepartmentRow = {
   department_name_en: string;
   department_name_ar: string | null;
   owner_company_id: number;
+  available_to_all_organizations?: boolean;
   branch_id: number | null;
   parent_department_id: number | null;
   cost_center_id: number | null;
@@ -109,6 +111,8 @@ export async function createDepartment(input: CreateDeptInput, contract: Workspa
   if (!parsed.success) return workspaceValidationFailure(parsed.error.issues);
   const ctx=await getAuthContext();
   if (!canManage(ctx)) return {success:false,error:"Permission denied"};
+  if (parsed.data.available_to_all_organizations !== undefined && !hasRole(ctx, "system_admin"))
+    return {success:false,error:"Only a System Administrator can change organization availability."};
   const result=await saveWorkspaceRecord("departments",null,parsed.data,contract);
   if(result.success) revalidatePath("/admin/common-master-data/departments");
   return result;
@@ -119,6 +123,8 @@ export async function updateDepartment(input: UpdateDeptInput, contract: Workspa
   if(!parsed.success) return workspaceValidationFailure(parsed.error.issues);
   const ctx=await getAuthContext();
   if(!canManage(ctx)) return {success:false,error:"Permission denied"};
+  if (parsed.data.available_to_all_organizations !== undefined && !hasRole(ctx, "system_admin"))
+    return {success:false,error:"Only a System Administrator can change organization availability."};
   const {id,...payload}=parsed.data;
   const result=await saveWorkspaceRecord("departments",id,payload,contract);
   if(result.success) revalidatePath("/admin/common-master-data/departments");

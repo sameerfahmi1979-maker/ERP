@@ -8,7 +8,7 @@
  * - Column resizing (drag borders)
  * - Column visibility (show/hide)
  * - Row selection (checkboxes)
- * - Principal-scoped, memory-only preferences
+ * - Principal-scoped column layout and workspace-only search and filters
  * - Enhanced pagination
  * - Table-state-aware export (selected/filtered/sorted rows)
  */
@@ -26,15 +26,12 @@ import {
   useReactTable,
   type ColumnDef,
   type SortingState,
-  type ColumnSizingState,
-  type VisibilityState,
   type RowSelectionState,
   type ColumnFiltersState,
   type Table as TanStackTable,
   type Column,
 } from "@tanstack/react-table";
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -45,8 +42,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import type { ERPTableConfig } from "./erp-table-types";
 import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
+import { useWorklistColumns } from "@/hooks/use-worklist-columns";
+import { useWorklistViewport } from "@/hooks/use-worklist-viewport";
 import { EditFilters, type ListFilter } from "./list-controls";
-import { ERPColumnMenu } from "./erp-column-menu";
+import { ERPColumnMenu, erpColumnLayoutDefinitions } from "./erp-column-menu";
+import { WorklistColgroup, WorklistFitControl, WorklistScrollRegion } from "./worklist-fit-control";
 import { EmbeddedListNavigation } from "./embedded-list-navigation";
 import { ERPExportMenu } from "../export/erp-export-menu";
 import type { ERPExportColumn } from "@/lib/export";
@@ -135,6 +135,7 @@ function getExportColumns<TData>(table: TanStackTable<TData>): ERPExportColumn<T
 export function ERPDataTable<TData>({
   presentation = "worklist",
   tableId,
+  columnPreferenceId = tableId,
   columns,
   data,
   enableSorting = true,
@@ -164,13 +165,10 @@ export function ERPDataTable<TData>({
 
   // Table state — start with server-safe empty defaults; preferences applied post-mount
   const [sorting, setSorting] = usePersistentUiState<SortingState>(key ? key+":sorting" : undefined,[]);
-  const [columnSizing, setColumnSizing] = usePersistentUiState<ColumnSizingState>(key ? key+":columnSizing" : undefined,{});
-  const [columnVisibility, setColumnVisibility] = usePersistentUiState<VisibilityState>(key ? key+":columnVisibility" : undefined,{});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [selectionData, setSelectionData] = useState(data);
   if (selectionData !== data) { setSelectionData(data); setRowSelection({}); }
   const [globalFilter, setGlobalFilter] = usePersistentUiState(key ? key+":search" : undefined,"");
-  const [columnOrder, setColumnOrder] = usePersistentUiState<string[]>(key ? key+":order" : undefined, []);
   const [columnFilters, setColumnFilters] = usePersistentUiState<ColumnFiltersState>(key ? key+":filters" : undefined, []);
   const [mounted, setMounted] = useState(false);
   const remote = serverPaged || !!serverRead;
@@ -206,6 +204,7 @@ export function ERPDataTable<TData>({
         ),
         enableSorting: false,
         enableHiding: false,
+        enableResizing: false,
         size: 40,
       });
     }
@@ -223,6 +222,22 @@ export function ERPDataTable<TData>({
       }),
     } satisfies ColumnDef<TData, unknown>))];
   }, [columns, enableRowSelection]);
+  const layoutDefinitions = useMemo(
+    () => {
+      const definitions = erpColumnLayoutDefinitions(enhancedColumns, enableColumnResizing && !embedded);
+      const firstDataColumn = definitions.find(column => !column.position);
+      if (firstDataColumn) firstDataColumn.required = true;
+      return definitions;
+    },
+    [enhancedColumns, enableColumnResizing, embedded],
+  );
+  const columnLayout = useWorklistColumns(key, layoutDefinitions, key ? columnPreferenceId : null);
+  const viewport = useWorklistViewport(key, columnLayout.visible, { enabled: !embedded });
+  const { columnSizing, columnVisibility, columnOrder } = useMemo(() => ({
+    columnSizing: Object.fromEntries(viewport.columns.map(column => [column.id, column.width])),
+    columnVisibility: Object.fromEntries(columnLayout.columns.map(column => [column.id, column.visible])),
+    columnOrder: columnLayout.columns.map(column => column.id),
+  }), [columnLayout.columns, viewport.columns]);
 
   const [pagination,setPagination]=usePersistentUiState(key ? key+":pagination" : undefined,{pageSize:initialPageSize,pageIndex:0});
 
@@ -237,7 +252,7 @@ export function ERPDataTable<TData>({
     state: {
       sorting: serverRead?.sorting ?? (embedded ? EMPTY_SORTING : sorting),
       columnSizing,
-      columnVisibility: { ...columnVisibility, ...Object.fromEntries(enhancedColumns.filter(column => column.enableHiding === false).map(column => [column.id ?? ("accessorKey" in column ? String(column.accessorKey) : ""), true])) },
+      columnVisibility,
       rowSelection,
       globalFilter: activeSearch,
       pagination: serverRead?.pagination ?? pagination,
@@ -245,12 +260,16 @@ export function ERPDataTable<TData>({
       columnFilters: activeFilters,
     },
     onPaginationChange:serverRead?.onPaginationChange ?? setPagination,
-    onColumnOrderChange: setColumnOrder,
     onColumnFiltersChange: update => { setRowSelection({}); (serverRead?.onColumnFiltersChange ?? setColumnFilters)(update); },
     getRowId: (row, index) => row && typeof row === "object" && "id" in row ? String(row.id) : String(index),
     onSortingChange: update => { (serverRead?.onSortingChange ?? setSorting)(update); if (serverRead) serverRead.onPaginationChange(previous => ({ ...previous, pageIndex: 0 })); },
-    onColumnSizingChange: setColumnSizing,
-    onColumnVisibilityChange: setColumnVisibility,
+    onColumnSizingChange: update => {
+      const sizing = typeof update === "function" ? update(columnSizing) : update;
+      const changed = (id: string) => sizing[id] !== undefined && sizing[id] !== columnSizing[id];
+      if (!columnLayout.visible.some(column => changed(column.id))) return;
+      columnLayout.setColumns(columnLayout.columns.map(column => changed(column.id) ? { ...column, width: sizing[column.id] } : column));
+      viewport.setFit(false);
+    },
     onRowSelectionChange: setRowSelection,
     onGlobalFilterChange: update => { setRowSelection({}); (serverRead?.onGlobalFilterChange ?? setGlobalFilter)(update); },
     getCoreRowModel: getCoreRowModel(),
@@ -259,7 +278,7 @@ export function ERPDataTable<TData>({
     getSortedRowModel: getSortedRowModel(),
     enableSorting: enableSorting && !embedded,
     enableColumnResizing: enableColumnResizing && !embedded,
-    columnResizeMode: "onChange",
+    columnResizeMode: "onEnd",
     enableRowSelection,
     enableMultiRowSelection: true,
     initialState: {
@@ -331,7 +350,8 @@ export function ERPDataTable<TData>({
           
           <div className="flex flex-wrap items-center gap-2">
             {toolbarSlot}
-            {enableColumnVisibility && <ERPColumnMenu table={table} />}
+            {enableColumnVisibility && <ERPColumnMenu table={table} layout={columnLayout} />}
+            <WorklistFitControl viewport={viewport} />
             {exportConfig && exportData && (
               <ERPExportMenu
                 title={exportConfig.title}
@@ -370,14 +390,17 @@ export function ERPDataTable<TData>({
         {(activeSearch || activeFilters.length > 0) && <button type="button" className="text-sm text-primary underline" onClick={() => { table.setGlobalFilter(""); table.setColumnFilters([]); table.setPageIndex(0); }}>Clear search and filters</button>}
       </div>}
       {/* Table */}
-      <div role="region" aria-label={`${resultsLabel} — scrollable table`} tabIndex={0} className="overflow-x-auto">
-        <Table style={{ tableLayout: embedded ? "auto" : "fixed", minWidth: "100%" }}>
+      <WorklistScrollRegion attach={viewport.attachViewport} aria-label={`${resultsLabel} — scrollable table`}>
+        <table data-slot="table" className={cn("w-full caption-bottom text-sm", !embedded && "table-fixed")} {...viewport.tableProps}
+          style={embedded ? { tableLayout: "auto", minWidth: "100%" } : viewport.tableProps.style}>
+          {!embedded && <WorklistColgroup viewport={viewport} />}
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="hover:bg-transparent border-border/40">
                 {headerGroup.headers.map((header) => (
                   <TableHead
                     key={header.id}
+                    colSpan={header.colSpan}
                     style={{
                       width: embedded ? undefined : header.getSize(),
                       position: "relative",
@@ -389,14 +412,14 @@ export function ERPDataTable<TData>({
                     )}
                     aria-sort={header.column.getIsSorted() === "asc" ? "ascending" : header.column.getIsSorted() === "desc" ? "descending" : "none"}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-1">
                       {header.isPlaceholder ? null : header.column.getCanSort()
-                        ? <button type="button" className="min-h-8 text-left focus-visible:outline-2" onClick={header.column.getToggleSortingHandler()}>{typeof header.column.columnDef.header === "string" ? header.column.columnDef.header : header.column.id.replaceAll("_", " ")}</button>
+                        ? <button type="button" className="min-h-8 min-w-0 text-left focus-visible:outline-2" onClick={header.column.getToggleSortingHandler()}>{typeof header.column.columnDef.header === "string" ? header.column.columnDef.header : header.column.id.replaceAll("_", " ")}</button>
                         : flexRender(header.column.columnDef.header, header.getContext())}
                       
                       {/* Sort indicator */}
                       {header.column.getCanSort() && mounted && (
-                        <span className="ml-auto">
+                        <span className="ml-auto shrink-0">
                           {header.column.getIsSorted() === "asc" ? (
                             <ArrowUp className="h-3.5 w-3.5" />
                           ) : header.column.getIsSorted() === "desc" ? (
@@ -413,6 +436,7 @@ export function ERPDataTable<TData>({
                       <div
                         onMouseDown={header.getResizeHandler()}
                         onTouchStart={header.getResizeHandler()}
+                        style={header.column.getIsResizing() ? { transform: `translateX(${table.getState().columnSizingInfo.deltaOffset ?? 0}px)` } : undefined}
                         className={cn(
                           "absolute right-0 top-0 h-full w-1 cursor-col-resize select-none touch-none",
                           "hover:bg-primary/50",
@@ -439,6 +463,7 @@ export function ERPDataTable<TData>({
                   {row.getVisibleCells().map((cell) => (
                     <TableCell
                       key={cell.id}
+                      data-worklist-actions={!embedded && ["actions", "record_details"].includes(cell.column.id) ? "" : undefined}
                       style={{ width: embedded ? undefined : cell.column.getSize() }}
                       className={cn("h-12 text-sm", embedded ? "whitespace-normal break-words [overflow-wrap:anywhere]" : "overflow-hidden")}
                     >
@@ -450,7 +475,7 @@ export function ERPDataTable<TData>({
             ) : (
               <TableRow>
                 <TableCell
-                  colSpan={enhancedColumns.length}
+                  colSpan={table.getVisibleLeafColumns().length}
                   className="h-32 text-center text-sm text-muted-foreground"
                 >
                   {unavailable ? "Records could not yet be verified. Check the read status or retry." : isLoading ? "Loading records…" : activeSearch || activeFilters.length > 0 ? "No records match your search and filters. Clear them to see the available records." : emptyMessage}
@@ -458,8 +483,8 @@ export function ERPDataTable<TData>({
               </TableRow>
             )}
           </TableBody>
-        </Table>
-      </div>
+        </table>
+      </WorklistScrollRegion>
 
       {/* Pagination */}
       {embedded && (!serverPaged || !!serverRead) && <EmbeddedListNavigation label={resultsLabel} total={unavailable ? null : serverRead?.totalCount ?? filteredCount}

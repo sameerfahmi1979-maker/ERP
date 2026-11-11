@@ -87,6 +87,24 @@ export async function refreshBatchAdmission(bound:Bound):Promise<void>{
   if(!current||JSON.stringify(current)!==JSON.stringify(receipt))throw new Error("Unverified admission response");
   if(!sameOrigin(await currentOrigin(deadline),origin))throw new AccessUnavailable();
 }
+
+/** Exact owner-scoped recovery; never creates an admission or issues a bearer. */
+export async function findBatchAdmission(batchCode:string):Promise<BatchDiscoveryResult>{
+ try{
+  if(!/^[A-Z0-9]{1,80}$/.test(batchCode))return {success:false,error:DENIED};
+  const deadline=new Deadline(), origin=await currentOrigin(deadline);
+  if(!origin)return {success:false,error:DENIED};
+  const client=await deadline.wait(()=>createClient());
+  const source=await deadline.wait(()=>client.from('dms_upload_batches').select('admission_operation_id').eq('batch_code',batchCode).is('deleted_at',null).single());
+  if(source.error||!source.data?.admission_operation_id)return {success:false,error:DENIED};
+  const raw=await deadline.wait(()=>client.rpc('read_dms_upload_batch_admission',{p_operation:source.data.admission_operation_id}));
+  const parsed=batchReceiptSchema.safeParse(raw.data);
+  if(raw.error||!parsed.success||parsed.data.batch_code!==batchCode)return {success:false,error:DENIED};
+  const receipt=await verifyBatchReceipt(parsed.data,{manifest:parsed.data.manifest,contract:{operationId:source.data.admission_operation_id,revision:null}},origin);
+  if(!receipt||!sameOrigin(await currentOrigin(deadline),origin))return {success:false,error:DENIED};
+  return {success:true,receipts:[receipt]};
+ }catch{return {success:false,error:DENIED};}
+}
 async function selectedFresh(bound:Bound,position:number):Promise<void>{
   if(!(await fresh(bound)).includes(position))throw new WorkUnavailable();
   if(!sameOrigin(await currentOrigin(bound.deadline),bound.origin))throw new AccessUnavailable();
@@ -204,7 +222,7 @@ function rollback(error: unknown): boolean {
   return code.length === 5 && (/^(?:22|23|42|PT)[0-9A-Z]{3}$/.test(code) || ["40000", "40001", "40002", "40P01", "55P03"].includes(code));
 }
 
-export async function admitBatch(input: BatchRequest): Promise<BatchAdmissionResult> {
+export async function admitBatch(input: BatchRequest, continuationOnly = false): Promise<BatchAdmissionResult> {
   const parsed = batchRequestSchema.safeParse(input);
   if (!parsed.success) return {state: "rejected", error: "Invalid batch request."};
   const request = parsed.data;
@@ -231,6 +249,9 @@ export async function admitBatch(input: BatchRequest): Promise<BatchAdmissionRes
   let issued = false;
   try {
     await fresh(bound);
+    // The durable caller obtains one fresh capability immediately before each
+    // transfer. Preparing a whole-batch plan here only delays that first upload.
+    if (continuationOnly) return withheld(bound.receipt, false, false);
     const storage = createAdminClient().storage.from("dms-temp");
     const capabilities: BatchCapability[] = [];
     const presentPositions: number[] = [];
@@ -271,20 +292,24 @@ export async function admitBatch(input: BatchRequest): Promise<BatchAdmissionRes
 /** Chosen-member continuation, deliberately separate from the complete plan. */
 export async function recoverBatchMemberUpload(input:{request:BatchRequest;position:number}):Promise<BatchMemberUploadResult>{
   let issued=false;
+  let stage='binding';
   try{
     const parsed=batchMemberRequestSchema.safeParse(input);
     if(!parsed.success)throw new WorkUnavailable();
     const {request,position}=parsed.data;
     const bound=await bindBatchAdmission(request);
+    stage='eligibility';
     await selectedFresh(bound,position);
     const member=bound.receipt.members[position];
     const storage=createAdminClient().storage.from("dms-temp");
+    stage='storage';
     const observed=await observe(bound,storage,member,true);
     if(observed==="present"){
       await selectedFresh(bound,position);
       return batchMemberUploadResultSchema.parse({state:"ready",receipt:bound.receipt,position,object:{state:"present"},issuance_may_be_partial:false});
     }
     await selectedFresh(bound,position);
+    stage='signing';
     const signed=await bound.deadline.wait(()=>{
       issued=true;
       return storage.createSignedUploadUrl(member.path,{upsert:false});
@@ -293,12 +318,13 @@ export async function recoverBatchMemberUpload(input:{request:BatchRequest;posit
     if(signed.error||!value.success||value.data.path!==member.path)throw new WorkUnavailable();
     const url=new URL(value.data.signedUrl);
     if(!["http:","https:"].includes(url.protocol)||url.username||url.password||url.hash)throw new WorkUnavailable();
+    stage='final-readiness';
     await selectedFresh(bound,position);
     return batchMemberUploadResultSchema.parse({state:"ready",receipt:bound.receipt,position,
       object:{state:"upload",capability:{position,sessionId:member.id,...value.data}},issuance_may_be_partial:issued});
   }catch{
     // A failed current read withholds identity too, but cannot revoke an issued URL.
-    return {state:"unavailable",error:OBJECT_UNAVAILABLE,issuance_may_be_partial:issued};
+    return {state:"unavailable",error:`File upload readiness could not be confirmed. Reference: BATCH-${stage.toUpperCase()}. Recover this same batch; do not create another.`,issuance_may_be_partial:issued};
   }
 }
 /** No signing: modern preparation requires actual selected bytes and eligibility. */

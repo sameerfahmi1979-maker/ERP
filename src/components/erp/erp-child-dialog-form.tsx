@@ -54,6 +54,8 @@ export type ERPChildDialogFormProps = {
   /** Opt-in layout/action slots for document preparation; defaults stay intact. */
   bodyClassName?: string;
   footerActions?: ReactNode;
+  /** Durable background requests may explain their retained state; unsaved review edits still use the normal close guard. */
+  retentionNotice?: string;
   children: ReactNode;
 };
 
@@ -92,6 +94,7 @@ function ChildDialogSession({
   recoveryActions,
   bodyClassName,
   footerActions,
+  retentionNotice,
   children,
 }: ERPChildDialogFormProps) {
   // Track programmatic closes (Cancel/X/Save) to block outside-click and Esc.
@@ -188,7 +191,7 @@ function ChildDialogSession({
           "max-w-none",
         )}
       >
-        {mode !== "view" && <p className="px-6 pt-3 text-xs text-muted-foreground">Finish or cancel this dialog before leaving the page. Unsaved dialog entries and selected files are not restored after leaving or reloading.</p>}
+        {mode !== "view" && <p className="px-6 pt-3 text-xs text-muted-foreground">{retentionNotice ?? 'Finish or cancel this dialog before leaving the page. Unsaved dialog entries and selected files are not restored after leaving or reloading.'}</p>}
         {/* ── Header ─────────────────────────────────────────────────── */}
         <div className="flex items-start gap-3 px-6 py-4 border-b shrink-0">
           {icon && (

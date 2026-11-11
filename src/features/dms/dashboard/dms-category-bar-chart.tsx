@@ -27,9 +27,10 @@ const BAR_COLORS = [
 
 type Props = {
   data: DmsByCategory[];
+  valueLabel?: string;
 };
 
-export function DmsCategoryBarChart({ data }: Props) {
+export function DmsCategoryBarChart({ data, valueLabel = "Documents" }: Props) {
   return (
     <div className="h-48">
       <ResponsiveContainer width="100%" height="100%">
@@ -63,7 +64,7 @@ export function DmsCategoryBarChart({ data }: Props) {
             }}
             itemStyle={{ color: "var(--foreground)" }}
             labelStyle={{ fontWeight: 600 }}
-            formatter={(v) => [typeof v === "number" ? v : 0, "Documents"]}
+            formatter={(v) => [typeof v === "number" ? v : 0, valueLabel]}
           />
           <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={18}>
             {data.map((_, i) => (

@@ -7,6 +7,13 @@ import {reviewedCall,readMetadataSnapshot,saveReviewedMetadata,prepareDmsUpdate,
 const hash='a'.repeat(64),requestId='c7000000-0000-4000-8000-000000000001';
 beforeEach(()=>{vi.clearAllMocks();});
 describe('checked mutation transport',()=>{
+ it('uses only trusted operation-specific wording for known rollback codes',async()=>{
+  m.rpc.mockResolvedValue({error:{code:'55000',message:'PRIVATE'}});
+  expect(await reviewedCall('ai_mod04_preparation',{},z.unknown(),{'55000':'Earlier attempt needs reconciliation'})).toMatchObject({success:false,uncertain:false,error:'Earlier attempt needs reconciliation'});
+  m.rpc.mockResolvedValue({error:{code:'XX000',message:'PRIVATE'}});
+  const result=await reviewedCall('ai_mod04_preparation',{},z.unknown(),{'XX000':'Pretend safe'});
+  expect(result.uncertain).toBe(true);expect(result.error).not.toBe('Pretend safe');expect(JSON.stringify(result)).not.toContain('PRIVATE');
+ });
  it.each(['40003','08007','PGRST000','XX000','40001\n','42501suffix','',null,undefined,40001,{},['40001']])('unknown outcome remains uncertain: %j',async code=>{
   m.rpc.mockResolvedValue({error:{code,message:'PRIVATE',details:'PRIVATE'}});
   const r=await reviewedCall('f07_metadata_operation',{p_action:'save'},z.object({ok:z.literal(true)}));

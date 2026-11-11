@@ -21,7 +21,7 @@ import {
  AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { ErpMappingPreviewPanel } from "@/features/dms/documents/sections/dms-erp-mapping-preview-panel";
-import { invalidateDmsAiAnalysis } from "@/lib/query/invalidation";
+import { invalidateDmsAiAnalysis, invalidateDmsDocumentRecord } from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
 import { applyAiAnalysisToMetadata, markDmsAiResultSuperseded, retryDmsAiAnalysisJob, type ApplyAiMetadataSelection, type DmsAiMetadataApplyHistoryRun, type DmsAiResultRow } from "@/server/actions/dms/ai-analysis";
 
@@ -51,6 +51,8 @@ interface DmsDocumentAiSectionProps {
   documentId: number;
   documentTypeId?: number | null;
   canRun?: boolean;
+  canRunPipeline?: boolean;
+  aiBlockedReason?: string;
   canView?: boolean;
   canApplyMetadata?: boolean;
   /** Phase 17 — When true, shows "Propose Correction" on applied apply items (feature flag + permission gated). */
@@ -63,6 +65,8 @@ export function DmsDocumentAiSection({
   documentId,
   documentTypeId,
   canRun = false,
+  canRunPipeline = false,
+  aiBlockedReason,
   canView = true,
   canApplyMetadata = false,
   canProposeCorrection = false,
@@ -126,6 +130,7 @@ export function DmsDocumentAiSection({
   };
 
   const handleMetadataApplied = () => {
+    invalidateDmsDocumentRecord(queryClient, documentId);
     invalidateDmsAiAnalysis(queryClient, documentId);
     queryClient.invalidateQueries({ queryKey: queryKeys.dms.documentMetadata(documentId) });
     if (documentTypeId) {
@@ -146,7 +151,7 @@ export function DmsDocumentAiSection({
 
   return (
     <QueryReadBoundary queries={[uiRead1,uiRead2,uiRead3]}><div className="space-y-5">
-      <DmsDocumentPreparationPanel documentId={documentId} canRun={canRun} onApplied={handleMetadataApplied} />
+      <DmsDocumentPreparationPanel documentId={documentId} canRun={canRunPipeline} blockedReason={aiBlockedReason} onApplied={handleMetadataApplied} />
       {/* ── Header bar ── */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">

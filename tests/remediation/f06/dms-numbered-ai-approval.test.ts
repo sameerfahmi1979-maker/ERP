@@ -48,6 +48,14 @@ it('completed stage-one replay is success without another copy/provider call',as
 it.each(['cache','ocr','orchestration'])('post-commit %s failure remains success',async boundary=>{if(boundary==='cache')m.cache.mockImplementation(()=>{throw Error('cache');});if(boundary==='ocr')m.provider.mockRejectedValue(Error('controlled OCR failure'));if(boundary==='orchestration')m.orchestrate.mockRejectedValue(Error('controlled orchestration failure'));expect(await approveAiIntakeAndCreateDocument(request,contract)).toMatchObject({success:true,data:{documentId:41}});expect(m.rpc.mock.calls.filter(v=>v[0]==='finish_numbered_ai_intake')).toHaveLength(1);});
 
 const w16Boundaries=[{stage:'prepare',value:input},{stage:'create',value:request}];
+it('names the metadata section on a known required-field rejection before reserving a reference',async()=>{
+ m.rpc.mockResolvedValue({data:null,error:{code:'22023',message:'Complete the required metadata before approval',details:'private detail'}});
+ const result=await approveAiIntakeAndCreateDocument(input,contract);
+ expect(result).toMatchObject({success:false,uncertain:false,error:'Complete the required fields in Metadata Fields and approve this same intake again.',preparationRejected:{operation_id:contract.operationId}});
+ expect(JSON.stringify(result)).not.toContain('private detail');
+ expect(m.rpc.mock.calls.map(([name])=>name)).toEqual(['prepare_numbered_ai_intake']);
+ expect(m.upload).not.toHaveBeenCalled();
+});
 it.each(w16Boundaries.flatMap(row=>['40003','08007','40ZZZ','57014','PGRST000','XX000',undefined,'','40','4000','23','PT','40003suffix','40001suffix','42501suffix',' 40003','40003 ','40003\n','40001\n','42501\n','40p01',40001,{}].map(code=>({...row,code}))))('W16 $stage unknown/malformed $code stops without privileged work',async({value,code})=>{
  m.rpc.mockResolvedValue({data:null,error:{code,message:'W16_PRIVATE',details:'W16_PRIVATE',hint:'W16_PRIVATE'}});const result=await approveAiIntakeAndCreateDocument(value,contract);
  expect(result).toMatchObject({success:false,uncertain:true});

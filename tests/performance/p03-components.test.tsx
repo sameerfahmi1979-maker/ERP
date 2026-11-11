@@ -4,6 +4,7 @@ import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {cleanup,fireEvent,render,screen,waitFor} from "@testing-library/react";
 import {ReadCacheBoundary} from "@/components/layout/read-cache-boundary";
 import {WorkspaceUiMemoryProvider} from "@/hooks/use-persistent-ui-state";
+import { worklistColumnStorageKey } from "@/lib/ui/worklist-column-ids";
 import type {AuthContext} from "@/lib/rbac/check";
 const state=vi.hoisted(()=>({refresh:vi.fn(),event:undefined as (()=>void)|undefined}));
 vi.mock("@/hooks/use-workspace",()=>({useWorkspace:()=>({openTab:vi.fn()})}));
@@ -22,7 +23,7 @@ const auth={profile:{id:1,auth_user_id:identity.authUserId,must_change_password:
 const fetcher=vi.fn();
 function show(child:React.ReactNode){return render(<ReadCacheBoundary {...identity}><WorkspaceUiMemoryProvider>{child}</WorkspaceUiMemoryProvider></ReadCacheBoundary>);}
 beforeEach(()=>{state.refresh.mockClear();fetcher.mockReset();fetcher.mockImplementation(async()=>Response.json({success:true,data:[]}));vi.stubGlobal("fetch",fetcher);});
-afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+afterEach(()=>{cleanup();vi.unstubAllGlobals();vi.restoreAllMocks();});
 it("actual employee component reuses SSR and independently starts lean choices without initial employee refetch",async()=>{
  show(<EmployeesTable initialReadIdentity={identity} initialRows={[]} initialTotal={0} initialUpdatedAt={Date.now()} authContext={auth}/>);
  await waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(2));
@@ -57,4 +58,53 @@ it("DMS criteria change fetches server results with current search and the bound
  fireEvent.change(screen.getByRole("textbox",{name:"Search documents"}),{target:{value:"مستند"}});
  await waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());
  const params=JSON.parse(fetcher.mock.calls[0][1].body);expect(params.pageSize).toBe(25);expect(params.filters.search).toBe("مستند");
+});
+
+it("All Documents restores its 44px ZIP column only for permitted users", () => {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+    return this.getAttribute("aria-label") === "Scrollable documents" ? 850 : 0;
+  });
+  const owner = "00000000-0000-4000-8000-000000000003";
+  const preferenceKey = worklistColumnStorageKey(owner, "dms-documents")!;
+  const view = (canDownload: boolean) => <ReadCacheBoundary {...identity}>
+    <WorkspaceUiMemoryProvider principalId={owner}>
+      <DmsDocumentsTable
+        initialSeed={{
+          identity,
+          params: { page: 1, pageSize: 25, sortKey: "created_at", sortDir: "desc", filters: { excludeArchived: true } },
+          data: { rows: [], totalCount: 0, page: 1, pageSize: 25 },
+          updatedAt: Date.now(),
+        }}
+        initialDocuments={[]} initialTotal={0} initialUpdatedAt={Date.now()}
+        categories={[]} documentTypes={[]} canDownload={canDownload}
+      />
+    </WorkspaceUiMemoryProvider>
+  </ReadCacheBoundary>;
+
+  const ui = render(view(true));
+  fireEvent.click(screen.getByRole("button", { name: "Edit columns" }));
+  fireEvent.change(screen.getByRole("spinbutton", { name: "Title width" }), { target: { value: "380" } });
+  fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+  expect(localStorage.getItem(preferenceKey)).toContain('"width":380');
+  expect(screen.getByRole("table", { name: "Documents" }).style.minWidth).toBe("850px");
+  expect(screen.getByRole("columnheader", { name: "Actions" })).toBeTruthy();
+  expect(ui.container.querySelector("col:last-child")?.style.width).toBe("104px");
+  Object.defineProperty(screen.getByRole("region", { name: "Scrollable documents" }), "scrollTo", { value: vi.fn() });
+  fireEvent.click(screen.getByRole("button", { name: "Fit to screen" }));
+  expect(screen.getByRole("columnheader", { name: "Title" }).style.width).toBe("380px");
+  expect(screen.getByRole("button", { name: "Last columns" })).toBeTruthy();
+  expect(localStorage.getItem(preferenceKey)).toContain('"width":380');
+  fireEvent.click(screen.getByRole("button", { name: "Edit columns" }));
+  fireEvent.click(screen.getByRole("button", { name: "Restore defaults" }));
+  fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+  expect(localStorage.getItem(preferenceKey)).toBeNull();
+  expect(ui.container.querySelector("col")?.style.width).toBe("44px");
+  expect(screen.getByRole("checkbox", { name: "Select this page for ZIP" })).toBeTruthy();
+
+  ui.rerender(view(false));
+  fireEvent.click(screen.getByRole("button", { name: "Edit columns" }));
+  fireEvent.click(screen.getByRole("button", { name: "Restore defaults" }));
+  fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+  expect(ui.container.querySelector("col")?.style.width).not.toBe("44px");
+  expect(screen.queryByRole("checkbox", { name: "Select this page for ZIP" })).toBeNull();
 });

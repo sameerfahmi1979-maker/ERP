@@ -88,6 +88,22 @@ export const preparationSnapshotSchema = z.strictObject({
   existingTags: z.array(z.strictObject({ id: preparationId, name: z.string() })).max(1000),
 });
 export type PreparationSnapshot = z.infer<typeof preparationSnapshotSchema>;
+export const preparationDraftValuesSchema = z.strictObject({
+  selections: z.array(z.string().regex(/^(title|description|issue_date|expiry_date|document_type_id|metadata:[1-9][0-9]*)$/)).max(50),
+  edits: z.record(z.string().regex(/^(title|description|issue_date|expiry_date|metadata:[1-9][0-9]*)$/), z.string().max(16000)),
+  refreshDerived: z.boolean(),
+}).refine(v => new Set(v.selections).size === v.selections.length);
+export const preparationDraftSaveSchema = z.strictObject({
+  documentId: preparationId, jobId: preparationId, requestId: z.uuid(), snapshot: preparationHash,
+  expectedRevision: z.number().int().min(0).max(2147483646), values: preparationDraftValuesSchema,
+});
+export const preparationReviewOpenSchema = z.strictObject({
+  source: preparationSnapshotSchema, documentStatus: z.string(), approvalStatus: z.string().nullable(),
+  recovery: z.strictObject({ jobId: preparationId, requestId: z.uuid(), snapshot: preparationHash,
+    mode: preparationMode, fileIds: z.array(preparationId).min(1).max(10), state: z.string() }).nullable(),
+  draft: z.strictObject({revision: z.number().int().positive(), snapshot: preparationHash,
+    current: z.boolean(), values: preparationDraftValuesSchema}).nullable(),
+});
 export const preparationStageReceipt = z.strictObject({ success: z.literal(true), state: z.enum(["started", "completed", "uncertain"]), value: z.unknown().nullable() });
 
 export const duplicateAdvisorySchema = z.discriminatedUnion("status", [

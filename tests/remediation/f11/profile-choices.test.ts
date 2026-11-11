@@ -4,11 +4,11 @@ import {readEmployeeProfileChoices} from '@/server/reads/employee-profile-choice
 
 type Call={table:string;steps:[string,...unknown[]][]};
 type Row={id:number;label:string;code:string|null;active:boolean|string};
-const state=vi.hoisted(()=>({context:{} as unknown,calls:[] as Call[],rows:{} as Record<string,Row[]>,failed:'',noCount:'',partial:'',duplicate:'',countChange:'',oversized:'',started:[] as string[],gate:null as Promise<void>|null,auth:0}));
+const state=vi.hoisted(()=>({context:{} as unknown,calls:[] as Call[],rows:{} as Record<string,Row[]>,shared:{} as Record<string,Row[]>,sharedError:null as string|null,rpc:vi.fn(),failed:'',noCount:'',partial:'',duplicate:'',countChange:'',oversized:'',started:[] as string[],gate:null as Promise<void>|null,auth:0}));
 vi.mock('@/server/reads/read-context',()=>({getReadAuthContext:async()=>{state.auth++;return state.context;}}));
 vi.mock('@/lib/rbac/check',async()=>({...await import('@/lib/rbac/scope')}));
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>{throw Error('Privileged fallback forbidden');}}));
-vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({from:(table:string)=>{
+vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({rpc:state.rpc,from:(table:string)=>{
  const call:Call={table,steps:[]};state.calls.push(call);
  const q:Record<string,unknown>={then:async(resolve:(r:unknown)=>unknown)=>{
   state.started.push(table);await state.gate;
@@ -22,7 +22,14 @@ vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({from:(table:string
  return q;
 }})}));
 const input=()=>({companyId:3,branchId:4,departmentId:5,selected:Object.fromEntries(EMPLOYEE_CHOICE_KINDS.map(kind=>[kind,null]))});
-beforeEach(()=>{state.context={profile:{id:1},isAccountActive:true,permissionCodes:['hr.employees.update','common_md.view'],roleAssignments:[],roleCodes:[]};state.calls=[];state.rows={};state.failed=state.noCount=state.partial=state.duplicate=state.countChange=state.oversized='';state.started=[];state.gate=null;state.auth=0;});
+beforeEach(()=>{
+ state.context={profile:{id:1},isAccountActive:true,permissionCodes:['hr.employees.update','common_md.view'],roleAssignments:[],roleCodes:[]};
+ state.calls=[];state.rows={};state.shared={};state.sharedError=null;
+ state.rpc.mockReset().mockImplementation((_name:string,args:{p_kind:string})=>({abortSignal:async()=>({
+  data:state.shared[args.p_kind]??[],error:state.sharedError?{code:state.sharedError}:null,
+ })}));
+ state.failed=state.noCount=state.partial=state.duplicate=state.countChange=state.oversized='';state.started=[];state.gate=null;state.auth=0;
+});
 it.each([{companyId:0},{branchId:'4'},{departmentId:2**53},{selected:{departments:1}},{admin:true}])('rejects malformed criteria before authority/query work: %j',async extra=>{
  expect((await readEmployeeProfileChoices({...input(),...extra})).success).toBe(false);expect(state.auth).toBe(0);expect(state.calls).toEqual([]);
 });
@@ -46,6 +53,20 @@ it('uses one composite OR predicate without discarding company/branch/department
 it('retains inactive selected labels as disabled rather than substituting another value',async()=>{
  state.rows.hr_employee_categories=[{id:77,label:'Historical',code:null,active:false}];const result=await readEmployeeProfileChoices({...input(),selected:{...input().selected,categories:77}});
  expect(result.success&&result.data?.categories).toEqual({status:'ready',options:[{value:77,label:'Historical (inactive)',code:null,disabled:true}]});
+});
+it('merges the shared labels into permitted departments and sites without duplicating owned choices',async()=>{
+ state.shared.departments=[{id:1,label:'Synthetic',code:'SYNTH',active:true},{id:77,label:'Shared department',code:'SD',active:true}];
+ state.shared.sites=[{id:88,label:'Shared site',code:'SS',active:true}];
+ const result=await readEmployeeProfileChoices(input());
+ expect(result.data?.departments.options?.map(option=>option.value)).toEqual([77,1]);
+ expect(result.data?.sites.options?.map(option=>option.value)).toEqual([88,1]);
+ expect(state.rpc).toHaveBeenCalledWith('shared_employee_assignment_choices',{p_kind:'departments',p_company:3,p_branch:4,p_selected:null});
+});
+it('preserves owned choices before the migration and surfaces unexpected catalogue failures',async()=>{
+ state.sharedError='PGRST202';
+ expect((await readEmployeeProfileChoices(input())).data?.departments.status).toBe('ready');
+ state.sharedError='57014';
+ expect((await readEmployeeProfileChoices(input())).data?.departments.status).toBe('failed');
 });
 it('returns denied catalogues explicitly without querying or denying unrelated personal choices',async()=>{
  state.context={profile:{id:1},isAccountActive:true,permissionCodes:['hr.employees.update'],roleAssignments:[],roleCodes:[]};const result=await readEmployeeProfileChoices(input());

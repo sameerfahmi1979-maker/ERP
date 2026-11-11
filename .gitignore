@@ -17,6 +17,8 @@
 
 # next.js
 /.next/
+# Dedicated outputs for isolated local builds; never publish generated bundles.
+/.next-*/
 /out/
 
 # production

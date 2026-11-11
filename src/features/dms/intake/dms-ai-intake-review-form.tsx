@@ -69,6 +69,7 @@ interface DmsAiIntakeReviewFormProps {
   initialDocTypes?: DmsDocumentTypeRow[];
   aiResultOverride?: IntakeAiResultRow | null;
   onAiResultPatch?: (patch: Partial<IntakeAiResultRow>,draftSnapshot?:string) => void;
+  savedDocument?: {documentId:number;jobId:number};
 }
 
 function stripExtension(filename: string): string {
@@ -87,6 +88,7 @@ function DmsIntakeReviewFields({
   initialDocTypes = [],
   aiResultOverride = null,
   onAiResultPatch,
+  savedDocument,
 }: DmsAiIntakeReviewFormProps) {
   const aiResult = aiResultOverride ?? session.ai_result;
   const rawPreparation = aiResult?.raw_response_json?.preparation;
@@ -135,11 +137,13 @@ function DmsIntakeReviewFields({
     onChange({
       documentTypeId: typeId,
       categoryId: selected?.category_id ?? null,
+      ...(savedDocument?{metadataValues:{}}:{}),
     });
   };
 
   const runMetadataRerun = (typeId: number, mergeMode: RerunExtractionMergeMode) => {
     startRerun(async () => {
+      if(savedDocument){toast.info('New metadata fields are available. Review them against the saved original before updating.');return;}
       const result = await rerunMetadataExtractionForIntakeSession({
         uploadSessionId: session.id,
         documentTypeId: typeId,
@@ -167,6 +171,8 @@ function DmsIntakeReviewFields({
   const handleDocTypeChange = (typeId: number | null) => {
     const previousTypeId = values.documentTypeId;
     if (typeId === previousTypeId) return;
+
+    if(savedDocument){applyDocTypeChange(typeId);return;}
 
     const aiSuggested = suggestedTypeIdRef.current;
     const isChangeFromAi = aiSuggested != null && typeId !== aiSuggested;
@@ -212,7 +218,7 @@ function DmsIntakeReviewFields({
 
   return (
     <div className="space-y-5">
-      {aiResult&&<AiFeedback source={{kind:'intake',id:aiResult.id,documentId:null}}/>}
+      {aiResult&&<AiFeedback source={savedDocument?{kind:'preparation',id:savedDocument.jobId,documentId:savedDocument.documentId}:{kind:'intake',id:aiResult.id,documentId:null}}/>}
       {prepared && <div className="rounded border border-border p-3 space-y-2 text-sm">
         <p className="font-medium">Document preparation — review before saving</p>
         {typeof prepared.summary === "string" && <p dir="auto" className="whitespace-pre-wrap break-words">{prepared.summary}</p>}
@@ -335,6 +341,7 @@ function DmsIntakeReviewFields({
         </DmsAiIntakeFieldRow>
 
         <DmsStandardFileNameField
+          savedDocument={!!savedDocument}
           session={session}
           values={values}
           docTypes={docTypes}
@@ -472,8 +479,7 @@ function DmsIntakeReviewFields({
           // All AI-seeded values arrive in one call — no stale closure issue.
           onChange({
             metadataValues: {
-              ...values.metadataValues,
-              ...seeded,
+              ...(savedDocument?{...seeded,...values.metadataValues}:{...values.metadataValues,...seeded}),
             },
           })
         }
@@ -490,7 +496,7 @@ function DmsIntakeReviewFields({
           // definitions exist for this type. Uses the same session-based
           // re-extraction path as a manual document-type change, since no
           // dms_documents row exists yet during intake review.
-          toast.success("Metadata fields created. Re-running AI extraction for this document…");
+          if(!savedDocument)toast.success("Metadata fields created. Re-running AI extraction for this document…");
           runMetadataRerun(typeId, "fill_missing_only");
         }}
       />

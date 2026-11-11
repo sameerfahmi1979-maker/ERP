@@ -1,4 +1,5 @@
 "use client";
+import { HrIconButton } from "@/features/hr/employees/hr-icon-button";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 
@@ -274,14 +275,14 @@ function LinkedDocRow({
           unlink on save
         </Badge>
       )}
-      <button
+      <HrIconButton
         type="button"
         onClick={onToggle}
         className="ml-auto shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted"
         aria-label={pendingRemoval ? "Undo unlink" : isNew ? "Remove from selection" : "Unlink document"}
       >
         {pendingRemoval ? <Undo2 className="h-3 w-3" /> : <X className="h-3 w-3" />}
-      </button>
+      </HrIconButton>
     </div>
   );
 }

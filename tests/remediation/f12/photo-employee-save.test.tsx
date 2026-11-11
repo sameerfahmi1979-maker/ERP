@@ -10,7 +10,7 @@ import {createWorkspaceDraftStore}from '@/lib/workspace/workspace-draft-store';
 import {RecordReadActivity}from '@/hooks/use-record-read-active';
 import {employeeRecoveryIndexKey}from '@/features/hr/employees/use-employee-save-session';
 const m=vi.hoisted(()=>({save:vi.fn(),recover:vi.fn(),cache:vi.fn(),error:vi.fn(),success:vi.fn(),refresh:vi.fn(),close:vi.fn(),route:vi.fn(),store:null as ReturnType<typeof createWorkspaceDraftStore>|null,submit:undefined as undefined|(()=>Promise<boolean>)}));
-const photo=vi.hoisted(()=>({resolve:vi.fn(),confirmed:vi.fn(),validate:vi.fn(),save:vi.fn(),pending:false}));
+const photo=vi.hoisted(()=>({resolve:vi.fn(),confirmed:vi.fn(),validate:vi.fn(),save:vi.fn(),pending:false,busy:false,blocked:false,retained:null as null|{request:{operationId:string}}}));
 vi.mock('@/features/hr/employees/use-subject-photo-draft',()=>({useSubjectPhotoDraft:()=>photo}));
 const navigation=vi.hoisted(()=>({section:''}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:m.refresh,replace:m.route})}));
@@ -24,7 +24,7 @@ vi.mock('@/hooks/use-workspace-tab-dirty',()=>({useWorkspaceTabDirty:vi.fn()}));
 vi.mock('@/components/workspace/workspace-draft-provider',()=>({useWorkspaceDraftStoreContext:()=>m.store}));
 vi.mock('@/components/workspace/draft-restored-notice',()=>({DraftRestoredNotice:()=>null}));
 vi.mock('@/components/ui/button',()=>({Button:({variant,...props}:React.ButtonHTMLAttributes<HTMLButtonElement>&{variant?:string})=><button data-variant={variant}{...props}/>}));
-vi.mock('@/components/workspace/erp-record-workspace-form',()=>({ERPRecordWorkspaceForm:({onSave,children,isSubmitting,activeSection}:{onSave?:()=>Promise<boolean>;children:React.ReactNode;isSubmitting:boolean;activeSection:string})=>{m.submit=onSave;navigation.section=activeSection;return <><button type="button" disabled={isSubmitting} onClick={()=>void onSave?.()}>Save profile</button>{children}</>;},ERPRecordSectionPanel:({id,children}:{id:string;children:React.ReactNode})=>id==='profile'?children:null}));
+vi.mock('@/components/workspace/erp-record-workspace-form',()=>({ERPRecordWorkspaceForm:({onSave,onCancel,onRequestClose,closeBlocked,children,isSubmitting,activeSection}:{onCancel?:()=>void;onRequestClose?:()=>void;closeBlocked?:boolean;onSave?:()=>Promise<boolean>;children:React.ReactNode;isSubmitting:boolean;activeSection:string})=>{m.submit=onSave;navigation.section=activeSection;return <><button disabled={isSubmitting||closeBlocked} onClick={onCancel}>Cancel employee</button><button disabled={isSubmitting||closeBlocked} onClick={onRequestClose}>Close employee</button><button type="button" disabled={isSubmitting} onClick={()=>void onSave?.()}>Save profile</button>{children}</>;},ERPRecordSectionPanel:({id,children}:{id:string;children:React.ReactNode})=>id==='profile'?children:null}));
 vi.mock('@/features/hr/employees/tabs/employee-profile-tab',()=>({EmployeeProfileTab:({form,setForm}:{form:{full_name_en:string;blood_group:string};setForm:React.Dispatch<React.SetStateAction<{full_name_en:string;blood_group:string}>>})=><><button type="button" onClick={()=>setForm(v=>({...v,full_name_en:"Synthetic new",gender:"male",owner_company_id:3,employee_category_id:4,photo_pending:"file"}))}>Stage photo</button><input aria-label="Name" value={form.full_name_en} onChange={e=>setForm(v=>({...v,full_name_en:e.target.value}))}/><input aria-label="Medical" value={form.blood_group} onChange={e=>setForm(v=>({...v,blood_group:e.target.value}))}/></>}));
 vi.mock('@/features/hr/employees/tabs/employee-compliance-tab',()=>({EmployeeComplianceTab:()=>null}));
 vi.mock('@/features/hr/employees/tabs/employee-time-tab',()=>({EmployeeTimeTab:()=>null}));
@@ -47,7 +47,7 @@ function mount(initial=auth,record=employee,section?:string){const client=new Qu
 
 const frame={version:1,source:{documentId:12,versionId:13,fileId:14,sha256:'a'.repeat(64),width:120,height:140},rotation:0,crop:{x:0,y:0,width:100,height:100}};
 const photoResult={photo_dms_document_id:12,photo_framing:JSON.stringify(frame),photo_pending:''};
-beforeEach(()=>{photo.pending=false;photo.resolve.mockReset().mockResolvedValue(photoResult);photo.confirmed.mockReset();photo.save.mockImplementation(async r=>r.kind==='employee-create'?m.save(r.input,r.contract):m.save(r.id,r.input,r.contract));m.save.mockImplementation(async(first:unknown)=>({success:true,data:{id:7,revision:typeof first==='number'?'2':'1',replayed:false}}));});
+beforeEach(()=>{photo.pending=false;photo.busy=false;photo.blocked=false;photo.retained=null;photo.resolve.mockReset().mockResolvedValue(photoResult);photo.confirmed.mockReset();photo.save.mockImplementation(async r=>r.kind==='employee-create'?m.save(r.input,r.contract):m.save(r.id,r.input,r.contract));m.save.mockImplementation(async(first:unknown)=>({success:true,data:{id:7,revision:typeof first==='number'?'2':'1',replayed:false}}));});
 it('new person is created before its photo; retries never duplicate that person',async()=>{
  photo.resolve.mockRejectedValueOnce(Error('Photo transfer unconfirmed'));mount(auth,null as never);fireEvent.click(screen.getByText('Stage photo'));
  let saved=true;await act(async()=>{saved=await m.submit!();});expect(saved).toBe(false);expect(m.save).toHaveBeenCalledOnce();expect(m.save.mock.calls[0][0].photo_framing).toBeNull();expect(m.save.mock.calls[0][0].photo_dms_document_id).toBeNull();expect(photo.resolve).toHaveBeenCalledWith(7,null,expect.objectContaining({photo_pending:'file'}));expect(m.close).not.toHaveBeenCalled();
@@ -60,4 +60,33 @@ it('lost final photo-save response replays the original payload, revision and op
 it('lost initial person creation retains its operation before any photo work',async()=>{
  m.save.mockResolvedValueOnce({success:false,uncertain:true,error:'Create response lost'}).mockResolvedValueOnce({success:true,data:{id:7,revision:'1',replayed:true}}).mockResolvedValueOnce({success:true,data:{id:7,revision:'2',replayed:false}});
  mount(auth,null as never);fireEvent.click(screen.getByText('Stage photo'));await act(async()=>{expect(await m.submit!()).toBe(false);});expect(photo.resolve).not.toHaveBeenCalled();await act(async()=>{expect(await m.submit!()).toBe(true);});expect(m.save.mock.calls[1]).toEqual(m.save.mock.calls[0]);expect(photo.resolve).toHaveBeenCalledOnce();
+});
+
+it('Cancel discards ordinary edits and closes without saving',()=>{
+ mount();fireEvent.change(screen.getByLabelText('Name'),{target:{value:'Unsaved edit'}});
+ fireEvent.click(screen.getByText('Cancel employee'));
+ expect(m.close).toHaveBeenCalledWith('owned',{force:true});expect(m.save).not.toHaveBeenCalled();
+});
+it('X/Close keeps the ordinary unsaved-edit confirmation',()=>{
+ mount();fireEvent.click(screen.getByText('Close employee'));
+ expect(m.close).toHaveBeenCalledWith('owned',undefined);
+});
+it('an unavailable photo recovery read does not trap employee cancellation',()=>{
+ photo.blocked=true;mount();fireEvent.click(screen.getByText('Cancel employee'));
+ expect(m.close).toHaveBeenCalledWith('owned',{force:true});expect(photo.save).not.toHaveBeenCalled();
+});
+it('Cancel preserves an idle retained photo request without mutating it',()=>{
+ photo.retained={request:{operationId:'original-upload'}};mount();fireEvent.click(screen.getByText('Cancel employee'));
+ expect(m.close).toHaveBeenCalledWith('owned',{force:true});expect(photo.confirmed).not.toHaveBeenCalled();expect(photo.resolve).not.toHaveBeenCalled();
+ expect(photo.retained.request.operationId).toBe('original-upload');
+});
+it('an active photo transfer still blocks cancellation',()=>{
+ photo.busy=true;mount();fireEvent.click(screen.getByText('Cancel employee'));expect(m.close).not.toHaveBeenCalled();
+});
+it('an unconfirmed employee save still blocks cancellation and preserves recovery',async()=>{
+ m.save.mockResolvedValue({success:false,uncertain:true,error:'Response lost'});mount();
+ fireEvent.change(screen.getByLabelText('Name'),{target:{value:'Unsaved edit'}});
+ await act(async()=>{expect(await m.submit!()).toBe(false);});
+ expect(m.save.mock.calls,JSON.stringify(m.error.mock.calls)).toHaveLength(1);
+ fireEvent.click(screen.getByText('Cancel employee'));expect(m.close).not.toHaveBeenCalled();
 });

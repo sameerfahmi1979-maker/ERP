@@ -1,4 +1,6 @@
 "use client";
+import { HrIconButton } from "@/features/hr/employees/hr-icon-button";
+import {trainingTypeSelection, validateTrainingFields, trainingCategoryNeedsReview} from '@/lib/hr/compliance/training-validation';
 import {SubjectPhoto,SubjectPhotoReadOnly}from'../subject-photo';
 import {useSubjectPhotoDraft} from '../use-subject-photo-draft';
 import {PhotoRecoveryNotice} from '../photo-recovery-notice';
@@ -35,6 +37,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ComplianceDmsAddDialog } from "@/features/hr/employees/compliance/compliance-dms-add-dialog";
+import { ComplianceRenewalEvidence, ComplianceRenewals, OriginalEvidenceAction } from "@/features/hr/employees/compliance/compliance-renewals";
 import { ComplianceDmsPrefillBanner } from "@/features/hr/employees/compliance/compliance-dms-prefill-banner";
 import {
   DependentDocumentLinksSection,
@@ -386,9 +389,12 @@ function IdentityDocumentsSection({ authContext, onSubjectDenied, employeeId, ca
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-sm">{doc.document_type?.name_en ?? `Type ${doc.document_type_id}`}</span>
-                  <StatusBadge status={doc.status} />
-                  <VerificationBadge status={doc.verification_status} />
+                  <OriginalEvidenceAction kind="identity-document" sourceId={doc.id}>
+                    <StatusBadge status={doc.status} />
+                    <VerificationBadge status={doc.verification_status} />
+                  </OriginalEvidenceAction>
                 </div>
+                <ComplianceRenewalEvidence kind="identity-document" sourceId={doc.id}>
                 <div className="text-xs text-muted-foreground mt-0.5">{doc.document_number}</div>
                 <div className="flex items-center gap-3 mt-1 flex-wrap">
                   <ExpiryBadge expiryDate={doc.expiry_date} />
@@ -404,21 +410,24 @@ function IdentityDocumentsSection({ authContext, onSubjectDenied, employeeId, ca
                     </span>
                   )}
                 </div>
+                </ComplianceRenewalEvidence>
               </div>
               {canManageDoc && recordRead.access.canManage && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                  <OriginalEvidenceAction kind="identity-document" sourceId={doc.id}>
                   <WorkforceReviewButton employeeId={employeeId}kind="identity-document"sourceId={doc.id}authContext={authContext}canDispatch={admission.canDispatch}onChildOpen={onChildOpen}onDenied={onSubjectDenied}/>
                   {doc.verification_status === "unverified" && (
-                    <Button aria-label="Verify" size="sm" variant="ghost" onClick={() => handleVerify(doc.id)} type="button" title="Verify">
+                    <HrIconButton aria-label="Verify" size="sm" variant="ghost" onClick={() => handleVerify(doc.id)} type="button" title="Verify">
                       <CheckCircle className="h-3.5 w-3.5" />
-                    </Button>
+                    </HrIconButton>
                   )}
-                  <Button aria-label="Edit" size="sm" variant="ghost" onClick={() => openEdit(doc)} type="button" title="Edit">
+                  </OriginalEvidenceAction>
+                  <HrIconButton aria-label="Edit" size="sm" variant="ghost" onClick={() => openEdit(doc)} type="button" title="Edit">
                     <Edit2 className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button aria-label="Archive" size="sm" variant="ghost" onClick={() => handleArchive(doc.id)} type="button" title="Archive">
+                  </HrIconButton>
+                  <HrIconButton aria-label="Archive" size="sm" variant="ghost" onClick={() => handleArchive(doc.id)} type="button" title="Archive">
                     <Archive className="h-3.5 w-3.5" />
-                  </Button>
+                  </HrIconButton>
                 </div>
               )}
             </div>
@@ -649,18 +658,24 @@ function MedicalInsurancesSection({ authContext, onSubjectDenied, employeeId, ca
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-sm">{r.insurance_provider}</span>
+                  <OriginalEvidenceAction kind="medical-insurance" sourceId={r.id}>
                   {r.network_class && <Badge variant="outline" className="text-xs">{r.network_class}</Badge>}
                   <StatusBadge status={r.status} />
+                  </OriginalEvidenceAction>
                 </div>
+                <ComplianceRenewalEvidence kind="medical-insurance" sourceId={r.id}>
                 <div className="text-xs text-muted-foreground mt-0.5">Policy: {r.policy_number}{r.tpa ? ` · TPA: ${r.tpa}` : ""}</div>
                 <div className="mt-1"><ExpiryBadge expiryDate={r.expiry_date} /></div>
+                </ComplianceRenewalEvidence>
               </div>
               {canManageDoc && recordRead.access.canManage && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                  <OriginalEvidenceAction kind="medical-insurance" sourceId={r.id}>
                   <WorkforceReviewButton employeeId={employeeId}kind="medical-insurance"sourceId={r.id}authContext={authContext}canDispatch={admission.canDispatch}onChildOpen={onChildOpen}onDenied={onSubjectDenied}/>
-                  {r.verification_status === "unverified" && <Button aria-label="Verify" size="sm" variant="ghost" type="button" onClick={() => handleVerify(r.id)} title="Verify"><CheckCircle className="h-3.5 w-3.5" /></Button>}
-                  <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                  <Button aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
+                  {r.verification_status === "unverified" && <HrIconButton aria-label="Verify" size="sm" variant="ghost" type="button" onClick={() => handleVerify(r.id)} title="Verify"><CheckCircle className="h-3.5 w-3.5" /></HrIconButton>}
+                  </OriginalEvidenceAction>
+                  <HrIconButton aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></HrIconButton>
+                  <HrIconButton aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></HrIconButton>
                 </div>
               )}
             </div>
@@ -1006,17 +1021,24 @@ function DependentsSection({ authContext, onSubjectDenied, employeeId, canManage
                   {r.nationality?.name_en && <span>{r.nationality.name_en}</span>}
                 </div>
                 <div className="flex gap-3 mt-1 flex-wrap">
-                  {r.passport_expiry && <span className="text-xs text-muted-foreground">Passport exp: {formatDate(r.passport_expiry)}</span>}
-                  {r.emirates_id_expiry && <span className="text-xs text-muted-foreground">EID exp: {formatDate(r.emirates_id_expiry)}</span>}
-                  {r.residence_visa_expiry && <span className="text-xs text-muted-foreground">Visa exp: {formatDate(r.residence_visa_expiry)}</span>}
+                  <ComplianceRenewalEvidence kind="dependent" sourceId={r.id} category="dependent-passport">
+                    {r.passport_expiry && <span className="text-xs text-muted-foreground">Passport exp: {formatDate(r.passport_expiry)}</span>}
+                  </ComplianceRenewalEvidence>
+                  <ComplianceRenewalEvidence kind="dependent" sourceId={r.id} category="dependent-eid">
+                    {r.emirates_id_expiry && <span className="text-xs text-muted-foreground">EID exp: {formatDate(r.emirates_id_expiry)}</span>}
+                  </ComplianceRenewalEvidence>
+                  <ComplianceRenewalEvidence kind="dependent" sourceId={r.id} category="dependent-visa">
+                    {r.residence_visa_expiry && <span className="text-xs text-muted-foreground">Visa exp: {formatDate(r.residence_visa_expiry)}</span>}
+                  </ComplianceRenewalEvidence>
+                  <ComplianceRenewalEvidence kind="dependent" sourceId={r.id} category="dependent-insurance" />
                 </div>
                 <SubjectPhotoReadOnly key={recordRead.identity+':'+r.id} employee={employeeId} dependent={r.id} subject="dependent" identity={recordRead.identity}/>
               </div>
               {canManageDoc && recordRead.access.canManage && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                   <WorkforceReviewButton employeeId={employeeId}kind="dependent"sourceId={r.id}authContext={authContext}canDispatch={admission.canDispatch}onChildOpen={onChildOpen}onDenied={onSubjectDenied}/>
-                  <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                  <Button aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
+                  <HrIconButton aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></HrIconButton>
+                  <HrIconButton aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></HrIconButton>
                 </div>
               )}
             </div>
@@ -1269,20 +1291,24 @@ function AccessCardsSection({ authContext, onSubjectDenied, employeeId, canManag
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-sm">{r.access_type?.name_en ?? `Type ${r.access_type_id}`}</span>
-                  <StatusBadge status={r.status} />
+                  <OriginalEvidenceAction kind="access-card" sourceId={r.id}><StatusBadge status={r.status} /></OriginalEvidenceAction>
                 </div>
+                <ComplianceRenewalEvidence kind="access-card" sourceId={r.id}>
                 <div className="text-xs text-muted-foreground mt-0.5">
                   {r.client_authority && <span>{r.client_authority} · </span>}
                   {r.card_number && <span>Card: {r.card_number}</span>}
                   {r.work_site?.site_name && <span> · {r.work_site.site_name}</span>}
                 </div>
                 <div className="mt-1"><ExpiryBadge expiryDate={r.expiry_date} /></div>
+                </ComplianceRenewalEvidence>
               </div>
               {canManageDoc && recordRead.access.canManage && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                  <WorkforceReviewButton employeeId={employeeId}kind="access-card"sourceId={r.id}authContext={authContext}canDispatch={admission.canDispatch}onChildOpen={onChildOpen}onDenied={onSubjectDenied}/>
-                  <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                  <Button aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
+                  <OriginalEvidenceAction kind="access-card" sourceId={r.id}>
+                    <WorkforceReviewButton employeeId={employeeId}kind="access-card"sourceId={r.id}authContext={authContext}canDispatch={admission.canDispatch}onChildOpen={onChildOpen}onDenied={onSubjectDenied}/>
+                  </OriginalEvidenceAction>
+                  <HrIconButton aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></HrIconButton>
+                  <HrIconButton aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></HrIconButton>
                 </div>
               )}
             </div>
@@ -1404,8 +1430,7 @@ function TrainingCertificatesSection({ authContext, onSubjectDenied, employeeId,
   });
 
   const validateTraining = (f: TrainingForm) => {
-    if (!f.training_type_id) return "Training type is required";
-    return null;
+    return validateTrainingFields(f, trainTypes ?? [], editing?.training_type_id);
   };
 
   const renderTrainingFields = (
@@ -1415,8 +1440,9 @@ function TrainingCertificatesSection({ authContext, onSubjectDenied, employeeId,
   ) => (
     <div className="grid grid-cols-12 gap-4">
       <ComplianceDmsPrefillBanner prefillMeta={prefillMeta} />
-      <div className="col-span-6"><Label>Training Category</Label><ERPCombobox ariaLabel="Training Category" value={f.training_category_id} onValueChange={(v) => setF((p) => ({ ...p, training_category_id: Number(v) }))} options={catOptions} placeholder="Select category..." /></div>
-      <div className="col-span-6"><Label>Training Type <span className="text-destructive">*</span></Label><ERPCombobox ariaLabel="Training Type" value={f.training_type_id} onValueChange={(v) => setF((p) => ({ ...p, training_type_id: Number(v) }))} options={typeOptions} placeholder="Select type..." required /></div>
+      <div className="col-span-6"><Label>Training Category</Label><ERPCombobox ariaLabel="Training Category" value={f.training_category_id} onValueChange={(v) => setF((p) => ({ ...p, training_category_id: v === '' || v == null ? null : Number(v) }))} options={catOptions} placeholder="Select category..." disabled={!!f.training_type_id} /><p className="mt-1 text-xs text-muted-foreground">Set automatically when you choose a training type.</p></div>
+      <div className="col-span-6"><Label>Training Type <span className="text-destructive">*</span></Label><ERPCombobox ariaLabel="Training Type" value={f.training_type_id} onValueChange={(v) => setF((p) => ({ ...p, ...trainingTypeSelection(v, trainTypes ?? []) }))} options={typeOptions} placeholder="Select type..." required /></div>
+      {f.training_type_id && trainTypes?.some(t => t.id === f.training_type_id && t.training_category_id !== f.training_category_id) && <div role="alert" className="col-span-12 rounded border border-border bg-muted p-3 text-sm"><p>The recorded or suggested category differs from this training type. Check the configured category before saving.</p><Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setF(p => ({...p,...trainingTypeSelection(p.training_type_id,trainTypes ?? [])}))}>Use training type category</Button></div>}
       <div className="col-span-6"><Label>Provider</Label><Input aria-label="Provider" value={f.provider} onChange={(e) => setF((p) => ({ ...p, provider: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Approval Body</Label><Input aria-label="Approval Body" value={f.approval_body} onChange={(e) => setF((p) => ({ ...p, approval_body: e.target.value }))} /></div>
       <div className="col-span-6"><Label>Certificate Number</Label><Input aria-label="Certificate Number" value={f.certificate_number} onChange={(e) => setF((p) => ({ ...p, certificate_number: e.target.value }))} /></div>
@@ -1502,22 +1528,29 @@ function TrainingCertificatesSection({ authContext, onSubjectDenied, employeeId,
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-sm">{r.training_type?.name_en ?? `Type ${r.training_type_id}`}</span>
-                  <StatusBadge status={r.status} />
-                  <VerificationBadge status={r.verification_status} />
+                  {trainingCategoryNeedsReview(r.training_category?.id??null,trainTypes?.find(type=>type.id===r.training_type_id))&&<Badge variant="outline">Category review required</Badge>}
+                  <OriginalEvidenceAction kind="training-certificate" sourceId={r.id}>
+                    <StatusBadge status={r.status} />
+                    <VerificationBadge status={r.verification_status} />
+                  </OriginalEvidenceAction>
                 </div>
+                <ComplianceRenewalEvidence kind="training-certificate" sourceId={r.id}>
                 <div className="text-xs text-muted-foreground mt-0.5">
                   {r.training_category?.name_en && <span>{r.training_category.name_en} · </span>}
                   {r.provider && <span>{r.provider}</span>}
                   {r.certificate_number && <span> · {r.certificate_number}</span>}
                 </div>
                 <div className="mt-1"><ExpiryBadge expiryDate={r.expiry_date} /></div>
+                </ComplianceRenewalEvidence>
               </div>
               {canManageDoc && recordRead.access.canManage && (
                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                  <OriginalEvidenceAction kind="training-certificate" sourceId={r.id}>
                   <WorkforceReviewButton employeeId={employeeId}kind="training-certificate"sourceId={r.id}authContext={authContext}canDispatch={admission.canDispatch}onChildOpen={onChildOpen}onDenied={onSubjectDenied}/>
-                  {r.verification_status === "unverified" && <Button aria-label="Verify" size="sm" variant="ghost" type="button" onClick={() => handleVerify(r.id)} title="Verify"><CheckCircle className="h-3.5 w-3.5" /></Button>}
-                  <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                  <Button aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
+                  {r.verification_status === "unverified" && <HrIconButton aria-label="Verify" size="sm" variant="ghost" type="button" onClick={() => handleVerify(r.id)} title="Verify"><CheckCircle className="h-3.5 w-3.5" /></HrIconButton>}
+                  </OriginalEvidenceAction>
+                  <HrIconButton aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></HrIconButton>
+                  <HrIconButton aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></HrIconButton>
                 </div>
               )}
             </div>
@@ -1743,12 +1776,15 @@ function MedicalRecordsSection({ authContext, onSubjectDenied, employeeId, canMe
                     {r.report_number && <span> · {r.report_number}</span>}
                   </div>
                   {r.next_examination_date && <div className="mt-1"><ExpiryBadge expiryDate={r.next_examination_date} /></div>}
+                  <ComplianceRenewalEvidence kind="medical-record" sourceId={r.id} />
                 </div>
                 {canMedManage && recordRead.access.canManage && (
                   <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                  <WorkforceReviewButton employeeId={employeeId}kind="medical-record"sourceId={r.id}authContext={authContext}canDispatch={admission.canDispatch}onChildOpen={onChildOpen}onDenied={onSubjectDenied}/>
-                    <Button aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                    <Button aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></Button>
+                  <OriginalEvidenceAction kind="medical-record" sourceId={r.id}>
+                    <WorkforceReviewButton employeeId={employeeId}kind="medical-record"sourceId={r.id}authContext={authContext}canDispatch={admission.canDispatch}onChildOpen={onChildOpen}onDenied={onSubjectDenied}/>
+                  </OriginalEvidenceAction>
+                    <HrIconButton aria-label="Edit record" size="sm" variant="ghost" type="button" onClick={() => openEdit(r)}><Edit2 className="h-3.5 w-3.5" /></HrIconButton>
+                    <HrIconButton aria-label="Archive record" size="sm" variant="ghost" type="button" onClick={() => handleArchive(r.id)}><Archive className="h-3.5 w-3.5" /></HrIconButton>
                   </div>
                 )}
               </div>
@@ -1836,12 +1872,14 @@ function ComplianceSession({ employeeId, authContext, onChildOpen, onChildLeaseC
         <Badge variant="secondary" className="text-xs">HR.3</Badge>
       </div>
 
+      <ComplianceRenewals employeeId={employeeId} authContext={authContext}>
       {canView(authContext) && <IdentityDocumentsSection authContext={authContext} onSubjectDenied={denySubject} employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />}
       {medView && <MedicalInsurancesSection authContext={authContext} onSubjectDenied={denySubject} employeeId={employeeId} canManageDoc={medManage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />}
       {canView(authContext) && <DependentsSection authContext={authContext} onSubjectDenied={denySubject} employeeId={employeeId} canManageDoc={manage} canManageMedical={medManage} onChildOpen={onChildOpen} documentWizardEnabled={documentWizardEnabled} />}
       {canView(authContext) && <AccessCardsSection authContext={authContext} onSubjectDenied={denySubject} employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />}
       {canView(authContext) && <TrainingCertificatesSection authContext={authContext} onSubjectDenied={denySubject} employeeId={employeeId} canManageDoc={manage} onChildOpen={onChildOpen} />}
       <MedicalRecordsSection authContext={authContext} onSubjectDenied={denySubject} employeeId={employeeId} canMedView={medView} canMedManage={medManage} onChildOpen={onChildOpen} />
+      </ComplianceRenewals>
     </div></QueryReadBoundary>
     </ComplianceChildLeaseContext.Provider>
   );

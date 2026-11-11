@@ -5,9 +5,10 @@ import {readDmsApprovals} from "@/server/reads/dms-approvals";
 import {POST} from "@/app/api/reads/dms-approvals/route";
 import {dmsApprovalRequestSchema, dmsApprovalQueueCriteriaSchema, dmsApprovalHistoryPageSchema} from "@/lib/reads/dms-approvals-schema";
 import {literalContains} from "@/lib/reads/search";
-const mocks = vi.hoisted(() => ({auth: vi.fn(), create: vi.fn(), resolve: vi.fn()}));
+const mocks = vi.hoisted(() => ({auth: vi.fn(), create: vi.fn(), resolve: vi.fn(), admin: vi.fn()}));
 vi.mock("@/lib/rbac/check", async actual => ({...await actual<typeof import("@/lib/rbac/check")>(), getAuthContext: mocks.auth}));
 vi.mock("@/lib/supabase/server", () => ({createClient: mocks.create}));
+vi.mock("@/lib/supabase/admin", () => ({createAdminClient: mocks.admin}));
 type Call = [string, ...unknown[]];
 const calls: {source: string; args: unknown; calls: Call[]}[] = [];
 let queueDocs: ReturnType<typeof doc>[] = [];
@@ -33,6 +34,7 @@ const history = (id = 1) => ({id, document_id: 1, action: "approved", actioned_b
 const current = {id: 31, action: "submitted", workflow_id: null, step_id: null, reason: null, comments: "Private comment"};
 beforeEach(() => {vi.clearAllMocks(); calls.length = 0;queueDocs=[]; mocks.auth.mockResolvedValue(context());
   mocks.create.mockResolvedValue({from: (name: string) => chain(name), rpc: (name: string, args: unknown) => chain(name, args)});
+  mocks.admin.mockReturnValue({from: (name: string) => chain(name)});
   mocks.resolve.mockImplementation(entry => entry.source === "f05_document_approval_capabilities"
     ? {data: (entry.args as {document_ids: number[]}).document_ids.map(document_id => ({document_id, can_act: false, can_withdraw: false})), error: null}
     : {data: [doc()], count: 1, error: null});
@@ -114,9 +116,31 @@ describe("bounded approval readers", () => {
 });
 describe("lazy document state/history authorization", () => {
   function stateSetup(submittedBy = 9, capabilityValue: unknown = true, currentRows = [current]) {mocks.resolve.mockImplementation(entry => entry.source === "dms_documents"
-    ? {data: [{...doc(), submitted_by: submittedBy, status: "active", document_type_id: null}], count: 1, error: null}
+    ? {data: [{...doc(), submitted_by: submittedBy, status: "active", document_type_id: null,
+        owning_company_id: null, owning_branch_id: null, company: null}], count: 1, error: null}
     : entry.source === "dms_document_approvals" ? {data: currentRows, count: currentRows.length, error: null}
     : {data: [{document_id: 1, can_act: submittedBy === 6 ? false : capabilityValue, can_withdraw: submittedBy === 6}], error: null});}
+  it.each([
+    {routeRows: [], canSubmit: false, message: "No active approval workflow is configured for ISO 9001 Certificate in ALS"},
+    {routeRows: [{id: 9}], canSubmit: true, message: null},
+    {routeRows: [{id: 9}, {id: 10}], canSubmit: false, message: "Multiple active approval workflows match"},
+  ])("checks the exact ALS ISO 9001 route before offering submission ($canSubmit, $message)", async ({routeRows, canSubmit, message}) => {
+    mocks.resolve.mockImplementation(entry => {
+      if (entry.source === "dms_documents") return {data: [{...doc(), approval_status: null, status: "active",
+        document_type_id: 55, owning_company_id: 2, owning_branch_id: 2, company: {company_code: "ALS"},
+        document_type: {name_en: "ISO 9001 Certificate"}}], count: 1, error: null};
+      if (entry.source === "dms_document_approvals") return {data: [], count: 0, error: null};
+      if (entry.source === "f03_has_document_permission") return {data: true, error: null};
+      if (entry.source === "dms_document_workflows") return {data: routeRows, error: null};
+      throw Error("Unexpected approval read");
+    });
+    expect(await readDmsApprovals({mode: "state", documentId: 1}, context(["dms.documents.view", "dms.approvals.submit"])))
+      .toMatchObject({success: true, data: {record: {canSubmit, actionUnavailableReason: message ? expect.stringContaining(message) : null}}});
+    expect(calls.find(call => call.source === "dms_document_workflows")?.calls).toEqual(expect.arrayContaining([
+      ["eq", "owner_company_id", 2], ["eq", "mapped.document_type_id", 55], ["eq", "is_active", true],
+      ["or", "branch_id.is.null,branch_id.eq.2"], ["limit", 2],
+    ]));
+  });
   it("preserves self-exclusion and submitter withdrawal, without fetching history", async () => {
     stateSetup(6); expect(await readDmsApprovals({mode: "state", documentId: 1})).toMatchObject({success: true, data: {record: {canApprove: false, canReject: false, canWithdraw: true, selfApprovalBlocked: true}}});
     expect(calls.filter(c => c.source === "dms_document_approvals")).toHaveLength(1);
@@ -199,11 +223,13 @@ describe("subject-bound history and action hints", () => {
   function scopedState(options: {pending?: boolean; own?: boolean; canAct?: boolean; canWithdraw?: boolean; submitPermission?: string; archived?: boolean; current?: boolean} = {}) {
     mocks.resolve.mockImplementation(entry => {
       if (entry.source === "dms_documents") return {data: [{...doc(), approval_status: options.pending ? "pending_approval" : "draft", submitted_by: options.own ? 6 : 9,
-        status: options.archived ? "archived" : "active", document_type_id: null}], count: 1, error: null};
+        status: options.archived ? "archived" : "active", document_type_id: 55,
+        owning_company_id: 2, owning_branch_id: 2, company: {company_code: "ALS"}}], count: 1, error: null};
       if (entry.source === "dms_document_approvals") return {data: options.current || options.pending ? [current] : [], count: options.current || options.pending ? 1 : 0, error: null};
       if (entry.source === "f05_document_approval_capabilities") return {data: [{document_id: 1, can_act: options.canAct ?? false, can_withdraw: options.canWithdraw ?? false}], error: null};
       if (entry.source === "f05_can_act_document_approval") return {data: options.canAct ?? false, error: null};
       if (entry.source === "f03_has_document_permission") return {data: entry.args.permission_code === options.submitPermission, error: null};
+      if (entry.source === "dms_document_workflows") return {data: [{id: 8}], error: null};
       throw Error("Unexpected read");
     });
   }

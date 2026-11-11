@@ -266,7 +266,7 @@ export async function completeDmsRenewalRequest(id: number,input: CompleteRenewa
     // Audit/events/reminder intent are part of the confirmed DB transaction.
     // Cache failure must not turn completion into another business write.
     try {
-      for(const path of ["/dms/renewals","/dms/expiring","/dms/documents",`/dms/documents/record/${result.data.documentId}`,`/dms/documents/record/${result.data.replacementDocumentId}`])revalidatePath(path);
+      for(const path of ["/dms/renewals","/dms/expiring","/dms/documents","/dms/archive",`/dms/documents/record/${result.data.documentId}`,`/dms/documents/record/${result.data.replacementDocumentId}`])revalidatePath(path);
     }catch { /* durable receipt wins */ }
     return {success:true,data:result.data};
   }catch {
@@ -303,6 +303,7 @@ export async function searchDmsDocumentsForRenewalReplacement(
   excludeDocumentId: number,
   query?: string
 ): Promise<ActionResult<RenewalReplacementCandidate[]>> {
+  const loadError = { success: false, error: "Could not load replacement documents." };
   try {
     const supabase = await createClient();
     const ctx = await getAuthContext();
@@ -312,11 +313,12 @@ export async function searchDmsDocumentsForRenewalReplacement(
     if (!documentTypeId) return { success: true, data: [] };
 
     // Find who/what the original document belongs to (employee, party, vehicle, etc.).
-    const { data: originalLinks } = await supabase
+    const { data: originalLinks, error: originalLinksError } = await supabase
       .from("dms_document_links")
       .select("entity_type, entity_id, is_primary")
       .eq("document_id", excludeDocumentId)
       .is("deleted_at", null);
+    if (originalLinksError) return loadError;
 
     const links = (originalLinks ?? []) as { entity_type: string; entity_id: number; is_primary: boolean }[];
 
@@ -326,12 +328,13 @@ export async function searchDmsDocumentsForRenewalReplacement(
     let scopedDocumentIds: number[] | null = null;
     if (links.length > 0) {
       const primary = links.find((l) => l.is_primary) ?? links[0];
-      const { data: entityLinked } = await supabase
+      const { data: entityLinked, error: entityLinksError } = await supabase
         .from("dms_document_links")
         .select("document_id")
         .eq("entity_type", primary.entity_type)
         .eq("entity_id", primary.entity_id)
         .is("deleted_at", null);
+      if (entityLinksError) return loadError;
 
       scopedDocumentIds = Array.from(
         new Set(
@@ -344,11 +347,12 @@ export async function searchDmsDocumentsForRenewalReplacement(
     }
 
     // Documents already claimed as a replacement on a completed renewal must be excluded.
-    const { data: alreadyLinked } = await supabase
+    const { data: alreadyLinked, error: alreadyLinkedError } = await supabase
       .from("dms_renewal_requests")
       .select("replacement_document_id")
       .eq("status", "renewed")
       .not("replacement_document_id", "is", null);
+    if (alreadyLinkedError) return loadError;
 
     const excludedIds = new Set<number>([excludeDocumentId]);
     for (const r of alreadyLinked ?? []) {
@@ -358,11 +362,13 @@ export async function searchDmsDocumentsForRenewalReplacement(
 
     let q = supabase
       .from("dms_documents")
-      .select("id, document_no, title, expiry_date, status")
+      // The protected document read requires the sort field in its projection.
+      .select("id, document_no, title, expiry_date, status, created_at")
       .eq("document_type_id", documentTypeId)
       .is("deleted_at", null)
       .not("id", "in", `(${Array.from(excludedIds).join(",")})`)
       .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
       .limit(50);
 
     if (scopedDocumentIds) {
@@ -375,11 +381,16 @@ export async function searchDmsDocumentsForRenewalReplacement(
     }
 
     const { data, error } = await q;
-    if (error) return { success: false, error: error.message };
-
-    return { success: true, data: (data as unknown as RenewalReplacementCandidate[]) ?? [] };
-  } catch (e) {
-    return { success: false, error: String(e) };
+    if (error) return loadError;
+    const candidates = (data ?? []) as unknown as RenewalReplacementCandidate[];
+    return {
+      success: true,
+      data: candidates.map(({ id, document_no, title, expiry_date, status }) => ({
+        id, document_no, title, expiry_date, status,
+      })),
+    };
+  } catch {
+    return loadError;
   }
 }
 

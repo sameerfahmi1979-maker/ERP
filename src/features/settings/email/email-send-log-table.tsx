@@ -1,4 +1,5 @@
 "use client";
+import { WorklistColgroup, WorklistScrollRegion } from "@/components/erp/table/worklist-fit-control";
 import { LoadedListTools, useLoadedListView, type LoadedListField } from "@/components/erp/table/loaded-list-view";
 import { ConfiguredRow } from "@/components/erp/table/list-controls";
 import { useSortPaginate } from "@/hooks/use-sort-paginate";
@@ -85,7 +86,7 @@ export function EmailSendLogTable({ logs }: EmailSendLogTableProps) {
 
   return (
     <div className="rounded-md border border-border overflow-auto"><LoadedListTools view={listView} search />
-      <div role="region" aria-label="EmailSendLogTable results" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{minWidth:listView.visible.reduce((sum,c)=>sum+c.width,0)}}><colgroup>{listView.visible.map(c=><col key={c.id} style={{width:c.width}} />)}</colgroup>
+      <WorklistScrollRegion attach={listView.viewport.attachViewport} aria-label="EmailSendLogTable results"><table className="w-full table-fixed text-sm" {...listView.viewport.tableProps}><WorklistColgroup viewport={listView.viewport} />
         <thead>
           <ConfiguredRow columns={listView.columns} className="bg-muted/20 border-b border-border">
             <th data-column="createdAt" className="text-left px-3 py-2 font-medium text-muted-foreground uppercase text-[10px] tracking-wide">Time</th>
@@ -129,7 +130,7 @@ export function EmailSendLogTable({ logs }: EmailSendLogTableProps) {
             );
           })}
         </tbody>
-      </table></div>
+      </table></WorklistScrollRegion>
     <TablePagination page={pagination.page} totalPages={pagination.totalPages} onPage={pagination.setPage} pageSize={pagination.pageSize} onPageSize={pagination.setPageSize} total={pagination.totalFiltered}/></div>
   );
 }

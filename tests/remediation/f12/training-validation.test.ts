@@ -1,0 +1,28 @@
+import {describe,expect,it} from 'vitest';
+import {trainingCategoryNeedsReview,trainingTypeSelection,validateTrainingFields,type TrainingChoice,type TrainingFields} from '@/lib/hr/compliance/training-validation';
+import {hrServiceGuidance} from '@/lib/hr/service-holds';
+const types: TrainingChoice[] = [{id:27,name_en:'Onshore Induction Certificate',training_category_id:2,requires_certificate_number:true,requires_provider:false,is_active:true}];
+const form: TrainingFields = {training_type_id:27,training_category_id:2,certificate_number:'TEST-1',provider:'',completion_date:'2026-07-29',expiry_date:'2028-07-28'};
+describe('training selection and reviewed validation',()=>{
+ it('flags old certificate categories without changing their stored facts',()=>{const record={training_category_id:1};expect(trainingCategoryNeedsReview(record.training_category_id,types[0])).toBe(true);expect(record).toEqual({training_category_id:1});});
+ it('flags uncategorized historical certificates when their type has a category',()=>expect(trainingCategoryNeedsReview(null,types[0])).toBe(true));
+ it('does not flag a matching category or infer a mismatch from an unavailable catalog',()=>{expect(trainingCategoryNeedsReview(2,types[0])).toBe(false);expect(trainingCategoryNeedsReview(1,undefined)).toBe(false);});
+ it('selects the configured category, including changing from another type',()=>expect(trainingTypeSelection(27,types)).toEqual({training_type_id:27,training_category_id:2}));
+ it('clears both fields without introducing zero ids',()=>expect(trainingTypeSelection('',types)).toEqual({training_type_id:null,training_category_id:null}));
+ it('clears a stale category when selecting an uncategorized type',()=>expect(trainingTypeSelection(27,[{...types[0],training_category_id:null}]).training_category_id).toBeNull());
+ it('accepts the reported induction combination with optional provider',()=>expect(validateTrainingFields(form,types)).toBeNull());
+ it('identifies a mismatched AI or historical category',()=>expect(validateTrainingFields({...form,training_category_id:1},types)).toContain('category does not match'));
+ it('explains an unconfigured category',()=>expect(validateTrainingFields(form,[{...types[0],training_category_id:null}])).toContain('no category configured'));
+ it('identifies a required number before sending',()=>expect(validateTrainingFields({...form,certificate_number:'  '},types)).toContain('Certificate Number is required'));
+ it('identifies a required provider before sending',()=>expect(validateTrainingFields(form,[{...types[0],requires_provider:true}])).toContain('Provider is required'));
+ it('does not invent requirements for optional numbers or providers',()=>expect(validateTrainingFields({...form,certificate_number:''},[{...types[0],requires_certificate_number:false}])).toBeNull());
+ it('preserves the existing optional category policy',()=>expect(validateTrainingFields({...form,training_category_id:null},types)).toBeNull());
+ it('retains an existing inactive type when editing its certificate',()=>expect(validateTrainingFields(form,[{...types[0],is_active:false}],27)).toBeNull());
+ it('rejects missing types',()=>expect(validateTrainingFields({...form,training_type_id:null},types)).toBe('Choose a training type.'));
+ it('does not trust a missing lookup',()=>expect(validateTrainingFields(form,[])).toContain('could not be checked'));
+ it.each([{is_active:false},{deleted_at:'2026-01-01'}])('blocks unavailable choices %j',flags=>expect(validateTrainingFields(form,[{...types[0],...flags}])).toContain('inactive'));
+ it('explains date ordering',()=>expect(validateTrainingFields({...form,expiry_date:'2025-01-01'},types)).toContain('Expiry Date'));
+ it.each(['Certificate Number is required for the selected training type','Provider is required for the selected training type','The training category does not match the selected training type. Reload the training choices and use the configured category'])('maps safe server guidance: %s',message=>expect(hrServiceGuidance('23514',message)).toBe(message+'.'));
+ it('supports the older database during rollout',()=>expect(hrServiceGuidance('23514','Required or compatible training facts missing')).toContain('category configured'));
+ it('never forwards arbitrary SQL messages',()=>expect(hrServiceGuidance('23514','private record or SQL detail')).toBeUndefined());
+});

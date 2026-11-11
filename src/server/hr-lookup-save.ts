@@ -16,9 +16,16 @@ export async function saveHrLookup(table:HrSettingsTable,id:number|null,input:un
   if(!c.success||(id===null&&c.data.revision!==null)||(id!==null&&(!Number.isSafeInteger(id)||id<1||c.data.revision===null)))return {success:false,error:'Reopen this record before saving. Its save identity or revision is unavailable.'};
   const parsed=(action!=='save'?z.object({}).strict():id===null?hrSettingsSchemas[table]:hrSettingsSchemas[table].partial()).safeParse(input);
   if(!parsed.success)return {success:false,error:'Check the entered values. Use a name, whole sort order, valid configuration fields and the original code.'};
+  if(table==='hr_training_types'&&action==='save'){
+   const values=parsed.data as {is_active?:boolean;training_category_id?:number|null};
+   if((id===null&&values.is_active!==false||values.is_active===true&&Object.hasOwn(values,'training_category_id'))&&values.training_category_id==null)return {success:false,error:'Choose a training category before saving an active training type.'};
+  }
   const client=await createClient();started=true;
   const {data,error}=await client.rpc('save_hr_lookup',{p_table:table,p_id:id,p_operation:c.data.operationId,p_revision:c.data.revision,p_data:parsed.data,p_action:action});
   if(error){
+   if(table==='hr_training_types'&&error.code==='23503'&&error.message==='Choose an active HR catalogue record')return {success:false,uncertain:false,error:'Choose a training category that is active. Reload the category choices before saving.'};
+   if(table==='hr_training_types'&&error.code==='23514'&&error.message==='Choose an active training category before saving this training type')return {success:false,uncertain:false,error:'Choose a training category that is active. Reload the category choices before saving.'};
+   if(table==='hr_training_types'&&error.code==='23514'&&error.message?.includes('hr_training_types_active_category_required'))return {success:false,uncertain:false,error:'Choose a training category before saving or activating this training type.'};
    const messages:Record<string,string>={PT404:'This HR record is no longer available. Reopen the list to check it.',PT409:'This record changed after you opened it. Your entries are retained; reopen and compare before saving.',
     '42501':'You no longer have permission to change shared HR settings.','23505':'This HR record identity already exists. No existing record was replaced.',
     '23503':'A selected record is unavailable, or current records still use this setting. Check dependencies before retiring it; history is retained.'};

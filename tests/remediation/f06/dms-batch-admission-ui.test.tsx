@@ -17,7 +17,7 @@ vi.mock('@/components/layout/read-cache-boundary',()=>({useReadCacheOwner:()=>m.
 vi.mock('next/navigation',()=>({useRouter:()=>({push:m.push,refresh:m.refresh})}));
 vi.mock('sonner',()=>({toast:{success:m.success,error:m.error,info:vi.fn()}}));
 vi.mock('@/lib/supabase/client',()=>({createClient:()=>({storage:{from:()=>({uploadToSignedUrl:m.upload})}})}));
-vi.mock('@/server/actions/dms/batch-intake',()=>({createDmsUploadBatch:m.batch,startAiIntakeAndCreateDraft:m.draft,prepareDmsUploadBatchMemberDraft:m.prepare,readDmsUploadBatchDraftRecovery:m.read,recoverDmsBatchMemberUpload:m.member,verifyDmsBatchUpload:m.verify,bootstrapDmsBatchOrigin:m.bootstrap,discoverDmsBatchAdmissions:m.discover,recoverDmsUploadBatch:m.whole}));
+vi.mock('@/server/actions/dms/batch-intake',()=>({createDmsUploadBatch:m.batch,createDmsUploadBatchForContinuation:m.batch,startAiIntakeAndCreateDraft:m.draft,prepareDmsUploadBatchMemberDraft:m.prepare,readDmsUploadBatchDraftRecovery:m.read,recoverDmsBatchMemberUpload:m.member,verifyDmsBatchUpload:m.verify,bootstrapDmsBatchOrigin:m.bootstrap,discoverDmsBatchAdmissions:m.discover,recoverDmsUploadBatch:m.whole}));
 vi.mock('@/server/actions/dms/ai-intake',()=>({startAiIntakeFromUploadSession:m.ai}));
 vi.mock('@/server/actions/dms/upload-sessions',()=>({cancelDmsUploadSession:vi.fn(),createDmsUploadSession:vi.fn()}));
 vi.mock('@/server/actions/dms/document-preparation',()=>({checkDmsDuplicateBeforeUpload:async()=>({success:true,data:{status:'no_visible_match'}})}));
@@ -45,6 +45,56 @@ function member(prepared:boolean){return {position:0,upload_session_id:17,sessio
 function anchors(){return {version:1,admission_operation_id:receipt.operation_id,admission_fingerprint:receipt.fingerprint,auth_user_id:auth,profile_id:7,batch_id:18,owning_company_id:20,owning_branch_id:21};}
 function prepared(){return {success:true,receipt,preparation:{...anchors(),member:member(true)}};}
 const ui=()=> <DmsUploadInboxPageClient initialSessions={[]} documents={[]} documentTypes={[]} batchEnabled/>;
+it('recovers all nine missing files with stable operations and no duplicates on replay',async()=>{
+ const bytesFor=(p:number)=>new TextEncoder().encode(`%PDF-1.7 synthetic offline fixture ${p}`);
+ const files=Array.from({length:9},(_,position)=>({position,original_filename:`Synthetic-${position}.pdf`,mime_type:'application/pdf',file_size_bytes:bytesFor(position).length,sha256_hash:createHash('sha256').update(bytesFor(position)).digest('hex')}));
+ const request:BatchRequest={manifest:{version:1,context:null,files},contract:{operationId:operation,revision:null}};
+ receipt={...receiptFor(request),members:files.map(f=>({position:f.position,id:17+f.position,code:String(f.position+1).repeat(32),bucket:'dms-temp',path:`sessions/${String(f.position+1).repeat(32)}/${f.original_filename}`,name:f.original_filename,mime:f.mime_type,size:f.file_size_bytes,sha256:f.sha256_hash}))};
+ const preparedPositions=new Set<number>(),saved=new Set<string>();
+ const envelope=(p:number)=>({position:p,upload_session_id:17+p,session_code:receipt.members[p].code,draft_operation_id:`00000000-0000-4000-8000-${String(p+1).padStart(12,'0')}`,kind:preparedPositions.has(p)?'prepared':'unprepared',request:{uploadSessionId:17+p,allowDuplicate:false,...(preparedPositions.has(p)?{prepared:{...snapshot,upload_session_id:17+p,session_code:receipt.members[p].code}}:{})}});
+ m.read.mockImplementation(async()=>({success:true,receipt,recovery:{...anchors(),members:files.map(f=>envelope(f.position))}}));
+ m.member.mockImplementation(async({position:p}:{position:number})=>({state:'ready',receipt,position:p,object:{state:'upload',capability:{position:p,sessionId:17+p,path:receipt.members[p].path,token:'synthetic-only',signedUrl:'https://example.invalid/upload'}},issuance_may_be_partial:false}));
+ m.prepare.mockImplementation(async({position:p}:{position:number})=>{preparedPositions.add(p);return {success:true,receipt,preparation:{...anchors(),member:envelope(p)}}});
+ m.draft.mockImplementation(async(i:BatchDraftInput,c:WorkspaceSaveContract)=>{const replayed=saved.has(c.operationId);saved.add(c.operationId);return {success:true,data:{documentId:100+i.uploadSessionId,documentNo:`DMS-${i.uploadSessionId}`,status:'pending_ai_review',confidence:'high',operation_id:c.operationId,upload_session_id:i.uploadSessionId,replayed}}});
+ render(<DmsUploadInboxPageClient initialSessions={[]} documents={[]} documentTypes={[]} batchEnabled recoveryReceipt={receipt}/>);
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Open original batch recovery'}) as HTMLButtonElement).disabled).toBe(false));
+ fireEvent.click(screen.getByRole('button',{name:'Open original batch recovery'}));
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Recover retained batch'})).toBeTruthy());
+ fireEvent.change(screen.getByLabelText('Choose document files'),{target:{files:files.map(f=>new File([bytesFor(f.position)],f.original_filename,{type:f.mime_type}))}});
+ await waitFor(()=>expect(screen.getByText('Selected files (9/10)')).toBeTruthy());
+ fireEvent.click(screen.getByRole('button',{name:'Recover retained batch'}));
+ await waitFor(()=>expect(screen.getByText('9 of 9 drafts confirmed')).toBeTruthy());
+ expect(m.upload).toHaveBeenCalledTimes(9);expect(saved.size).toBe(9);expect(m.batch).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'Recover retained batch'}));
+ await waitFor(()=>expect(m.read).toHaveBeenCalledTimes(3));
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Recover retained batch'}) as HTMLButtonElement).disabled).toBe(false));
+ expect(m.upload).toHaveBeenCalledTimes(9);expect(saved.size).toBe(9);expect(m.batch).not.toHaveBeenCalled();
+});
+it('opens the original recovery and uploads matching bytes without admitting a replacement',async()=>{
+ const priorStore=m.store as ReturnType<typeof createWorkspaceDraftStore>;
+ priorStore.setDraft('draft:tab:owner:f06-batch-admission:inbox:all',{admission:'unrelated-retained-operation'});
+ const request:BatchRequest={manifest:{version:1,context:null,files:[{position:0,original_filename:'Synthetic.pdf',mime_type:'application/pdf',file_size_bytes:1,sha256_hash:createHash('sha256').update('x').digest('hex')}]},contract:{operationId:operation,revision:null}};
+ receipt=receiptFor(request);
+ render(<DmsUploadInboxPageClient initialSessions={[]} documents={[]} documentTypes={[]} batchEnabled recoveryReceipt={receipt}/>);
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Open original batch recovery'}) as HTMLButtonElement).disabled).toBe(false));
+ fireEvent.click(screen.getByRole('button',{name:'Open original batch recovery'}));
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Recover retained batch'})).toBeTruthy());
+ const file=new File(['x'],'Synthetic.pdf',{type:'application/pdf'});
+ fireEvent.change(screen.getByLabelText('Choose document files'),{target:{files:[file]}});
+ await waitFor(()=>expect(screen.getByText('Selected files (1/10)')).toBeTruthy());
+ fireEvent.click(screen.getByRole('button',{name:'Recover retained batch'}));
+ await waitFor(()=>expect(m.draft).toHaveBeenCalledOnce());
+ expect(m.upload).toHaveBeenCalledOnce();expect(m.batch).not.toHaveBeenCalled();expect(m.whole).not.toHaveBeenCalled();
+ expect(m.draft.mock.calls[0][0].uploadSessionId).toBe(17);
+ expect(priorStore.getDraft('draft:tab:owner:f06-batch-admission:inbox:all')?.admission).toBe('unrelated-retained-operation');
+});
+it('shows per-file recovery failure even if the handoff stops before upload',async()=>{
+ m.read.mockResolvedValue({success:false,code:'unavailable',uncertain:false,error:'The batch or its current permissions are unavailable.'});
+ render(ui());await start();
+ await waitFor(()=>expect(screen.getByText(/Reference: BATCH-RECOVERY/)).toBeTruthy());
+ expect(screen.getByRole('progressbar',{name:/Synthetic.pdf/})).toBeTruthy();
+ expect(m.upload).not.toHaveBeenCalled();expect(m.draft).not.toHaveBeenCalled();
+});
 const select=async()=>{const file=new File(['x'],'Synthetic.pdf',{type:'application/pdf'});fireEvent.change(screen.getByLabelText('Choose document files'),{target:{files:[file]}});await waitFor(()=>expect(screen.getByRole('button',{name:'Upload & AI Fill All (1)'})).toBeTruthy());};
 const start=async()=>{fireEvent.click(screen.getByRole('button',{name:'Multiple Files (Batch)'}));await select();await waitFor(()=>expect((screen.getByRole('button',{name:'Upload & AI Fill All (1)'}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:'Upload & AI Fill All (1)'}));};
 beforeEach(()=>{vi.resetAllMocks();Object.defineProperty(globalThis,'crypto',{configurable:true,value:webcrypto});m.store=createWorkspaceDraftStore();m.owner='owner';sealed=false;m.readOwner={identity:{authUserId:auth,scopeVersion:'scope'},generation:0,isLive:()=>true,admits:()=>true};m.bootstrap.mockResolvedValue({success:true,origin:{authUserId:auth,profileId:7}});m.batch.mockImplementation(async(r:BatchRequest)=>{if(!r.manifest)return {state:'rejected',error:'Invalid batch request'};receipt=receiptFor(r);return {state:'admitted',receipt,capabilityState:'unavailable',capabilities:[],presentPositions:[],issuance_may_be_partial:false};});m.read.mockImplementation(async()=>({success:true,receipt,recovery:{...anchors(),members:[member(sealed)]}}));m.member.mockImplementation(async()=>({state:'ready',receipt,position:0,object:{state:'upload',capability:{position:0,sessionId:17,path:receipt.members[0].path,token:'synthetic-test-value',signedUrl:'https://example.invalid/upload'}},issuance_may_be_partial:true}));m.verify.mockResolvedValue({state:'present'});m.prepare.mockImplementation(async()=>{sealed=true;return prepared();});m.upload.mockResolvedValue({error:null});m.draft.mockImplementation(async(_i:BatchDraftInput,c:WorkspaceSaveContract)=>({success:true,data:{documentId:42,documentNo:'DMS-42',status:'pending_ai_review',confidence:'high',operation_id:c.operationId,upload_session_id:17,replayed:false}}));m.discover.mockResolvedValue({success:true,receipts:[]});});

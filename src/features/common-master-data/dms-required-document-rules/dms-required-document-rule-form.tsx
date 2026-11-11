@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -8,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { FileCheck, ScrollText } from "lucide-react";
 import type { AuthContext } from "@/lib/rbac/check";
+import { hasGlobalPermission } from "@/lib/rbac/scope";
 import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
 import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
 import { useWorkspaceFormDirty as useFormDirty } from "@/hooks/use-workspace-form-dirty";
@@ -29,7 +32,7 @@ type Props = {
 const FORM_ID = "dms-req-doc-rule-form";
 const ENTITY_TYPES = ['company','branch','site','employee','vehicle','project','department','party','equipment','contract'];
 
-export function DmsRequiredDocumentRuleForm({ rule, mode, documentTypes = [], companies = [] }: Props) {
+export function DmsRequiredDocumentRuleForm({ rule, mode, authContext, documentTypes = [], companies = [] }: Props) {
   const { closeTab, activeTab, markDirty, forceCloseActiveTab } = useWorkspace();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const sections = [
@@ -59,14 +62,14 @@ export function DmsRequiredDocumentRuleForm({ rule, mode, documentTypes = [], co
       entity_type: fd.get("entity_type") as string,
       entity_subtype: (fd.get("entity_subtype") as string) || null,
       document_type_id: fd.get("document_type_id") ? parseInt(fd.get("document_type_id") as string) : null,
-      is_required: fd.get("is_required") !== "off",
+      is_required: fd.has("is_required"),
       requires_expiry_date: fd.get("requires_expiry_date") === "on",
       requires_issue_date: fd.get("requires_issue_date") === "on",
       blocks_activation: fd.get("blocks_activation") === "on",
       owner_company_id: fd.get("owner_company_id") ? parseInt(fd.get("owner_company_id") as string) : null,
       effective_from: (fd.get("effective_from") as string) || null,
       effective_to: (fd.get("effective_to") as string) || null,
-      is_active: fd.get("is_active") !== "off",
+      is_active: fd.has("is_active"),
       notes: (fd.get("notes") as string) || null,
     };
     try {
@@ -87,6 +90,9 @@ export function DmsRequiredDocumentRuleForm({ rule, mode, documentTypes = [], co
       title={isViewing ? "View Required Document Rule" : isEditing ? "Edit Rule" : "New Required Document Rule"}
       subtitle={rule ? `${rule.rule_name} (${rule.rule_code})` : "Define a new document compliance rule"}
       recordCode={rule?.rule_code}
+      headerActions={isViewing && rule && (hasGlobalPermission(authContext, "common_md.manage") || hasGlobalPermission(authContext, "common_md.dms_required_documents.manage")) ? (
+        <Link className={buttonVariants({ size: "sm" })} href={`/admin/common-master-data/dms-required-documents/record/${rule.id}?mode=edit`}>Edit</Link>
+      ) : undefined}
       sections={sections}
       activeSection={activeSection}
       onSectionChange={setActiveSection}
@@ -123,13 +129,19 @@ export function DmsRequiredDocumentRuleForm({ rule, mode, documentTypes = [], co
               <select id="document_type_id" name="document_type_id" defaultValue={getDraftDefault("document_type_id", rule?.document_type_id ?? "")} disabled={disabled} className="flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40">
                 <option value="">Select document type...</option>
                 {documentTypes.map(dt => <option key={dt.id} value={dt.id}>{dt.name_en} ({dt.type_code})</option>)}
+                {rule?.document_type_id != null && !documentTypes.some(type => type.id === rule.document_type_id) && (
+                  <option value={rule.document_type_id}>{rule.document_type?.name_en ?? "Current document type"} (retained)</option>
+                )}
               </select>
             </div>
             <div className="col-span-6 space-y-1.5">
-              <Label htmlFor="owner_company_id" className="text-muted-foreground text-xs">Organization (leave blank for all)</Label>
+              <Label htmlFor="owner_company_id" className="text-muted-foreground text-xs">Organization</Label>
               <select id="owner_company_id" name="owner_company_id" defaultValue={getDraftDefault("owner_company_id", rule?.owner_company_id ?? "")} disabled={disabled} className="flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40">
                 <option value="">All Organizations</option>
                 {companies.map(c => <option key={c.id} value={c.id}>{c.legal_name_en}</option>)}
+                {rule?.owner_company_id != null && !companies.some(c => c.id === rule.owner_company_id) && (
+                  <option value={rule.owner_company_id}>{rule.owner_company?.legal_name_en ?? "Current organization"} (retained)</option>
+                )}
               </select>
             </div>
             <div className="col-span-3 space-y-1.5">

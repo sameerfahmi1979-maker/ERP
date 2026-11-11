@@ -21,7 +21,8 @@ vi.mock("@/components/ui/button", () => ({Button: ({children, variant, size, ...
 }}));
 vi.mock("@/components/ui/input", () => ({Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props}/>}));
 vi.mock("@/components/ui/tooltip", () => ({TooltipProvider: ({children}: React.PropsWithChildren) => <>{children}</>, Tooltip: ({children}: React.PropsWithChildren) => <>{children}</>, TooltipTrigger: ({children}: React.PropsWithChildren) => <>{children}</>, TooltipContent: ({children}: React.PropsWithChildren) => <span>{children}</span>}));
-vi.mock("@/components/erp/table/list-controls", () => ({useListColumns: (_name: string, columns: unknown[]) => ({columns, visible: columns, setColumns: vi.fn()}), EditColumns: () => null, EditFilters: () => null,
+vi.mock("@/components/erp/table/list-controls", () => ({useListColumns: (_name: string, columns: unknown[]) => ({columns, visible: columns, setColumns: vi.fn(),
+  viewport: {fit: false, hasOverflow: false, columns: [], trailingWidth: 0, tableProps: {}}}), EditColumns: () => null, EditFilters: () => null,
   ConfiguredRow: ({children, columns, ...props}: React.PropsWithChildren<{columns: unknown[]}>) => {void columns; return <tr {...props}>{children}</tr>;}}));
 vi.mock("@/hooks/use-persistent-ui-state", () => ({usePersistentUiState: (_key: string, value: unknown) => React.useState(value)}));
 vi.mock("@/components/erp/erp-child-dialog-form", () => ({ERPChildDialogForm: ({open, children, onSubmit, submitLabel, isSubmitting, submitDisabled}: React.PropsWithChildren<{open: boolean; onSubmit: () => void; submitLabel: string; isSubmitting: boolean; submitDisabled?: boolean}>) => {
@@ -56,6 +57,16 @@ it("opening a record loads state only; history is reachable but requires an expl
   expect(mocks.oldHistory).not.toHaveBeenCalled(); expect(mocks.read.mock.calls.filter(c => c[1].mode === "history")).toHaveLength(0);
   fireEvent.click(screen.getByRole("button", {name: "Show approval history"}));
   await screen.findByText("No approval history yet."); expect(mocks.read.mock.calls.filter(c => c[1].mode === "history")).toHaveLength(1);
+});
+it("shows the ALS ISO workflow blocker without offering submission or blaming permissions", async () => {
+  const message = "No active approval workflow is configured for ISO 9001 Certificate in ALS.";
+  mocks.read.mockImplementation(async (_path, criteria) => ({success: true, data: {criteria,
+    record: {...record, approvalStatus: null, currentApprovalId: null, currentApprovalAction: null,
+      canApprove: false, canReject: false, actionUnavailableReason: message}}}));
+  render(<DmsApprovalActionPanel documentId={1} authContext={auth}/>, {wrapper: wrap().wrapper});
+  expect(await screen.findByText(message)).toBeTruthy();
+  expect(screen.queryByRole("button", {name: "Submit for Approval"})).toBeNull();
+  expect(screen.queryByText(/do not have permission to submit/)).toBeNull();
 });
 it("queue typing is coalesced and whitespace is preserved as literal search", async () => {
   render(<DmsApprovalsQueuePageClient {...{authContext: auth, canAct: true, isAdmin: false}}/>, {wrapper: wrap().wrapper});

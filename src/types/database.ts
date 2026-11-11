@@ -2276,6 +2276,7 @@ export type Database = {
       }
       departments: {
         Row: {
+          available_to_all_organizations: boolean
           branch_id: number | null
           cost_center_id: number | null
           created_at: string
@@ -2296,6 +2297,7 @@ export type Database = {
           updated_by: number | null
         }
         Insert: {
+          available_to_all_organizations?: boolean
           branch_id?: number | null
           cost_center_id?: number | null
           created_at?: string
@@ -2316,6 +2318,7 @@ export type Database = {
           updated_by?: number | null
         }
         Update: {
+          available_to_all_organizations?: boolean
           branch_id?: number | null
           cost_center_id?: number | null
           created_at?: string
@@ -26468,6 +26471,7 @@ export type Database = {
           address_line_2: string | null
           adnoc_required: boolean
           area_zone_id: number | null
+          available_to_all_organizations: boolean
           branch_id: number | null
           cicpa_required: boolean
           city_id: number | null
@@ -26504,6 +26508,7 @@ export type Database = {
           address_line_2?: string | null
           adnoc_required?: boolean
           area_zone_id?: number | null
+          available_to_all_organizations?: boolean
           branch_id?: number | null
           cicpa_required?: boolean
           city_id?: number | null
@@ -26540,6 +26545,7 @@ export type Database = {
           address_line_2?: string | null
           adnoc_required?: boolean
           area_zone_id?: number | null
+          available_to_all_organizations?: boolean
           branch_id?: number | null
           cicpa_required?: boolean
           city_id?: number | null
@@ -26749,6 +26755,10 @@ export type Database = {
       }
     }
     Functions: {
+      shared_employee_assignment_choices: {
+        Args: { p_kind: string; p_company: number; p_branch: number | null; p_selected: number | null }
+        Returns: Json
+      }
       administrator_can_manage_identity: {
         Args: { target_profile: number; capability: string }
         Returns: boolean

@@ -4,51 +4,57 @@ import { Children, isValidElement, useState, type ReactNode, type HTMLAttributes
 import { Button, Checkbox, Input } from "@fluentui/react-components";
 import { ArrowDown20Regular, ArrowUp20Regular, ColumnTriple20Regular, Filter20Regular } from "@fluentui/react-icons";
 import { AlgtDialog } from "@/components/design-system/algt-dialog";
-import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
+import { useWorklistColumns } from "@/hooks/use-worklist-columns";
+import { useWorklistViewport } from "@/hooks/use-worklist-viewport";
+import { columnWidthBounds, normalizeColumns, type ListColumn } from "@/lib/ui/worklist-column-layout";
 
-export type ListColumn = { id: string; label: string; width: number; visible: boolean; required?: boolean };
-export function normalizeColumns(saved: ListColumn[], definitions: ListColumn[]): ListColumn[] {
-  const seen = new Set<string>();
-  return [...saved, ...definitions].flatMap(value => {
-    const definition = definitions.find(column => column.id === value.id);
-    if (!definition || seen.has(value.id)) return [];
-    seen.add(value.id);
-    return [{ ...definition, visible: definition.required || value.visible, width: Number.isFinite(value.width) ? Math.max(80, Math.min(640, value.width)) : definition.width }];
-  });
-}
-
-/** Preferences are principal-owned F04 memory, never localStorage. Schema changes discard unauthorized columns. */
-export function useListColumns(key: string, definitions: ListColumn[]) {
-  const [saved, setSaved] = usePersistentUiState<ListColumn[]>(`list-columns:${key}`, definitions);
-  const columns = normalizeColumns(saved, definitions);
-  return { columns, visible: columns.filter(column => column.visible), setColumns: (next: ListColumn[]) => setSaved(normalizeColumns(next, definitions)) };
+export { normalizeColumns, type ListColumn };
+export function useListColumns(key: string, definitions: ListColumn[], preferenceId: string | null = key, viewportOptions?: Parameters<typeof useWorklistViewport>[2]) {
+  const layout = useWorklistColumns(key, definitions, preferenceId);
+  const viewport = useWorklistViewport(key, layout.visible, viewportOptions);
+  return { ...layout, viewport };
 }
 
 export function EditColumns({ columns, defaults, onApply }: { columns: ListColumn[]; defaults: ListColumn[]; onApply: (columns: ListColumn[]) => void }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(columns);
-  const widthsValid = draft.every(column => Number.isInteger(column.width) && column.width >= 80 && column.width <= 640);
+  const currentDefinitions = new Map(defaults.map(column => [column.id, column]));
+  const editable = draft.flatMap(column => {
+    const definition = currentDefinitions.get(column.id);
+    return definition && !definition.position ? [{ column, definition, bounds: columnWidthBounds(definition) }] : [];
+  });
+  const validWidth = (width: number, min: number, max: number) => Number.isInteger(width) && width >= min && width <= max;
+  const widthsValid = editable.every(({ column, definition, bounds }) =>
+    definition.resizable === false || validWidth(column.width, bounds.min, bounds.max));
   const changeOpen = (next: boolean) => { if (next) setDraft(columns.map(column => ({ ...column }))); setOpen(next); };
-  const move = (index: number, offset: number) => setDraft(previous => {
-    const next = [...previous]; [next[index], next[index + offset]] = [next[index + offset], next[index]]; return next;
+  const move = (id: string, neighborId: string) => setDraft(previous => {
+    const index = previous.findIndex(column => column.id === id);
+    const neighbor = previous.findIndex(column => column.id === neighborId);
+    const next = [...previous];
+    [next[index], next[neighbor]] = [next[neighbor], next[index]];
+    return next;
   });
   return <AlgtDialog open={open} onOpenChange={changeOpen} title="Edit columns"
     trigger={<Button icon={<ColumnTriple20Regular />}>Edit columns</Button>}
-    actions={<><Button appearance="subtle" onClick={() => setDraft(defaults.map(column => ({ ...column })))}>Restore defaults</Button><Button onClick={() => changeOpen(false)}>Cancel</Button><Button appearance="primary" disabled={!widthsValid} onClick={() => { if (widthsValid) { onApply(draft); changeOpen(false); } }}>Apply</Button></>}>
+    actions={<><Button appearance="subtle" onClick={() => setDraft(normalizeColumns([], defaults))}>Restore defaults</Button><Button onClick={() => changeOpen(false)}>Cancel</Button><Button appearance="primary" disabled={!widthsValid} onClick={() => { if (widthsValid) { onApply(normalizeColumns(draft, defaults)); changeOpen(false); } }}>Apply</Button></>}>
     <p className="text-sm mb-3">Choose visible columns, their order and width. Required identity columns stay visible. Changes apply only to this list.</p>
-    {!widthsValid && <p role="alert" className="mb-3 text-sm text-red-700 dark:text-red-300">Enter a whole-number width between 80 and 640 pixels for every column.</p>}
-    <ol className="space-y-3">{draft.map((column, index) => <li key={column.id} className="border-b pb-3">
+    {!widthsValid && <p role="alert" className="mb-3 text-sm text-red-700 dark:text-red-300">Enter a whole-number width within the limits shown for each column.</p>}
+    <ol className="space-y-3">{editable.map(({ column, definition, bounds }, index) => <li key={column.id} className="border-b pb-3">
       <div className="flex items-center flex-wrap gap-2">
-        <Checkbox label={column.required ? `${column.label} (required)` : column.label} checked={column.visible} disabled={column.required}
+        <Checkbox label={definition.required ? `${definition.label} (required)` : definition.label} checked={definition.required || column.visible} disabled={definition.required}
           onChange={(_, data) => setDraft(previous => previous.map(item => item.id === column.id ? { ...item, visible: data.checked === true } : item))} />
         <div className="ml-auto flex gap-1">
-          <Button icon={<ArrowUp20Regular />} aria-label={`Move ${column.label} up`} disabled={index === 0} onClick={() => move(index, -1)} />
-          <Button icon={<ArrowDown20Regular />} aria-label={`Move ${column.label} down`} disabled={index === draft.length - 1} onClick={() => move(index, 1)} />
+          <Button icon={<ArrowUp20Regular />} aria-label={`Move ${definition.label} up`} disabled={index === 0} onClick={() => move(column.id, editable[index - 1].column.id)} />
+          <Button icon={<ArrowDown20Regular />} aria-label={`Move ${definition.label} down`} disabled={index === editable.length - 1} onClick={() => move(column.id, editable[index + 1].column.id)} />
         </div>
       </div>
-      <label className="flex gap-2 items-center pl-2 text-sm">Width (pixels)<Input type="number" min={80} max={640} step={1} value={Number.isNaN(column.width) ? "" : String(column.width)} aria-label={`${column.label} width`}
-        aria-invalid={!Number.isInteger(column.width) || column.width < 80 || column.width > 640 || undefined}
-        onChange={(_, data) => setDraft(previous => previous.map(item => item.id === column.id ? { ...item, width: data.value === "" ? NaN : Number(data.value) } : item))} style={{ width: 110 }} /></label>
+      {definition.resizable !== false && <label className="flex flex-wrap gap-2 items-center pl-2 text-sm">
+        Width (pixels) <Input type="number" min={bounds.min} max={bounds.max} step={1}
+          value={Number.isNaN(column.width) ? "" : String(column.width)} aria-label={`${definition.label} width`}
+          aria-invalid={!validWidth(column.width, bounds.min, bounds.max) || undefined}
+          onChange={(_, data) => setDraft(previous => previous.map(item => item.id === column.id ? { ...item, width: data.value === "" ? NaN : Number(data.value) } : item))} style={{ width: 110 }} />
+        <span className="text-xs text-muted-foreground">{bounds.min}–{bounds.max}</span>
+      </label>}
     </li>)}</ol>
   </AlgtDialog>;
 }

@@ -1,4 +1,5 @@
 "use client";
+import { HrIconButton } from "@/features/hr/employees/hr-icon-button";
 import{WorkforceReviewButton}from'../workforce-review';
 import {hasHrReadCapability} from "@/lib/reads/hr-read-identity";
 import { RecordCollection } from "@/components/erp/table/record-collection";
@@ -189,12 +190,12 @@ function AssignmentsSection({employeeId,authContext,canManage,onChildOpen}:{empl
                 {canManage && (
                   <div className="flex gap-1.5">
                     {a.assignment_status==='planned'&&<WorkforceReviewButton employeeId={employeeId}kind="assignment"sourceId={a.id as number}authContext={authContext}canDispatch={canDispatch}onChildOpen={onChildOpen}onDenied={onDenied}/>}
-                    <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(a,"update")}>
+                    <HrIconButton aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(a,"update")}>
                       <Edit2 className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(a,"archive")}>
+                    </HrIconButton>
+                    <HrIconButton aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(a,"archive")}>
                       <Archive className="h-3.5 w-3.5" />
-                    </Button>
+                    </HrIconButton>
                   </div>
                 )}
               </div>
@@ -257,9 +258,9 @@ function RoleRequirementsSection({employeeId,authContext,canManage,onChildOpen}:
               </div>
               {canManage && (
                 <div className="flex gap-1.5">
-                  <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(r,'update')}><Edit2 className="h-3.5 w-3.5" /></Button>
+                  <HrIconButton aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(r,'update')}><Edit2 className="h-3.5 w-3.5" /></HrIconButton>
                   <WorkforceReviewButton employeeId={employeeId}kind="role-requirement"sourceId={r.id as number}authContext={authContext}canDispatch={canDispatch}onChildOpen={onChildOpen}onDenied={onDenied}/>
-                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(r,'archive')}><Archive className="h-3.5 w-3.5" /></Button>
+                  <HrIconButton aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(r,'archive')}><Archive className="h-3.5 w-3.5" /></HrIconButton>
                 </div>
               )}
             </div>
@@ -343,11 +344,11 @@ function AssetsSection({employeeId,authContext,canManage,onChildOpen}:{employeeI
               </div>
               {canManage && (
                 <div className="flex gap-1.5">
-                  <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(a,"update")}><Edit2 className="h-3.5 w-3.5" /></Button>
+                  <HrIconButton aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(a,"update")}><Edit2 className="h-3.5 w-3.5" /></HrIconButton>
                   {a.status === "issued" ? (
                     <Button size="sm" variant="outline" onClick={() => openRecord(a,"return")}>Return</Button>
                   ) : null}
-                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(a,"archive")}><Archive className="h-3.5 w-3.5" /></Button>
+                  <HrIconButton aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(a,"archive")}><Archive className="h-3.5 w-3.5" /></HrIconButton>
                 </div>
               )}
             </div>
@@ -391,11 +392,11 @@ function PpeSection({employeeId,authContext,canManage,onChildOpen}:{employeeId:n
               </div>
               {canManage && (
                 <div className="flex gap-1.5">
-                  <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(p,"update")}><Edit2 className="h-3.5 w-3.5" /></Button>
+                  <HrIconButton aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(p,"update")}><Edit2 className="h-3.5 w-3.5" /></HrIconButton>
                   {p.status === "issued" ? (
                     <Button size="sm" variant="outline" onClick={() => openRecord(p,"return")}>Return</Button>
                   ) : null}
-                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(p,"archive")}><Archive className="h-3.5 w-3.5" /></Button>
+                  <HrIconButton aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(p,"archive")}><Archive className="h-3.5 w-3.5" /></HrIconButton>
                 </div>
               )}
             </div>
@@ -441,11 +442,11 @@ function AccommodationSection({employeeId,authContext,canManage,onChildOpen}:{em
               </div>
               {canManage && (
                 <div className="flex gap-1.5">
-                  <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(r,"update")}><Edit2 className="h-3.5 w-3.5" /></Button>
+                  <HrIconButton aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(r,"update")}><Edit2 className="h-3.5 w-3.5" /></HrIconButton>
                   {r.status === "active" ? (
                     <Button size="sm" variant="outline" onClick={() => openRecord(r,"end")}>End</Button>
                   ) : null}
-                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(r,"archive")}><Archive className="h-3.5 w-3.5" /></Button>
+                  <HrIconButton aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openRecord(r,"archive")}><Archive className="h-3.5 w-3.5" /></HrIconButton>
                 </div>
               )}
             </div>

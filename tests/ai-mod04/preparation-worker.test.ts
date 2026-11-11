@@ -14,6 +14,46 @@ beforeEach(()=>{vi.resetAllMocks();stage.clear();published=null;failPublication=
  m.complete.mockResolvedValue(response());m.provider.mockResolvedValue({provider:{providerCode:"SYNTHETIC",modelId:"SYNTHETIC"}});m.bytes.mockResolvedValue({bytes:Buffer.from("synthetic"),proof:{sha256:hash}});m.ocr.mockResolvedValue({success:true,text:"SYNTHETIC ABC fresh text",providerCode:"SYNTHETIC",model:"SYNTHETIC",method:"synthetic",pageCount:1});
 });
 describe("document preparation worker adoption",()=>{
+ it("retains a received malformed result and its usage before validation; recovery never repeats the paid call",async()=>{
+  m.complete.mockResolvedValue({...response(),rawJson:'{"fields":"invalid"}'});
+  expect(await runDocumentPreparationJob(1)).toMatchObject({success:false,errorCode:"provider_output_invalid",retryable:false});
+  expect(stage.get("analysis")).toMatchObject({receiptVersion:2,rawJson:'{"fields":"invalid"}',promptTokens:10,model:"SYNTHETIC"});
+  expect(await runDocumentPreparationJob(1)).toMatchObject({errorCode:"provider_output_invalid"});
+  expect(m.complete).toHaveBeenCalledOnce();expect(published).toBeNull();
+ });
+ it.each(["provider_refusal","provider_output_incomplete"])("retains %s without publishing or paying again",async(code)=>{
+  m.complete.mockResolvedValue({...response(),responseIssue:code});
+  expect(await runDocumentPreparationJob(1)).toMatchObject({errorCode:code,retryable:false});
+  expect(stage.get("analysis")).toMatchObject({responseIssue:code});
+  expect(await runDocumentPreparationJob(1)).toMatchObject({errorCode:code});
+  expect(m.complete).toHaveBeenCalledOnce();expect(published).toBeNull();
+ });
+ it("preserves the provider failure category without logging or returning its private error",async()=>{
+  m.complete.mockResolvedValue({success:false,errorCode:"provider_request_rejected",error:"PRIVATE PROVIDER BODY"});
+  const result=await runDocumentPreparationJob(1);
+  expect(result).toMatchObject({errorCode:"provider_request_rejected",retryable:false});
+  expect(JSON.stringify(result)).not.toContain("PRIVATE");expect(published).toBeNull();
+ });
+ it("does not mark analysis started when pre-call quality admission fails",async()=>{
+  const original=rpc.getMockImplementation()!;rpc.mockImplementation(async(name,args)=>name==='ai_mod05_model_gate'?{error:{code:'55000'},data:null}:original(name,args));
+  expect(await runDocumentPreparationJob(1)).toMatchObject({errorCode:"quality_evaluation_held"});
+  expect(stage.has("analysis")).toBe(false);expect(m.complete).not.toHaveBeenCalled();
+ });
+ it("recovers a received valid result after publication failure with no new paid analysis",async()=>{
+  const original=rpc.getMockImplementation()!;let once=true;
+  rpc.mockImplementation(async(name,args)=>{if(args.p_action==='publish'&&once){once=false;return {error:{code:'XX000'},data:null};}return original(name,args);});
+  expect(await runDocumentPreparationJob(1)).toMatchObject({errorCode:"database_error"});
+  expect((await runDocumentPreparationJob(1))?.success).toBe(true);expect(m.complete).toHaveBeenCalledOnce();
+ });
+ it("replays legacy validated receipts without a provider call",async()=>{
+  const original=rpc.getMockImplementation()!;let once=true;
+  rpc.mockImplementation(async(name,args)=>{if(args.p_action==='publish'&&once){once=false;return {error:{code:'XX000'},data:null};}return original(name,args);});
+  await runDocumentPreparationJob(1);
+  const metadata={...stage.get("analysis") as Record<string,unknown>};
+  delete metadata.receiptVersion;delete metadata.rawJson;
+  stage.set("analysis",{...metadata,output:output()});
+  expect((await runDocumentPreparationJob(1))?.success).toBe(true);expect(m.complete).toHaveBeenCalledOnce();
+ });
  it("reuses retained text and prepares all supported sections in one model call",async()=>{expect((await runDocumentPreparationJob(1))?.success).toBe(true);expect(m.complete).toHaveBeenCalledTimes(1);expect(m.ocr).not.toHaveBeenCalled();expect(published.candidate.summary).toContain("SYNTHETIC");expect(published.candidate.sourceSnapshot).toBe(hash);});
  it("re-reads attested originals into pending candidates without changing accepted source text",async()=>{context.mode="reread_files";expect((await runDocumentPreparationJob(1))?.success).toBe(true);expect(m.bytes).toHaveBeenCalledTimes(1);expect(m.ocr).toHaveBeenCalledTimes(1);expect(context.source.files[0].text).toBe("SYNTHETIC ABC");expect(published.candidateText).toContain("fresh text");expect(m.ocr.mock.calls[0][0]).toMatchObject({forceVision:false,azureProvider:null,featureFlags:{dmsOcrAzure:false}});});
  it("never OCRs or pays to infer identity from portraits",async()=>{context.mode="reread_files";context.source.typeCode="EMPLOYEE_PHOTO";context.source.typeName="Employee photo";context.source.subject={kind:"employee",id:1,name:"SYNTHETIC person"};expect((await runDocumentPreparationJob(1))?.success).toBe(true);expect(m.ocr).not.toHaveBeenCalled();expect(m.complete).not.toHaveBeenCalled();expect(published.candidate.applicability).toBe("portrait");});

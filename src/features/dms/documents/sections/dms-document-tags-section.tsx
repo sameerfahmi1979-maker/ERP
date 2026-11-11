@@ -10,7 +10,8 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, X, Tag, Sparkles, Check, AlertCircle } from "lucide-react";
-import { saveDmsDocumentTags } from "@/server/actions/dms/document-tags";
+import { DmsAddTagsDialog } from "./dms-add-tags-dialog";
+import type { DmsCatalogueTag } from "@/server/reads/dms-tag-catalogue";
 
 import { queryKeys } from "@/lib/query/query-keys";
 import { suggestDmsDocumentTags, applyDmsTagSuggestions, rejectDmsTagSuggestions, createAndApplyDmsTagSuggestion } from "@/server/actions/dms/ai-tags";
@@ -18,12 +19,16 @@ import { suggestDmsDocumentTags, applyDmsTagSuggestions, rejectDmsTagSuggestions
 interface DmsDocumentTagsSectionProps {
   documentId: number | null;
   isViewing: boolean;
+  changes: DmsTagChanges;
+  onChange: (changes: DmsTagChanges) => void;
+  onPickerOpenChange: (open: boolean) => void;
+  isSaving: boolean;
 }
 
-export function DmsDocumentTagsSection({ documentId, isViewing }: DmsDocumentTagsSectionProps) {
+export type DmsTagChanges = { added: DmsCatalogueTag[]; removed: number[] };
+
+export function DmsDocumentTagsSection({ documentId, isViewing, changes, onChange, onPickerOpenChange, isSaving }: DmsDocumentTagsSectionProps) {
   const qc = useQueryClient();
-  const [saving, setSaving] = useState(false);
-  const [pendingTagIds, setPendingTagIds] = useState<number[] | null>(null);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [applyingIds, setApplyingIds] = useState<number[]>([]);
   const [rejectingIds, setRejectingIds] = useState<number[]>([]);
@@ -51,16 +56,6 @@ export function DmsDocumentTagsSection({ documentId, isViewing }: DmsDocumentTag
       if (query.state.dataUpdateCount > 40) return false;
       return 15 * 1000;
     },
-  });
-
-  const { data: allTags = [], isLoading: loadingAllTags, isError: allTagsError, refetch: retryAllTags } = useQuery({
-    queryKey: queryKeys.dms.tags(),
-    queryFn: async ({signal}) => {
-      const r = await readDmsSection("getDmsTags", [], signal);
-      if(!r.success||!r.data)throw new Error("Tags unavailable");
-      return r.data;
-    },
-    staleTime: 5 * 60 * 1000,
   });
 
   const { data: tagSuggestions = [], refetch: refetchSuggestions, isError: suggestionsError } = useQuery({
@@ -146,30 +141,23 @@ export function DmsDocumentTagsSection({ documentId, isViewing }: DmsDocumentTag
     }
   }
 
-  const currentTagIds = pendingTagIds ?? docTags.map((t) => t.tag_id);
+  const savedTags = new Map(docTags.map(row => [row.tag_id, row.tag?.tag_name ?? "Unavailable tag"]));
+  const visibleTags = new Map([...savedTags, ...changes.added.map(tag => [tag.id, tag.tag_name] as const)]);
+  for (const id of changes.removed) visibleTags.delete(id);
 
-  async function handleToggleTag(tagId: number) {
-    const newIds = currentTagIds.includes(tagId)
-      ? currentTagIds.filter((id) => id !== tagId)
-      : [...currentTagIds, tagId];
-    setPendingTagIds(newIds);
+  function handleAddTags(tags: DmsCatalogueTag[]) {
+    const ids = new Set(tags.map(tag => tag.id));
+    onChange({
+      added: [...changes.added, ...tags.filter(tag => !savedTags.has(tag.id) && !visibleTags.has(tag.id))],
+      removed: changes.removed.filter(id => !ids.has(id)),
+    });
   }
 
-  async function handleSaveTags() {
-    if (!documentId || pendingTagIds === null) return;
-    setSaving(true);
-    try {
-      const result = await saveDmsDocumentTags(documentId, pendingTagIds);
-      if (result.success) {
-        toast.success("Tags saved");
-        setPendingTagIds(null);
-        qc.invalidateQueries({ queryKey: queryKeys.dms.documentTags(documentId) });
-      } else {
-        toast.error(result.error ?? "Failed to save tags");
-      }
-    } finally {
-      setSaving(false);
-    }
+  function handleRemoveTag(id: number) {
+    onChange({
+      added: changes.added.filter(tag => tag.id !== id),
+      removed: savedTags.has(id) ? [...changes.removed, id] : changes.removed,
+    });
   }
 
   if (!documentId) {
@@ -180,7 +168,7 @@ export function DmsDocumentTagsSection({ documentId, isViewing }: DmsDocumentTag
     );
   }
 
-  if (loadingDocTags || loadingAllTags) {
+  if (loadingDocTags) {
     return (
       <div className="flex items-center gap-2 py-4 text-muted-foreground text-sm">
         <Loader2 className="h-4 w-4 animate-spin" />
@@ -189,35 +177,35 @@ export function DmsDocumentTagsSection({ documentId, isViewing }: DmsDocumentTag
     );
   }
 
-  if(docTagsError||allTagsError||suggestionsError) return <DmsLoadError subject="document tags" retry={()=>Promise.all([retryDocTags(),retryAllTags(),refetchSuggestions()])} />;
-  const activeTags = allTags.filter((t) => t.is_active && !t.deleted_at);
+  if(docTagsError) return <DmsLoadError subject="document tags" retry={retryDocTags} />;
 
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-xs text-muted-foreground mb-2">
-          Currently assigned: {currentTagIds.length} tag{currentTagIds.length !== 1 ? "s" : ""}
-        </p>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold">Tags ({visibleTags.size})</h3>
+          {!isViewing && <DmsAddTagsDialog assignedIds={new Set(visibleTags.keys())} onAdd={handleAddTags}
+            onOpenChange={onPickerOpenChange} disabled={isSaving} />}
+        </div>
 
         <div className="flex flex-wrap gap-1.5 min-h-[32px] p-2 rounded-md border border-border bg-muted/20">
-          {currentTagIds.length === 0 && (
+          {visibleTags.size === 0 && (
             <span className="text-xs text-muted-foreground">No tags assigned</span>
           )}
-          {currentTagIds.map((tagId) => {
-            const tag = activeTags.find((t) => t.id === tagId);
-            if (!tag) return null;
+          {Array.from(visibleTags, ([tagId, name]) => {
             return (
               <Badge
                 key={tagId}
                 variant="outline"
                 className="text-xs gap-1 pr-1"
-                style={tag.color_hex ? { borderColor: tag.color_hex, color: tag.color_hex } : undefined}
               >
-                {tag.tag_name}
+                {name}
                 {!isViewing && (
                   <button
                     type="button"
-                    onClick={() => handleToggleTag(tagId)}
+                    onClick={() => handleRemoveTag(tagId)}
+                    aria-label={`Remove ${name}`}
+                    disabled={isSaving}
                     className="hover:opacity-70 ml-0.5"
                   >
                     <X className="h-2.5 w-2.5" />
@@ -227,52 +215,15 @@ export function DmsDocumentTagsSection({ documentId, isViewing }: DmsDocumentTag
             );
           })}
         </div>
+        {!isViewing && (changes.added.length > 0 || changes.removed.length > 0) &&
+          <p className="mt-2 text-xs text-muted-foreground">Tag changes will be applied when you save the document.</p>}
       </div>
 
       {!isViewing && (
         <>
-          <div>
-            <p className="text-xs font-medium mb-2">Available Tags</p>
-            <div className="flex flex-wrap gap-1.5">
-              {activeTags.map((tag) => {
-                const isSelected = currentTagIds.includes(tag.id);
-                return (
-                  <button
-                    key={tag.id}
-                    type="button"
-                    onClick={() => handleToggleTag(tag.id)}
-                    className="flex items-center gap-1 text-xs px-2 py-1 rounded-full border transition-all"
-                    style={
-                      isSelected && tag.color_hex
-                        ? { backgroundColor: tag.color_hex + "20", borderColor: tag.color_hex, color: tag.color_hex }
-                        : tag.color_hex
-                        ? { borderColor: tag.color_hex + "60", color: "inherit" }
-                        : undefined
-                    }
-                  >
-                    <Tag className="h-2.5 w-2.5" />
-                    {tag.tag_name}
-                    {isSelected && <X className="h-2.5 w-2.5 ml-0.5" />}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {pendingTagIds !== null && (
-            <div className="flex items-center gap-2 pt-2 border-t border-border">
-              <Button size="sm" onClick={handleSaveTags} disabled={saving} className="gap-1.5">
-                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                Save Tags
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setPendingTagIds(null)} disabled={saving}>
-                Cancel
-              </Button>
-            </div>
-          )}
-
           {/* AI Tag Suggestions */}
           <div className="border-t border-border pt-4 space-y-3">
+            {suggestionsError && <DmsLoadError subject="tag suggestions" retry={refetchSuggestions} />}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <Sparkles className="h-3.5 w-3.5 text-purple-500" />

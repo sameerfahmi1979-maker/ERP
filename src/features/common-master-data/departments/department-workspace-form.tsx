@@ -28,6 +28,10 @@ import { createDepartment, updateDepartment } from "@/server/actions/common-mast
 import { Building2, ScrollText } from "lucide-react";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
+import { hasRole } from "@/lib/rbac/scope";
+import { OrganizationAvailability } from "../organization-availability";
 import { toast } from "sonner";
 
 type Props = {
@@ -43,6 +47,7 @@ const SECTION_IDS = ["basic", "notes"];
 function initialValues(department?: DepartmentRow | null) {
   return {
     owner_company_id: String(department?.owner_company_id ?? ""),
+    available_to_all_organizations: department?.available_to_all_organizations === true,
     branch_id: String(department?.branch_id ?? ""),
     department_code: department?.department_code ?? "",
     department_name_en: department?.department_name_en ?? "",
@@ -57,7 +62,7 @@ type DepartmentFormState = ReturnType<typeof initialValues>;
 const departmentCodec: WorkspaceDraftCodec<DepartmentFormState> = {
   encode: values => Object.fromEntries(Object.entries(values).map(([field, value]) => [field, String(value)])),
   restore: (initial, read) => Object.fromEntries(Object.entries(initial).map(([field, value]) =>
-    [field, field === "is_active" ? read(field, String(value)) === "true" : read(field, String(value))]
+    [field, typeof value === "boolean" ? read(field, String(value)) === "true" : read(field, String(value))]
   )) as DepartmentFormState,
 };
 
@@ -78,6 +83,8 @@ function DepartmentWorkspaceFormInstance({ department, mode, companies = [],bran
   const recordId = useRef(saveSession.id);
   const immutableCode = useRef(department?.department_code ?? null);
   const [savedId, setSavedId] = useState(saveSession.id);
+  const [savedShared, setSavedShared] = useState(department?.available_to_all_organizations === true);
+  const canShare = hasRole(authContext, "system_admin");
   const isEditing = savedId !== null;
   const isViewing = mode === "view"||!canOpenDepartmentEditor(authContext)||(!!department&&!canManageDepartment(authContext,department.owner_company_id,department.branch_id));
   const disabled = isViewing||isSubmitting||saveUnconfirmed;
@@ -103,6 +110,7 @@ function DepartmentWorkspaceFormInstance({ department, mode, companies = [],bran
       department_name_en: submitted.department_name_en,
       department_name_ar: submitted.department_name_ar || null,
       owner_company_id: Number(submitted.owner_company_id),
+      ...(canShare && submitted.available_to_all_organizations && !savedShared ? {available_to_all_organizations:true} : {}),
       // Controls not owned by this form must not erase existing associations.
       branch_id: submitted.branch_id?Number(submitted.branch_id):null,
       parent_department_id: department?.parent_department_id ?? null,
@@ -135,10 +143,12 @@ function DepartmentWorkspaceFormInstance({ department, mode, companies = [],bran
       if (!result.success && !result.uncertain) saveSession.rejected();
       if (result.success) {
         const receipt=departmentSaveReceiptSchema.safeParse(result.data);
-        if(!receipt.success||(recordId.current!==null&&receipt.data.id!==recordId.current)||receipt.data.owner_company_id!==parsed.data.owner_company_id||receipt.data.branch_id!==(parsed.data.branch_id??null)){
+        if(!receipt.success||(recordId.current!==null&&receipt.data.id!==recordId.current)||receipt.data.owner_company_id!==parsed.data.owner_company_id||receipt.data.branch_id!==(parsed.data.branch_id??null)
+          || (parsed.data.available_to_all_organizations === true && receipt.data.available_to_all_organizations !== true)){
           setSaveUnconfirmed(true);toast.error('Save unconfirmed. Retry the same values to recover its result.');return false;
         }
         saveSession.accept(receipt.data);recordId.current=receipt.data.id;immutableCode.current=parsed.data.department_code;setSavedId(receipt.data.id);setSaveUnconfirmed(false);
+        if (receipt.data.available_to_all_organizations) setSavedShared(true);
         const unchanged = acceptSaved(submitted);
         const route = `/admin/common-master-data/departments/record/${recordId.current}?mode=edit`;
         toast.success(receipt.data.changed===false?'No changes to save':wasNew ? "Department created" : "Department updated");
@@ -166,6 +176,9 @@ function DepartmentWorkspaceFormInstance({ department, mode, companies = [],bran
       title={isViewing ? "View Department" : isEditing ? "Edit Department" : "New Department"}
       subtitle={department ? `${department.department_name_en} (${department.department_code})` : "Create a new department"}
       recordCode={department?.department_code}
+      headerActions={mode === "view" && department && canManageDepartment(authContext, department.owner_company_id, department.branch_id) ? (
+        <Link className={buttonVariants({ size: "sm" })} href={`/admin/common-master-data/departments/record/${department.id}?mode=edit`}>Edit</Link>
+      ) : undefined}
       sections={sections}
       activeSection={activeSection}
       onSectionChange={setActiveSection}
@@ -187,6 +200,8 @@ function DepartmentWorkspaceFormInstance({ department, mode, companies = [],bran
                 {companies.map(c => <option key={c.id} value={c.id} disabled={!canChooseDepartmentCompany(authContext,c.id)}>{c.legal_name_en} ({c.company_code})</option>)}
               </select>
             </div>
+            {(canShare || savedShared) && <OrganizationAvailability value={savedShared || form.available_to_all_organizations}
+              onChange={value => field("available_to_all_organizations", value)} savedShared={savedShared} editable={canShare && !disabled} />}
             <div className="col-span-12 sm:col-span-6 space-y-1.5">
               <Label htmlFor="branch_id" className="text-muted-foreground text-xs">Branch</Label>
               {department?<Input id="branch_id" aria-label="Branch" value={department.branch_id===null?'All branches':department.branch?.branch_name_en??'Current branch unavailable'} disabled/>:

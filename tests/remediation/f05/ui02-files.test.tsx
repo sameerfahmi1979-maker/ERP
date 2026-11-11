@@ -13,6 +13,7 @@ vi.mock('@/features/dms/documents/section-read',()=>({readDmsSection:(kind:strin
 vi.mock('@/server/actions/dms/document-files',()=>({getDmsDocumentFiles:mocks.files,getDmsDocumentFileSignedUrl:mocks.preview,adminDeleteDmsDocumentFile:mocks.remove,getDmsDocumentVersions:mocks.versions,setDmsDocumentCurrentVersion:vi.fn(),unlinkDmsDocumentVersion:vi.fn()}));
 vi.mock('@/server/actions/dms/ocr',()=>({triggerDmsOcrForFile:mocks.ocr}));
 vi.mock('@/features/dms/documents/sections/dms-link-version-dialog',()=>({DmsLinkVersionDialog:()=>null}));
+vi.mock('@/features/dms/documents/sections/dms-document-preparation-panel',()=>({DmsDocumentPreparationPanel:({canRun,selectedFileId}: {canRun:boolean;selectedFileId:number})=>canRun?<button data-file-id={selectedFileId}>Run AI Pipeline</button>:null}));
 const file={id:10,document_id:1,version_id:2,file_name:'Synthetic file.pdf',mime_type:'application/pdf',file_size_bytes:100,file_role:'primary',integrity_status:'pending',ocr_status:'not_started',created_at:'2026-09-30T12:00:00Z'};
 const clients:QueryClient[]=[];
 function mount(children:ReactNode){const client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}});clients.push(client);return render(<FluentProvider theme={webLightTheme}><QueryClientProvider client={client}>{children}</QueryClientProvider></FluentProvider>);}
@@ -22,6 +23,19 @@ it('preview can close and reopen; missing download capability hides both table a
  mount(<DmsDocumentFilesSection documentId={1} canPreview canDownload={false}/>);await screen.findByTitle('Synthetic file.pdf');expect(screen.queryByRole('button',{name:'Download',exact:true})).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Close preview'}));await waitFor(()=>expect(screen.queryByTitle('Synthetic file.pdf')).toBeNull());fireEvent.click(screen.getByRole('button',{name:'Preview',exact:true}));await screen.findByTitle('Synthetic file.pdf');
 });
 it('default no-capability display does not request preview or expose file actions',async()=>{mount(<DmsDocumentFilesSection documentId={1}/>);await screen.findByText('Synthetic file.pdf');expect(mocks.preview).not.toHaveBeenCalled();expect(screen.queryByRole('button',{name:'Download',exact:true})).toBeNull();expect(screen.queryByRole('button',{name:'Preview',exact:true})).toBeNull();});
+it('puts the AI pipeline button inside the opened original preview and removes it when closed',async()=>{
+ mocks.files.mockResolvedValue({success:true,data:[{...file,file_role:'original'}]});
+ mount(<DmsDocumentFilesSection documentId={1} canPreview canRunAi/>);
+ const action=await screen.findByRole('button',{name:'Run AI Pipeline'});
+ expect(action.getAttribute('data-file-id')).toBe('10');expect(screen.getAllByRole('button',{name:'Run AI Pipeline'})).toHaveLength(1);
+ expect(action.parentElement?.querySelector('[aria-label="Close preview"]')).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Close preview'}));await waitFor(()=>expect(screen.queryByRole('button',{name:'Run AI Pipeline'})).toBeNull());
+});
+it.each([false,true])('does not offer pipeline for unauthorized users or attachments (authorized=%s)',async authorized=>{
+ mocks.files.mockResolvedValue({success:true,data:[{...file,file_role:authorized?'attachment':'original'}]});
+ mount(<DmsDocumentFilesSection documentId={1} canPreview canRunAi={authorized}/>);await screen.findByTitle('Synthetic file.pdf');
+ expect(screen.queryByRole('button',{name:'Run AI Pipeline'})).toBeNull();
+});
 it('failed file reads are retryable errors, not no-files states',async()=>{mocks.files.mockResolvedValueOnce({success:false,error:'private backend detail'});mount(<DmsDocumentFilesSection documentId={1}/>);await screen.findByText('Could not load document files.');expect(screen.queryByText('No files attached')).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Retry'}));await screen.findByText('Synthetic file.pdf');expect(screen.queryByText('private backend detail')).toBeNull();});
 it('preview denial does not suggest an unauthorized download',async()=>{mocks.preview.mockResolvedValue({success:false,error:'restricted'});mount(<DmsDocumentFilesSection documentId={1} canPreview/>);await screen.findByText(/Preview could not be loaded/);expect(screen.queryByRole('button',{name:/Download/})).toBeNull();});
 it('embedded files retain their permitted data without a main-list toolbar or additional reads',async()=>{mount(<DmsDocumentFilesSection documentId={1}/>);await screen.findByText('Synthetic file.pdf');expect(screen.queryByRole('button',{name:'Edit filters'})).toBeNull();expect(screen.queryByRole('button',{name:'Edit columns'})).toBeNull();expect(screen.queryByRole('textbox',{name:/Search/})).toBeNull();expect(screen.getAllByText('Synthetic file.pdf')).toHaveLength(1);expect(mocks.files).toHaveBeenCalledOnce();});

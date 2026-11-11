@@ -100,6 +100,52 @@ export function DmsApprovalWorkflowFormDialog(props: Props) {
   return props.open ? <WorkflowFormSession key={props.editing?.id ?? "new"} {...props} /> : null;
 }
 
+function AssignedApprovers({ companyId, branchId, requiredRole, index, selected, disabled, onChange }: {
+  companyId: number;
+  branchId: number | null;
+  requiredRole: string;
+  index: number;
+  selected: number[];
+  disabled: boolean;
+  onChange: (ids: number[]) => void;
+}) {
+  const [options, setOptions] = useState<Array<{ id: number; label: string }>>([]);
+  const [status, setStatus] = useState<"loading" | "loaded" | "failed">("loading");
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let current = true;
+    void adminListApprovalAssigneeOptions({ companyId, branchId, requiredRole }).then(result => {
+      if (!current) return;
+      if (result.success && result.data) {
+        setOptions(result.data);
+        setStatus("loaded");
+      } else setStatus("failed");
+    }).catch(() => { if (current) setStatus("failed"); });
+    return () => { current = false; };
+  }, [companyId, branchId, requiredRole, attempt]);
+
+  return <>
+    <label className="block text-xs mt-2">Assigned approvers
+      <select multiple aria-label={`Step ${index + 1} assigned approvers`} className="block w-full rounded border bg-background text-foreground px-2 py-1"
+        disabled={disabled || status !== "loaded"} value={selected.map(String)}
+        onChange={event => onChange(Array.from(event.target.selectedOptions, option => Number(option.value)))}>
+        {selected.filter(id => !options.some(option => option.id === id)).map(id =>
+          <option key={id} value={id}>Current assignee (unavailable)</option>)}
+        {options.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+      </select>
+    </label>
+    {status === "loading" && <p role="status" className="text-xs text-muted-foreground">Loading approvers…</p>}
+    {status === "loaded" && options.length === 0 && <p role="status" className="text-xs text-muted-foreground">No eligible approvers for this scope and role.</p>}
+    {status === "failed" && <div className="space-y-1 text-xs text-destructive">
+      <p role="status">Assigned approvers could not be loaded. Existing selections are preserved.</p>
+      <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => {
+        setStatus("loading");
+        setAttempt(value => value + 1);
+      }}>Retry approvers</Button>
+    </div>}
+  </>;
+}
+
 function WorkflowFormSession({
   open,
   onOpenChange,
@@ -140,13 +186,6 @@ function WorkflowFormSession({
   const [roleOptions, setRoleOptions] = useState<Array<{ code: string; name: string }>>([]);
   const [rolesState, setRolesState] = useState<"loading" | "loaded" | "failed">("loading");
   const [roleAttempt, setRoleAttempt] = useState(0);
-  const [assigneeOptions, setAssigneeOptions] = useState<Array<{ id: number; label: string }>>([]);
-  const [assigneesAvailable, setAssigneesAvailable] = useState(false);
-  useEffect(() => {
-    let current = true;
-    void adminListApprovalAssigneeOptions().then(result => { if (current) { setAssigneesAvailable(result.success); setAssigneeOptions(result.data ?? []); } }).catch(() => { if (current) setAssigneesAvailable(false); });
-    return () => { current = false; };
-  }, []);
   useEffect(() => {
     let current = true;
     void adminListApprovalRoleOptions().then(result => {
@@ -290,6 +329,7 @@ function WorkflowFormSession({
   const docTypeOptions = documentTypes
     .filter((dt) => dt.is_active)
     .map((dt) => ({ value: dt.id, label: `${dt.type_code} — ${dt.name_en}` }));
+  const allDocumentTypesSelected = docTypeOptions.every(option => docTypeIds.includes(option.value));
 
   return (
     <ERPChildDialogForm
@@ -382,7 +422,7 @@ function WorkflowFormSession({
               <div className="px-3 py-2 text-xs text-muted-foreground">No document types available.</div>
             ) : (
               docTypeOptions.map((opt) => {
-                const selected = docTypeIds.includes(opt.value as number);
+                const selected = docTypeIds.includes(opt.value);
                 return (
                   <label
                     key={opt.value}
@@ -396,7 +436,7 @@ function WorkflowFormSession({
                       type="checkbox"
                       checked={selected}
                       onChange={() => {
-                        const id = opt.value as number;
+                        const id = opt.value;
                         setDocTypeIds((prev) =>
                           selected ? prev.filter((x) => x !== id) : [...prev, id],
                         );
@@ -410,16 +450,24 @@ function WorkflowFormSession({
               })
             )}
           </div>
-          {docTypeIds.length > 0 && (
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <button
+              type="button"
+              onClick={() => setDocTypeIds(previous => [...new Set([...previous, ...docTypeOptions.map(option => option.value)])])}
+              disabled={submitting || allDocumentTypesSelected}
+              className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+            >
+              Select all
+            </button>
             <button
               type="button"
               onClick={() => setDocTypeIds([])}
-              disabled={submitting}
-              className="mt-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+              disabled={submitting || docTypeIds.length === 0}
+              className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
             >
               Clear all
             </button>
-          )}
+          </div>
         </div>
 
         <div className="col-span-12">
@@ -510,20 +558,17 @@ function WorkflowFormSession({
                           {step.requires_role && !roleOptions.some(r => r.code === step.requires_role) && <option value={step.requires_role}>Current role (unavailable)</option>}
                           {roleOptions.map(role => <option key={role.code} value={role.code}>{role.name}</option>)}
                         </select>
-                        <label className="block text-xs mt-2">Assigned approvers
-                          <select multiple aria-label={`Step ${idx + 1} assigned approvers`} className="block w-full rounded border bg-background text-foreground px-2 py-1" disabled={submitting || !assigneesAvailable}
-                            value={(step.assignee_profile_ids ?? []).map(String)} onChange={e => updateStep(step._id, { assignee_profile_ids: Array.from(e.target.selectedOptions, o => Number(o.value)) })}>
-                            {(step.assignee_profile_ids ?? []).filter(id => !assigneeOptions.some(o => o.id === id)).map(id => <option key={id} value={id}>Current assignee (unavailable)</option>)}
-                            {assigneeOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-                          </select>
-                        </label>
+                        {companyId ? <AssignedApprovers key={JSON.stringify([companyId, branchId, step.requires_role])}
+                          companyId={companyId} branchId={branchId} requiredRole={step.requires_role} index={idx}
+                          selected={step.assignee_profile_ids ?? []} disabled={submitting}
+                          onChange={ids => updateStep(step._id, { assignee_profile_ids: ids })} />
+                          : <p className="mt-2 text-xs text-muted-foreground">Choose a company to load assigned approvers.</p>}
                         <label className="block text-xs mt-2">Decision rule
                           <select aria-label={`Step ${idx + 1} decision rule`} className="block w-full rounded border bg-background text-foreground px-2 py-1" value={step.decision_rule ?? "one_assigned"} disabled={submitting}
                             onChange={e => updateStep(step._id, { decision_rule: e.target.value as "one_assigned" | "all_assigned" })}>
                             <option value="one_assigned">One assigned approver</option><option value="all_assigned">All assigned approvers</option>
                           </select>
                         </label>
-                        {!assigneesAvailable && <p role="status" className="text-xs text-destructive">Assigned-user options unavailable. Save inactive or retry after access is restored.</p>}
                       </td>
                       <td className="px-3 py-2 text-center">
                         <input

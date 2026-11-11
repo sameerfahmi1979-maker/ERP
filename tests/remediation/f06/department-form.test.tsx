@@ -30,6 +30,18 @@ function fill(){input('department_code','F06');input('department_name_en','Depar
 async function save(){await act(async()=>{await mock.shell?.onSave?.();});}
 it('false create adopts its identity and uses update on the next save',async()=>{mount();fill();fireEvent.click(screen.getByRole('checkbox',{name:'Active'}));await save();expect(mock.create.mock.calls[0][0].is_active).toBe(false);expect(mock.shell?.mode).toBe('edit');input('description','Changed');await save();expect(mock.create).toHaveBeenCalledOnce();expect(mock.update.mock.calls[0][0].id).toBe(71);expect(mock.update.mock.calls[0][1].revision).toBe('1');});
 it('established company and code are immutable controls',()=>{mount('edit');expect((screen.getByRole('combobox',{name:/Organization/}) as HTMLSelectElement).disabled).toBe(true);expect((screen.getByRole('textbox',{name:/Department Code/}) as HTMLInputElement).disabled).toBe(true);});
+it('shares an existing department without changing ownership or replaying the change on its next edit',async()=>{
+ const admin={...ctx,roleCodes:['system_admin'],roleAssignments:[{roleId:1,roleCode:'system_admin',ownerCompanyId:null,branchId:null,permissionCodes:[]}]};
+ mount('edit',admin);
+ input('available_to_all_organizations','all');
+ mock.update.mockResolvedValueOnce({success:true,data:{...receipt,available_to_all_organizations:true}});
+ await save();
+ expect(mock.update.mock.calls[0][0]).toMatchObject({id:71,owner_company_id:1,branch_id:null,available_to_all_organizations:true});
+ expect(screen.getByLabelText('Availability')).toHaveProperty('disabled',true);
+ input('description','New notes');
+ await save();
+ expect(mock.update.mock.calls[1][0]).not.toHaveProperty('available_to_all_organizations');
+});
 it('unknown response freezes fields and repeats exactly the original request',async()=>{mock.create.mockResolvedValueOnce({success:false,uncertain:true});mount();fill();await save();expect((screen.getByRole('textbox',{name:'Description'}) as HTMLTextAreaElement).disabled).toBe(true);await save();expect(mock.create.mock.calls[1]).toEqual(mock.create.mock.calls[0]);});
 it('transport exceptions never expose internal details and keep the replay',async()=>{mock.create.mockRejectedValueOnce(Error('private transport detail'));mount();fill();await save();expect(JSON.stringify(mock.error.mock.calls)).not.toContain('private transport');await save();expect(mock.create.mock.calls[1]).toEqual(mock.create.mock.calls[0]);});
 it.each([

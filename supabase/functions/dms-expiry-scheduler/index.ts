@@ -17,6 +17,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.106.2";
 import { schedulerGate } from "./auth.ts";
+import { reminderMatchesExpiryCycle } from "./cycle.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -100,7 +101,7 @@ Deno.serve(async (req: Request) => {
       .from("dms_expiry_reminders")
       .select(`
         id, document_id, reminder_days_before, reminder_date, notification_status,
-        document:dms_documents!document_id(id, document_no, title, expiry_date, created_by, owner_user_id, status, expiry_tracking_override)
+        document:dms_documents!document_id(id, document_no, title, expiry_date, created_by, owner_user_id, status, is_archived, deleted_at, expiry_tracking_override)
       `)
       .lte("reminder_date", today)
       .eq("status", "pending")
@@ -113,6 +114,7 @@ Deno.serve(async (req: Request) => {
     } else {
       let created = 0;
       let skipped = 0;
+      let staleCycle = 0;
       const now = new Date().toISOString();
 
       for (const reminder of dueReminders ?? []) {
@@ -135,9 +137,17 @@ Deno.serve(async (req: Request) => {
           skipped++;
           continue;
         }
-        if (docStatus && ["superseded", "archived", "deleted"].includes(docStatus)) {
+        if (doc.is_archived === true || doc.deleted_at != null || (docStatus && ["superseded", "archived", "deleted"].includes(docStatus))) {
           record(`Skipping reminder ${remId}: document ${documentId} status is '${docStatus}'.`);
           await supabase.from("dms_expiry_reminders").update({ status: "cancelled", updated_at: now }).eq("id", remId);
+          skipped++;
+          continue;
+        }
+
+        if (!reminderMatchesExpiryCycle(rem.reminder_date, daysBefore, expiryDate)) {
+          // Reconciliation owns historical rows. A stale scheduler snapshot must
+          // never overwrite or regenerate them.
+          staleCycle++;
           skipped++;
           continue;
         }
@@ -227,11 +237,11 @@ Deno.serve(async (req: Request) => {
         const marked=await supabase
           .from("dms_expiry_reminders")
           .update({ notification_status: "sent", last_notification_at: now, updated_at: now })
-          .eq("id", remId);
+          .eq("id", remId).eq("status", "pending").eq("reminder_date", String(rem.reminder_date));
         if(marked.error)result.errors.push('Reminder completion marker unconfirmed.');
       }
 
-      result.steps.step1_generate = { created, skipped };
+      result.steps.step1_generate = { created, skipped, staleCycle };
       record(`Step 1 done: created=${created}, skipped=${skipped}`);
     }
 

@@ -1,4 +1,5 @@
 "use client";
+import { WorklistColgroup, WorklistScrollRegion } from "@/components/erp/table/worklist-fit-control";
 import { LoadedListTools, useLoadedListView, type LoadedListField } from "@/components/erp/table/loaded-list-view";
 import { ConfiguredRow } from "@/components/erp/table/list-controls";
 import { useSortPaginate } from "@/hooks/use-sort-paginate";
@@ -203,7 +204,7 @@ export function ReportDeliveryLogFullPage() {
       {isError && <div role="alert">Delivery history could not be refreshed. Any retained rows may be out of date.</div>}
 
       <div className="border rounded-lg overflow-hidden"><LoadedListTools view={listView} search />
-        <div role="region" aria-label="ReportDeliveryLogFullPage results" tabIndex={0} className="max-w-full overflow-x-auto"><table className="w-full table-fixed text-sm" style={{minWidth:listView.visible.reduce((sum,c)=>sum+c.width,0)}}><colgroup>{listView.visible.map(c=><col key={c.id} style={{width:c.width}} />)}</colgroup>
+        <WorklistScrollRegion attach={listView.viewport.attachViewport} aria-label="ReportDeliveryLogFullPage results"><table className="w-full table-fixed text-sm" {...listView.viewport.tableProps}><WorklistColgroup viewport={listView.viewport} />
           <thead>
             <ConfiguredRow columns={listView.columns} className="bg-muted/50 border-b text-xs font-medium text-muted-foreground">
               <th data-column="delivery_status" className="px-3 py-2.5 text-left">Status</th>
@@ -272,7 +273,7 @@ export function ReportDeliveryLogFullPage() {
               );
             })}
           </tbody>
-        </table></div>
+        </table></WorklistScrollRegion>
       <TablePagination page={pagination.page} totalPages={pagination.totalPages} onPage={pagination.setPage} pageSize={pagination.pageSize} onPageSize={pagination.setPageSize} total={pagination.totalFiltered}/></div>
     </div>
   );

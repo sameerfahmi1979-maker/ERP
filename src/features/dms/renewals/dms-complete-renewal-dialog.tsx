@@ -11,6 +11,7 @@ import { RequiredLabel } from "@/components/erp/required-label";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ERPCombobox } from "@/components/erp/combobox";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
+import { DmsLoadError } from "@/features/dms/dms-load-error";
 import {
   completeDmsRenewalRequest,
   searchDmsDocumentsForRenewalReplacement,
@@ -18,9 +19,11 @@ import {
 } from "@/server/actions/dms/renewals";
 import { getDmsDocumentLinks } from "@/server/actions/dms/document-links";
 import {
+  invalidateAuthorizedRead,
   invalidateDmsRenewals,
   invalidateDmsExpiry,
   invalidateDmsDocumentExpiry,
+  invalidateHrComplianceRenewals,
 } from "@/lib/query/invalidation";
 
 interface DmsCompleteRenewalDialogProps {
@@ -49,7 +52,13 @@ export function DmsCompleteRenewalDialog({
   const [newExpiryDate, setNewExpiryDate] = useState("");
   const [notes, setNotes] = useState("");
 
-  const { data: candidates = [], isLoading: loadingCandidates } = useQuery({
+  const {
+    data: candidates = [],
+    isLoading: loadingCandidates,
+    isError: candidatesError,
+    isFetching: candidatesFetching,
+    refetch: retryCandidates,
+  } = useQuery({
     queryKey: ["dms", "renewals", "replacement-candidates", documentTypeId, documentId],
     queryFn: async () => {
       if (!documentTypeId) return [];
@@ -74,6 +83,7 @@ export function DmsCompleteRenewalDialog({
     staleTime: 30_000,
   });
   const scopeOwner = ownerLinks.find((l) => l.is_primary) ?? ownerLinks[0];
+  const canSubmit = !candidatesError && candidates.some((candidate) => candidate.id === replacementDocumentId);
 
   const reset = () => {
     setReplacementDocumentId(null);
@@ -97,7 +107,7 @@ export function DmsCompleteRenewalDialog({
   };
 
   const handleSubmit = async () => {
-    if (!replacementDocumentId) {
+    if (!canSubmit || replacementDocumentId === null) {
       toast.error("Select the replacement document that was uploaded for this renewal");
       return;
     }
@@ -114,6 +124,9 @@ export function DmsCompleteRenewalDialog({
         invalidateDmsRenewals(queryClient);
         invalidateDmsExpiry(queryClient);
         invalidateDmsDocumentExpiry(queryClient, documentId);
+        invalidateHrComplianceRenewals(queryClient);
+        invalidateAuthorizedRead(queryClient, "dms-documents");
+        invalidateAuthorizedRead(queryClient, "dms-archive");
         handleClose(false);
         onSuccess?.();
       } else {
@@ -141,6 +154,7 @@ export function DmsCompleteRenewalDialog({
       mode="edit"
       size="md"
       isSubmitting={isSubmitting}
+      submitDisabled={!canSubmit}
       onSubmit={handleSubmit}
       submitLabel="Complete Renewal"
     >
@@ -159,29 +173,35 @@ export function DmsCompleteRenewalDialog({
           <RequiredLabel required className="mb-1.5 block">
             Replacement Document
           </RequiredLabel>
-          <ERPCombobox ariaLabel="Replacement Document"
-            value={replacementDocumentId}
-            onValueChange={handleReplacementChange}
-            options={options}
-            placeholder="Search for the document already uploaded to replace this one..."
-            searchPlaceholder="Search by document no. or title..."
-            loading={loadingCandidates}
-            required
-            allowClear
-            emptyText={
-              documentTypeId
-                ? scopeOwner
-                  ? `No matching documents found for ${scopeOwner.entity_type_label} — ${scopeOwner.entity_display_name}. Upload the new document (linked to the same ${scopeOwner.entity_type_label.toLowerCase()}) first, then complete this renewal.`
-                  : "No matching documents found — upload the new document first, then complete this renewal."
-                : "Unknown document type"
-            }
-            noResultsText="No results found"
-          />
-          <p className="text-[10px] text-muted-foreground mt-1">
-            {scopeOwner
-              ? `Showing only documents linked to ${scopeOwner.entity_type_label} — ${scopeOwner.entity_display_name}. Upload the new/renewed file through the normal upload flow first, then pick it here to link it.`
-              : "Upload the new/renewed file through the normal upload flow first, then pick it here to link it."}
-          </p>
+          {candidatesError ? (
+            <DmsLoadError subject="replacement documents" retry={retryCandidates} pending={candidatesFetching} />
+          ) : (
+            <>
+              <ERPCombobox
+                ariaLabel="Replacement Document"
+                value={replacementDocumentId}
+                onValueChange={handleReplacementChange}
+                options={options}
+                placeholder="Search for the document already uploaded to replace this one..."
+                searchPlaceholder="Search by document no. or title..."
+                showCode
+                loading={loadingCandidates}
+                required
+                emptyText={
+                  documentTypeId
+                    ? scopeOwner
+                      ? `No matching documents found for ${scopeOwner.entity_type_label} — ${scopeOwner.entity_display_name}.`
+                      : "No matching documents found."
+                    : "Unknown document type"
+                }
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {scopeOwner
+                  ? `Showing documents linked to ${scopeOwner.entity_type_label} — ${scopeOwner.entity_display_name}.`
+                  : "Select an existing document of the same type."}
+              </p>
+            </>
+          )}
         </div>
 
         <div>

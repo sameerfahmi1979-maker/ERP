@@ -15,6 +15,7 @@ import {getDmsLinkSuggestions} from "@/server/actions/dms/ai-links";
 import {getMetadataDefinitionsForType} from "@/server/actions/dms/document-metadata-values";
 import {getDmsDocumentMetadataValues} from "@/server/actions/dms/document-metadata-values";
 import {getDmsTags} from "@/server/actions/dms/tags";
+import {readDmsTagCatalogue} from "./dms-tag-catalogue";
 import {getDmsDocumentTags} from "@/server/actions/dms/document-tags";
 import {getDmsTagSuggestions} from "@/server/actions/dms/ai-tags";
 import {getDmsOcrStatus} from "@/server/actions/dms/ocr";
@@ -65,6 +66,7 @@ export async function readDmsSection(input:unknown) {
  case "getMetadataDefinitionsForType": {const p=z.tuple([id,z.enum(["all","intake","detail"]).optional(),id.optional()]).safeParse(args);return p.success?getMetadataDefinitionsForType(...p.data):{success:false,error:"Invalid section arguments"};}
  case "getDmsDocumentMetadataValues": {const p=z.tuple([id,id.optional()]).safeParse(args);return p.success?getDmsDocumentMetadataValues(...p.data):{success:false,error:"Invalid section arguments"};}
  case "getDmsTags": {const p=z.tuple([]).safeParse(args);return p.success?getDmsTags(...p.data):{success:false,error:"Invalid section arguments"};}
+ case "getDmsTagCatalogue": return args.length===1?readDmsTagCatalogue(args[0],ctx):{success:false,error:"Invalid section arguments"};
  case "getDmsDocumentTags": {const p=z.tuple([id]).safeParse(args);return p.success?getDmsDocumentTags(...p.data):{success:false,error:"Invalid section arguments"};}
  case "getDmsTagSuggestions": {const p=z.tuple([id]).safeParse(args);return p.success?getDmsTagSuggestions(...p.data):{success:false,error:"Invalid section arguments"};}
  case "getDmsOcrStatus": {const p=z.tuple([id]).safeParse(args);return p.success?getDmsOcrStatus(...p.data):{success:false,error:"Invalid section arguments"};}

@@ -1,4 +1,5 @@
 "use client";
+import { HrIconButton } from "@/features/hr/employees/hr-icon-button";
 import {hasHrReadCapability} from "@/lib/reads/hr-read-identity";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
@@ -254,8 +255,8 @@ function ProProcessesSection({ employeeId, authContext, canManage, qc, onChildOp
               </div>
               {canManage && (
                 <div className="flex gap-1 ml-2 shrink-0">
-                  <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog(item)}><Edit2 className="h-3.5 w-3.5" /></Button>
-                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={() => openDialog(item,'archive')}><Archive className="h-3.5 w-3.5" /></Button>
+                  <HrIconButton aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog(item)}><Edit2 className="h-3.5 w-3.5" /></HrIconButton>
+                  <HrIconButton aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={() => openDialog(item,'archive')}><Archive className="h-3.5 w-3.5" /></HrIconButton>
                 </div>
               )}
             </div>
@@ -307,11 +308,11 @@ function HrActionsSection({ employeeId, authContext, canManage, qc, onChildOpen 
               </div>
               {canManage && (
                 <div className="flex gap-1 ml-2 shrink-0">
-                  <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog(item)}><Edit2 className="h-3.5 w-3.5" /></Button>
+                  <HrIconButton aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog(item)}><Edit2 className="h-3.5 w-3.5" /></HrIconButton>
                   {item.action_status === "open" || item.action_status === "in_progress" ? (
-                    <Button aria-label="Close" size="icon" variant="ghost" className="h-7 w-7 text-green-600 dark:text-green-300" title="Close" onClick={() => openDialog(item,'close')}><CheckCircle className="h-3.5 w-3.5" /></Button>
+                    <HrIconButton aria-label="Close" size="icon" variant="ghost" className="h-7 w-7 text-green-600 dark:text-green-300" title="Close" onClick={() => openDialog(item,'close')}><CheckCircle className="h-3.5 w-3.5" /></HrIconButton>
                   ) : null}
-                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={() => openDialog(item,'archive')}><Archive className="h-3.5 w-3.5" /></Button>
+                  <HrIconButton aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={() => openDialog(item,'archive')}><Archive className="h-3.5 w-3.5" /></HrIconButton>
                 </div>
               )}
             </div>
@@ -362,11 +363,11 @@ function PerformanceSection({ employeeId, authContext, canManage, qc, onChildOpe
               </div>
               {canManage && (
                 <div className="flex gap-1 ml-2 shrink-0">
-                  {item.status === "draft" && <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog(item)}><Edit2 className="h-3.5 w-3.5" /></Button>}
-                  {item.status === "draft" && <Button aria-label="Submit" size="icon" variant="ghost" className="h-7 w-7 text-blue-500 dark:text-blue-300" title="Submit" onClick={() => openDialog(item,'submit')}><CheckSquare className="h-3.5 w-3.5" /></Button>}
-                  {item.status === "submitted" && <Button aria-label="Approve" size="icon" variant="ghost" className="h-7 w-7 text-green-600 dark:text-green-300" title="Approve" onClick={() => openDialog(item,'approve')}><CheckCircle className="h-3.5 w-3.5" /></Button>}
-                  {item.status === "approved" && <Button aria-label="Close review" size="icon" variant="ghost" className="h-7 w-7" title="Close review" onClick={() => openDialog(item,'close')}><CheckCircle className="h-3.5 w-3.5" /></Button>}
-                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={() => openDialog(item,'archive')}><Archive className="h-3.5 w-3.5" /></Button>
+                  {item.status === "draft" && <HrIconButton aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog(item)}><Edit2 className="h-3.5 w-3.5" /></HrIconButton>}
+                  {item.status === "draft" && <HrIconButton aria-label="Submit" size="icon" variant="ghost" className="h-7 w-7 text-blue-500 dark:text-blue-300" title="Submit" onClick={() => openDialog(item,'submit')}><CheckSquare className="h-3.5 w-3.5" /></HrIconButton>}
+                  {item.status === "submitted" && <HrIconButton aria-label="Approve" size="icon" variant="ghost" className="h-7 w-7 text-green-600 dark:text-green-300" title="Approve" onClick={() => openDialog(item,'approve')}><CheckCircle className="h-3.5 w-3.5" /></HrIconButton>}
+                  {item.status === "approved" && <HrIconButton aria-label="Close review" size="icon" variant="ghost" className="h-7 w-7" title="Close review" onClick={() => openDialog(item,'close')}><CheckCircle className="h-3.5 w-3.5" /></HrIconButton>}
+                  <HrIconButton aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={() => openDialog(item,'archive')}><Archive className="h-3.5 w-3.5" /></HrIconButton>
                 </div>
               )}
             </div>
@@ -418,13 +419,13 @@ function DisciplinarySection({ employeeId, authContext, canManage, qc, onChildOp
               </div>
               {canManage && (
                 <div className="flex gap-1 ml-2 shrink-0">
-                  <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog(item)}><Edit2 className="h-3.5 w-3.5" /></Button>
+                  <HrIconButton aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openDialog(item)}><Edit2 className="h-3.5 w-3.5" /></HrIconButton>
                   {!item.acknowledged_by_employee && (
-                    <Button aria-label="Mark acknowledged" size="icon" variant="ghost" className="h-7 w-7 text-blue-500 dark:text-blue-300" title="Mark acknowledged" onClick={() => openDialog(item,'acknowledge')}><CheckCircle className="h-3.5 w-3.5" /></Button>
+                    <HrIconButton aria-label="Mark acknowledged" size="icon" variant="ghost" className="h-7 w-7 text-blue-500 dark:text-blue-300" title="Mark acknowledged" onClick={() => openDialog(item,'acknowledge')}><CheckCircle className="h-3.5 w-3.5" /></HrIconButton>
                   )}
-                  {item.acknowledged_by_employee&&<Button aria-label="Correct acknowledgement" size="icon" variant="ghost" className="h-7 w-7" onClick={()=>openDialog(item,'correct-acknowledgement')}><Edit2 className="h-3.5 w-3.5"/></Button>}
-                  {['open','under_review'].includes(item.status)&&<Button aria-label="Close record" size="icon" variant="ghost" className="h-7 w-7" onClick={()=>openDialog(item,'close')}><CheckCircle className="h-3.5 w-3.5"/></Button>}
-                  <Button aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={() => openDialog(item,'archive')}><Archive className="h-3.5 w-3.5" /></Button>
+                  {item.acknowledged_by_employee&&<HrIconButton aria-label="Correct acknowledgement" size="icon" variant="ghost" className="h-7 w-7" onClick={()=>openDialog(item,'correct-acknowledgement')}><Edit2 className="h-3.5 w-3.5"/></HrIconButton>}
+                  {['open','under_review'].includes(item.status)&&<HrIconButton aria-label="Close record" size="icon" variant="ghost" className="h-7 w-7" onClick={()=>openDialog(item,'close')}><CheckCircle className="h-3.5 w-3.5"/></HrIconButton>}
+                  <HrIconButton aria-label="Archive record" size="icon" variant="ghost" className="h-7 w-7 text-red-500 dark:text-red-300" onClick={() => openDialog(item,'archive')}><Archive className="h-3.5 w-3.5" /></HrIconButton>
                 </div>
               )}
             </div>
@@ -478,7 +479,7 @@ function HrNotesSection({ employeeId, authContext, canManage, qc, onChildOpen }:
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleDateString()}</span>
                   {canManage && (
-                    <Button aria-label="Archive record" size="icon" variant="ghost" className="h-6 w-6 text-red-500 dark:text-red-300" onClick={()=>{if(canManage&&uiRead1.canDispatch()){setDialog({target:{id:item.id}});onChildOpen(true);}}}><Archive className="h-3 w-3" /></Button>
+                    <HrIconButton aria-label="Archive record" size="icon" variant="ghost" className="h-6 w-6 text-red-500 dark:text-red-300" onClick={()=>{if(canManage&&uiRead1.canDispatch()){setDialog({target:{id:item.id}});onChildOpen(true);}}}><Archive className="h-3 w-3" /></HrIconButton>
                   )}
                 </div>
               </div>
@@ -527,7 +528,7 @@ function ApprovalsSection({ employeeId, authContext, canManage, qc, onChildOpen 
                 <div className="flex gap-1 ml-2 shrink-0">
                   <Button size="sm" variant="outline" className="h-7 text-xs text-green-700 border-green-300 dark:text-green-200 dark:border-green-800" onClick={() => { setOpening({target:{ id: item.id, action: "approve" }}); onChildOpen(true); }}>Approve</Button>
                   <Button size="sm" variant="outline" className="h-7 text-xs text-red-700 border-red-300 dark:text-red-200 dark:border-red-800" onClick={() => { setOpening({target:{ id: item.id, action: "reject" }}); onChildOpen(true); }}>Reject</Button>
-                  <Button aria-label="Cancel request" size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground" onClick={() => { setOpening({target:{ id: item.id, action: "cancel" }}); onChildOpen(true); }}><XCircle className="h-3.5 w-3.5" /></Button>
+                  <HrIconButton aria-label="Cancel request" size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground" onClick={() => { setOpening({target:{ id: item.id, action: "cancel" }}); onChildOpen(true); }}><XCircle className="h-3.5 w-3.5" /></HrIconButton>
                 </div>
               )}
             </div>
@@ -632,7 +633,7 @@ function EosSection({ employeeId, authContext, canManage, qc, onChildOpen }: {
                   </div>
                   {canManage && (
                     <div className="flex gap-1 ml-2 shrink-0">
-                      <Button aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEosDialog(eos)}><Edit2 className="h-3.5 w-3.5" /></Button>
+                      <HrIconButton aria-label="Edit record" size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEosDialog(eos)}><Edit2 className="h-3.5 w-3.5" /></HrIconButton>
                       <Button size="sm" variant="outline" className="h-7 text-xs gap-1" disabled={['closed','cancelled'].includes(eos.case_status)} onClick={() => openClearanceDialog(eos.id)}><Plus className="h-3 w-3" />Clearance</Button>
                     </div>
                   )}
@@ -653,8 +654,8 @@ function EosSection({ employeeId, authContext, canManage, qc, onChildOpen }: {
                             {statusBadge(ci.item_status, "clearance")}
                             {canManage && ci.item_status === "pending" && (
                               <>
-                                <Button aria-label="Clear" disabled={!uiRead1.ready||!uiRead2.ready||['closed','cancelled'].includes(eos.case_status)} size="icon" variant="ghost" className="h-5 w-5 text-green-600 dark:text-green-300" title="Clear" onClick={()=>openClearanceDialog(eos.id,{id:ci.id,action:'clear'})}><CheckCircle className="h-3 w-3" /></Button>
-                                <Button aria-label="Block" disabled={!uiRead1.ready||!uiRead2.ready||['closed','cancelled'].includes(eos.case_status)} size="icon" variant="ghost" className="h-5 w-5 text-red-500 dark:text-red-300" title="Block" onClick={()=>openClearanceDialog(eos.id,{id:ci.id,action:'block'})}><XCircle className="h-3 w-3" /></Button>
+                                <HrIconButton aria-label="Clear" disabled={!uiRead1.ready||!uiRead2.ready||['closed','cancelled'].includes(eos.case_status)} size="icon" variant="ghost" className="h-5 w-5 text-green-600 dark:text-green-300" title="Clear" onClick={()=>openClearanceDialog(eos.id,{id:ci.id,action:'clear'})}><CheckCircle className="h-3 w-3" /></HrIconButton>
+                                <HrIconButton aria-label="Block" disabled={!uiRead1.ready||!uiRead2.ready||['closed','cancelled'].includes(eos.case_status)} size="icon" variant="ghost" className="h-5 w-5 text-red-500 dark:text-red-300" title="Block" onClick={()=>openClearanceDialog(eos.id,{id:ci.id,action:'block'})}><XCircle className="h-3 w-3" /></HrIconButton>
                               </>
                             )}
                           </div>

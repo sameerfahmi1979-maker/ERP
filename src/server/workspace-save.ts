@@ -46,8 +46,9 @@ export async function saveWorkspaceRecord(entity: "departments" | "employees" | 
       return matches&&receipt.success?{success:true,data:receipt.data}:{success:false,uncertain:true,error:'Save response incomplete. Retry with the same values to recover the result.'};
     }
     if(entity==='departments'){
-      const receipt=departmentSaveReceiptSchema.safeParse(data),values=payload as {owner_company_id?:number;branch_id?:number|null};
-      const matches=receipt.success&&(id===null||receipt.data.id===id)&&(values.owner_company_id===undefined||receipt.data.owner_company_id===values.owner_company_id)&&(values.branch_id===undefined||receipt.data.branch_id===values.branch_id);
+      const receipt=departmentSaveReceiptSchema.safeParse(data),values=payload as {owner_company_id?:number;branch_id?:number|null;available_to_all_organizations?:boolean};
+      const matches=receipt.success&&(id===null||receipt.data.id===id)&&(values.owner_company_id===undefined||receipt.data.owner_company_id===values.owner_company_id)&&(values.branch_id===undefined||receipt.data.branch_id===values.branch_id)
+        &&(values.available_to_all_organizations===undefined||receipt.data.available_to_all_organizations===values.available_to_all_organizations);
       return receipt.success&&matches?{success:true,data:receipt.data}:{success:false,uncertain:true,error:'Save response incomplete. Retry with the same values to recover the result.'};
     }
     const receipt = receiptSchema.safeParse(data);

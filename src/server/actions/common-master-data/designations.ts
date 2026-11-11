@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { hasGlobalPermission } from "@/lib/rbac/scope";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
@@ -61,7 +62,7 @@ function canView(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
   return hasPermission(ctx, "common_md.view") || hasPermission(ctx, "common_md.designations.view");
 }
 function canManage(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
-  return hasPermission(ctx, "common_md.manage") || hasPermission(ctx, "common_md.designations.manage");
+  return hasGlobalPermission(ctx, "common_md.manage") || hasGlobalPermission(ctx, "common_md.designations.manage");
 }
 
 export async function listDesignations(filters?: { owner_company_id?: number; department_id?: number; is_active?: boolean; search?: string }): Promise<DesignationListResult> {
@@ -135,12 +136,15 @@ export async function updateDesignation(input: UpdateInput): Promise<ActionResul
     if (!canManage(ctx)) return { success: false, error: "Permission denied" };
     const { id, ...rest } = parsed.data;
     const supabase = await createClient();
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("designations")
       .update({ ...rest, updated_by: ctx.profile?.id ?? null, updated_at: new Date().toISOString() })
-      .eq("id", id!)
-      .is("deleted_at", null);
+      .eq("id", id)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
     if (error) return { success: false, error: error.message };
+    if (!data) return { success: false, error: "This record is unavailable or you no longer have permission to edit it." };
     await logAudit({ module_code: "common_md", entity_name: "designations", entity_id: id!, entity_reference: String(id), action: "update", new_values: rest });
     revalidatePath("/admin/common-master-data/designations");
     revalidatePath(`/admin/common-master-data/designations/record/${id}`);

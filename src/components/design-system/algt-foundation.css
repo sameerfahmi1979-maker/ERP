@@ -91,6 +91,21 @@ select:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .algt-data-table th { text-transform:none; letter-spacing:normal; font-size:13px; }
 .algt-data-table td { overflow-wrap:anywhere; }
 .algt-data-table td .flex { min-width:0; }
+
+/* Keep worklist content inside its own cell in fitted and saved-width views. */
+[data-worklist-table] :is(th, td) {
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+[data-worklist-table] :is(th, td):not(.truncate) { white-space: normal; }
+[data-worklist-table] :is(th, td) .flex { min-width: 0; }
+[data-worklist-table] :is([data-column="actions"], [data-worklist-actions]) .flex { flex-wrap: wrap; }
+[data-worklist-table] :is([data-column="actions"], [data-worklist-actions]) :is(a, button) {
+  max-width: 100%;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 @media(max-width:900px) {
   .algt-auth { grid-template-columns:minmax(0, 1fr); }
   .algt-auth-identity { padding:20px 24px; }

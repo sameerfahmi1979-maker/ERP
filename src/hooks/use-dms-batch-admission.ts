@@ -7,11 +7,11 @@ import {useWorkspaceFormOwner} from '@/hooks/use-workspace-form-owner';
 import {useNumberedBatchDraft} from '@/hooks/use-numbered-batch-draft';
 import {batchAdmissionResultSchema,batchMemberUploadResultSchema,batchOriginSchema,batchReceiptSchema,batchRequestSchema,batchRetainedAttemptSchema,canonicalBatchManifest,dmsFileMetadataSchema,verifyBatchReceipt,type BatchCapability,type BatchOrigin,type BatchReceipt,type BatchRequest,type BatchRetainedAttempt} from '@/lib/dms/batch-admission';
 import {batchDraftPreparationResultSchema,batchDraftRecoveryResultSchema,parseBatchDraftPreparation,parseBatchDraftRecovery,type PrepareEnvelope} from '@/lib/dms/numbered-batch-draft';
-import {bootstrapDmsBatchOrigin,createDmsUploadBatch,discoverDmsBatchAdmissions,readDmsUploadBatchDraftRecovery,recoverDmsBatchMemberUpload,verifyDmsBatchUpload,prepareDmsUploadBatchMemberDraft,startAiIntakeAndCreateDraft} from '@/server/actions/dms/batch-intake';
+import {bootstrapDmsBatchOrigin,createDmsUploadBatchForContinuation,discoverDmsBatchAdmissions,readDmsUploadBatchDraftRecovery,recoverDmsBatchMemberUpload,verifyDmsBatchUpload,prepareDmsUploadBatchMemberDraft,startAiIntakeAndCreateDraft} from '@/server/actions/dms/batch-intake';
 import type {SelectedDmsFile} from '@/features/dms/upload/dms-upload-dropzone';
 
 type Item={position:number;name:string;phase:'pending'|'uploading'|'analysis'|'confirmed'|'unconfirmed'|'rejected'|'needs_file'|'processing'|'historical'|'unavailable';message:string};
-type Options={enabled:boolean;context?:{entityType:string;entityId:number}|null;
+type Options={enabled:boolean;context?:{entityType:string;entityId:number}|null;recoveryBatchCode?:string;
  upload:(capability:BatchCapability,body:Blob,mime:string)=>Promise<boolean>;
  onResult:(confirmed:number,total:number,batchCode:string)=>void};
 type View={origin:BatchOrigin|null;attempt:BatchRetainedAttempt|null;files:SelectedDmsFile[];items:Item[];recent:BatchReceipt[];busy:boolean;blocked:boolean;error:string|null;failureId:number};
@@ -23,7 +23,7 @@ const unconfirmed='The outcome is unconfirmed. The original request is retained;
 
 /** Client orchestration only. The server remains authoritative at every step.
  * Store only strict admission DTOs; Files and capabilities never enter F04 JSON. */
-export function useDmsBatchAdmission({enabled,context,upload,onResult}:Options){
+export function useDmsBatchAdmission({enabled,context,recoveryBatchCode,upload,onResult}:Options){
  const store=useWorkspaceDraftStoreContext();
  const ownerId=useWorkspaceFormOwner()?.id??null;
  const readOwner=useReadCacheOwner();
@@ -31,7 +31,7 @@ export function useDmsBatchAdmission({enabled,context,upload,onResult}:Options){
  const contextKey=`${context?.entityType??'inbox'}:${context?.entityId??'all'}`;
  const contextValue=context?{type:context.entityType,id:context.entityId}:null;
  const validContext=!context||(['party','employee','employee_dependent','company','branch','site'].includes(context.entityType)&&Number.isSafeInteger(context.entityId)&&context.entityId>0);
- const key=`draft:tab:${ownerId}:f06-batch-admission:${contextKey}`;
+ const key=`draft:tab:${ownerId}:f06-batch-admission:${contextKey}${recoveryBatchCode?`:recovery:${recoveryBatchCode}`:''}`;
  const epoch=useMemo(()=>({store,ownerId,readOwner,ownerLive,enabled,key}),[store,ownerId,readOwner,ownerLive,enabled,key]);
  type Lease={epoch:typeof epoch;retired:boolean;origin:BatchOrigin|null;attempt:BatchRetainedAttempt|null;witness:string|undefined;fault:boolean;flight:object|null;failed:boolean;failureSequence:number};
  const active=useRef<Lease|null>(null);
@@ -108,12 +108,14 @@ export function useDmsBatchAdmission({enabled,context,upload,onResult}:Options){
   return {receipt,recovery};
  };
  const process=async(run:NonNullable<ReturnType<typeof begin>>,attempt:BatchRetainedAttempt,position?:number)=>{
+  if(attempt.receipt)update(run.lease,{items:attempt.receipt.members.map(m=>({position:m.position,name:m.name,phase:'pending',message:'Checking the original batch before file transfer.'}))});
   const data=await readRecovery(run,attempt);
-  if(!run.valid()||!data)return;
+  if(!run.valid())return;
+  if(!data){if(attempt.receipt)update(run.lease,{items:attempt.receipt.members.map(m=>({position:m.position,name:m.name,phase:'unavailable',message:'Original batch recovery could not be confirmed. Reference: BATCH-RECOVERY. No new transfer or AI request was started.'}))});return;}
   const {receipt,recovery}=data;
   const items:Item[]=receipt.members.map(m=>{
    const previous=position!==undefined&&sameReceipt(view.attempt?.receipt,receipt)?view.items[m.position]:undefined;
-   return previous?.phase==='confirmed'&&previous.position===m.position&&previous.name===m.name?{...previous}:{position:m.position,name:m.name,phase:'pending',message:'Not yet confirmed.'};
+   return previous&&previous.position===m.position&&previous.name===m.name&&(previous.phase==='confirmed'||m.position!==position)?{...previous}:{position:m.position,name:m.name,phase:'pending',message:'Not yet confirmed.'};
   });
   const publish=(p:number,phase:Item['phase'],message:string)=>{items[p]={...items[p],phase,message};update(run.lease,{items:[...items]});};
   update(run.lease,{items});
@@ -137,7 +139,10 @@ export function useDmsBatchAdmission({enabled,context,upload,onResult}:Options){
      const raw=await recoverDmsBatchMemberUpload({request:clone(attempt.request),position:p});
      if(!run.valid())return;
      const plan=batchMemberUploadResultSchema.safeParse(raw);
-     if(!plan.success||plan.data.state!=='ready'||plan.data.position!==p){publish(p,'unavailable','Upload readiness is unavailable for this member. Other members can still recover.');continue;}
+     if(!plan.success||plan.data.state!=='ready'||plan.data.position!==p){
+      const ref=plan.success&&plan.data.state==='unavailable'?plan.data.error.match(/\bBATCH-(?:BINDING|ELIGIBILITY|STORAGE|SIGNING|FINAL-READINESS)\b/)?.[0]:undefined;
+      publish(p,'unavailable',`Upload readiness is unavailable. Reference: ${ref??'BATCH-RESPONSE'}. Other members can still recover.`);continue;
+     }
      const bound=await boundReceipt(plan.data.receipt,attempt.request,run);
      if(!run.valid())return;
      if(!bound||JSON.stringify(bound)!==JSON.stringify(receipt)){publish(p,'unavailable',unavailable);continue;}
@@ -148,16 +153,20 @@ export function useDmsBatchAdmission({enabled,context,upload,onResult}:Options){
       publish(p,'uploading','Uploading the selected file.');
       const ok=await upload(plan.data.object.capability,selected.file.slice(0,selected.file.size,expected.mime),expected.mime);
       if(!run.valid())return;
-      if(!ok){publish(p,'unconfirmed','Upload outcome is unconfirmed. Recover this member before trying again.');continue;}
+     if(!ok){publish(p,'unconfirmed','File transfer was not confirmed. Reference: BATCH-TRANSFER. Recover this member; do not create another upload.');continue;}
      }
      const verification=await verifyDmsBatchUpload({request:clone(attempt.request),position:p});
      if(!run.valid())return;
-     if(verification.state!=='present'){publish(p,'unavailable','The admitted object could not be verified. No analysis was started.');continue;}
+     if(verification.state!=='present'){publish(p,'unavailable','Stored file could not be verified. Reference: BATCH-VERIFY. No AI analysis was started.');continue;}
      publish(p,'analysis','Preparing the governed draft.');
      const rawPreparation=await prepareDmsUploadBatchMemberDraft({request:clone(attempt.request),position:p});
      if(!run.valid())return;
      const parsed=batchDraftPreparationResultSchema.safeParse(rawPreparation);
-     if(!parsed.success||!parsed.data.success){publish(p,parsed.success&&!parsed.data.success&&parsed.data.uncertain?'unconfirmed':'unavailable',parsed.success&&!parsed.data.success&&parsed.data.uncertain?unconfirmed:unavailable);continue;}
+     if(!parsed.success||!parsed.data.success){
+      const code=parsed.success&&!parsed.data.success?parsed.data.code:'response';
+      const message=code==='conflict'?'The original source conflicts with this retained draft.':code==='rejected'?'The draft preparation request was rejected.':code==='unavailable'?'Draft access or readiness is unavailable.':'Draft preparation is unconfirmed; retain this request.';
+      publish(p,parsed.success&&!parsed.data.success&&parsed.data.uncertain?'unconfirmed':'unavailable',`${message} Reference: BATCH-PREPARE-${code.toUpperCase()}.`);continue;
+     }
      const preparedReceipt=await boundReceipt(parsed.data.receipt,attempt.request,run);
      if(!run.valid())return;
      if(!preparedReceipt||JSON.stringify(preparedReceipt)!==JSON.stringify(receipt)){publish(p,'unavailable',unavailable);continue;}
@@ -192,7 +201,7 @@ export function useDmsBatchAdmission({enabled,context,upload,onResult}:Options){
    const request=batchRequestSchema.parse({manifest:{version:1,context:contextValue,files},contract:{operationId:crypto.randomUUID(),revision:null}});
    const attempt:BatchRetainedAttempt={request,origin:run.lease.origin!,uncertain:true};
    persist(run.lease,attempt); // Before the first possible admission dispatch.
-   const raw=await createDmsUploadBatch(clone(request));
+   const raw=await createDmsUploadBatchForContinuation(clone(request));
    if(!run.valid())return;
    const result=batchAdmissionResultSchema.safeParse(raw);
    if(!result.success){update(run.lease,{error:unconfirmed});return;}
@@ -238,7 +247,9 @@ export function useDmsBatchAdmission({enabled,context,upload,onResult}:Options){
    if(run.lease.attempt?.receipt&&!sameReceipt(run.lease.attempt.receipt,receipt))throw Error('Retained receipt differs');
    if(run.lease.attempt&&(run.lease.attempt.request.contract.operationId!==request.contract.operationId||canonicalBatchManifest(run.lease.attempt.request.manifest)!==canonicalBatchManifest(request.manifest)))throw Error('Retained operation exists');
    const attempt={request,origin:run.lease.origin!,uncertain:false,receipt};
-   persist(run.lease,attempt);await readRecovery(run,attempt); // Read only; explicit resume starts work.
+   persist(run.lease,attempt);
+   update(run.lease,{items:receipt.members.map(m=>({position:m.position,name:m.name,phase:'pending',message:'Original file required if not already stored. Reselect the exact original files, then recover this batch.'}))});
+   await readRecovery(run,attempt); // Read only; explicit resume starts work.
   }catch{if(run.valid())update(run.lease,{error:'This admission could not be opened. Keep the currently retained operation.'});}finally{finish(run);}
  };
  const hasOwner=enabled&&!!store&&!!ownerId&&!!readOwner?.identity&&readOwner.isLive()&&readOwner.admits(readOwner.identity);

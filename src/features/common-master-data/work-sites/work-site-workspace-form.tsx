@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -20,6 +22,9 @@ import { CitySelect } from "@/components/erp/geography/city-select";
 import type { WorkSiteRow } from "@/server/actions/common-master-data/work-sites";
 import { createWorkSite, updateWorkSite } from "@/server/actions/common-master-data/work-sites";
 import { masterRecordCode } from "@/lib/master-data/form-code";
+import { canManageWorkSite } from "@/lib/master-data/work-site-permissions";
+import { hasRole } from "@/lib/rbac/scope";
+import { OrganizationAvailability } from "../organization-availability";
 import { DmsEntityDocumentsTab } from "@/features/dms/entity-documents";
 import { ReviewedFormSuggestions } from "@/features/ai/common/field-suggestions/reviewed-form-suggestions";
 
@@ -56,6 +61,13 @@ export function WorkSiteWorkspaceForm({ site, mode, companies = [], authContext 
   const { isDirty, resetDirty } = useFormDirty({ formId: FORM_ID, enabled: !isViewing });
   useEffect(() => { if (activeTab?.id) markDirty(activeTab.id, isDirty); }, [isDirty, activeTab?.id, markDirty]);
   const { getDraftDefault, getDraftNullableId, getDraftBoolean, syncDraft, writeDraftField, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
+  const canShare = hasRole(authContext, "system_admin");
+  const [savedShared, setSavedShared] = useState(site?.available_to_all_organizations === true);
+  const [share, setShare] = useState(() => getDraftDefault("available_to_all_organizations", savedShared ? "all" : "own") === "all");
+  const [ownerCompanyId, setOwnerCompanyId] = useState(() => String(getDraftDefault("owner_company_id", site?.owner_company_id ?? "")));
+  const [savedCompanyId, setSavedCompanyId] = useState(site?.owner_company_id ?? null);
+  const publishAvailability = canShare && share && !savedShared;
+  const lockOwner = savedCompanyId !== null && (savedShared || publishAvailability);
   const [countryId, setCountryId] = useState(() => getDraftNullableId("country_id", site?.country_id));
   const [emirateId, setEmirateId] = useState(() => getDraftNullableId("emirate_id", site?.emirate_id));
   const [cityId, setCityId] = useState(() => getDraftNullableId("city_id", site?.city_id));
@@ -73,8 +85,8 @@ export function WorkSiteWorkspaceForm({ site, mode, companies = [], authContext 
       const form = document.getElementById(FORM_ID) as HTMLFormElement;
       const fd = new FormData(form);
 
-      const ownerCompanyIdRaw = parseInt(fd.get("owner_company_id") as string, 10);
-      if (isNaN(ownerCompanyIdRaw) || ownerCompanyIdRaw <= 0) {
+      const ownerCompanyIdRaw = lockOwner ? savedCompanyId : Number(fd.get("owner_company_id"));
+      if (ownerCompanyIdRaw === null || !Number.isSafeInteger(ownerCompanyIdRaw) || ownerCompanyIdRaw <= 0) {
         toast.error("Please select an organization");
         return false;
       }
@@ -84,6 +96,7 @@ export function WorkSiteWorkspaceForm({ site, mode, companies = [], authContext 
         site_name: fd.get("site_name") as string,
         site_type: fd.get("site_type") as "office" | "yard" | "workshop" | "camp" | "warehouse" | "project_site" | "client_site" | "weighbridge" | "fuel_point" | "storage_area" | "other",
         owner_company_id: ownerCompanyIdRaw,
+        ...(publishAvailability ? {available_to_all_organizations:true} : {}),
         country_id: countryId,
         emirate_id: emirateId,
         city_id: cityId,
@@ -119,6 +132,8 @@ export function WorkSiteWorkspaceForm({ site, mode, companies = [], authContext 
         if (!existingId && result.data && typeof (result.data as { id?: number }).id === "number") {
           setCreatedId((result.data as { id: number }).id);
         }
+        setSavedCompanyId(ownerCompanyIdRaw);
+        if (publishAvailability) setSavedShared(true);
         clearDraft();
         resetDirty();
         if (activeTab?.id) markDirty(activeTab.id, false);
@@ -143,6 +158,9 @@ export function WorkSiteWorkspaceForm({ site, mode, companies = [], authContext 
       title={isViewing ? "View Work Site" : isEditing ? "Edit Work Site" : "New Work Site"}
       subtitle={site ? `${site.site_name} (${site.site_code})` : "Create a new operational work site"}
       recordCode={site?.site_code}
+      headerActions={isViewing && site && canManageWorkSite(authContext, site) ? (
+        <Link className={buttonVariants({ size: "sm" })} href={`/admin/common-master-data/work-sites/record/${site.id}?mode=edit`}>Edit</Link>
+      ) : undefined}
       sections={sections}
       activeSection={activeSection}
       onSectionChange={setActiveSection}
@@ -158,11 +176,19 @@ export function WorkSiteWorkspaceForm({ site, mode, companies = [], authContext 
           <div className="grid grid-cols-12 gap-4">
             <div className="col-span-6 space-y-1.5">
               <RequiredLabel htmlFor="owner_company_id">Organization</RequiredLabel>
-              <select id="owner_company_id" name="owner_company_id" defaultValue={getDraftDefault("owner_company_id", site?.owner_company_id ?? "")} required disabled={disabled} className="flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40">
+              <select id="owner_company_id" name="owner_company_id" value={lockOwner ? String(savedCompanyId) : ownerCompanyId}
+                onChange={event => { setOwnerCompanyId(event.target.value); writeDraftField("owner_company_id", event.target.value); }}
+                required disabled={disabled || lockOwner} className="flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40">
                 <option value="">Select organization...</option>
                 {companies.map(c => <option key={c.id} value={c.id}>{c.legal_name_en} ({c.company_code})</option>)}
+                {site?.owner_company_id != null && !companies.some(c => c.id === site.owner_company_id) && (
+                  <option value={site.owner_company_id}>{site.owner_company?.legal_name_en ?? "Current organization"} (retained)</option>
+                )}
               </select>
             </div>
+            {(canShare || savedShared) && <OrganizationAvailability value={savedShared || share} onChange={value => {
+              setShare(value); writeDraftField("available_to_all_organizations", value ? "all" : "own");
+            }} savedShared={savedShared} editable={canShare && !disabled} />}
             <div className="col-span-6 space-y-1.5">
               <RequiredLabel htmlFor="site_code">Site Code</RequiredLabel>
               <Input id="site_code" name="site_code" className="uppercase" defaultValue={getDraftDefault("site_code", site?.site_code ?? "")} disabled={disabled || isEditing} required placeholder="e.g., SITE-001" />

@@ -1,5 +1,10 @@
 "use client";
+
+import { WorklistColgroup, WorklistFitControl, WorklistScrollRegion } from "@/components/erp/table/worklist-fit-control";
 import {DmsDocumentComparison} from "./dms-document-comparison";
+import {Checkbox} from '@/components/ui/checkbox';
+import {useDmsSelectedDownload} from '@/hooks/use-dms-selected-download';
+import {getSelectedDmsDownloadFiles} from '@/server/actions/dms/selected-download';
 
 import { useEffect, useMemo, useState, useTransition,useRef } from "react";
 
@@ -62,7 +67,11 @@ const DEFAULT_DOC_COL_WIDTHS: Record<DocColKey, number> = {
   tags: 100,
 };
 
-const DOC_COLUMNS: ListColumn[] = Object.entries(DEFAULT_DOC_COL_WIDTHS).map(([id,width])=>({id,width,label:({docNo:"Document number",title:"Title",type:"Type",status:"Status",expiry:"Expiry",tags:"Tags"} as Record<string,string>)[id],visible:true,required:id==="docNo" || id==="title"}));
+const DOC_COLUMNS: ListColumn[] = [
+  { id: "selection", width: 44, label: "Download selection", visible: true, required: true, resizable: false, position: "start" },
+  ...Object.entries(DEFAULT_DOC_COL_WIDTHS).map(([id,width])=>({id,width,label:({docNo:"Document number",title:"Title",type:"Type",status:"Status",expiry:"Expiry",tags:"Tags"} as Record<string,string>)[id],visible:true,required:id==="docNo" || id==="title"})),
+];
+const DOC_COLUMNS_WITHOUT_DOWNLOAD=DOC_COLUMNS.filter(c=>c.id!=='selection');
 
 type SearchMode = "auto" | "quick" | "safe" | "content" | "ai" | "semantic";
 
@@ -101,6 +110,7 @@ interface DmsDocumentsTableProps {
   canCreate?: boolean;
   canEdit?: boolean;
   canArchive?: boolean;
+  canDownload?: boolean;
   /** Only system_admin users — hard delete is permanently irreversible */
   canHardDelete?: boolean;
 }
@@ -119,7 +129,10 @@ function DmsDocumentsTableSession({
   canCreate = false,
   canEdit = false,
   canArchive = false,
+  canDownload = false,
 }: DmsDocumentsTableProps) {
+  const zip=useDmsSelectedDownload();
+  const [downloadSelection,setDownloadSelection]=useState<{key:string;ids:number[]}>({key:'',ids:[]});
 
   const { openTab } = useWorkspace();
   const [isPending, startTransition] = useTransition();
@@ -240,8 +253,11 @@ function DmsDocumentsTableSession({
   useEffect(()=>{if(!uiReadDocuments.isBusy&&!uiReadDocuments.isError&&uiReadDocuments.data&&page>totalPages)setPageRaw(totalPages);},[uiReadDocuments.isBusy,uiReadDocuments.isError,uiReadDocuments.data,page,totalPages,setPageRaw]);
   const table={rows:uiReadDocuments.data?.rows??[],total,totalPages,page,pageSize,sortKey,sortDir,setPage:(value:number)=>setPageRaw(Math.max(1,Math.min(value,totalPages))),setPageSize:(value:number)=>{setPageSizeRaw(value);setPageRaw(1);},toggleSort:(field:string)=>{if(sortKey===field)setSortDir(dir=>dir==="asc"?"desc":"asc");else{setSortKey(field);setSortDir("asc");}setPageRaw(1);}};
 
-  const columnState = useListColumns("dms-documents", DOC_COLUMNS);
-  const colWidths = Object.fromEntries(columnState.columns.map(column=>[column.id,column.width])) as Record<DocColKey,number>;
+  const selectionKey=JSON.stringify([page,pageSize,sortKey,sortDir,filters,searchMode]);
+  const selectedDownloadIds=downloadSelection.key===selectionKey?table.rows.filter(doc=>downloadSelection.ids.includes(doc.id)).map(doc=>doc.id):[];
+  const columnState = useListColumns("dms-documents", canDownload?DOC_COLUMNS:DOC_COLUMNS_WITHOUT_DOWNLOAD, "dms-documents", { trailingWidth: 104 });
+  const { viewport } = columnState;
+  const colWidths = Object.fromEntries(viewport.columns.map(column=>[column.id,column.width])) as Record<DocColKey,number>;
 
   function openDocument(id: number) {
     const mode = canEdit ? "edit" : "view";
@@ -396,7 +412,8 @@ function DmsDocumentsTableSession({
         )}
 
         {comparisonOpen&&<DmsDocumentComparison sources={comparisonIds.map(documentId=>({documentId}))} onClose={()=>setComparisonOpen(false)}/>}
-        <div className="ml-auto flex items-center gap-2 shrink-0">
+        <div className="ml-auto flex flex-wrap items-center gap-2 max-w-full">
+          {canDownload&&searchMode!=='ai'&&searchMode!=='semantic'&&<Button type="button" size="sm" variant="outline" disabled={!selectedDownloadIds.length||uiReadDocuments.isBusy||zip.busy} onClick={()=>void zip.download(async()=>{const result=await getSelectedDmsDownloadFiles(selectedDownloadIds);if(!result.success)throw Error(result.error);return result.files;})}>Download selected ZIP ({selectedDownloadIds.length})</Button>}
           {comparisonIds.length>0&&<Button type="button" variant="outline" size="sm" disabled={comparisonIds.length!==2} onClick={()=>setComparisonOpen(true)}>Compare selected ({comparisonIds.length}/2)</Button>}
           <Button variant="outline" size="sm" aria-label="Refresh documents" onClick={() => {void uiReadDocuments.refetch();}} disabled={isPending||uiReadDocuments.isBusy}>
             <RefreshCw className="h-3.5 w-3.5" />
@@ -411,7 +428,8 @@ function DmsDocumentsTableSession({
       </div>
 
       {searchMode !== "ai" && searchMode !== "semantic" && <div className="flex flex-wrap gap-2 items-center">
-        <EditColumns columns={columnState.columns} defaults={DOC_COLUMNS} onApply={columnState.setColumns} />
+        <EditColumns columns={columnState.columns} defaults={columnState.defaults} onApply={columnState.setColumns} />
+        <WorklistFitControl viewport={viewport} />
         <EditFilters scopeLabel="Filters apply to permitted document records before pagination. Retained filters also constrain AI and semantic results."
           definitions={[
             {id:"type",label:"Type",type:"select",options:typeOptions.map(o=>({value:String(o.value),label:o.label}))},
@@ -692,18 +710,21 @@ function DmsDocumentsTableSession({
       )}
 
       {/* Table */}
+      {canDownload&&<div className="text-xs text-muted-foreground">Select documents on this page to download their current originals and attachments. ZIP limit: 25 documents, 50 files, 100 MB.{zip.progress&&<p role="status">{zip.progress}</p>}{zip.error&&<p role="alert" className="text-destructive">{zip.error}</p>}{zip.busy&&<Button type="button" size="sm" variant="ghost" onClick={zip.cancel}>Cancel download</Button>}</div>}
       {searchMode !== "ai" && searchMode !== "semantic" && (
-      <div role="region" aria-label="Scrollable documents" tabIndex={0} aria-busy={uiReadDocuments.isBusy} inert={uiReadDocuments.isBusy||undefined} className="rounded-md border border-border overflow-x-auto">
-        <table aria-label="Documents" className="w-full text-sm table-fixed" style={{minWidth:columnState.visible.reduce((sum,col)=>sum+col.width,104)}}>
+      <WorklistScrollRegion attach={viewport.attachViewport} aria-label="Scrollable documents" aria-busy={uiReadDocuments.isBusy} inert={uiReadDocuments.isBusy||undefined} className="rounded-md border border-border">
+        <table aria-label="Documents" className="w-full text-sm table-fixed" {...viewport.tableProps}>
+          <WorklistColgroup viewport={viewport} />
           <thead>
             <ConfiguredRow columns={columnState.columns} className="border-b border-border bg-muted/30">
+              {canDownload&&<th data-column="selection" className="px-3 py-2"><Checkbox aria-label="Select this page for ZIP" disabled={zip.busy||uiReadDocuments.isBusy} checked={table.rows.length>0&&selectedDownloadIds.length===table.rows.length} onCheckedChange={checked=>setDownloadSelection({key:selectionKey,ids:checked?table.rows.map(doc=>doc.id):[]})}/></th>}
               <SortColHeader data-column="docNo" field="document_no" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.docNo}>Doc No</SortColHeader>
               <SortColHeader data-column="title" field="title" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.title}>Title</SortColHeader>
               <SortColHeader data-column="type" field="document_type" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.type}>Type</SortColHeader>
               <SortColHeader data-column="status" field="status" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.status}>Status</SortColHeader>
               <SortColHeader data-column="expiry" field="expiry_date" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.expiry}>Expiry</SortColHeader>
               <SortColHeader data-column="tags" field="tags" sortKey={table.sortKey} sortDir={table.sortDir} onSort={table.toggleSort} className="px-3 py-2 text-muted-foreground font-medium" width={colWidths.tags}>Tags</SortColHeader>
-              <th className="px-3 py-2" style={{ width: 104 }} />
+              <th className="px-3 py-2 text-right font-medium">Actions</th>
             </ConfiguredRow>
           </thead>
           <tbody>
@@ -724,11 +745,12 @@ function DmsDocumentsTableSession({
             ) : (
               table.rows.map((doc) => (
                 <ConfiguredRow columns={columnState.columns} key={doc.id} className="border-b border-border hover:bg-muted/20 transition-colors">
+                  {canDownload&&<td data-column="selection" className="px-3 py-2"><Checkbox aria-label={`Select ${doc.document_no} for ZIP`} disabled={zip.busy} checked={selectedDownloadIds.includes(doc.id)} onCheckedChange={checked=>setDownloadSelection({key:selectionKey,ids:checked?[...selectedDownloadIds,doc.id]:selectedDownloadIds.filter(id=>id!==doc.id)})}/></td>}
                   <td data-column="docNo" className="px-3 py-2 font-mono font-medium text-primary overflow-hidden">
                     <button
                       type="button"
                       onClick={() => openDocument(doc.id)}
-                      className="hover:underline truncate block max-w-full"
+                      className="hover:underline block max-w-full"
                     >
                       {doc.document_no}
                     </button>
@@ -796,7 +818,7 @@ function DmsDocumentsTableSession({
                       <span className="text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-2">
+                  <td data-worklist-actions className="px-3 py-2">
                     <div className="flex items-center gap-1 justify-end">
                       <input type="checkbox" aria-label={`Select ${doc.document_no} for comparison`} checked={comparisonIds.includes(doc.id)} disabled={!comparisonIds.includes(doc.id)&&comparisonIds.length>=2} onChange={e=>setComparisonIds(ids=>e.target.checked?[...ids,doc.id]:ids.filter(id=>id!==doc.id))}/>
                       <Button aria-label="Open"
@@ -839,7 +861,7 @@ function DmsDocumentsTableSession({
           onPageSize={table.setPageSize}
           total={table.total}
         />
-      </div>
+      </WorklistScrollRegion>
       )}
 
       {searchMode !== "ai" && searchMode !== "semantic" && (

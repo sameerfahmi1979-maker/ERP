@@ -37,6 +37,18 @@ it('preserves unchecked Active on create and switches subsequent Save to edit',a
  input('notes','Second save');await save();expect(mock.create).toHaveBeenCalledOnce();expect(mock.update.mock.calls[0][0].id).toBe(71);expect(mock.update.mock.calls[0][1].revision).toBe('1');
 });
 it('edit keeps immutable code and false flags instead of serializing disabled control as null',async()=>{mount('edit');input('notes','Note only');await save();expect(mock.update.mock.calls[0][0]).toMatchObject({calendar_code:'F06',is_active:false,has_ramadan_timing:false});expect(mock.update.mock.calls[0][1].revision).toBe('8');});
+it('lets the system administrator share an existing calendar with all organizations',async()=>{
+ const administrator={profile:{id:1},isAccountActive:true,permissionCodes:[],roleCodes:['system_admin'],roleAssignments:[{roleId:1,roleCode:'system_admin',ownerCompanyId:null,branchId:null,permissionCodes:[]}]} as unknown as AuthContext;
+ mock.update.mockResolvedValueOnce({success:true,data:{id:71,revision:'9',replayed:false,changed:true,owner_company_id:null,calendar_id:null}});
+ mount('edit',administrator);
+ const organization=screen.getByLabelText('Organization') as HTMLSelectElement;
+ expect(organization.disabled).toBe(false);
+ input('owner_company_id','');
+ expect(await save()).toBe(true);
+ expect(mock.update.mock.calls[0][0]).toMatchObject({id:71,owner_company_id:null});
+ expect(mock.update.mock.calls[0][1].revision).toBe('8');
+ expect(organization.disabled).toBe(true);
+});
 it('uncertain create replay retains operation ID and input',async()=>{mock.create.mockResolvedValueOnce({success:false,uncertain:true,error:'Unconfirmed'});mount();fill();await save();await save();expect(mock.create).toHaveBeenCalledTimes(2);expect(mock.create.mock.calls[0]).toEqual(mock.create.mock.calls[1]);});
 it('different values cannot replace an unconfirmed request',async()=>{mock.create.mockResolvedValue({success:false,uncertain:true});mount();fill();await save();expect((screen.getByRole('textbox',{name:'Notes'}) as HTMLTextAreaElement).disabled).toBe(true);input('notes','Different');await save();expect(mock.create).toHaveBeenCalledOnce();expect(mock.error).toHaveBeenLastCalledWith(expect.stringContaining('Retry its unchanged values'));});
 it('simultaneous save admission makes only one action request',async()=>{let resolve!:(r:unknown)=>void;mock.create.mockImplementation(()=>new Promise(r=>{resolve=r;}));mount();fill();await act(async()=>{const a=mock.shell!.onSave!();const b=mock.shell!.onSave!();resolve({success:true,data:{id:71,revision:'1',replayed:false}});await Promise.all([a,b]);});expect(mock.create).toHaveBeenCalledOnce();});

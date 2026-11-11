@@ -1,0 +1,57 @@
+-- Synthetic fixture is supplied by the disconnected rehearsal runner.
+SELECT set_config('test.open',public.dms_saved_intake_review('open','{"documentId":1001,"fileId":1001}')::text,false);
+SELECT pg_temp.ok(current_setting('test.open')::jsonb->'values'->>'title'='SYNTHETIC accepted title','open full intake reads the existing document');
+SELECT set_config('test.full',jsonb_build_object('documentId',1001,'fileId',1001,'jobId',current_setting('test.job')::bigint,'requestId','00000000-0000-4000-8000-000000006001','snapshot',current_setting('test.snapshot'),'schemaHash',current_setting('test.open')::jsonb->>'schemaHash','confirmed',true,'expectedRevision',0,
+ 'values',(current_setting('test.open')::jsonb->'values')||jsonb_build_object('title','SYNTHETIC full reviewed title','standardFileName','SYNTHETIC-renamed.pdf','description','Full reviewed description','metadataValues',jsonb_build_object('1001',jsonb_build_object('fieldType','text','rawValue','FULL-NEW'))),'links','[]'::jsonb)::text,false);
+SELECT pg_temp.error($q$SELECT public.dms_saved_intake_review('apply',current_setting('test.full')::jsonb||'{"confirmed":false}')$q$,'22023','confirmation required');
+SELECT pg_temp.error($q$SELECT public.dms_saved_intake_review('apply',jsonb_set(current_setting('test.full')::jsonb,'{values,standardFileName}','"wrong.exe"'))$q$,'22023','cannot change original extension');
+SELECT pg_temp.error($q$SELECT public.dms_saved_intake_review('apply',jsonb_set(current_setting('test.full')::jsonb,'{values,standardFileName}','"Reviewed_certificate"'))$q$,'22023','extensionless fresh-upload filename cannot be used for a saved document');
+SELECT pg_temp.error($q$SELECT public.dms_saved_intake_review('apply',jsonb_set(current_setting('test.full')::jsonb,'{values,metadataValues,1001,fieldType}','"number"'))$q$,'22023','typed metadata mismatch rolls back');
+SELECT pg_temp.ok((SELECT title FROM public.dms_documents WHERE id=1001)='SYNTHETIC accepted title','failed full review rolls back header');
+SELECT pg_temp.ok((SELECT file_name FROM public.dms_document_files WHERE id=1001)='SYNTHETIC-one.pdf','failed review retains source filename');
+
+SELECT pg_temp.ok(jsonb_array_length(public.dms_saved_intake_review('schema','{"documentId":1001,"documentTypeId":1001}')->'fields')=1,'review binds actual type metadata definitions');
+SELECT pg_temp.error($q$SELECT public.dms_saved_intake_review('apply',current_setting('test.full')::jsonb||'{"schemaHash":"changed"}')$q$,'PT409','stale schema prevents save');
+SELECT pg_temp.error($q$SELECT public.dms_saved_intake_review('apply',current_setting('test.full')::jsonb||'{"fileId":1002}')$q$,'PT409','cannot swap selected stored original');
+SELECT pg_temp.error($q$SELECT public.dms_saved_intake_review('apply',current_setting('test.full')::jsonb||'{"snapshot":"changed"}')$q$,'PT409','stale source prevents save');
+SELECT pg_temp.error($q$SELECT public.dms_saved_intake_review('apply',jsonb_set(current_setting('test.full')::jsonb,'{values,owningBranchId}','1002'))$q$,'22023','branch must belong to selected company');
+SELECT pg_temp.error($q$SELECT public.dms_saved_intake_review('apply',jsonb_set(current_setting('test.full')::jsonb,'{values,tagIds}','[999999]'))$q$,'22023','unknown tag rejected');
+SELECT pg_temp.error($q$SELECT public.dms_saved_intake_review('apply',jsonb_set(current_setting('test.full')::jsonb,'{values,expiryDate}','"2020-01-01"'))$q$,'22023','invalid date order rejected');
+SELECT pg_temp.error($q$SELECT public.dms_saved_intake_review('apply',jsonb_set(current_setting('test.full')::jsonb,'{links}','[{"entityType":"employee","entityId":999999,"entityName":"unknown"}]'))$q$,'42501','unauthorized or missing employee link rejected');
+SELECT pg_temp.error($q$SELECT public.dms_saved_intake_review('apply',jsonb_set(current_setting('test.full')::jsonb,'{values,metadataValues}','{"999999":{"fieldType":"text","rawValue":"bad"}}'))$q$,'22023','foreign metadata rejected');
+SELECT set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000001002","role":"authenticated","session_id":"00000000-0000-4000-8000-000000002002"}',false);
+SELECT pg_temp.error($q$SELECT public.dms_saved_intake_review('apply',current_setting('test.full')::jsonb)$q$,'42501','even other admin cannot adopt another users review');
+SELECT set_config('request.jwt.claims','{"sub":"00000000-0000-4000-8000-000000001001","role":"authenticated","session_id":"00000000-0000-4000-8000-000000002001"}',false);
+SAVEPOINT altered_source;
+RESET ROLE;
+UPDATE public.dms_documents SET title='Concurrent edit' WHERE id=1001;
+SET ROLE authenticated;
+SELECT pg_temp.error($q$SELECT public.dms_saved_intake_review('apply',current_setting('test.full')::jsonb)$q$,'PT409','concurrent header edit preserved');
+ROLLBACK TO SAVEPOINT altered_source;
+SET ROLE authenticated;
+
+RESET ROLE;
+UPDATE erp_private.f07_job_claims SET preparation_context=jsonb_set(preparation_context,'{mode}','"reread_files"') WHERE job_id=current_setting('test.job')::bigint;
+SET ROLE authenticated;
+SELECT pg_temp.error($q$SELECT public.dms_saved_intake_review('apply',current_setting('test.full')::jsonb)$q$,'PT409','reread cannot apply without original OCR receipt');
+RESET ROLE;
+UPDATE erp_private.f07_job_claims SET preparation_stages=preparation_stages||jsonb_build_object('ocr:1001',jsonb_build_object('state','completed','value',jsonb_build_object('sha256',repeat('a',64),'text','SYNTHETIC reread retained original','provider','synthetic','model','isolated'))) WHERE job_id=current_setting('test.job')::bigint;
+SET ROLE authenticated;
+SELECT pg_temp.ok(public.dms_saved_intake_review('draft',current_setting('test.full')::jsonb)->>'state'='draft_saved','full draft saved without applying');
+SELECT pg_temp.ok(public.dms_saved_intake_review('draft',current_setting('test.full')::jsonb)->>'replayed'='true','draft response loss replays receipt');
+SELECT pg_temp.ok(public.dms_saved_intake_review('open','{"documentId":1001,"fileId":1001}')->'draft'->'payload'->'values'->>'title'='SYNTHETIC full reviewed title','reload retains full editable draft');
+SELECT pg_temp.error($q$SELECT public.dms_saved_intake_review('apply',current_setting('test.full')::jsonb||'{"requestId":"00000000-0000-4000-8000-000000006002"}')$q$,'PT409','stale draft revision rejected');
+SELECT set_config('test.full',(current_setting('test.full')::jsonb||'{"requestId":"00000000-0000-4000-8000-000000006002","expectedRevision":1}')::text,false);
+SELECT pg_temp.ok(public.dms_saved_intake_review('apply',current_setting('test.full')::jsonb)->>'state'='applied','full review updates existing document');
+SELECT pg_temp.ok(public.dms_saved_intake_review('apply',current_setting('test.full')::jsonb)->>'replayed'='true','lost commit response recovers exact receipt');
+SELECT pg_temp.error($q$SELECT public.dms_saved_intake_review('apply',jsonb_set(current_setting('test.full')::jsonb,'{values,title}','"changed payload"'))$q$,'PT409','retained operation cannot change payload');
+SELECT pg_temp.ok((SELECT title='SYNTHETIC full reviewed title' AND description='Full reviewed description' AND document_no='SYN-DOC-1001' AND current_version_id=1001 AND status='draft' FROM public.dms_documents WHERE id=1001),'header updates while identity lifecycle and version remain');
+SELECT pg_temp.ok((SELECT value_text='FULL-NEW' FROM public.dms_document_metadata_values WHERE document_id=1001 AND definition_id=1001 AND deleted_at IS NULL),'full metadata saved');
+SELECT pg_temp.ok((SELECT file_name='SYNTHETIC-renamed.pdf' AND storage_path='synthetic/one.pdf' AND sha256_hash=repeat('a',64) AND version_id=1001 AND file_size_bytes=10 FROM public.dms_document_files WHERE id=1001),'display filename changes without changing original storage or bytes');
+SELECT pg_temp.ok((SELECT count(*)=3 FROM public.dms_documents),'no duplicate document');
+SELECT pg_temp.ok((SELECT count(*)=3 FROM public.dms_document_files),'no duplicate source file');
+SELECT pg_temp.ok((SELECT count(*)=1 FROM public.dms_document_events WHERE document_id=1001 AND description='Full saved-file intake reviewed and updated'),'exactly one success history event');
+RESET ROLE;
+SELECT pg_temp.ok((SELECT ocr_text='SYNTHETIC reread retained original' FROM public.dms_document_files WHERE id=1001),'selected original OCR refresh succeeds without nonexistent updated_at column');
+SELECT 'FULL_INTAKE_NATIVE_PASS assertions='||current_setting('test.assertions');
+ROLLBACK;

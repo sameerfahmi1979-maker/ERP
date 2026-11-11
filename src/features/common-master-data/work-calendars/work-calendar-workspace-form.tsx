@@ -4,16 +4,18 @@ import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Calendar, Clock, PlusCircle, Pencil, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {AlertDialog,AlertDialogAction,AlertDialogCancel,AlertDialogContent,AlertDialogDescription,AlertDialogFooter,AlertDialogHeader,AlertDialogTitle} from "@/components/ui/alert-dialog";
 
 import type { AuthContext } from "@/lib/rbac/check";
+import { hasRole } from "@/lib/rbac/scope";
 import { useWorkspaceFormNavigation as useWorkspace } from "@/hooks/use-workspace-form-navigation";
 import { useWorkspaceFormSection } from "@/hooks/use-workspace-form-section";
 import { useWorkspaceControlledDraft } from "@/hooks/use-workspace-controlled-draft";
@@ -58,6 +60,7 @@ function CalendarFormSession({ calendar, mode, authContext, companies = [] }: Pr
   const recordId=useRef(saveSession.id);
   const immutableCode=useRef(calendar?.calendar_code??null);
   const [savedId,setSavedId]=useState(saveSession.id);
+  const [savedCompanyId, setSavedCompanyId] = useState(calendar?.owner_company_id ?? null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveUnconfirmed,setSaveUnconfirmed]=useState(false);
   const sections = [
@@ -81,6 +84,7 @@ function CalendarFormSession({ calendar, mode, authContext, companies = [] }: Pr
   const removeFlight = useRef(false);
   const removeAttempts=useRef(new Map<number,{revision:string;attempt:ReturnType<typeof createWorkspaceSaveAttempt>}>());
   const isEditing = savedId !== null;
+  const canShareExistingCalendar = isEditing && savedCompanyId !== null && hasRole(authContext, "system_admin");
   const isViewing = mode === "view"||!canOpenCalendarEditor(authContext)||(!!calendar&&!canManageCalendar(authContext,calendar.owner_company_id));
   const disabled = isViewing||isSubmitting||saveUnconfirmed;
   const calendarId = savedId ?? 0;
@@ -127,6 +131,11 @@ function CalendarFormSession({ calendar, mode, authContext, companies = [] }: Pr
         toast.error('You do not have permission to manage calendars for this organization.');return false;
       }
       const wasNew=recordId.current===null;
+      if (!wasNew && (parsed.data.owner_company_id ?? null) !== savedCompanyId &&
+          (!canShareExistingCalendar || parsed.data.owner_company_id !== null)) {
+        reportWorkspaceFieldErrors(element, { owner_company_id: "Keep the current organization or share the calendar with all organizations." });
+        return false;
+      }
       const contract=saveSession.begin(parsed.data);dispatched=true;
       const result=recordId.current!==null
         ?await updateWorkCalendar({...parsed.data,id:recordId.current},contract)
@@ -138,7 +147,7 @@ function CalendarFormSession({ calendar, mode, authContext, companies = [] }: Pr
           setSaveUnconfirmed(true);toast.error('Save unconfirmed. Retry the same values to recover its result.');return false;
         }
         const saved=receipt.data;
-        saveSession.accept(saved);recordId.current=saved.id;immutableCode.current=parsed.data.calendar_code;setSavedId(saved.id);setSaveUnconfirmed(false);
+        saveSession.accept(saved);recordId.current=saved.id;immutableCode.current=parsed.data.calendar_code;setSavedId(saved.id);setSavedCompanyId(saved.owner_company_id);setSaveUnconfirmed(false);
         const unchanged=acceptSaved(submitted);
         const route=`/admin/common-master-data/work-calendars/record/${saved.id}?mode=edit`;
         try{toast.success(saved.changed===false?'No changes to save':wasNew?'Calendar created':'Calendar updated');}catch{/* Notification failure cannot revoke the acknowledged save. */}
@@ -251,10 +260,9 @@ function CalendarFormSession({ calendar, mode, authContext, companies = [] }: Pr
       title={isViewing ? "View Work Calendar" : isEditing ? "Edit Work Calendar" : "New Work Calendar"}
       subtitle={calendar ? `${calendar.calendar_name} (${calendar.calendar_code})` : "Create a new work calendar"}
       recordCode={calendar?.calendar_code}
-      headerActions={mode==='view'&&calendar&&canManageCalendar(authContext,calendar.owner_company_id)?<Button type="button" size="sm" onClick={()=>{
-        const route=`/admin/common-master-data/work-calendars/record/${calendar.id}?mode=edit`;
-        if(activeTab)updateTabRoute(activeTab.id,route,calendar.id,'edit');router.replace(route);
-      }}>Edit calendar</Button>:undefined}
+      headerActions={mode === "view" && calendar && canManageCalendar(authContext, calendar.owner_company_id) ? (
+        <Link className={buttonVariants({ size: "sm" })} href={`/admin/common-master-data/work-calendars/record/${calendar.id}?mode=edit`}>Edit</Link>
+      ) : undefined}
       sections={sections}
       activeSection={activeSection}
       onSectionChange={setActiveSection}
@@ -288,9 +296,9 @@ function CalendarFormSession({ calendar, mode, authContext, companies = [] }: Pr
             </div>
             <div className="col-span-12 sm:col-span-6 space-y-1.5">
               <Label htmlFor="owner_company_id" className="text-muted-foreground text-xs">Organization</Label>
-              <select id="owner_company_id" name="owner_company_id" value={form.owner_company_id} onChange={e=>field('owner_company_id',e.target.value)} disabled={disabled||isEditing||isSubmitting} className="flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40">
+              <select id="owner_company_id" name="owner_company_id" value={form.owner_company_id} onChange={e=>field('owner_company_id',e.target.value)} disabled={disabled || (isEditing && !canShareExistingCalendar)} className="flex h-9 w-full rounded-md border border-input bg-background text-foreground px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40">
                 <option value="" disabled={!canManageCalendar(authContext,null)}>All Organizations</option>
-                {companies.map(c => <option key={c.id} value={c.id} disabled={!canManageCalendar(authContext,c.id)}>{c.legal_name_en}</option>)}
+                {companies.map(c => <option key={c.id} value={c.id} disabled={isEditing ? c.id !== savedCompanyId : !canManageCalendar(authContext,c.id)}>{c.legal_name_en}</option>)}
                 {calendar?.owner_company_id&&!companies.some(c=>c.id===calendar.owner_company_id)&&<option value={calendar.owner_company_id} disabled>{calendar.owner_company?.legal_name_en??'Unavailable organization'} (retained selection)</option>}
               </select>
             </div>

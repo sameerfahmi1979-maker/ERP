@@ -61,12 +61,13 @@ function DepartmentsListInstance({departments:initial,canManage,authContext}:Pro
   {id:'company',header:'Company',size:240,accessorFn:r=>r.owner_company?.legal_name_en??'Unavailable company'},
   {id:'branch',header:'Branch',size:200,accessorFn:r=>r.branch_id===null?'All branches':r.branch?.branch_name_en??'Unavailable branch'},
   {id:'status',header:'Status',size:130,accessorFn:r=>r.is_active?'Active':'Inactive',cell:({row})=><Badge variant={row.original.is_active?'outline':'secondary'}>{row.original.is_active?'Active':'Inactive'}</Badge>},
-  {id:'actions',header:'Actions',size:100,enableSorting:false,enableHiding:false,cell:({row})=>canManage&&canManageDepartment(authContext,row.original.owner_company_id,row.original.branch_id)?<DropdownMenu>
+  {id:'actions',header:'Actions',size:120,enableSorting:false,enableHiding:false,cell:({row})=>canManage&&canManageDepartment(authContext,row.original.owner_company_id,row.original.branch_id)?<div className="flex items-center gap-2">
+   {saving||target!==null||restoreOpen?<span className="text-muted-foreground">Edit</span>:<Link className="text-primary underline underline-offset-2" href={route(row.original)+'?mode=edit'} aria-label={'Edit '+row.original.department_name_en}>Edit</Link>}
+   <DropdownMenu>
    <DropdownMenuTrigger disabled={saving||target!==null||restoreOpen} aria-label={'Actions for '+row.original.department_code} className="h-11 w-11 sm:h-8 sm:w-8 inline-flex items-center justify-center rounded-md hover:bg-muted"><MoreHorizontal className="h-4 w-4"/></DropdownMenuTrigger>
-   <DropdownMenuContent align="end"><DropdownMenuItem disabled={saving||target!==null||restoreOpen} onClick={()=>router.push(route(row.original)+'?mode=edit')}>Edit</DropdownMenuItem>
-    <DropdownMenuSeparator/><DropdownMenuItem disabled={saving||target!==null||restoreOpen} onClick={()=>start(row.original,'status')}>{row.original.is_active?'Deactivate':'Activate'}</DropdownMenuItem>
+   <DropdownMenuContent align="end"><DropdownMenuItem disabled={saving||target!==null||restoreOpen} onClick={()=>start(row.original,'status')}>{row.original.is_active?'Deactivate':'Activate'}</DropdownMenuItem>
     <DropdownMenuSeparator/><DropdownMenuItem disabled={saving||target!==null||restoreOpen} onClick={()=>start(row.original,'archive')}>Archive</DropdownMenuItem>
-   </DropdownMenuContent></DropdownMenu>:<Link href={route(row.original)} aria-label={'Open '+row.original.department_code}>Open</Link>},
+   </DropdownMenuContent></DropdownMenu></div>:<Link href={route(row.original)} aria-label={'Open '+row.original.department_code}>Open</Link>},
  ];
  return <div className="space-y-4">
   {refreshFailure&&<p role="alert">Department saved, but the list could not refresh. <Button variant="outline" onClick={()=>void refresh().catch(()=>setRefreshFailure(true))}>Refresh departments</Button></p>}

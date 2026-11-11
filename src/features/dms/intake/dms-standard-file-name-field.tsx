@@ -11,13 +11,14 @@ import type { DmsDocumentTypeRow } from "@/server/actions/dms/document-types";
 import type { IntakeSessionData } from "@/server/actions/dms/ai-intake";
 
 type Props = {
+  savedDocument?:boolean;
   session: IntakeSessionData;
   values: ReviewFormValues;
   docTypes: DmsDocumentTypeRow[];
   onChange: (patch: Partial<ReviewFormValues>) => void;
 };
 
-export function DmsStandardFileNameField({ session, values, docTypes, onChange }: Props) {
+export function DmsStandardFileNameField({ session, values, docTypes, onChange, savedDocument }: Props) {
   const [isPending, startTransition] = useTransition();
   const [missingParts, setMissingParts] = useState<string[]>([]);
   const userEditedRef = useRef(false);
@@ -25,7 +26,7 @@ export function DmsStandardFileNameField({ session, values, docTypes, onChange }
 
   useEffect(() => {
     if (!values.documentTypeId || !selectedType) return;
-
+    let cancelled = false;
     const timer = setTimeout(() => {
       startTransition(async () => {
         const metadataValues = Object.entries(values.metadataValues).map(([id, v]) => ({
@@ -40,23 +41,25 @@ export function DmsStandardFileNameField({ session, values, docTypes, onChange }
           originalFilename: session.original_filename,
           extractedFields: session.ai_result?.extracted_fields_json ?? null,
           metadataValues,
-          uploadSessionId: session.id,
+          uploadSessionId: savedDocument ? undefined : session.id,
           standardFileNameOverride: userEditedRef.current ? values.standardFileName : null,
           suggestedDescription: values.description || session.ai_result?.suggested_description || null,
           suggestedTitle: values.title || session.ai_result?.suggested_title || null,
         });
 
-        if (!res.success || !res.data) return;
+        if (cancelled || !res.success || !res.data) return;
 
-        const suggestedBase = stripFilenameExtension(res.data.fileName);
-        if (!userEditedRef.current && suggestedBase !== values.standardFileName) {
-          onChange({ standardFileName: suggestedBase });
+        // Fresh intake adds the extension in its upload writer. Saved-document
+        // updates instead require the complete filename, bound to the original.
+        const suggestedName = savedDocument ? res.data.fileName : stripFilenameExtension(res.data.fileName);
+        if (!userEditedRef.current && suggestedName !== values.standardFileName) {
+          onChange({ standardFileName: suggestedName });
         }
         setMissingParts(res.data.validation.missing);
       });
     }, 300);
 
-    return () => clearTimeout(timer);
+    return () => { cancelled = true; clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- standardFileName excluded to avoid edit loops
   }, [
     values.documentTypeId,
@@ -65,6 +68,7 @@ export function DmsStandardFileNameField({ session, values, docTypes, onChange }
     values.title,
     values.metadataValues,
     session.id,
+    savedDocument,
     session.original_filename,
     session.ai_result?.extracted_fields_json,
     selectedType?.type_code,
@@ -75,7 +79,7 @@ export function DmsStandardFileNameField({ session, values, docTypes, onChange }
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
-        <label className="text-sm font-medium">Standard File Name</label>
+        <label htmlFor="intake-standard-file-name" className="text-sm font-medium">Standard File Name</label>
         {isPending && (
           <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -84,6 +88,7 @@ export function DmsStandardFileNameField({ session, values, docTypes, onChange }
         )}
       </div>
       <Input
+        id="intake-standard-file-name"
         value={values.standardFileName}
         onChange={(e) => {
           userEditedRef.current = true;
@@ -95,6 +100,7 @@ export function DmsStandardFileNameField({ session, values, docTypes, onChange }
       <p className="text-xs text-muted-foreground">
         Original upload: {session.original_filename}
       </p>
+      {savedDocument && <p className="text-xs text-muted-foreground">Keep the original file extension when renaming this saved file.</p>}
       {missingParts.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {missingParts.map((part) => (

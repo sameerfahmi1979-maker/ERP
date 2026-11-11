@@ -1,4 +1,4 @@
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission, hasPermission } from "@/lib/rbac/check";
 import { redirect, notFound } from "next/navigation";
 import { getDmsRequiredDocumentRuleById } from "@/server/actions/common-master-data/dms-required-document-rules";
 import { DmsRequiredDocumentRuleForm } from "@/features/common-master-data/dms-required-document-rules/dms-required-document-rule-form";
@@ -15,7 +15,7 @@ export default async function DmsRuleRecordPage({ params, searchParams }: Props)
   if (isNaN(numericId)) notFound();
   const result = await getDmsRequiredDocumentRuleById(numericId);
   if (!result.success || !result.data) notFound();
-  const canManage = hasPermission(ctx, "common_md.manage") || hasPermission(ctx, "common_md.dms_required_documents.manage");
+  const canManage = hasGlobalPermission(ctx, "common_md.manage") || hasGlobalPermission(ctx, "common_md.dms_required_documents.manage");
   const mode = modeParam === "edit" && canManage ? "edit" : "view";
   const supabase = await createClient();
   const { data: docTypes } = await supabase.from("dms_document_types").select("id, type_code, name_en").eq("is_active", true).is("deleted_at", null).order("name_en");

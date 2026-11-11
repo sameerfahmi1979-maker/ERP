@@ -1,0 +1,23 @@
+import {expect,it,vi} from 'vitest';
+import {savedIntakeModel} from '@/features/dms/intake/saved-intake-model';
+import {savedIntakeOpenSchema,savedIntakePayloadSchema} from '@/lib/dms/saved-intake';
+import {preparationCandidatesSchema} from '@/lib/dms/preparation/candidates';
+const hash='a'.repeat(64);
+const source={documentId:59,documentNo:'SYN-DMS-59',documentTypeId:1,categoryId:2,snapshot:hash,profileHash:hash,profile:null,subject:null,typeName:'Synthetic',typeCode:'SYN',current:{title:'Original',description:null,issue_date:null,expiry_date:null},files:[{id:53,versionId:53,sha256:hash,name:'Stored.pdf',mime:'application/pdf',size:10,text:null,bucket:null,path:null}],fields:[{id:4,code:'old',label:'Old field',type:'text',current:'old',required:false,aiExtractable:true}],existingTags:[]};
+const values={title:'Original',description:'',standardFileName:'Stored.pdf',documentTypeId:1,categoryId:2,issueDate:'',expiryDate:'',confidentialityLevel:'company',owningCompanyId:1,owningBranchId:null,metadataValues:{4:{fieldType:'text',rawValue:'old'}},tagIds:[]};
+const opened=savedIntakeOpenSchema.parse({review:{source,recovery:null,draft:null,documentStatus:'draft',approvalStatus:null},values,links:[],schemaHash:hash,draft:null});
+const payload={documentId:59,fileId:53,jobId:9,requestId:'00000000-0000-4000-8000-000000000009',snapshot:hash,schemaHash:hash,expectedRevision:0,confirmed:true,values,links:[]};
+it('requires explicit confirmation and immutable operation identity',()=>{expect(savedIntakePayloadSchema.safeParse(payload).success).toBe(true);expect(savedIntakePayloadSchema.safeParse({...payload,confirmed:false}).success).toBe(false);expect(savedIntakePayloadSchema.safeParse({...payload,requestId:undefined}).success).toBe(false);});
+it.each(['../secret.pdf','folder\\secret.pdf','bad\u0000.pdf'])('rejects filename paths or control characters: %s',name=>{expect(savedIntakePayloadSchema.safeParse({...payload,values:{...values,standardFileName:name}}).success).toBe(false);});
+it('rejects reversed dates',()=>{expect(savedIntakePayloadSchema.safeParse({...payload,values:{...values,issueDate:'2026-02-01',expiryDate:'2026-01-01'}}).success).toBe(false);});
+it('maps proposed type metadata from its actual definitions while retaining same record',()=>{
+ const candidate=preparationCandidatesSchema.parse({version:1,sourceSnapshot:hash,profileHash:hash,values:[{key:'metadata:8',label:'Authority',current:null,proposed:'Synthetic authority',evidence:[],confidence:1}],summary:'Summary',tagIds:[],linkCandidates:[],warnings:[],bundle:'single',applicability:'document',readiness:{review:'required',links:'verified_context_only',semantic:'pending_accepted_review',reminders:'pending_accepted_expiry',split:'not_requested'},proposedType:{documentTypeId:3,typeCode:'NEW',typeName:'New type',categoryId:2,categoryName:null,profileHash:hash,schemaHash:hash,canApply:true,holdReason:null}});
+ const result=savedIntakeModel(opened,53,9,candidate,[{id:8,code:'authority',label:'Authority',type:'text',current:null,required:true,aiExtractable:true}]);
+ expect(result.values.metadataValues).toEqual({8:{fieldType:'text',rawValue:'Synthetic authority'}});expect(result.ai?.extracted_fields_json).toEqual({authority:'Synthetic authority'});expect(result.session.document_id).toBe(59);expect(result.session.temp_storage_path).toBeNull();expect(result.session.session_code).toBe('SYN-DMS-59');expect(opened.values.metadataValues).toEqual(values.metadataValues);
+});
+it('refuses an unavailable selected stored file',()=>{expect(()=>savedIntakeModel(opened,999,9,null)).toThrow('Current stored original unavailable');});
+const call=vi.hoisted(()=>vi.fn());
+vi.mock('@/server/dms-reviewed-updates',()=>({reviewedCall:call}));
+vi.mock('next/cache',()=>({revalidatePath:()=>{throw Error('cache refresh unavailable');}}));
+import {saveSavedIntake} from '@/server/actions/dms/saved-intake';
+it('a post-commit cache-refresh failure does not report an uncertain save',async()=>{call.mockResolvedValue({success:true,data:{state:'applied'}});expect(await saveSavedIntake(payload)).toMatchObject({success:true});expect(call.mock.calls[0][1]).toMatchObject({p_action:'apply',p_data:payload});});

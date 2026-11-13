@@ -223,6 +223,7 @@ const navSections: NavSection[] = [
     children: [
       { label: "DMS Dashboard",     icon: LayoutDashboard, path: "/dms",                requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
       { label: "All Documents",     icon: FolderOpen,      path: "/dms/documents",       requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
+      { label: "Mobile DMS",        icon: UploadCloud,     path: "/dms/mobile",          requiredAnyPermissions: ["dms.documents.view", "dms.documents.upload", "dms.review_queue.view", "dms.review_queue.manage", "dms.documents.review_ai", "dms.admin"] },
       { label: "Upload Inbox",      icon: UploadCloud,     path: "/dms/inbox",           requiredAnyPermissions: ["dms.documents.upload", "dms.documents.view", "dms.admin"] },
       { label: "Batch Intake",      icon: Inbox,           path: "/dms/inbox/batches",   requiredAnyPermissions: ["dms.documents.upload", "dms.documents.view", "dms.admin"] },
       { label: "Review Queue",      icon: ListChecks,      path: "/dms/review-queue",    requiredAnyPermissions: ["dms.review_queue.view", "dms.review_queue.manage", "dms.documents.review_ai", "dms.admin"] },

@@ -64,7 +64,6 @@ export function DmsAiIntakePageClient({
     buildInitialReviewValues(initialSession)
   );
   const [isPending, startTransition] = useTransition();
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [discardAnchor, setDiscardAnchor] = useState<"header"|"footer"|null>(null);
   const [discardReason, setDiscardReason] = useState("");
@@ -298,18 +297,22 @@ export function DmsAiIntakePageClient({
   // ── Preview ───────────────────────────────────────────────────────────────
 
   const handlePreview = async () => {
-    if (previewUrl) {
-      window.open(previewUrl, "_blank");
+    const preview = window.open("about:blank", "_blank");
+    if (!preview) {
+      toast.error("Allow pop-ups for the ERP to open the original file.");
       return;
     }
+    preview.opener = null;
     setIsLoadingPreview(true);
-    const result = await getIntakeSessionSignedUrl(session.id);
-    setIsLoadingPreview(false);
-    if (result.success && result.data) {
-      setPreviewUrl(result.data.url);
-      window.open(result.data.url, "_blank");
-    } else {
-      toast.error("Could not generate preview link");
+    try {
+      const result = await getIntakeSessionSignedUrl(session.id);
+      if (!result.success || !result.data) throw new Error(result.error ?? "Could not generate preview link");
+      if (!preview.closed) preview.location.replace(result.data.url);
+    } catch (error) {
+      preview.close();
+      toast.error(error instanceof Error ? error.message : "Could not generate preview link");
+    } finally {
+      setIsLoadingPreview(false);
     }
   };
 

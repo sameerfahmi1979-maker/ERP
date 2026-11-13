@@ -36,6 +36,7 @@ import { toast } from "sonner";
 import { format, isPast, differenceInDays } from "date-fns";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import type {AuthContext} from "@/lib/rbac/check";
+import { hasPermission } from "@/lib/rbac/scope";
 import {useDmsEntityDocuments} from "@/hooks/use-dms-entity-documents";
 import {useRecordReadActive} from "@/hooks/use-record-read-active";
 import {dmsEntityDocumentsIdentity} from "@/lib/reads/dms-entity-documents-schema";
@@ -302,6 +303,15 @@ function EntityDocumentsInstance({
               Upload New
             </Button>
           )}
+          {canUpload && (entityType === "employee" || entityType === "site") &&
+            (hasPermission(authContext, "dms.documents.upload") || hasPermission(authContext, "dms.admin")) && (
+              <Button type="button" variant="outline" size="sm" className="min-h-11 md:hidden" disabled={!parentReady}
+                onClick={() => {
+                  if (parentReady && list.isCurrent()) router.push(`/dms/mobile?tab=capture&entityType=${entityType}&entityId=${entityId}`);
+                }}>
+                Capture on phone
+              </Button>
+            )}
         </div>
       </div>
 

@@ -204,11 +204,13 @@ async function dispatch(input: Exclude<Command, { op: "login" | "refresh" }>, to
         }
       }
       const ai = detail?.success ? detail.data?.ai_result : null;
-      const canStart = mayReview && scoped("dms.documents.upload") && row.uploaded_by === ctx.profile.id && row.status === "uploaded" && row.intake_status === "uploaded" && !row.is_duplicate && !row.document_id && !row.ai_result_id && !row.batch_draft_operation_id;
+      const canUpload = scoped("dms.documents.upload");
+      const canApprove = mayReview && canUpload && scoped("dms.documents.edit") && scoped("dms.documents.view") && capabilities.numbering;
+      const canStart = mayReview && canUpload && row.uploaded_by === ctx.profile.id && row.status === "uploaded" && row.intake_status === "uploaded" && !row.is_duplicate && !row.document_id && !row.ai_result_id && !row.batch_draft_operation_id;
       return ok({ id: row.id, code: row.session_code, status: row.intake_status, name: row.original_filename, mime: row.mime_type,
         documentId: row.document_id, entityType, entityId, entityLabel,
         canPreview, canStart, duplicate: row.is_duplicate, confidentialityLevels: DMS_CONFIDENTIALITY_LEVELS,
-        canReview: mayReview && capabilities.numbering && !!detail?.success && !row.document_id,
+        canReview: canApprove && !!detail?.success && !row.document_id,
         ai: ai ? { id: ai.id, title: ai.suggested_title, description: ai.suggested_description, issue: ai.issue_date_suggestion,
           expiry: ai.expiry_date_suggestion, typeId: ai.suggested_document_type_id, fields: ai.extracted_fields_json } : null,
         draft: detail?.data?.draft_values?.map(v => ({ scope: v.field_scope, code: v.field_code, value: v.reviewed_value_json })) });
@@ -233,19 +235,25 @@ async function dispatch(input: Exclude<Command, { op: "login" | "refresh" }>, to
     }
     case "approve": {
       const { review, input: values, operationId } = input;
-      if (values.prepared || (values.allowDuplicate && !review.override) || review.documentId || review.sessionId !== values.uploadSessionId || review.typeId !== values.documentTypeId || review.expiryDate !== (values.expiryDate ?? null)) return fail("The approval and reviewed original must match.");
+      if (values.prepared || values.owningCompanyId !== undefined || values.owningBranchId !== undefined || (values.allowDuplicate && !review.override) || review.documentId || review.sessionId !== values.uploadSessionId || review.typeId !== values.documentTypeId || review.expiryDate !== (values.expiryDate ?? null)) return fail("The approval and reviewed original must match.");
       const recovered = await recoverNumberedAiApproval(values.uploadSessionId);
       if (!recovered.success) return fail(recovered.error, 403);
       if (recovered.data) {
         if (recovered.data.contract.operationId !== operationId) return json({ success: false, recoveryRequired: true, error: "An earlier approval is retained. Use Recover approval." });
         return approvalResponse(recovered.data.receipt ? { success: true, data: recovered.data.receipt } : await approveNumberedAiIntake(recovered.data.input, recovered.data.contract));
       }
+      const client = await createClient();
+      const { data: source, error } = await client.from("dms_upload_sessions").select("owning_company_id,owning_branch_id,batch_id,document_id")
+        .eq("id", values.uploadSessionId).is("deleted_at", null).maybeSingle();
+      if (error) return fail("The original upload scope could not be checked. Retry the same approval.", 503);
+      if (!source?.owning_company_id || source.batch_id || source.document_id) return fail("The original upload is unavailable.", 404);
       const checked = await confirmExactIntakeReview(review);
       if (!checked.success) return json({ ...checked, retryWithChanges: !("uncertain" in checked && checked.uncertain) });
       const contract = { operationId, revision: null };
-      const prepared = await approveNumberedAiIntake(values, contract);
+      const scopedValues = { ...values, owningCompanyId: source.owning_company_id, owningBranchId: source.owning_branch_id };
+      const prepared = await approveNumberedAiIntake(scopedValues, contract);
       if (prepared.success || !prepared.prepared) return approvalResponse(prepared);
-      return approvalResponse(await approveNumberedAiIntake({ ...values, prepared: prepared.prepared.snapshot }, contract));
+      return approvalResponse(await approveNumberedAiIntake({ ...scopedValues, prepared: prepared.prepared.snapshot }, contract));
     }
   }
 }

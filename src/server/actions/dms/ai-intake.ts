@@ -5,6 +5,7 @@ import {verifyAndAttestIntakeSource} from '@/server/dms-intake-source-attestatio
 import {reviewedCall} from '@/server/dms-reviewed-updates';
 import {rerunRetainedIntakeMetadata} from "@/server/dms-intake-rereview";
 import {prepareIntakeOutput} from '@/lib/dms/preparation/intake';
+import {checkDocumentConfidentialityAccess} from '@/lib/dms/document-access';
 
 /**
  * DMS.11 — Option A AI-First Upload-Session Intake Server Actions
@@ -39,7 +40,7 @@ import { AzureOcrProvider } from "@/lib/dms/ocr/azure-ocr-provider";
 import { loadOcrFeatureFlags, routeOcr } from "@/lib/dms/ocr/ocr-router";
 import { isDmsAiReviewEnabled, upsertDmsReviewQueueItem } from "@/lib/dms/review-queue/review-queue-upsert";
 import { logger } from "@/lib/logger";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasPermissionInScope } from "@/lib/rbac/check";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
@@ -176,6 +177,8 @@ export type IntakeSessionData = {
   document_id: number | null;
   owning_company_id?: number | null;
   owning_branch_id?: number | null;
+  origin_entity_type?: string | null;
+  origin_entity_id?: number | null;
   reviewed_by: number | null;
   discarded_at: string | null;
   discard_reason: string | null;
@@ -213,6 +216,7 @@ export type ApproveIntakeInput = Omit<AiApprovalInput, "confidentialityLevel" | 
 const StartIntakeSchema = z.object({
   uploadSessionId: z.number().int().positive(),
   allowDuplicate: z.boolean().optional().default(false),
+  onlyIfUploaded: z.boolean().optional().default(false),
 });
 
 
@@ -228,7 +232,7 @@ export async function startAiIntakeFromUploadSession(
     const parsed = StartIntakeSchema.safeParse(input);
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
-    const { uploadSessionId, allowDuplicate } = parsed.data;
+    const { uploadSessionId, allowDuplicate, onlyIfUploaded } = parsed.data;
     const supabase = await createClient();
     const adminClient = createAdminClient();
     const ctx = await getAuthContext();
@@ -248,6 +252,20 @@ export async function startAiIntakeFromUploadSession(
     if (sessionError || !session) return { success: false, error: "Upload session not found" };
 
     const typedSession = session as Record<string, unknown>;
+    if (onlyIfUploaded && (typedSession.status !== "uploaded" || typedSession.intake_status !== "uploaded" ||
+        typedSession.uploaded_by !== ctx.profile.id || typedSession.batch_draft_operation_id !== null ||
+        typedSession.document_id !== null || typedSession.ai_result_id !== null || typedSession.is_duplicate === true)) {
+      return { success: false, error: "This upload is no longer ready to start. Check its current intake status." };
+    }
+    if (onlyIfUploaded) {
+      const company = session.owning_company_id as number | null;
+      const branch = session.owning_branch_id as number | null;
+      if (company === null || !["dms.documents.upload", "dms.documents.review_ai", "dms.documents.preview"].every(
+        code => hasPermissionInScope(ctx, code, company, branch) || hasPermissionInScope(ctx, "dms.admin", company, branch),
+      )) {
+        return { success: false, error: "Upload, AI review and preview permissions are required in this company or branch." };
+      }
+    }
     if (typedSession.status === "completed") return { success: false, error: "Upload session is already completed" };
     if (typedSession.status === "cancelled") return { success: false, error: "Upload session has been cancelled" };
     if (!typedSession.temp_storage_path) return { success: false, error: "Temporary file path is missing" };
@@ -349,7 +367,7 @@ export async function startAiIntakeFromUploadSession(
     const { provider, configId } = await getDmsAiProvider();
 
     if (!provider.isConfigured()) {
-      if(modern)return {success:false,data:{sessionCode,status:"provider_not_configured",message:"No AI provider configured. Please configure one in Administration → Settings → AI Settings."},error:"No AI provider configured"};
+      if(modern || onlyIfUploaded)return {success:false,data:{sessionCode,status:"provider_not_configured",message:"No AI provider configured. Please configure one in Administration → Settings → AI Settings."},error:"No AI provider configured"};
       // Mark as failed but return sessionCode so user can proceed manually
       await supabase
         .from("dms_upload_sessions")
@@ -392,10 +410,20 @@ export async function startAiIntakeFromUploadSession(
         if(!current||current.member.kind!=="analysis_required"||!current.member.processing)return claimFailure();
       }catch{return claimFailure();}
     }else{
-      await supabase
+      const claimed = await supabase
         .from("dms_upload_sessions")
         .update({ intake_status: "ocr_processing", updated_at: new Date().toISOString() })
-        .eq("id", uploadSessionId);
+        .eq("id", uploadSessionId)
+        .eq("status", session.status)
+        .eq("intake_status", session.intake_status)
+        .eq("updated_at", session.updated_at)
+        .is("deleted_at", null)
+        .is("batch_draft_operation_id", null)
+        .select("id")
+        .retry(false);
+      if (claimed.error || claimed.data?.length !== 1 || claimed.data[0].id !== uploadSessionId) {
+        return { success: false, uncertain: true, error: "Analysis start could not be confirmed. Check the original intake for progress." };
+      }
     }
 
 
@@ -957,6 +985,7 @@ export async function startAiIntakeFromUploadSession(
     };
   } catch (e) {
     if(modernStart)return {success:false,error:"Analysis start is unconfirmed. Retain this batch for reconciliation."};
+    if(input?.onlyIfUploaded === true)return {success:false,uncertain:true,error:"Analysis start could not be confirmed. Check the original intake for progress."};
     logger.error("startAiIntakeFromUploadSession error", e);
     return { success: false, error: String(e) };
   }
@@ -1021,6 +1050,8 @@ export async function getAiIntakeSession(
       document_id: typedSession.document_id as number | null,
       owning_company_id: typedSession.owning_company_id as number | null,
       owning_branch_id: typedSession.owning_branch_id as number | null,
+      origin_entity_type: typedSession.origin_entity_type as string | null,
+      origin_entity_id: typedSession.origin_entity_id as number | null,
       reviewed_by: typedSession.reviewed_by as number | null,
       discarded_at: typedSession.discarded_at as string | null,
       discard_reason: typedSession.discard_reason as string | null,
@@ -1052,8 +1083,8 @@ export async function suggestIntakeEntityLinks(
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
     if (!canViewIntake(ctx)) return { success: false, error: "Permission denied" };
 
-    const admin = createAdminClient();
-    const { data: session } = await admin
+    const supabase = await createClient();
+    const { data: session } = await supabase
       .from("dms_upload_sessions")
       .select("id, ai_result_id")
       .eq("session_code", sessionCode)
@@ -1064,10 +1095,11 @@ export async function suggestIntakeEntityLinks(
     const aiResultId = (session as Record<string, unknown>).ai_result_id as number | null;
     if (!aiResultId) return { success: true, data: [] };
 
-    const { data: aiResult } = await admin
+    const { data: aiResult } = await supabase
       .from("dms_ai_extraction_results")
       .select("extracted_fields_json, suggested_links_json")
       .eq("id", aiResultId)
+      .eq("upload_session_id", session.id)
       .single();
 
     if (!aiResult) return { success: true, data: [] };
@@ -1075,7 +1107,7 @@ export async function suggestIntakeEntityLinks(
     const { buildIntakeLinkSuggestions } = await import(
       "@/lib/dms/entity-matching/intake-link-suggester"
     );
-    const suggestions = await buildIntakeLinkSuggestions(admin, {
+    const suggestions = await buildIntakeLinkSuggestions(supabase, {
       extractedFields:
         ((aiResult as Record<string, unknown>).extracted_fields_json as Record<string, unknown>) ??
         null,
@@ -1083,7 +1115,11 @@ export async function suggestIntakeEntityLinks(
         ((aiResult as Record<string, unknown>).suggested_links_json as unknown[]) ?? null,
     });
 
-    return { success: true, data: suggestions };
+    const partyIds = suggestions.filter(suggestion => suggestion.entityType === "party").map(suggestion => suggestion.entityId);
+    if (!partyIds.length) return { success: true, data: suggestions };
+    const { data: parties } = await supabase.from("parties").select("id").in("id", partyIds).eq("is_active", true);
+    const visiblePartyIds = new Set(parties?.map(party => party.id));
+    return { success: true, data: suggestions.filter(suggestion => suggestion.entityType !== "party" || visiblePartyIds.has(suggestion.entityId)) };
   } catch (e) {
     logger.error("suggestIntakeEntityLinks error", e);
     return { success: false, error: "Failed to build link suggestions" };
@@ -1130,13 +1166,21 @@ export async function getIntakeSessionSignedUrl(
 
     const { data: session, error } = await supabase
       .from("dms_upload_sessions")
-      .select("temp_storage_path, mime_type")
+      .select("temp_storage_path, owning_company_id, owning_branch_id, document_id")
       .eq("id", uploadSessionId)
       .is("deleted_at", null)
       .single();
 
     if (error || !session) return { success: false, error: "Session not found" };
     if (!session.temp_storage_path) return { success: false, error: "No file path available" };
+    const company = session.owning_company_id as number | null;
+    const branch = session.owning_branch_id as number | null;
+    const allowed = session.document_id === null
+      ? company !== null && ["dms.documents.preview", "dms.admin"].some(code => hasPermissionInScope(ctx, code, company, branch))
+      : (await checkDocumentConfidentialityAccess(supabase, session.document_id as number, ctx, "dms.documents.preview")).allowed;
+    if (!allowed) {
+      return { success: false, error: "Preview permission is required for this upload’s company or branch." };
+    }
 
     const { data: signedUrlData, error: urlError } = await adminClient.storage
       .from("dms-temp")
@@ -1145,8 +1189,8 @@ export async function getIntakeSessionSignedUrl(
     if (urlError || !signedUrlData) return { success: false, error: "Failed to generate preview URL" };
 
     return { success: true, data: { url: signedUrlData.signedUrl } };
-  } catch (e) {
-    return { success: false, error: String(e) };
+  } catch {
+    return { success: false, error: "Could not generate preview link" };
   }
 }
 

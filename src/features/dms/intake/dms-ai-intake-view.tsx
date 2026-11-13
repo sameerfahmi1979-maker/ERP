@@ -14,6 +14,7 @@ import {DmsIntakeLinkPanel,type IntakeLinkChip} from './dms-intake-link-panel';
 import {DmsExactFileReview} from './dms-exact-file-review';
 import {DmsIntakeDiscardConfirmation} from './dms-intake-discard-confirmation';
 import type {IntakeReviewConfirmation} from '@/lib/dms/intake-review';
+import {getDmsEntityTypeLabel} from '@/lib/dms/dms-entity-types';
 type Action=()=>void;
 export type IntakeViewProps={
  session:IntakeSessionData;displaySession:IntakeSessionData;aiResult:IntakeAiResultRow|null;
@@ -35,15 +36,15 @@ export function DmsAiIntakeView({session,displaySession,aiResult,documentTypes,f
   return (
     <div data-intake-review className="flex flex-col min-h-0 gap-0">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4 pb-4 border-b">
-        <div className="flex items-start gap-3">
+      <div className="flex flex-col items-start justify-between gap-4 pb-4 border-b sm:flex-row">
+        <div className="flex min-w-0 items-start gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/30 text-violet-600">
             <Bot className="h-5 w-5" />
           </div>
           <div>
             <h1 className="text-base font-semibold">AI-Assisted Document Intake</h1>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-              <span className="text-xs text-muted-foreground font-mono">{session.session_code}</span>
+              <span className="break-all text-xs text-muted-foreground font-mono">{session.session_code}</span>
               <DmsAiIntakeStatusBadge status={session.intake_status} />
               {classificationConf && (
                 <DmsAiConfidenceBadge label={classificationConf} score={classificationScore} />
@@ -58,7 +59,7 @@ export function DmsAiIntakeView({session,displaySession,aiResult,documentTypes,f
         </div>
 
         {/* Header actions */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 max-sm:[&_button]:min-h-11">
           {(savedDocument ? savedDocument.canRerun : isFailed || isReady) && (
             <Button
               variant="outline"
@@ -174,7 +175,7 @@ export function DmsAiIntakeView({session,displaySession,aiResult,documentTypes,f
       {isReady && (
         <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
           {/* ── Left panel: File info + AI summary ──────────────────────────── */}
-          <div className="lg:col-span-1 space-y-4">
+          <div className="min-w-0 lg:col-span-1 space-y-4">
             {/* File info card */}
             <div className="rounded-lg border bg-card p-4 space-y-3">
               <div className="flex items-center gap-2">
@@ -195,6 +196,12 @@ export function DmsAiIntakeView({session,displaySession,aiResult,documentTypes,f
                   <dt className="text-muted-foreground">Intake</dt>
                   <dd><DmsAiIntakeStatusBadge status={session.intake_status} /></dd>
                 </div>
+                {session.origin_entity_type && session.origin_entity_id && (
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted-foreground">Capture record</dt>
+                    <dd>{getDmsEntityTypeLabel(session.origin_entity_type)} #{session.origin_entity_id}</dd>
+                  </div>
+                )}
                 {session.is_duplicate && (
                   <div className="flex justify-between">
                     <dt className="text-muted-foreground">Duplicate</dt>
@@ -326,7 +333,7 @@ export function DmsAiIntakeView({session,displaySession,aiResult,documentTypes,f
           </div>
 
           {/* ── Right panel: Review form ───────────────────────────────────── */}
-          <div className="lg:col-span-2">
+          <div className="min-w-0 lg:col-span-2">
             <div className="rounded-lg border bg-card p-5">
               <div className="flex items-center gap-2 mb-5">
                 <FileText className="h-4 w-4 text-muted-foreground" />
@@ -356,12 +363,12 @@ export function DmsAiIntakeView({session,displaySession,aiResult,documentTypes,f
       {!savedDocument&&isReady&&!retainedApproval&&<DmsExactFileReview sessionId={session.id} typeId={formValues.documentTypeId??undefined} expiryDate={formValues.expiryDate||null} reviewKey={JSON.stringify({formValues,entityLinks,aiResultId:aiResult?.id})} disabled={isPending} onChange={setFileReview} onBlockReason={setReviewBlockReason}/>}
       {/* ── Footer ─────────────────────────────────────────────────────────── */}
       {isReady && (
-        <div className="mt-6 flex items-center justify-between border-t pt-4">
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t pt-4 max-sm:[&_button]:min-h-11">
           {!savedDocument && <DmsIntakeDiscardConfirmation placement="footer" open={discardAnchor==="footer"}
             onOpenChange={open=>setDiscardAnchor(open?"footer":null)} disabled={retainedApproval||draftUncertain}
             pending={isPending} hasDraftDocument={!!session.document_id} canSaveDraft={isReady}
             reason={discardReason} onReasonChange={setDiscardReason} onConfirm={handleDiscard}/>}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               size="sm"

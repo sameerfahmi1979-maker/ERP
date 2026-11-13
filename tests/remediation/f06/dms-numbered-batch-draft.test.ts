@@ -18,7 +18,7 @@ vi.mock('@/server/numbered-ai-approval',()=>({approveNumberedAiIntake:ai.approva
 const m=vi.hoisted(()=>({client:vi.fn(),admin:vi.fn(),auth:vi.fn(),permission:vi.fn(),usable:vi.fn(),rpc:vi.fn(),from:vi.fn(),analysis:vi.fn(),audit:vi.fn(),cache:vi.fn(),info:vi.fn(),download:vi.fn(),sign:vi.fn()}));
 vi.mock('@/lib/supabase/server',()=>({createClient:m.client}));
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:m.admin}));
-vi.mock('@/lib/rbac/check',()=>({getAuthContext:m.auth,hasPermission:m.permission,canUseApplication:m.usable}));
+vi.mock('@/lib/rbac/check',()=>({getAuthContext:m.auth,hasPermission:m.permission,hasPermissionInScope:m.permission,canUseApplication:m.usable}));
 vi.mock('next/cache',()=>({revalidatePath:m.cache}));
 vi.mock('@/server/actions/audit',()=>({logAudit:m.audit}));
 vi.mock('@/server/actions/dms/upload-sessions',()=>({createDmsUploadSession:vi.fn()}));
@@ -177,6 +177,39 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
   expect(m.download).not.toHaveBeenCalled();expect(ai.extract).not.toHaveBeenCalled();expect(ai.route).not.toHaveBeenCalled();expect(ai.analyze).not.toHaveBeenCalled();expect(ai.load).not.toHaveBeenCalled();expect(ai.usage).not.toHaveBeenCalled();expect(m.audit).not.toHaveBeenCalled();expect(ai.approval).not.toHaveBeenCalled();
  }
  afterEach(()=>{expect(ai.unexpected).not.toHaveBeenCalled();expect(ai.error).not.toHaveBeenCalled();});
+ it("starts one single-file analysis when mobile and inbox requests race", async () => {
+  row.batch_draft_operation_id = null;
+  row.batch_id = null;
+  const start = (await real()).startAiIntakeFromUploadSession;
+  const results = await Promise.all([start({ ...input, onlyIfUploaded: true }), start(input)]);
+  expect(results.filter(result => result.success)).toHaveLength(1);
+  expect(ai.analyze).toHaveBeenCalledOnce();
+  expect(row.intake_status).toBe("review_pending");
+ });
+ it("recovers an uncertain mobile claim without restarting processing", async () => {
+  row.batch_draft_operation_id = null;
+  row.batch_id = null;
+  claimResult = "committed-lost";
+  const start = (await real()).startAiIntakeFromUploadSession;
+  expect(await start({ ...input, onlyIfUploaded: true })).toMatchObject({ success: false, uncertain: true });
+  expect(await start({ ...input, onlyIfUploaded: true })).toMatchObject({ success: false });
+  expect(row.intake_status).toBe("ocr_processing");
+  expect(operations.filter(operation => operation.action === "update")).toHaveLength(1);
+  noPipeline();
+ });
+ it("requires the upload, preview and review grants in the same upload scope", async () => {
+  row.batch_draft_operation_id = null;
+  row.batch_id = null;
+  m.permission.mockImplementation((_ctx, code, company, branch) =>
+   company === undefined || (company === 20 && branch === 21 && code === "dms.documents.upload"),
+  );
+  const start = (await real()).startAiIntakeFromUploadSession;
+  expect(await start({ ...input, onlyIfUploaded: true })).toMatchObject({ success: false });
+  expect(row.intake_status).toBe("uploaded");
+  expect(operations.every(operation => operation.action === "read")).toBe(true);
+  expect(ai.factory).not.toHaveBeenCalled();
+  noPipeline();
+ });
  it.each([false,true])("elects one actual configured pipeline when both saw uploaded (reverse config responses=%s)",async reverse=>{
   const resolvers:Array<(value:unknown)=>void>=[];
   const configured={provider:{providerCode:"offline",modelId:"fixture",isConfigured:ai.configured,analyze:ai.analyze},configId:2};

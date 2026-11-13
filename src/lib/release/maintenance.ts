@@ -27,5 +27,5 @@ export function releaseResponse(request: NextRequest): NextResponse | null {
 
 /** Preserve previous refresh exclusions only after the maintenance gate runs. */
 export function skipsSessionRefresh(pathname: string): boolean {
-  return /^\/(?:_next\/static|_next\/image|favicon\.ico)/.test(pathname) || /\.(?:svg|png|jpg|jpeg|gif|webp)$/.test(pathname);
+  return pathname === "/api/mobile/dms/v1" || /^\/(?:_next\/static|_next\/image|favicon\.ico)/.test(pathname) || /\.(?:svg|png|jpg|jpeg|gif|webp)$/.test(pathname);
 }

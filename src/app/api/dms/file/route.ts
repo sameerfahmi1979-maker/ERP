@@ -2,6 +2,7 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { mobileAccessToken } from "@/lib/supabase/mobile-request";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { checkDocumentConfidentialityAccess } from "@/lib/dms/document-access";
@@ -125,7 +126,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     // Verify claims rather than trusting a browser-supplied actor. The restricted
     // receipt operation rechecks the live original session, document capability
     // and exact file/version/bytes atomically. No reusable storage URL escapes.
-    const claims = await supabase.auth.getClaims();
+    const token = mobileAccessToken();
+    const claims = token ? await supabase.auth.getClaims(token) : await supabase.auth.getClaims();
     if (claims.error || !claims.data?.claims?.sub || claims.data.claims.sub !== ctx.profile.auth_user_id) return unavailable("File access changed. Please sign in again.",403);
     const bytes = Buffer.from(await blob.arrayBuffer());
     const event = await adminClient.rpc("f07_record_file_response", {

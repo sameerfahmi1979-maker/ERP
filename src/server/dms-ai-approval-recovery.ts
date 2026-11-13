@@ -1,6 +1,7 @@
 import 'server-only';
 import {z} from 'zod';
 import {createClient} from '@/lib/supabase/server';
+import {mobileAccessToken} from '@/lib/supabase/mobile-request';
 import {createAdminClient} from '@/lib/supabase/admin';
 import {getAuthContext,hasPermission} from '@/lib/rbac/check';
 import {aiApprovalRecoverySchema,aiApprovalSnapshotSchema,type AiApprovalRecoveryResult} from '@/lib/dms/numbered-ai-approval';
@@ -16,7 +17,8 @@ export async function recoverNumberedAiApproval(sessionId:number):Promise<AiAppr
   const client=await createClient();
   const source=await client.from('dms_upload_sessions').select('id,status,document_id').eq('id',sessionId).is('deleted_at',null).maybeSingle();
   if(source.error||!source.data||source.data.status==='cancelled')return unavailable;
-  const claims=await client.auth.getClaims();
+  const token=mobileAccessToken();
+  const claims=token?await client.auth.getClaims(token):await client.auth.getClaims();
   const session=z.string().uuid().safeParse(claims.data?.claims.session_id);
   if(claims.error||!session.success)return unavailable;
   const found=await createAdminClient().rpc('read_numbered_ai_intake_recovery',{p_actor:ctx.profile.id,p_auth_session:session.data,p_session:sessionId});

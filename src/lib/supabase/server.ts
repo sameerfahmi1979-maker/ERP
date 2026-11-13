@@ -3,8 +3,11 @@ import { cookies } from "next/headers";
 import { withDocumentReadPolicy } from "./document-read-policy";
 import { performanceFetch } from "@/lib/performance/trace";
 import { applyReadAttemptScope } from "./read-attempt-scope";
+import { createMobileSupabaseClient, mobileAccessToken } from "./mobile-request";
 
 export async function createClient() {
+  const token = mobileAccessToken();
+  if (token) return createMobileSupabaseClient(token);
   const cookieStore = await cookies();
 
   return withDocumentReadPolicy(applyReadAttemptScope(createServerClient(

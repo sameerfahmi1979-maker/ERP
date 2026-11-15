@@ -42,6 +42,7 @@ export interface ERPComboboxProps {
 
   // Validation
   error?: string;
+  validationError?: string;
 
   // Behavior
   allowClear?: boolean;

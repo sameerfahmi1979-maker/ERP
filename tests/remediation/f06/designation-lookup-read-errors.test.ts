@@ -1,7 +1,7 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import type {AuthContext} from '@/lib/rbac/check';
 
-type Reply={data:unknown;error:unknown;count?:number|null;status?:number};
+type Reply={data:unknown;error:unknown;count?:number|null};
 type QueryCall={table:string;steps:[string,...unknown[]][]};
 const port=vi.hoisted(()=>({auth:vi.fn(),client:vi.fn(),log:vi.fn(),replies:[] as (Reply|Error)[],calls:[] as QueryCall[]}));
 vi.mock('@/lib/rbac/check',async()=>({...await import('@/lib/rbac/scope'),getAuthContext:port.auth}));
@@ -33,13 +33,12 @@ function builder(table:string){
   const query={select:step('select'),eq:step('eq'),is:step('is'),order:step('order'),limit:step('limit'),or:step('or'),range:step('range'),
     then:(resolve:(value:Reply)=>unknown,reject?:(reason:unknown)=>unknown)=>{
       const reply=port.replies[index];
-      const response=reply instanceof Error?Promise.reject(reply):Promise.resolve({count:Array.isArray(reply.data)?reply.data.length:null,status:200,...reply});
-      return response.then(resolve,reject);
+      return (reply instanceof Error?Promise.reject(reply):Promise.resolve(reply)).then(resolve,reject);
     }};
   return query;
 }
 beforeEach(()=>{
-  vi.resetAllMocks();port.calls=[];port.replies=[{data:[],error:null},{data:[],error:null},{data:[],error:null}];
+  vi.resetAllMocks();port.calls=[];port.replies=[{data:[],count:0,error:null},{data:[],error:null},{data:[],error:null}];
   port.auth.mockResolvedValue(context(['common_md.view','master_data.dashboard.view']));
   port.client.mockResolvedValue({from:builder});
 });
@@ -92,7 +91,7 @@ describe('designation collection outcome',()=>{
   it('a thrown query is safe failed',async()=>{
     port.replies=[new Error(secret)];safeFailure(await listDesignations(),designationFailure);
   });
-  it('confirms genuine empty separately, with exact count, stable ordering and no active default',async()=>{
+  it('confirms genuine empty separately, with unchanged projection/deleted/order and no active default',async()=>{
     expect(await listDesignations()).toEqual({success:true,data:[],totalCount:0});
     expect(port.calls).toEqual([{table:'designations',steps:[
       ['select','*, owner_company:owner_companies(id,legal_name_en), department:departments(id,department_name_en)',{count:'exact',head:false}],
@@ -100,10 +99,11 @@ describe('designation collection outcome',()=>{
     ]}]);
   });
   it('passes original active/inactive rows, false/null labels/timestamps and explicit filters unchanged',async()=>{
-    const rows=designationRows(),before=structuredClone(rows);port.replies=[{data:rows,error:null}];
+    const rows=designationRows(),before=structuredClone(rows);port.replies=[{data:rows,count:rows.length,error:null}];
     const result=await listDesignations({owner_company_id:7,department_id:8,is_active:false,search:'%_retained'});
     expect(result).toEqual({success:true,data:before,totalCount:2});expect(result.data).toBe(rows);expect(rows).toEqual(before);
-    expect(port.calls[0].steps.slice(3)).toEqual([['eq','owner_company_id',7],['eq','department_id',8],['eq','is_active',false],['or',String.raw`designation_name_en.ilike."%\\%\\_retained%",designation_code.ilike."%\\%\\_retained%"`],['order','id'],['range',0,24]]);
+    expect(port.calls[0].steps.slice(3)).toEqual([['eq','owner_company_id',7],['eq','department_id',8],['eq','is_active',false],
+      ['or',String.raw`designation_name_en.ilike."%\\%\\_retained%",designation_code.ilike."%\\%\\_retained%"`],['order','id'],['range',0,24]]);
   });
 });
 

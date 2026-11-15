@@ -7,6 +7,7 @@ import {createClient} from "@/lib/supabase/server";
 import {logger} from "@/lib/logger";
 import {readAllPages} from "./all-pages";
 import {dmsReadSchema} from "./dms-document-schema";
+import {readDmsPageTags} from "./dms-page-tags";
 import type {ActionResult,DmsDocumentRow,DmsDocumentFilters} from "@/server/actions/dms/documents";
 export type DmsReadPage={rows:DmsDocumentRow[];totalCount:number;page:number;pageSize:number;updatedAt:number};
 const SENSITIVE_LEVELS = ["hr", "finance", "legal", "executive"] as const;
@@ -52,8 +53,8 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
     // DMS.3C — build allowed confidentiality levels for this user
     const allowedLevels = getAllowedConfidentialityLevels(ctx);
 
-    const joins: string[] = [];
-    if (filters.hasExtractedText !== undefined) joins.push("perf_document_has_extracted_text");
+    const sortByTags = page.sortKey === "tags";
+    const tagCount = sortByTags ? ",visible_tag_count" : "";
     // Content search remains database-side and uses the caller's content RLS,
     // then the same F03 protected document projection. No ID-set download.
     const contentSearch=filters.searchMode === "content" && !!filters.search?.trim();
@@ -66,11 +67,11 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
         updated_by, updated_at, deleted_at, ai_risk_score, ai_risk_level,
         completeness_score, superseded_by_document_id,
         document_type:dms_document_types(type_code, name_en, requires_expiry_tracking, default_confidentiality),
-        category:dms_document_categories(category_code, name_en),
-        tags:dms_document_tags(tag_id, tag:dms_tags(tag_name, color_hex)),
-        perf_document_tag_count${joins.length ? ',' + joins.join(',') : ''}
+        category:dms_document_categories(category_code, name_en)${tagCount}
       `;
-    const prepared = await prepareDocumentQuery(supabase,filters.search?.trim()??"",ctx,{content:contentSearch,hasFiles:filters.has_files});
+    const prepared = await prepareDocumentQuery(supabase,filters.search?.trim()??"",ctx,{
+      content:contentSearch,hasFiles:filters.has_files,hasExtractedText:filters.hasExtractedText,sortByTags,
+    });
     let query = prepared.query.select(projection).is("deleted_at", null);
 
     // DMS.3C — enforce confidentiality: show only allowed levels OR docs the user owns/created
@@ -155,26 +156,31 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
         query = query.is("expiry_date", null);
       }
     }
-    // Database-side existence filters avoid unbounded ID downloads and oversized URLs.
-    // The related tables retain their existing user-scoped RLS.
-    if (filters.hasExtractedText !== undefined) {
-      query = query.eq("perf_document_has_extracted_text", filters.hasExtractedText);
-    }
-    const sortColumns={created_at:"created_at",document_no:"document_no",title:"title",document_type:"document_type(name_en)",status:"status",expiry_date:"expiry_date",tags:"perf_document_tag_count"};
+    const sortColumns={created_at:"created_at",document_no:"document_no",title:"title",document_type:"document_type(name_en)",status:"status",expiry_date:"expiry_date",tags:"visible_tag_count"};
     const from=(page.page-1)*page.pageSize;
-    const { data, error, count } = await query.order(sortColumns[page.sortKey],{ascending:page.sortDir==="asc",nullsFirst:false}).order("id",{ascending:true}).range(from,from+page.pageSize-1).returns<DmsDocumentRow[]>();
+    const ordered = query.order(sortColumns[page.sortKey],{ascending:page.sortDir==="asc",nullsFirst:false}).order("id",{ascending:true});
+    let result = await ordered.range(from,from+page.pageSize-1).returns<DmsDocumentRow[]>();
+    if (from > 0 && result.status === 416 && result.error?.code === "PGRST103") {
+      const first = await ordered.range(0,0).returns<DmsDocumentRow[]>();
+      if (!first.error && first.count !== null && first.count <= from && first.data?.length === Math.min(1,first.count)) {
+        result = {...first,data:[]};
+      }
+    }
+    const { data, error, count } = result;
     if (error || count===null || !Number.isSafeInteger(count) || count < 0 || !Array.isArray(data) || data.length !== Math.min(page.pageSize, Math.max(0, count-from)) || new Set(data.map(row=>row.id)).size!==data.length) {
       logger.error("DMS document list query failed", { code: error?.code??"COUNT_UNAVAILABLE" });
       return { success: false, error: "Documents could not be loaded. Please try again." };
     }
 
+    const tags = await readDmsPageTags(supabase, data.map(row => row.id));
     // Redact ai_summary for confidential documents when user is not admin
     const CONFIDENTIAL_LEVELS = ["hr", "legal", "executive"];
 
     const processed = (data ?? []).map((doc) => {
-      const {content_match: _content, perf_document_has_extracted_text: _text, ...record} = doc as DmsDocumentRow & {content_match?:unknown;perf_document_has_extracted_text?:boolean};
-      void _content; void _text;
-      const d = record as DmsDocumentRow;
+      const {content_match: _content, perf_document_has_extracted_text: _text, visible_tag_count: _tags, ...record} =
+        doc as DmsDocumentRow & {content_match?:unknown;perf_document_has_extracted_text?:boolean;visible_tag_count?:number};
+      void _content; void _text; void _tags;
+      const d = {...record, tags: tags.get(doc.id) ?? []} as DmsDocumentRow;
       if (!isAdmin && CONFIDENTIAL_LEVELS.includes(d.confidentiality_level) && d.ai_summary) {
         return { ...d, ai_summary: "[Summary restricted — confidential document]" };
       }

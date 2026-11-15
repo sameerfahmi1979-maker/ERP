@@ -76,7 +76,8 @@ export function BranchSelect({
       readOnly={false}
       required={required}
       loading={(authorizedOptions === undefined && isLoading) && value == null}
-      error={authorizedOptions === undefined ? fetchError ?? error : error}
+      error={fetchError ?? undefined}
+      validationError={error}
       allowClear={allowClear}
       emptyText={effectiveEmptyText}
       noResultsText="No results found"

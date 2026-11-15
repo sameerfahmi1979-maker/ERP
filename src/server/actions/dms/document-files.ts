@@ -126,20 +126,20 @@ export async function getDmsDocumentVersions(
     const access = await checkDocumentConfidentialityAccess(supabase, documentId, ctx);
     if (!access.allowed) return { success: false, error: access.error ?? "Document access is restricted." };
 
-    const data = await readAllPages(async (from,to) => {
+    const data = await readAllPages<DmsDocumentVersionRow>(async (from,to) => {
       const result = await supabase
-      .from("dms_document_versions")
+      .rpc("read_dms_document_versions", {target_document_id: documentId}, {get: true, count: "exact"})
       .select(
         `id, document_id, version_number, version_label, change_notes, is_current, unlinked_at,
          created_by, created_at,
          creator:user_profiles!created_by(full_name)`
-      , {count:"exact"})
-      .eq("document_id", documentId)
+      )
       .order("version_number", { ascending: false }).order("id",{ascending:true}).range(from,to);
-      return result;
+      if (result.data !== null && !Array.isArray(result.data)) throw new Error("Invalid version list response.");
+      return {...result, data: result.data as DmsDocumentVersionRow[] | null};
     }, {identity:row=>row.id,maxRows:10000});
 
-    return { success: true, data: (data as unknown as DmsDocumentVersionRow[]) ?? [] };
+    return { success: true, data };
   } catch (e) {
     return { success: false, error: String(e) };
   }

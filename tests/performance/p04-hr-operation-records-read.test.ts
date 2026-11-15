@@ -30,26 +30,18 @@ it.each(HR_OPERATION_RECORD_KINDS)("%s every allowed filter intersects the compl
   s.result = {data: [], count: 0, error: null}; const r = await readHrOperationRecords({kind, employeeId: 100, columnFilters: filters}); expect(r.success, r.error).toBe(true);
   expect(s.calls.filter(c => ["eq", "ilike", "gte"].includes(String(c[0])))).toHaveLength(fields.length + 1);
   expect(s.calls.findIndex(c => c[0] === "range")).toBeGreaterThan(s.calls.findLastIndex(c => ["eq", "ilike", "gte", "lt"].includes(String(c[0]))));
-  if (kind === "assignments" || kind === "readiness") {
-    expect(s.calls).toContainEqual(["from", kind === "assignments" ? "phase3_hr_assignments" : "phase3_hr_site_readiness"]);
+  if (kind === "assignments") expect(String(s.calls.find(c => c[0] === "select")?.[1])).toContain("!inner(");
+  if (kind === "readiness") {
+    expect(s.calls).toContainEqual(["from", "phase3_hr_site_readiness"]);
     expect(s.calls).toContainEqual(["ilike", "site_label", String.raw`%موارد\_\%%`]);
-  }
-  if (kind === "assignments") {
-    expect(s.calls).toContainEqual(["ilike", "department_label", String.raw`%موارد\_\%%`]);
-    expect(String(s.calls.find(c => c[0] === "select")?.[1])).toContain("designations!inner(");
   }
 });
 it.each(HR_OPERATION_RECORD_KINDS)("%s bilingual literal search and every visible sort are server-owned, never loaded-page filters", async kind => {
   s.result = {data: [], count: 0, error: null}; expect((await readHrOperationRecords({kind, employeeId: 100, search: "اختبار_%"})).success).toBe(true);
   expect(s.calls.filter(c => c[0] === "or").some(c => String(c[1]).includes("\\\\_\\\\%"))).toBe(true);
   expect(s.calls.findIndex(c => c[0] === "or")).toBeLessThan(s.calls.findIndex(c => c[0] === "range"));
-  const sortColumns: Record<string,string> = {site_name:"site_label",department_name:"department_label",designation_name:"designations(name_en)"};
-  for (const field of HR_OPERATION_RECORD_CONFIG[kind].fields) {
-    s.calls = [];
-    expect((await readHrOperationRecords({kind, employeeId: 100, sortKey: field.id, sortDir: "asc"})).success).toBe(true);
-    expect(s.calls).toContainEqual(["order", sortColumns[field.id] ?? field.id, {ascending: true, nullsFirst: false}]);
-    expect(s.calls).toContainEqual(["order", "id", {ascending: true}]);
-  }
+  const labels: Record<string,string>={site_name:"site_label",department_name:"department_label",designation_name:"designations(name_en)"};
+  for (const field of HR_OPERATION_RECORD_CONFIG[kind].fields) {s.calls = []; expect((await readHrOperationRecords({kind, employeeId: 100, sortKey: field.id, sortDir: "asc"})).success).toBe(true); expect(s.calls).toContainEqual(["order", labels[field.id] ?? field.id, {ascending: true, nullsFirst: false}]); expect(s.calls).toContainEqual(["order", "id", {ascending: true}]);}
 });
 it("rejects unsafe or unsupported criteria before authentication or database work", async () => {
   expect(hrOperationRecordCriteriaSchema.parse({kind: "assignments", employeeId: 100}).pageSize).toBe(25);

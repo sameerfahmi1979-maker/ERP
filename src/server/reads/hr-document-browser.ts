@@ -149,7 +149,14 @@ export async function readHrDocumentBrowser(input: unknown, context?: AuthContex
     // inspect outcomes in the original source order: an earlier oversized
     // source keeps its truthful ceiling outcome, not a timing-dependent error.
     const [linkResult, identityResult] = await Promise.allSettled([
-      complete(() => select("dms_document_links", "id,document_id").eq("entity_type", p.entityType).eq("entity_id", p.entityId).is("deleted_at", null).order("id"), z.object({id, document_id: id}).strip(), signal),
+      complete(() => {
+        signal?.throwIfAborted();
+        const query = db.rpc("read_dms_entity_document_links",
+          {target_entity_type: p.entityType, target_entity_id: p.entityId}, {get: true, count: "exact"})
+          .select("id,document_id").is("deleted_at", null).order("id");
+        if (signal) query.abortSignal(signal);
+        return query as unknown as Query;
+      }, z.object({id, document_id: id}).strip(), signal),
       p.entityType === "employee" ? complete(() => select("employee_identity_documents", "id,document_number,issue_date,expiry_date,status,dms_document_id,doc_type:hr_identity_document_types(name_en)")
         .eq("employee_id", p.entityId).is("deleted_at", null).order("expiry_date", {ascending: true, nullsFirst: false}).order("id"), identity, signal) : Promise.resolve([]),
     ]);

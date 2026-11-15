@@ -8,7 +8,15 @@ const state = vi.hoisted(() => ({ctx: {} as AuthContext, authorizations: 0, clie
 vi.mock("@/lib/rbac/check", async () => ({...await import("@/lib/rbac/scope"), getAuthContext: async () => {state.authorizations++; return state.ctx;}}));
 vi.mock("@/lib/supabase/server", () => ({createClient: async () => {
   state.clients++;
-  return {rpc: async (...args: unknown[]) => {state.rpc.push(args); return {error: state.rpcFault ? {message: "SYNTHETIC_PRIVATE"} : null, data: (args[1] as {permission_code: string}).permission_code.endsWith("preview") ? state.preview : state.download};},
+  const db = {rpc: (...args: unknown[]) => {
+    if(args[0]==="read_dms_entity_document_links"){
+      const {target_entity_type,target_entity_id}=args[1] as {target_entity_type:string;target_entity_id:number};
+      const links=db.from("dms_document_links");
+      const eq=links.eq as (column:string,value:unknown)=>unknown;
+      eq("entity_type",target_entity_type);eq("entity_id",target_entity_id);
+      return links;
+    }
+    state.rpc.push(args);return Promise.resolve({error:state.rpcFault?{message:"SYNTHETIC_PRIVATE"}:null,data:(args[1] as {permission_code:string}).permission_code.endsWith("preview")?state.preview:state.download});},
     from: (table: string) => {
       const call: Call = {table, methods: []}; state.calls.push(call);
       const builder: Record<string, unknown> = {then: (resolve: (r: unknown) => unknown) => {
@@ -45,6 +53,7 @@ vi.mock("@/lib/supabase/server", () => ({createClient: async () => {
       for (const method of ["select", "eq", "is", "in", "or", "ilike", "order", "range", "maybeSingle", "abortSignal"]) builder[method] = (...args: unknown[]) => {call.methods.push([method, ...args]); return builder;};
       return builder;
     }};
+  return db;
 }}));
 import {readHrDocumentBrowser} from "@/server/reads/hr-document-browser";
 import {POST} from "@/app/api/reads/hr-document-browser/route";

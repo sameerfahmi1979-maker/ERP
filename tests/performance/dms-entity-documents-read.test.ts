@@ -11,7 +11,13 @@ vi.mock("@/lib/rbac/check", async () => ({...await import("@/lib/rbac/scope"), g
 vi.mock("@/server/actions/audit", () => ({logAudit: vi.fn()}));
 vi.mock("next/cache", () => ({revalidatePath: vi.fn()}));
 function client() {
-  return {rpc: (name: string, args?: {permission_code?: string}) => {
+  const db = {rpc: (name: string, args?: {permission_code?: string;target_entity_type?:string;target_entity_id?:number}) => {
+    if(name==="read_dms_entity_document_links"){
+      const links=db.from("dms_document_links");
+      const eq=links.eq as (column:string,value:unknown)=>unknown;
+      eq("entity_type",args?.target_entity_type);eq("entity_id",args?.target_entity_id);
+      return links;
+    }
     const data = name === "current_user_is_global_admin" ? s.global : name==="current_user_has_permission"?s.findings:name==="current_user_has_role"?false:args?.permission_code?.endsWith("preview") ? s.preview : s.extraction;
     const result = {data, error: s.rpcFault ? {message: "PRIVATE_RPC_FAILURE"} : null};
     return {abortSignal: () => Promise.resolve(result), then: (resolve: (r: unknown) => unknown) => Promise.resolve(result).then(resolve)};
@@ -41,6 +47,7 @@ function client() {
     for(const m of ["select","eq","neq","is","in","not","or","order","range","limit","abortSignal","maybeSingle"])b[m]=(...a:unknown[])=>{c.methods.push([m,...a]);return b;};
     return b;
   }};
+  return db;
 }
 vi.mock("@/lib/supabase/server", () => ({createClient: async () => {s.clients++;return client();}}));
 vi.mock("@/lib/supabase/admin", () => ({createAdminClient: () => {s.admin++;return client();}}));

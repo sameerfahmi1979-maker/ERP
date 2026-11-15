@@ -2,7 +2,7 @@ import {beforeEach,expect,it,vi} from "vitest";
 type Result={data:unknown;count:number|null;error:unknown};
 const state=vi.hoisted(()=>({allowed:true,active:true,forced:false,results:[] as Result[],calls:[] as {table:string;ops:[string,unknown[]][]}[],response:undefined as undefined|((call:{table:string;ops:[string,unknown[]][]})=>Result)}));
 vi.mock("@/lib/rbac/check",()=>({hasPermission:(_ctx:unknown,p:string)=>state.allowed&&p==="dms.documents.view",getAuthContext:async()=>({profile:{id:1,must_change_password:state.forced},isAccountActive:state.active,roleCodes:[]})}));
-vi.mock("@/lib/supabase/server",()=>({createClient:async()=>({from:(table:string)=>{
+vi.mock("@/lib/supabase/server",()=>({createClient:async()=>({rpc:()=>({order:()=>({range:async()=>({data:[],count:0,error:null})})}),from:(table:string)=>{
  const call={table,ops:[] as [string,unknown[]][]};state.calls.push(call);
  const chain=new Proxy({}, {get:(_,key)=>key==="then"?(resolve:(result:unknown)=>unknown)=>Promise.resolve(state.response?.(call)??state.results.shift()??{data:null,count:null,error:{message:"private failure"}}).then(resolve):(...args:unknown[])=>{call.ops.push([String(key),args]);return chain;}});return chain;
 }})}));

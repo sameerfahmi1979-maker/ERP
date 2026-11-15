@@ -35,16 +35,16 @@ const companies = [{ id: 1, company_code: "ALGT", legal_name_en: "ALGT" }];
 const cases = [
   { route: "designations", checkbox: "Active", expected: { is_active: false },
     mount: (mode: "view" | "edit") => <DesignationWorkspaceForm mode={mode} authContext={admin} companies={companies}
-      designation={{ id: 71, designation_code: "SYN", designation_name_en: "Synthetic", owner_company_id: 1, workspace_revision: 1, is_active: true } as DesignationRow} /> },
+      designation={{ id: 71, workspace_revision: 4, designation_code: "SYN", designation_name_en: "Synthetic", owner_company_id: 1, is_active: true } as DesignationRow} /> },
   { route: "approval-roles", checkbox: "Can Approve", expected: { can_approve: false },
     mount: (mode: "view" | "edit") => <ApprovalRoleWorkspaceForm mode={mode} authContext={admin} companies={companies}
-      role={{ id: 71, role_code: "SYN", role_name: "Synthetic", level_number: 1, owner_company_id: 1, workspace_revision: 1, can_approve: true } as ApprovalRoleRow} /> },
+      role={{ id: 71, workspace_revision: 4, role_code: "SYN", role_name: "Synthetic", level_number: 1, owner_company_id: 1, can_approve: true } as ApprovalRoleRow} /> },
   { route: "dms-required-documents", checkbox: "Is Required", expected: { is_required: false },
     mount: (mode: "view" | "edit") => <DmsRequiredDocumentRuleForm mode={mode} authContext={admin} companies={companies}
-      rule={{ id: 71, rule_code: "SYN", rule_name: "Synthetic", entity_type: "company", owner_company_id: 1, workspace_revision: 1, is_required: true } as DmsRequiredDocumentRuleRow} /> },
+      rule={{ id: 71, workspace_revision: 4, rule_code: "SYN", rule_name: "Synthetic", entity_type: "company", owner_company_id: 1, is_required: true } as DmsRequiredDocumentRuleRow} /> },
 ];
 
-beforeEach(() => mock.save.mockReset().mockResolvedValue({ success: true, data: { id: 71, revision: "2", replayed: false } }));
+beforeEach(() => mock.save.mockReset().mockResolvedValue({ success: true, data: { id: 71, revision: "5" } }));
 afterEach(cleanup);
 
 it.each(cases)("$route has an Edit link and saves All Organizations and cleared flags", async ({ route, checkbox, expected, mount }) => {
@@ -55,5 +55,6 @@ it.each(cases)("$route has an Edit link and saves All Organizations and cleared 
   fireEvent.change(screen.getByLabelText("Organization"), { target: { value: "" } });
   fireEvent.click(screen.getByRole("checkbox", { name: checkbox }));
   await act(async () => { expect(await mock.onSave?.()).toBe(true); });
-  expect(mock.save).toHaveBeenCalledWith(expect.objectContaining({ id: 71, owner_company_id: null, ...expected }), expect.objectContaining({ revision: "1", operationId: expect.any(String) }));
+  expect(mock.save).toHaveBeenCalledWith(expect.objectContaining({ id: 71, owner_company_id: null, ...expected }),
+    expect.objectContaining({ revision: "4", operationId: expect.any(String) }));
 });

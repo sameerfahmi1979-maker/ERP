@@ -5,6 +5,7 @@ import {getReadAuthContext} from "./read-context";
 import {createClient} from "@/lib/supabase/server";
 import {literalContains,literalLike} from "@/lib/reads/search";
 import {readAllPages} from "./all-pages";
+import {readDmsPageTags} from "./dms-page-tags";
 import type {ActionResult,ArchivedDocumentRow} from "@/server/actions/dms/documents";
 
 const text=z.string().trim().max(200);
@@ -27,7 +28,6 @@ const archiveRowsSchema=z.array(z.object({
  superseded_by_document_id:id.nullable(),
  document_type:z.object({type_code:z.string(),name_en:z.string(),requires_expiry_tracking:z.boolean(),default_confidentiality:z.string()}).nullable(),
  category:z.object({category_code:z.string(),name_en:z.string()}).nullable(),
- tags:z.array(z.object({tag_id:id,tag:z.object({tag_name:z.string(),color_hex:z.string().nullable()}).nullable()})),
 }));
 const replacementsSchema=z.array(z.object({id,document_no:z.string(),title:z.string()}));
 export async function readDmsArchivePage(input:unknown={},context?:AuthContext):Promise<ActionResult<ArchiveReadPage>>{
@@ -54,8 +54,7 @@ export async function readDmsArchivePage(input:unknown={},context?:AuthContext):
    issue_date,expiry_date,reminder_policy_id,ocr_status,ai_status,review_status,is_archived,archived_at,created_by,created_at,updated_by,updated_at,deleted_at,
    superseded_by_document_id,
    document_type:dms_document_types(type_code,name_en,requires_expiry_tracking,default_confidentiality),
-   category:dms_document_categories(category_code,name_en),
-   tags:dms_document_tags(tag_id,tag:dms_tags(tag_name,color_hex))
+   category:dms_document_categories(category_code,name_en)
   `,{count:"exact"}).is("deleted_at",null).in("status",statuses);
   const admin=hasPermission(ctx,"dms.admin")||ctx.roleCodes.includes("system_admin");
   if(!admin){const levels=["internal","company",...["hr","finance","legal","executive"].filter(level=>hasPermission(ctx,`dms.documents.view.${level}`))];query=query.or(`confidentiality_level.in.(${levels.join(",")}),owner_user_id.eq.${ctx.profile.id},created_by.eq.${ctx.profile.id}`);}
@@ -84,7 +83,8 @@ export async function readDmsArchivePage(input:unknown={},context?:AuthContext):
    if(linked.error||linked.count===null||!parsedLinks.success||linked.count!==parsedLinks.data.length||new Set(parsedLinks.data.map(row=>row.id)).size!==parsedLinks.data.length||parsedLinks.data.some(row=>!replacementIds.includes(row.id)))return{success:false,error:"Archived document replacements could not be completely loaded. Please retry."};
    for(const row of parsedLinks.data)replacements.set(row.id,row);
   }
-  const rows=parsedRows.data.map(row=>({...row,tags:row.tags.map(tag=>({...tag,tag:tag.tag??undefined})),reason:row.status==="superseded"?"renewed" as const:"archived" as const,superseded_by:row.superseded_by_document_id?replacements.get(row.superseded_by_document_id)??null:null}));
+  const tags = await readDmsPageTags(db, parsedRows.data.map(row => row.id));
+  const rows=parsedRows.data.map(row=>({...row,tags:tags.get(row.id)??[],reason:row.status==="superseded"?"renewed" as const:"archived" as const,superseded_by:row.superseded_by_document_id?replacements.get(row.superseded_by_document_id)??null:null}));
   return{success:true,data:{rows,totalCount:result.count,page:p.page,pageSize:p.pageSize,updatedAt:Date.now()}};
  }catch{return{success:false,error:"Archived documents could not be completely loaded. Please retry."};}
 }

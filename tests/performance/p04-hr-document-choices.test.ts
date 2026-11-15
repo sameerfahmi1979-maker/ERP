@@ -4,14 +4,23 @@ vi.mock("@/server/reads/read-context",()=>({getReadAuthContext:async()=>({})}));
 vi.mock("@/lib/rbac/scope",()=>({hasPermission:()=>state.allow,isGlobalAdmin:()=>state.admin}));
 vi.mock("@/server/reads/hr-subject-access",()=>({hrSubjectPermission:async()=>state.manage}));
 vi.mock("@/lib/hr/ai/feature-flags",()=>({isHrAiFeatureEnabled:async()=>state.flag}));
-vi.mock("@/lib/supabase/server",()=>({createClient:async()=>({from:(table:string)=>{
+vi.mock("@/lib/supabase/server",()=>({createClient:async()=>{
+ const from=(table:string)=>{
  const call:typeof state.calls[number]={table,filters:[],orders:[]};state.calls.push(call);
  const q={select:(projection:string,options?:{head?:boolean})=>{call.projection=projection;call.head=options?.head;return q;},
  eq:(...args:unknown[])=>{call.filters.push(["eq",...args]);return q;},is:(...args:unknown[])=>{call.filters.push(["is",...args]);return q;},neq:(...args:unknown[])=>{call.filters.push(["neq",...args]);return q;},or:(...args:unknown[])=>{call.filters.push(["or",...args]);return q;},not:(...args:unknown[])=>{call.filters.push(["not",...args]);return q;},order:(column:string)=>{call.orders.push(column);return q;},limit:(...args:unknown[])=>{call.filters.push(["limit",...args]);return q;},abortSignal:()=>q,maybeSingle:()=>q,range:(from:number,to:number)=>{call.from=from;call.to=to;return q;},then:(resolve:(r:unknown)=>unknown)=>{
   const parent=table!=="dms_documents";
   const r=table==="dms_document_links"?{data:state.links.slice(call.from,call.to!+1),count:state.links.length,error:null}:parent?{data:(table==="employees"?state.subject:state.dependent)?{id:7}:null,error:null}:state.rangeError&&!call.head?{error:{code:"PGRST103"},status:416,count:null,data:null}:{data:call.head?null:state.rows.slice(call.from,call.to!+1-(state.short?1:0)),count:state.rows.length,error:state.fail?{}:null,status:200};return Promise.resolve(r).then(resolve);
  }};return q;
-}})}));
+ };
+ return {from,rpc:(name:string,args:{document_ids?:number[];target_entity_type?:string;target_entity_id?:number})=>{
+  if(name==="read_dms_entity_document_links")return from("dms_document_links").eq("entity_type",args.target_entity_type).eq("entity_id",args.target_entity_id);
+  return {order:()=>({range:()=>({abortSignal:async()=>({data:args.document_ids?.map(document_id=>{
+   const doc=state.rows.find(row=>row.id===document_id);
+   return {document_id,has_extraction:Boolean((doc?.extraction as unknown[])?.length),has_ocr:Boolean((doc?.ocr as unknown[])?.length)};
+  }),error:null})})})};
+ }};
+}}));
 import {readHrDocumentChoices} from "@/server/reads/hr-document-choices";
 const row=(id:number)=>({id,title:`Synthetic ${id}`,document_no:`TEST-${id}`,status:"active",issue_date:null,expiry_date:null,document_type:{type_code:"TEST",name_en:"Synthetic type"},employee_link:[],extraction:[],ocr:[]});
 beforeEach(()=>{Object.assign(state,{allow:true,subject:true,dependent:true,manage:true,flag:true,admin:true,fail:false,short:false,rangeError:false,links:[],rows:Array.from({length:1111},(_,i)=>row(i+1)),calls:[]});});

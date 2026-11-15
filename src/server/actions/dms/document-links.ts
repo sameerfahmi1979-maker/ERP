@@ -89,21 +89,18 @@ export async function getDmsDocumentLinks(
     }
 
     const supabase = await createClient();
-    const data = await readAllPages(async (from,to) => {
+    type Link = Omit<DmsDocumentLinkRow, "entity_type_label" | "entity_display_name">;
+    const rows = await readAllPages<Link>(async (from,to) => {
       const result = await supabase
-      .from("dms_document_links")
-      .select("id, document_id, entity_type, entity_id, link_role, is_primary, notes, linked_at, created_at", {count:"exact"})
-      .eq("document_id", documentId)
+      .rpc("read_dms_document_links", {target_document_id: documentId}, {get: true, count: "exact"})
+      .select("id, document_id, entity_type, entity_id, link_role, is_primary, notes, linked_at, created_at")
       .is("deleted_at", null)
       .order("linked_at").order("id",{ascending:true}).range(from,to);
-      return result;
+      if (result.data !== null && !Array.isArray(result.data)) throw Error("Invalid document link list");
+      return {...result, data: result.data as Link[] | null};
     }, {identity:row=>row.id,maxRows:10000});
 
 
-    const rows = (data ?? []) as Omit<
-      DmsDocumentLinkRow,
-      "entity_type_label" | "entity_display_name"
-    >[];
     const displayNameMap = await resolveDmsLinkEntityDisplayNames(
       supabase,
       rows.map((r) => ({ entity_type: r.entity_type, entity_id: r.entity_id }))

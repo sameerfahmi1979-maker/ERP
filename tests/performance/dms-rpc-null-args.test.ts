@@ -14,6 +14,7 @@ beforeEach(()=>{m.requests=[];m.denied=false;m.ctx={profile:{id:1,must_change_pa
  m.db=sdk('https://synthetic.example.invalid','synthetic-not-a-key',{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false},global:{fetch:async(input,init)=>{const url=new URL(typeof input==='string'?input:input instanceof URL?input.href:input.url),method=init?.method??'GET';m.requests.push({url,method,prefer:new Headers(init?.headers).get('prefer')??''});
  if(nullable.some(k=>url.searchParams.get(k)==='null'))return new Response(JSON.stringify({code:'22P02',message:'invalid bigint input'}),{status:400});
  if(m.denied)return new Response(JSON.stringify({code:'42501',message:'SYNTHETIC denied'}),{status:403});
+ if(url.pathname.endsWith('dms_tag_details_for_documents'))return new Response('[]',{headers:{'content-type':'application/json','content-range':'*/0'}});
  const session=url.pathname.endsWith('f03_current_session_valid'),global=url.pathname.endsWith('ai_mod02_search_global');
  return new Response(method==='HEAD'?null:JSON.stringify(session?true:global?[]:[row]),{headers:{'content-type':'application/json','content-range':global?'*/0':'0-0/1'}});
  }}});
@@ -35,3 +36,15 @@ it('retains explicit subject/type/link/expiry restrictions rather than clearing 
 it('global search also omits default-null arguments on the actual SDK transport',async()=>{const r=await searchGlobal({query:'Synthetic',domains:['party']},m.ctx);expect(r.success).toBe(true);const q=m.requests.find(q=>q.url.pathname.endsWith('ai_mod02_search_global'))!;for(const k of nullable)expect(q.url.searchParams.has(k)).toBe(false);expect(q.prefer).toContain('count=exact');});
 it('database rejection stays a failure and does not trigger an unfiltered fallback',async()=>{m.denied=true;expect((await readDmsDocumentPage({},m.ctx)).success).toBe(false);expect(m.requests).toHaveLength(1);expect(m.requests[0].url.pathname).toBe('/rest/v1/rpc/ai_mod02_search_documents');});
 it('preserves false, zero, empty arrays and literal search text without mutating semantic criteria',()=>{const args={subject_id:null,expiry_state:undefined,include_content:false,zero:0,document_type_ids:[],text_query:'null',metadata_filters:'[]'};expect(defaultNullRpcGetArgs(args)).toEqual({include_content:false,zero:0,document_type_ids:[],text_query:'null',metadata_filters:'[]'});expect(args.subject_id).toBeNull();});
+it('sorts by batch-counted tags and requests details only for the returned page',async()=>{
+ const r=await readDmsDocumentPage({sortKey:'tags',filters:{has_files:false}},m.ctx);
+ expect(r).toMatchObject({success:true,data:{totalCount:1,rows:[{id:1,tags:[]}]}});
+ expect(m.requests).toHaveLength(2);
+ const [page,details]=m.requests;
+ expect(page.url.pathname).toMatch(/dms_search_documents_for_worklist$/);
+ expect(page.url.searchParams.get('sort_by_tags')).toBe('true');
+ expect(page.url.searchParams.get('order')).toContain('visible_tag_count');
+ expect(page.url.searchParams.get('has_files')).toBe('false');
+ expect(page.url.searchParams.get('select')).not.toContain('dms_document_tags');
+ expect(details.url.searchParams.get('document_ids')).toBe('{1}');
+});

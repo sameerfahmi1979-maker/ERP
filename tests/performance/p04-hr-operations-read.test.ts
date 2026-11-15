@@ -16,8 +16,8 @@ afterEach(() => {Object.assign(s, {active: true, password: false, permitted: tru
 it.each(HR_OPERATIONS_KINDS)("%s retains minimal native projections, bounded100 and unique ties", async kind => {
   s.result = {data: [{...rows[kind], notes: "PRIVATE-SYNTHETIC", released_by: 1, missing_requirements_json: {secret: true}, search_employee: {id: 1}}], count: 1101, error: null};
   const result = await readHrOperations({kind, page: 12, pageSize: 100}); expect(result.success, result.error).toBe(true); expect(result.data).toMatchObject({kind, totalCount: 1101, rows: [rows[kind]]});
-  const expectedRelation = {assignments: "phase3_hr_assignments", blocks: "employee_operational_blocks", readiness: "phase3_hr_site_readiness"};
-  expect(s.calls).toContainEqual(["from", expectedRelation[kind]]); expect(s.calls).toContainEqual(["range", 1100, 1199]); expect(s.calls).toContainEqual(["order", HR_OPERATIONS_CONFIG[kind].sort, {ascending: false, nullsFirst: false}]); expect(s.calls).toContainEqual(["order", "id", {ascending: true}]);
+  const relation = {assignments:"phase3_hr_assignments",blocks:"employee_operational_blocks",readiness:"phase3_hr_site_readiness"};
+  expect(s.calls).toContainEqual(["from", relation[kind]]); expect(s.calls).toContainEqual(["range", 1100, 1199]); expect(s.calls).toContainEqual(["order", HR_OPERATIONS_CONFIG[kind].sort, {ascending: false, nullsFirst: false}]); expect(s.calls).toContainEqual(["order", "id", {ascending: true}]);
   expect(String(s.calls.find(c => c[0] === "select")?.[1])).not.toContain("*"); expect(s.calls.filter(c => c[0] === "from")).toHaveLength(1); expect(JSON.stringify(result)).not.toContain("PRIVATE-SYNTHETIC"); expect(JSON.stringify(result)).not.toContain("search_employee");
 });
 it("rejects unsafe or unsupported criteria before auth or database work", async () => {

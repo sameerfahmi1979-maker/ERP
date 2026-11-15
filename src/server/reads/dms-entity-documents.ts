@@ -57,7 +57,12 @@ async function execute(input:unknown,context:AuthContext|undefined,callerSignal:
       await point("employees",dependents[0].employee_id,true);
     }else await point(parent.table,p.entityId,parent.soft);
     const output=(value:unknown)=>{signal.throwIfAborted();return {success:true,data:entityDocumentsResponseSchema.parse(value)};};
-    const links=await complete(()=>select("dms_document_links","id,document_id,is_primary,link_role,linked_at").eq("entity_type",p.entityType).eq("entity_id",p.entityId).is("deleted_at",null).order("linked_at",{ascending:false}).order("id",{ascending:false}),linkSchema);
+    const links=await complete(()=>{
+      attempt();
+      return db.rpc("read_dms_entity_document_links",{target_entity_type:p.entityType,target_entity_id:p.entityId},{get:true,count:"exact"})
+        .select("id,document_id,is_primary,link_role,linked_at").is("deleted_at",null)
+        .order("linked_at",{ascending:false}).order("id",{ascending:false}).abortSignal(signal) as unknown as Query;
+    },linkSchema);
     const linkedIds=[...new Set(links.map(r=>r.document_id))];
     const readDocs=async(ids:number[])=>{const docs:Document[]=[];for(const batch of batches(ids)){const rows=await complete(()=>select("dms_documents",DOC_FIELDS).in("id",batch).order("id",{ascending:true}),documentSchema);if(rows.some(r=>!batch.includes(r.id)))throw Error("Document mismatch");docs.push(...rows);}return docs;};
     const enrich=async(docs:Document[]):Promise<AvailableDmsDocumentOption[]>=>{

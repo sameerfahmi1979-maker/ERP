@@ -5,7 +5,8 @@ vi.mock("@/lib/rbac/check", () => ({ getAuthContext: async () => ({ profile: {id
 vi.mock("@/lib/logger",()=>({logger:{warn:vi.fn()}}));
 const row = (id:number) => ({ id, document_no:`DOC-${id}`, title:`Synthetic ${id}`, expiry_date:"2026-01-01",issue_date:null,status:"active",confidentiality:"company",
   expiry_tracking_override:null,expiry_override_reason:null,document_type:{name_en:"Synthetic type",is_renewable:true},category:{category:{name_en:"Synthetic category"}} });
-vi.mock("@/lib/supabase/server",()=>({createClient:async()=>({from:(table:string)=>{
+vi.mock("@/lib/supabase/server",()=>({createClient:async()=>{
+ const from=(table:string)=>{
   const call:Call={table,ops:[]};s.calls.push(call);
   const builder=new Proxy({}, {get(_target,key){if(key==="then")return (resolve:(v:unknown)=>void)=>{
     const range=call.ops.filter(([k])=>k==="range").at(-1)?.[1] as number[] ?? [0,24];
@@ -25,7 +26,13 @@ vi.mock("@/lib/supabase/server",()=>({createClient:async()=>({from:(table:string
     const failed=s.mode==="error"||(s.mode==="lookup-error"&&table!=="dms_documents")||(s.mode==="second-pass-error"&&s.reads>3);
     resolve({data,error:failed?{message:"private database message"}:null,count,status:200});
   };return (...args:unknown[])=>{call.ops.push([String(key),args]);return builder;};}});return builder;
-}})}));
+ };
+ return {from,rpc:(name:string,args:{target_entity_type:string;target_entity_id:number})=>{
+   expect(name).toBe("read_dms_entity_document_links");
+   const q=from("dms_document_links") as {eq:(column:string,value:unknown)=>unknown};
+   q.eq("entity_type",args.target_entity_type);q.eq("entity_id",args.target_entity_id);return q;
+ }};
+}}));
 import { readDmsExpiryPage, readDmsExpiryOutput } from "@/server/reads/dms-expiry-page";
 import { POST as pageRoute } from "@/app/api/reads/dms-expiry-page/route";
 import { POST as outputRoute } from "@/app/api/reads/dms-expiry-output/route";

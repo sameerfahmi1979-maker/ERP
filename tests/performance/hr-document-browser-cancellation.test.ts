@@ -45,7 +45,8 @@ function sdk() {
     global: {fetch: async (input, init) => {
       const url = new URL(String(input));
       if (url.origin !== "https://synthetic.invalid" || !url.pathname.startsWith("/rest/v1/")) throw Error("Unexpected synthetic transport target");
-      const call: Call = {source: url.pathname.split("/").at(-1)!, url, method: init?.method ?? "GET", signal: init?.signal}; state.calls.push(call);
+      const name = url.pathname.split("/").at(-1)!;
+      const call: Call = {source: name==="read_dms_entity_document_links"?"dms_document_links":name, url, method: init?.method ?? "GET", signal: init?.signal}; state.calls.push(call);
       return state.fetch(call, init);
     }},
   })));

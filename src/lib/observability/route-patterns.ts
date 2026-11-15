@@ -290,7 +290,6 @@ export const APPLICATION_ROUTE_PATTERNS = [
   "/dms/inbox/batch/[batchCode]",
   "/dms/inbox/batches",
   "/dms/intake/[sessionCode]",
-  "/dms/mobile",
   "/dms/notifications",
   "/dms/renewals",
   "/dms/review-queue",

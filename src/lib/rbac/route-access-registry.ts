@@ -61,7 +61,6 @@ export const ROUTE_ACCESS_REGISTRY: Record<string, RouteAccess> = {
   "/dms":                                         { requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
   "/dms/documents":                               { requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
   "/dms/approvals":                               { requiredAnyPermissions: ["dms.approvals.view", "dms.approvals.act", "dms.approvals.admin", "dms.approvals.history.view", "dms.documents.approve", "dms.admin"] },
-  "/dms/mobile":                                  { requiredAnyPermissions: ["dms.documents.view", "dms.documents.upload", "dms.review_queue.view", "dms.review_queue.manage", "dms.documents.review_ai", "dms.admin"] },
   "/dms/inbox":                                   { requiredAnyPermissions: ["dms.documents.upload", "dms.documents.view", "dms.admin"] },
   "/dms/inbox/batches":                           { requiredAnyPermissions: ["dms.documents.upload", "dms.documents.view", "dms.admin"] },
   "/dms/review-queue":                            { requiredAnyPermissions: ["dms.review_queue.view", "dms.review_queue.manage", "dms.documents.review_ai", "dms.admin"] },

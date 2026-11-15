@@ -19,7 +19,7 @@ export const onboardingTasksFetcher: ReportFetcher = {
          due_date, completed_at,
          assigned_to_profile:user_profiles!assigned_to(display_name),
          completed_by_profile:user_profiles!completed_by(display_name),
-         candidate:hr_candidates(full_name_en, candidate_code,requisition:hr_job_requisitions(owner_company_id,owner_company:owner_companies(legal_name_en))),
+         candidate:hr_candidates(full_name_en, candidate_code,requisition:hr_job_requisitions(owner_company_id,owner_company:owner_companies!hr_job_requisitions_owner_company_id_fkey(legal_name_en))),
          employee:employees(
            full_name_en, employee_code, owner_company_id,
            owner_company:owner_companies!employees_owner_company_id_fkey(legal_name_en)

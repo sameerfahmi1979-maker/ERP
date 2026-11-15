@@ -14,7 +14,10 @@ BEGIN
   ) AS routines(signature, body_hash) LOOP
     IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc p
       WHERE p.oid=pg_catalog.to_regprocedure(expected.signature)
-        AND pg_catalog.md5(p.prosrc)=expected.body_hash) THEN
+        AND (pg_catalog.md5(p.prosrc)=expected.body_hash
+          -- The hosted copy of this one predecessor uses LF line endings.
+          OR (expected.signature='erp_private.protect_upload_intake_scope()'
+              AND pg_catalog.md5(p.prosrc)='16c217361823d9dab4bcf55ee61e471a'))) THEN
       RAISE EXCEPTION 'DMS batch prerequisite changed: %', expected.signature;
     END IF;
   END LOOP;

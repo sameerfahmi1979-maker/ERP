@@ -36,7 +36,8 @@ export async function getDmsDocumentHistoryPage(documentId:number,page=1,filter:
   if(!(await checkDocumentConfidentialityAccess(db,documentId,ctx)).allowed)return denied;
   const pageSize=20,from=(page-1)*pageSize;
   const query=(head=false)=>{
-   let q=db.from("dms_document_events").select("id,document_id,event_type,description,performed_by,performed_at,metadata_json,performer:user_profiles!performed_by(display_name)",{count:"exact",head}).eq("document_id",documentId);
+   let q=db.rpc("read_dms_document_events",{target_document_id:documentId},{get:true,count:"exact",head})
+     .select("id,document_id,event_type,description,performed_by,performed_at,metadata_json,performer:user_profiles!performed_by(display_name)");
    if(filter==="downloads")q=q.in("event_type",["file_downloaded","file_previewed","file_download_response_prepared","file_preview_response_prepared"]);
    return q;
   };

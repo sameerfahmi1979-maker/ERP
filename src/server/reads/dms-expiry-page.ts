@@ -73,7 +73,9 @@ async function prepare(input: z.output<typeof expiryCriteriaSchema>, now: number
   }
   if (p.entityType && p.entityId) {
     const links = await readAllPages(async (from, to) => {
-      const r = await db.from("dms_document_links").select("id, document_id", { count: "exact" }).eq("entity_type", p.entityType!).eq("entity_id", p.entityId!).order("id").range(from, to);
+      const r = await db.rpc("read_dms_entity_document_links",
+        {target_entity_type: p.entityType!, target_entity_id: p.entityId!}, {get: true, count: "exact"})
+        .select("id, document_id").order("id").range(from, to);
       return { ...r, data: expiryLinkRowsSchema.parse(r.data) };
     }, { identity: r => r.id, maxRows: 10000 });
     if (!links.length) return null;

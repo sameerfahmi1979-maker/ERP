@@ -4,7 +4,10 @@ vi.mock("@/lib/rbac/check",()=>({getAuthContext:m.auth,hasPermission:()=>true,ha
 vi.mock("@/lib/rbac/employee-access",()=>({getEmployeeAccess:m.access}));
 vi.mock("@/lib/supabase/admin",()=>({createAdminClient:()=>db}));
 vi.mock("@/lib/supabase/server",()=>({createClient:async()=>db}));
-const db={from:(table:string)=>{const entry={table,ops:[] as Array<[string,...unknown[]]>};m.calls.push(entry);const q=new Proxy({}, {get:(_,key)=>key==="then"?(ok:(r:unknown)=>unknown,fail:(e:unknown)=>unknown)=>Promise.resolve().then(()=>m.read(entry)).then(ok,fail):(...args:unknown[])=>{entry.ops.push([String(key),...args]);return q;}});return q;}};
+const db={
+ from:(table:string,ops:Array<[string,...unknown[]]>=[])=>{const entry={table,ops};m.calls.push(entry);const q=new Proxy({}, {get:(_,key)=>key==="then"?(ok:(r:unknown)=>unknown,fail:(e:unknown)=>unknown)=>Promise.resolve().then(()=>m.read(entry)).then(ok,fail):(...args:unknown[])=>{entry.ops.push([String(key),...args]);return q;}});return q;},
+ rpc:(name:string,args:unknown,options:unknown)=>db.from(name,[["rpc",args,options]]),
+};
 import {listHrAiActivity} from "@/server/actions/hr/ai/hr-ai-activity";
 import {readHrFillFacts} from "@/server/reads/hr-ai-fill-facts";
 const ctx={profile:{id:1},roleAssignments:[]};
@@ -20,6 +23,7 @@ it("blocks a foreign subject and access retired during loading",async()=>{m.acce
 it("reads complete source metadata and fingerprints only the verified facts",async()=>{
  m.read.mockImplementation(({table})=>table==="employees"?{data:{id:8,employee_code:"SYN-8"},error:null}:{data:[],count:0,error:null});
  const facts=await readHrFillFacts(db as never,8);expect(facts.fingerprint).toMatch(/^[a-f0-9]{64}$/);expect(m.calls).toHaveLength(3);
+ expect(m.calls.find(call=>call.table==="read_dms_entity_document_links")?.ops).toContainEqual(["rpc",{target_entity_type:"employee",target_entity_id:8},{get:true,count:"exact"}]);
  expect(JSON.stringify(m.calls)).not.toMatch(/document_number|ocr_text|storage_path|medical|bank/);
  m.read.mockImplementation(({table})=>table==="employees"?{data:{id:8},error:null}:{data:[],count:1,error:null});await expect(readHrFillFacts(db as never,8)).rejects.toThrow();
 });

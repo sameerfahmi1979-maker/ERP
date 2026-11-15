@@ -19,8 +19,10 @@ export async function readHrLinkedDocuments(input:unknown,signal?:AbortSignal){
   if(!subject.data||!await hrSubjectPermission(db,p.employeeId,"hr.compliance.view"))return {success:false,error:"Permission denied"};
   if(p.dependentId!==null){const dependent=await db.from("employee_dependents").select("id").eq("id",p.dependentId).eq("employee_id",p.employeeId).is("deleted_at",null).abortSignal(bounded).maybeSingle();if(dependent.error)throw Error("Dependent read failed");if(!dependent.data)return {success:false,error:"Permission denied"};}
   const links=await collectCompletePages(async(from,to)=>{
-   const r=await db.from("dms_document_links").select("id,document_id,document:dms_documents!document_id(id,document_no,title,status,expiry_date,deleted_at,document_type:dms_document_types(name_en))",{count:"exact"})
-    .eq("entity_type",p.dependentId===null?"employee":"employee_dependent").eq("entity_id",p.dependentId??p.employeeId).is("deleted_at",null).order("created_at",{ascending:false}).order("id").range(from,to).abortSignal(bounded);
+   const r=await db.rpc("read_dms_entity_document_links",
+    {target_entity_type:p.dependentId===null?"employee":"employee_dependent",target_entity_id:p.dependentId??p.employeeId},
+    {get:true,count:"exact"}).select("id,document_id,document:dms_documents!document_id(id,document_no,title,status,expiry_date,deleted_at,document_type:dms_document_types(name_en))")
+    .is("deleted_at",null).order("created_at",{ascending:false}).order("id").range(from,to).abortSignal(bounded);
    return {...r,data:r.error?null:z.array(row).parse(r.data)};
   },{maxRows:2000,identity:r=>r.id,signal:bounded});
   const rows=links.flatMap(link=>!link.document||link.document.deleted_at!==null||link.document.status==="deleted"?[]:[{link_id:link.id,document_id:link.document_id,document_no:link.document.document_no??"",title:link.document.title,status:link.document.status,expiry_date:link.document.expiry_date,document_type_name:link.document.document_type?.name_en??null}]);

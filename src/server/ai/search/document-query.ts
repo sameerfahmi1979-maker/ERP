@@ -17,13 +17,13 @@ export interface SharedDocumentQuery extends PromiseLike<NativeRead>{
   order(key:string,options?:{ascending?:boolean;nullsFirst?:boolean}):SharedDocumentQuery;range(from:number,to:number):SharedDocumentQuery;
   limit(limit:number):SharedDocumentQuery;abortSignal(signal:AbortSignal):SharedDocumentQuery;
   textSearch(key:string,value:string,options?:{config?:string;type?:"plain"}):SharedDocumentQuery;
-  returns<T>():PromiseLike<{data:T|null;count:number|null;error:{code?:string;message?:string}|null}>;
+  returns<T>():PromiseLike<{data:T|null;count:number|null;error:{code?:string;message?:string}|null;status?:number}>;
 }
 export class SearchClarification extends Error {constructor(){super("Choose the exact person or business record, or enter its full name/code. No broader results were returned.");}}
 export function assertSearchPrincipal(ctx:AuthContext){if(!ctx.profile?.id||!ctx.isAccountActive||ctx.profile.must_change_password)throw Error("Permission denied");}
 const lookup=z.object({id:z.number().int().positive().safe(),name_en:z.string(),type_code:z.string()}).strip();
 /** One request-local read context; never cache authority/results between users. */
-export async function prepareDocumentQuery(db:Db,query:string,ctx:AuthContext,options:{subject?:SearchSubject;content?:boolean;semantic?:boolean;signal?:AbortSignal;personHint?:string|null;typeHint?:string|null;linkedType?:string|null;metadataFilters?:Array<{field_code:string;value:string}>;types?:AiSearchLookup[];hasFiles?:boolean}={}) {
+export async function prepareDocumentQuery(db:Db,query:string,ctx:AuthContext,options:{subject?:SearchSubject;content?:boolean;semantic?:boolean;signal?:AbortSignal;personHint?:string|null;typeHint?:string|null;linkedType?:string|null;metadataFilters?:Array<{field_code:string;value:string}>;types?:AiSearchLookup[];hasFiles?:boolean;hasExtractedText?:boolean;sortByTags?:boolean}={}) {
   assertSearchPrincipal(ctx);options.signal?.throwIfAborted();
   if(!(hasPermission(ctx,"dms.documents.view")||hasPermission(ctx,"dms.admin")))throw Error("Permission denied");
   if(query.length>500)throw Error("Invalid search text");
@@ -51,9 +51,11 @@ export async function prepareDocumentQuery(db:Db,query:string,ctx:AuthContext,op
     metadata_filters:JSON.stringify(options.metadataFilters??[]),
   };
   const rpcArgs = defaultNullRpcGetArgs(args);
-  const read = (options.hasFiles === undefined
-    ? db.rpc("ai_mod02_search_documents", rpcArgs, {get:true,count:"exact"})
-    : db.rpc("dms_search_documents_by_file_presence", {...rpcArgs, has_files:options.hasFiles}, {get:true,count:"exact"})) as unknown as SharedDocumentQuery;
+  const rpcName = options.sortByTags || options.hasExtractedText !== undefined ? "dms_search_documents_for_worklist"
+    : options.hasFiles === undefined ? "ai_mod02_search_documents" : "dms_search_documents_by_file_presence";
+  const read = db.rpc(rpcName, defaultNullRpcGetArgs({...rpcArgs, has_files:options.hasFiles,
+    has_extracted_text:options.hasExtractedText, sort_by_tags:options.sortByTags || undefined}),
+    {get:true,count:"exact"}) as unknown as SharedDocumentQuery;
   return {meaning,subject,args,query:read,asOf:new Date().toISOString()};
 }
 export async function resolveSearchSubjects(db:Db,hint:string,ctx:AuthContext,signal?:AbortSignal):Promise<SearchSubject[]> {

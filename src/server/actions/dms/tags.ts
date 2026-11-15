@@ -63,14 +63,23 @@ export async function getDmsTags(): Promise<ActionResult<DmsTagRow[]>> {
 
     // Get document counts per tag
     const tagIds = (data ?? []).map((t) => t.id);
-    const docCounts: Record<number, number> = {};
-    for(let offset=0;offset<tagIds.length;offset+=100){
-      const countData=await readAllPages(async(from,to)=>await supabase.from("dms_document_tags")
-        .select("document_id,tag_id",{count:"exact"}).in("tag_id",tagIds.slice(offset,offset+100)).order("document_id").order("tag_id").range(from,to),{identity:row=>row.document_id+":"+row.tag_id,maxRows:10000});
-      for(const row of countData)docCounts[row.tag_id]=(docCounts[row.tag_id]??0)+1;
+    const docCounts = new Map<number, number>();
+    for (let offset = 0; offset < tagIds.length; offset += 100) {
+      const batch = new Set(tagIds.slice(offset, offset + 100));
+      const counts = await supabase.rpc("dms_catalogue_tag_counts", {tag_ids: [...batch]}, {get: true, count: "exact"})
+        .order("tag_id").range(0, batch.size - 1);
+      if (counts.error || !counts.data || counts.count !== counts.data.length) {
+        return {success: false, error: "Document counts could not be loaded. Please retry."};
+      }
+      for (const {tag_id, document_count} of counts.data) {
+        if (!batch.has(tag_id) || docCounts.has(tag_id) || !Number.isSafeInteger(document_count) || document_count < 1) {
+          return {success: false, error: "Document counts could not be verified. Please retry."};
+        }
+        docCounts.set(tag_id, document_count);
+      }
     }
 
-    const rows = (data ?? []).map((t) => ({ ...t, document_count: docCounts[t.id] ?? 0 })) as DmsTagRow[];
+    const rows = data.map((t) => ({ ...t, document_count: docCounts.get(t.id) ?? 0 })) as DmsTagRow[];
     return { success: true, data: rows };
   } catch (err) {
     return { success: false, error: String(err) };

@@ -11,7 +11,8 @@ import {POST as employeeRoute} from "@/app/api/reads/employees/route";
 const operations:Array<{table:string;method:string;args:unknown[]}>=[];
 let responses:unknown[]=[];
 function builderFor(table:string){
- const builder:Record<string,unknown>={then:(resolve:(v:unknown)=>void)=>Promise.resolve(responses.shift()).then(resolve)};
+ const builder:Record<string,unknown>={then:(resolve:(v:unknown)=>void)=>Promise.resolve(
+   table==="dms_tag_details_for_documents"?{data:[],count:0,error:null}:responses.shift()).then(resolve)};
  for(const method of ["select","eq","in","is","not","order","range","or","ilike","textSearch","gte","lte","lt","gt","returns","retry"])
   builder[method]=(...args:unknown[])=>{operations.push({table,method,args});return builder;};return builder;
 }
@@ -74,12 +75,12 @@ it("content lookup failure cannot be relabelled an empty document result",async(
  expect(r.success).toBe(false);expect(r.error).not.toContain("private SQL");
 });
 it("compatibility consumers receive all pages, not just the visible 25",async()=>{
- responses=[{data:Array.from({length:100},(_,id)=>({id})),count:101,error:null},{data:[{id:100}],count:101,error:null}];
+ responses=[{data:Array.from({length:100},(_,id)=>({id:id+1})),count:101,error:null},{data:[{id:101}],count:101,error:null}];
  expect((await readAllDmsDocuments()).data).toHaveLength(101);
- expect(operations.filter(o=>o.method==="range").map(o=>o.args)).toEqual([[0,99],[100,199]]);
+ expect(operations.filter(o=>o.method==="range"&&o.table==="ai_mod02_search_documents").map(o=>o.args)).toEqual([[0,99],[100,199]]);
 });
 it("changing counts or duplicate records abort full-result compatibility",async()=>{
- responses=[{data:Array.from({length:100},(_,id)=>({id})),count:101,error:null},{data:[{id:1}],count:101,error:null}];expect((await readAllDmsDocuments()).success).toBe(false);
+ responses=[{data:Array.from({length:100},(_,id)=>({id:id+1})),count:101,error:null},{data:[{id:1}],count:101,error:null}];expect((await readAllDmsDocuments()).success).toBe(false);
 });
 it("endpoint is private, strict and safe on denied access",async()=>{
  state.browse.mockReturnValue(false);
@@ -99,18 +100,22 @@ it("rejects duplicate document identities even when the page count is exact",asy
  responses=[{data:[{id:1},{id:1}],count:2,error:null}];
  expect((await readDmsDocumentPage({})).success).toBe(false);
 });
+it("verifies the exact count after an out-of-range page without loading tags",async()=>{
+ responses=[{data:null,count:null,error:{code:"PGRST103"},status:416},{data:[{id:1}],count:23,error:null}];
+ expect(await readDmsDocumentPage({page:2})).toMatchObject({success:true,data:{totalCount:23,rows:[]}});
+ expect(operations.filter(o=>o.method==="range").map(o=>o.args)).toEqual([[25,49],[0,0]]);
+ expect(operations.some(o=>o.table==="dms_tag_details_for_documents")).toBe(false);
+});
 it("file/content existence filters stay in the database and strip child metadata",async()=>{
  responses=[{data:[{id:1,content_match:[{document_id:1}],perf_document_has_extracted_text:true}],count:1,error:null}];
  const r=await readDmsDocumentPage({filters:{hasExtractedText:true,has_files:true}});
- expect(r.success).toBe(true);expect(r.data?.rows).toEqual([{id:1}]);
- expect(operations.every(o=>o.table==="dms_search_documents_by_file_presence")).toBe(true);
- expect(operations).toContainEqual({table:"dms_search_documents_by_file_presence",method:"eq",args:["perf_document_has_extracted_text",true]});
- expect(operations[0]).toMatchObject({method:"rpc",args:[{has_files:true},{get:true,count:"exact"}]});
+ expect(r.success).toBe(true);expect(r.data?.rows).toEqual([{id:1,tags:[]}]);
+ expect(operations).toContainEqual({table:"dms_tag_details_for_documents",method:"rpc",args:[{document_ids:[1]},{get:true,count:"exact"}]});
+ expect(operations[0]).toMatchObject({table:"dms_search_documents_for_worklist",method:"rpc",args:[{has_files:true,has_extracted_text:true},{get:true,count:"exact"}]});
 });
 it("missing extracted text is the complement of non-null extracted text",async()=>{
  responses=[{data:[],count:0,error:null}];expect((await readDmsDocumentPage({filters:{hasExtractedText:false,has_files:false}})).success).toBe(true);
- expect(operations).toContainEqual({table:"dms_search_documents_by_file_presence",method:"eq",args:["perf_document_has_extracted_text",false]});
- expect(operations[0]).toMatchObject({table:"dms_search_documents_by_file_presence",method:"rpc",args:[{has_files:false},{get:true,count:"exact"}]});
+ expect(operations[0]).toMatchObject({table:"dms_search_documents_for_worklist",method:"rpc",args:[{has_files:false,has_extracted_text:false},{get:true,count:"exact"}]});
 });
 it("content search passes only bounded text to the protected invoker RPC",async()=>{
  // The AI query reads permitted type vocabulary and checks an ambiguous

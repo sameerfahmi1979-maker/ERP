@@ -52,6 +52,7 @@ export function ERPCombobox({
   loading = false,
   resultsPending = false,
   error,
+  validationError,
   allowClear = false,
   emptyText = 'No options available',
   noResultsText = 'No results found',
@@ -67,6 +68,7 @@ export function ERPCombobox({
   onSearchQueryChange,
 }: ERPComboboxProps) {
   const [open, setOpen] = React.useState(false);
+  const feedback = error ?? validationError;
   const [searchQuery, setSearchQuery] = React.useState('');
 
   // Ref on the root container — used to dispatch a bubbling change event so
@@ -202,7 +204,7 @@ export function ERPCombobox({
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           <span className="ml-2 text-sm text-muted-foreground">Loading...</span>
         </div>
-        {error && <p className="text-sm text-destructive mt-1">{error}</p>}
+        {feedback && <p className="text-sm text-destructive mt-1">{feedback}</p>}
       </div>
     );
   }
@@ -222,13 +224,13 @@ export function ERPCombobox({
             aria-required={required || undefined}
             aria-label={ariaLabel ?? name?.replaceAll('_', ' ')}
             aria-expanded={open}
-            aria-invalid={!!error}
+            aria-invalid={!!feedback}
             aria-disabled={disabled || readOnly}
             disabled={disabled || readOnly}
             className={cn(
               'w-full h-10 justify-between font-normal',
               !selectedOption && 'text-muted-foreground',
-              error && 'border-destructive focus-visible:ring-destructive/20',
+              feedback && 'border-destructive focus-visible:ring-destructive/20',
               triggerClassName
             )}
           >
@@ -316,7 +318,7 @@ export function ERPCombobox({
         </Button>
       )}
 
-      {error && <p className="text-sm text-destructive mt-1">{error}</p>}
+      {feedback && <p className="text-sm text-destructive mt-1">{feedback}</p>}
 
       {name && (
         <input

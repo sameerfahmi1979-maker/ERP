@@ -1,6 +1,8 @@
 import {it,expect,vi,beforeEach} from 'vitest';
 const s=vi.hoisted(()=>({from:vi.fn(),access:vi.fn(),active:vi.fn(),replies:[] as any[],calls:[] as any[]}));
-vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({from:s.from})}));
+vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({from:s.from,rpc:(name:string,args:unknown,options:unknown)=>{
+ s.calls.push([name,'rpc',args,options]);return s.from(name);
+}})}));
 vi.mock('@/lib/rbac/check',()=>({getAuthContext:async()=>({profile:{id:1}}),canUseApplication:s.active}));
 vi.mock('@/lib/dms/document-access',()=>({checkDocumentConfidentialityAccess:s.access}));
 import {getDmsDocumentHistoryPage,getDmsDocumentLifecycle} from '@/server/actions/dms/lifecycle-history';
@@ -12,7 +14,7 @@ it.each([0,-1,1.2,Number.MAX_SAFE_INTEGER+1])('rejects invalid document %s befor
 it.each([0,100001,NaN])('rejects invalid history page %s',async p=>{expect((await getDmsDocumentHistoryPage(7,p)).success).toBe(false);expect(s.from).not.toHaveBeenCalled();});
 it('rejects inactive accounts before data access',async()=>{s.active.mockReturnValue(false);expect((await getDmsDocumentHistoryPage(7)).success).toBe(false);expect(s.from).not.toHaveBeenCalled();});
 it('does not make a hidden parent look like empty history',async()=>{s.access.mockResolvedValue({allowed:false});expect((await getDmsDocumentHistoryPage(7)).success).toBe(false);expect(s.from).not.toHaveBeenCalled();});
-it('pages on the server with stable ordering and strips arbitrary JSON',async()=>{s.replies=[{data:[event()],count:21,error:null}];const r=await getDmsDocumentHistoryPage(7,2,'downloads');expect(r.data).toMatchObject({totalCount:21,page:2,pageSize:20,rows:[{metadata_json:{file_id:9,version_id:8,bytes:3,historical:true,delivery:'response_prepared'}}]});expect(JSON.stringify(r)).not.toMatch(/SECRET|PRIVATE/);expect(s.calls).toContainEqual(['dms_document_events','range',20,39]);expect(s.calls).toContainEqual(['dms_document_events','order','id',{ascending:false}]);expect(s.calls.some(c=>c[1]==='in')).toBe(true);});
+it('pages on the server with stable ordering and strips arbitrary JSON',async()=>{s.replies=[{data:[event()],count:21,error:null}];const r=await getDmsDocumentHistoryPage(7,2,'downloads');expect(r.data).toMatchObject({totalCount:21,page:2,pageSize:20,rows:[{metadata_json:{file_id:9,version_id:8,bytes:3,historical:true,delivery:'response_prepared'}}]});expect(JSON.stringify(r)).not.toMatch(/SECRET|PRIVATE/);expect(s.calls).toContainEqual(['read_dms_document_events','rpc',{target_document_id:7},{get:true,count:'exact',head:false}]);expect(s.calls).toContainEqual(['read_dms_document_events','range',20,39]);expect(s.calls).toContainEqual(['read_dms_document_events','order','id',{ascending:false}]);expect(s.calls.some(c=>c[1]==='in')).toBe(true);});
 it.each([
  {data:[],count:21,error:null}, {data:null,count:0,error:{code:'XX000'}},{data:[],count:null,error:null},
  {data:[event(),event()],count:2,error:null},{data:[{...event(),document_id:8}],count:1,error:null},

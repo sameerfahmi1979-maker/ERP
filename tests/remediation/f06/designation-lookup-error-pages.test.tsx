@@ -11,13 +11,17 @@ const port=vi.hoisted(()=>({auth:vi.fn(),designations:vi.fn(),dashboard:vi.fn(),
 vi.mock('@/lib/rbac/check',async()=>({...await import('@/lib/rbac/scope'),getAuthContext:port.auth}));
 vi.mock('@/server/actions/common-master-data/designations',()=>({listDesignations:port.designations}));
 vi.mock('@/server/actions/master-data/lookups',()=>({getLookupDashboardStats:port.dashboard}));
-vi.mock('next/navigation',()=>({useRouter:()=>({push:vi.fn()}),redirect:(href:string)=>{port.redirect(href);throw Error('REDIRECT:'+href);}}));
+vi.mock('next/navigation',()=>({
+  redirect:(href:string)=>{port.redirect(href);throw Error('REDIRECT:'+href);},
+  useRouter:()=>({push:vi.fn()}),
+}));
 vi.mock('@/features/common-master-data/designations/designations-list-client',()=>({DesignationsListClient:(props:{designations:DesignationRow[];canManage:boolean})=>{
   port.props=props;return <div data-testid="verified-designations">{props.designations.map(row=><p key={row.id}>{row.designation_name_en}</p>)}</div>;
 }}));
 import DesignationsPage from '@/app/(protected)/admin/common-master-data/designations/page';
 import DashboardPage from '@/app/(protected)/admin/master-data/page';
 
+const designationTree=()=>DesignationsPage({searchParams:Promise.resolve({})});
 const secret='PRIVATE_PAGE_READ_DETAIL';
 function context(codes:string[],globalCodes:string[]=[]):AuthContext{
   return {profile:{id:41,must_change_password:false},isAccountActive:true,roleCodes:[],permissionCodes:[...codes,...globalCodes],globalPermissionCodes:globalCodes,
@@ -45,12 +49,12 @@ async function dashboardTree(){
 beforeEach(()=>{
   vi.resetAllMocks();port.props=null;
   port.auth.mockResolvedValue(context(['common_md.view','master_data.dashboard.view']));
-  port.designations.mockResolvedValue({success:true,data:[]});port.dashboard.mockResolvedValue({success:true,data:zeroStats()});
+  port.designations.mockResolvedValue({success:true,data:[],totalCount:0});port.dashboard.mockResolvedValue({success:true,data:zeroStats()});
 });
 afterEach(cleanup);
 
 for(const [name,page,read,view,href,title] of [
-  ['designations',()=>DesignationsPage({searchParams:Promise.resolve({})}),port.designations,'common_md.view','/admin/common-master-data/designations','Designations'],
+  ['designations',designationTree,port.designations,'common_md.view','/admin/common-master-data/designations','Designations'],
   ['dashboard',dashboardTree,port.dashboard,'master_data.dashboard.view','/admin/master-data','Master data statistics'],
 ] as const){
   describe(`${name} actual route`,()=>{
@@ -85,7 +89,7 @@ for(const [name,page,read,view,href,title] of [
     });
     it('fresh route resolution replaces failed rendering with verified data (not browser/draft-survival proof)',async()=>{
       read.mockResolvedValueOnce({success:false,kind:'failed',error:secret});const mounted=render(await page());expect(screen.getByRole('alert')).toBeTruthy();
-      if(name==='designations')read.mockResolvedValue({success:true,data:rows()});
+      if(name==='designations')read.mockResolvedValue({success:true,data:rows(),totalCount:1});
       else read.mockResolvedValue({success:true,data:{...zeroStats(),total_categories:3,recently_updated:[{category_name:'Recovered category',value_label:'Recovered value',updated_at:'2026-09-30T12:00:00Z',updated_by_name:null}]}});
       mounted.rerender(await page());expect(screen.queryByRole('alert')).toBeNull();
       expect(screen.getByText(name==='designations'?'Retained inactive title':'Recovered value')).toBeTruthy();
@@ -96,7 +100,7 @@ for(const [name,page,read,view,href,title] of [
 
 it.each([{},'not an array'])('designation malformed successful payload %j does not reach Add/empty/list',async data=>{
   port.auth.mockResolvedValue(context(['common_md.view','common_md.manage']));port.designations.mockResolvedValue({success:true,data});
-  render(await DesignationsPage({searchParams:Promise.resolve({})}));expect(screen.getByRole('alert')).toBeTruthy();expect(port.props).toBeNull();
+  render(await designationTree());expect(screen.getByRole('alert')).toBeTruthy();expect(port.props).toBeNull();
   expect(screen.queryByText('No designations yet')).toBeNull();expect(screen.queryByRole('link',{name:/Add Designation/})).toBeNull();
 });
 it.each([
@@ -106,13 +110,13 @@ it.each([
   {scoped:[],global:['common_md.manage']},
   {scoped:[],global:['common_md.designations.manage']},
 ])('genuine designation empty exposes creation only for global management $scoped $global',async({scoped,global})=>{
-  port.auth.mockResolvedValue(context(['common_md.designations.view',...scoped],global));render(await DesignationsPage({searchParams:Promise.resolve({})}));
+  port.auth.mockResolvedValue(context(['common_md.designations.view',...scoped],global));render(await designationTree());
   expect(screen.getByText('No designations match this page')).toBeTruthy();expect(screen.getByText('Change the search or return to the first page.')).toBeTruthy();
   expect(screen.queryByRole('alert')).toBeNull();expect(!!screen.queryByRole('link',{name:/Add Designation/})).toBe(global.length>0);
 });
-it.each([false,true])('verified rows and canManage=%s reach the paged success consumer',async manage=>{
+it.each([false,true])('verified rows and canManage=%s reach the unchanged success consumer',async manage=>{
   const data=rows(),before=structuredClone(data);port.auth.mockResolvedValue(context(['common_md.view'],manage?['common_md.manage']:[]));
-  port.designations.mockResolvedValue({success:true,data});render(await DesignationsPage({searchParams:Promise.resolve({})}));
+  port.designations.mockResolvedValue({success:true,data,totalCount:1});render(await designationTree());
   expect(port.props?.designations).toBe(data);expect(port.props?.canManage).toBe(manage);expect(data).toEqual(before);
   expect(screen.getByText('Retained inactive title')).toBeTruthy();expect(screen.queryByRole('alert')).toBeNull();expect(port.designations).toHaveBeenCalledWith({page:1,search:""});
 });

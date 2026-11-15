@@ -1,7 +1,7 @@
 import {expect,it} from 'vitest';
 import {checkWpsReadiness,type WpsReadinessInput} from '@/lib/hr/payroll/wps-readiness';
 import {payrollEmploymentEligible} from '@/lib/hr/payroll/salary-as-of';
-const valid:WpsReadinessInput={wpsProfile:{wps_applicable:true,wps_status:'active',bank_id:1,account_number:'000123',iban:'SYNTHETIC_ONLY',exchange_house:null,salary_payment_method:'bank_transfer',labour_card_number:'SYNTHETIC_ONLY',mohre_person_code:null},hasActivePayrollHold:false,hasSalaryComponents:true,grossSalary:1000.01,payrollStatus:'active'};
+const valid:WpsReadinessInput={wpsProfile:{wps_applicable:true,wps_status:'active',bank_id:1,account_number:'000123',iban:'AE070331234567890123456',exchange_house:null,salary_payment_method:'bank_transfer',labour_card_number:'SYNTHETIC_ONLY',mohre_person_code:null},hasActivePayrollHold:false,hasSalaryComponents:true,grossSalary:1000.01,payrollStatus:'active'};
 it.each([NaN,Infinity,-Infinity])('nonfinite salary %s cannot be Ready',grossSalary=>expect(checkWpsReadiness({...valid,grossSalary})).toMatchObject({status:'incomplete',missingRequirements:expect.arrayContaining(['Salary is unavailable'])}));
 it.each(['inactive','hold','not_configured','unknown'])('profile %s cannot be Ready',payrollStatus=>expect(checkWpsReadiness({...valid,payrollStatus})).toMatchObject({status:'incomplete',missingRequirements:expect.arrayContaining(['Payroll profile is not active'])}));
 it.each(['unknown',''])('unknown payment method %s cannot be Ready',salary_payment_method=>expect(checkWpsReadiness({...valid,wpsProfile:{...valid.wpsProfile!,salary_payment_method}}).status).toBe('incomplete'));

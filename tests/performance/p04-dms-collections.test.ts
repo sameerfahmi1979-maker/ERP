@@ -8,14 +8,16 @@ vi.mock("@/server/actions/audit",()=>({logAudit:()=>{throw Error("No writes");}}
 vi.mock("@/lib/supabase/admin",()=>({createAdminClient:()=>{throw Error("Ordinary caller only");}}));
 vi.mock("@/lib/dms/document-access",()=>({checkDocumentConfidentialityAccess:async()=>({allowed:s.allowed})}));
 vi.mock("@/lib/dms/resolve-link-entity-display-name",()=>({resolveDmsLinkEntityDisplayNames:async()=>new Map(),formatDmsLinkEntityFallback:()=>"Synthetic"}));
-vi.mock("@/lib/supabase/server",()=>({createClient:async()=>({rpc:async(name:string,args:unknown)=>{
+vi.mock("@/lib/supabase/server",()=>{
+const snapshotRpc=async(name:string,args:unknown)=>{
  s.calls.push({table:name,ops:[["rpc",[args]]]});
  if(name==="ai_mod04_review_rules")return {data:{requiredFields:[],ready:true},error:null};
  const values=Array.from({length:s.total},(_,i)=>({id:i+1,document_id:9,definition_id:i+1,value_text:"Synthetic",value_number:null,value_date:null,value_datetime:null,value_boolean:null,value_json:null}));
  if(s.mode==="lost-snapshot")throw Error("Synthetic lost snapshot response");
  return {data:s.mode==="null"?null:{documentId:9,snapshot:s.mode==="no-snapshot-proof"?undefined:"a".repeat(64),sourceSnapshot:null,values:s.mode==="foreign-snapshot"?values.map(v=>({...v,document_id:99})):values},error:s.mode==="error"?{code:"42501",message:"private"}:null};
-},from:(table:string)=>{
- const c:Call={table,ops:[]};s.calls.push(c);const q=new Proxy({}, {get:(_,key)=>key==="then"?(resolve:(r:unknown)=>unknown)=>{
+};
+const pageQuery=(table:string,ops:Call["ops"]=[])=>{
+ const c:Call={table,ops};s.calls.push(c);const q=new Proxy({}, {get:(_,key)=>key==="then"?(resolve:(r:unknown)=>unknown)=>{
   if(c.ops.some(([op])=>op==="maybeSingle"))return Promise.resolve({data:s.parent?{id:9}:null,error:null}).then(resolve);
   const [from,to]=(c.ops.filter(([op])=>op==="range").at(-1)?.[1]??[0,999]) as number[];
   const ids=c.ops.find(([op,args])=>op==="in"&&args[0]==="tag_id")?.[1][1] as number[]|undefined;
@@ -23,7 +25,14 @@ vi.mock("@/lib/supabase/server",()=>({createClient:async()=>({rpc:async(name:str
   const rows=tagCounts?[]:Array.from({length:Math.min(to-from+1,Math.max(0,s.total-from))},(_,i)=>({id:from+i+1,document_id:9,tag_id:from+i+1,entity_id:1,entity_type:"employee",session_code:`SYN-${from+i+1}`,original_filename:"Synthetic.pdf",intake_status:"failed",document:null,ai_result:null,event_type:"synthetic",description:null,performed_by:null,performed_at:"2026-10-17T10:00:00Z",metadata_json:{},performer:null}));
   return Promise.resolve({data:s.mode==="short"?rows.slice(0,1):s.mode==="duplicate"?rows.map(()=>rows[0]):rows,count:s.mode==="null"?null:tagCounts?0:s.total,error:s.mode==="error"||s.mode==="late"&&from>0?{message:"private"}:null}).then(resolve);
  }:(...args:unknown[])=>{c.ops.push([String(key),args]);return q;}});return q;
-}})}));
+};
+return {createClient:async()=>({
+  from:pageQuery,
+  rpc:(name:string,args:unknown,options?:unknown)=>name==="f03_read_document_files_for_document"
+    ? pageQuery(name,[["rpc",[args,options]]])
+    : snapshotRpc(name,args),
+})};
+});
 import {getDmsDocumentComments} from "@/server/actions/dms/document-comments";
 import {getDmsDocumentEvents} from "@/server/actions/dms/document-events";
 import {getDmsDocumentFiles,getDmsDocumentVersions} from "@/server/actions/dms/document-files";
@@ -43,7 +52,7 @@ const reminders=()=>getDmsExpiryReminders({documentId:9});
 const readers=[reminders,getMetadataDefinitionsForType,getDmsDocumentComments,getDmsDocumentEvents,getDmsDocumentFiles,getDmsDocumentVersions,getDmsDocumentLinks,getDmsDocumentTags,getDmsTags,getDmsTagSuggestions,getDmsLinkSuggestions,getDocumentApprovalHistory,getDmsUploadBatchDrafts];
 beforeEach(()=>Object.assign(s,{total:1107,mode:"ok",allowed:true,parent:true,calls:[]}));
 for(const read of readers){
- it(`${read.name} returns the complete 1107-row set with exact counts`,async()=>{const r=await read(9);expect(r.success).toBe(true);expect(r.data).toHaveLength(1107);const pages=s.calls.filter(c=>c.ops.some(([op])=>op==="range"));expect(pages.reduce((n,c)=>n+c.ops.filter(([op])=>op==="range").length,0)).toBeGreaterThanOrEqual(3);for(const c of pages){const options=c.ops.find(([op])=>op==="select")?.[1][1] as {count?:string;head?:boolean};expect(options).toMatchObject({count:"exact"});expect(options.head??false).toBe(false);}});
+ it(`${read.name} returns the complete 1107-row set with exact counts`,async()=>{const r=await read(9);expect(r.success).toBe(true);expect(r.data).toHaveLength(1107);const pages=s.calls.filter(c=>c.ops.some(([op])=>op==="range"));expect(pages.reduce((n,c)=>n+c.ops.filter(([op])=>op==="range").length,0)).toBeGreaterThanOrEqual(3);for(const c of pages){const rpc=c.ops.find(([op])=>op==="rpc");if(rpc){expect(c.table).toBe("f03_read_document_files_for_document");expect(rpc[1]).toEqual([{p_document_id:9},{get:true,count:"exact"}]);expect(s.calls.some(call=>call.table==="dms_document_files")).toBe(false);} const options=(rpc??c.ops.find(([op])=>op==="select"))?.[1][1] as {count?:string;head?:boolean};expect(options).toMatchObject({count:"exact"});expect(options.head??false).toBe(false);}});
  it.each(["short","duplicate","null","error","late"])(`${read.name} rejects %s and never returns a partial set`,async mode=>{s.mode=mode;const r=await read(9);expect(r.success).toBe(false);expect(r.data).toBeUndefined();});
  it(`${read.name} preserves legitimate zero results`,async()=>{s.total=0;const r=await read(9);expect(r.success).toBe(true);expect(r.data).toEqual([]);});
 }

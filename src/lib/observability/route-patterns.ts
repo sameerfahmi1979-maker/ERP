@@ -192,6 +192,7 @@ export const APPLICATION_ROUTE_PATTERNS = [
   "/api/dms/intake-status",
   "/api/dms/poll",
   "/api/erp-ai/v1/documents/compare",
+  "/api/health/ready",
   "/api/hr/subject-photo",
   "/api/internal/dms-ai-jobs/process",
   "/api/internal/process-email-queue",

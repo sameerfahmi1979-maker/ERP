@@ -12,6 +12,7 @@ import type {SelectedDmsFile} from '@/features/dms/upload/dms-upload-dropzone';
 
 type Item={position:number;name:string;phase:'pending'|'uploading'|'analysis'|'confirmed'|'unconfirmed'|'rejected'|'needs_file'|'processing'|'historical'|'unavailable';message:string};
 type Options={enabled:boolean;context?:{entityType:string;entityId:number}|null;recoveryBatchCode?:string;
+ preparationConcurrency?:1|2;
  upload:(capability:BatchCapability,body:Blob,mime:string)=>Promise<boolean>;
  onResult:(confirmed:number,total:number,batchCode:string)=>void};
 type View={origin:BatchOrigin|null;attempt:BatchRetainedAttempt|null;files:SelectedDmsFile[];items:Item[];recent:BatchReceipt[];busy:boolean;blocked:boolean;error:string|null;failureId:number};
@@ -23,7 +24,7 @@ const unconfirmed='The outcome is unconfirmed. The original request is retained;
 
 /** Client orchestration only. The server remains authoritative at every step.
  * Store only strict admission DTOs; Files and capabilities never enter F04 JSON. */
-export function useDmsBatchAdmission({enabled,context,recoveryBatchCode,upload,onResult}:Options){
+export function useDmsBatchAdmission({enabled,context,recoveryBatchCode,upload,onResult,preparationConcurrency=2}:Options){
  const store=useWorkspaceDraftStoreContext();
  const ownerId=useWorkspaceFormOwner()?.id??null;
  const readOwner=useReadCacheOwner();
@@ -119,9 +120,14 @@ export function useDmsBatchAdmission({enabled,context,recoveryBatchCode,upload,o
   });
   const publish=(p:number,phase:Item['phase'],message:string)=>{items[p]={...items[p],phase,message};update(run.lease,{items:[...items]});};
   update(run.lease,{items});
-  for(const member of recovery.members){
+  let saveTail=Promise.resolve();
+  const saveSerially=async(work:()=>Promise<void>)=>{
+   const next=saveTail.then(async()=>{if(run.valid())await work();});
+   saveTail=next.catch(()=>undefined);
+   await next;
+  };
+  const prepareMember=async(member:(typeof recovery.members)[number])=>{
    if(!run.valid())return;
-   if(position!==undefined&&position!==member.position)continue;
    const p=member.position;
    try{
     let prepared:PrepareEnvelope|null=null;
@@ -130,34 +136,39 @@ export function useDmsBatchAdmission({enabled,context,recoveryBatchCode,upload,o
      const {members: _members,...anchors}=recovery;void _members;
      prepared={...anchors,member};
     }else if(member.kind==='historical'){
-     if(!numbered.hasRetained(member.upload_session_id)){publish(p,'historical','Historical draft processing must be reconciled in the batch queue. No retained numbered request is available.');continue;}
-     const result=await numbered.retryRetained(member.upload_session_id,run.valid);
-     if(!run.valid())return;
-     publish(p,result.success?'confirmed':result.uncertain?'unconfirmed':'rejected',result.success?'Draft confirmed; individual approval is still required.':result.uncertain?unconfirmed:'Draft rejected. Its original request is retained.');
-     continue;
+     if(!numbered.hasRetained(member.upload_session_id)){publish(p,'historical','Historical draft processing must be reconciled in the batch queue. No retained numbered request is available.');return;}
+     await saveSerially(async()=>{
+      const result=await numbered.retryRetained(member.upload_session_id,run.valid);
+      if(run.valid())publish(p,result.success?'confirmed':result.uncertain?'unconfirmed':'rejected',result.success?'Draft confirmed; individual approval is still required.':result.uncertain?unconfirmed:'Draft rejected. Its original request is retained.');
+     });
+     return;
     }else{
      const raw=await recoverDmsBatchMemberUpload({request:clone(attempt.request),position:p});
      if(!run.valid())return;
      const plan=batchMemberUploadResultSchema.safeParse(raw);
      if(!plan.success||plan.data.state!=='ready'||plan.data.position!==p){
       const ref=plan.success&&plan.data.state==='unavailable'?plan.data.error.match(/\bBATCH-(?:BINDING|ELIGIBILITY|STORAGE|SIGNING|FINAL-READINESS)\b/)?.[0]:undefined;
-      publish(p,'unavailable',`Upload readiness is unavailable. Reference: ${ref??'BATCH-RESPONSE'}. Other members can still recover.`);continue;
+      publish(p,'unavailable',`Upload readiness is unavailable. Reference: ${ref??'BATCH-RESPONSE'}. Other members can still recover.`);return;
      }
      const bound=await boundReceipt(plan.data.receipt,attempt.request,run);
      if(!run.valid())return;
-     if(!bound||JSON.stringify(bound)!==JSON.stringify(receipt)){publish(p,'unavailable',unavailable);continue;}
+     if(!bound||JSON.stringify(bound)!==JSON.stringify(receipt)){publish(p,'unavailable',unavailable);return;}
+     let transferMs:number|undefined;
      if(plan.data.object.state==='upload'){
       const expected=receipt.members[p];
       const selected=view.files.find(f=>f.original_filename===expected.name&&f.mime_type===expected.mime&&f.file_size_bytes===expected.size&&f.sha256_hash===expected.sha256&&f.file.name===expected.name&&f.file.size===expected.size);
-      if(!selected){publish(p,'needs_file','Reselect the exact original file to upload this member.');continue;}
+      if(!selected){publish(p,'needs_file','Reselect the exact original file to upload this member.');return;}
       publish(p,'uploading','Uploading the selected file.');
+      const transferStarted=performance.now();
       const ok=await upload(plan.data.object.capability,selected.file.slice(0,selected.file.size,expected.mime),expected.mime);
       if(!run.valid())return;
-     if(!ok){publish(p,'unconfirmed','File transfer was not confirmed. Reference: BATCH-TRANSFER. Recover this member; do not create another upload.');continue;}
+     if(!ok){publish(p,'unconfirmed','File transfer was not confirmed. Reference: BATCH-TRANSFER. Recover this member; do not create another upload.');return;}
+      transferMs=performance.now()-transferStarted;
      }
-     const verification=await verifyDmsBatchUpload({request:clone(attempt.request),position:p});
+     const verificationInput={request:clone(attempt.request),position:p};
+     const verification=await (transferMs===undefined?verifyDmsBatchUpload(verificationInput):verifyDmsBatchUpload(verificationInput,transferMs));
      if(!run.valid())return;
-     if(verification.state!=='present'){publish(p,'unavailable','Stored file could not be verified. Reference: BATCH-VERIFY. No AI analysis was started.');continue;}
+     if(verification.state!=='present'){publish(p,'unavailable','Stored file could not be verified. Reference: BATCH-VERIFY. No AI analysis was started.');return;}
      publish(p,'analysis','Preparing the governed draft.');
      const rawPreparation=await prepareDmsUploadBatchMemberDraft({request:clone(attempt.request),position:p});
      if(!run.valid())return;
@@ -165,21 +176,31 @@ export function useDmsBatchAdmission({enabled,context,recoveryBatchCode,upload,o
      if(!parsed.success||!parsed.data.success){
       const code=parsed.success&&!parsed.data.success?parsed.data.code:'response';
       const message=code==='conflict'?'The original source conflicts with this retained draft.':code==='rejected'?'The draft preparation request was rejected.':code==='unavailable'?'Draft access or readiness is unavailable.':'Draft preparation is unconfirmed; retain this request.';
-      publish(p,parsed.success&&!parsed.data.success&&parsed.data.uncertain?'unconfirmed':'unavailable',`${message} Reference: BATCH-PREPARE-${code.toUpperCase()}.`);continue;
+      publish(p,parsed.success&&!parsed.data.success&&parsed.data.uncertain?'unconfirmed':'unavailable',`${message} Reference: BATCH-PREPARE-${code.toUpperCase()}.`);return;
      }
      const preparedReceipt=await boundReceipt(parsed.data.receipt,attempt.request,run);
      if(!run.valid())return;
-     if(!preparedReceipt||JSON.stringify(preparedReceipt)!==JSON.stringify(receipt)){publish(p,'unavailable',unavailable);continue;}
+     if(!preparedReceipt||JSON.stringify(preparedReceipt)!==JSON.stringify(receipt)){publish(p,'unavailable',unavailable);return;}
      prepared=parseBatchDraftPreparation(parsed.data.preparation,receipt,run.lease.origin!,p);
-     if(!prepared){publish(p,'unavailable',unavailable);continue;}
-     if(prepared.member.draft_operation_id!==member.draft_operation_id){publish(p,'unavailable','The retained draft operation does not match. Reconcile this member.');continue;}
-     if(prepared.member.kind==='analysis_required'){publish(p,prepared.member.processing?'processing':'unavailable',prepared.member.processing?'Analysis is already processing. Check recovery later; no automatic retry was started.':'Analysis is not ready. No draft has been confirmed.');continue;}
+     if(!prepared){publish(p,'unavailable',unavailable);return;}
+     if(prepared.member.draft_operation_id!==member.draft_operation_id){publish(p,'unavailable','The retained draft operation does not match. Reconcile this member.');return;}
+     if(prepared.member.kind==='analysis_required'){publish(p,prepared.member.processing?'processing':'unavailable',prepared.member.processing?'Analysis is already processing. Check recovery later; no automatic retry was started.':'Analysis is not ready. No draft has been confirmed.');return;}
     }
-    const result=await numbered.continuePrepared({preparation:prepared,receipt,origin:run.lease.origin!,isCurrent:run.valid});
-    if(!run.valid())return;
-    publish(p,result.success?'confirmed':result.uncertain?'unconfirmed':'rejected',result.success?'Draft confirmed; individual approval is still required.':result.uncertain?unconfirmed:'Draft rejected. Its original request is retained.');
+    const confirmedPreparation=prepared;
+    await saveSerially(async()=>{
+     const result=await numbered.continuePrepared({preparation:confirmedPreparation,receipt,origin:run.lease.origin!,isCurrent:run.valid});
+     if(run.valid())publish(p,result.success?'confirmed':result.uncertain?'unconfirmed':'rejected',result.success?'Draft confirmed; individual approval is still required.':result.uncertain?unconfirmed:'Draft rejected. Its original request is retained.');
+    });
    }catch{if(!run.valid())return;publish(p,'unconfirmed',unconfirmed);}
-  }
+  };
+  const members=position===undefined?recovery.members:recovery.members.filter(member=>member.position===position);
+  let nextMember=0;
+  const prepareNext=async()=>{
+   while(run.valid()&&nextMember<members.length)await prepareMember(members[nextMember++]);
+  };
+  // Transfers and AI preparation may overlap. Numbered writes share one retained
+  // request store and counter, so keep their existing single-writer contract.
+  await Promise.all(Array.from({length:Math.min(preparationConcurrency,members.length)},prepareNext));
   if(!run.valid())return;
   const count=items.filter(i=>i.phase==='confirmed').length;
   if(count<receipt.members.length)run.lease.failed=true;

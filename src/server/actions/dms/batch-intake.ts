@@ -1,6 +1,7 @@
 "use server";
 import { requireDmsFilePipelineAccess } from "@/server/dms-file-pipeline-access";
 import {readAllPages} from "@/server/reads/all-pages";
+import {dmsTraceId, traceOperation, traceSpan} from '@/lib/performance/trace';
 
 /**
  * ERP DMS 13 — Multi-File Batch Upload → Draft Intake Queue (server actions)
@@ -213,8 +214,8 @@ export async function discoverDmsBatchAdmissions(): Promise<BatchDiscoveryResult
   return discoverBatchAdmissions();
 }
 
-export async function verifyDmsBatchUpload(input: {request: BatchRequest; position: number}): Promise<BatchObjectResult> {
-  return verifyBatchUpload(input);
+export async function verifyDmsBatchUpload(input: {request: BatchRequest; position: number},transferMs?:number): Promise<BatchObjectResult> {
+  return verifyBatchUpload(input,transferMs);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -241,32 +242,38 @@ export async function recoverDmsBatchMemberUpload(input:{request:BatchRequest;po
 export async function prepareDmsUploadBatchMemberDraft(input:{request:BatchRequest;position:number}):Promise<BatchDraftPreparationResult>{
   const parsed=batchMemberRequestSchema.safeParse(input);
   if(!parsed.success)return batchDraftRecoveryError("22023");
+  const {request,position}=parsed.data;
+  return traceOperation('dms.batch.prepare',()=>prepareBatchMember(request,position),dmsTraceId(`batch:${request.contract.operationId}:${position}`));
+}
+
+async function prepareBatchMember(request:BatchRequest,position:number):Promise<BatchDraftPreparationResult>{
   try{
-    const {request,position}=parsed.data;
-    const bound=await bindBatchAdmission(request);
+    const bound=await traceSpan('dms.receipt',()=>bindBatchAdmission(request));
     const prepare=()=>prepareRecoverableNumberedBatchDraft(bound.client,bound.receipt,bound.origin,position);
     let result=await prepare();
     if(!result.success)return result;
     const operation=result.data.member.draft_operation_id;
-    await refreshBatchAdmission(bound);
-    if(result.data.member.kind==="prepared"||result.data.member.processing)
+    if(result.data.member.kind==="prepared"||result.data.member.processing){
+      await refreshBatchAdmission(bound);
       return {success:true,receipt:bound.receipt,preparation:result.data};
+    }
     const object=await verifySelectedBatchUpload(bound,position);
     if(object.state!=="present")return batchDraftRecoveryError();
-    await refreshBatchAdmission(bound);
+    // Verification has just rechecked the receipt and caller after reading
+    // Storage. Each prepare RPC rechecks current authority and its member.
     result=await prepare();
     if(!result.success)return result;
     if(result.data.member.draft_operation_id!==operation)return batchDraftRecoveryError();
-    await refreshBatchAdmission(bound);
-    if(result.data.member.kind==="prepared"||result.data.member.processing)
+    if(result.data.member.kind==="prepared"||result.data.member.processing){
+      await refreshBatchAdmission(bound);
       return {success:true,receipt:bound.receipt,preparation:result.data};
+    }
     const member=bound.receipt.members[position];
     let analyzed:Awaited<ReturnType<typeof startAiIntakeFromUploadSession>>;
     try{analyzed=await startAiIntakeFromUploadSession({uploadSessionId:member.id,allowDuplicate:false});}
     catch{return batchDraftRecoveryError();}
     const response=z.object({success:z.literal(true),data:z.object({sessionCode:z.literal(member.code),status:z.enum(["review_pending","already_processing"]),message:z.string().optional()}).strict()}).strict().safeParse(analyzed);
     if(!response.success)return batchDraftRecoveryError();
-    await refreshBatchAdmission(bound);
     result=await prepare();
     if(!result.success)return result;
     if(result.data.member.draft_operation_id!==operation)return batchDraftRecoveryError();
@@ -290,8 +297,8 @@ export async function startAiIntakeAndCreateDraft(
   if(!parsed.success)return {success:false,error:"The draft request is invalid or belongs to another upload."};
   try {
     const ctx=await getAuthContext();
-    if(!ctx.profile||!hasPermission(ctx,"dms.documents.upload")||!hasPermission(ctx,"numbering.rules.generate"))
-      return {success:false,error:"Document upload and numbering generation permissions are required."};
+    if(!ctx.profile||!hasPermission(ctx,"dms.documents.upload"))
+      return {success:false,error:"Document upload permission is required."};
     const supabase=await createClient();
     if(parsed.data.prepared) {
       const result=await createNumberedBatchDraft(supabase,parsed.data,identity.data);

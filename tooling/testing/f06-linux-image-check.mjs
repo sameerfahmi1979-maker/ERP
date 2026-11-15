@@ -9,7 +9,7 @@ import {fileURLToPath} from 'node:url';
 
 export const BASE='node:22.23.4-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d';
 export const NATIVE='tests/remediation/f06/linux-native-paths.cjs';
-export const NATIVE_SHA='ff134aad603ffc3cd14d246b78f32d6fb3819a62e32487c5f69d26f3d2c01e89';
+export const NATIVE_SHA='81da33eff3b017fcb8d3ac94fe89cc2f7d768a9d91b56419e1cac2f8d71a22f0';
 // Historical Windows bytes stay historical. CI pins canonical public LF bytes.
 export const HISTORICAL_RAW_IMPACT={
  'Dockerfile':'643e766a1d8b316170e652c3ba836e0f41f5a3052ca8cd438c8c877bfe78a139',
@@ -37,8 +37,8 @@ export const IMPACT={...HISTORICAL_RAW_IMPACT,
  'vendor/braces-3.0.3-algt-integrated-2.tgz':'3b42ddbff088317a60e6f10e14f907fff6cb7db5b14d9204cf63534d573339ee',
  // Reviewed F07 delta: one pinned saxes parser dependency and one runtime
  // parser file, with the worker's universal secret-safe logging seam.
- 'Dockerfile':'6cd376c3e5d31c4bf7b2453ff6bb2b693f9581b53e663aa4b5692bac1b245ef4',
- '.dockerignore':'bb90a159cf4df305ac432d5fb4aedfabbf1c2a05abff28d784fe1f63af4ec09c',
+ 'Dockerfile':'6b179dbc0116670735e4c945b93e1fe1346338ac017754dcacc5717f560f49af',
+ '.dockerignore':'ec690044b506e5a5f258fd2ad4c94f1c3481d60b965009df3f5f179169803b69',
  // Preserve the approved local UI stylesheet in the build, not the runtime tree.
  'vendor/shadcn/tailwind.css':'146941ac3ff65496fdf1cb306e697255328e4dadc7c105d66e36bb031b00f6d6',
  // DMS ZIP download declares the already locked jszip 3.10.1 directly.
@@ -47,7 +47,9 @@ export const IMPACT={...HISTORICAL_RAW_IMPACT,
  'package-lock.json':'a06e0cbe8842980f7c3dee68fe043f1c9d39c2eee8dc6e2ecaa77a86a31e2d28',
  'src/lib/branding/constants.ts':'70a0e8005ce9b8ec76334643b8a345a2908944169252b2fcd59db33f41236e14',
  // Reviewed Arabic OCR successor; preserve historical F06 hashes above.
- 'src/lib/dms/file-content-extractor.ts':'db6b17688166fac42bfbaea474b86d57084d81d9fae7a7966c45ae6539a0391f',
+ // The already-verified capacity changes instrument the same PDF parser and renderer.
+ 'src/lib/dms/file-content-extractor.ts':'a50b1481e98c0848136e06ca328badfba74dd047e7606ca12e5bf51d0611fe7e',
+ 'src/lib/performance/trace.ts':'a573045f2e66767fa66ec164555f98186b88ac37109e2a6c3d0f80a72a2d5c4f',
  'src/lib/dms/pdf-to-images.ts':'c687a287567d528b8082c9b8260e0eb58ca96f11cfa13f051fb713664e7e604e',
  'src/lib/dms/pdf-text-quality.ts':'82c743f7785ab87c9a839044f46765d531bebbb75b3167fb10b8606d7438f737',
  'src/lib/logger.ts':'e7d552f81142e3bf6449694b8c14293c4353c0564e2f6c3697824e50a5226067',
@@ -137,7 +139,7 @@ async function main(){
  async function close(ref){const v=validateOwnership(await inspect(ref.id||ref.name),{...ref,id:ref.id||(await inspect(ref.name)).Id},owner);ref.id=v.Id;if(v.State.Running){await docker(['container','stop','--time','10',ref.id],{timeout:20000});}const ended=validateOwnership(await inspect(ref.id),ref,owner);assert.equal(ended.State.Running,false);assert.ok(['created','exited'].includes(ended.State.Status));await docker(['container','rm',ref.id]);await absent(ref.name);refs.splice(refs.indexOf(ref),1);closedRefs.push({...ref,endedState:ended.State.Status,absent:true});write('closed-'+ref.name+'.json',closedRefs.at(-1));return ended.State;}
  async function probe(image,label,script){const ref=await create(image,label,['--network','none','--read-only','--user','0','--tmpfs','/tmp:rw,noexec,nosuid,size=64m','--entrypoint','node','-i'],['-']);const r=await docker(['container','start','--attach','--interactive',ref.id],{input:script,timeout:60000});const v=validateOwnership(await inspect(ref.id),ref,owner);assert.equal(v.State.Running,false);assert.equal(v.State.ExitCode,0);assert.equal(v.State.OOMKilled,false);await close(ref);return JSON.parse(r.stdout);}
  async function image(id){const v=JSON.parse((await docker(['image','inspect',id])).stdout);assert.equal(v.length,1);assert.match(v[0].Id,digestPattern);assert.equal(v[0].Os,'linux');assert.equal(v[0].Architecture,'amd64');return v[0];}
- const sourceManifest=()=>{const names=['tests/remediation/f06/node-security-runtime.test.cjs','vendor/shadcn/tailwind.css','.github/workflows/engineering.yml','.gitattributes','tests/remediation/f06/linux-image-check.test.mjs','Dockerfile','.dockerignore','package.json','package-lock.json','next.config.ts','tsconfig.json','tsconfig.shipping.json','postcss.config.mjs','vendor/braces-3.0.3-algt-depth-1.tgz','vendor/braces-3.0.3-algt-integrated-2.tgz','vendor/sprintf-js-1.0.3-algt.1.tgz','vendor/braces-artifact.json','vendor/sprintf-js-artifact.json','vendor/PATCH-MANIFEST.json','tooling/security/verify-vendor-patches.cjs',NATIVE,'tooling/testing/f06-linux-image-check.mjs','tooling/dms/validate-intake.cjs','vendor/braces/PROVENANCE.json','tooling/security/dependency-gate.cjs'];const walk=p=>{const s=fs.lstatSync(path.join(root,p));assert.ok(!s.isSymbolicLink());if(s.isDirectory())for(const n of fs.readdirSync(path.join(root,p)).sort())walk(p+'/'+n);else names.push(p);};walk('src');walk('public');return Object.fromEntries([...new Set(names)].sort().map(p=>[p,sha(ordinary(path.join(root,p)))]));};
+ const sourceManifest=()=>{const names=['tests/remediation/f06/node-security-runtime.test.cjs','vendor/shadcn/tailwind.css','.github/workflows/engineering.yml','.gitattributes','tests/remediation/f06/linux-image-check.test.mjs','Dockerfile','.dockerignore','package.json','package-lock.json','next.config.ts','tsconfig.json','tsconfig.shipping.json','postcss.config.mjs','vendor/braces-3.0.3-algt-depth-1.tgz','vendor/braces-3.0.3-algt-integrated-2.tgz','vendor/sprintf-js-1.0.3-algt.1.tgz','vendor/braces-artifact.json','vendor/sprintf-js-artifact.json','vendor/PATCH-MANIFEST.json','tooling/security/verify-vendor-patches.cjs',NATIVE,'tooling/testing/f06-linux-image-check.mjs','tooling/dms/validate-intake.cjs','tooling/release/build-inputs.cjs','vendor/braces/PROVENANCE.json','tooling/security/dependency-gate.cjs'];const walk=p=>{const s=fs.lstatSync(path.join(root,p));assert.ok(!s.isSymbolicLink());if(s.isDirectory())for(const n of fs.readdirSync(path.join(root,p)).sort())walk(p+'/'+n);else names.push(p);};walk('src');walk('public');return Object.fromEntries([...new Set(names)].sort().map(p=>[p,sha(ordinary(path.join(root,p)))]));};
  const request=(p,method='GET')=>new Promise((resolve,reject)=>{let done=false;const req=http.request({hostname:'127.0.0.1',port:16401,path:p,method},res=>{let size=0;const chunks=[];res.on('data',b=>{size+=b.length;if(size>4*1024**2)req.destroy(Error('HTTP body bound'));else chunks.push(b);});res.on('end',()=>{done=true;clearTimeout(timer);resolve({status:res.statusCode,location:res.headers.location||null,body:Buffer.concat(chunks)});});res.on('error',reject);});const timer=setTimeout(()=>req.destroy(Error('Absolute HTTP deadline')),5000);req.on('error',e=>{if(!done){clearTimeout(timer);reject(e);}});req.end();});
  try{
   write('intent.json',receipt);const checkout=(await run('git',['rev-parse','HEAD'])).stdout.trim();assert.equal(checkout,candidate);assert.equal((await run('git',['diff','--name-only','HEAD'])).stdout.trim(),'');receipt.actualCheckout=checkout;

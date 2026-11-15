@@ -13,6 +13,7 @@ import { routeOcr } from "@/lib/dms/ocr/ocr-router";
 import { preparationResponseSchema } from "@/lib/dms/preparation/response-schema";
 import { StructuredAiFailure, structuredFailureCodes } from "@/lib/dms/ai/structured-failure";
 import type { DmsAiJobHandlerResult } from "@/lib/dms/ai-jobs/job-types";
+import { preparationTraceId, traceOperation, traceSpan } from '@/lib/performance/trace';
 const analysisReceipt = z.strictObject({ output: modelPreparationSchema, provider: z.string(), model: z.string().nullable(), configId: z.number().int().positive().nullable(),
   promptVersion: z.literal("dms-preparation/1"), schemaVersion: z.literal("dms-preparation/1"), inputHash: z.string().regex(/^[a-f0-9]{64}$/), promptTokens: z.number().int().nonnegative().nullable(), completionTokens: z.number().int().nonnegative().nullable(), durationMs: z.number().nonnegative() });
 // Preserve received output before parsing or quality validation. Legacy validated receipts remain replayable.
@@ -30,6 +31,10 @@ const targetSchema = z.strictObject({ documentTypeId: z.number().int().positive(
 export async function runDocumentPreparationJob(documentId: number): Promise<DmsAiJobHandlerResult | null> {
   const claim = currentJobClaim();
   if (!claim) return { success: false, errorCode: "auth_error", retryable: false };
+  return traceOperation('dms.rerun', () => prepareDocument(documentId,claim), preparationTraceId(claim.jobId));
+}
+
+async function prepareDocument(documentId: number, claim: NonNullable<ReturnType<typeof currentJobClaim>>): Promise<DmsAiJobHandlerResult | null> {
   const db = createAdminClient();
   const rpc = async (action: string, extra: Record<string, unknown> = {}) => {
     const r = await db.rpc("ai_mod04_preparation_worker", { p_action: action, p_data: { jobId: claim.jobId, token: claim.token, ...extra } });
@@ -51,7 +56,10 @@ export async function runDocumentPreparationJob(documentId: number): Promise<Dms
     const source = { ...context.source, files: context.source.files.filter(f => context.fileIds.includes(f.id)).map(f => ({ ...f })) };
     if (source.files.length !== context.fileIds.length) throw Error("selected_source_unavailable");
     const portrait = isPortraitPreparation(source);
-    if (!portrait && context.mode === "reread_files") {
+    // Older retained reuse requests keep their original semantics. Requests
+    // created with the verification flag require qualified text for reuse.
+    const filesToRead = source.files.filter(file => context.mode === 'reread_files' || file.verifiedText === false);
+    if (!portrait && filesToRead.length > 0) {
       // Read actual configured flags; a failed read must not enable a provider.
       const flags = await db.from("erp_ai_feature_flags").select("feature_code,is_enabled")
         .in("feature_code", ["DMS_OCR", "DMS_OCR_ROUTER", "DMS_OCR_GPT_VISION_FALLBACK"]);
@@ -59,14 +67,14 @@ export async function runDocumentPreparationJob(documentId: number): Promise<Dms
       const enabled = new Map((flags.data ?? []).map(f => [f.feature_code, f.is_enabled]));
       if (!enabled.get("DMS_OCR") || !enabled.get("DMS_OCR_ROUTER")) throw Error("ocr_not_enabled");
       const { provider } = await getDmsAiProvider("ocr");
-      for (const file of source.files) {
+      for (const file of filesToRead) {
         const extracted = await runPreparationStage(rpc, `ocr:${file.id}`, ocrReceipt, async () => {
           if (!file.bucket || !file.path) throw Error("source_location_unavailable");
           const verified = await readVerifiedIntakeSource(db.storage.from(file.bucket), { path: file.path, name: file.name, mime: file.mime, size: file.size, sha256: file.sha256 });
           // Candidate-only extraction; never call the old accepted-OCR writer.
-          const result = await routeOcr({ buffer: verified.bytes, mimeType: file.mime, fileName: file.name,
+          const result = await traceSpan('dms.ocr', () => routeOcr({ buffer: verified.bytes, mimeType: file.mime, fileName: file.name,
             featureFlags: { dmsOcr: true, dmsOcrRouter: true, dmsOcrAzure: false, dmsOcrGptVisionFallback: enabled.get("DMS_OCR_GPT_VISION_FALLBACK") === true },
-            azureProvider: null, gptProvider: provider, forceVision: false });
+            azureProvider: null, gptProvider: provider, forceVision: false }));
           if (!result.text.trim()) throw Error("source_text_unavailable");
           return { text: result.text.slice(0, 100000), provider: result.providerCode, model: result.model, method: result.method, pageCount: result.pageCount ?? null, sha256: verified.proof.sha256 };
         });
@@ -91,7 +99,8 @@ export async function runDocumentPreparationJob(documentId: number): Promise<Dms
       const received = await runPreparationStage(rpc, stage, storedAnalysisReceipt, async () => {
       if (portrait) return { output: { documentTypeCode: source.typeCode, title: null, description: null, summary: null, issueDate: null, expiryDate: null, fields: [], tagNames: [], warnings: [], bundle: "single" as const }, provider: "not_applicable", model: null, configId: null, promptVersion: "dms-preparation/1" as const, schemaVersion: "dms-preparation/1" as const, inputHash, promptTokens: null, completionTokens: null, durationMs: 0 };
       if(!selected)throw Error('provider_configuration_unavailable');
-      const result = await callCommonAiStructuredCompletion(prompt.system, prompt.user, { maxTokens: 6000, temperature: 0, selectedProvider:selected, responseSchema: preparationResponseSchema });
+      const result = await traceSpan(stage === 'analysis' ? 'dms.model.first' : 'dms.model.second', () =>
+        callCommonAiStructuredCompletion(prompt.system, prompt.user, { maxTokens: 6000, temperature: 0, selectedProvider:selected, responseSchema: preparationResponseSchema }));
       if (!result.success) throw new StructuredAiFailure(result.errorCode ?? "provider_unavailable");
       return { receiptVersion: 2 as const, rawJson: result.rawJson,
         ...(result.responseIssue ? { responseIssue: result.responseIssue } : {}),
@@ -127,9 +136,9 @@ export async function runDocumentPreparationJob(documentId: number): Promise<Dms
       if (target.canApply) candidate.values.unshift({ key: "document_type_id", label: "Document type and registered category", current: String(source.documentTypeId), proposed: String(target.documentTypeId), evidence: [], confidence: null });
     } else if (code && code !== source.typeCode) candidate.warnings.push("The suggested type was not in the verified catalogue. The existing type is retained.");
     if (source.files.some(f => (f.text?.length ?? 0) > 24000)) candidate.warnings.push("Analysis used bounded source excerpts. Review the original for material outside those excerpts.");
-    const published = z.object({ success: z.literal(true), resultId: z.number().int().positive(), replayed: z.boolean() }).strict().parse(await rpc("publish", { candidate,
+    const published = z.object({ success: z.literal(true), resultId: z.number().int().positive(), replayed: z.boolean() }).strict().parse(await traceSpan('dms.publish', () => rpc("publish", { candidate,
       provenance: { provider: analyzed.provider, model: analyzed.model, configId: analyzed.configId, promptVersion: analyzed.promptVersion, schemaVersion: analyzed.schemaVersion, inputHash: analyzed.inputHash, promptTokens: analyzed.promptTokens, completionTokens: analyzed.completionTokens, durationMs: analyzed.durationMs },
-      candidateText: working.files.map(f => f.text ?? "").join("\n\n").slice(0, 100000) }));
+      candidateText: working.files.map(f => f.text ?? "").join("\n\n").slice(0, 100000) })));
     return { success: published.success, modelName: analyzed.model, providerCode: analyzed.provider, inputTokenCount: analyzed.promptTokens, outputTokenCount: analyzed.completionTokens };
   } catch (error) {
     // A retained uncertain stage needs reconciliation, not a fresh paid request.

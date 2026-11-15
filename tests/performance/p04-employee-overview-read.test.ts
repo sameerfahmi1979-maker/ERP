@@ -131,10 +131,12 @@ it.each(["ready", "incomplete", "on_hold", "exempt", "not_enrolled"] as const)("
     {id: 3, amount: 999, is_active: false, deleted_at: null, component_type: {component_kind: "earning"}},
     {id: 4, amount: 999, is_active: true, deleted_at: "2026-01-01", component_type: {component_kind: "earning"}},
   ];
-  state.points.employee_wps_profiles = status === "not_enrolled" ? null : {wps_applicable: status !== "exempt", wps_status: "active", bank_id: 1, account_number: "PRIVATE_BANK_ACCOUNT", iban: status === "incomplete" ? null : "PRIVATE_IBAN", exchange_house: null, salary_payment_method: "bank_transfer", labour_card_number: "PRIVATE_LABOUR_CARD", mohre_person_code: "PRIVATE_MOHRE"};
+  const iban = "AE070331234567890123456";
+  state.points.employee_wps_profiles = status === "not_enrolled" ? null : {wps_applicable: status !== "exempt", wps_status: "active", bank_id: 1, account_number: "PRIVATE_BANK_ACCOUNT", iban: status === "incomplete" ? null : iban, exchange_house: null, salary_payment_method: "bank_transfer", labour_card_number: "PRIVATE_LABOUR_CARD", mohre_person_code: "PRIVATE_MOHRE"};
   if (status === "on_hold") state.counts.employee_payroll_holds = 1;
   const result = await read(["payroll"]);
   expect(result.data!.sections.payroll).toMatchObject({status: "ready", data: {grossSalary: 6000, bankingRestricted: false, wpsReadiness: {status}}});
+  expect(JSON.stringify(result)).not.toContain(iban);
   expect(JSON.stringify(result)).not.toContain("PRIVATE_");
 });
 it.each([-1, 1.5, Infinity])("invalid count %s cannot become a successful zero or partial card", async total => {

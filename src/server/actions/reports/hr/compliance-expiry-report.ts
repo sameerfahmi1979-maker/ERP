@@ -7,17 +7,12 @@
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
 import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
+import { daysUntilBusinessDate, dubaiBusinessDate } from "@/lib/dubai-calendar";
 
 function maskDocNumber(doc: string | null): string {
   if (!doc) return "";
   if (doc.length <= 4) return "****";
   return doc.slice(0, 2) + "****" + doc.slice(-2);
-}
-
-function daysRemaining(expiryDate: string | null): number | null {
-  if (!expiryDate) return null;
-  const diff = new Date(expiryDate).getTime() - Date.now();
-  return Math.ceil(diff / 86400000);
 }
 
 function expiryStatus(days: number | null): string {
@@ -49,6 +44,10 @@ export const complianceExpiryFetcher: ReportFetcher = {
     if (empIds.length === 0) return { columns: [], rows: [], meta: { total: 0 } };
 
     const rows: Record<string, unknown>[] = [];
+    const asOf = dubaiBusinessDate();
+    const inWindow = (date: string | null) =>
+      (!filters.expiry_from || (date !== null && date >= String(filters.expiry_from))) &&
+      (!filters.expiry_to || (date !== null && date <= String(filters.expiry_to)));
 
     // 1. Identity documents
     const { data: idDocs } = await db
@@ -60,9 +59,8 @@ export const complianceExpiryFetcher: ReportFetcher = {
     for (const doc of idDocs ?? []) {
       const emp = empMap.get(doc.employee_id);
       if (!emp) continue;
-      const days = daysRemaining(doc.expiry_date);
-      if (filters.expiry_from && doc.expiry_date && doc.expiry_date < String(filters.expiry_from)) continue;
-      if (filters.expiry_to && doc.expiry_date && doc.expiry_date > String(filters.expiry_to)) continue;
+      const days = daysUntilBusinessDate(doc.expiry_date, asOf);
+      if (!inWindow(doc.expiry_date)) continue;
       const status = expiryStatus(days);
       if (filters.status && status !== filters.status) continue;
       rows.push({
@@ -91,9 +89,8 @@ export const complianceExpiryFetcher: ReportFetcher = {
     for (const ins of medIns ?? []) {
       const emp = empMap.get(ins.employee_id);
       if (!emp) continue;
-      const days = daysRemaining(ins.expiry_date);
-      if (filters.expiry_from && ins.expiry_date && ins.expiry_date < String(filters.expiry_from)) continue;
-      if (filters.expiry_to && ins.expiry_date && ins.expiry_date > String(filters.expiry_to)) continue;
+      const days = daysUntilBusinessDate(ins.expiry_date, asOf);
+      if (!inWindow(ins.expiry_date)) continue;
       const status = expiryStatus(days);
       if (filters.status && status !== filters.status) continue;
       rows.push({
@@ -122,9 +119,8 @@ export const complianceExpiryFetcher: ReportFetcher = {
     for (const cert of certs ?? []) {
       const emp = empMap.get(cert.employee_id);
       if (!emp) continue;
-      const days = daysRemaining(cert.expiry_date);
-      if (filters.expiry_from && cert.expiry_date && cert.expiry_date < String(filters.expiry_from)) continue;
-      if (filters.expiry_to && cert.expiry_date && cert.expiry_date > String(filters.expiry_to)) continue;
+      const days = daysUntilBusinessDate(cert.expiry_date, asOf);
+      if (!inWindow(cert.expiry_date)) continue;
       const status = expiryStatus(days);
       if (filters.status && status !== filters.status) continue;
       rows.push({
@@ -143,6 +139,31 @@ export const complianceExpiryFetcher: ReportFetcher = {
       });
     }
 
+    const cards = await db.from("employee_access_cards")
+      .select("employee_id,card_number,issue_date,expiry_date,card_type:hr_access_card_types(name_en)")
+      .in("employee_id", empIds).is("deleted_at", null).in("status", ["active", "expired"]);
+    if (cards.error) throw new Error("Access-card expiry data could not be read.");
+    for (const card of cards.data ?? []) {
+      const emp = empMap.get(card.employee_id);
+      if (!emp || !inWindow(card.expiry_date)) continue;
+      const days = daysUntilBusinessDate(card.expiry_date, asOf);
+      const status = expiryStatus(days);
+      if (filters.status && status !== filters.status) continue;
+      rows.push({
+        employee_code: emp.employee_code,
+        employee_name: emp.full_name_en,
+        company: (emp.owner_company as unknown as { legal_name_en: string } | null)?.legal_name_en ?? "",
+        department: (emp.department as unknown as { department_name_en: string } | null)?.department_name_en ?? "",
+        document_category: "Access Card",
+        document_type: (card.card_type as unknown as { name_en: string } | null)?.name_en ?? "Access card",
+        document_number_masked: maskDocNumber(card.card_number),
+        issue_date: card.issue_date ?? "",
+        expiry_date: card.expiry_date ?? "",
+        days_remaining: days,
+        status,
+        owner_company_id: emp.owner_company_id,
+      });
+    }
     const ownerCompanyIds = [...new Set(rows.map((r) => r.owner_company_id as number))];
 
     return {

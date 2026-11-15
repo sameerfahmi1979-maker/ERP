@@ -1,6 +1,7 @@
 import {z} from "zod";
 import type {AuthContext} from "@/lib/rbac/check";
-import {hasPermission} from "@/lib/rbac/scope";
+import {canUseApplication, isGlobalAdmin} from "@/lib/rbac/scope";
+import {canAccessRoute} from "@/lib/rbac/route-access-registry";
 export {hrReadIdentity as dmsApprovalReadIdentity} from "./hr-read-identity";
 const id = z.number().int().positive().refine(Number.isSafeInteger);
 const page = z.number().int().min(1).max(100000), pageSize = z.number().int().min(1).max(100);
@@ -33,7 +34,7 @@ export const dmsApprovalStateResponseSchema = z.object({criteria: dmsApprovalSta
 export const dmsApprovalHistoryPageSchema = z.object({criteria: dmsApprovalHistoryCriteriaSchema, rows: z.array(dmsApprovalHistoryRowSchema), totalCount: count}).strict()
   .refine(v => complete(v) && new Set(v.rows.map(r => r.id)).size === v.rows.length && v.rows.every(r => r.documentId === v.criteria.documentId));
 export function canReadDmsApprovals(ctx: AuthContext) {
-  return ["dms.approvals.view", "dms.approvals.admin", "dms.approvals.history.view", "dms.approvals.act", "dms.documents.approve", "dms.admin"].some(code => hasPermission(ctx, code));
+  return canUseApplication(ctx) && canAccessRoute("/dms/approvals", ctx.permissionCodes, isGlobalAdmin(ctx));
 }
 export type DmsApprovalQueueCriteria = z.infer<typeof dmsApprovalQueueCriteriaSchema>;
 export type DmsApprovalQueuePage = z.infer<typeof dmsApprovalQueuePageSchema>;

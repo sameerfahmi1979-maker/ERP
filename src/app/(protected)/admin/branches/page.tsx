@@ -16,7 +16,7 @@ export default async function AdminBranchesPage() {
           title="Branches"
           description="Manage organizational branches and locations"
           breadcrumbs={[
-            { label: "Admin", href: "/admin" },
+            { label: "Admin" },
             { label: "Branches" },
           ]}
         />
@@ -29,7 +29,7 @@ export default async function AdminBranchesPage() {
   if (!branches) {
     return (
       <div className="p-6 space-y-4">
-        <ERPPageHeader title="Branches" description="Manage organizational branches and locations" breadcrumbs={[{ label: "Admin", href: "/admin" }, { label: "Branches" }]} />
+        <ERPPageHeader title="Branches" description="Manage organizational branches and locations" breadcrumbs={[{ label: "Admin" }, { label: "Branches" }]} />
         <LoadError title="Branches" retryHref="/admin/branches" />
       </div>
     );
@@ -38,7 +38,7 @@ export default async function AdminBranchesPage() {
   if (!companies) {
     return (
       <div className="p-6 space-y-4">
-        <ERPPageHeader title="Branches" description="Manage organizational branches and locations" breadcrumbs={[{ label: "Admin", href: "/admin" }, { label: "Branches" }]} />
+        <ERPPageHeader title="Branches" description="Manage organizational branches and locations" breadcrumbs={[{ label: "Admin" }, { label: "Branches" }]} />
         <LoadError title="Branch company choices" retryHref="/admin/branches" />
       </div>
     );
@@ -51,7 +51,7 @@ export default async function AdminBranchesPage() {
         title="Branches"
         description="Manage organizational branches and locations. Search, filter, and open branch records."
         breadcrumbs={[
-          { label: "Admin", href: "/admin" },
+          { label: "Admin" },
           { label: "Branches" },
         ]}
         actions={writableCompanies.length > 0 ? <AddBranchButton companies={writableCompanies} /> : null}

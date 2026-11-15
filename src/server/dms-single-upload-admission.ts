@@ -7,6 +7,7 @@ import {dmsFileMetadataSchema,batchUuid} from '@/lib/dms/batch-admission';
 import {singleUploadContextSchema,singleUploadRequestSchema,sameSingleUploadRequest,type SingleUploadRequest} from '@/lib/dms/single-upload-admission';
 import {verifyTemporaryUpload} from '@/server/dms-temp-upload-verification';
 import type {CreateUploadSessionInput,CreateUploadSessionResult,ActionResult,DmsUploadSessionRow} from '@/server/actions/dms/upload-sessions';
+import {traceOperation, traceSpan} from '@/lib/performance/trace';
 
 const contractSchema=z.object({operationId:batchUuid,authUserId:batchUuid}).strict();
 const sessionSchema=z.object({id:z.number().int().positive(),session_code:z.string().min(1),uploaded_by:z.number().int().positive(),
@@ -27,6 +28,10 @@ export type SingleUploadAdmissionResult=ActionResult<CreateUploadSessionResult>&
 /** Retains one admission before issuing any short-lived Storage capability.
  * A timeout/throw/invalid reply is never permission to mint another operation. */
 export async function admitSingleUpload(input:CreateUploadSessionInput,contract?:SingleUploadContract):Promise<SingleUploadAdmissionResult>{
+ return traceOperation('dms.intake.admit', () => admitRetainedSingleUpload(input,contract), contract?.operationId);
+}
+
+async function admitRetainedSingleUpload(input:CreateUploadSessionInput,contract?:SingleUploadContract):Promise<SingleUploadAdmissionResult>{
   let dispatched=false;
   try{
     const {context,scope,...metadata}=input;
@@ -43,7 +48,7 @@ export async function admitSingleUpload(input:CreateUploadSessionInput,contract?
     if(!profile)return {success:false,error:denied};
     const client=await createClient();
     const read=async()=>{
-      const result=await client.rpc('f07_admit_single_upload',{p_request:request});
+      const result=await traceSpan('dms.admit', () => client.rpc('f07_admit_single_upload',{p_request:request}));
       if(result.error)throw result.error;
       const cancelled=cancellationSchema.safeParse(result.data);
       if(cancelled.success){if(cancelled.data.cancelled.operationId!==request.operationId||(await active())?.id!==profile.id)throw Error('Unverified cancellation');return cancelled.data;}

@@ -4,6 +4,7 @@
 
 import type { ComplianceRuleResult, LinkedDocumentForCompliance } from "./types";
 import { COMPLIANCE_INCOMPLETE_THRESHOLD } from "./types";
+import { dmsBusinessDate, dmsDaysUntilExpiry } from "@/lib/dms/expiry-calendar";
 
 const CONFIDENTIAL_LEVELS = new Set(["hr", "legal", "executive"]);
 const OPEN_RENEWAL_STATUSES = new Set([
@@ -21,9 +22,7 @@ export function evaluateLinkedDocumentHealth(input: {
   isAdminViewer: boolean;
 }): ComplianceRuleResult[] {
   const results: ComplianceRuleResult[] = [];
-  const now = new Date();
-  const soonThreshold = new Date(now);
-  soonThreshold.setDate(soonThreshold.getDate() + 30);
+  const asOf = dmsBusinessDate();
 
   for (const doc of input.documents) {
     if (doc.aiRiskLevel === "critical") {
@@ -155,8 +154,8 @@ export function evaluateLinkedDocumentHealth(input: {
 
     // Expiry checks for docs not already covered by rule engine (non-rule docs)
     if (doc.expiryDate) {
-      const expiry = new Date(doc.expiryDate);
-      if (expiry < now) {
+      const days = dmsDaysUntilExpiry(doc.expiryDate, asOf);
+      if (days !== null && days < 0) {
         const alreadyExpired = results.some(
           (r) =>
             r.documentId === doc.id && r.findingType === "expired_document"
@@ -175,7 +174,7 @@ export function evaluateLinkedDocumentHealth(input: {
             recommendedAction: "Renew or replace expired document",
           });
         }
-      } else if (expiry <= soonThreshold) {
+      } else if (days !== null && days <= 30) {
         const alreadyExpiring = results.some(
           (r) =>
             r.documentId === doc.id && r.findingType === "expiring_soon_document"
@@ -233,6 +232,9 @@ export function mapLinkedDocumentRow(row: Record<string, unknown>): LinkedDocume
     summaryEmbeddingStatus: (doc?.summary_embedding_status as string | null) ?? null,
     confidentialityLevel: (doc?.confidentiality_level as string | null) ?? null,
     status: (doc?.status as string | null) ?? null,
+    archived: doc?.is_archived === true,
+    deleted: doc?.deleted_at != null,
+    supersededByDocumentId: (doc?.superseded_by_document_id as number | null) ?? null,
   };
 }
 

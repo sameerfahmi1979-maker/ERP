@@ -18,6 +18,9 @@
  * - If none set and item is not disabled: visible to all (safe fallback for unregistered routes)
  */
 
+import { canUseApplication, isGlobalAdmin } from "./scope";
+import type { AuthContext } from "./check";
+
 export type RouteAccess = {
   requiredPermission?: string;
   requiredAnyPermissions?: string[];
@@ -33,6 +36,7 @@ export const ROUTE_ACCESS_REGISTRY: Record<string, RouteAccess> = {
   // ── Human Resource ─────────────────────────────────────────────────────────
   "/admin/hr/dashboard":                          { requiredAnyPermissions: ["hr.dashboard.view", "hr.employees.view", "hr.admin"] },
   "/admin/hr/search":                             { requiredAnyPermissions: ["hr.search.use", "hr.admin"] },
+  "/admin/hr/document-browser":                   { requiredPermission: "hr.employees.view", requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
   "/admin/hr/employees":                          { requiredAnyPermissions: ["hr.employees.view", "hr.employee_profile.view", "hr.employees.view.self", "hr.employees.view.team"] },
   "/admin/hr/actions/pro":                        { requiredAnyPermissions: ["hr.actions.view", "hr.actions.manage", "hr.admin"] },
   "/admin/hr/actions/disciplinary":               { requiredAnyPermissions: ["hr.actions.view", "hr.actions.manage", "hr.admin"] },
@@ -56,6 +60,7 @@ export const ROUTE_ACCESS_REGISTRY: Record<string, RouteAccess> = {
   // ── Documents (DMS) ────────────────────────────────────────────────────────
   "/dms":                                         { requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
   "/dms/documents":                               { requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
+  "/dms/approvals":                               { requiredAnyPermissions: ["dms.approvals.view", "dms.approvals.act", "dms.approvals.admin", "dms.approvals.history.view", "dms.documents.approve", "dms.admin"] },
   "/dms/mobile":                                  { requiredAnyPermissions: ["dms.documents.view", "dms.documents.upload", "dms.review_queue.view", "dms.review_queue.manage", "dms.documents.review_ai", "dms.admin"] },
   "/dms/inbox":                                   { requiredAnyPermissions: ["dms.documents.upload", "dms.documents.view", "dms.admin"] },
   "/dms/inbox/batches":                           { requiredAnyPermissions: ["dms.documents.upload", "dms.documents.view", "dms.admin"] },
@@ -159,11 +164,15 @@ export function canAccessRoute(
   if (access.publicToAllActive) return true;
   if (isGlobalAdmin) return true;
   if (access.requiresGlobalAdmin) return false;
-  if (access.requiredPermission) return permissionCodes.includes(access.requiredPermission);
+  if (access.requiredPermission && !permissionCodes.includes(access.requiredPermission)) return false;
   if (access.requiredAnyPermissions) {
     return access.requiredAnyPermissions.some((p) => permissionCodes.includes(p));
   }
   return true;
+}
+
+export function canOpenHrDocumentBrowser(ctx: AuthContext): boolean {
+  return canUseApplication(ctx) && canAccessRoute("/admin/hr/document-browser", ctx.permissionCodes, isGlobalAdmin(ctx));
 }
 
 /** Priority-ordered list of routes to try for post-login redirect */

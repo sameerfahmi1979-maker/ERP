@@ -16,7 +16,8 @@ afterEach(() => {Object.assign(s, {active: true, password: false, permitted: tru
 it.each(HR_OPERATIONS_KINDS)("%s retains minimal native projections, bounded100 and unique ties", async kind => {
   s.result = {data: [{...rows[kind], notes: "PRIVATE-SYNTHETIC", released_by: 1, missing_requirements_json: {secret: true}, search_employee: {id: 1}}], count: 1101, error: null};
   const result = await readHrOperations({kind, page: 12, pageSize: 100}); expect(result.success, result.error).toBe(true); expect(result.data).toMatchObject({kind, totalCount: 1101, rows: [rows[kind]]});
-  expect(s.calls).toContainEqual(["from", HR_OPERATIONS_CONFIG[kind].table]); expect(s.calls).toContainEqual(["range", 1100, 1199]); expect(s.calls).toContainEqual(["order", HR_OPERATIONS_CONFIG[kind].sort, {ascending: false, nullsFirst: false}]); expect(s.calls).toContainEqual(["order", "id", {ascending: true}]);
+  const expectedRelation = {assignments: "phase3_hr_assignments", blocks: "employee_operational_blocks", readiness: "phase3_hr_site_readiness"};
+  expect(s.calls).toContainEqual(["from", expectedRelation[kind]]); expect(s.calls).toContainEqual(["range", 1100, 1199]); expect(s.calls).toContainEqual(["order", HR_OPERATIONS_CONFIG[kind].sort, {ascending: false, nullsFirst: false}]); expect(s.calls).toContainEqual(["order", "id", {ascending: true}]);
   expect(String(s.calls.find(c => c[0] === "select")?.[1])).not.toContain("*"); expect(s.calls.filter(c => c[0] === "from")).toHaveLength(1); expect(JSON.stringify(result)).not.toContain("PRIVATE-SYNTHETIC"); expect(JSON.stringify(result)).not.toContain("search_employee");
 });
 it("rejects unsafe or unsupported criteria before auth or database work", async () => {
@@ -47,14 +48,14 @@ it("native employee/site/department/designation and status narrow, never expand,
   for (const c of [["eq", "employee_id", 881401], ["eq", "work_site_id", 1087001], ["eq", "department_id", 1], ["eq", "designation_id", 2], ["eq", "assignment_status", "planned"]]) expect(s.calls).toContainEqual(c);
 });
 it.each([
-  {kind: "assignments", sortKey: "company_name", alias: "company"},
-  {kind: "assignments", sortKey: "department_name", alias: "department"},
-  {kind: "assignments", sortKey: "designation_name", alias: "designation"},
-  {kind: "assignments", sortKey: "site_name", alias: "site"},
-  {kind: "readiness", sortKey: "site_name", alias: "site"},
-] as const)("$kind $sortKey sorts the selected protected label alias, not an absent raw column", async ({kind, sortKey, alias}) => {
+  {kind: "assignments", sortKey: "company_name", column: "company(name_en)"},
+  {kind: "assignments", sortKey: "department_name", column: "department_label"},
+  {kind: "assignments", sortKey: "designation_name", column: "designation(name_en)"},
+  {kind: "assignments", sortKey: "site_name", column: "site_label"},
+  {kind: "readiness", sortKey: "site_name", column: "site_label"},
+] as const)("$kind $sortKey sorts the selected protected label", async ({kind, sortKey, column}) => {
   s.result = {data: [], count: 0, error: null}; expect((await readHrOperations({kind, sortKey, sortDir: "asc"})).success).toBe(true);
-  expect(s.calls).toContainEqual(["order", `${alias}(name_en)`, {ascending: true, nullsFirst: false}]); expect(s.calls).toContainEqual(["order", "id", {ascending: true}]);
+  expect(s.calls).toContainEqual(["order", column, {ascending: true, nullsFirst: false}]); expect(s.calls).toContainEqual(["order", "id", {ascending: true}]);
 });
 it.each([{data: null, count: 0, error: null}, {data: [], count: null, error: null}, {data: [], count: 1, error: null}, {data: [rows.blocks, rows.blocks], count: 2, error: null}, {data: [{id: 1}], count: 1, error: null}, {data: [rows.blocks], count: 1, error: {message: "PRIVATE-SYNTHETIC", code: "57014"}}])("malformed, duplicate, truncated or failed reads are never successful empty", async result => {
   s.result = result; const r = await readHrOperations({kind: "blocks"}); expect(r.success).toBe(false); expect(r.data).toBeUndefined(); expect(JSON.stringify(r)).not.toContain("PRIVATE-SYNTHETIC");

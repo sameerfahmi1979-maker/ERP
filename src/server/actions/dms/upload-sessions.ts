@@ -170,8 +170,8 @@ export async function acknowledgeDmsSingleUpload(request:SingleUploadRequest,ses
 
 // ── Complete temp upload ──────────────────────────────────────────────────────
 
-export async function completeDmsTempUpload(sessionId:number):Promise<ActionResult<DmsUploadSessionRow>> {
-  const result=await verifyTemporaryUpload(sessionId);
+export async function completeDmsTempUpload(sessionId:number,transferMs?:number):Promise<ActionResult<DmsUploadSessionRow>> {
+  const result=await verifyTemporaryUpload(sessionId,transferMs);
   if(result.success){try{revalidatePath("/dms/inbox");}catch{/* Verified receipt remains valid. */}}
   return result;
 }

@@ -16,13 +16,36 @@ import {askDmsDocumentsQuestion} from "@/server/actions/dms/ai-search";
 import {filterSearchCandidateIds} from "@/server/actions/ai/search-candidates";
 import {semanticSearchDmsDocuments} from "@/server/actions/dms/semantic-search";
 import type {DmsAiSearchResult, DmsSemanticSearchResult, DmsSearchIntent} from "@/lib/dms/ai/types";
+import {DmsLoadingStatus} from "@/features/dms/dms-loading-status";
 
 const COL_WIDTH_KEY = "dms-browser-col-widths-v1", COL_DEFAULT = 380, COL_MIN = 280, COL_MAX = 640;
 const PAGE_SIZE = 25, AI_WORD_THRESHOLD = 4;
+type ProviderRequest<T> = { response: Promise<T>; settled: boolean };
+function reuseProviderRequest<T>(requests: Map<string, ProviderRequest<T>>, key: string, start: () => Promise<T>): Promise<T> {
+  const existing = requests.get(key);
+  if (existing) return existing.response;
+  const request: ProviderRequest<T> = { response: start(), settled: false };
+  requests.set(key, request);
+  const settle = () => {
+    request.settled = true;
+    const completed = [...requests].filter(([, entry]) => entry.settled);
+    for (const [oldest] of completed.slice(0, Math.max(0, completed.length - 10))) requests.delete(oldest);
+  };
+  void request.response.then(settle, settle);
+  return request.response;
+}
+function searchKey(query: string, filters: DmsBrowserActiveFilters) {
+  return JSON.stringify([query.trim(), [...new Set(filters.documentTypeIds)].sort((a, b) => a - b),
+    filters.status, filters.issueDateFrom, filters.issueDateTo, filters.linkedEntityType, filters.semanticOn]);
+}
 function loadColWidth(): number {
   if (typeof window === "undefined") return COL_DEFAULT;
   try {const saved = JSON.parse(localStorage.getItem(COL_WIDTH_KEY) ?? "null"); if (typeof saved === "number" && saved >= COL_MIN && saved <= COL_MAX) return saved;} catch { /* Display preference only. */ }
   return COL_DEFAULT;
+}
+function retainColWidth(width: number) {
+  try { localStorage.setItem(COL_WIDTH_KEY, JSON.stringify(width)); } catch { /* Optional display preference. */ }
+  return width;
 }
 function suggestion(r: DmsAiSearchResult | DmsSemanticSearchResult, excerpt: string | null): DmsBrowserDocument {
   return {...dmsBrowserRowSchema.parse({id: r.documentId, documentNo: r.documentNo, title: r.title, typeNameEn: null, typeCode: null,
@@ -53,7 +76,7 @@ function BrowserSession({authContext}: {authContext: AuthContext}) {
     const onUp = () => {
       if (!isDragging.current) return;
       isDragging.current = false; document.body.style.userSelect = ""; document.body.style.cursor = "";
-      setLeftWidth(w => {try {localStorage.setItem(COL_WIDTH_KEY, JSON.stringify(w));} catch { /* Optional display preference. */ } return w;});
+      setLeftWidth(retainColWidth);
     };
     document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
     return () => {document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); if (isDragging.current) {document.body.style.userSelect = ""; document.body.style.cursor = "";}};
@@ -64,8 +87,12 @@ function BrowserSession({authContext}: {authContext: AuthContext}) {
   const [aiIntent, setAiIntent] = useState<DmsSearchIntent | null>(null), [aiRows, setAiRows] = useState<DmsBrowserDocument[]>([]), [semanticRows, setSemanticRows] = useState<DmsBrowserDocument[]>([]);
   const [isAiSearching, setIsAiSearching] = useState(false), [providerFailed, setProviderFailed] = useState(false);
   const epoch = useRef(0), mounted = useRef(true);
+  const lastSearch = useRef(searchKey("", DEFAULT_FILTERS));
+  const aiRequests = useRef(new Map<string, ProviderRequest<Awaited<ReturnType<typeof askDmsDocumentsQuestion>>>>());
+  const semanticRequests = useRef(new Map<string, ProviderRequest<Awaited<ReturnType<typeof semanticSearchDmsDocuments>>>>());
   useEffect(() => {mounted.current = true; return () => {mounted.current = false;};}, []);
   const onDenied = useCallback(() => {
+    aiRequests.current.clear(); semanticRequests.current.clear();
     epoch.current++; setAccessDenied(true); setSelectedId(null); setAiRows([]); setSemanticRows([]); setAiIntent(null); setIsAiSearching(false);
     const queryKey = dmsBrowserPrefix(identity); void queryClient.cancelQueries({queryKey}); queryClient.removeQueries({queryKey});
   }, [identity, queryClient]);
@@ -101,19 +128,26 @@ function BrowserSession({authContext}: {authContext: AuthContext}) {
     };
     if (query.trim().split(/\s+/).filter(Boolean).length >= AI_WORD_THRESHOLD) {
       setIsAiSearching(true);
-      void askDmsDocumentsQuestion(query).then(async result => {
+      const key = query.trim();
+      const request = reuseProviderRequest(aiRequests.current, key, () => askDmsDocumentsQuestion(key));
+      void request.then(async result => {
         if (!current()) return;
         if (result.success && result.data) {const rows=await constrain(result.data.results);if(current()){setAiRows(rows.map(row => suggestion(row, row.matchReason || row.contentSnippet))); setAiIntent(result.data.intent);}} else setProviderFailed(true);
       }).catch(() => {if (current()) setProviderFailed(true);}).finally(() => {if (current()) setIsAiSearching(false);});
     }
     if (active.semanticOn && query.trim()) {
-      void semanticSearchDmsDocuments(query).then(async result => {
+      const key = query.trim();
+      const request = reuseProviderRequest(semanticRequests.current, key, () => semanticSearchDmsDocuments(key));
+      void request.then(async result => {
         if (!current()) return;
         if (result.success && result.data) {const rows=await constrain(result.data,"semantic");if(current())setSemanticRows(rows.map(row => suggestion(row, row.aiSummarySnippet || row.matchReason)));} else setProviderFailed(true);
       }).catch(() => {if (current()) setProviderFailed(true);});
     }
   }, []);
   const change = useCallback((query: string, active: DmsBrowserActiveFilters) => {
+    const key = searchKey(query, active);
+    if (key === lastSearch.current) return;
+    lastSearch.current = key;
     const token = ++epoch.current;
     setCurrentQuery(query); setFilters(active); setSelectedId(null); setFileOffset(0); setAiRows([]); setSemanticRows([]); setAiIntent(null); setIsAiSearching(false); setProviderFailed(false);
     if (!accessDenied && query.trim().length <= 200) runProviders(query, active, token);
@@ -121,14 +155,15 @@ function BrowserSession({authContext}: {authContext: AuthContext}) {
   const selectDocument = (row: DmsBrowserDocument) => {setSelectedId(row.id); setFileOffset(0);};
   const typeRows = types.data?.availability === "available" ? types.data.rows : [];
 
-  return <div className="flex h-[calc(100vh-190px)] min-h-[480px] rounded-lg border overflow-hidden bg-background" suppressHydrationWarning>
-    <div className="flex flex-col min-h-0 border-r border-border/60 overflow-hidden shrink-0" style={{width: leftWidth}}>
+  return <div className="flex min-w-0 flex-col rounded-lg border bg-background lg:h-[calc(100vh-190px)] lg:min-h-[480px] lg:flex-row lg:overflow-hidden" suppressHydrationWarning>
+    <div className={`flex h-[min(60dvh,440px)] min-h-0 w-full flex-col overflow-hidden border-b border-border/60 lg:h-auto lg:w-[var(--dms-sidebar-width)] lg:shrink-0 lg:border-b-0 lg:border-r ${selected ? "hidden lg:flex" : ""}`}
+      style={{"--dms-sidebar-width": `${leftWidth}px`} as React.CSSProperties}>
       <div className="shrink-0">
-        <DmsBrowserSearchBar onSearch={query => change(query, filters)} isLoading={search.isFetching && !search.isFetchingNextPage} isAiSearching={isAiSearching}/>
+        {!accessDenied && <DmsBrowserSearchBar onSearch={query => change(query, filters)} isLoading={search.isFetching && !search.isFetchingNextPage} isAiSearching={isAiSearching}/>}
         {types.isError ? <ReadNotice retry={types.retry} label="Retry document types">Document types could not be loaded. Existing search criteria have been retained.</ReadNotice>
           : types.data?.availability === "too_large" ? <ReadNotice>Too many document types to verify safely. Contact your administrator.</ReadNotice>
           : types.data?.availability === "available" ? <DmsBrowserFilterBar docTypes={typeRows} filters={filters} onChange={active => change(currentQuery, active)}/>
-          : !accessDenied && <p role="status" className="text-xs text-muted-foreground">Loading document filters…</p>}
+          : !accessDenied && !search.isFetching && <DmsLoadingStatus label="Loading document filters…" className="px-3 py-2" />}
       </div>
       {accessDenied || search.denied || types.denied ? <ReadNotice>Access could not be verified. Previous records and previews have been cleared. Reload or sign in again.</ReadNotice>
         : !parsed.success ? <ReadNotice>Search criteria are invalid. Use up to 200 characters and valid dates.</ReadNotice>
@@ -147,12 +182,14 @@ function BrowserSession({authContext}: {authContext: AuthContext}) {
           </section>}
         </>}
     </div>
-    <DmsBrowserResizeHandle onMouseDown={handleResizeMouseDown}/>
-    <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+    <div className="hidden lg:flex"><DmsBrowserResizeHandle onMouseDown={handleResizeMouseDown} width={leftWidth} min={COL_MIN} max={COL_MAX} onResize={width => setLeftWidth(retainColWidth(width))}/></div>
+    <div className={`min-w-0 min-h-0 flex-1 flex-col ${selected ? "flex min-h-[65dvh] lg:min-h-0" : "hidden lg:flex"}`}>
+      {selected && <button type="button" className="self-start px-3 py-2 text-sm underline lg:hidden"
+        onClick={() => {setSelectedId(null);setFileOffset(0);}}>Back to documents</button>}
       {!visible || !selected ? <DmsBrowserPreview document={null}/>
         : files.isError ? <ReadNotice retry={files.retry} label="Retry files">Document files could not be loaded. Please retry.</ReadNotice>
         : fileResponse?.availability === "unavailable" ? <ReadNotice>This document is no longer available. Search again or choose another result.</ReadNotice>
-        : !filePage ? <div role="status" className="p-4 text-sm">Loading selected document files…</div>
+        : !filePage ? <DmsLoadingStatus label="Loading selected document files…" className="p-4" />
         : fileOffset > 0 && filePage.rows.length === 0 ? <ReadNotice retry={() => setFileOffset(0)} label="First files page">This file page is no longer available. Return to the first page.</ReadNotice>
         : <>
           <div className="flex-1 min-h-0"><DmsBrowserPreview document={selectedDoc} canPreview={filePage.canPreview} canDownload={filePage.canDownload} totalFiles={filePage.totalCount}/></div>

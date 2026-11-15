@@ -1,5 +1,6 @@
 "use server";
 
+import {dmsBusinessDate, dmsDaysUntilExpiry} from "@/lib/dms/expiry-calendar";
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
@@ -113,11 +114,12 @@ export async function getDmsExpiryDashboardStats(): Promise<ActionResult<DmsExpi
     if (!ctx.isAccountActive || ctx.profile.must_change_password || !canViewExpiry(ctx)) return { success: false, error: "Permission denied" };
     const supabase = await createClient();
 
-    const today = new Date().toISOString().split("T")[0];
-    const in7 = new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
-    const in30 = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
-    const in60 = new Date(Date.now() + 60 * 86400000).toISOString().split("T")[0];
-    const in90 = new Date(Date.now() + 90 * 86400000).toISOString().split("T")[0];
+    const asOf = Date.now();
+    const today = dmsBusinessDate(asOf);
+    const in7 = dmsBusinessDate(asOf, 7);
+    const in30 = dmsBusinessDate(asOf, 30);
+    const in60 = dmsBusinessDate(asOf, 60);
+    const in90 = dmsBusinessDate(asOf, 90);
 
     // Fetch document type IDs that do NOT require expiry tracking — exclude from "missing expiry"
     const noExpiryTypeIds = await readNoExpiryTypeIds(supabase);
@@ -214,8 +216,8 @@ export async function getDmsExpiringDocuments(
 
     // Freeze date criteria across all pages, including a traversal at midnight.
     const now = Date.now();
-    const today = new Date(now).toISOString().split("T")[0];
-    const in90 = new Date(now + 90 * 86400000).toISOString().split("T")[0];
+    const today = dmsBusinessDate(now);
+    const in90 = dmsBusinessDate(now, 90);
 
     // Fetch document type IDs that do NOT require expiry tracking — exclude from "missing expiry"
     const noExpiryTypeIds = filter.view === "missing_expiry" ? await readNoExpiryTypeIds(supabase) : [];
@@ -302,11 +304,11 @@ export async function getDmsExpiringDocuments(
       query = query.lte("expiry_date", filter.expiryDateTo);
     }
     if (filter.daysRemainingMin !== undefined) {
-      const minDate = new Date(now + filter.daysRemainingMin * 86400000).toISOString().split("T")[0];
+      const minDate = dmsBusinessDate(now, filter.daysRemainingMin);
       query = query.gte("expiry_date", minDate);
     }
     if (filter.daysRemainingMax !== undefined) {
-      const maxDate = new Date(now + filter.daysRemainingMax * 86400000).toISOString().split("T")[0];
+      const maxDate = dmsBusinessDate(now, filter.daysRemainingMax);
       query = query.lte("expiry_date", maxDate);
     }
     if (entityLinkedDocIds && entityLinkedDocIds.length > 0) {
@@ -317,15 +319,10 @@ export async function getDmsExpiringDocuments(
     return { ...result, data: expiryDocumentRowsSchema.parse(result.data) };
     }, { identity: row => row.id, maxRows: filter.limit ?? 10000 });
 
-    const today2 = new Date(now);
     const rows: DmsExpiringDocumentRow[] = (data ?? []).map((d) => {
       const raw = d as Record<string, unknown>;
       const expiryDate = raw.expiry_date as string | null;
-      let daysRemaining: number | null = null;
-      if (expiryDate) {
-        const exp = new Date(expiryDate);
-        daysRemaining = Math.round((exp.getTime() - today2.getTime()) / 86400000);
-      }
+      const daysRemaining = dmsDaysUntilExpiry(expiryDate, today);
       const dt = raw.document_type as { name_en?: string; is_renewable?: boolean } | null;
       const catWrapper = raw.category as { category?: { name_en?: string } } | null;
       return {
@@ -475,7 +472,7 @@ export async function getDmsExpiryReminders(
     if (filter.documentId) query = query.eq("document_id", filter.documentId);
     if (filter.status) query = query.eq("status", filter.status);
     if (filter.dueOnly) {
-      const today = new Date().toISOString().split("T")[0];
+      const today = dmsBusinessDate();
       query = query.lte("reminder_date", today).eq("status", "pending");
     }
 

@@ -3,7 +3,7 @@ import {useEffect, useRef, useState} from "react";
 import {useQuery, useQueryClient} from "@tanstack/react-query";
 import {z} from "zod";
 import type {AuthContext} from "@/lib/rbac/check";
-import {hasPermission} from "@/lib/rbac/scope";
+import {canOpenHrDocumentBrowser} from "@/lib/rbac/route-access-registry";
 import {readJson, ReadError, retryAuthorizedRead} from "@/lib/reads/client";
 import {canonicalReadParams} from "./use-server-page";
 import {hrDocumentBrowserCriteriaSchema, hrDocumentBrowserIdentity, hrBrowserEmployeesPage, hrBrowserDependentsPage, hrBrowserDocumentsPage,
@@ -22,7 +22,7 @@ export function useHrDocumentBrowser<K extends Operation>(auth: AuthContext, inp
   const serialized = canonicalReadParams(criteria), key = [...hrBrowserPrefix(identity), criteria.operation, serialized];
   const owner = JSON.stringify(key), committed = useRef(owner), previous = useRef(key), qc = useQueryClient();
   const [deniedOwner, setDeniedOwner] = useState<string | null>(null);
-  const allowed = hasPermission(auth, "hr.employees.view") && (hasPermission(auth, "dms.documents.view") || hasPermission(auth, "dms.admin"));
+  const allowed = canOpenHrDocumentBrowser(auth);
   const seed = options.seed;
   const query = useQuery<Response<K>, Error>({queryKey: key, staleTime: 30000, retry: retryAuthorizedRead, refetchOnWindowFocus: true,
     enabled: options.enabled !== false && allowed && deniedOwner !== owner,

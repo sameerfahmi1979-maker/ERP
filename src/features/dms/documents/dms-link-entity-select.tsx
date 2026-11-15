@@ -112,9 +112,9 @@ export function DmsLinkEntitySelect({
       placeholder={`Select ${typeLabel.toLowerCase()}...`}
       searchPlaceholder={getDmsLinkEntitySearchPlaceholder(entityType)}
       showCode
-      disabled={disabled || isError}
+      disabled={disabled}
       required={required}
-      loading={showInitialLoading || isFetching || searchQuery !== debouncedSearch}
+      resultsPending={showInitialLoading || isFetching || searchQuery !== debouncedSearch}
       error={isError ? "Could not load permitted entities. Try the search again." : undefined}
       allowClear
       className={className}

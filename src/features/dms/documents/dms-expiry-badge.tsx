@@ -2,16 +2,13 @@
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { differenceInDays, parseISO } from "date-fns";
+import {dmsBusinessDate, dmsDaysUntilExpiry} from "@/lib/dms/expiry-calendar";
 
 export type ExpiryState = "expired" | "expiring_7" | "expiring_30" | "valid" | "no_expiry";
 
-export function getExpiryState(expiryDate: string | null): ExpiryState {
-  if (!expiryDate) return "no_expiry";
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expiry = parseISO(expiryDate);
-  const days = differenceInDays(expiry, today);
+export function getExpiryState(expiryDate: string | null, asOf = dmsBusinessDate()): ExpiryState {
+  const days = dmsDaysUntilExpiry(expiryDate, asOf);
+  if (days === null) return "no_expiry";
   if (days < 0) return "expired";
   if (days <= 7) return "expiring_7";
   if (days <= 30) return "expiring_30";
@@ -19,10 +16,7 @@ export function getExpiryState(expiryDate: string | null): ExpiryState {
 }
 
 export function getDaysRemaining(expiryDate: string | null): number | null {
-  if (!expiryDate) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return differenceInDays(parseISO(expiryDate), today);
+  return dmsDaysUntilExpiry(expiryDate);
 }
 
 const EXPIRY_STYLES: Record<ExpiryState, string> = {
@@ -44,10 +38,11 @@ const EXPIRY_LABELS: Record<ExpiryState, string> = {
 interface DmsExpiryBadgeProps {
   expiryDate: string | null;
   className?: string;
+  asOf?: string;
 }
 
-export function DmsExpiryBadge({ expiryDate, className }: DmsExpiryBadgeProps) {
-  const state = getExpiryState(expiryDate);
+export function DmsExpiryBadge({ expiryDate, className, asOf }: DmsExpiryBadgeProps) {
+  const state = getExpiryState(expiryDate, asOf);
   const style = EXPIRY_STYLES[state];
   const label = EXPIRY_LABELS[state];
 

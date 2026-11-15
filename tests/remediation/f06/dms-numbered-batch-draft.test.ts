@@ -94,7 +94,7 @@ describe('batch draft exact request admission',()=>{
   const result=await call(input,value);expect(result.success).toBe(false);expect(m.client).not.toHaveBeenCalled();expect(m.analysis).not.toHaveBeenCalled();expect(m.rpc).not.toHaveBeenCalled();
  });
  it('an existing session document does not authorize an unbound creation receipt',async()=>{expect((await call(input,undefined)).success).toBe(false);expect(m.from).not.toHaveBeenCalled();});
- it('missing independent numbering authority denies before provider/client dispatch',async()=>{m.permission.mockImplementation((_ctx,code)=>code!=='numbering.rules.generate');expect((await call(input,contract)).success).toBe(false);expect(m.client).not.toHaveBeenCalled();expect(m.analysis).not.toHaveBeenCalled();});
+ it('missing document upload permission denies before provider/client dispatch',async()=>{m.permission.mockImplementation((_ctx,code)=>code!=='dms.documents.upload');expect((await call(input,contract)).success).toBe(false);expect(m.client).not.toHaveBeenCalled();expect(m.analysis).not.toHaveBeenCalled();});
  it('missing upload authority denies without relying on dms.admin fallback',async()=>{m.permission.mockImplementation((_ctx,code)=>code!=='dms.documents.upload');expect((await call(input,contract)).success).toBe(false);expect(m.client).not.toHaveBeenCalled();expect(m.analysis).not.toHaveBeenCalled();});
  it.each([{...input,uploadSessionId:0},{...input,created_by:99},{...input,owning_company_id:99}])('invalid/protected input fails before client/provider dispatch: %j',async data=>{expect((await call(data,contract)).success).toBe(false);expect(m.client).not.toHaveBeenCalled();expect(m.analysis).not.toHaveBeenCalled();});
 });

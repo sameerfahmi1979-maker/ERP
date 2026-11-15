@@ -1,10 +1,14 @@
 "use server";
 
+import { readCataloguePage } from "@/lib/master-data/catalogue-page";
+import { literalContains } from "@/lib/reads/search";
+
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { hasGlobalPermission } from "@/lib/rbac/scope";
-import { revalidatePath } from "next/cache";
-import { logAudit } from "@/server/actions/audit";
+import { saveCommonCatalogue } from "@/server/save-common-catalogue";
+import type { WorkspaceSaveContract } from "@/lib/workspace/save-contract";
+import type { WorkspaceSaveResult } from "@/server/workspace-save";
 import { z } from "zod";
 
 export type ActionResult<T = unknown> = { success: boolean; data?: T; error?: string };
@@ -15,6 +19,7 @@ type DesignationListResult =
 
 export type DesignationRow = {
   id: number;
+  workspace_revision?: number;
   designation_code: string;
   designation_name_en: string;
   designation_name_ar: string | null;
@@ -65,24 +70,27 @@ function canManage(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
   return hasGlobalPermission(ctx, "common_md.manage") || hasGlobalPermission(ctx, "common_md.designations.manage");
 }
 
-export async function listDesignations(filters?: { owner_company_id?: number; department_id?: number; is_active?: boolean; search?: string }): Promise<DesignationListResult> {
+export async function listDesignations(filters?: { owner_company_id?: number; department_id?: number; is_active?: boolean; search?: string; page?: number }): Promise<DesignationListResult & { totalCount?: number }> {
   const failed: DesignationListResult = { success: false, kind: "failed", error: "Designations could not be loaded. Try again." };
   try {
     const ctx = await getAuthContext();
     if (!canView(ctx)) return { success: false, kind: "forbidden", error: "Permission denied" };
     const supabase = await createClient();
-    let q = supabase
+    const query = (head = false) => {
+      let q = supabase
       .from("designations")
-      .select("*, owner_company:owner_companies(id,legal_name_en), department:departments(id,department_name_en)")
+      .select("*, owner_company:owner_companies(id,legal_name_en), department:departments(id,department_name_en)", { count: "exact", head })
       .is("deleted_at", null)
       .order("designation_name_en");
     if (filters?.owner_company_id) q = q.eq("owner_company_id", filters.owner_company_id);
     if (filters?.department_id) q = q.eq("department_id", filters.department_id);
     if (filters?.is_active !== undefined) q = q.eq("is_active", filters.is_active);
-    if (filters?.search) q = q.ilike("designation_name_en", `%${filters.search}%`);
-    const { data, error } = await q;
-    if (error || !Array.isArray(data)) return failed;
-    return { success: true, data: data as DesignationRow[] };
+    if (filters?.search) q = q.or(`designation_name_en.ilike.${literalContains(filters.search)},designation_code.ilike.${literalContains(filters.search)}`);
+    return q.order("id");
+    };
+    if ((filters?.search?.length ?? 0) > 200) throw new Error("Catalogue search is too long.");
+    const { data, totalCount } = await readCataloguePage(query(), filters?.page ?? 1, () => query(true));
+    return { success: true, data: data as unknown as DesignationRow[], totalCount };
   } catch {
     return failed;
   }
@@ -107,69 +115,26 @@ export async function getDesignationById(id: number): Promise<ActionResult<Desig
   }
 }
 
-export async function createDesignation(input: CreateInput): Promise<ActionResult<{ id: number }>> {
-  try {
-    const parsed = createSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
-    const ctx = await getAuthContext();
-    if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("designations")
-      .insert({ ...parsed.data, created_by: ctx.profile?.id ?? null, updated_by: ctx.profile?.id ?? null })
-      .select("id")
-      .single();
-    if (error) return { success: false, error: error.message };
-    await logAudit({ module_code: "common_md", entity_name: "designations", entity_id: data.id, entity_reference: parsed.data.designation_code, action: "create", new_values: parsed.data });
-    revalidatePath("/admin/common-master-data/designations");
-    return { success: true, data: { id: data.id } };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
-  }
+export async function createDesignation(input: CreateInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const parsed = createSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues.map(issue => issue.message).join(". ") };
+  if (!canManage(await getAuthContext())) return { success: false, error: "Permission denied" };
+  return saveCommonCatalogue("designations", null, parsed.data, contract);
 }
 
-export async function updateDesignation(input: UpdateInput): Promise<ActionResult> {
-  try {
-    const parsed = updateSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
-    const ctx = await getAuthContext();
-    if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-    const { id, ...rest } = parsed.data;
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("designations")
-      .update({ ...rest, updated_by: ctx.profile?.id ?? null, updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .is("deleted_at", null)
-      .select("id")
-      .maybeSingle();
-    if (error) return { success: false, error: error.message };
-    if (!data) return { success: false, error: "This record is unavailable or you no longer have permission to edit it." };
-    await logAudit({ module_code: "common_md", entity_name: "designations", entity_id: id!, entity_reference: String(id), action: "update", new_values: rest });
-    revalidatePath("/admin/common-master-data/designations");
-    revalidatePath(`/admin/common-master-data/designations/record/${id}`);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
-  }
+export async function updateDesignation(input: UpdateInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const parsed = updateSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues.map(issue => issue.message).join(". ") };
+  if (!canManage(await getAuthContext())) return { success: false, error: "Permission denied" };
+  const { id, ...values } = parsed.data;
+  const changes = Object.fromEntries(Object.entries(values).filter(([key]) => Object.hasOwn(input,key)));
+  return saveCommonCatalogue("designations", id, changes, contract);
 }
 
-export async function softDeleteDesignation(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-    const supabase = await createClient();
-    const { error } = await supabase
-      .from("designations")
-      .update({ deleted_at: new Date().toISOString(), is_active: false, updated_by: ctx.profile?.id ?? null })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-    await logAudit({ module_code: "common_md", entity_name: "designations", entity_id: id, entity_reference: String(id), action: "delete" });
-    revalidatePath("/admin/common-master-data/designations");
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
-  }
+export async function softDeleteDesignation(id: number, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  if (!Number.isSafeInteger(id) || id <= 0) return { success: false, error: "Invalid catalogue record." };
+  if (!canManage(await getAuthContext())) return { success: false, error: "Permission denied" };
+  return saveCommonCatalogue("designations", id, {}, contract, true);
 }
 
 export async function getDesignationComboboxOptions(search?: string, owner_company_id?: number): Promise<ActionResult<{ value: string; label: string }[]>> {

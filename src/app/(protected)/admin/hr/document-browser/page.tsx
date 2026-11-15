@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext } from "@/lib/rbac/check";
+import { canOpenHrDocumentBrowser } from "@/lib/rbac/route-access-registry";
 import { readHrDocumentBrowser } from "@/server/reads/hr-document-browser";
 import { hrBrowserEmployeesPage, hrDocumentBrowserIdentity } from "@/lib/reads/hr-document-browser-schema";
 import { HrDocBrowserPageClient } from "@/features/hr/document-browser/hr-doc-browser-page-client";
@@ -18,13 +19,7 @@ export const revalidate = 0;
 export default async function HrDocumentBrowserPage() {
   const authContext = await getAuthContext();
 
-  const canHr =
-    hasPermission(authContext, "hr.employees.view");
-  const canDms =
-    hasPermission(authContext, "dms.documents.view") ||
-    hasPermission(authContext, "dms.admin");
-
-  if (!canHr || !canDms) {
+  if (!canOpenHrDocumentBrowser(authContext)) {
     redirect("/access-denied");
   }
 

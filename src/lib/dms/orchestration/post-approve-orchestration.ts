@@ -23,7 +23,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { logAudit } from "@/server/actions/audit";
 import { runDmsAiOrchestrationPostDraft } from "@/server/actions/dms/orchestration";
-import { enqueueUniqueDmsAiJob } from "@/lib/dms/ai-jobs/job-runner";
+import { enqueueUniqueDmsAiJob } from "@/lib/dms/ai-jobs/job-admission";
 import { DMS_AI_JOB_TYPE } from "@/lib/dms/ai-jobs/job-types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import {notificationReadIdentity} from "@/lib/reads/notifications-schema";
 import {invalidateMyNotifications} from "@/lib/query/invalidation";
 import {markAllMyNotificationsRead} from "@/server/actions/notifications/notifications";
 import {toast} from "sonner";
+import {OperationStatus} from "@/components/erp/operation-status";
 
 export function NotificationsPageClient(props: NotificationPageProps) {
   const identity = notificationReadIdentity(props.authContext);
@@ -39,10 +40,11 @@ function NotificationsView(props: NotificationPageProps & {identity: string}) {
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div><h1 className="text-xl font-semibold">Notifications</h1><p>{unread === undefined ? "Unread count unavailable" : `${unread} unread notifications`}</p></div>
       <div className="flex gap-2"><Button variant="outline" onClick={() => {read.refresh(); void count.refetch();}}>Refresh</Button>
-        <Button disabled={pending || !read.isCurrent() || unread === undefined || unread === 0} onClick={markAll}>Mark all read</Button></div>
+        <Button disabled={pending || !read.isCurrent() || unread === undefined || unread === 0} onClick={markAll}>{pending ? "Marking all read…" : "Mark all read"}</Button></div>
     </div>
     <p className="text-xs text-muted-foreground">Search and filters cover all your permitted notifications. Mark all read applies to all your unread notifications, including other pages. Reading or dismissing an alert does not complete its business task.</p>
-    {(read.failed || count.isError) && <p role="alert">Notifications or unread counts could not be verified. Use Refresh to retry. Unverified rows are hidden.</p>}
+    {read.busy && <OperationStatus state="pending">Loading notifications…</OperationStatus>}
+    {(read.failed || count.isError) && <OperationStatus state="failed" retry={() => {read.refresh(); void count.refetch();}} retryLabel="Retry notifications">Notifications or unread counts could not be verified.</OperationStatus>}
     <div className="flex flex-wrap gap-2">{[["", "All"], ["unread", "Unread"], ["read", "Read"], ["dismissed", "Dismissed"], ["archived", "Archived"]].map(([value, label]) =>
       <Button key={value} variant={read.status === value ? "default" : "outline"} aria-pressed={read.status === value} onClick={() => read.setStatus(value)}>{label}</Button>)}</div>
     <p>{read.totalCount === null ? "Count unavailable" : `${read.totalCount} matching notifications`}</p>

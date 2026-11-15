@@ -20,6 +20,17 @@ beforeEach(()=>{m.requests=[];m.denied=false;m.ctx={profile:{id:1,must_change_pa
 });
 it('reproduces actual SDK GET null encoding instead of relying on a builder mock',async()=>{const r=await m.db!.rpc('ai_mod02_search_documents',{subject_id:null},{get:true}).select('id');expect(r.error?.code).toBe('22P02');expect(m.requests[0].url.searchParams.get('subject_id')).toBe('null');});
 it('ordinary All Documents uses SQL NULL defaults and keeps exact count/archive constraints',async()=>{const r=await readDmsDocumentPage({filters:{excludeArchived:true}},m.ctx);expect(r).toMatchObject({success:true,data:{totalCount:1,rows:[{document_no:'SYN-DOC-1'}]}});const q=m.requests[0];expect(q.url.pathname).toBe('/rest/v1/rpc/ai_mod02_search_documents');for(const k of nullable)expect(q.url.searchParams.has(k)).toBe(false);expect(q.url.searchParams.get('include_content')).toBe('false');expect(q.url.searchParams.get('metadata_filters')).toBe('[]');expect(q.url.searchParams.get('status')).toBe('not.in.("archived","superseded")');expect(q.prefer).toContain('count=exact');});
+it.each([true,false])('sends file presence %s as an RPC GET argument with exact count', async hasFiles => {
+  const result = await readDmsDocumentPage({filters:{has_files:hasFiles}},m.ctx);
+  expect(result).toMatchObject({success:true,data:{totalCount:1}});
+  const [request] = m.requests;
+  expect(request.method).toBe('GET');
+  expect(request.url.pathname).toBe('/rest/v1/rpc/dms_search_documents_by_file_presence');
+  expect(request.url.searchParams.get('has_files')).toBe(String(hasFiles));
+  expect(request.url.searchParams.has('perf_document_has_files')).toBe(false);
+  for (const key of nullable) expect(request.url.searchParams.has(key)).toBe(false);
+  expect(request.prefer).toContain('count=exact');
+});
 it('retains explicit subject/type/link/expiry restrictions rather than clearing hard filters',async()=>{const r=await searchDocuments({query:'',subject:{type:'employee',id:7},filters:{linkedType:'employee',expiryState:'expired',documentTypeIds:[1]}},m.ctx);expect(r.success).toBe(true);const q=m.requests.find(q=>q.url.pathname.endsWith('ai_mod02_search_documents'))!.url;expect(q.searchParams.get('subject_id')).toBe('7');expect(q.searchParams.get('subject_type')).toBe('employee');expect(q.searchParams.get('linked_type')).toBe('employee');expect(q.searchParams.get('expiry_date')).toContain('lt.');expect(q.searchParams.get('document_type_id')).toContain('in.(1)');});
 it('global search also omits default-null arguments on the actual SDK transport',async()=>{const r=await searchGlobal({query:'Synthetic',domains:['party']},m.ctx);expect(r.success).toBe(true);const q=m.requests.find(q=>q.url.pathname.endsWith('ai_mod02_search_global'))!;for(const k of nullable)expect(q.url.searchParams.has(k)).toBe(false);expect(q.prefer).toContain('count=exact');});
 it('database rejection stays a failure and does not trigger an unfiltered fallback',async()=>{m.denied=true;expect((await readDmsDocumentPage({},m.ctx)).success).toBe(false);expect(m.requests).toHaveLength(1);expect(m.requests[0].url.pathname).toBe('/rest/v1/rpc/ai_mod02_search_documents');});

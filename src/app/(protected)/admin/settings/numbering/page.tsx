@@ -24,8 +24,8 @@ export default async function NumberingRulesPage() {
         title="Numbering Rules"
         description="Configure ERP reference number sequences such as EMP-0001, PO-0001, INV-0001."
         breadcrumbs={[
-          { label: "Admin", href: "/admin" },
-          { label: "Settings", href: "/admin/settings" },
+          { label: "Admin" },
+          { label: "Settings" },
           { label: "Numbering Rules" },
         ]}
       />

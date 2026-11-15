@@ -1,26 +1,24 @@
 import type { NextConfig } from "next";
-import {createHash} from "node:crypto";
-import {existsSync,readFileSync,readdirSync} from "node:fs";
-import {join,relative} from "node:path";
+import {existsSync,readFileSync} from "node:fs";
+import {join} from "node:path";
+
+// Isolated local checks must not replace an active development server's output.
+const distDir=process.env.ALGT_NEXT_DIST_DIR??".next";
+if(!/^\.next(?:-[a-z0-9]+)*$/.test(distDir))throw new Error("Use a dedicated Next output directory inside this project.");
 
 // Source archives have no Git metadata. A reproducible public source digest also
 // identifies those builds. Runtime containers reuse the stored Next build id.
 function diagnosticBuildId(){
   if(!existsSync(join(__dirname,"src"))){
-    const stored=readFileSync(join(__dirname,".next/BUILD_ID"),"utf8").trim();
+    const stored=readFileSync(join(__dirname,distDir,"BUILD_ID"),"utf8").trim();
     return /^[a-f\d]{64}$/i.test(stored)?stored:"unavailable";
   }
-  const hash=createHash("sha256");
-  const add=(file:string)=>{hash.update(relative(__dirname,file).replaceAll("\\","/")+"\0");hash.update(readFileSync(file));};
-  const walk=(dir:string)=>{for(const e of readdirSync(dir,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name,"en"))){const file=join(dir,e.name);if(e.isDirectory())walk(file);else if(e.isFile())add(file);}};
-  walk(join(__dirname,"src"));
-  for(const file of ["package.json","package-lock.json","next.config.ts","tsconfig.shipping.json"])add(join(__dirname,file));
-  return hash.digest("hex");
+  // The helper is needed only during source builds. Runtime reuses BUILD_ID.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const {collectReleaseInputs} = require("./tooling/release/build-inputs.cjs") as {collectReleaseInputs: (root: string) => {buildId:string}};
+  return collectReleaseInputs(__dirname).buildId;
 }
 const buildId=diagnosticBuildId();
-// Isolated local checks must not replace an active development server's output.
-const distDir=process.env.ALGT_NEXT_DIST_DIR??".next";
-if(!/^\.next(?:-[a-z0-9]+)*$/.test(distDir))throw new Error("Use a dedicated Next output directory inside this project.");
 
 const nextConfig: NextConfig = {
   distDir,

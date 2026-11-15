@@ -10,11 +10,18 @@ const {createHash}=require('node:crypto');
 const ts=require('typescript');
 const {jsPDF}=require('jspdf');
 const root=process.cwd();
-const allowed=new Set(['src/lib/dms/file-content-extractor.ts','src/lib/dms/pdf-to-images.ts','src/lib/dms/pdf-text-quality.ts','src/lib/logger.ts','src/lib/log-context.ts']);
+const allowed=new Set(['src/lib/dms/file-content-extractor.ts','src/lib/dms/pdf-to-images.ts','src/lib/dms/pdf-text-quality.ts','src/lib/logger.ts','src/lib/log-context.ts','src/lib/performance/trace.ts']);
 const originalResolve=Module._resolveFilename,originalTs=Module._extensions['.ts'];
 let extractFileContent;
 try{
- Module._resolveFilename=function(request,parent,...rest){if(request.startsWith('@/'))request=path.join(root,'src',request.slice(2));return originalResolve.call(this,request,parent,...rest);};
+ Module._resolveFilename=function(request,parent,...rest){
+  if(request==='server-only'){
+   assert.equal(parent.filename,path.join(root,'src/lib/performance/trace.ts'));
+   request=require.resolve('next/dist/compiled/server-only/empty');
+  }
+  if(request.startsWith('@/'))request=path.join(root,'src',request.slice(2));
+  return originalResolve.call(this,request,parent,...rest);
+ };
  Module._extensions['.ts']=function(module,filename){assert.ok(allowed.has(path.relative(root,filename).split(path.sep).join('/')));const result=ts.transpileModule(fs.readFileSync(filename,'utf8'),{fileName:filename,compilerOptions:{module:ts.ModuleKind.Node16,target:ts.ScriptTarget.ES2022,esModuleInterop:true}});module._compile(result.outputText,filename);};
  ({extractFileContent}=require(path.join(root,'src/lib/dms/file-content-extractor.ts')));
 }finally{Module._resolveFilename=originalResolve;if(originalTs)Module._extensions['.ts']=originalTs;else delete Module._extensions['.ts'];}

@@ -27,6 +27,7 @@ import { hasRole } from "@/lib/rbac/scope";
 import { OrganizationAvailability } from "../organization-availability";
 import { DmsEntityDocumentsTab } from "@/features/dms/entity-documents";
 import { ReviewedFormSuggestions } from "@/features/ai/common/field-suggestions/reviewed-form-suggestions";
+import { createWorkspaceSaveAttempt } from "@/lib/workspace/save-contract";
 
 type Props = {
   site?: WorkSiteRow | null;
@@ -52,6 +53,8 @@ export function WorkSiteWorkspaceForm({ site, mode, companies = [], authContext 
   // After a successful create in mode="add", track the new record ID so
   // subsequent "Save" clicks update instead of trying to create again.
   const [createdId, setCreatedId] = useState<number | null>(site?.id ?? null);
+  const [revision, setRevision] = useState(site?.workspace_revision === undefined ? null : String(site.workspace_revision));
+  const saveAttempt = useRef(createWorkspaceSaveAttempt());
   const isSavingRef = useRef(false);
 
   const isEditing = mode === "edit";
@@ -122,11 +125,14 @@ export function WorkSiteWorkspaceForm({ site, mode, companies = [], authContext 
       // If we already created this record in this session (mode="add" → first Save),
       // or if we're explicitly editing, use updateWorkSite to avoid duplicate key errors.
       const existingId = createdId ?? (isEditing ? site?.id : null);
+      const contract = saveAttempt.current.begin({ id: existingId, ...data }, revision);
       const result = existingId
-        ? await updateWorkSite({ ...data, id: existingId })
-        : await createWorkSite(data);
+        ? await updateWorkSite({ ...data, id: existingId }, contract)
+        : await createWorkSite(data, contract);
 
-      if (result.success) {
+      if (result.success && result.data) {
+        saveAttempt.current.resolved();
+        setRevision(result.data.revision);
         toast.success(existingId ? "Work site updated" : "Work site created");
         // Track the newly created ID so subsequent saves within this session update correctly
         if (!existingId && result.data && typeof (result.data as { id?: number }).id === "number") {
@@ -139,10 +145,11 @@ export function WorkSiteWorkspaceForm({ site, mode, companies = [], authContext 
         if (activeTab?.id) markDirty(activeTab.id, false);
         return true;
       }
+      if (!result.success && !result.uncertain) saveAttempt.current.resolved();
       toast.error(result.error ?? "Failed to save");
       return false;
-    } catch {
-      toast.error("An unexpected error occurred");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Save unconfirmed. Retry with the same values.");
       return false;
     } finally {
       setIsSubmitting(false);

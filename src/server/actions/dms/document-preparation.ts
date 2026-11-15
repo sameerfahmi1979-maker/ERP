@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { requireDmsFilePipelineAccess } from '@/server/dms-file-pipeline-access';
 import { preparationReviewOpenSchema, preparationDraftSaveSchema } from '@/lib/dms/preparation/contracts';
+import { preparationTraceId, recordTraceInterval, traceOperation } from '@/lib/performance/trace';
+import { wakePreparationDispatcher } from '@/server/dms-preparation-dispatcher';
 
 /** Read-only opening: do not conflate a read failure with an uncertain save. */
 export async function openDocumentPreparationReview(documentId: number) {
@@ -84,16 +86,28 @@ export async function startDocumentPreparation(raw: unknown) {
   const p = input.data;
   const denied = await requireDmsFilePipelineAccess(p.documentId);
   if (denied) return { success: false as const, error: denied };
-  return reviewedCall("ai_mod04_preparation", { p_action: "start", p_data: p }, z.strictObject({ documentId: z.literal(p.documentId), requestId: z.literal(p.requestId), jobId: preparationId, status: z.string(), replayed: z.boolean() }));
+  return traceOperation('dms.rerun.admit', async () => {
+    const result = await reviewedCall("ai_mod04_preparation", { p_action: "start", p_data: p }, z.strictObject({ documentId: z.literal(p.documentId), requestId: z.literal(p.requestId), jobId: preparationId, status: z.string(), replayed: z.boolean() }));
+    if (result.success && result.data?.status === 'queued') wakePreparationDispatcher();
+    return result;
+  }, p.requestId);
 }
 export async function getDocumentPreparationStatus(documentId: number, jobId: number, resume = false) {
   if (!preparationId.safeParse(documentId).success || !preparationId.safeParse(jobId).success) return { success: false as const, error: "Invalid retained preparation." };
   if (resume !== false && resume !== true) return { success: false as const, error: 'Invalid resume request.' };
-  return reviewedCall("dms_preparation_progress", { p_document: documentId, p_job: jobId, p_resume: resume }, z.strictObject({
+  return traceOperation('dms.rerun.status', async () => {
+    const result = await reviewedCall("dms_preparation_progress", { p_document: documentId, p_job: jobId, p_resume: resume }, z.strictObject({
     documentId: z.literal(documentId), jobId: z.literal(jobId), state: z.string(), queueStatus: z.string(), sourceCurrent: z.boolean(),
     preparedText:z.array(z.strictObject({fileId:preparationId,name:z.string(),text:z.string().nullable(),truncated:z.boolean().nullable()})).max(10), resultId: preparationId.nullable(), candidate: z.unknown().nullable(), snapshot: preparationHash,
-    progress: z.strictObject({ stage: z.enum(['waiting','reading','analysing','ready','held','retry_wait','applied','cancelled']), admitted: z.boolean(), workerHealthy: z.boolean(), createdAt: z.string(), startedAt: z.string().nullable(), updatedAt: z.string(), errorCode: z.string().nullable(), holdReason: z.enum(['paused','daily_limit']).nullable() }),
-  }));
+    progress: z.strictObject({ stage: z.enum(['waiting','reading','analysing','ready','held','retry_wait','applied','cancelled']), admitted: z.boolean(), workerHealthy: z.boolean(), createdAt: z.string(), startedAt: z.string().nullable(), updatedAt: z.string(), publishedAt:z.string().nullable().optional(), errorCode: z.string().nullable(), holdReason: z.enum(['paused','daily_limit']).nullable() }),
+    }));
+    if (result.success && result.data) {
+      const progress = result.data.progress;
+      if (progress.startedAt) recordTraceInterval('dms.queue.wait', progress.createdAt, progress.startedAt);
+      if (progress.stage === 'ready' && progress.publishedAt) recordTraceInterval('dms.result.discovery', progress.publishedAt, new Date().toISOString());
+    }
+    return result;
+  }, preparationTraceId(jobId));
 }
 export async function recoverDocumentPreparation(documentId: number) {
   if (!preparationId.safeParse(documentId).success) return { success: false as const, error: "Invalid document." };

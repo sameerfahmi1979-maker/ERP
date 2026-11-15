@@ -11,19 +11,30 @@ function fixture(n=1){
  }
  for(const rows of Object.values(tables))for(const row of rows){const value=row as Record<string,unknown>;value.workspace_revision=1;if(value.component_type)(value.component_type as Record<string,unknown>).workspace_revision=1;}
  const calls:unknown[][]=[],errors=new Set<string>(),reads=new Map<string,number>();
+ for (const row of tables.employee_wps_profiles as {iban:string}[]) row.iban = 'AE070331234567890123456';
  const hooks={onRead:(_table:string,_count:number)=>{void _table;void _count;}};
  const db={from:(table:string)=>{
   calls.push(['from',table]);const q:Record<string,unknown>={then:(resolve:(v:unknown)=>unknown)=>{const count=(reads.get(table)??0)+1;reads.set(table,count);hooks.onRead(table,count);return Promise.resolve({data:structuredClone(tables[table]),error:errors.has(table)?{message:'PRIVATE_PROVIDER_ERROR'}:null}).then(resolve);}};
-  for(const method of ['select','eq','in','is','order'])q[method]=(...args:unknown[])=>{calls.push([table,method,...args]);return q;};return q;
+  for(const method of ['select','eq','in','is','order','lte'])q[method]=(...args:unknown[])=>{calls.push([table,method,...args]);return q;};return q;
  }} as unknown as ReportReadClient;
  return{tables,db,calls,errors,hooks};
 }
 const run=(db:ReportReadClient,filters:Record<string,unknown>={})=>wpsReadinessFetcher.fetch(filters,[],db);
 it('complete scoped internal readiness uses dated salary without exposing account/identity/salary facts',async()=>{
  const f=fixture();const result=await run(f.db);expect(result.rows[0]).toMatchObject({readiness_status:'ready',employee_code:'SYN-1'});expect(result.meta?.total).toBe(1);
- const text=JSON.stringify(result);for(const secret of ['PRIVATE_','0000000123','gross_salary','basic_salary','paid','bankAccepted'])expect(text).not.toContain(secret);
+ const text=JSON.stringify(result);for(const secret of ['PRIVATE_','0000000123','AE070331234567890123456','gross_salary','basic_salary','paid','bankAccepted'])expect(text).not.toContain(secret);
  expect(f.calls.filter(c=>c[0]==='from')).toHaveLength(12);
  expect(result.meta).toMatchObject({reviewOnly:true,asOf:expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),sourceFingerprint:expect.stringMatching(/^[a-f0-9]{64}$/)});
+});
+it('admits active, leave and probation while excluding future and terminated employment',async()=>{
+ const f=fixture(5), employees=f.tables.employees as {employee_status:string;joining_date:string}[];
+ employees[1].employee_status='on_leave'; employees[2].employee_status='probation';
+ employees[3].employee_status='terminated'; employees[4].joining_date='2099-01-01';
+ for(const table of Object.keys(f.tables).filter(table=>table!=='employees')){
+  f.tables[table]=f.tables[table].filter(row=>(row as {employee_id:number}).employee_id<=3);
+ }
+ (f.tables.employee_wps_profiles[2] as {iban:string}).iban='AE080331234567890123456';
+ expect((await run(f.db)).rows.map(row=>[row.employee_code,row.readiness_status])).toEqual([['SYN-1','ready'],['SYN-2','ready'],['SYN-3','incomplete']]);
 });
 it('no per-employee queries or first-N export cap for 1107 permitted subjects',async()=>{
  const f=fixture(1107);const r=await run(f.db);expect(r.rows).toHaveLength(1107);expect(r.meta?.total).toBe(1107);expect(f.calls.filter(c=>c[0]==='from')).toHaveLength(12);

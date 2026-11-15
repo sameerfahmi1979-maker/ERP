@@ -6,6 +6,7 @@
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
 import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
+import { businessDateStart } from "@/lib/dubai-calendar";
 
 export const candidatePipelineFetcher: ReportFetcher = {
   reportCode: "HR_CANDIDATE_PIPELINE",
@@ -19,7 +20,7 @@ export const candidatePipelineFetcher: ReportFetcher = {
         `id, candidate_code, full_name_en, source, candidate_status, pipeline_stage,
          rating, availability_date, created_at,
          requisition:hr_job_requisitions(
-           id, requisition_code, requisition_title,
+           id, owner_company_id, requisition_code, requisition_title,
            designation:designations(designation_name_en)
          ),
          nationality:countries(name_en)`
@@ -29,8 +30,8 @@ export const candidatePipelineFetcher: ReportFetcher = {
 
     if (filters.candidate_status) q = q.eq("candidate_status", String(filters.candidate_status));
     if (filters.requisition_status) q = q.eq("pipeline_stage", String(filters.requisition_status));
-    if (filters.date_from) q = q.gte("created_at", String(filters.date_from));
-    if (filters.date_to) q = q.lte("created_at", String(filters.date_to));
+    if (filters.date_from) q = q.gte("created_at", businessDateStart(String(filters.date_from)));
+    if (filters.date_to) q = q.lt("created_at", businessDateStart(String(filters.date_to), 1));
     if (filters.search) q = q.ilike("full_name_en", `%${filters.search}%`);
 
     const { data: candidates, error } = await q.limit(2000);
@@ -38,14 +39,15 @@ export const candidatePipelineFetcher: ReportFetcher = {
 
     // Fetch latest interview per candidate
     const candidateIds = (candidates ?? []).map((c) => c.id);
-    const { data: interviews } = candidateIds.length
+    const { data: interviews, error: interviewError } = candidateIds.length
       ? await db
           .from("hr_interviews")
           .select("candidate_id, interview_datetime, interview_status, result")
           .in("candidate_id", candidateIds)
           .is("deleted_at", null)
           .order("interview_datetime", { ascending: false })
-      : { data: [] };
+      : { data: [], error: null };
+    if (interviewError) throw new Error("Candidate interview collection could not be verified");
 
     const lastInterview = new Map<number, { interview_datetime: string | null; result: string | null }>();
     for (const iv of interviews ?? []) {
@@ -55,24 +57,25 @@ export const candidatePipelineFetcher: ReportFetcher = {
     }
 
     // Fetch offer status per candidate
-    const { data: offers } = candidateIds.length
+    const { data: offers, error: offerError } = candidateIds.length
       ? await db
           .from("hr_offers")
-          .select("candidate_id, offer_status, owner_company_id")
+          .select("candidate_id, offer_status")
           .in("candidate_id", candidateIds)
           .is("deleted_at", null)
           .order("created_at", { ascending: false })
-      : { data: [] };
+      : { data: [], error: null };
+    if (offerError) throw new Error("Candidate offer collection could not be verified");
 
-    const offerMap = new Map<number, { offer_status: string; owner_company_id: number | null }>();
+    const offerMap = new Map<number, string>();
     for (const offer of offers ?? []) {
       if (!offerMap.has(offer.candidate_id)) {
-        offerMap.set(offer.candidate_id, { offer_status: offer.offer_status, owner_company_id: offer.owner_company_id });
+        offerMap.set(offer.candidate_id, offer.offer_status);
       }
     }
 
     const rows = (candidates ?? []).map((c) => {
-      const req = c.requisition as unknown as { requisition_code: string | null; requisition_title: string; designation?: { designation_name_en: string } | null } | null;
+      const req = c.requisition as unknown as { owner_company_id: number | null; requisition_code: string | null; requisition_title: string; designation?: { designation_name_en: string } | null } | null;
       const iv = lastInterview.get(c.id);
       const offer = offerMap.get(c.id);
       return {
@@ -87,9 +90,9 @@ export const candidatePipelineFetcher: ReportFetcher = {
         rating: c.rating ?? "",
         last_interview_date: iv?.interview_datetime ?? "",
         interview_result: iv?.result ?? "",
-        offer_status: offer?.offer_status ?? "none",
+        offer_status: offer ?? "none",
         // expected_salary and offer amount intentionally omitted
-        owner_company_id: offer?.owner_company_id ?? 0,
+        owner_company_id: req?.owner_company_id ?? null,
       };
     });
 

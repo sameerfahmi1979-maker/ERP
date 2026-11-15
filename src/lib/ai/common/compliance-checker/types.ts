@@ -199,6 +199,9 @@ export interface LinkedDocumentForCompliance {
   summaryEmbeddingStatus: string | null;
   confidentialityLevel: string | null;
   status: string | null;
+  archived?: boolean;
+  deleted?: boolean;
+  supersededByDocumentId?: number | null;
 }
 
 export interface RequiredDocumentRuleForCompliance {

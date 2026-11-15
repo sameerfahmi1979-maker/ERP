@@ -1,13 +1,12 @@
 import "server-only";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { currentJobClaim, runWithJobClaim, type JobClaim } from "./claim-scope";
 import { getDmsAiJobHandler } from "./job-registry";
-import { validateJobInput, type EnqueueDmsAiJobInput, type DmsAiJobQueueRow, type DmsAiJobHandlerResult } from "./job-types";
+import { type DmsAiJobQueueRow, type DmsAiJobHandlerResult } from "./job-types";
 
-export interface EnqueueResult { success: boolean; jobId?: number; skipped?: boolean; error?: string }
+export { enqueueDmsAiJob, enqueueUniqueDmsAiJob, type EnqueueResult } from "./job-admission";
 export interface ProcessResult { processed: number; completed: number; failed: number; retryScheduled: number; durationMs: number }
 export function sanitizeJobError(error: unknown): { code: string; message: string } {
   const msg = error instanceof Error ? error.message : "";
@@ -16,23 +15,6 @@ export function sanitizeJobError(error: unknown): { code: string; message: strin
   if (/unavailable|503|502/i.test(msg)) return { code: "provider_unavailable", message: "Provider unavailable." };
   if (/network|ECONNREFUSED/i.test(msg)) return { code: "network_error", message: "Network error." };
   return { code: "unexpected", message: "AI job did not complete. Review the safe attempt code." };
-}
-const enqueueReceipt = z.object({ success: z.literal(true), jobId: z.number().int().positive(), skipped: z.boolean() });
-export async function enqueueDmsAiJob(input: EnqueueDmsAiJobInput): Promise<EnqueueResult> {
-  try {
-    const value = validateJobInput(input);
-    const parent = currentJobClaim();
-    const db = parent ? createAdminClient() : await createClient();
-    const { data, error } = parent
-      ? await db.rpc("f07_ai_worker", { p_action: "enqueue_child", p_data: { parentId: parent.jobId, parentToken: parent.token, input: value } })
-      : await db.rpc("f07_ai_job_control", { p_action: "enqueue", p_data: value });
-    const receipt = enqueueReceipt.safeParse(data);
-    return !error && receipt.success ? receipt.data : { success: false, error: "AI job admission not confirmed. Retry the same operation identity." };
-  } catch { return { success: false, error: "AI job admission not confirmed. Check the input and retry the same operation identity." }; }
-}
-export async function enqueueUniqueDmsAiJob(input: EnqueueDmsAiJobInput & { idempotencyKey: string }): Promise<EnqueueResult> {
-  if (!input.idempotencyKey) return { success: false, error: "A stable operation identity is required." };
-  return enqueueDmsAiJob(input);
 }
 const claimSchema = z.object({
   token: z.uuid(),
@@ -71,18 +53,20 @@ export async function runDmsAiJob(job: ClaimedJob, claim: JobClaim): Promise<str
     return receipt.data.status;
   } catch { return null; } // Leave the claim for bounded recovery; never pretend success.
 }
-export async function processNextDmsAiJobs(input: { limit: number; workerId: string; preparationOnly?: boolean }): Promise<ProcessResult> {
+export async function processNextDmsAiJobs(input: { limit: number; workerId: string; preparationOnly?: boolean; runtimeSecret?: string }): Promise<ProcessResult> {
   const at = Date.now();
   const totals: ProcessResult = { processed: 0, completed: 0, failed: 0, retryScheduled: 0, durationMs: 0 };
   if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 50 || !input.workerId.trim() || input.workerId.length > 64) return totals;
+  if (input.preparationOnly && !input.runtimeSecret) return totals;
   const db = createAdminClient();
   const dispatchRpc = input.preparationOnly ? 'dms_preparation_dispatch_worker' : 'f07_ai_worker';
+  const runtime = input.preparationOnly ? {runtimeId:input.workerId,runtimeSecret:input.runtimeSecret} : {};
   try {
-    const recovered = await db.rpc(dispatchRpc, { p_action: "recover", p_data: {} });
+    const recovered = await db.rpc(dispatchRpc, { p_action: "recover", p_data: runtime });
     if (recovered.error || recovered.data?.success !== true) throw new Error("Recovery unavailable");
     // Claim just in time, not a batch whose leases expire while earlier jobs run.
     for (let i = 0; i < input.limit; i++) {
-      const { data, error } = await db.rpc(dispatchRpc, { p_action: "claim", p_data: { workerId: input.workerId, limit: 1, preparationVersion:1 } });
+      const { data, error } = await db.rpc(dispatchRpc, { p_action: "claim", p_data: { ...runtime,workerId: input.workerId, limit: 1, preparationVersion:1 } });
       const parsed = z.array(claimSchema).max(1).safeParse(data);
       if (error || !parsed.success) throw new Error("Claim unavailable");
       const row = parsed.data[0];

@@ -82,7 +82,7 @@ function SavedIntakeSession({documentId,selectedFileId,initiallyOpen,compact,blo
    setMessage(r.data.sourceCurrent?'Review the AI-filled fields and original file, then update this document.':'This saved AI review uses older document details or field rules. Choose Re-run AI to analyse the current saved file; the existing document stays unchanged.');
   }else {if(!saveRequest.current){setCandidate(null);setValues(null);setSchema(null);seeded.current=null;}setMessage(!r.data.sourceCurrent?'This saved AI request uses older document details or field rules. Choose Re-run AI to analyse the current saved file.':r.data.progress?preparationProgressMessage(r.data.progress):'AI processing is saved. Waiting for an available processing slot.');}
  };
- const launch=async(context:SavedIntakeOpen,selected:number)=>{
+ const launch=async(context:SavedIntakeOpen,selected:number,mode:'reuse_text'|'reread_files'='reread_files')=>{
   const old=context.review.recovery;
   if(old&&!['applied','cancelled'].includes(old.state)){
    if(old.fileIds.length!==1||old.fileIds[0]!==selected){setMessage('Another file review is unfinished. Finish or cancel that saved review first.');setCurrent(false);return;}
@@ -90,7 +90,7 @@ function SavedIntakeSession({documentId,selectedFileId,initiallyOpen,compact,blo
   }
   // A positively reconciled terminal request must never be replayed as a new run.
   if(old&&['applied','cancelled'].includes(old.state)&&(startRequest.current as {requestId?:string}|null)?.requestId===old.requestId)startRequest.current=null;
-  startRequest.current??={documentId,requestId:crypto.randomUUID(),snapshot:context.review.source.snapshot,fileIds:[selected],mode:'reread_files'};
+  startRequest.current??={documentId,requestId:crypto.randomUUID(),snapshot:context.review.source.snapshot,fileIds:[selected],mode};
   const r=await startDocumentPreparation(startRequest.current);if(!live())return;
   if(!r.success||!r.data){setUncertain(r.uncertain===true);setMessage(r.error??'The AI request could not be started.');return;}
   setJob(r.data.jobId);setUncertain(false);await readStatus(r.data.jobId,context,selected);
@@ -104,9 +104,11 @@ function SavedIntakeSession({documentId,selectedFileId,initiallyOpen,compact,blo
   if(!r.success||!r.data){setCurrent(false);setMessage(r.error??'The saved document could not be opened.');return;}
   const context=r.data,names=await getDmsDocumentLinks(documentId);if(!live())return;
   if(names.success&&names.data)context.links=context.links.map(l=>({...l,entityName:names.data!.find(n=>n.entity_type===l.entityType&&n.entity_id===l.entityId)?.entity_display_name??l.entityName}));
-  setFileId(selected);setOpened(context);setCurrent(true);setUncertain(false);setMessage('Reading the original file saved in DMS…');
+  const original=context.review.source.files.find(file=>file.id===selected);
+  const reuseText=original?.verifiedText&&!!original.text?.trim();
+  setFileId(selected);setOpened(context);setCurrent(true);setUncertain(false);setMessage(reuseText?'Preparing from the verified saved text…':'Reading the original file saved in DMS…');
   if(reloadOnly){const recovered=context.review.recovery;if(recovered){setJob(recovered.jobId);await readStatus(recovered.jobId,context,selected);}else{setJob(null);setMessage('No saved AI review is available. Choose Recover saved request to start preparation from the current original.');}return;}
-  await launch(context,selected);
+  await launch(context,selected,reuseText?'reuse_text':'reread_files');
  });
  useEffect(()=>{let cancelled=false;if(initiallyOpen&&!blockedReason)queueMicrotask(()=>{if(!cancelled)void load();});return()=>{cancelled=true;};
  // Once per account/file mount; recover explicitly after a failure.
@@ -166,7 +168,7 @@ function SavedIntakeSession({documentId,selectedFileId,initiallyOpen,compact,blo
     handleRetry={()=>{setIssues([]);setReloadConfirm(false);setRerunConfirm(true);}} handleSaveDraft={()=>void save(true)} handleApprove={()=>void save(false)} handleDiscard={()=>{}} handlePreview={()=>setPreview(v=>!v)} isLoadingPreview={false}
     discardAnchor={null} setDiscardAnchor={()=>{}} discardReason="" setDiscardReason={()=>{}} setFileReview={()=>{}} navigate={()=>{}} onAiResultPatch={()=>{}}
     savedDocument={{form:{documentId,jobId:job??1},canRerun:!!job&&statusAvailable&&!uncertain&&!rerunBlocked&&(!!candidate||stale||['held','cancelled'].includes(progress?.stage??'')),canSaveDraft:current,
-     progress:<div className="my-4 rounded border p-3"><h2 className="font-semibold">AI Pipeline</h2><p role="status" aria-live="polite" aria-busy={!candidate&&preparationIsRunning(progress)} className="flex items-center gap-2">{!candidate&&preparationIsRunning(progress)&&<Loader2 aria-hidden="true" data-testid="saved-intake-processing-spinner" className="size-4 shrink-0 animate-spin motion-reduce:animate-none text-primary"/>}{rerunBlocked??message}</p>{busy&&<p role="status">Checking your saved request…</p>}
+     progress:<div className="my-4 rounded border p-3"><h2 className="font-semibold">AI Pipeline</h2><p role="status" className="flex items-center gap-2">{!candidate&&preparationIsRunning(progress)&&<Loader2 aria-hidden="true" data-testid="saved-intake-processing-spinner" className="size-4 shrink-0 animate-spin motion-reduce:animate-none text-primary"/>}{rerunBlocked??(busy?'Checking your saved request…':message)}</p>
       {job&&<Button type="button" size="sm" variant="outline" disabled={busy} onClick={()=>void guard(async()=>{await readStatus(job,opened,fileId,!rerunBlocked&&current&&!!progress&&!progress.admitted&&['waiting','retry_wait'].includes(progress.stage));if(live())toast.warning('Saved status checked. Review the AI Pipeline message for the result.');})}>Refresh / recover processing</Button>}
       {!job&&<Button type="button" disabled={busy} onClick={()=>void load()}>Recover saved request</Button>}
       <Button type="button" size="sm" variant="outline" disabled={busy||retained||draftUncertain||uncertain} onClick={()=>{setRerunConfirm(false);setReloadConfirm(true);}}>Reload saved review</Button><ol className="mt-2 flex flex-wrap gap-4 text-sm" aria-label="AI processing progress">{['Stored original','OCR & AI extraction','Review','Update document'].map((stage,i)=><li key={stage} aria-current={(candidate?2:progress?.stage==='reading'||progress?.stage==='analysing'?1:0)===i?'step':undefined}>{i+1}. {stage}</li>)}</ol>

@@ -6,6 +6,7 @@ import {reviewedCall} from '@/server/dms-reviewed-updates';
 import {rerunRetainedIntakeMetadata} from "@/server/dms-intake-rereview";
 import {prepareIntakeOutput} from '@/lib/dms/preparation/intake';
 import {checkDocumentConfidentialityAccess} from '@/lib/dms/document-access';
+import {dmsTraceId, traceOperation, traceSpan} from '@/lib/performance/trace';
 
 /**
  * DMS.11 — Option A AI-First Upload-Session Intake Server Actions
@@ -226,13 +227,16 @@ const StartIntakeSchema = z.object({
 export async function startAiIntakeFromUploadSession(
   input: z.input<typeof StartIntakeSchema>
 ): Promise<ActionResult<{ sessionCode: string; status: string; message?: string }>> {
+  const parsed = StartIntakeSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
+  return traceOperation('dms.intake', () => runAiIntake(parsed.data), dmsTraceId(`upload:${parsed.data.uploadSessionId}`));
+}
+
+async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<ActionResult<{ sessionCode: string; status: string; message?: string }>> {
   // Until an ordinary source read proves explicit NULL, failures are not legacy.
   let modernStart=true;
   try {
-    const parsed = StartIntakeSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
-
-    const { uploadSessionId, allowDuplicate, onlyIfUploaded } = parsed.data;
+    const { uploadSessionId, allowDuplicate, onlyIfUploaded } = input;
     const supabase = await createClient();
     const adminClient = createAdminClient();
     const ctx = await getAuthContext();
@@ -453,7 +457,7 @@ export async function startAiIntakeFromUploadSession(
     let verifiedSource:Awaited<ReturnType<typeof verifyAndAttestIntakeSource>>|undefined;
 
     try {
-      verifiedSource = await verifyAndAttestIntakeSource(supabase,adminClient,uploadSessionId);
+      verifiedSource = await traceSpan('dms.verify', () => verifyAndAttestIntakeSource(supabase,adminClient,uploadSessionId));
       if(verifiedSource.plan.actorId!==ctx.profile.id||verifiedSource.plan.source.path!==tempPath||verifiedSource.plan.source.name!==originalFilename||verifiedSource.plan.source.mime!==mimeType)
         throw Error('Intake source changed before extraction.');
       const buffer = verifiedSource.bytes;
@@ -470,14 +474,14 @@ export async function startAiIntakeFromUploadSession(
         const { provider: azureAdapter } = await getAzureDocumentIntelligenceProvider();
         const azureProvider = azureAdapter ? new AzureOcrProvider(azureAdapter) : null;
 
-        const routerResult = await routeOcr({
+        const routerResult = await traceSpan('dms.ocr', () => routeOcr({
           buffer,
           mimeType,
           fileName: originalFilename,
           featureFlags,
           azureProvider,
           gptProvider: gptProvider.isConfigured() ? gptProvider : null,
-        });
+        }));
 
         ocrText = routerResult.text;
         // imageFiles left empty — router already performed OCR and returned text.
@@ -602,7 +606,7 @@ export async function startAiIntakeFromUploadSession(
     let aiError: string | null = null;
 
     try {
-      aiOutput = await provider.analyze({
+      aiOutput = await traceSpan('dms.model.first', () => provider.analyze({
         ocrText,
         imageFiles,
         currentTypeCode: null,
@@ -610,7 +614,7 @@ export async function startAiIntakeFromUploadSession(
         metadataFields,
         originalFilename,
         classificationPackets,
-      });
+      }));
     } catch (err) {
       aiError = modern ? "AI analysis was not confirmed. Retain this batch for reconciliation." : String(err);
     }
@@ -692,14 +696,14 @@ export async function startAiIntakeFromUploadSession(
       if (typeSpecificFields.length > 0) {
         try {
           const pass2StartMs = Date.now();
-          const extractOutput = await provider.analyze({
+          const extractOutput = await traceSpan('dms.model.second', () => provider.analyze({
             ocrText: pass1Transcription || ocrText,
             imageFiles,
             currentTypeCode: suggestedTypeCode,
             typeCandidates,
             metadataFields: typeSpecificFields,
             originalFilename,
-          });
+          }));
           // SPEED.2M: log pass-2 token counts + duration (non-fatal)
           await logDmsAiUsage({
             providerConfigId: configId ?? null,
@@ -881,10 +885,10 @@ export async function startAiIntakeFromUploadSession(
       .eq("id", jobId);
 
     if(!verifiedSource)return {success:false,error:'The exact original-file proof is missing. Retain this intake for reconciliation.'};
-    const attestedAnalysis=await adminClient.rpc('f07_attest_intake_analysis',{
+    const attestedAnalysis=await traceSpan('dms.publish', () => adminClient.rpc('f07_attest_intake_analysis',{
       p_session:uploadSessionId,p_actor:verifiedSource.plan.actorId,p_auth_session:verifiedSource.plan.authSessionId,
       p_result:resultId,p_expected:resultPayload,
-    });
+    }));
     if(attestedAnalysis.error)return {success:false,error:'The AI result could not be verified against its exact original file. Retain this intake; no approval was submitted.'};
 
     await supabase
@@ -1159,19 +1163,21 @@ export async function getIntakeSessionSignedUrl(
 ): Promise<ActionResult<{ url: string }>> {
   try {
     const supabase = await createClient();
-    const adminClient = createAdminClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
     if (!canViewIntake(ctx)) return { success: false, error: "Permission denied" };
 
     const { data: session, error } = await supabase
       .from("dms_upload_sessions")
-      .select("temp_storage_path, owning_company_id, owning_branch_id, document_id")
+      .select("temp_storage_path, owning_company_id, owning_branch_id, document_id, status, intake_status, discarded_at")
       .eq("id", uploadSessionId)
       .is("deleted_at", null)
       .single();
 
     if (error || !session) return { success: false, error: "Session not found" };
+    if (session.status === "cancelled" || session.intake_status === "discarded" || session.discarded_at) {
+      return { success: false, error: "Intake was discarded" };
+    }
     if (!session.temp_storage_path) return { success: false, error: "No file path available" };
     const company = session.owning_company_id as number | null;
     const branch = session.owning_branch_id as number | null;
@@ -1182,7 +1188,7 @@ export async function getIntakeSessionSignedUrl(
       return { success: false, error: "Preview permission is required for this upload’s company or branch." };
     }
 
-    const { data: signedUrlData, error: urlError } = await adminClient.storage
+    const { data: signedUrlData, error: urlError } = await createAdminClient().storage
       .from("dms-temp")
       .createSignedUrl(session.temp_storage_path as string, 300); // 5 minutes
 

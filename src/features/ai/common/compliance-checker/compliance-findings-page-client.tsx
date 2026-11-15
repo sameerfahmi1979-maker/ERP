@@ -2,7 +2,8 @@
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { OperationStatus } from "@/components/erp/operation-status";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -75,6 +76,8 @@ export function ComplianceFindingsPageClient({
   initialEntityId,
 }: ComplianceFindingsPageClientProps) {
   const queryClient = useQueryClient();
+  const scanInFlight = useRef(false);
+  const [scanNotice, setScanNotice] = useState<{ state: "failed" | "unconfirmed"; message: string } | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("open");
   const [severityFilter, setSeverityFilter] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -113,6 +116,9 @@ export function ComplianceFindingsPageClient({
  const { data: detail } = uiRead2;
 
   const handleScan = async () => {
+    if (scanInFlight.current || scanNotice?.state === "unconfirmed") return;
+    scanInFlight.current = true;
+    setScanNotice(null);
     setIsScanning(true);
     try {
       const res = await scanComplianceFindings({
@@ -121,10 +127,14 @@ export function ComplianceFindingsPageClient({
         supersedeExisting: !dryRun,
       });
       if (!res.success) {
-        toast.error(res.error ?? "Scan failed");
+        setScanNotice({ state: "failed", message: res.error ?? "Scan failed." });
         return;
       }
       const r = res.data!;
+      if (r.failedEntities.length) {
+        toast.error(`Scan incomplete. ${r.failedEntities.length} scope or record checks failed. Existing findings were kept.`);
+        return;
+      }
       toast.success(
         dryRun
           ? `Dry run: ${r.previewCount ?? r.detected} finding(s) would be detected`
@@ -132,7 +142,10 @@ export function ComplianceFindingsPageClient({
       );
       invalidateComplianceFindings(queryClient);
       refetch();
+    } catch {
+      setScanNotice({ state: "unconfirmed", message: "The scan outcome is unconfirmed. Reload findings before starting another scan." });
     } finally {
+      scanInFlight.current = false;
       setIsScanning(false);
     }
   };
@@ -165,6 +178,9 @@ export function ComplianceFindingsPageClient({
 
   return (
     <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="space-y-4">
+      {isScanning && <OperationStatus state="pending">Checking compliance evidence…</OperationStatus>}
+      {scanNotice && <OperationStatus state={scanNotice.state} retryLabel={scanNotice.state === "unconfirmed" ? "Reload findings" : "Retry scan"}
+        retry={scanNotice.state === "unconfirmed" ? () => void refetch().then(result => { if (result.isSuccess) setScanNotice(null); }) : () => void handleScan()}>{scanNotice.message}</OperationStatus>}
       {!summary.featureEnabled && (
         <Alert className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
           <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-300" />
@@ -245,7 +261,7 @@ export function ComplianceFindingsPageClient({
           )}
           <Button
             onClick={handleScan}
-            disabled={isScanning || !summary.featureEnabled}
+            disabled={isScanning || scanNotice?.state === "unconfirmed" || !summary.featureEnabled}
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${isScanning ? "animate-spin" : ""}`} />
             {dryRun ? "Run Dry Scan" : "Run Deterministic Scan"}

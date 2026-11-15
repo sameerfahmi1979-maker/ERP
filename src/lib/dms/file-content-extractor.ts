@@ -16,6 +16,7 @@
 import { convertPdfPagesToImages, isPdfTextEmpty } from "./pdf-to-images";
 import { logger } from "@/lib/logger";
 import { pdfTextNeedsVisualOcr } from "./pdf-text-quality";
+import { traceSpan } from '@/lib/performance/trace';
 
 export interface ExtractedImage {
   fileName: string;
@@ -132,6 +133,8 @@ export interface ExtractFileContentOptions {
   skipPdfPageRendering?: boolean;
   /** Explicit user request to ignore the embedded layer and read page images. */
   forcePdfVision?: boolean;
+  /** The same input buffer has already failed the embedded text check. */
+  pdfTextAlreadyChecked?: boolean;
 }
 
 /**
@@ -149,16 +152,15 @@ export async function extractFileContent(
   if (PDF_MIMES.has(mime)) {
     // Try text layer first
     let text = "";
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (
-        b: Uint8Array
-      ) => Promise<{ text: string }>;
-      // Legacy PDF.js clones Buffer subclasses into pooled backing stores and
-      // can lose their byte offset. Give it an owning, plain byte array instead.
-      const parsed = await pdfParse(new Uint8Array(buffer));
-      text = (parsed.text ?? "").trim();
-    } catch { /* fall through to image conversion */ }
+    if (!options?.pdfTextAlreadyChecked && !options?.forcePdfVision) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (b: Uint8Array) => Promise<{ text: string }>;
+        // Give legacy PDF.js an owning byte array so it retains the byte offset.
+        const parsed = await traceSpan('dms.pdf.text', () => pdfParse(new Uint8Array(buffer)));
+        text = (parsed.text ?? "").trim();
+      } catch { /* fall through to image conversion */ }
+    }
 
     const pdfTextRejected = !!options?.forcePdfVision || pdfTextNeedsVisualOcr(text);
     if (!isPdfTextEmpty(text) && !pdfTextRejected) {
@@ -171,7 +173,7 @@ export async function extractFileContent(
     }
 
     // Render pages to images for vision
-    const pages = await convertPdfPagesToImages(buffer, 4);
+    const pages = await traceSpan('dms.pdf.render', () => convertPdfPagesToImages(buffer, 4));
     if (pages.length > 0) {
       return {
         text: "",

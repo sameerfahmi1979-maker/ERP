@@ -1,6 +1,6 @@
 import {beforeEach,describe,it,expect,vi} from 'vitest';
 const state=vi.hoisted(()=>({enqueue:vi.fn(),inline:vi.fn(),featureError:false,sessionError:false,enabled:true}));
-vi.mock('@/lib/dms/ai-jobs/job-runner',()=>({enqueueUniqueDmsAiJob:state.enqueue}));
+vi.mock('@/lib/dms/ai-jobs/job-admission',()=>({enqueueUniqueDmsAiJob:state.enqueue}));
 vi.mock('@/server/actions/dms/orchestration',()=>({runDmsAiOrchestrationPostDraft:state.inline}));
 vi.mock('@/server/actions/audit',()=>({logAudit:vi.fn()}));
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>{const q={select:()=>q,eq:()=>q,single:async()=>({error:state.featureError?{}:null,data:{is_enabled:state.enabled}})};return{from:()=>q};}}));

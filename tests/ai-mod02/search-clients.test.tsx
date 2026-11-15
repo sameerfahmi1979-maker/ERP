@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import {useState,type ReactNode} from "react";
+import type {ReactNode} from "react";
 import {act,cleanup,fireEvent,render,screen,waitFor} from "@testing-library/react";
 import {afterEach,beforeEach,it,expect,vi} from "vitest";
 const s=vi.hoisted(()=>({ai:vi.fn(),intent:vi.fn(),semantic:vi.fn(),candidates:vi.fn(),global:vi.fn()}));
@@ -10,10 +10,9 @@ vi.mock("@/server/actions/ai/common/search",()=>({searchAcrossErp:(...a:unknown[
 vi.mock("@/server/actions/dms/documents",()=>({archiveDmsDocument:vi.fn(),unarchiveDmsDocument:vi.fn()}));
 vi.mock("@/hooks/use-workspace",()=>({useWorkspace:()=>({openTab:vi.fn()})}));
 vi.mock("@/hooks/realtime/use-realtime-sync",()=>({useRealtimeSync:()=>{}}));
-vi.mock("@/hooks/use-persistent-ui-state",()=>({usePersistentUiState:(_key:string,initial:unknown)=>useState(initial)}));
 vi.mock("@/hooks/use-server-page",()=>({useServerPage:()=>({data:{rows:[],totalCount:0},isBusy:false,isError:false,refetch:vi.fn()})}));
 vi.mock("@/components/erp/query-read-boundary",()=>({QueryReadBoundary:({children}:{children:ReactNode})=>children}));
-vi.mock("@/components/erp/table/list-controls",()=>({useListColumns:(_id:string,columns:unknown)=>({columns,visible:columns,setColumns:vi.fn()}),ConfiguredRow:({children}:{children:ReactNode})=><tr>{children}</tr>,EditColumns:()=>null,EditFilters:({onApply}:{onApply:(v:unknown)=>void})=><button onClick={()=>onApply({type:"2",status:"active",expiry:"expired"})}>Test retained filters</button>}));
+vi.mock("@/components/erp/table/list-controls",async(importOriginal)=>({...await importOriginal<typeof import("@/components/erp/table/list-controls")>(),EditColumns:()=>null,EditFilters:({onApply}:{onApply:(v:unknown)=>void})=><button onClick={()=>onApply({type:"2",status:"active",expiry:"expired"})}>Test retained filters</button>}));
 vi.mock("@/components/erp/table/table-pagination",()=>({TablePagination:()=>null}));
 vi.mock("@/components/ui/select",()=>({Select:({value,onValueChange,children}:{value:string,onValueChange:(s:string)=>void,children:ReactNode})=><select aria-label="Document search mode" value={value} onChange={e=>onValueChange(e.target.value)}>{children}</select>,SelectTrigger:()=>null,SelectValue:()=>null,SelectContent:({children}:{children:ReactNode})=>children,SelectItem:({value}:{value:string})=><option value={value}>{value}</option>}));
 vi.mock("@/features/ai/common/search/search-bar",()=>({SearchBar:({value,onChange,onSearch}:{value:string,onChange:(s:string)=>void,onSearch:()=>void})=><><input aria-label="Global query" value={value} onChange={e=>onChange(e.target.value)}/><button onClick={onSearch}>Global search</button></>}));

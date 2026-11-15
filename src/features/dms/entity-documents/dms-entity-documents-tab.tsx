@@ -33,7 +33,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { format, isPast, differenceInDays } from "date-fns";
+import { format, parseISO } from "date-fns";
+import { dmsDaysUntilExpiry } from "@/lib/dms/expiry-calendar";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import type {AuthContext} from "@/lib/rbac/check";
 import { hasPermission } from "@/lib/rbac/scope";
@@ -72,16 +73,15 @@ export type DmsEntityDocumentsTabProps = {
 // ── Badges ────────────────────────────────────────────────────────────────────
 
 function ExpiryBadge({ expiryDate }: { expiryDate: string | null }) {
-  if (!expiryDate) return null;
-  const date = new Date(expiryDate);
-  if (isPast(date)) {
+  const days = dmsDaysUntilExpiry(expiryDate);
+  if (days === null) return null;
+  if (days < 0) {
     return (
       <Badge variant="destructive" className="text-xs flex items-center gap-1">
         <AlertTriangle className="h-3 w-3" /> Expired
       </Badge>
     );
   }
-  const days = differenceInDays(date, new Date());
   if (days <= 30) {
     return (
       <Badge variant="outline" className="text-xs border-amber-400 text-amber-600 flex items-center gap-1">
@@ -361,7 +361,7 @@ function EntityDocumentsInstance({
                     {doc.expiry_date && (
                       <span>
                         Expires:{" "}
-                        {format(new Date(doc.expiry_date), "dd MMM yyyy")}
+                        {format(parseISO(doc.expiry_date), "dd MMM yyyy")}
                       </span>
                     )}
                     {doc.completeness_score != null && (

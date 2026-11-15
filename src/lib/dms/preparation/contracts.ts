@@ -75,6 +75,7 @@ export const preparationFileSchema = z.strictObject({
   id: preparationId, versionId: preparationId, sha256: preparationHash,
   name: z.string().max(1000), mime: z.string().max(200), size: z.number().int().positive().max(52428800),
   text: z.string().max(100000).nullable(), bucket: z.string().nullable(), path: z.string().nullable(),
+  verifiedText: z.boolean().optional(),
 });
 export const preparationSnapshotSchema = z.strictObject({
   documentId: preparationId, documentNo: z.string(), snapshot: preparationHash,

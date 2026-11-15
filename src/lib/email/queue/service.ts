@@ -31,7 +31,7 @@ export async function prepareQueuedDelivery(q: DeliveryClaim, signal: AbortSigna
         if ((p.graph_base_url && !["https://graph.microsoft.com/v1.0", "https://graph.microsoft.com/v1.0/"].includes(p.graph_base_url))
             || (p.authority_url && p.authority_url !== `https://login.microsoftonline.com/${p.tenant_id}/oauth2/v2.0/token`))
             return { ready: false, outcome: { kind: "permanent" } };
-        const { secret } = await resolveEmailProviderSecret(p.secret_ref);
+        const { secret } = await resolveEmailProviderSecret(p.secret_ref, p.id);
         if (!secret)
             return { ready: false, outcome: { kind: "permanent" } };
         const token = await acquireGraphToken({ tenantId: p.tenant_id ?? "", clientId: p.client_id ?? "", secret }, signal);

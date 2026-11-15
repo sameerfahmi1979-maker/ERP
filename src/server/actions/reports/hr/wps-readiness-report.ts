@@ -4,7 +4,7 @@ import type {ReportReadClient} from "@/lib/report-center/scoped-read-client";
 import {z} from "zod";
 import {createHash} from "node:crypto";
 import {checkWpsReadiness} from "@/lib/hr/payroll/wps-readiness";
-import {payrollToday,payrollEmploymentEligible,salaryAsOf,salaryDate,salaryDisplayNumber} from "@/lib/hr/payroll/salary-as-of";
+import {payrollToday,payrollEligibleStatuses,payrollEmploymentEligible,salaryAsOf,salaryDate,salaryDisplayNumber} from "@/lib/hr/payroll/salary-as-of";
 
 const id=z.number().int().positive().refine(Number.isSafeInteger);
 const revision=z.union([id,z.string().regex(/^[1-9]\d{0,18}$/).refine(v=>BigInt(v)<=BigInt('9223372036854775807'))]).transform(String);
@@ -27,12 +27,13 @@ function unique<T extends {employee_id:number}>(rows:T[]) {
 export const wpsReadinessFetcher:ReportFetcher={
  reportCode:"HR_WPS_READINESS",
  async fetch(filters:Record<string,unknown>,_permissions:string[],db:ReportReadClient):Promise<ReportDataResult>{
+  const asOf=payrollToday();
   const collect=async()=>{
-  let query=db.from("employees").select("id,workspace_revision,employee_code,full_name_en,employee_status,joining_date,owner_company_id,owner_company:owner_companies!employees_owner_company_id_fkey(legal_name_en)").is("deleted_at",null).eq("employee_status","active").order("id");
+  let query=db.from("employees").select("id,workspace_revision,employee_code,full_name_en,employee_status,joining_date,owner_company_id,owner_company:owner_companies!employees_owner_company_id_fkey(legal_name_en)").is("deleted_at",null).in("employee_status",payrollEligibleStatuses).lte("joining_date",asOf).order("id");
   if(filters.owner_company_id)query=query.eq("owner_company_id",Number(filters.owner_company_id));
   if(filters.department_id)query=query.eq("department_id",Number(filters.department_id));
   // The existing scoped facade drains every exact-count page. No first-N cap.
-  const employees=verified(await query,employee),ids=employees.map(e=>e.id),subjects=new Set(ids);
+  const employees=verified(await query,employee).filter(e=>payrollEmploymentEligible(e,asOf)),ids=employees.map(e=>e.id),subjects=new Set(ids);
   if(subjects.size!==ids.length)throw Error("Duplicate review subjects");
   if(!ids.length)return{employees,profiles:[],wpsRows:[],components:[],effects:[],holds:[]};
   const [p,w,c,a,h]=await Promise.all([
@@ -55,7 +56,7 @@ export const wpsReadinessFetcher:ReportFetcher={
   if(source!==JSON.stringify(confirmed))throw Error("Payroll review sources changed during collection. Run it again.");
   const {employees,profiles,wpsRows,components,effects,holds}=confirmed;
   const columns=["employee_code","employee_name","company","bank_name","wps_applicable","wps_status","payment_method","missing_fields","hold_status","readiness_status"];
-  const profileMap=unique(profiles),wpsMap=unique(wpsRows),holdSet=new Set(holds.map(row=>row.employee_id)),asOf=payrollToday();
+  const profileMap=unique(profiles),wpsMap=unique(wpsRows),holdSet=new Set(holds.map(row=>row.employee_id));
   // Group once; never issue a salary query per employee.
   const componentsByEmployee=Map.groupBy(components,row=>row.employee_id),effectsByEmployee=Map.groupBy(effects,row=>row.employee_id);
   const rows=employees.map(emp=>{

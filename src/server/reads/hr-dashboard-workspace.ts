@@ -51,17 +51,27 @@ export async function readHrDashboardWorkspace(input:unknown,context?:AuthContex
   const calendar=hrDashboardCalendar(scope.date?new Date(`${scope.date}T12:00:00+04:00`):now,Number(scope.expiryDays));
   const {today,soon,month}=calendar;
   const result:DashboardResponse={mode:request.mode,scope,asOf:now.toISOString(),page:request.page,metric:request.metric,metrics:{}};
+  const masterLabel = z.object({id,name_en:z.string()});
+  const labelRows = z.object({id,owner_company_id:id.nullable(),site:masterLabel.nullable(),department:masterLabel.nullable()});
   if(request.mode==='options') {
-   const tables=[['companies','owner_companies','company_code',null],['branches','branches','branch_name_en','owner_company_id'],['departments','departments','department_name_en','owner_company_id'],['sites','work_sites','site_name','owner_company_id']] as const;
+   const tables=[['companies','owner_companies','company_code',null],['branches','branches','branch_name_en','owner_company_id']] as const;
    const entries=await Promise.all(tables.map(async([key,table,label,parent])=>{
     const rows=await complete(()=>{
-     let q=select(table,`id,${label}${parent?`,${parent}`:''}`);
-     if(table==='departments'||table==='work_sites')q=q.is('deleted_at',null);
-     return q.order('id');
+     return select(table,`id,${label}${parent?`,${parent}`:''}`).order('id');
     },rowSchema);
     return [key,rows.map(r=>({id:r.id,label:z.string().parse(r[label]),...(parent?{companyId:id.nullable().parse(r[parent])}:{})}))];
    }));
-   result.options={...emptyOptions,...Object.fromEntries(entries)};
+   const labels=await complete(()=>select('phase3_hr_employee_master_labels','id,owner_company_id,site,department').order('id'),labelRows);
+   const optionsFor=(kind:'site'|'department')=>{
+    const choices=new Map<number,{id:number;label:string;companyId:number|null}>();
+    for(const row of labels){
+     const item=row[kind];if(!item) continue;
+     const prior=choices.get(item.id);
+     choices.set(item.id,{id:item.id,label:item.name_en,companyId:prior&&prior.companyId!==row.owner_company_id?null:row.owner_company_id});
+    }
+    return [...choices.values()].sort((a,b)=>a.label.localeCompare(b.label)||a.id-b.id);
+   };
+   result.options={...emptyOptions,...Object.fromEntries(entries),departments:optionsFor('department'),sites:optionsFor('site')};
    return {success:true,data:dashboardResponseSchema.parse(result)};
   }
   const scopeQuery=(q:Query)=>{
@@ -225,11 +235,22 @@ export async function readHrDashboardWorkspace(input:unknown,context?:AuthContex
   await Promise.all(Array.from({length:Math.min(4,definitions.length)},async()=>{while(cursor<definitions.length){const d=definitions[cursor++];result.metrics[d.key]=await run(d);}}));
   if(request.mode==='overview'&&can('employees')) {
    result.charts=[];
+   let sharedLabels: Awaited<ReturnType<typeof getLabels>> | undefined;
+   async function getLabels() {
+    const rows=[];
+    for(const batch of chunks(active.map(e=>e.id)))rows.push(...await complete(()=>select('phase3_hr_employee_master_labels','id,owner_company_id,site,department').in('id',batch).order('id'),labelRows));
+    return rows;
+   }
    for(const [key,label,column,table,name] of [['company','Workforce by company','owner_company_id','owner_companies','company_code'],['department','Workforce by department','department_id','departments','department_name_en'],['category','Workforce by category','employee_category_id','hr_employee_categories','name_en'],['site','Workforce by primary site','primary_work_site_id','work_sites','site_name']] as const) {
     try {
      const counts=new Map<number|null,number>();active.forEach(e=>counts.set(e[column],(counts.get(e[column])??0)+1));
      const ids=[...counts.keys()].filter((v):v is number=>v!==null);const names=new Map<number,string>();
-     for(const batch of chunks(ids))for(const r of await complete(()=>select(table,`id,${name}`).in('id',batch).order('id'),rowSchema))names.set(r.id,z.string().parse(r[name]));
+     if(key==='site'||key==='department') {
+      sharedLabels ??= await getLabels();
+      for(const row of sharedLabels){const item=row[key];if(item)names.set(item.id,item.name_en);}
+     } else {
+      for(const batch of chunks(ids))for(const r of await complete(()=>select(table,`id,${name}`).in('id',batch).order('id'),rowSchema))names.set(r.id,z.string().parse(r[name]));
+     }
      result.charts.push({key,label,items:[...counts].map(([id,value])=>({label:id===null?'Not assigned':names.get(id)??'Name unavailable',value})).sort((a,b)=>b.value-a.value)});
     } catch { /* Omit only this failed chart; the UI explicitly reports it unavailable. */ }
    }

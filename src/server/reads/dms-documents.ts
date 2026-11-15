@@ -1,4 +1,5 @@
 import "server-only";
+import {dmsBusinessDate} from "@/lib/dms/expiry-calendar";
 import {prepareDocumentQuery} from "@/server/ai/search/document-query";
 import {getReadAuthContext} from "./read-context";
 import {getAuthContext,hasPermission,type AuthContext} from "@/lib/rbac/check";
@@ -43,6 +44,7 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
     const parsed=dmsReadSchema.safeParse(input);
     if(!parsed.success)return {success:false,error:"Invalid document search or page"};
     const {filters,...page}=parsed.data;
+    const asOf = Date.now();
     const supabase = await createClient();
     const isAdmin = hasPermission(ctx, "dms.admin") || ctx.roleCodes.includes("system_admin");
     const profileId = ctx.profile?.id ?? null;
@@ -52,7 +54,6 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
 
     const joins: string[] = [];
     if (filters.hasExtractedText !== undefined) joins.push("perf_document_has_extracted_text");
-    if (filters.has_files !== undefined) joins.push("perf_document_has_files");
     // Content search remains database-side and uses the caller's content RLS,
     // then the same F03 protected document projection. No ID-set download.
     const contentSearch=filters.searchMode === "content" && !!filters.search?.trim();
@@ -69,7 +70,7 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
         tags:dms_document_tags(tag_id, tag:dms_tags(tag_name, color_hex)),
         perf_document_tag_count${joins.length ? ',' + joins.join(',') : ''}
       `;
-    const prepared = await prepareDocumentQuery(supabase,filters.search?.trim()??"",ctx,{content:contentSearch});
+    const prepared = await prepareDocumentQuery(supabase,filters.search?.trim()??"",ctx,{content:contentSearch,hasFiles:filters.has_files});
     let query = prepared.query.select(projection).is("deleted_at", null);
 
     // DMS.3C — enforce confidentiality: show only allowed levels OR docs the user owns/created
@@ -113,12 +114,12 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
       query = query.lte("expiry_date", filters.expiry_to);
     }
     if (filters?.expired) {
-      const today = new Date().toISOString().split("T")[0];
+      const today = dmsBusinessDate(asOf);
       query = query.lt("expiry_date", today).not("expiry_date", "is", null);
     }
     if (filters?.expiring_soon) {
-      const today = new Date().toISOString().split("T")[0];
-      const in30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      const today = dmsBusinessDate(asOf);
+      const in30 = dmsBusinessDate(asOf, 30);
       query = query.gte("expiry_date", today).lte("expiry_date", in30);
     }
 
@@ -142,8 +143,8 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
       query = query.or("ai_summary.is.null,ai_summary_status.neq.complete");
     }
     if (filters?.expiryState) {
-      const today = new Date().toISOString().split("T")[0];
-      const in30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      const today = dmsBusinessDate(asOf);
+      const in30 = dmsBusinessDate(asOf, 30);
       if (filters.expiryState === "expired") {
         query = query.lt("expiry_date", today).not("expiry_date", "is", null);
       } else if (filters.expiryState === "expiring_soon") {
@@ -159,9 +160,6 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
     if (filters.hasExtractedText !== undefined) {
       query = query.eq("perf_document_has_extracted_text", filters.hasExtractedText);
     }
-    if (filters.has_files !== undefined) {
-      query = query.eq("perf_document_has_files", filters.has_files);
-    }
     const sortColumns={created_at:"created_at",document_no:"document_no",title:"title",document_type:"document_type(name_en)",status:"status",expiry_date:"expiry_date",tags:"perf_document_tag_count"};
     const from=(page.page-1)*page.pageSize;
     const { data, error, count } = await query.order(sortColumns[page.sortKey],{ascending:page.sortDir==="asc",nullsFirst:false}).order("id",{ascending:true}).range(from,from+page.pageSize-1).returns<DmsDocumentRow[]>();
@@ -174,8 +172,8 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
     const CONFIDENTIAL_LEVELS = ["hr", "legal", "executive"];
 
     const processed = (data ?? []).map((doc) => {
-      const {content_match: _content, perf_document_has_files: _files, perf_document_has_extracted_text: _text, ...record} = doc as DmsDocumentRow & {content_match?:unknown;perf_document_has_files?:boolean;perf_document_has_extracted_text?:boolean};
-      void _content; void _files; void _text;
+      const {content_match: _content, perf_document_has_extracted_text: _text, ...record} = doc as DmsDocumentRow & {content_match?:unknown;perf_document_has_extracted_text?:boolean};
+      void _content; void _text;
       const d = record as DmsDocumentRow;
       if (!isAdmin && CONFIDENTIAL_LEVELS.includes(d.confidentiality_level) && d.ai_summary) {
         return { ...d, ai_summary: "[Summary restricted — confidential document]" };

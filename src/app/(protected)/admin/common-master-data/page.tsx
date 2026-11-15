@@ -32,7 +32,7 @@ export default async function CommonMasterDataPage() {
     canView ? listDmsRequiredDocumentRules({ is_active: true }) : Promise.resolve({ data: [] }),
   ]);
 
-  const counts = [depts.data?.length ?? 0, desigs.data?.length ?? 0, sites.data?.length ?? 0, cals.data?.length ?? 0, roles.data?.length ?? 0, rules.data?.length ?? 0];
+  const counts = [depts.data?.length ?? 0, ("totalCount" in desigs ? desigs.totalCount : undefined) ?? "—", ("totalCount" in sites ? sites.totalCount : undefined) ?? "—", cals.data?.length ?? 0, ("totalCount" in roles ? roles.totalCount : undefined) ?? "—", ("totalCount" in rules ? rules.totalCount : undefined) ?? "—"];
 
   return (
     <div className="p-6 space-y-4">

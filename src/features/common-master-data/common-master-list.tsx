@@ -39,5 +39,5 @@ export function CommonMasterList({ rows, fields, basePath, title, editableRecord
     });
   }
   return <ERPDataTable presentation="worklist" tableId={`common:${basePath}`} columnPreferenceId={COLUMN_PREFERENCE_IDS[basePath] ?? null} resultsLabel={title} columns={columns} data={rows}
-    enableRowSelection={false} searchPlaceholder={`Search ${title.toLocaleLowerCase()}…`} emptyMessage={`No ${title.toLocaleLowerCase()} are available.`} />;
+    enableRowSelection={false} serverPaged enableGlobalFilter={false} enableSorting={false} emptyMessage={`No ${title.toLocaleLowerCase()} match this page.`} />;
 }

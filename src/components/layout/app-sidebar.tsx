@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWorkspace } from "@/hooks/use-workspace";
 import type { RuntimeAppBranding } from "@/lib/branding/runtime-types";
+import { canAccessRoute, ROUTE_ACCESS_REGISTRY } from "@/lib/rbac/route-access-registry";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -161,7 +162,7 @@ const navSections: NavSection[] = [
           { label: "Dashboard", icon: LayoutDashboard, path: "/admin/hr/dashboard", requiredAnyPermissions: ["hr.dashboard.view", "hr.employees.view", "hr.admin"] },
           { label: "Search",    icon: Search,          path: "/admin/hr/search",    requiredAnyPermissions: ["hr.search.use", "hr.admin"] },
           { label: "Employees", icon: UsersRound,      path: "/admin/hr/employees", requiredAnyPermissions: ["hr.employees.view", "hr.employee_profile.view", "hr.employees.view.self", "hr.employees.view.team"] },
-          { label: "Document Browser", icon: FolderSearch, path: "/admin/hr/document-browser", requiredAnyPermissions: ["hr.employees.view", "hr.admin"] },
+          { label: "Document Browser", icon: FolderSearch, path: "/admin/hr/document-browser", ...ROUTE_ACCESS_REGISTRY["/admin/hr/document-browser"] },
         ],
       },
       {
@@ -227,7 +228,7 @@ const navSections: NavSection[] = [
       { label: "Upload Inbox",      icon: UploadCloud,     path: "/dms/inbox",           requiredAnyPermissions: ["dms.documents.upload", "dms.documents.view", "dms.admin"] },
       { label: "Batch Intake",      icon: Inbox,           path: "/dms/inbox/batches",   requiredAnyPermissions: ["dms.documents.upload", "dms.documents.view", "dms.admin"] },
       { label: "Review Queue",      icon: ListChecks,      path: "/dms/review-queue",    requiredAnyPermissions: ["dms.review_queue.view", "dms.review_queue.manage", "dms.documents.review_ai", "dms.admin"] },
-      { label: "Approval Queue",    icon: ClipboardCheck,  path: "/dms/approvals",       requiredAnyPermissions: ["dms.approvals.view", "dms.approvals.act", "dms.approvals.submit", "dms.approvals.withdraw", "dms.approvals.admin", "dms.documents.approve", "dms.admin"] },
+      { label: "Approval Queue",    icon: ClipboardCheck,  path: "/dms/approvals",       requiredAnyPermissions: ROUTE_ACCESS_REGISTRY["/dms/approvals"].requiredAnyPermissions },
       { label: "Expiry & Renewals", icon: RefreshCcw,      path: "/dms/expiring",        requiredAnyPermissions: ["dms.expiry.view", "dms.documents.view", "dms.admin"] },
       { label: "Document Browser",  icon: FolderSearch,    path: "/admin/dms/browser",   requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
       { label: "Archive",           icon: Archive,         path: "/dms/archive",         requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
@@ -428,6 +429,7 @@ function canUserSeeItem(
   if (item.publicToAllActive) return true;
   if (isGlobalAdmin) return true;
   if (item.path === "/admin/notifications/email-queue") return ["notifications.email_queue.view","notifications.email_queue.manage","notifications.admin"].some(code=>globalPermissionCodes.includes(code));
+  if (item.path === "/admin/hr/document-browser" || item.path === "/dms/approvals") return canAccessRoute(item.path,permissionCodes,isGlobalAdmin);
   if (item.path === "/admin/dms/approval-workflows") return ["dms.approvals.admin","dms.admin"].some(code=>permissionCodes.includes(code));
   if (item.path === "/admin/dms/notification-settings") return ["dms.admin","dms.notifications.manage","dms.notifications.settings.manage"].some(code=>globalPermissionCodes.includes(code));
   if (item.requiresGlobalAdmin) return false;

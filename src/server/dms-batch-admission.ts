@@ -1,4 +1,5 @@
 import "server-only";
+import {dmsTraceId, recordDmsClientTransfer, traceOperation, traceSpan} from '@/lib/performance/trace';
 
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -107,23 +108,22 @@ export async function findBatchAdmission(batchCode:string):Promise<BatchDiscover
 }
 async function selectedFresh(bound:Bound,position:number):Promise<void>{
   if(!(await fresh(bound)).includes(position))throw new WorkUnavailable();
-  if(!sameOrigin(await currentOrigin(bound.deadline),bound.origin))throw new AccessUnavailable();
 }
 
 async function fresh(bound: Bound): Promise<number[]> {
   try {
     const {deadline, client, origin, request, receipt} = bound;
-    if (!sameOrigin(await currentOrigin(deadline), origin)) throw new AccessUnavailable();
-    const read = await deadline.wait(() => client.rpc("read_dms_upload_batch_admission", {p_operation: request.contract.operationId}));
+    const read = await traceSpan('dms.receipt', () => deadline.wait(() => client.rpc("read_dms_upload_batch_admission", {p_operation: request.contract.operationId})));
     if (read.error) throw new AccessUnavailable();
     const current = await verifyBatchReceipt(read.data, request, origin);
     if (!current || JSON.stringify(current) !== JSON.stringify(receipt)) throw new AccessUnavailable();
-    const result = await deadline.wait(() => client.rpc("dms_upload_batch_eligibility", {p_operation: request.contract.operationId}));
+    const result = await traceSpan('dms.eligibility', () => deadline.wait(() => client.rpc("dms_upload_batch_eligibility", {p_operation: request.contract.operationId})));
     const eligible = eligibilitySchema.safeParse(result.data);
     if (result.error || !eligible.success) throw new AccessUnavailable();
     const {positions} = eligible.data;
     if (new Set(positions).size !== positions.length || positions.some(p => p >= receipt.members.length) ||
       (!eligible.data.eligible && positions.length > 0)) throw new AccessUnavailable();
+    if (!sameOrigin(await currentOrigin(deadline), origin)) throw new AccessUnavailable();
     if (!eligible.data.eligible) throw new WorkUnavailable();
     return positions;
   } catch (error) {
@@ -203,7 +203,7 @@ async function observe(bound: Bound, storage: Storage, member: Member, selected=
   }
   const before = metadata(first.data, member);
   await check();
-  await hashObject(storage, member, bound.deadline,parse);
+  await traceSpan('dms.verify', () => hashObject(storage, member, bound.deadline,parse));
   await check();
   const second = await bound.deadline.wait(() => storage.info(member.path));
   if (second.error || JSON.stringify(metadata(second.data, member)) !== JSON.stringify(before)) throw new Error("object changed");
@@ -223,6 +223,10 @@ function rollback(error: unknown): boolean {
 }
 
 export async function admitBatch(input: BatchRequest, continuationOnly = false): Promise<BatchAdmissionResult> {
+  return traceOperation('dms.batch', () => admitRetainedBatch(input,continuationOnly), input?.contract?.operationId);
+}
+
+async function admitRetainedBatch(input: BatchRequest, continuationOnly: boolean): Promise<BatchAdmissionResult> {
   const parsed = batchRequestSchema.safeParse(input);
   if (!parsed.success) return {state: "rejected", error: "Invalid batch request."};
   const request = parsed.data;
@@ -232,10 +236,10 @@ export async function admitBatch(input: BatchRequest, continuationOnly = false):
     const origin = await currentOrigin(deadline);
     if (!origin) return {state: "rejected", error: DENIED};
     const client = await deadline.wait(() => createClient());
-    const result = await deadline.wait(() => client.rpc("admit_dms_upload_batch", {
+    const result = await traceSpan('dms.admit', () => deadline.wait(() => client.rpc("admit_dms_upload_batch", {
       p_operation: request.contract.operationId,
       p_request: {...request.manifest, revision: request.contract.revision},
-    }));
+    })));
     if (result.error) {
       const rejected = rollback(result.error);
       return {state: rejected ? "rejected" : "unconfirmed", error: rejected ? DENIED : UNCONFIRMED};
@@ -291,6 +295,12 @@ export async function admitBatch(input: BatchRequest, continuationOnly = false):
 
 /** Chosen-member continuation, deliberately separate from the complete plan. */
 export async function recoverBatchMemberUpload(input:{request:BatchRequest;position:number}):Promise<BatchMemberUploadResult>{
+ const parsed=batchMemberRequestSchema.safeParse(input);
+ if (!parsed.success) return recoverRetainedMember(input);
+ return traceOperation('dms.batch.member', () => recoverRetainedMember(parsed.data), dmsTraceId(`batch:${parsed.data.request.contract.operationId}:${parsed.data.position}`));
+}
+
+async function recoverRetainedMember(input:{request:BatchRequest;position:number}):Promise<BatchMemberUploadResult>{
   let issued=false;
   let stage='binding';
   try{
@@ -298,17 +308,13 @@ export async function recoverBatchMemberUpload(input:{request:BatchRequest;posit
     if(!parsed.success)throw new WorkUnavailable();
     const {request,position}=parsed.data;
     const bound=await bindBatchAdmission(request);
-    stage='eligibility';
-    await selectedFresh(bound,position);
     const member=bound.receipt.members[position];
     const storage=createAdminClient().storage.from("dms-temp");
     stage='storage';
     const observed=await observe(bound,storage,member,true);
     if(observed==="present"){
-      await selectedFresh(bound,position);
       return batchMemberUploadResultSchema.parse({state:"ready",receipt:bound.receipt,position,object:{state:"present"},issuance_may_be_partial:false});
     }
-    await selectedFresh(bound,position);
     stage='signing';
     const signed=await bound.deadline.wait(()=>{
       issued=true;
@@ -331,7 +337,6 @@ export async function recoverBatchMemberUpload(input:{request:BatchRequest;posit
 export async function verifySelectedBatchUpload(bound:Bound,position:number):Promise<BatchObjectResult>{
   try{
     if(!bound.receipt.members[position])throw new WorkUnavailable();
-    await selectedFresh(bound,position);
     const storage=createAdminClient().storage.from("dms-temp");
     return {state:await observe(bound,storage,bound.receipt.members[position],true)};
   }catch{return {state:"unavailable",error:OBJECT_UNAVAILABLE};}
@@ -370,7 +375,17 @@ export async function discoverBatchAdmissions(): Promise<BatchDiscoveryResult> {
   } catch { return {success: false, error: DENIED}; }
 }
 
-export async function verifyBatchUpload(input: {request: BatchRequest; position: number}): Promise<BatchObjectResult> {
+export async function verifyBatchUpload(input: {request: BatchRequest; position: number},transferMs?:number): Promise<BatchObjectResult> {
+  const parsed=batchMemberRequestSchema.safeParse(input);
+  if (!parsed.success) return verifyRetainedBatchUpload(input);
+  return traceOperation('dms.batch.verify', async () => {
+    const result=await verifyRetainedBatchUpload(parsed.data);
+    if(result.state==='present')recordDmsClientTransfer(transferMs);
+    return result;
+  }, dmsTraceId(`batch:${parsed.data.request.contract.operationId}:${parsed.data.position}`));
+}
+
+async function verifyRetainedBatchUpload(input: {request: BatchRequest; position: number}): Promise<BatchObjectResult> {
   try {
     const parsed = z.object({request: batchRequestSchema, position: z.number().int().min(0).max(9)}).strict().safeParse(input);
     if (!parsed.success || parsed.data.position >= parsed.data.request.manifest.files.length) return {state: "unavailable", error: OBJECT_UNAVAILABLE};
@@ -383,8 +398,7 @@ export async function verifyBatchUpload(input: {request: BatchRequest; position:
     const receipt = !result.error ? await verifyBatchReceipt(result.data, request, origin) : null;
     if (!receipt) return {state: "unavailable", error: OBJECT_UNAVAILABLE};
     const bound = {client, deadline, origin, request, receipt};
-    await fresh(bound);
     const storage = createAdminClient().storage.from("dms-temp");
-    return {state: await observe(bound, storage, receipt.members[position],false,true)};
+    return {state: await observe(bound, storage, receipt.members[position],true,true)};
   } catch { return {state: "unavailable", error: OBJECT_UNAVAILABLE}; }
 }

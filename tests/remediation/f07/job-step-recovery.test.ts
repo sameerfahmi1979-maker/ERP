@@ -4,7 +4,7 @@ const state=vi.hoisted(()=>({rpc:vi.fn()}));
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>({rpc:state.rpc})}));
 vi.mock('@/lib/supabase/server',()=>({createClient:vi.fn()}));
 vi.mock('@/lib/dms/ai/factory',()=>({getDmsAiProvider:vi.fn(),getDmsEmbeddingProvider:vi.fn()}));
-vi.mock('@/lib/dms/ai-jobs/job-runner',()=>({enqueueUniqueDmsAiJob:vi.fn()}));
+vi.mock('@/lib/dms/ai-jobs/job-admission',()=>({enqueueUniqueDmsAiJob:vi.fn()}));
 import {runDurableStep} from '@/lib/dms/orchestration/system-pipeline';
 const claim={jobId:7,token:'c7000000-0000-4000-8000-000000000001',workerId:'test',attemptNumber:2};
 beforeEach(()=>vi.clearAllMocks());

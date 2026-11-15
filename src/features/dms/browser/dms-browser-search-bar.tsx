@@ -3,7 +3,7 @@
 /**
  * DMS.BROWSER.1 — Smart search bar with:
  * - Debounced input
- * - Search history dropdown (localStorage, last 10)
+ * - Recent searches for the current account and scope
  * - Loading / AI-searching indicators
  * - Clear button
  */
@@ -15,27 +15,6 @@ import { cn } from "@/lib/utils";
 const HISTORY_KEY = "dms-browser-search-history-v1";
 const MAX_HISTORY = 10;
 const DEBOUNCE_MS = 300;
-
-function loadHistory(): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]") as string[];
-  } catch {
-    return [];
-  }
-}
-
-function saveToHistory(query: string) {
-  if (!query.trim()) return;
-  const existing = loadHistory().filter((q) => q !== query.trim());
-  const updated = [query.trim(), ...existing].slice(0, MAX_HISTORY);
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
-}
-
-function removeFromHistory(query: string) {
-  const updated = loadHistory().filter((q) => q !== query);
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
-}
 
 interface DmsBrowserSearchBarProps {
   onSearch: (query: string) => void;
@@ -49,36 +28,56 @@ export function DmsBrowserSearchBar({ onSearch, isLoading, isAiSearching }: DmsB
   const [history, setHistory] = useState<string[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const searchCallback = useRef(onSearch);
+  useEffect(() => { searchCallback.current = onSearch; }, [onSearch]);
 
-  // Load history on focus
+  // Discard the legacy unscoped history without ever reading its entries.
+  useEffect(() => {
+    try { localStorage.removeItem(HISTORY_KEY); } catch { /* Storage may be unavailable. */ }
+  }, []);
+
+  const cancelDebounce = useCallback(() => {
+    if (debounceRef.current !== null) clearTimeout(debounceRef.current);
+    debounceRef.current = null;
+  }, []);
+  useEffect(() => cancelDebounce, [cancelDebounce]);
+
   const handleFocus = () => {
-    setHistory(loadHistory());
     setFocused(true);
   };
 
+  const rememberQuery = useCallback((query: string) => {
+    const term = query.trim();
+    if (term && term.length <= 200) {
+      setHistory(previous => [term, ...previous.filter(entry => entry !== term)].slice(0, MAX_HISTORY));
+    }
+  }, []);
+
   const commitQuery = useCallback(
     (q: string) => {
-      if (q.trim()) saveToHistory(q);
+      cancelDebounce();
+      rememberQuery(q);
       setFocused(false);
-      onSearch(q);
+      searchCallback.current(q);
     },
-    [onSearch]
+    [cancelDebounce, rememberQuery]
   );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const q = e.target.value;
     setValue(q);
 
-    if (debounceRef.current) clearTimeout(debounceRef.current);
+    cancelDebounce();
     debounceRef.current = setTimeout(() => {
-      onSearch(q);
-      if (q.trim()) saveToHistory(q);
+      debounceRef.current = null;
+      searchCallback.current(q);
+      rememberQuery(q);
     }, DEBOUNCE_MS);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return;
     if (e.key === "Enter") {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
       commitQuery(value);
     }
     if (e.key === "Escape") {
@@ -89,8 +88,7 @@ export function DmsBrowserSearchBar({ onSearch, isLoading, isAiSearching }: DmsB
 
   const handleClear = () => {
     setValue("");
-    onSearch("");
-    setFocused(false);
+    commitQuery("");
     inputRef.current?.focus();
   };
 
@@ -99,9 +97,7 @@ export function DmsBrowserSearchBar({ onSearch, isLoading, isAiSearching }: DmsB
     commitQuery(q);
   };
 
-  const handleHistoryRemove = (q: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    removeFromHistory(q);
+  const handleHistoryRemove = (q: string) => {
     setHistory((prev) => prev.filter((h) => h !== q));
   };
 
@@ -119,7 +115,16 @@ export function DmsBrowserSearchBar({ onSearch, isLoading, isAiSearching }: DmsB
   const showHistory = focused && value.trim() === "" && history.length > 0;
 
   return (
-    <div data-search-bar className="relative px-3 pt-3 pb-1 shrink-0">
+    <div data-search-bar className="relative px-3 pt-3 pb-1 shrink-0"
+      onKeyDown={event => {
+        if (event.key === "Escape" && event.target !== inputRef.current) {
+          inputRef.current?.focus();
+          setFocused(false);
+        }
+      }}
+      onBlur={event => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
+      }}>
       <div className="relative flex items-center">
         {/* Leading icon / spinner */}
         <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
@@ -137,7 +142,7 @@ export function DmsBrowserSearchBar({ onSearch, isLoading, isAiSearching }: DmsB
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
-          onBlur={() => setTimeout(() => setFocused(false), 150)}
+          aria-label="Search documents"
           placeholder="Search by name, document number, type, or content…"
           className={cn(
             "w-full h-9 pl-9 pr-8 rounded-md border border-border bg-background",
@@ -170,26 +175,22 @@ export function DmsBrowserSearchBar({ onSearch, isLoading, isAiSearching }: DmsB
 
       {/* Search history dropdown */}
       {showHistory && (
-        <div className="absolute top-[calc(100%-4px)] left-3 right-3 z-50 rounded-md border border-border bg-popover shadow-md overflow-hidden">
+        <div className="absolute top-[calc(100%-4px)] left-3 right-3 z-50 max-h-56 overflow-y-auto rounded-md border border-border bg-popover shadow-md">
           <p className="px-3 py-1 text-[10px] text-muted-foreground font-medium uppercase tracking-wide border-b border-border/40">
             Recent searches
           </p>
           {history.map((q) => (
-            <div
-              key={q}
-              role="button"
-              tabIndex={0}
-              onClick={() => handleHistorySelect(q)}
-              onKeyDown={(e) => e.key === "Enter" && handleHistorySelect(q)}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted cursor-pointer"
-            >
-              <Clock className="h-3 w-3 shrink-0 text-muted-foreground" />
-              <span className="flex-1 truncate">{q}</span>
+            <div key={q} className="flex items-center gap-2 px-3 text-sm hover:bg-muted">
+              <button type="button" onClick={() => handleHistorySelect(q)}
+                className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left">
+                <Clock aria-hidden className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <span className="truncate">{q}</span>
+              </button>
               <button
                 type="button"
-                onClick={(e) => handleHistoryRemove(q, e)}
+                onClick={() => handleHistoryRemove(q)}
                 className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                aria-label="Remove from history"
+                aria-label={`Remove ${q} from history`}
               >
                 <X className="h-3 w-3" />
               </button>

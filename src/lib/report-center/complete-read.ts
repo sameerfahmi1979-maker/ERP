@@ -11,7 +11,8 @@ type ReadQuery = PromiseLike<ReadResult> & {
 /** Preserve the already-scoped query and every caller filter on each page.
  * A limit(1) is a deliberate latest-record lookup. Other historical fetcher
  * limits must not silently turn a complete analytical report into a sample.
- * Counts changing during the read fail closed; this is not an MVCC snapshot.
+ * Counts changing during the read fail closed. The report facade checks source
+ * revisions across collection before relying on any materialized pages.
  */
 export function completeReportRead<T extends object>(query: T): T {
   const state = { one: false, singular: false };

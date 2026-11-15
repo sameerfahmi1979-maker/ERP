@@ -1,4 +1,4 @@
-﻿import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { ERPSectionCard } from "@/components/erp/section-card";

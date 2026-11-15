@@ -238,13 +238,13 @@ export function DmsExpiringDocumentsTable({ view, onStartRenewal, advancedFilter
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-sm text-muted-foreground">
-          {isError ? "Document count unavailable" : isLoading ? "Loading document count…" : `${total} document${total !== 1 ? "s" : ""}`}
+          {isError ? "Document count unavailable" : !isLoading && `${total} document${total !== 1 ? "s" : ""}`}
         </p>
         <TableSearchInput value={table.query} onChange={table.setQuery} placeholder="Search documents…" className="w-52" />
       </div>
       <DmsExpiryOutputs key={`${criteriaKey}:${denied ? "denied" : "permitted"}`} criteria={criteria} ready={!isLoading && !isError} total={total} />
       {isError && <div role="alert">Expiring documents could not be loaded. <Button onClick={() => void refetch()}>Retry documents</Button></div>}
-      {isLoading && <div role="status" className="py-8 text-center text-sm text-muted-foreground">Loading…</div>}
+      {isLoading && <div role="status" className="py-8 text-center text-sm text-muted-foreground">Loading expiry results…</div>}
       <div className="rounded-md border border-border overflow-auto"><LoadedListTools view={listView} />
         <WorklistScrollRegion attach={listView.viewport.attachViewport} aria-label="DmsExpiringDocumentsTable results"><table className="w-full table-fixed text-sm" {...listView.viewport.tableProps}><WorklistColgroup viewport={listView.viewport} />
           <thead>

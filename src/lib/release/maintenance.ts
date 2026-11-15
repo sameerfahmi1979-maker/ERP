@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { NextResponse, type NextRequest } from "next/server";
 
 export const RELEASE_HEALTH_PATH = "/api/health/release";
+const STARTUP_HEALTH_PATH = "/api/health/ready";
 
 // Server-runtime setting only. Unexpected explicit values fail closed.
 export function maintenanceEnabled(value = process.env.ERP_MAINTENANCE_MODE): boolean {
@@ -17,6 +18,7 @@ export function releaseResponse(request: NextRequest): NextResponse | null {
     return new NextResponse(request.method === "HEAD" ? null : JSON.stringify({ service: "algt-erp", status: active ? "maintenance" : "ok", check: "liveness-only" }),
       { status: 200, headers: { ...headers, "Content-Type": "application/json" } });
   }
+  if (request.nextUrl.pathname === STARTUP_HEALTH_PATH && ["GET", "HEAD"].includes(request.method)) return null;
   if (!active) return null;
   const html = request.method === "GET" && !request.nextUrl.pathname.startsWith("/api/") && request.headers.get("accept")?.includes("text/html");
   const body = request.method === "HEAD" ? null : html
@@ -27,5 +29,5 @@ export function releaseResponse(request: NextRequest): NextResponse | null {
 
 /** Preserve previous refresh exclusions only after the maintenance gate runs. */
 export function skipsSessionRefresh(pathname: string): boolean {
-  return pathname === "/api/mobile/dms/v1" || /^\/(?:_next\/static|_next\/image|favicon\.ico)/.test(pathname) || /\.(?:svg|png|jpg|jpeg|gif|webp)$/.test(pathname);
+  return pathname === STARTUP_HEALTH_PATH || pathname === "/api/mobile/dms/v1" || /^\/(?:_next\/static|_next\/image|favicon\.ico)/.test(pathname) || /\.(?:svg|png|jpg|jpeg|gif|webp)$/.test(pathname);
 }

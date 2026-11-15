@@ -1,4 +1,5 @@
 import "server-only";
+import {dmsBusinessDate} from "@/lib/dms/expiry-calendar";
 import {z} from "zod";
 import {getAuthContext,hasPermission,type AuthContext} from "@/lib/rbac/check";
 import {createClient} from "@/lib/supabase/server";
@@ -27,7 +28,7 @@ export async function readDmsDashboard(input:unknown={},context?:AuthContext,cal
   try{
     signal.throwIfAborted();const ctx=context??await getAuthContext();signal.throwIfAborted();
     if(!["dms.documents.view","dms.admin"].some(p=>hasPermission(ctx,p)))return{success:false,error:"Permission denied"};
-    const db=await createClient(),now=new Date(),asOf=now.toISOString(),today=asOf.slice(0,10),future=(n:number)=>new Date(now.getTime()+n*86400000).toISOString().slice(0,10);
+    const db=await createClient(),now=new Date(),asOf=now.toISOString(),today=dmsBusinessDate(now.getTime()),future=(n:number)=>dmsBusinessDate(now.getTime(), n);
     const month=new Date(now.getFullYear(),now.getMonth(),1).toISOString(),lastMonth=new Date(now.getFullYear(),now.getMonth()-1,1).toISOString(),rangeStart=new Date(now.getTime()-parsed.data.rangeDays*86400000).toISOString();
     let requests=0,active=0;const waiting:Array<()=>void>=[];
     const execute=async(q:Query)=>{

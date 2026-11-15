@@ -10,9 +10,9 @@ export async function evaluateDuplicateConflictFindings(
   input: { entityType: string; entityId: number; limit?: number }
 ): Promise<ComplianceRuleResult[]> {
   const limit = input.limit ?? 50;
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from("erp_ai_duplicate_candidates")
-    .select("id, candidate_type, entity_type_a, entity_id_a, entity_type_b, entity_id_b, source_document_id, confidence_score")
+    .select("id, candidate_type, entity_type_a, entity_id_a, entity_type_b, entity_id_b, source_document_id, confidence_score",{count:"exact"})
     .eq("status", "pending")
     .is("deleted_at", null)
     .or(
@@ -21,7 +21,7 @@ export async function evaluateDuplicateConflictFindings(
     )
     .limit(limit);
 
-  if (error || !data) return [];
+  if (error || !data || count!==data.length) throw new Error("Compliance duplicate source incomplete");
 
   return (data as Array<Record<string, unknown>>).map((row) => ({
     findingType: "duplicate_conflict_open" as const,
@@ -45,9 +45,9 @@ export async function evaluateFieldSuggestionConflictFindings(
   input: { entityType: string; entityId: number; limit?: number }
 ): Promise<ComplianceRuleResult[]> {
   const limit = input.limit ?? 50;
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from("erp_ai_field_suggestions")
-    .select("id, field_code, field_label, suggestion_type, confidence_score")
+    .select("id, field_code, field_label, suggestion_type, confidence_score",{count:"exact"})
     .eq("entity_type", input.entityType)
     .eq("entity_id", input.entityId)
     .eq("status", "pending")
@@ -55,7 +55,7 @@ export async function evaluateFieldSuggestionConflictFindings(
     .is("deleted_at", null)
     .limit(limit);
 
-  if (error || !data) return [];
+  if (error || !data || count!==data.length) throw new Error("Compliance suggestion source incomplete");
 
   return (data as Array<Record<string, unknown>>).map((row) => ({
     findingType: "field_suggestion_conflict_open" as const,
@@ -78,16 +78,16 @@ export async function evaluatePartyLicenseDmsExpiryMismatch(
   supabase: SupabaseClient,
   input: { partyId: number; limit?: number }
 ): Promise<ComplianceRuleResult[]> {
-  const { data: licenses, error } = await supabase
+  const { data: licenses, error, count } = await supabase
     .from("party_licenses")
-    .select("id, party_id, expiry_date, dms_license_document_id")
+    .select("id, party_id, expiry_date, dms_license_document_id",{count:"exact"})
     .eq("party_id", input.partyId)
     .is("deleted_at", null)
     .not("expiry_date", "is", null)
     .not("dms_license_document_id", "is", null)
     .limit(input.limit ?? 20);
 
-  if (error || !licenses) return [];
+  if (error || !licenses || count!==licenses.length) throw new Error("Compliance licence source incomplete");
 
   const results: ComplianceRuleResult[] = [];
   for (const lic of licenses as Array<{
@@ -96,13 +96,14 @@ export async function evaluatePartyLicenseDmsExpiryMismatch(
     expiry_date: string;
     dms_license_document_id: number;
   }>) {
-    const { data: doc } = await supabase
+    const { data: doc, error: documentError } = await supabase
       .from("dms_documents")
       .select("id, expiry_date, document_no")
       .eq("id", lic.dms_license_document_id)
       .is("deleted_at", null)
       .maybeSingle();
 
+    if (documentError) throw new Error("Compliance licence document read failed");
     if (!doc) continue;
     const docRow = doc as { id: number; expiry_date: string | null; document_no: string | null };
     if (!docRow.expiry_date || docRow.expiry_date === lic.expiry_date) continue;
@@ -134,20 +135,21 @@ export async function evaluateTrnMismatchForParty(
   supabase: SupabaseClient,
   input: { partyId: number }
 ): Promise<ComplianceRuleResult[]> {
-  const { data: taxRegs } = await supabase
+  const { data: taxRegs, error: taxError } = await supabase
     .from("party_tax_registrations")
     .select("trn")
     .eq("party_id", input.partyId)
     .is("deleted_at", null)
     .not("trn", "is", null)
-    .limit(1);
+    .order("id").limit(1);
+  if (taxError || !taxRegs) throw new Error("Compliance tax registration read failed");
 
   const partyTrn = (taxRegs?.[0] as { trn?: string } | undefined)?.trn?.trim().toUpperCase();
   if (!partyTrn) return [];
 
-  const { data: candidates } = await supabase
+  const { data: candidates, error, count } = await supabase
     .from("erp_ai_duplicate_candidates")
-    .select("id, source_document_id, value_a, value_b")
+    .select("id, source_document_id, value_a, value_b",{count:"exact"})
     .eq("status", "pending")
     .eq("candidate_type", "conflict_trn_value")
     .is("deleted_at", null)
@@ -157,7 +159,7 @@ export async function evaluateTrnMismatchForParty(
     )
     .limit(5);
 
-  if (!candidates?.length) return [];
+  if (error || !candidates || count!==candidates.length) throw new Error("Compliance tax conflict source incomplete");
 
   return (candidates as Array<Record<string, unknown>>).map((c) => ({
     findingType: "trn_mismatch" as const,

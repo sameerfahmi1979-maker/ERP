@@ -1,4 +1,5 @@
 import "server-only";
+import {dmsBusinessDate, dmsDaysUntilExpiry} from "@/lib/dms/expiry-calendar";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
@@ -34,7 +35,7 @@ async function prepare(input: z.output<typeof expiryCriteriaSchema>, now: number
   if (!ctx.profile || !ctx.isAccountActive || ctx.profile.must_change_password ||
       !["dms.expiry.view", "dms.documents.view", "dms.admin"].some(p => hasPermission(ctx, p))) throw Error("Permission denied");
   const db = await createClient(), p = input;
-  const date = (days: number) => new Date(now + days * 86400000).toISOString().slice(0, 10);
+  const date = (days: number) => dmsBusinessDate(now, days);
   const typeIds = async (value: string, categoryOnly = false) => {
     const categories = categoryOnly ? (await readAllPages(async (from, to) => {
       const r = await db.from("dms_document_categories").select("id", { count: "exact" }).ilike("name_en", literalLike(value)).order("id").range(from, to);
@@ -103,8 +104,9 @@ async function prepare(input: z.output<typeof expiryCriteriaSchema>, now: number
 }
 
 function mapRows(rows: z.output<typeof expiryDocumentRowsSchema>, now: number): DmsExpiringDocumentRow[] {
+  const asOf = dmsBusinessDate(now);
   return rows.map(d => ({ ...d, document_type: d.document_type?.name_en ?? null, is_renewable: d.document_type?.is_renewable ?? true,
-    category: d.category?.category?.name_en ?? null, days_remaining: d.expiry_date ? Math.round((new Date(d.expiry_date).getTime() - now) / 86400000) : null,
+    category: d.category?.category?.name_en ?? null, days_remaining: dmsDaysUntilExpiry(d.expiry_date, asOf),
     owner: null, latest_reminder_status: null }));
 }
 const failure = (error: unknown) => ({ success: false, error: error instanceof Error && error.message === "Permission denied" ? "Permission denied" : "Expiry results could not be completely verified. Refine the filters or retry." });

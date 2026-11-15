@@ -4,6 +4,7 @@
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
 import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
+import { formatDubaiPunch } from "@/lib/dubai-calendar";
 
 export const attendanceSummaryFetcher: ReportFetcher = {
   reportCode: "HR_ATTENDANCE_SUMMARY",
@@ -55,8 +56,8 @@ export const attendanceSummaryFetcher: ReportFetcher = {
         department: emp?.department?.department_name_en ?? "",
         attendance_date: r.attendance_date,
         attendance_type: r.attendance_type,
-        first_in: r.first_in_at ? r.first_in_at.slice(11, 16) : "",
-        last_out: r.last_out_at ? r.last_out_at.slice(11, 16) : "",
+        first_in: formatDubaiPunch(r.first_in_at),
+        last_out: formatDubaiPunch(r.last_out_at),
         total_hours: r.total_hours ?? 0,
         late_minutes: r.late_minutes ?? 0,
         early_out_minutes: r.early_out_minutes ?? 0,

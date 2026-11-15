@@ -1,3 +1,5 @@
+import { dubaiBusinessDate } from "@/lib/dubai-calendar";
+
 /** F12-04: exact two-decimal salary facts, not statutory payroll calculations. */
 export type SalaryComponent = {
   id?: number;
@@ -26,14 +28,16 @@ export function salaryDate(value: string): string {
 }
 
 export function payrollToday(now = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", {timeZone: "Asia/Dubai", year: "numeric", month: "2-digit", day: "2-digit"}).format(now);
+  return dubaiBusinessDate(now.getTime());
 }
+
+export const payrollEligibleStatuses = ["active", "on_leave", "probation"];
 
 /** Operational readiness only, not a determination of statutory pay entitlement. */
 export function payrollEmploymentEligible(employee: {employee_status: string; joining_date: string}, asOf: string): boolean {
   salaryDate(asOf);salaryDate(employee.joining_date);
   if (!["active","on_leave","probation","inactive","suspended","terminated","archived"].includes(employee.employee_status)) throw new SalaryUnavailable("Employment context unavailable");
-  return ["active","on_leave","probation"].includes(employee.employee_status) && employee.joining_date <= asOf;
+  return payrollEligibleStatuses.includes(employee.employee_status) && employee.joining_date <= asOf;
 }
 
 /** Matches the existing NUMERIC(12,2) storage contract; never round input silently. */

@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { EmailFeatureFlag, EmailProviderConfig, EmailSendLogRow } from "@/lib/email/providers/types";
 import { BookOpen, Mail, Plus, RefreshCw, ScrollText, ToggleLeft } from "lucide-react";
 import { useState, useTransition } from "react";
+import { OperationStatus } from "@/components/erp/operation-status";
 import { useRouter } from "next/navigation";
 import { EmailFeatureFlagsPanel } from "./email-feature-flags-panel";
 import { EmailProviderConfigList } from "./email-provider-config-list";
@@ -66,8 +67,8 @@ export function EmailSettingsPageClient({
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="gap-1.5" disabled={isPending} onClick={handleRefresh}>
-            <RefreshCw className={`h-4 w-4 ${isPending ? "animate-spin" : ""}`} />
-            Refresh
+            <RefreshCw className={`h-4 w-4 ${isPending ? "motion-safe:animate-spin" : ""}`} />
+            {isPending ? "Refreshing…" : "Refresh"}
           </Button>
           {canManage && <Button disabled={initialError || isPending} size="sm" className="gap-1.5" onClick={() => setAddOpen(true)}>
             <Plus className="h-4 w-4" />
@@ -76,6 +77,7 @@ export function EmailSettingsPageClient({
         </div>
       </div>
 
+      {isPending && <OperationStatus state="pending">Refreshing email settings…</OperationStatus>}
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="rounded-lg border border-border p-3">

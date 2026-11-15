@@ -3,20 +3,30 @@ import {z} from 'zod';
 import {createClient} from '@/lib/supabase/server';
 import {createAdminClient} from '@/lib/supabase/admin';
 import {verifyDmsBlob,readBoundedDmsObject} from '@/server/dms-file-verification';
+import {dmsTraceId,recordDmsClientTransfer,traceOperation,traceSpan} from '@/lib/performance/trace';
+import type {ActionResult,DmsUploadSessionRow} from '@/server/actions/dms/upload-sessions';
 const id=z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const planSchema=z.object({actorId:id,authSessionId:z.string().uuid(),source:z.object({id,name:z.string(),mime:z.string(),size:id,sha256:z.string().nullable(),path:z.string().min(1),owner:id.nullable(),company:id.nullable(),branch:id.nullable(),expiry:z.string().nullable()}).strict()}).strict();
 const objectSchema=z.object({id:z.string().uuid(),version:z.string().min(1),lastModified:z.string().datetime({offset:true})});
-export async function verifyTemporaryUpload(sessionId:number){
+export async function verifyTemporaryUpload(sessionId:number,transferMs?:number):Promise<ActionResult<DmsUploadSessionRow>>{
+ if(!id.safeParse(sessionId).success)return {success:false,error:'Invalid upload.'};
+ return traceOperation('dms.intake.verify',async()=>{
+  const result=await verifyRetainedTemporaryUpload(sessionId);
+  if(result.success)recordDmsClientTransfer(transferMs);
+  return result;
+ },dmsTraceId(`upload:${sessionId}`));
+}
+
+async function verifyRetainedTemporaryUpload(sessionId:number){
  try{
-  if(!id.safeParse(sessionId).success)return {success:false,error:'Invalid upload.'};
   const client=await createClient(),prepared=await client.rpc('f07_prepare_temp_upload',{p_session:sessionId});
   const p=planSchema.safeParse(prepared.data);
   if(prepared.error||!p.success||p.data.source.id!==sessionId)return {success:false,error:'The upload is unavailable, closed, expired or outside your upload permissions.'};
   const plan=p.data,storage=createAdminClient().storage.from('dms-temp');
   const before=await storage.info(plan.source.path),beforeId=objectSchema.safeParse(before.data);
   if(before.error||!beforeId.success)return {success:false,error:'The uploaded file is not yet available. Keep this session and retry its verification.'};
-  const original=await readBoundedDmsObject(storage,plan.source.path,plan.source.size);
-  const proof=await verifyDmsBlob(original,plan.source);
+  const original=await traceSpan('dms.fetch',()=>readBoundedDmsObject(storage,plan.source.path,plan.source.size));
+  const proof=await traceSpan('dms.verify',()=>verifyDmsBlob(original,plan.source));
   const after=await storage.info(plan.source.path),afterId=objectSchema.safeParse(after.data);
   if(after.error||!afterId.success||JSON.stringify(beforeId.data)!==JSON.stringify(afterId.data))return {success:false,error:'The uploaded file changed during verification. No upload completion was sent.'};
   const attested=await createAdminClient().rpc('f07_attest_temp_upload',{p_session:sessionId,p_actor:plan.actorId,p_auth_session:plan.authSessionId,p_source:plan.source,

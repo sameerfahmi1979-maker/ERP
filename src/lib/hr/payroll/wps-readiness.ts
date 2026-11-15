@@ -5,6 +5,8 @@
  * Does NOT use AI. Logic is deterministic.
  */
 
+import { isValidUaeIban } from "./uae-iban";
+
 export type WpsReadinessStatus =
   | "ready"
   | "incomplete"
@@ -79,6 +81,7 @@ export function checkWpsReadiness(input: WpsReadinessInput): WpsReadinessResult 
   if (method === "bank_transfer") {
     if (!wpsProfile.bank_id) missing.push("Bank not selected");
     if (!wpsProfile.iban || wpsProfile.iban.trim() === "") missing.push("IBAN not provided");
+    else if (!isValidUaeIban(wpsProfile.iban)) missing.push("IBAN format or check digits are invalid");
   } else if (method === "exchange_house") {
     if (!wpsProfile.exchange_house || wpsProfile.exchange_house.trim() === "") {
       missing.push("Exchange house not specified");

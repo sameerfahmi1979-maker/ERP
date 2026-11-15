@@ -1,4 +1,5 @@
 "use client";
+import {OperationStatus} from "@/components/erp/operation-status";
 import {reportCriteriaIdentity} from "@/lib/reads/report-criteria-schema";
 import {reportFilterKeys} from "@/lib/report-center/filter-contract";
 import {useReportViewState} from "./use-report-view-state";
@@ -24,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { exportToExcel } from "@/lib/export/excel";
 import { exportToCSV } from "@/lib/export/csv";
 import {usesOfficialDocumentSurface} from '@/lib/report-center/output-surface';
+import {usesFreshAnalyticalExport} from '@/lib/report-center/recruitment-reports';
 import { exportToPDF } from "@/lib/export/pdf";
 import { exportToPrint } from "@/lib/export/print";
 import type { ReportRegistryEntry, ReportRunResult } from "@/lib/report-center/types";
@@ -113,6 +115,7 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
   const {values: reportView, setField: setViewField, isCurrent} = useReportViewState(readIdentity);
   const {isRunning, isExporting, runResult, error, showTemplateDialog, pendingExportFormat, selectedTemplateId, resolvedBranding, showSaveFilterDialog, saveFilterName, isSavingFilter, isApplyingFilter} = reportView;
   const runSequence = useRef(0);
+  const activeRun = useRef<{ revision: number; templateId: number | undefined } | null>(null);
   const acceptedFilterRevision = useRef<number | null>(null);
   const outputSequence = runSequence.current;
   const canUseOutput = () => isCurrent() && !ownerDenied && !!runResult?.data && runSequence.current === outputSequence && acceptedFilterRevision.current===filterRevision.current &&
@@ -206,6 +209,9 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
 
   const runReport = async (templateIdForRun = selectedTemplateId) => {
     if (!isCurrent() || ownerDenied || !criteria.canRunNow()) return;
+    if (activeRun.current?.revision === filterRevision.current && activeRun.current.templateId === templateIdForRun) return;
+    const attempt = {revision:filterRevision.current, templateId:templateIdForRun};
+    activeRun.current = attempt;
     const sequence = ++runSequence.current, revision=filterRevision.current;
     acceptedFilterRevision.current=null;
     const latest = () => isCurrent() && runSequence.current === sequence && filterRevision.current===revision;
@@ -264,6 +270,7 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
     } catch (err) {
       if (latest()) setViewField("error", err instanceof Error ? err.message : "Unexpected error");
     } finally {
+      if (activeRun.current === attempt) activeRun.current = null;
       if (isCurrent() && runSequence.current === sequence) setViewField("isRunning", false);
     }
   };
@@ -293,7 +300,20 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
 
     setViewField("isExporting", true);
     try {
-      const { columns, rows } = runResult.data;
+      let data = runResult.data;
+      if (usesFreshAnalyticalExport(registryEntry.report_code)) {
+        const fresh = await runReportAction({
+          reportCode: registryEntry.report_code,
+          outputFormat: format,
+          filters: Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== "" && value !== null && value !== undefined)),
+          templateId: runResult.resolvedTemplateId ?? selectedTemplateId,
+        });
+        if (!canUseOutput()) return;
+        if (!fresh.success || !fresh.data?.data) throw Error(fresh.error ?? "Current report export authority could not be verified.");
+        if (fresh.data.resolvedTemplateId !== runResult.resolvedTemplateId) throw Error("Report branding changed. Run the report again.");
+        data = fresh.data.data;
+      }
+      const { columns, rows } = data;
 
       const activeColumns = visibleColumns
         ? columns.filter((col) => visibleColumns.includes(col))
@@ -373,9 +393,12 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
       return configuredFilterKeys.map((key) => ({
         key,
         label: key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-        type: key.includes("date") || key === "expiry_from" || key === "expiry_to"
+        type: key === "attendance_status" ? "select" as const : key.includes("date") || key === "expiry_from" || key === "expiry_to"
           ? ("date" as const)
           : ("text" as const),
+        options: key !== "attendance_status" ? undefined : (registryEntry.report_code === "HR_ABSENT_LATE_SUMMARY"
+          ? ["absent", "late", "missing_punch"] : ["site", "office", "yard", "workshop", "remote", "on_leave", "absent", "holiday"])
+          .map(value => ({value, label:value.replaceAll("_", " ").replace(/^\w/, char => char.toUpperCase())})),
       }));
     } catch {
       return [
@@ -617,11 +640,8 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
         </div>
       )}
 
-      {error && (
-        <div className="border border-destructive/20 bg-destructive/5 rounded-lg p-4 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      {(isRunning || isExporting) && <OperationStatus state="pending">{isExporting ? "Preparing report export…" : "Running report…"}</OperationStatus>}
+      {error && <OperationStatus state="failed" retry={!ownerDenied && criteria.canRunNow() && !isRunning ? () => void runReport() : undefined} retryLabel="Run report again">{error}</OperationStatus>}
 
       <ReportTemplateSelectDialog
         authContext={authContext}

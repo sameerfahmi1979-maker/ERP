@@ -53,6 +53,18 @@ it("a current authorized result and branding still render and export unchanged",
   fireEvent.click(screen.getByRole("button", {name: "Export synthetic result"})); await waitFor(() => expect(m.excel).toHaveBeenCalledTimes(1));
   expect(m.excel.mock.calls[0][0].data).toEqual([{name: "PRIVATE_SYNTHETIC_ROW"}]);
 });
+it.each(["HR_CANDIDATE_PIPELINE", "HR_WPS_READINESS"])("%s export requires a fresh export-scoped report before downloading rows", async reportCode => {
+  const context = {...auth, permissionCodes:[...auth.permissionCodes,"reports.export"], globalPermissionCodes:[...auth.globalPermissionCodes,"reports.export"]};
+  mount({...registry,report_code:reportCode},context);
+  await run(); await screen.findByTestId("branding");
+  m.run.mockResolvedValueOnce({success:false,error:"Current scope denied"});
+  await act(async () => {await m.export!("excel");});
+  expect(m.run).toHaveBeenLastCalledWith(expect.objectContaining({reportCode,outputFormat:"excel"}));
+  expect(m.excel).not.toHaveBeenCalled();
+  m.run.mockResolvedValueOnce(result("CURRENTLY_AUTHORIZED_ROW"));
+  await act(async () => {await m.export!("excel");});
+  expect(m.excel).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({data:[{name:"CURRENTLY_AUTHORIZED_ROW"}]}));
+});
 const replacements = {
   account: {...auth, profile: {...auth.profile!, id: 32, auth_user_id: "synthetic-b"}},
   revoked: {...auth, permissionCodes: [], globalPermissionCodes: []},

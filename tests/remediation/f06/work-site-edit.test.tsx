@@ -9,12 +9,11 @@ import { updateWorkSite } from "@/server/actions/common-master-data/work-sites";
 import WorkSitesPage from "@/app/(protected)/admin/common-master-data/work-sites/page";
 import WorkSiteRecordPage from "@/app/(protected)/admin/common-master-data/work-sites/record/[id]/page";
 
-const mock = vi.hoisted(() => ({ ctx: {} as AuthContext, client: vi.fn(), audit: vi.fn(), revalidate: vi.fn() }));
+const mock = vi.hoisted(() => ({ ctx: {} as AuthContext, client: vi.fn(), rpc: vi.fn(), revalidate: vi.fn() }));
 vi.mock("@/lib/rbac/check", async () => ({ ...await import("@/lib/rbac/scope"), getAuthContext: async () => mock.ctx }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: mock.client }));
-vi.mock("@/server/actions/audit", () => ({ logAudit: mock.audit }));
 vi.mock("next/cache", () => ({ revalidatePath: mock.revalidate }));
-vi.mock("next/navigation", () => ({ usePathname: () => "/admin/common-master-data/work-sites" }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/admin/common-master-data/work-sites", useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/components/erp/export/erp-export-menu", () => ({ ERPExportMenu: () => null }));
 vi.mock("@/features/common-master-data/work-sites/work-site-workspace-form", () => ({ WorkSiteWorkspaceForm: () => null }));
 
@@ -22,9 +21,10 @@ const ownSite = { id: 51, site_code: "SITE-A", site_name: "Assigned site", owner
 const siblingSite = { ...ownSite, id: 52, site_code: "SITE-B", site_name: "Sibling site", branch_id: 3 };
 const read = "common_md.work_sites.view";
 const manage = "common_md.work_sites.manage";
+const contract = { operationId: "10000000-0000-4000-8000-000000000051", revision: "1" };
 const query = {
   select: vi.fn().mockReturnThis(), order: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
-  is: vi.fn().mockReturnThis(), update: vi.fn().mockReturnThis(), single: vi.fn(), maybeSingle: vi.fn(),
+  is: vi.fn().mockReturnThis(), range: vi.fn(), single: vi.fn(), in: vi.fn().mockResolvedValue({data:[],error:null}),
 };
 
 beforeEach(() => {
@@ -36,13 +36,13 @@ beforeEach(() => {
       { roleId: 2, roleCode: "site_editor", ownerCompanyId: 1, branchId: 2, permissionCodes: [manage] },
     ],
   };
-  mock.client.mockResolvedValue({ from: () => query });
+  mock.client.mockResolvedValue({ from: () => query, rpc: mock.rpc });
 });
 afterEach(cleanup);
 
 it("adds Edit to permitted work-site rows while preserving read access to sibling rows", async () => {
-  query.order.mockResolvedValueOnce({ data: [ownSite, siblingSite], error: null });
-  const page = await WorkSitesPage();
+  query.range.mockResolvedValueOnce({ data: [ownSite, siblingSite], count: 2, status: 200, error: null });
+  const page = await WorkSitesPage({});
   render(<FluentProvider theme={webLightTheme}><WorkspaceUiMemoryProvider principalId="test-owner">{page}</WorkspaceUiMemoryProvider></FluentProvider>);
   expect(screen.getByRole("link", { name: "Edit Assigned site" }).getAttribute("href")).toBe("/admin/common-master-data/work-sites/record/51?mode=edit");
   expect(screen.getByRole("link", { name: "Sibling site" })).toBeTruthy();
@@ -62,19 +62,17 @@ it.each([
 });
 
 it("reports an edit as unsuccessful when the update affects no permitted row", async () => {
-  query.maybeSingle.mockResolvedValueOnce({ data: null, error: null });
-  const result = await updateWorkSite({ id: siblingSite.id, site_name: "Revised site" });
+  mock.rpc.mockResolvedValueOnce({ data: null, error: { code: "42501" } });
+  const result = await updateWorkSite({ id: siblingSite.id, site_name: "Revised site" }, contract);
   expect(result).toMatchObject({ success: false, error: expect.stringContaining("permission") });
-  expect(query.select).toHaveBeenCalledWith("id");
-  expect(mock.audit).not.toHaveBeenCalled();
+  expect(mock.rpc).toHaveBeenCalledWith("phase3_save_work_site", expect.objectContaining({p_id:siblingSite.id,p_revision:"1"}));
   expect(mock.revalidate).not.toHaveBeenCalled();
 });
 
 it("reports success and refreshes the work site only after the update returns its ID", async () => {
-  query.maybeSingle.mockResolvedValueOnce({ data: { id: ownSite.id }, error: null });
-  expect(await updateWorkSite({ id: ownSite.id, site_name: "Revised site" })).toEqual({ success: true });
-  expect(query.eq).toHaveBeenCalledWith("id", ownSite.id);
-  expect(query.is).toHaveBeenCalledWith("deleted_at", null);
-  expect(mock.audit).toHaveBeenCalledWith(expect.objectContaining({ entity_id: ownSite.id, action: "update" }));
+  const receipt = { id: ownSite.id, revision: "2", replayed: false, owner_company_id: 1, branch_id: 2, available_to_all_organizations: false };
+  mock.rpc.mockResolvedValueOnce({ data: receipt, error: null });
+  expect(await updateWorkSite({ id: ownSite.id, site_name: "Revised site" }, contract)).toEqual({ success: true, data: receipt });
+  expect(mock.rpc).toHaveBeenCalledWith("phase3_save_work_site", expect.objectContaining({p_id:ownSite.id,p_data:{site_name:"Revised site"}}));
   expect(mock.revalidate).toHaveBeenCalledWith("/admin/common-master-data/work-sites/record/51");
 });

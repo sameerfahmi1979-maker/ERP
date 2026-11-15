@@ -50,6 +50,7 @@ export function ERPCombobox({
   readOnly = false,
   required = false,
   loading = false,
+  resultsPending = false,
   error,
   allowClear = false,
   emptyText = 'No options available',
@@ -255,14 +256,15 @@ export function ERPCombobox({
                 onSearchQueryChange?.(v);
               }}
             />
-            <CommandList>
-              {options.length === 0 && (
+            <CommandList aria-busy={resultsPending}>
+              {resultsPending && <div role="status" className="px-3 py-2 text-sm text-muted-foreground">Loading results…</div>}
+              {!resultsPending && !error && options.length === 0 && (
                 <CommandEmpty>{emptyText}</CommandEmpty>
               )}
-              {options.length > 0 && filteredOptions.length === 0 && (
+              {!resultsPending && !error && options.length > 0 && filteredOptions.length === 0 && (
                 <CommandEmpty>{noResultsText}</CommandEmpty>
               )}
-              {visibleOptions.length > 0 && (
+              {!resultsPending && !error && visibleOptions.length > 0 && (
                 <CommandGroup>
                   {visibleOptions.map((option) => {
                     const isSelected =
@@ -291,7 +293,7 @@ export function ERPCombobox({
                   })}
                 </CommandGroup>
               )}
-              {showTypeHint && (
+              {!resultsPending && !error && showTypeHint && (
                 <div className="px-3 py-2 text-[11px] text-muted-foreground border-t border-border text-center">
                   Showing {visibleOptions.length} of {filteredOptions.length} — type to search
                 </div>

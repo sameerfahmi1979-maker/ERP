@@ -156,8 +156,8 @@ function PreviewPanel({ file, onClose, onDownload, canDownload, aiAction }: Prev
       <div className="relative bg-muted/10" style={{ minHeight: 420 }}>
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="flex flex-col items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-6 w-6 animate-spin" />
+            <div role="status" className="flex flex-col items-center gap-2 text-muted-foreground">
+              <Loader2 aria-hidden="true" className="h-6 w-6 animate-spin motion-reduce:animate-none" />
               <span className="text-xs">Loading preview…</span>
             </div>
           </div>
@@ -373,8 +373,8 @@ export function DmsDocumentFilesSection({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
-        <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading files…
+      <div role="status" className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+        <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin motion-reduce:animate-none mr-2" /> Loading files…
       </div>
     );
   }

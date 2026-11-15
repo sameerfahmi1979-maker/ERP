@@ -1,5 +1,4 @@
 "use client";
-import { toast } from "sonner";
 
 import type { AssistantDraftRow, AssistantMessageRow, AssistantSessionRow } from "@/lib/ai/common/assistant/types";
 import {
@@ -17,6 +16,7 @@ import { AssistantEmptyState } from "./assistant-empty-state";
 import { AssistantLoading } from "./assistant-loading";
 import { AssistantMessageBubble } from "./assistant-message-bubble";
 import { AssistantSessionList } from "./assistant-session-list";
+import { OperationStatus } from "@/components/erp/operation-status";
 
 interface PendingMessageExtra {
   navigationLinks?: Array<{ label: string; route: string }>;
@@ -65,8 +65,8 @@ function AssistantPageSession({
 
   // Load session on selection
   const loadSession = useCallback(async (sessionId: number) => {
-    const ticket = epoch.current;
-    const result = await getAssistantSession(sessionId);
+    const ticket = ++epoch.current;
+    const result = await getAssistantSession(sessionId).catch(() => ({ success: false, data: undefined, error: "Session access could not be verified." }));
     if (ticket !== epoch.current || !owner?.isLive() || selectedSession.current !== sessionId) return;
     if (result.success && result.data) {
       setMessages(result.data.messages as MessageWithExtras[]);
@@ -83,11 +83,12 @@ function AssistantPageSession({
     const ticket = ++epoch.current;
     let cancelled = false;
     getAssistantSession(activeSessionId).then(result => {
-      if (!cancelled && ticket === epoch.current && owner?.isLive() && result.success && result.data) {
+      if (cancelled || ticket !== epoch.current || !owner?.isLive()) return;
+      if (result.success && result.data) {
         setMessages(result.data.messages as MessageWithExtras[]);
         setDrafts(result.data.drafts);
-      }
-    }).catch(() => { if (!cancelled) toast.error("Failed to load session"); });
+      } else setNotice(result.error ?? "Session access could not be verified.");
+    }).catch(() => { if (!cancelled && ticket === epoch.current && owner?.isLive()) setNotice("Session access could not be verified."); });
     return () => { cancelled = true; };
   }, [activeSessionId, owner]);
 
@@ -261,7 +262,8 @@ function AssistantPageSession({
 
         {/* Action chips */}
         <AssistantActionChips onChipClick={handleChipClick} />
-        {notice && <div role="status" className="px-4 py-2 text-sm text-muted-foreground">{notice}{uncertain && activeSessionId && <button type="button" className="underline ml-2" onClick={() => void loadSession(activeSessionId)}>Reload retained session</button>}</div>}
+        {notice && <div className="px-4 py-2"><OperationStatus state={uncertain ? "unconfirmed" : "failed"}
+          retry={activeSessionId ? () => void loadSession(activeSessionId) : () => void refreshSessions()} retryLabel={activeSessionId ? "Reload retained session" : "Reload sessions"}>{notice}</OperationStatus></div>}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">

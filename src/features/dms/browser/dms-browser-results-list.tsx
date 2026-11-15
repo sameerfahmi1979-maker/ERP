@@ -112,8 +112,8 @@ export function DmsBrowserResultsList({
   // ── Loading state (initial search) ────────────────────────────────────────
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
-        <Loader2 className="h-4 w-4 animate-spin" />
+      <div role="status" className="flex items-center justify-center py-12 text-muted-foreground gap-2">
+        <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin motion-reduce:animate-none" />
         <span className="text-sm">Searching…</span>
       </div>
     );

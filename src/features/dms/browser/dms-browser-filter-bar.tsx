@@ -8,7 +8,7 @@
 import { cn } from "@/lib/utils";
 import type { DmsBrowserDocType } from "@/server/actions/dms/browser";
 import { ChevronDown, Sparkles, X } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 export interface DmsBrowserActiveFilters {
   documentTypeIds: number[];
@@ -44,19 +44,28 @@ const ENTITY_TYPE_OPTIONS = [
 
 interface FilterChipProps {
   label: string;
+  name: string;
   active: boolean;
   onClear?: () => void;
   children?: React.ReactNode;
   className?: string;
 }
 
-function FilterChip({ label, active, onClear, children, className }: FilterChipProps) {
+function FilterChip({ label, name, active, onClear, children, className }: FilterChipProps) {
   const [open, setOpen] = useState(false);
+  const panelId = useId();
 
   return (
-    <div className="relative">
+    <div className="relative flex items-center" onKeyDown={event => {
+      if (event.key === "Escape" && open) {
+        event.currentTarget.querySelector("button")?.focus();
+        setOpen(false);
+      }
+    }}>
       <button
         type="button"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((o) => !o)}
         className={cn(
           "inline-flex items-center gap-1 h-6 px-2 rounded-full border text-[11px] font-medium transition-colors",
@@ -67,24 +76,21 @@ function FilterChip({ label, active, onClear, children, className }: FilterChipP
         )}
       >
         {label}
-        {active && onClear ? (
-          <span
-            role="button"
-            aria-label="Clear filter"
-            onClick={(e) => { e.stopPropagation(); onClear(); }}
-            className="ml-0.5 rounded-full hover:bg-primary/20 p-0.5"
-          >
-            <X className="h-2.5 w-2.5" />
-          </span>
-        ) : (
-          <ChevronDown className={cn("h-2.5 w-2.5 transition-transform", open && "rotate-180")} />
-        )}
+        <ChevronDown aria-hidden className={cn("h-2.5 w-2.5 transition-transform", open && "rotate-180")} />
       </button>
+      {active && onClear && <button type="button" aria-label={`Clear ${name} filter`}
+        onClick={event => {
+          event.currentTarget.parentElement?.querySelector("button")?.focus();
+          setOpen(false);
+          onClear();
+        }} className="ml-0.5 rounded-full p-1 hover:bg-primary/20">
+        <X aria-hidden className="h-2.5 w-2.5" />
+      </button>}
 
-      {open && !active && (
+      {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute top-8 left-0 z-50 min-w-[180px] rounded-md border border-border bg-popover shadow-md p-1">
+          <div id={panelId} className="absolute top-8 left-0 z-50 min-w-[180px] rounded-md border border-border bg-popover shadow-md p-1">
             {children}
           </div>
         </>
@@ -120,6 +126,7 @@ export function DmsBrowserFilterBar({ docTypes, filters, onChange }: DmsBrowserF
     <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border/40 flex-wrap">
       {/* Document Type */}
       <FilterChip
+        name="document type"
         label={filters.documentTypeIds.length > 0 ? selectedTypeName : "Type"}
         active={filters.documentTypeIds.length > 0}
         onClear={() => onChange({ ...filters, documentTypeIds: [] })}
@@ -151,6 +158,7 @@ export function DmsBrowserFilterBar({ docTypes, filters, onChange }: DmsBrowserF
 
       {/* Status */}
       <FilterChip
+        name="status"
         label={filters.status ? STATUS_OPTIONS.find((s) => s.value === filters.status)?.label ?? "Status" : "Status"}
         active={!!filters.status}
         onClear={() => onChange({ ...filters, status: "" })}
@@ -172,24 +180,25 @@ export function DmsBrowserFilterBar({ docTypes, filters, onChange }: DmsBrowserF
 
       {/* Date Range */}
       <FilterChip
+        name="date"
         label={filters.issueDateFrom || filters.issueDateTo ? "Date ✓" : "Date"}
         active={!!(filters.issueDateFrom || filters.issueDateTo)}
         onClear={() => onChange({ ...filters, issueDateFrom: "", issueDateTo: "" })}
       >
         <div className="p-2 space-y-2">
           <div>
-            <label className="text-[10px] text-muted-foreground block mb-0.5">Issue From</label>
             <input
               type="date"
+              aria-label="Issue date from"
               value={filters.issueDateFrom}
               onChange={(e) => onChange({ ...filters, issueDateFrom: e.target.value })}
               className="w-full text-xs border border-border rounded px-1.5 py-0.5 bg-background"
             />
           </div>
           <div>
-            <label className="text-[10px] text-muted-foreground block mb-0.5">Issue To</label>
             <input
               type="date"
+              aria-label="Issue date to"
               value={filters.issueDateTo}
               onChange={(e) => onChange({ ...filters, issueDateTo: e.target.value })}
               className="w-full text-xs border border-border rounded px-1.5 py-0.5 bg-background"
@@ -200,6 +209,7 @@ export function DmsBrowserFilterBar({ docTypes, filters, onChange }: DmsBrowserF
 
       {/* Linked to */}
       <FilterChip
+        name="linked record"
         label={filters.linkedEntityType
           ? ENTITY_TYPE_OPTIONS.find((e) => e.value === filters.linkedEntityType)?.label ?? "Linked to"
           : "Linked to"}
@@ -236,6 +246,7 @@ export function DmsBrowserFilterBar({ docTypes, filters, onChange }: DmsBrowserF
       <div className="ml-auto">
         <button
           type="button"
+          aria-pressed={filters.semanticOn}
           onClick={() => onChange({ ...filters, semanticOn: !filters.semanticOn })}
           className={cn(
             "inline-flex items-center gap-1 h-6 px-2 rounded-full border text-[11px] font-medium transition-colors",

@@ -343,18 +343,12 @@ export async function resolveOfficialSensitiveFields(opts: {
   requestedPaths: string[];
   context: ReportRenderContext;
   supabase: SupabaseClient;
-  /** UX.3 Scope H: Audit metadata — templateId, templateCode, issuedBy user profile id */
-  auditMeta?: {
-    templateId?: number;
-    templateCode?: string;
-    issuedByProfileId?: string | null;
-  };
 }): Promise<{
   values: Record<string, string>;
   resolvedPaths: string[];
   warnings: string[];
 }> {
-  const { employeeId, requestedPaths, context, supabase, auditMeta } = opts;
+  const { employeeId, requestedPaths, context, supabase } = opts;
   const values: Record<string, string> = {};
   const resolvedPaths: string[] = [];
   const warnings: string[] = [];
@@ -435,96 +429,12 @@ export async function resolveOfficialSensitiveFields(opts: {
     }
   }
 
-  // SCOPE H: Audit log — safe metadata only, NO sensitive values
-  if (resolvedPaths.length > 0) {
-    try {
-      await writeSensitiveFieldAuditLog({
-        resolvedPaths,
-        employeeId,
-        templateId: auditMeta?.templateId,
-        templateCode: auditMeta?.templateCode,
-        issuedByProfileId: auditMeta?.issuedByProfileId,
-        outputMode: context.outputMode,
-        templateType: context.templateType,
-        userPermissions: context.userPermissions,
-        supabase,
-      });
-    } catch {
-      // Audit failure must never break document generation
-      warnings.push("Audit log write failed (non-blocking).");
-    }
-  }
-
   return { values, resolvedPaths, warnings };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Scope H: Safe audit log writer (no sensitive values)
 // ─────────────────────────────────────────────────────────────────────────────
-
-interface SensitiveFieldAuditLogOpts {
-  resolvedPaths: string[];
-  employeeId: number;
-  templateId?: number;
-  templateCode?: string;
-  issuedByProfileId?: string | null;
-  outputMode: string;
-  templateType: string;
-  userPermissions: string[];
-  supabase: SupabaseClient;
-}
-
-/**
- * Write a safe audit log entry when sensitive fields are resolved in official output.
- * NEVER logs the actual field values — only metadata (paths, template, employee id, user).
- */
-async function writeSensitiveFieldAuditLog(opts: SensitiveFieldAuditLogOpts): Promise<void> {
-  const {
-    resolvedPaths,
-    employeeId,
-    templateId,
-    templateCode,
-    issuedByProfileId,
-    outputMode,
-    templateType,
-    userPermissions,
-    supabase,
-  } = opts;
-
-  const auditEntry = {
-    module_code: "REPORTS",
-    entity_name: "sensitive_field_resolution",
-    entity_id: templateId ?? 0,
-    entity_reference: templateCode ?? "unknown",
-    action: "official_sensitive_field_resolution",
-    new_values: {
-      // Safe metadata only — no field values
-      resolved_field_count: resolvedPaths.length,
-      resolved_field_paths: resolvedPaths,
-      employee_id: employeeId,
-      output_mode: outputMode,
-      template_type: templateType,
-      permissions_active: userPermissions.filter((p) =>
-        p.startsWith("reports.sensitive_fields")
-      ),
-      issued_at: new Date().toISOString(),
-    },
-    performed_by: issuedByProfileId ?? null,
-  };
-
-  // Use the Supabase client to insert directly — this module is server-side only
-  // and cannot import the server action (which is "use server" + has cookie dependency).
-  await supabase.from("audit_logs").insert({
-    module_code: auditEntry.module_code,
-    entity_name: auditEntry.entity_name,
-    entity_id: auditEntry.entity_id,
-    entity_reference: auditEntry.entity_reference,
-    action: auditEntry.action,
-    new_values: auditEntry.new_values,
-    performed_by: auditEntry.performed_by,
-    created_at: new Date().toISOString(),
-  });
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers

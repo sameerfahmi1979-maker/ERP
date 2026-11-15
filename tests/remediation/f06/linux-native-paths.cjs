@@ -17,7 +17,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, 'verification/source
 const allowed = new Set([
   'src/server/branding-image.ts', 'src/lib/branding/constants.ts',
   'src/lib/dms/file-content-extractor.ts', 'src/lib/dms/pdf-to-images.ts',
-  'src/lib/dms/pdf-text-quality.ts', 'src/lib/logger.ts', 'src/lib/log-context.ts'
+  'src/lib/dms/pdf-text-quality.ts', 'src/lib/logger.ts', 'src/lib/log-context.ts', 'src/lib/performance/trace.ts'
 ]);
 for (const file of allowed) assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex'), manifest.files[file], `unchanged app source ${file}`);
 const originalResolve = Module._resolveFilename;
@@ -37,7 +37,8 @@ assert.equal(fs.readFileSync(serverOnlyAlias).length,0);
 // This retains dynamic import() for ESM pdfjs, and removes only TypeScript syntax.
 Module._resolveFilename = function(request, parent, ...rest) {
   if (request === 'server-only') {
-    assert.equal(parent.filename,path.join(root,'src/server/branding-image.ts'));
+    const relative = path.relative(root, parent.filename).split(path.sep).join('/');
+    assert.ok(['src/server/branding-image.ts','src/lib/performance/trace.ts'].includes(relative));
     request = serverOnlyAlias;
   }
   if (request.startsWith('@/')) request = path.join(root, 'src', request.slice(2));

@@ -20,3 +20,5 @@
 !tooling/
 !tooling/dms/
 !tooling/dms/validate-intake.cjs
+!tooling/release/
+!tooling/release/build-inputs.cjs

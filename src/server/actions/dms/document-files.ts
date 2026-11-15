@@ -87,10 +87,10 @@ export async function getDmsDocumentFiles(
     const access = await checkDocumentConfidentialityAccess(supabase, documentId, ctx);
     if (!access.allowed) return { success: false, error: access.error ?? "Document access is restricted." };
 
-    const data = await readAllPages(async (from,to) => {
-      const result = await supabase
-      .from("dms_document_files")
-      .select(
+    const data = await readAllPages<DmsDocumentFileRow>(async (from, to) => {
+      const page = await supabase
+        .rpc("f03_read_document_files_for_document", { p_document_id: documentId }, { get: true, count: "exact" })
+        .select(
         `id, document_id, version_id, file_role,
          file_name, mime_type, file_size_bytes, sha256_hash, page_count, language,
          integrity_status, integrity_checked_at, integrity_error_message,
@@ -99,14 +99,13 @@ export async function getDmsDocumentFiles(
          created_by, created_at, deleted_at,
          version:dms_document_versions!version_id(version_number, version_label),
          creator:user_profiles!created_by(full_name)`
-      , {count:"exact"})
-      .eq("document_id", documentId)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false }).order("id",{ascending:true}).range(from,to);
-      return result;
-    }, {identity:row=>row.id,maxRows:10000});
+        )
+        .order("created_at", { ascending: false }).order("id", { ascending: true }).range(from, to);
+      if (page.data !== null && !Array.isArray(page.data)) throw new Error("Invalid file list response.");
+      return { ...page, data: page.data as DmsDocumentFileRow[] | null };
+    }, { identity: row => row.id, maxRows: 10000 });
 
-    return { success: true, data: (data as unknown as DmsDocumentFileRow[]) ?? [] };
+    return { success: true, data };
   } catch (e) {
     return { success: false, error: String(e) };
   }

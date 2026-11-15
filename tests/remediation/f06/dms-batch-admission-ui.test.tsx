@@ -99,7 +99,8 @@ it('shows per-file recovery failure even if the handoff stops before upload',asy
  m.read.mockResolvedValue({success:false,code:'unavailable',uncertain:false,error:'The batch or its current permissions are unavailable.'});
  render(ui());await start();
  await waitFor(()=>expect(screen.getByText(/Reference: BATCH-RECOVERY/)).toBeTruthy());
- expect(screen.getByRole('progressbar',{name:/Synthetic.pdf/})).toBeTruthy();
+ expect(screen.getByRole('region',{name:'Batch member results'}).textContent).toContain('Synthetic.pdf');
+ expect(screen.getByText('Unavailable')).toBeTruthy();
  expect(m.upload).not.toHaveBeenCalled();expect(m.draft).not.toHaveBeenCalled();
 });
 const select=async()=>{const file=new File(['x'],'Synthetic.pdf',{type:'application/pdf'});fireEvent.change(screen.getByLabelText('Choose document files'),{target:{files:[file]}});await waitFor(()=>expect(screen.getByRole('button',{name:'Upload & AI Fill All (1)'})).toBeTruthy());};

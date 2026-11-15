@@ -40,7 +40,7 @@ export async function approveNumberedAiIntake(input:unknown,contract?:WorkspaceS
  let retained:{documentId:number;documentNo:string}|undefined,dispatched=false;
  try{
   const ctx=await getAuthContext();
-  if(!ctx.profile||!['dms.documents.upload','dms.documents.review_ai','dms.admin'].some(code=>hasPermission(ctx,code))||!hasPermission(ctx,'numbering.rules.generate'))return preparationFailure(failure('42501'));
+  if(!ctx.profile||!hasPermission(ctx,'dms.documents.upload'))return preparationFailure(failure('42501'));
   const client=await createClient(),request=parsed.data;
   if(!request.prepared){
    const prepared=await client.rpc('prepare_numbered_ai_intake',{p_request:request});

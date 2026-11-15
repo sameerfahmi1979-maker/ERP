@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { createWorkspaceSaveAttempt } from "@/lib/workspace/save-contract";
 import Link from "next/link";
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -40,30 +41,47 @@ export function DesignationsListClient({ designations: initial, canManage }: Pro
   if (snapshot !== initial) { setSnapshot(initial); setDesignations(initial); }
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DesignationRow | null>(null);
+  const inFlight = useRef(false);
+  const pending = useRef(new Map<number, ReturnType<typeof createWorkspaceSaveAttempt>>());
+  const attemptFor = (id: number) => {
+    let attempt = pending.current.get(id);
+    if (!attempt) { attempt = createWorkspaceSaveAttempt(); pending.current.set(id, attempt); }
+    return attempt;
+  };
 
   const handleToggleActive = async (d: DesignationRow) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setPendingId(d.id);
     try {
-      const result = await updateDesignation({ id: d.id, is_active: !d.is_active });
+      const values = { id: d.id, is_active: !d.is_active };
+      const result = await updateDesignation(values, attemptFor(d.id).begin(values, d.workspace_revision === undefined ? null : String(d.workspace_revision)));
+      if (!result.uncertain) pending.current.delete(d.id);
       if (result.success) {
         setDesignations((prev) =>
-          prev.map((item) => (item.id === d.id ? { ...item, is_active: !d.is_active } : item))
+          prev.map((item) => (item.id === d.id ? { ...item, is_active: !d.is_active, workspace_revision: Number(result.data?.revision) } : item))
         );
         toast.success(d.is_active ? "Designation deactivated" : "Designation activated");
         router.refresh();
       } else {
         toast.error(result.error ?? "Failed to update");
       }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Save unconfirmed. Retry with the same values.");
     } finally {
+      inFlight.current = false;
       setPendingId(null);
     }
   };
 
   const handleDelete = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || inFlight.current) return;
+    inFlight.current = true;
     setPendingId(deleteTarget.id);
     try {
-      const result = await softDeleteDesignation(deleteTarget.id);
+      const id = deleteTarget.id;
+      const result = await softDeleteDesignation(id, attemptFor(id).begin({ id, archived: true }, deleteTarget.workspace_revision === undefined ? null : String(deleteTarget.workspace_revision)));
+      if (!result.uncertain) pending.current.delete(id);
       if (result.success) {
         setDesignations((prev) => prev.filter((d) => d.id !== deleteTarget.id));
         toast.success("Designation deleted");
@@ -71,7 +89,10 @@ export function DesignationsListClient({ designations: initial, canManage }: Pro
       } else {
         toast.error(result.error ?? "Failed to delete");
       }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Delete unconfirmed. Retry the same record.");
     } finally {
+      inFlight.current = false;
       setPendingId(null);
       setDeleteTarget(null);
     }
@@ -128,7 +149,7 @@ export function DesignationsListClient({ designations: initial, canManage }: Pro
 
   return (
     <>
-      <ERPDataTable presentation="worklist" tableId="common.designations" resultsLabel="Designations" data={designations} columns={columns} enableRowSelection={false} />
+      <ERPDataTable presentation="worklist" tableId="common.designations" resultsLabel="Designations" data={designations} columns={columns} enableRowSelection={false} serverPaged enableGlobalFilter={false} enableSorting={false} />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>

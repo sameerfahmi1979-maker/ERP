@@ -148,11 +148,11 @@ export async function runReportFetcherPreview(
       if(!['reports.run',...(registryEntry.required_permissions??[])].every(access.allows))throw Error('This employee preview is outside your current permitted scope.');
       permissionCodes=access.scopedContext.permissionCodes;
     }
-    const collectionClient=await createScopedReportReadClient(actor,reportCode,registryEntry.required_permissions);
+    const collectionClient=await createScopedReportReadClient(actor,reportCode,registryEntry.required_permissions,filters ?? {});
     const rawResult: ReportDataResult = await fetcher.fetch(filters ?? {}, permissionCodes,collectionClient);
     const fresh=await getAuthContext();assertAccountActive(fresh);
     if(reportAuthorityIdentity(fresh)!==reportAuthorityIdentity(actor))throw Error('Your preview permissions changed during collection. Run it again.');
-    if(reportCode.startsWith('HR_'))await revalidateScopedReportReadClient(collectionClient,fresh);
+    await revalidateScopedReportReadClient(collectionClient,fresh);
     if(selectedEmployee!==null){
       const access=await getEmployeeAccess(fresh,selectedEmployee);
       if(!['reports.run',...(registryEntry.required_permissions??[])].every(access.allows))throw Error('The employee preview access changed during collection.');

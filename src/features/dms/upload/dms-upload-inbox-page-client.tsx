@@ -65,27 +65,20 @@ function computeUploadTimeoutMs(fileSizeBytes: number): number {
 }
 
 /** Honest AI duration estimate based on file size (replaces the fixed "10–30s"). */
-function estimateAiDuration(fileSizeBytes: number): string {
-  const sizeMb = fileSizeBytes / (1024 * 1024);
-  if (sizeMb < 0.4) return "15–30 seconds";
-  if (sizeMb < 1.5) return "30–60 seconds";
-  return "1–3 minutes (large document)";
-}
-
 type UploadMode = "single" | "batch";
 
-function batchMemberProgress(phase: string): { value: number; label: string; terminal?: "complete" | "failed" | "warning" } {
+function batchMemberProgress(phase: string): { label: string; terminal?: "complete" | "failed" | "warning" } {
   switch (phase) {
-    case "uploading": return { value: 25, label: "Uploading" };
-    case "analysis": return { value: 60, label: "Preparing AI draft" };
-    case "processing": return { value: 80, label: "AI analysis running" };
-    case "confirmed": return { value: 100, label: "Draft ready", terminal: "complete" };
-    case "rejected": return { value: 0, label: "Rejected", terminal: "failed" };
-    case "unconfirmed": return { value: 0, label: "Needs reconciliation", terminal: "warning" };
-    case "unavailable": return { value: 0, label: "Unavailable", terminal: "failed" };
-    case "needs_file": return { value: 0, label: "File required", terminal: "warning" };
-    case "historical": return { value: 0, label: "Reconcile in batch queue", terminal: "warning" };
-    default: return { value: 0, label: "Waiting" };
+    case "uploading": return { label: "Uploading" };
+    case "analysis": return { label: "Preparing AI draft" };
+    case "processing": return { label: "AI analysis running" };
+    case "confirmed": return { label: "Draft ready", terminal: "complete" };
+    case "rejected": return { label: "Rejected", terminal: "failed" };
+    case "unconfirmed": return { label: "Needs reconciliation", terminal: "warning" };
+    case "unavailable": return { label: "Unavailable", terminal: "failed" };
+    case "needs_file": return { label: "File required", terminal: "warning" };
+    case "historical": return { label: "Reconcile in batch queue", terminal: "warning" };
+    default: return { label: "Waiting" };
   }
 }
 
@@ -110,6 +103,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
   const batchFailureRef = useRef<HTMLDivElement>(null);
   const batch = useDmsBatchAdmission({
     enabled: batchEnabled && uploadMode === "batch",
+    preparationConcurrency: process.env.NEXT_PUBLIC_DMS_BATCH_SERIAL === 'true' ? 1 : 2,
     context: entityContext,
     recoveryBatchCode: recoveryReceipt?.batch_code,
     upload: async (capability, body, mime) => {
@@ -301,6 +295,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
     }
 
     const { session:pendingSession, token, path, isDuplicate, duplicateDocument,uploadRequired } = result.data;
+    let transferMs: number | undefined;
 
     if(uploadRequired){
     try {
@@ -308,6 +303,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
       // SPEED.2L (Issue #2): the storage upload has no built-in timeout — a
       // stalled transfer used to leave the UI on "Uploading…" forever.
       const timeoutMs = computeUploadTimeoutMs(file.size);
+      const transferStarted = performance.now();
       const uploadPromise = supabase.storage
         .from("dms-temp")
         .uploadToSignedUrl(path, token, new Blob([file],{type:pendingSession.mime_type}), { contentType: pendingSession.mime_type,upsert:false });
@@ -326,6 +322,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
         toast.error(`Upload failed: ${uploadError.message}`);
         return;
       }
+      transferMs = performance.now() - transferStarted;
     } catch (e) {
       if(!retained.isCurrent())return;
       const msg = e instanceof Error ? e.message : String(e);
@@ -335,7 +332,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
     }
     }
 
-    const verified=await completeDmsTempUpload(pendingSession.id);
+    const verified=await (transferMs===undefined?completeDmsTempUpload(pendingSession.id):completeDmsTempUpload(pendingSession.id,transferMs));
     if(!retained.isCurrent())return;
     if(!verified.success||!verified.data){
       setUploadState({phase:'error',message:verified.error??'Upload verification is pending. Retain the existing Inbox session.'});
@@ -496,13 +493,13 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
               disabled={uploadState.phase === "uploading"||(!entityContext&&!selectedOwningScope&&!singleAdmission.pending)}
             />
             {uploadState.phase === "uploading" && (
-              <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+              <div role="status" className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                 <div className="h-3 w-3 animate-spin rounded-full border border-primary border-t-transparent" />
                 Uploading file to secure storage…
               </div>
             )}
             {uploadState.phase === "error" && (
-              <div className="mt-2 text-xs text-destructive">Error: {uploadState.message}</div>
+              <div role="alert" className="mt-2 text-xs text-destructive">{uploadState.message}</div>
             )}
           </>
         ) : (
@@ -538,7 +535,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
               {batch.attempt?.receipt && <Button type="button" size="sm" variant="outline" disabled={batch.busy} onClick={() => router.push(`/dms/inbox/batch/${batch.attempt!.receipt!.batch_code}`)}>Open batch queue</Button>}
             </div>
             <p className="mt-2 text-xs text-muted-foreground">Only confirmed drafts are ready for review. Approve each one individually — no bulk approval.</p>
-            {batch.busy && <p role="status" className="mt-2 text-sm">Working on the retained batch…</p>}
+            {batch.busy && batch.items.length === 0 && <p role="status" className="mt-2 text-sm">Checking the retained batch…</p>}
             {batch.retentionError && <p role="alert" className="mt-2 text-sm text-destructive">Retained numbered requests could not be read. Reconcile the batch before continuing.</p>}
             {batch.pendingSessionIds.length > 0 && (
               <div className="mt-3 space-y-2">
@@ -552,8 +549,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
             )}
             {batch.items.length > 0 && (
               <section aria-label="Batch member results" className="mt-3 rounded-md border p-3">
-                <p className="text-sm font-medium">{batch.items.filter(i => i.phase === "confirmed").length} of {batch.items.length} drafts confirmed</p>
-                <p className="mt-1 text-xs text-muted-foreground">Each bar shows the file’s current processing stage; AI does not provide an exact percentage.</p>
+                <p role="status" className="text-sm font-medium">{batch.items.filter(i => i.phase === "confirmed").length} of {batch.items.length} drafts confirmed</p>
                 <ul className="mt-2 space-y-3">{batch.items.map(item => {
                   const progress = batchMemberProgress(item.phase);
                   return <li key={item.position} className="space-y-1.5 text-sm">
@@ -562,19 +558,6 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
                       <span className={cn("shrink-0 text-xs", progress.terminal === "complete" ? "text-green-700 dark:text-green-300" : progress.terminal === "failed" ? "text-destructive" : progress.terminal === "warning" ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground")}>
                         {progress.label}
                       </span>
-                    </div>
-                    <div
-                      role="progressbar"
-                      aria-label={`${item.name}: ${progress.label}`}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuenow={progress.value}
-                      className="h-2 overflow-hidden rounded-full bg-muted"
-                    >
-                      <div
-                        className={cn("h-full rounded-full transition-[width] duration-500", progress.terminal === "complete" ? "bg-green-600 dark:bg-green-400" : progress.terminal === "failed" ? "bg-destructive" : progress.terminal === "warning" ? "bg-amber-500 dark:bg-amber-400" : "bg-violet-600 dark:bg-violet-400", item.phase === "uploading" || item.phase === "analysis" || item.phase === "processing" ? "animate-pulse" : "")}
-                        style={{ width: `${progress.value}%` }}
-                      />
                     </div>
                     <p className="text-xs text-muted-foreground">{item.message}</p>
                     {['unavailable','unconfirmed','rejected','needs_file','historical','processing'].includes(item.phase)&&<Button type="button" size="sm" variant="outline" disabled={!batch.ready||batch.busy} onClick={()=>void batch.resume(item.position)}>Recover file {item.position+1}</Button>}
@@ -600,12 +583,12 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
         />
       )}
 
-      {/* AI processing banner — honest elapsed time + size-based estimate (SPEED.2L) */}
+      {/* AI processing banner — current stage and elapsed time */}
       {uploadState.phase === "ai_processing" && (
         <div className="rounded-xl border-2 border-violet-400 bg-violet-50 dark:bg-violet-950/20 p-4 space-y-3">
           <div className="flex items-center gap-2">
             <div className="h-4 w-4 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
-            <p className="text-sm font-semibold text-violet-700 dark:text-violet-400">
+            <p role="status" className="text-sm font-semibold text-violet-700 dark:text-violet-400">
               AI is analyzing your document…
             </p>
             <span className="ml-auto text-xs font-mono text-violet-600 dark:text-violet-500 tabular-nums">
@@ -613,9 +596,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
             </span>
           </div>
           <p className="text-xs text-violet-600 dark:text-violet-500">
-            Reading file content and extracting document information. Estimated time for this file:{" "}
-            <strong>{estimateAiDuration(uploadState.session.file_size_bytes)}</strong>.
-            You will be redirected to the review screen automatically when it finishes.
+            The review opens automatically when the result is saved.
           </p>
         </div>
       )}

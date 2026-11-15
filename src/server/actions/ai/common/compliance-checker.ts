@@ -10,7 +10,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, hasGlobalPermission, isGlobalAdmin } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import {
   runComplianceScan,
@@ -42,7 +42,7 @@ const scanInputSchema = z.object({
 });
 
 const entityScanInputSchema = scanInputSchema.extend({
-  entityType: z.enum(["party", "company", "branch", "site", "dms_document"]),
+  entityType: z.enum(["party", "company", "branch", "site"]),
   entityId: z.coerce.number().int().positive(),
 });
 
@@ -92,7 +92,7 @@ function canReviewCompliance(ctx: Awaited<ReturnType<typeof getAuthContext>>): b
 }
 
 function canAdminScan(ctx: Awaited<ReturnType<typeof getAuthContext>>): boolean {
-  return hasPermission(ctx, "ai.common.admin") || ctx.roleCodes.includes("system_admin");
+  return hasGlobalPermission(ctx, "ai.common.admin");
 }
 
 async function isComplianceEnabled(): Promise<boolean> {
@@ -207,7 +207,7 @@ export async function scanComplianceFindings(
       },
     });
 
-    const isAdmin = ctx.roleCodes.includes("system_admin");
+    const isAdmin = isGlobalAdmin(ctx);
     const supabase = createAdminClient();
     const result = await runComplianceScan(
       supabase,
@@ -227,10 +227,11 @@ export async function scanComplianceFindings(
       entity_name: "compliance_scan",
       entity_id: 0,
       entity_reference: "full_scan",
-      action: "ai_compliance_scan_completed",
+      action: result.failedEntities.length ? "ai_compliance_scan_incomplete" : "ai_compliance_scan_completed",
       new_values: {
         detected: result.detected,
         inserted: result.inserted,
+        failedEntities: result.failedEntities.length,
         dryRun: result.dryRun,
       },
     });
@@ -262,7 +263,7 @@ export async function scanComplianceForEntity(
       };
     }
 
-    const isAdmin = ctx.roleCodes.includes("system_admin");
+    const isAdmin = isGlobalAdmin(ctx);
     const supabase = createAdminClient();
     const result = await runEntityComplianceScan(supabase, {
       entityType: parsed.data.entityType,

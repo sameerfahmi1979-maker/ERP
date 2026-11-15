@@ -37,6 +37,8 @@ export interface ERPComboboxProps {
   readOnly?: boolean;
   required?: boolean;
   loading?: boolean;
+  /** Remote results are pending while the popup and query remain editable. */
+  resultsPending?: boolean;
 
   // Validation
   error?: string;

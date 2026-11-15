@@ -1,6 +1,7 @@
 import{z}from'zod';
 import{employeeDate,employeeId}from'./employee-contract';
 import{salaryMinorUnits}from'./payroll/salary-as-of';
+import{isValidUaeIban,normalizeUaeIban}from'./payroll/uae-iban';
 export const payrollChildKind=z.enum(['payroll-profile','salary-component','salary-revision','wps-profile','payroll-hold']);
 export type PayrollChildKind=z.infer<typeof payrollChildKind>;
 const money=z.number().finite().min(0).max(9999999999.99).refine(v=>{try{salaryMinorUnits(v);return true;}catch{return false;}},'Use at most two decimal places.');
@@ -11,7 +12,7 @@ export const payrollProfileValues=z.object(profileFields).strict();
 export const salaryComponentValues=z.object(componentFields).strict().refine(v=>v.effective_to===null||v.effective_to>=v.effective_from,{path:['effective_to'],message:'Effective to must not precede effective from.'});
 export const salaryRevisionValues=z.object({effective_date:employeeDate,revision_reason:z.string().max(1000).nullable(),new_gross:money,apply_to_components:z.boolean(),fingerprint:z.string().regex(/^[0-9a-f]{64}$/)}).strict();
 export const payrollHoldValues=z.object({hold_reason:z.string().trim().min(1,'Hold reason is required.').max(500),hold_date:employeeDate,notes:z.string().max(1000).nullable()}).strict();
-export const wpsProfileValues=z.object({...wpsFields,account_number:z.string().trim().min(1).max(50).nullable().optional(),iban:z.string().trim().min(1).max(34).refine(v=>!v.startsWith('AE')||v.length===23,'UAE IBAN must be 23 characters starting with AE.').nullable().optional()}).strict();
+export const wpsProfileValues=z.object({...wpsFields,account_number:z.string().trim().min(1).max(50).nullable().optional(),iban:z.string().max(80).transform(normalizeUaeIban).refine(isValidUaeIban,'Enter a UAE IBAN with valid check digits.').nullable().optional()}).strict();
 export const payrollChildValues=(kind:PayrollChildKind)=>kind==='payroll-profile'?payrollProfileValues:kind==='salary-component'?salaryComponentValues:kind==='salary-revision'?salaryRevisionValues:kind==='wps-profile'?wpsProfileValues:payrollHoldValues;
 export const payrollOpeningValues=(kind:PayrollChildKind)=>kind==='payroll-profile'?z.object({...profileFields,currency:z.string(),notes:z.string().nullable()}).strict():kind==='salary-component'?z.object({...componentFields,notes:z.string().nullable()}).strict():kind==='wps-profile'?z.object({...wpsFields,account_holder_name:z.string().nullable(),exchange_house:z.string().nullable(),labour_card_number:z.string().nullable(),mohre_person_code:z.string().nullable()}).strict():kind==='payroll-hold'?payrollHoldValues.extend({hold_reason:z.string(),notes:z.string().nullable()}):z.object({fingerprint:z.string().regex(/^[0-9a-f]{64}$/)}).strict();
 export const PAYROLL_CHILD_TABLES={

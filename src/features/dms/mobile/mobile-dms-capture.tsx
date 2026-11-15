@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { DmsLoadingStatus } from "@/features/dms/dms-loading-status";
 import { useReadCacheOwner } from "@/components/layout/read-cache-boundary";
 import { createClient } from "@/lib/supabase/client";
 import { getDmsEntityTypeLabel } from "@/lib/dms/dms-entity-types";
@@ -248,6 +249,8 @@ export function MobileDmsCapture({ user, context, canStartAi }: {
   if (!active()) return <p role="alert">Your ERP session changed. Reopen Mobile DMS.</p>;
   return <section aria-label="Capture document" className="space-y-4 rounded-lg border p-4">
     <h2 className="text-lg font-semibold">Capture document</h2>
+    {!loaded && <DmsLoadingStatus label="Recovering the saved capture draft…" />}
+    {loaded && busy && !message && !uploaded && <DmsLoadingStatus label="Working on the capture draft…" />}
     {!draft.uploaded && <p className="text-sm text-muted-foreground">Draft files are kept in this browser until upload is confirmed. Use a trusted device.</p>}
     {context && <p className="text-sm">Upload for {getDmsEntityTypeLabel(context.entityType)} #{context.entityId}</p>}
     {!context && !draft.submission && !draft.uploaded && <DmsUploadScopePicker value={scope} onChange={setScope} disabled={disabled} />}

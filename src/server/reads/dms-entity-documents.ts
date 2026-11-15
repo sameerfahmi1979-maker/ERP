@@ -1,4 +1,5 @@
 import "server-only";
+import { dubaiBusinessDate } from "@/lib/dubai-calendar";
 import {prepareDocumentQuery} from "@/server/ai/search/document-query";
 import {z} from "zod";
 import {getAuthContext,hasPermission,type AuthContext} from "@/lib/rbac/check";
@@ -132,9 +133,9 @@ async function execute(input:unknown,context:AuthContext|undefined,callerSignal:
           openComplianceFindings = r.count;
         }
       }
-      const now=new Date(asOf),soon=new Date(now);soon.setDate(soon.getDate()+30);
+      const now=dubaiBusinessDate(Date.parse(asOf)),soon=dubaiBusinessDate(Date.parse(asOf),30);
       const summary:DmsEntityDocumentComplianceSummary={totalDocuments:visible.length,expiredDocuments:0,expiringSoonDocuments:0,missingRequiredDocuments,openComplianceFindings,highRiskDocuments:0,criticalRiskDocuments:0,latestExpiryDate:null,scope:"visible_documents"};
-      for(const d of visible){if(d.expiry_date){const expiry=new Date(d.expiry_date);if(expiry<now)summary.expiredDocuments++;else if(expiry<=soon)summary.expiringSoonDocuments++;if(!summary.latestExpiryDate||d.expiry_date>summary.latestExpiryDate)summary.latestExpiryDate=d.expiry_date;}
+      for(const d of visible){if(d.expiry_date){if(d.expiry_date<now)summary.expiredDocuments++;else if(d.expiry_date<=soon)summary.expiringSoonDocuments++;if(!summary.latestExpiryDate||d.expiry_date>summary.latestExpiryDate)summary.latestExpiryDate=d.expiry_date;}
         if(d.ai_risk_level==="critical")summary.criticalRiskDocuments++;else if(d.ai_risk_level==="high")summary.highRiskDocuments++;}
       const checked=entityDocumentSummarySchema.parse(summary);if(legacy)return {success:true,collection:{kind:"summary",summary:checked}};
       return output({criteria:p,asOf,availability:"available",summary:checked});

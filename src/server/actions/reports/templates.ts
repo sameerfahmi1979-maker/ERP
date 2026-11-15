@@ -17,6 +17,7 @@ import { brandingPermission, canViewReportBrandingAssets, canManageReportBrandin
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { hasGlobalPermission } from "@/lib/rbac/scope";
 import {getEmployeeAccess} from "@/lib/rbac/employee-access";
+import {logAudit} from "@/server/actions/audit";
 import {requireReportTemplateCapability,requireTemplateBrandingCapability} from "@/server/report-template-authority";
 import type { ReportTemplate, ReportBrandingProfile } from "@/lib/report-center/types";
 import type { ExportBrandingContext } from "@/lib/export/export-types";
@@ -703,12 +704,20 @@ export async function renderVisualTemplateForLetterPreview(input: {
           governanceStatus: template.governance_status,
         },
         supabase: dataClient,
-        auditMeta: {
-          templateId: template.id,
-          templateCode: template.template_code,
-          issuedByProfileId: authCtx.profile?.id ? String(authCtx.profile.id) : null,
-        },
       });
+      if (sensitiveResult.resolvedPaths.length) {
+        const audit = await logAudit({
+          module_code: "REPORTS",
+          entity_name: "sensitive_field_resolution",
+          entity_id: template.id,
+          entity_reference: template.template_code,
+          action: "official_sensitive_field_resolution",
+          owner_company_id: employeeAccess!.subject.owner_company_id,
+          branch_id: employeeAccess!.subject.branch_id,
+          new_values: {employee_id:employeeId,resolved_field_paths:sensitiveResult.resolvedPaths},
+        });
+        if (!audit.success) throw Error("Sensitive report access could not be recorded.");
+      }
       // Official values overwrite the masked placeholders from the base resolver
       bindingValues = { ...bindingValues, ...sensitiveResult.values };
       allWarnings.push(...sensitiveResult.warnings);

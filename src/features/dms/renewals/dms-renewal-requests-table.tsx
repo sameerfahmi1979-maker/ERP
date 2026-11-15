@@ -155,7 +155,7 @@ export function DmsRenewalRequestsTable({ filter = {}, canManage = false }: DmsR
           <TableSearchInput value={table.query} onChange={table.setQuery} placeholder="Search renewals…" className="w-52" />
         </div>
         <DmsListTools view={listView} />
-        {isError ? <DmsLoadError subject="renewal requests" retry={refetch} pending={isFetching} /> : isLoading ? <div role="status" className="py-8 text-center text-sm text-muted-foreground">Loading…</div> : <>
+        {isError ? <DmsLoadError subject="renewal requests" retry={refetch} pending={isFetching} /> : isLoading ? <div role="status" className="py-8 text-center text-sm text-muted-foreground">Loading renewal requests…</div> : <>
 <div className="rounded-md border border-border overflow-auto">
           <WorklistScrollRegion attach={listView.viewport.attachViewport} aria-label="renewals table"><table className="w-full table-fixed text-sm" {...listView.viewport.tableProps}><WorklistColgroup viewport={listView.viewport} />
             <thead>

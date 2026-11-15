@@ -8,12 +8,12 @@ import type {
   RequiredDocumentRuleForCompliance,
 } from "./types";
 import { COMPLIANCE_EXPIRING_SOON_DAYS } from "./types";
+import { dmsBusinessDate, dmsDaysUntilExpiry } from "@/lib/dms/expiry-calendar";
 
 function getExpiringSoonDays(rule: RequiredDocumentRuleForCompliance): number {
   const days = rule.reminderDaysBeforeExpiry;
-  if (days && days.length > 0) {
-    return Math.min(...days.filter((d) => d > 0));
-  }
+  const positive = days?.filter(d=>Number.isFinite(d)&&d>0) ?? [];
+  if (positive.length) return Math.min(...positive);
   return COMPLIANCE_EXPIRING_SOON_DAYS;
 }
 
@@ -25,9 +25,14 @@ function findMatchingDocs(
   return docs.filter(
     (d) =>
       d.documentTypeId === rule.documentTypeId &&
-      d.status !== "archived" &&
-      d.status !== "deleted"
+      ["active","approved","expired"].includes(d.status ?? "") &&
+      !d.archived && !d.deleted && d.supersededByDocumentId == null
   );
+}
+
+function hasRequiredExpiry(doc: LinkedDocumentForCompliance, rule: RequiredDocumentRuleForCompliance, asOf: string) {
+  return !rule.requiresExpiryDate || (doc.expiryDate !== null && /^\d{4}-\d{2}-\d{2}$/.test(doc.expiryDate)
+    && dmsDaysUntilExpiry(doc.expiryDate, asOf) !== null);
 }
 
 export function evaluateRequiredDocumentRulesForEntity(input: {
@@ -37,17 +42,13 @@ export function evaluateRequiredDocumentRulesForEntity(input: {
   linkedDocuments: LinkedDocumentForCompliance[];
 }): ComplianceRuleResult[] {
   const results: ComplianceRuleResult[] = [];
-  const now = new Date();
-  const defaultSoon = new Date(now);
-  defaultSoon.setDate(defaultSoon.getDate() + COMPLIANCE_EXPIRING_SOON_DAYS);
+  const asOf = dmsBusinessDate();
 
   for (const rule of input.rules) {
     if (rule.entityType !== input.entityType) continue;
 
-    const matching = findMatchingDocs(input.linkedDocuments, rule);
+    const matching = findMatchingDocs(input.linkedDocuments, rule).filter(doc=>hasRequiredExpiry(doc,rule,asOf));
     const soonDays = getExpiringSoonDays(rule);
-    const soonThreshold = new Date(now);
-    soonThreshold.setDate(soonThreshold.getDate() + soonDays);
 
     if (rule.isRequired && matching.length === 0) {
       results.push({
@@ -107,8 +108,8 @@ export function evaluateRequiredDocumentRulesForEntity(input: {
       }
 
       if (doc.expiryDate) {
-        const expiry = new Date(doc.expiryDate);
-        if (expiry < now) {
+        const days = dmsDaysUntilExpiry(doc.expiryDate, asOf);
+        if (days !== null && days < 0) {
           results.push({
             findingType: "expired_document",
             severity: "critical",
@@ -126,7 +127,7 @@ export function evaluateRequiredDocumentRulesForEntity(input: {
             },
             recommendedAction: "Start renewal or upload a new version",
           });
-        } else if (expiry <= soonThreshold) {
+        } else if (days !== null && days <= soonDays) {
           results.push({
             findingType: "expiring_soon_document",
             severity: "medium",
@@ -140,9 +141,7 @@ export function evaluateRequiredDocumentRulesForEntity(input: {
             evidenceJson: {
               ruleCode: rule.ruleCode,
               documentNo: doc.documentNo,
-              daysUntilExpiry: Math.ceil(
-                (expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-              ),
+              daysUntilExpiry: days,
             },
             recommendedAction: "Plan document renewal",
           });
@@ -177,7 +176,7 @@ export function countMissingRequiredDocuments(input: {
   let count = 0;
   for (const rule of input.rules) {
     if (rule.entityType !== input.entityType || !rule.isRequired) continue;
-    const matching = findMatchingDocs(input.linkedDocuments, rule);
+    const matching = findMatchingDocs(input.linkedDocuments, rule).filter(doc=>hasRequiredExpiry(doc,rule,dmsBusinessDate()));
     if (matching.length === 0) count++;
   }
   return count;

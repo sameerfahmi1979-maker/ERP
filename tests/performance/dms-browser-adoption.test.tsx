@@ -59,6 +59,41 @@ it("actual parent cannot replace the latest search with a late old response", as
 const calls = (operation: string) => state.read.mock.calls.filter(c => c[1].operation === operation);
 function enter(query = "needle") {fireEvent.change(screen.getByRole("textbox", {name: "Test search"}), {target: {value: query}});}
 async function selected() {enter(); fireEvent.click(await screen.findByRole("button", {name: "Document 1"})); await screen.findByText("Synthetic 1.pdf");}
+it("reuses an AI request while changing filters and reapplies the new scope to its candidates", async () => {
+  let complete!: (value: unknown) => void;
+  state.ai.mockImplementation(() => new Promise(resolve => {complete = resolve;}));
+  mount();
+  enter("find these four words");
+  await waitFor(() => expect(state.ai).toHaveBeenCalledTimes(1));
+  fireEvent.click(await screen.findByRole("button", {name: "Expired filter"}));
+  expect(state.ai).toHaveBeenCalledTimes(1);
+  await act(async () => complete({success: true, data: {results: [{documentId: 2, documentNo: "DOC-2", title: "AI match"}]}}));
+  await waitFor(() => expect(state.candidates).toHaveBeenCalledWith(expect.objectContaining({filters: expect.objectContaining({status: "expired"})})));
+});
+
+it("preserves a pending provider intent through Clear and unrelated search churn", async () => {
+  const query = "find these four words";
+  let complete!: (value:unknown) => void;
+  state.ai.mockImplementation((value:string) => value === query
+    ? new Promise(resolve => { complete = resolve; })
+    : Promise.resolve({success:false}));
+  mount();
+  enter(query);
+  enter("");
+  for (let i = 0; i < 11; i++) enter(`find four unrelated words ${i}`);
+  enter(query);
+  expect(state.ai.mock.calls.filter(([value]) => value === query)).toHaveLength(1);
+  await act(async () => complete({success:true,data:{results:[{documentId:2, documentNo:"DOC-2", title:"Held suggestion"}]}}));
+  await screen.findByRole("button", {name:/Held suggestion/});
+});
+
+it("provides a narrow-layout return action that releases the current preview", async () => {
+  mount();
+  await selected();
+  fireEvent.click(screen.getByRole("button", {name: "Back to documents"}));
+  expect(screen.queryByLabelText("Selected preview")).toBeNull();
+  expect(screen.getByRole("button", {name: "Document 1"})).toBeTruthy();
+});
 it("actual browser initially reads only types, then one base page, then only selected file metadata", async () => {
   mount(); await screen.findByRole("button", {name: "Expired filter"}); expect(calls("types")).toHaveLength(1); expect(calls("search")).toHaveLength(0); expect(calls("files")).toHaveLength(0);
   await selected(); expect(calls("search")).toHaveLength(1); expect(calls("files")).toHaveLength(1); expect(calls("files")[0][1]).toMatchObject({documentId: 1, offset: 0, limit: 25}); expect(state.legacy).not.toHaveBeenCalled(); expect(state.ai).not.toHaveBeenCalled(); expect(state.semantic).not.toHaveBeenCalled();
@@ -333,12 +368,12 @@ it("actual preview keeps file 2 and its verified URLs through a real divider dra
   const query = view.client.getQueryCache().find({queryKey: [...dmsBrowserPrefix(dmsBrowserIdentity(ctx)), "files"], exact: false});
   expect(query?.state.fetchStatus).toBe("idle");
   const verifiedPage = query!.state.data, reads = calls("files").length;
-  const divider = screen.getByRole("separator"), column = divider.previousElementSibling as HTMLElement;
-  const initialWidth = Number.parseInt(column.style.width);
+  const divider = screen.getByRole("separator"), column = divider.parentElement!.previousElementSibling as HTMLElement;
+  const initialWidth = Number.parseInt(column.style.getPropertyValue("--dms-sidebar-width"));
   fireEvent.mouseDown(divider, {clientX: 400});
   fireEvent.mouseMove(document, {clientX: 475});
   fireEvent.mouseUp(document);
-  expect(column.style.width).toBe(initialWidth + 75 + "px");
+  expect(column.style.getPropertyValue("--dms-sidebar-width")).toBe(initialWidth + 75 + "px");
   expect(document.body.style.cursor).toBe("");
   expect(query!.state.data).toBe(verifiedPage);
   expect(calls("files")).toHaveLength(reads);

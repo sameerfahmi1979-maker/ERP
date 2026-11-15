@@ -100,17 +100,17 @@ it("rejects duplicate document identities even when the page count is exact",asy
  expect((await readDmsDocumentPage({})).success).toBe(false);
 });
 it("file/content existence filters stay in the database and strip child metadata",async()=>{
- responses=[{data:[{id:1,content_match:[{document_id:1}],perf_document_has_files:true,perf_document_has_extracted_text:true}],count:1,error:null}];
+ responses=[{data:[{id:1,content_match:[{document_id:1}],perf_document_has_extracted_text:true}],count:1,error:null}];
  const r=await readDmsDocumentPage({filters:{hasExtractedText:true,has_files:true}});
  expect(r.success).toBe(true);expect(r.data?.rows).toEqual([{id:1}]);
- expect(operations.every(o=>o.table==="ai_mod02_search_documents")).toBe(true);
- expect(operations).toContainEqual({table:"ai_mod02_search_documents",method:"eq",args:["perf_document_has_extracted_text",true]});
- expect(operations).toContainEqual({table:"ai_mod02_search_documents",method:"eq",args:["perf_document_has_files",true]});
+ expect(operations.every(o=>o.table==="dms_search_documents_by_file_presence")).toBe(true);
+ expect(operations).toContainEqual({table:"dms_search_documents_by_file_presence",method:"eq",args:["perf_document_has_extracted_text",true]});
+ expect(operations[0]).toMatchObject({method:"rpc",args:[{has_files:true},{get:true,count:"exact"}]});
 });
 it("missing extracted text is the complement of non-null extracted text",async()=>{
  responses=[{data:[],count:0,error:null}];expect((await readDmsDocumentPage({filters:{hasExtractedText:false,has_files:false}})).success).toBe(true);
- expect(operations).toContainEqual({table:"ai_mod02_search_documents",method:"eq",args:["perf_document_has_extracted_text",false]});
- expect(operations).toContainEqual({table:"ai_mod02_search_documents",method:"eq",args:["perf_document_has_files",false]});
+ expect(operations).toContainEqual({table:"dms_search_documents_by_file_presence",method:"eq",args:["perf_document_has_extracted_text",false]});
+ expect(operations[0]).toMatchObject({table:"dms_search_documents_by_file_presence",method:"rpc",args:[{has_files:false},{get:true,count:"exact"}]});
 });
 it("content search passes only bounded text to the protected invoker RPC",async()=>{
  // The AI query reads permitted type vocabulary and checks an ambiguous

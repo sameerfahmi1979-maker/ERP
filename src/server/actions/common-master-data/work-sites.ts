@@ -1,16 +1,23 @@
 "use server";
 
+import { readCataloguePage } from "@/lib/master-data/catalogue-page";
+import { literalContains } from "@/lib/reads/search";
+
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { hasRole } from "@/lib/rbac/scope";
 import { revalidatePath } from "next/cache";
-import { logAudit } from "@/server/actions/audit";
+import { operationsRealDate } from "@/lib/reads/hr-operations-schema";
+import type { WorkspaceSaveContract } from "@/lib/workspace/save-contract";
+import type { WorkspaceSaveResult } from "@/server/workspace-save";
+import type { Json } from "@/types/database";
 import { z } from "zod";
 
 export type ActionResult<T = unknown> = { success: boolean; data?: T; error?: string };
 
 export type WorkSiteRow = {
   id: number;
+  workspace_revision?: number;
   site_code: string;
   site_name: string;
   site_type: string;
@@ -66,8 +73,8 @@ const createSchema = z.object({
   address_line_2: z.string().max(500).optional().nullable(),
   po_box: z.string().max(50).optional().nullable(),
   makani_number: z.string().max(50).optional().nullable(),
-  latitude: z.number().optional().nullable(),
-  longitude: z.number().optional().nullable(),
+  latitude: z.number().min(-90).max(90).optional().nullable(),
+  longitude: z.number().min(-180).max(180).optional().nullable(),
   site_contact_name: z.string().max(200).optional().nullable(),
   site_contact_phone: z.string().max(50).optional().nullable(),
   site_contact_email: z.string().email().optional().nullable(),
@@ -77,13 +84,23 @@ const createSchema = z.object({
   work_calendar_id: z.number().int().positive().optional().nullable(),
   access_notes: z.string().max(2000).optional().nullable(),
   status: z.enum(SITE_STATUSES).default('active'),
-  opening_date: z.string().optional().nullable(),
-  closing_date: z.string().optional().nullable(),
+  opening_date: z.string().refine(operationsRealDate).optional().nullable(),
+  closing_date: z.string().refine(operationsRealDate).optional().nullable(),
   description: z.string().max(2000).optional().nullable(),
 });
 
-const updateSchema = createSchema.partial().extend({ id: z.number().int().positive() });
-const saveReceiptSchema = z.object({ id: z.number().int().positive(), available_to_all_organizations: z.boolean().optional() });
+const updateSchema = createSchema.partial().extend({
+  id: z.number().int().positive(),
+  is_restricted_area: z.boolean().optional(),
+  cicpa_required: z.boolean().optional(),
+  adnoc_required: z.boolean().optional(),
+  status: z.enum(SITE_STATUSES).optional(),
+});
+const saveReceiptSchema = z.object({
+  id: z.number().int().positive(), revision: z.string().regex(/^[1-9]\d*$/), replayed: z.boolean(),
+  owner_company_id: z.number().int().positive(), branch_id: z.number().int().positive().nullable(), available_to_all_organizations: z.boolean(),
+});
+const contractSchema = z.object({ operationId: z.uuid(), revision: z.string().regex(/^[1-9]\d*$/).max(19).nullable() });
 
 type CreateInput = z.infer<typeof createSchema>;
 type UpdateInput = z.infer<typeof updateSchema>;
@@ -95,24 +112,31 @@ function canManage(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
   return hasPermission(ctx, "common_md.manage") || hasPermission(ctx, "common_md.work_sites.manage");
 }
 
-export async function listWorkSites(filters?: { owner_company_id?: number; branch_id?: number; site_type?: string; status?: string; search?: string }): Promise<ActionResult<WorkSiteRow[]>> {
+export async function listWorkSites(filters?: { owner_company_id?: number; branch_id?: number; site_type?: string; status?: string; search?: string; page?: number }): Promise<ActionResult<WorkSiteRow[]> & { totalCount?: number }> {
   try {
     const ctx = await getAuthContext();
     if (!canView(ctx)) return { success: false, error: "Permission denied" };
     const supabase = await createClient();
-    let q = supabase
+    const query = (head = false) => {
+      let q = supabase
       .from("work_sites")
-      .select("*, owner_company:owner_companies(id,legal_name_en), branch:branches(id,branch_name_en)")
+      .select("*", { count: "exact", head })
       .is("deleted_at", null)
       .order("site_name");
     if (filters?.owner_company_id) q = q.eq("owner_company_id", filters.owner_company_id);
     if (filters?.branch_id) q = q.eq("branch_id", filters.branch_id);
     if (filters?.site_type) q = q.eq("site_type", filters.site_type);
     if (filters?.status) q = q.eq("status", filters.status);
-    if (filters?.search) q = q.ilike("site_name", `%${filters.search}%`);
-    const { data, error } = await q;
-    if (error) return { success: false, error: error.message };
-    return { success: true, data: (data ?? []) as WorkSiteRow[] };
+    if (filters?.search) q = q.or(`site_name.ilike.${literalContains(filters.search)},site_code.ilike.${literalContains(filters.search)}`);
+    return q.order("id");
+    };
+    if ((filters?.search?.length ?? 0) > 200) throw new Error("Catalogue search is too long.");
+    const { data, totalCount } = await readCataloguePage(query(), filters?.page ?? 1, () => query(true));
+    const companies = [...new Set(data.map(row => row.owner_company_id))];
+    const labels = companies.length ? await supabase.from("owner_companies").select("id,legal_name_en").in("id", companies) : { data: [], error: null };
+    if (labels.error) throw new Error("Work site company labels could not be loaded.");
+    const labelsById = new Map((labels.data ?? []).map(row => [row.id, row]));
+    return { success: true, data: data.map(row => ({ ...row, owner_company: labelsById.get(row.owner_company_id) ?? null })) as WorkSiteRow[], totalCount };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : String(e) };
   }
@@ -137,79 +161,61 @@ export async function getWorkSiteById(id: number): Promise<ActionResult<WorkSite
   }
 }
 
-export async function createWorkSite(input: CreateInput): Promise<ActionResult<{ id: number }>> {
+async function saveWorkSite(id: number | null, input: Partial<CreateInput>, contract: WorkspaceSaveContract | undefined, archive = false): Promise<WorkspaceSaveResult> {
+  const parsedContract = contractSchema.safeParse(contract);
+  if (!parsedContract.success || (id === null) !== (parsedContract.data.revision === null)) {
+    return { success: false, error: "Reopen the work site to obtain its current revision." };
+  }
+  if (input.opening_date && input.closing_date && input.opening_date > input.closing_date) {
+    return { success: false, error: "Closing date must be on or after opening date." };
+  }
   try {
-    const parsed = createSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
     const ctx = await getAuthContext();
     if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-    if (parsed.data.available_to_all_organizations !== undefined && !hasRole(ctx, "system_admin"))
+    if (input.available_to_all_organizations !== undefined && !hasRole(ctx, "system_admin")) {
       return { success: false, error: "Only a System Administrator can change organization availability." };
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("work_sites")
-      .insert({ ...parsed.data, created_by: ctx.profile?.id ?? null, updated_by: ctx.profile?.id ?? null })
-      .select(parsed.data.available_to_all_organizations ? "id, available_to_all_organizations" : "id")
-      .single();
-    if (error) return { success: false, error: error.message };
+    }
+    const db = await createClient();
+    const { data, error } = await db.rpc("phase3_save_work_site", {
+      p_id: id, p_revision: parsedContract.data.revision, p_operation: parsedContract.data.operationId,
+      p_data: input as Json, p_archive: archive,
+    });
+    if (error) {
+      if (["P0409", "40001"].includes(error.code)) return { success: false, error: "This work site changed after you opened it. Reopen it and compare your draft before saving." };
+      if (error.code === "42501") return { success: false, error: "This work site is unavailable or you no longer have permission to edit it." };
+      if (error.code.startsWith("22") || error.code.startsWith("23")) return { success: false, error: "The work site could not be saved. Check the dates, coordinates and required values." };
+    }
     const receipt = saveReceiptSchema.safeParse(data);
-    if (!receipt.success || (parsed.data.available_to_all_organizations && receipt.data.available_to_all_organizations !== true))
-      return { success: false, error: "Creation could not be confirmed. Check the work sites list before retrying." };
-    await logAudit({ module_code: "common_md", entity_name: "work_sites", entity_id: receipt.data.id, entity_reference: parsed.data.site_code, action: "create", new_values: parsed.data });
+    if (error || !receipt.success || (id !== null && receipt.data.id !== id) ||
+      (input.owner_company_id !== undefined && input.owner_company_id !== receipt.data.owner_company_id) ||
+      (input.branch_id !== undefined && input.branch_id !== receipt.data.branch_id) ||
+      (input.available_to_all_organizations !== undefined && input.available_to_all_organizations !== receipt.data.available_to_all_organizations)) {
+      return { success: false, uncertain: true, error: "Save unconfirmed. Retry with the same values to recover its result." };
+    }
     revalidatePath("/admin/common-master-data/work-sites");
-    return { success: true, data: { id: receipt.data.id } };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
+    revalidatePath(`/admin/common-master-data/work-sites/record/${receipt.data.id}`);
+    return { success: true, data: receipt.data };
+  } catch {
+    return { success: false, uncertain: true, error: "Save unconfirmed. Retry with the same values to recover its result." };
   }
 }
 
-export async function updateWorkSite(input: UpdateInput): Promise<ActionResult> {
-  try {
-    const parsed = updateSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues.map(i => i.message).join("; ") };
-    const ctx = await getAuthContext();
-    if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-    if (parsed.data.available_to_all_organizations !== undefined && !hasRole(ctx, "system_admin"))
-      return { success: false, error: "Only a System Administrator can change organization availability." };
-    const { id, ...rest } = parsed.data;
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("work_sites")
-      .update({ ...rest, updated_by: ctx.profile?.id ?? null, updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .is("deleted_at", null)
-      .select(rest.available_to_all_organizations ? "id, available_to_all_organizations" : "id")
-      .maybeSingle();
-    if (error) return { success: false, error: error.message };
-    if (!data) return { success: false, error: "This work site is unavailable or you no longer have permission to edit it." };
-    const receipt = saveReceiptSchema.safeParse(data);
-    if (!receipt.success || receipt.data.id !== id || (rest.available_to_all_organizations && receipt.data.available_to_all_organizations !== true))
-      return { success: false, error: "The update could not be confirmed. Reopen the work site to check its saved values." };
-    await logAudit({ module_code: "common_md", entity_name: "work_sites", entity_id: id, entity_reference: String(id), action: "update", new_values: rest });
-    revalidatePath("/admin/common-master-data/work-sites");
-    revalidatePath(`/admin/common-master-data/work-sites/record/${id}`);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
-  }
+export async function createWorkSite(input: CreateInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const parsed = createSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues.map(issue => issue.message).join(". ") };
+  return saveWorkSite(null, parsed.data, contract);
 }
 
-export async function softDeleteWorkSite(id: number): Promise<ActionResult> {
-  try {
-    const ctx = await getAuthContext();
-    if (!canManage(ctx)) return { success: false, error: "Permission denied" };
-    const supabase = await createClient();
-    const { error } = await supabase
-      .from("work_sites")
-      .update({ deleted_at: new Date().toISOString(), status: "closed", updated_by: ctx.profile?.id ?? null })
-      .eq("id", id);
-    if (error) return { success: false, error: error.message };
-    await logAudit({ module_code: "common_md", entity_name: "work_sites", entity_id: id, entity_reference: String(id), action: "delete" });
-    revalidatePath("/admin/common-master-data/work-sites");
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
-  }
+export async function updateWorkSite(input: UpdateInput, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  const parsed = updateSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues.map(issue => issue.message).join(". ") };
+  const { id, ...values } = parsed.data;
+  return saveWorkSite(id, values, contract);
+}
+
+export async function softDeleteWorkSite(id: number, contract?: WorkspaceSaveContract): Promise<WorkspaceSaveResult> {
+  if (!Number.isSafeInteger(id) || id <= 0) return { success: false, error: "Invalid work site." };
+  return saveWorkSite(id, {}, contract, true);
 }
 
 export async function getWorkSiteComboboxOptions(search?: string, owner_company_id?: number): Promise<ActionResult<{ value: string; label: string }[]>> {

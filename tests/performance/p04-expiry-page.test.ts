@@ -71,7 +71,7 @@ it("rejects oversized complete output rather than returning a truncated payload"
  s.total=2;s.mode="large-output";const result=await readDmsExpiryOutput({view:"all"});expect(result.success).toBe(false);expect(result.data).toBeUndefined();
 });
 it("freezes the business date across both output passes",async()=>{
- const clock=vi.spyOn(Date,"now").mockReturnValueOnce(Date.parse("2026-10-13T23:59:59Z")).mockReturnValue(Date.parse("2026-10-14T00:00:01Z"));
+ const clock=vi.spyOn(Date,"now").mockReturnValueOnce(Date.parse("2026-10-13T19:59:59Z")).mockReturnValue(Date.parse("2026-10-13T20:00:01Z"));
  try{
   await readDmsExpiryOutput({view:"expiring"});const main=s.calls.filter(c=>c.table==="dms_documents");expect(main).toHaveLength(2);
   for(const {ops} of main)expect(ops).toEqual(expect.arrayContaining([["gte",["expiry_date","2026-10-13"]],["lte",["expiry_date","2027-01-11"]]]));

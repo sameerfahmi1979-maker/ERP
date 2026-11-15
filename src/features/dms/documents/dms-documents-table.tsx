@@ -31,7 +31,9 @@ import type { ERPComboboxOption } from "@/components/erp/combobox";
 import { Badge } from "@/components/ui/badge";
 import { useWorkspace } from "@/hooks/use-workspace";
 import { DmsDocumentStatusBadge } from "./dms-document-status-badge";
+import {dmsBusinessDate, msUntilDmsBusinessMidnight} from "@/lib/dms/expiry-calendar";
 import { DmsExpiryBadge } from "./dms-expiry-badge";
+import { DmsLoadingStatus } from "@/features/dms/dms-loading-status";
 import { archiveDmsDocument, unarchiveDmsDocument } from "@/server/actions/dms/documents";
 import type { DmsDocumentRow } from "@/server/actions/dms/documents";
 import { DmsRiskBadge } from "./dms-risk-badge";
@@ -244,8 +246,8 @@ function DmsDocumentsTableSession({
   const [sortKey,setSortKey]=usePersistentUiState<string|null>("dms-documents:table:sort","created_at");
   const [sortDir,setSortDir]=usePersistentUiState<"asc"|"desc">("dms-documents:table:direction","desc");
   const seed=useMemo(()=>({rows:initialDocuments,totalCount:initialTotal,page:1,pageSize:25}),[initialDocuments,initialTotal]);
-  const [today,setToday]=useState(()=>new Date(Date.now()+4*3600000).toISOString().slice(0,10));
-  useEffect(()=>{let timer:ReturnType<typeof setTimeout>;const schedule=()=>{timer=setTimeout(()=>{setToday(new Date(Date.now()+4*3600000).toISOString().slice(0,10));schedule();},86400000-(Date.now()+4*3600000)%86400000+50);};schedule();return()=>clearTimeout(timer);},[]);
+  const [today,setToday]=useState(()=>dmsBusinessDate());
+  useEffect(()=>{let timer:ReturnType<typeof setTimeout>;const schedule=()=>{timer=setTimeout(()=>{setToday(dmsBusinessDate());schedule();},msUntilDmsBusinessMidnight()+50);};schedule();return()=>clearTimeout(timer);},[]);
   const filters={excludeArchived:!lifecycleMode,search:search.trim()||undefined,searchMode:searchMode==="quick"?"quick":searchMode==="safe"?"safe_fts":searchMode==="content"?"content":undefined,document_type_id:filterType??undefined,category_id:filterCategory??undefined,status:filterStatus??undefined,confidentiality:filterConfidentiality??undefined,expired:filterExpiry==="expired"?true:undefined,expiring_soon:filterExpiry==="expiring_30"?true:undefined,expiry_from:filterExpiry==="valid"?today:undefined,expiryState:filterExpiry==="no_expiry"?"missing_expiry":undefined};
   const uiReadDocuments=useServerPage<DmsDocumentRow>({resource:"dms-documents",params:{page,pageSize,sortKey:sortKey??"created_at",sortDir,filters},...(initialSeed ? {seed:initialSeed} : {seedParams:{page:1,pageSize:25,sortKey:"created_at",sortDir:"desc",filters:{excludeArchived:true}},seed,updatedAt:initialUpdatedAt})});
   const total=uiReadDocuments.data?.totalCount??0;
@@ -711,7 +713,8 @@ function DmsDocumentsTableSession({
 
       {/* Table */}
       {canDownload&&<div className="text-xs text-muted-foreground">Select documents on this page to download their current originals and attachments. ZIP limit: 25 documents, 50 files, 100 MB.{zip.progress&&<p role="status">{zip.progress}</p>}{zip.error&&<p role="alert" className="text-destructive">{zip.error}</p>}{zip.busy&&<Button type="button" size="sm" variant="ghost" onClick={zip.cancel}>Cancel download</Button>}</div>}
-      {searchMode !== "ai" && searchMode !== "semantic" && (
+      {searchMode !== "ai" && searchMode !== "semantic" && (<>
+      {uiReadDocuments.isBusy && <DmsLoadingStatus label={table.rows.length ? "Refreshing documents…" : "Loading documents…"} />}
       <WorklistScrollRegion attach={viewport.attachViewport} aria-label="Scrollable documents" aria-busy={uiReadDocuments.isBusy} inert={uiReadDocuments.isBusy||undefined} className="rounded-md border border-border">
         <table aria-label="Documents" className="w-full text-sm table-fixed" {...viewport.tableProps}>
           <WorklistColgroup viewport={viewport} />
@@ -733,7 +736,7 @@ function DmsDocumentsTableSession({
                 <td colSpan={columnState.visible.length + 1} className="text-center py-10 text-muted-foreground">
                   <div className="flex flex-col items-center gap-2">
                     <FileText className="h-8 w-8 opacity-30" />
-                    <p className="text-sm">{uiReadDocuments.isBusy ? "Loading documents…" : "No documents found"}</p>
+                    {!uiReadDocuments.isBusy && <p className="text-sm">No documents found</p>}
                     {canCreate && (
                       <Button size="sm" variant="outline" onClick={openNewDocument} className="mt-1 gap-1.5">
                         <Plus className="h-3.5 w-3.5" /> Create first document
@@ -788,7 +791,7 @@ function DmsDocumentsTableSession({
                   <td data-column="expiry" className="px-3 py-2">
                     {doc.expiry_date ? (
                       <div className="space-y-0.5">
-                        <DmsExpiryBadge expiryDate={doc.expiry_date} />
+                        <DmsExpiryBadge expiryDate={doc.expiry_date} asOf={today} />
                         <div className="text-[10px] text-muted-foreground">
                           {format(parseISO(doc.expiry_date), "dd MMM yyyy")}
                         </div>
@@ -862,11 +865,11 @@ function DmsDocumentsTableSession({
           total={table.total}
         />
       </WorklistScrollRegion>
-      )}
+      </>)}
 
       {searchMode !== "ai" && searchMode !== "semantic" && (
         <div className="text-xs text-muted-foreground">
-          {uiReadDocuments.isBusy ? "Loading documents…" : `${table.total} permitted document${table.total!==1?"s":""}; search, filters and sorting apply across all pages.`}
+          {!uiReadDocuments.isBusy && `${table.total} permitted document${table.total!==1?"s":""}; search, filters and sorting apply across all pages.`}
         </div>
       )}
 

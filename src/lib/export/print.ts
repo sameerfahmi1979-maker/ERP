@@ -76,11 +76,26 @@ function safeHex(hex: string | null | undefined, fallback: string): string {
   return /^#[0-9A-Fa-f]{6}$/.test(clean) ? clean : fallback;
 }
 
+function luminance(hex: string): number {
+  const rgb = [1, 3, 5].map(offset => {
+    const channel = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+}
+
+function readableText(background: string, preferred: string): string {
+  const bg = luminance(background), fg = luminance(preferred);
+  const contrast = (Math.max(bg, fg) + 0.05) / (Math.min(bg, fg) + 0.05);
+  if (contrast >= 4.5) return preferred;
+  return (bg + 0.05) / 0.05 >= 1.05 / (bg + 0.05) ? "#000000" : "#ffffff";
+}
+
 /** Render branded company header HTML. */
 function buildBrandedHeader(branding: ExportBrandingContext, title: string, subtitle?: string): string {
   const primaryColor = safeHex(branding.themePrimaryColor, "#1e293b");
   const headerBg = safeHex(branding.themeHeaderBgColor ?? branding.themePrimaryColor, "#1e293b");
-  const headerTextColor = safeHex(branding.themeHeaderTextColor, "#ffffff");
+  const headerTextColor = readableText(headerBg, safeHex(branding.themeHeaderTextColor, "#ffffff"));
 
   const logoHtml =
     branding.showLogo && branding.logoUrl
@@ -123,16 +138,17 @@ function buildNeutralHeader(title: string, subtitle?: string): string {
 /**
  * Generate HTML for print window, with optional branding.
  */
-function generatePrintHTML<T>(options: ERPExportOptions<T>): string {
+export function generatePrintHTML<T>(options: ERPExportOptions<T>): string {
   const { columns, data, title, subtitle, generatedBy, generatedAt, filters, branding } = options;
 
   const primaryColor = safeHex(branding?.themePrimaryColor, "#333333");
   const headerBg = safeHex(branding?.themeHeaderBgColor ?? branding?.themePrimaryColor, "#f5f5f5");
+  const headerText = readableText(headerBg, safeHex(branding?.themeHeaderTextColor, branding ? "#ffffff" : "#1e293b"));
 
   const headerCells = columns
     .map(
       (col) =>
-        `<th style="text-align:left; padding:8px; border-bottom:2px solid #ddd; background-color:${headerBg}; color:#fff;">${escapeHtml(col.header)}</th>`
+        `<th style="text-align:left; padding:8px; border-bottom:2px solid #ddd; background-color:${headerBg}; color:${headerText};">${escapeHtml(col.header)}</th>`
     )
     .join("");
 
@@ -212,6 +228,7 @@ function generatePrintHTML<T>(options: ERPExportOptions<T>): string {
     @media print {
       @page { size: auto; margin: 12mm; }
       body { margin: 0; }
+      th, .company-header, .company-header * { color: #111827 !important; background-color: #fff !important; }
       .no-print { display: none; }
     }
     body {

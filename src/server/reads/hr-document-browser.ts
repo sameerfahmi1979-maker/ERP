@@ -2,7 +2,8 @@ import "server-only";
 import {prepareDocumentQuery} from "@/server/ai/search/document-query";
 import {matchesSearchText} from "@/lib/ai/search/vocabulary";
 import {z} from "zod";
-import {getAuthContext, hasPermission, type AuthContext} from "@/lib/rbac/check";
+import {getAuthContext, type AuthContext} from "@/lib/rbac/check";
+import {canOpenHrDocumentBrowser} from "@/lib/rbac/route-access-registry";
 import {createClient} from "@/lib/supabase/server";
 import {collectCompletePages} from "@/lib/reads/complete-pages";
 import {literalContains, literalLike} from "@/lib/reads/search";
@@ -60,7 +61,7 @@ export async function readHrDocumentBrowser(input: unknown, context?: AuthContex
     signal?.throwIfAborted();
     const ctx = context ?? await getAuthContext(), p = parsed.data;
     signal?.throwIfAborted();
-    if (!hasPermission(ctx, "hr.employees.view") || !(hasPermission(ctx, "dms.documents.view") || hasPermission(ctx, "dms.admin"))) return denied;
+    if (!canOpenHrDocumentBrowser(ctx)) return denied;
     const db = await createClient(), asOf = new Date().toISOString();
     signal?.throwIfAborted();
     const select = (table: string, columns: string, head = false): Query => {

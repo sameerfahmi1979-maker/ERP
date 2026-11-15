@@ -26755,6 +26755,15 @@ export type Database = {
       }
     }
     Functions: {
+      phase3_report_source_generations: { Args: never; Returns: Json };
+      phase3_save_work_site: {
+        Args: { p_id: number | null; p_revision: string | null; p_operation: string; p_data: Json; p_archive: boolean };
+        Returns: Json;
+      };
+      phase3_save_catalogue: {
+        Args: { p_relation: string; p_id: number | null; p_revision: string | null; p_operation: string; p_data: Json; p_archive: boolean };
+        Returns: Json;
+      };
       shared_employee_assignment_choices: {
         Args: { p_kind: string; p_company: number; p_branch: number | null; p_selected: number | null }
         Returns: Json

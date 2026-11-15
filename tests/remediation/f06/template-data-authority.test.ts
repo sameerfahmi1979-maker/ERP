@@ -1,12 +1,12 @@
 // Actual visual-preview action. Data/rendering/employee-access doubles; not DB/RLS acceptance.
 import {beforeEach,expect,it,vi} from 'vitest';
 import type {AuthContext} from '@/lib/rbac/check';
-const m=vi.hoisted(()=>({ctx:null as AuthContext|null,employee:vi.fn(),employeeBindings:vi.fn(),companyBindings:vi.fn(),sensitive:vi.fn(),render:vi.fn(),assets:vi.fn(),authClient:{},adminClient:{},active:true,brandingCompany:1,permissions:['reports.view']}));
+const m=vi.hoisted(()=>({ctx:null as AuthContext|null,employee:vi.fn(),employeeBindings:vi.fn(),companyBindings:vi.fn(),sensitive:vi.fn(),audit:vi.fn(),render:vi.fn(),assets:vi.fn(),authClient:{},adminClient:{},active:true,brandingCompany:1,permissions:['reports.view']}));
 vi.mock('@/lib/rbac/check',async()=>({...await vi.importActual('@/lib/rbac/scope'),getAuthContext:async()=>m.ctx}));
 vi.mock('@/lib/rbac/employee-access',()=>({getEmployeeAccess:m.employee}));
 vi.mock('@/lib/supabase/server',()=>({createClient:async()=>m.authClient}));
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>m.adminClient}));
-vi.mock('@/server/actions/audit',()=>({logAudit:vi.fn()}));vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
+vi.mock('@/server/actions/audit',()=>({logAudit:m.audit}));vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('@/lib/branding/resolve-report-branding-assets',()=>({resolveReportBrandingProfileAssetUrls:m.assets}));
 vi.mock('@/lib/report-designer/production-renderer',()=>({templateHasVisualLayout:()=>true,renderVisualTemplateZones:m.render}));
 vi.mock('@/lib/report-designer/test-data-resolver',()=>({resolveEmployeeBindingValues:m.employeeBindings,resolveOwnerCompanyBindingValues:m.companyBindings,resolveDocumentBindingValues:()=>({}),redactDesignerTestBindingValues:(values:Record<string,string>)=>({values,redactedKeys:[]})}));
@@ -20,7 +20,7 @@ beforeEach(()=>{
  m.adminClient={from:()=>{const q={select:()=>q,eq:()=>q,is:()=>q,single:async()=>({error:null,data:{id:2,template_name:'F06 synthetic template',template_code:'F06_TEMPLATE',template_type:'letter',governance_status:'approved',is_active:m.active,branding_profile_id:7,branding_profile:{id:7,owner_company_id:m.brandingCompany,is_active:true}}})};return q;}};
  m.authClient={from:(table:string)=>{const q={select:()=>q,eq:()=>q,is:()=>q,maybeSingle:async()=>({error:null,data:table==='erp_report_templates'?{id:2,template_name:'F06 synthetic template',template_type:'letter',is_active:m.active,branding_profile_id:7}:{id:7,owner_company_id:m.brandingCompany,is_active:true}})};return q;}};
  m.employee.mockImplementation(async()=>({subject:{id:11,owner_company_id:1,branch_id:1,reporting_manager_id:null},allows:(code:string)=>m.permissions.includes(code),scopedContext:{...m.ctx,permissionCodes:m.permissions}}));
- m.assets.mockResolvedValue({});m.employeeBindings.mockResolvedValue({values:{'employee.full_name_en':'F06 employee'},warnings:[],ownerCompanyId:1});m.companyBindings.mockResolvedValue({values:{'company.name':'F06 company'},warnings:[]});m.sensitive.mockResolvedValue({values:{},warnings:[]});m.render.mockReturnValue({html:'Synthetic HTML',hasVisualLayout:true,warnings:[]});
+ m.assets.mockResolvedValue({});m.employeeBindings.mockResolvedValue({values:{'employee.full_name_en':'F06 employee'},warnings:[],ownerCompanyId:1});m.companyBindings.mockResolvedValue({values:{'company.name':'F06 company'},warnings:[]});m.sensitive.mockResolvedValue({values:{},resolvedPaths:[],warnings:[]});m.audit.mockResolvedValue({success:true});m.render.mockReturnValue({html:'Synthetic HTML',hasVisualLayout:true,warnings:[]});
 });
 it('an authorized employee preview uses authenticated reads, not the privileged template client',async()=>{
  const r=await renderVisualTemplateForLetterPreview({templateId:2,employeeId:11,ownerCompanyId:1});expect(r.ok).toBe(true);expect(m.employee).toHaveBeenCalledWith(m.ctx,11);expect(m.employeeBindings).toHaveBeenCalledWith(11,m.authClient);expect(m.companyBindings).toHaveBeenCalledWith(1,m.authClient);
@@ -42,6 +42,15 @@ it('a foreign-company sensitive grant cannot resolve this employee salary',async
 });
 it('sensitive resolution receives only employee-scoped capabilities and the authenticated client',async()=>{
  m.permissions=['reports.view','reports.sensitive_fields.use','hr.payroll.view'];const r=await renderVisualTemplateForLetterPreview({templateId:2,employeeId:11});expect(r.ok).toBe(true);expect(m.sensitive).toHaveBeenCalledWith(expect.objectContaining({supabase:m.authClient,context:expect.objectContaining({userPermissions:m.permissions})}));
+});
+it('does not render resolved sensitive data when audit persistence fails',async()=>{
+ m.permissions=['reports.view','reports.sensitive_fields.use','hr.payroll.view'];
+ m.sensitive.mockResolvedValue({values:{'employee.basic_salary':'SYNTHETIC_PRIVATE'},resolvedPaths:['employee.basic_salary'],warnings:[]});
+ m.audit.mockResolvedValue({success:false});
+ const r=await renderVisualTemplateForLetterPreview({templateId:2,employeeId:11});
+ expect(r.ok).toBe(false);expect(m.render).not.toHaveBeenCalled();
+ expect(m.audit).toHaveBeenCalledWith(expect.objectContaining({owner_company_id:1,branch_id:1}));
+ expect(JSON.stringify(m.audit.mock.calls)).not.toContain('SYNTHETIC_PRIVATE');
 });
 it('branding denial stops rendering instead of silently producing an unbranded preview',async()=>{
  m.brandingCompany=2;const r=await renderVisualTemplateForLetterPreview({templateId:2,employeeId:11});expect(r.ok).toBe(false);expect(m.render).not.toHaveBeenCalled();expect(m.employeeBindings).not.toHaveBeenCalled();

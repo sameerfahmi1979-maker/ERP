@@ -30,8 +30,8 @@ export function DmsBatchUploadProgress({ files, batchCode, onOpenQueue }: DmsBat
   const total = files.length;
   const done = files.filter((f) => f.phase === "done").length;
   const failed = files.filter((f) => f.phase === "failed").length;
-  const inProgress = files.some((f) => f.phase === "uploading" || f.phase === "ai");
-  const allSettled = files.every((f) => f.phase === "done" || f.phase === "failed");
+  const allSettled = total > 0 && done + failed === total;
+  const inProgress = total > 0 && !allSettled;
 
   return (
     <div className="rounded-xl border-2 border-violet-300 bg-violet-50/60 dark:border-violet-900 dark:bg-violet-950/20 p-4 space-y-3">
@@ -42,8 +42,8 @@ export function DmsBatchUploadProgress({ files, batchCode, onOpenQueue }: DmsBat
           ) : (
             <CheckCircle2 className="h-4 w-4 text-green-600" />
           )}
-          <p className="text-sm font-semibold text-violet-700 dark:text-violet-300">
-            {inProgress ? "Processing batch…" : "Batch processed"}
+          <p role="status" className="text-sm font-semibold text-violet-700 dark:text-violet-300">
+            {inProgress ? "Processing batch…" : !total ? "No files selected" : failed ? "Batch finished with files to review" : "Batch processed"}
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs">
@@ -61,12 +61,13 @@ export function DmsBatchUploadProgress({ files, batchCode, onOpenQueue }: DmsBat
               <span className={cn("shrink-0", meta.className)}>{meta.icon}</span>
               <span className="flex-1 min-w-0 truncate">{f.name}</span>
               <span className={cn("shrink-0 font-medium", meta.className)}>{meta.label}</span>
+              {f.error && <span className="text-destructive">{f.error}</span>}
             </li>
           );
         })}
       </ul>
 
-      {allSettled && batchCode && (
+      {allSettled && done > 0 && batchCode && onOpenQueue && (
         <div className="flex items-center justify-between border-t border-violet-200 dark:border-violet-900 pt-3">
           <p className="text-xs text-muted-foreground">
             Review each draft individually and approve one at a time.

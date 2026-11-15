@@ -4,6 +4,7 @@
  */
 import type { ReportFetcher, ReportDataResult } from "@/lib/report-center/types";
 import type { ReportReadClient } from "@/lib/report-center/scoped-read-client";
+import { businessDateStart } from "@/lib/dubai-calendar";
 
 export const requisitionsFetcher: ReportFetcher = {
   reportCode: "HR_REQUISITIONS",
@@ -26,8 +27,8 @@ export const requisitionsFetcher: ReportFetcher = {
     if (filters.owner_company_id) q = q.eq("owner_company_id", Number(filters.owner_company_id));
     if (filters.department_id) q = q.eq("department_id", Number(filters.department_id));
     if (filters.requisition_status) q = q.eq("requisition_status", String(filters.requisition_status));
-    if (filters.date_from) q = q.gte("created_at", String(filters.date_from));
-    if (filters.date_to) q = q.lte("created_at", String(filters.date_to));
+    if (filters.date_from) q = q.gte("created_at", businessDateStart(String(filters.date_from)));
+    if (filters.date_to) q = q.lt("created_at", businessDateStart(String(filters.date_to), 1));
 
     const { data: reqs, error } = await q.limit(2000);
     if (error) throw new Error(`HR_REQUISITIONS fetch error: ${error.message}`);
@@ -68,7 +69,7 @@ export const requisitionsFetcher: ReportFetcher = {
         total_candidates: counts.total,
         hired_count: counts.hired,
         pending_count: counts.pending,
-        owner_company_id: r.owner_company_id ?? 0,
+        owner_company_id: r.owner_company_id ?? null,
       };
     });
 

@@ -1,8 +1,10 @@
 import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
-const operations = ["proxy", "auth.context", "auth.session", "auth.permissions", "employees.list", "departments.list", "departments.lookup", "documents.list", "session.route", "response.json"] as const;
+const operations = ["proxy", "auth.context", "auth.session", "auth.permissions", "employees.list", "departments.list", "departments.lookup", "documents.list", "session.route", "response.json",
+  "dms.intake", "dms.intake.admit", "dms.intake.verify", "dms.batch", "dms.rerun", "dms.rerun.admit", "dms.rerun.status", "dms.batch.member", "dms.batch.verify", "dms.batch.prepare", "dms.admit", "dms.receipt", "dms.eligibility",
+  "dms.fetch", "dms.verify", "dms.pdf.text", "dms.pdf.render", "dms.ocr", "dms.ocr.provider", "dms.model.first", "dms.model.second", "dms.publish", "dms.queue.wait", "dms.result.discovery", "dms.transfer.client"] as const;
 export type PerfOperation = typeof operations[number];
 type Span = { name: string; ms: number; offsetMs: number; outcome: "ok" | "error"; status?: number; retry?: number; contentLength?: number | null };
 type Trace = { id: string; operation: PerfOperation; started: number; spans: Span[]; dropped: number; closed: boolean };
@@ -51,6 +53,15 @@ function safeId(value?: string | null) {
 export function currentTraceId() { return scope.getStore()?.id; }
 export function hasTraceScope() { return scope.getStore() !== undefined; }
 
+export function preparationTraceId(jobId: number) {
+  return dmsTraceId(`preparation:${jobId}`);
+}
+
+export function dmsTraceId(value: string) {
+  const hash = createHash('sha256').update(`dms:${value}`).digest('hex');
+  return `${hash.slice(0,8)}-${hash.slice(8,12)}-4${hash.slice(13,16)}-8${hash.slice(17,20)}-${hash.slice(20,32)}`;
+}
+
 /** Never logs result values, exception text, URLs, principal IDs, headers or bindings. */
 export async function traceOperation<T>(operation: PerfOperation, work: () => Promise<T>, correlation?: string | null, route = "other"): Promise<T> {
   if (!operations.includes(operation)) return work();
@@ -85,9 +96,30 @@ export async function traceSpan<T>(name: PerfOperation, work: () => PromiseLike<
   if (!trace || trace.closed || !operations.includes(name)) return await work();
   const start = performance.now();
   let outcome: "ok" | "error" = "ok";
-  try { return await work(); }
+  try {
+    const result = await work();
+    try {
+      if (result && typeof result === 'object' && (Object.getOwnPropertyDescriptor(result, 'success')?.value === false ||
+        Object.getOwnPropertyDescriptor(result, 'error')?.value)) outcome = 'error';
+    } catch { /* Timing must not change the operation. */ }
+    return result;
+  }
   catch (error) { outcome = "error"; throw error; }
   finally { append(trace, { name, ms: elapsed(start), offsetMs: offset(trace, start), outcome }); }
+}
+
+export function recordTraceInterval(name: PerfOperation, from: string, to: string) {
+  const trace = scope.getStore();
+  if (!trace || trace.closed || !operations.includes(name)) return;
+  const ms = Date.parse(to) - Date.parse(from);
+  if (Number.isFinite(ms) && ms >= 0) append(trace, {name, ms, offsetMs:offset(trace,performance.now()), outcome:'ok'});
+}
+
+export function recordDmsClientTransfer(ms: unknown) {
+  const trace = scope.getStore();
+  if (trace && !trace.closed && typeof ms === 'number' && Number.isFinite(ms) && ms >= 0 && ms <= 600_000) {
+    append(trace,{name:'dms.transfer.client',ms:Math.round(ms),offsetMs:offset(trace,performance.now()),outcome:'ok'});
+  }
 }
 
 const backendPaths = new Map<string, string>([

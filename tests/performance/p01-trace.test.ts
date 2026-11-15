@@ -12,6 +12,21 @@ const load = () => import("@/lib/performance/trace");
 function capture() { return vi.spyOn(console, "info").mockImplementation(() => {}); }
 
 describe("P01 bounded private tracing", () => {
+  it('records timed DMS stages and safe outcomes under a stable job correlation',async()=>{
+    const sink=capture(), t=await load(), id=t.preparationTraceId(10001);
+    await t.traceOperation('dms.rerun',async()=>{
+      t.recordTraceInterval('dms.queue.wait','2026-11-14T00:00:00Z','2026-11-14T00:00:01Z');
+      await t.traceSpan('dms.model.first',async()=>({success:false,error:'private provider body'}));
+      await t.traceSpan('dms.publish',async()=>({success:true,text:'private OCR text'}));
+    },id);
+    expect(id).toBe(t.preparationTraceId(10001));
+    expect(id).not.toBe(t.preparationTraceId(10002));
+    const payload=String(sink.mock.calls[0][0]);
+    expect(payload).not.toMatch(/private|10001/);
+    expect(JSON.parse(payload)).toMatchObject({id,operation:'dms.rerun',spans:[
+      {name:'dms.queue.wait',ms:1000},{name:'dms.model.first',outcome:'error'},{name:'dms.publish',outcome:'ok'},
+    ]});
+  });
   it.each(["false", "", "TRUE"])("disabled flag %s preserves result without logs", async flag => {
     vi.stubEnv("ALGT_PERF_ENABLED", flag); const sink=capture(); const t=await load(); const result={secret:"hidden"};
     expect(await t.traceOperation("employees.list", async()=>result)).toBe(result); expect(sink).not.toHaveBeenCalled();

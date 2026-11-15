@@ -1,3 +1,5 @@
+import { CatalogueControls } from "@/features/common-master-data/catalogue-controls";
+import { catalogueCriteria } from "@/lib/master-data/catalogue-page";
 import { getAuthContext, hasGlobalPermission, hasPermission } from "@/lib/rbac/check";
 import { redirect } from "next/navigation";
 import { ERPPageHeader } from "@/components/erp/page-header";
@@ -9,15 +11,18 @@ import { listDesignations } from "@/server/actions/common-master-data/designatio
 import Link from "next/link";
 import { DesignationsListClient } from "@/features/common-master-data/designations/designations-list-client";
 
-export default async function DesignationsPage() {
+const BASE = "/admin/common-master-data/designations";
+export default async function DesignationsPage({ searchParams }: { searchParams?: Promise<{ page?: string; q?: string }> }) {
   const ctx = await getAuthContext();
+  let query;
+  try { query = catalogueCriteria(await searchParams ?? {}); } catch { return <LoadError title="Catalogue" retryHref={BASE} />; }
   if (!hasPermission(ctx, "common_md.view") && !hasPermission(ctx, "common_md.designations.view")) {
     redirect("/access-denied");
   }
   const canManage = hasGlobalPermission(ctx, "common_md.manage") || hasGlobalPermission(ctx, "common_md.designations.manage");
   let result: Awaited<ReturnType<typeof listDesignations>> | undefined;
   try {
-    result = await listDesignations({});
+    result = await listDesignations(query);
   } catch {
     return <LoadError title="Designations" retryHref="/admin/common-master-data/designations" />;
   }
@@ -43,8 +48,9 @@ export default async function DesignationsPage() {
           </Link>
         ) : null}
       />
+      <CatalogueControls base={BASE} page={query.page} search={query.search} total={result.totalCount} />
       {designations.length === 0 ? (
-        <ERPEmptyState icon={Briefcase} title="No designations yet" description="Create your first job title." />
+        <ERPEmptyState icon={Briefcase} title="No designations match this page" description="Change the search or return to the first page." />
       ) : (
         <DesignationsListClient designations={designations} canManage={canManage} />
       )}

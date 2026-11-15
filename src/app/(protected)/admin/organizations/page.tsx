@@ -17,7 +17,7 @@ export default async function AdminOrganizationsPage() {
           title="Organizations"
           description="Manage company entities and organizational structure"
           breadcrumbs={[
-            { label: "Admin", href: "/admin" },
+            { label: "Admin" },
             { label: "Organizations" },
           ]}
         />
@@ -30,7 +30,7 @@ export default async function AdminOrganizationsPage() {
   if (!organizations) {
     return (
       <div className="p-6 space-y-4">
-        <ERPPageHeader title="Organizations" description="Manage company entities and organizational structure" breadcrumbs={[{ label: "Admin", href: "/admin" }, { label: "Organizations" }]} />
+        <ERPPageHeader title="Organizations" description="Manage company entities and organizational structure" breadcrumbs={[{ label: "Admin" }, { label: "Organizations" }]} />
         <LoadError title="Organizations" retryHref="/admin/organizations" />
       </div>
     );
@@ -44,7 +44,7 @@ export default async function AdminOrganizationsPage() {
         title="Organizations"
         description="Manage company entities and organizational structure. Search, filter, and open organization records."
         breadcrumbs={[
-          { label: "Admin", href: "/admin" },
+          { label: "Admin" },
           { label: "Organizations" },
         ]}
         actions={canCreate ? <AddOrganizationButton /> : null}

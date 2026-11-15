@@ -170,7 +170,7 @@ export function EmploymentLetterWorkbench({authContext,employeeId,item,onOpenCha
         <div className="relative min-h-[50dvh] min-w-0 flex-1 border bg-background lg:min-h-0" aria-busy={busy}>
           {pdf&&<iframe title="Canonical draft PDF" src={pdf.url} className="absolute inset-0 h-full w-full" aria-hidden={!currentPdf||issued} inert={!currentPdf||issued||undefined}/>}
           {(!currentPdf||issued)&&<div className="absolute inset-0 flex items-center justify-center bg-background/95 p-6 text-center text-sm" role={error?.revision===revision?'alert':'status'}>
-            {issued?'The official original is available in Issued Documents. This draft is not the issued original.':inputError??(error?.revision===revision?error.message:!selectionReady?'Checking the selected letterhead…':busy?'Updating draft preview…':'Preparing the draft preview…')}
+            {issued?'The official original is available in Issued Documents.':inputError??(error?.revision===revision?<span>{error.message} <Button type="button" variant="outline" onClick={()=>void refresh()}>Retry draft preview</Button></span>:!selectionReady?'Checking the selected letterhead…':busy?'Updating draft preview…':'Preparing the draft preview…')}
           </div>}
         </div>
         <p className="mt-2 text-xs text-muted-foreground">Draft only. Official generation creates the saved original, reference and policy-governed QR after all approval checks pass.</p>

@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { createWorkspaceSaveAttempt } from "@/lib/workspace/save-contract";
+
+import { useRef, useState, useEffect } from "react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,33 +60,41 @@ export function DesignationWorkspaceForm({ designation, mode, authContext, compa
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 
+  const [savedId, setSavedId] = useState<number | null>(designation?.id ?? null);
+  const [revision, setRevision] = useState(designation?.workspace_revision === undefined ? null : String(designation.workspace_revision));
+  const saveAttempt = useRef(createWorkspaceSaveAttempt());
+  const saving = useRef(false);
+
   const handleSave = async (): Promise<boolean> => {
-    if (isViewing) return false;
+    if (isViewing || saving.current) return false;
+    saving.current = true;
     setIsSubmitting(true);
-    const form = document.getElementById(FORM_ID) as HTMLFormElement;
-    const fd = new FormData(form);
-    const data = {
-      designation_code: masterRecordCode(fd, "designation_code", isEditing ? designation?.designation_code : null) as string,
-      designation_name_en: fd.get("designation_name_en") as string,
-      designation_name_ar: (fd.get("designation_name_ar") as string) || null,
-      owner_company_id: fd.get("owner_company_id") ? parseInt(fd.get("owner_company_id") as string) : null,
-      job_level: (fd.get("job_level") as string) || null,
-      management_level: (fd.get("management_level") as string) || null,
-      is_supervisor: fd.get("is_supervisor") === "on",
-      is_authorized_signatory: fd.get("is_authorized_signatory") === "on",
-      has_approval_authority: fd.get("has_approval_authority") === "on",
-      is_safety_critical: fd.get("is_safety_critical") === "on",
-      is_active: fd.has("is_active"),
-      description: (fd.get("description") as string) || null,
-    };
     try {
-      const result = isEditing && designation
-        ? await updateDesignation({ ...data, management_level: data.management_level as "staff" | "supervisor" | "manager" | "senior_manager" | "director" | "executive" | "c_level" | null | undefined, id: designation.id })
-        : await createDesignation({ ...data, management_level: data.management_level as "staff" | "supervisor" | "manager" | "senior_manager" | "director" | "executive" | "c_level" | null | undefined });
-      if (result.success) { toast.success(isEditing ? "Designation updated" : "Designation created"); clearDraft(); resetDirty(); if (activeTab?.id) markDirty(activeTab.id, false); return true; }
+      const form = document.getElementById(FORM_ID) as HTMLFormElement;
+      const fd = new FormData(form);
+      const data = {
+        designation_code: masterRecordCode(fd, "designation_code", isEditing ? designation?.designation_code : null) as string,
+        designation_name_en: fd.get("designation_name_en") as string,
+        designation_name_ar: (fd.get("designation_name_ar") as string) || null,
+        owner_company_id: fd.get("owner_company_id") ? parseInt(fd.get("owner_company_id") as string) : null,
+        job_level: (fd.get("job_level") as string) || null,
+        management_level: (fd.get("management_level") as string) || null,
+        is_supervisor: fd.get("is_supervisor") === "on",
+        is_authorized_signatory: fd.get("is_authorized_signatory") === "on",
+        has_approval_authority: fd.get("has_approval_authority") === "on",
+        is_safety_critical: fd.get("is_safety_critical") === "on",
+        is_active: fd.has("is_active"),
+        description: (fd.get("description") as string) || null,
+      };
+      const contract = saveAttempt.current.begin(data, revision);
+      const result = savedId !== null
+        ? await updateDesignation({ ...data, management_level: data.management_level as "staff" | "supervisor" | "manager" | "senior_manager" | "director" | "executive" | "c_level" | null | undefined, id: savedId }, contract)
+        : await createDesignation({ ...data, management_level: data.management_level as "staff" | "supervisor" | "manager" | "senior_manager" | "director" | "executive" | "c_level" | null | undefined }, contract);
+      if (result.success && result.data) { saveAttempt.current.resolved(); setSavedId(result.data.id); setRevision(result.data.revision); toast.success(savedId !== null ? "Designation updated" : "Designation created"); clearDraft(); resetDirty(); if (activeTab?.id) markDirty(activeTab.id, false); return true; }
+      if (!result.success && !result.uncertain) saveAttempt.current.resolved();
       toast.error(result.error ?? "Failed to save"); return false;
-    } catch { toast.error("An unexpected error occurred"); return false; }
-    finally { setIsSubmitting(false); }
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Save unconfirmed. Retry with the same values."); return false; }
+    finally { saving.current = false; setIsSubmitting(false); }
   };
 
   const handleSaveAndClose = async () => { const ok = await handleSave(); if (ok) forceCloseActiveTab(); };

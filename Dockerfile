@@ -12,6 +12,8 @@ RUN npm ci --no-fund
 COPY src ./src
 COPY vendor/shadcn/tailwind.css ./vendor/shadcn/tailwind.css
 COPY tooling/dms/validate-intake.cjs ./tooling/dms/validate-intake.cjs
+COPY tooling/release/build-inputs.cjs ./tooling/release/build-inputs.cjs
+COPY Dockerfile .dockerignore ./
 COPY public ./public
 COPY next.config.ts tsconfig.json tsconfig.shipping.json postcss.config.mjs ./
 # Only intentionally public browser configuration is accepted at build time.
@@ -23,7 +25,7 @@ ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
     NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
     NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 RUN test -n "$NEXT_PUBLIC_SUPABASE_URL" && test -n "$NEXT_PUBLIC_SUPABASE_ANON_KEY" && test -n "$NEXT_PUBLIC_SITE_URL"
-RUN npm run build && npm run typecheck
+RUN --network=none npm run build && npm run typecheck
 
 FROM base AS runtime
 ENV NODE_ENV=production \

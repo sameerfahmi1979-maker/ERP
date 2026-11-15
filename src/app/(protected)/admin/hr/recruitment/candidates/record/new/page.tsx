@@ -1,4 +1,4 @@
-﻿import { redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { CandidateWorkspaceForm } from "@/features/hr/recruitment/candidate-workspace-form";
 

@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { createWorkspaceSaveAttempt } from "@/lib/workspace/save-contract";
+
+import { useRef, useState, useEffect } from "react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,35 +53,43 @@ export function DmsRequiredDocumentRuleForm({ rule, mode, authContext, documentT
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 
+  const [savedId, setSavedId] = useState<number | null>(rule?.id ?? null);
+  const [revision, setRevision] = useState(rule?.workspace_revision === undefined ? null : String(rule.workspace_revision));
+  const saveAttempt = useRef(createWorkspaceSaveAttempt());
+  const saving = useRef(false);
+
   const handleSave = async (): Promise<boolean> => {
-    if (isViewing) return false;
+    if (isViewing || saving.current) return false;
+    saving.current = true;
     setIsSubmitting(true);
-    const form = document.getElementById(FORM_ID) as HTMLFormElement;
-    const fd = new FormData(form);
-    const data = {
-      rule_code: masterRecordCode(fd, "rule_code", isEditing ? rule?.rule_code : null) as string,
-      rule_name: fd.get("rule_name") as string,
-      entity_type: fd.get("entity_type") as string,
-      entity_subtype: (fd.get("entity_subtype") as string) || null,
-      document_type_id: fd.get("document_type_id") ? parseInt(fd.get("document_type_id") as string) : null,
-      is_required: fd.has("is_required"),
-      requires_expiry_date: fd.get("requires_expiry_date") === "on",
-      requires_issue_date: fd.get("requires_issue_date") === "on",
-      blocks_activation: fd.get("blocks_activation") === "on",
-      owner_company_id: fd.get("owner_company_id") ? parseInt(fd.get("owner_company_id") as string) : null,
-      effective_from: (fd.get("effective_from") as string) || null,
-      effective_to: (fd.get("effective_to") as string) || null,
-      is_active: fd.has("is_active"),
-      notes: (fd.get("notes") as string) || null,
-    };
     try {
-      const result = isEditing && rule
-        ? await updateDmsRequiredDocumentRule({ ...data, id: rule.id })
-        : await createDmsRequiredDocumentRule(data);
-      if (result.success) { toast.success(isEditing ? "Rule updated" : "Rule created"); clearDraft(); resetDirty(); if (activeTab?.id) markDirty(activeTab.id, false); return true; }
+      const form = document.getElementById(FORM_ID) as HTMLFormElement;
+      const fd = new FormData(form);
+      const data = {
+        rule_code: masterRecordCode(fd, "rule_code", isEditing ? rule?.rule_code : null) as string,
+        rule_name: fd.get("rule_name") as string,
+        entity_type: fd.get("entity_type") as string,
+        entity_subtype: (fd.get("entity_subtype") as string) || null,
+        document_type_id: fd.get("document_type_id") ? parseInt(fd.get("document_type_id") as string) : null,
+        is_required: fd.has("is_required"),
+        requires_expiry_date: fd.get("requires_expiry_date") === "on",
+        requires_issue_date: fd.get("requires_issue_date") === "on",
+        blocks_activation: fd.get("blocks_activation") === "on",
+        owner_company_id: fd.get("owner_company_id") ? parseInt(fd.get("owner_company_id") as string) : null,
+        effective_from: (fd.get("effective_from") as string) || null,
+        effective_to: (fd.get("effective_to") as string) || null,
+        is_active: fd.has("is_active"),
+        notes: (fd.get("notes") as string) || null,
+      };
+      const contract = saveAttempt.current.begin(data, revision);
+      const result = savedId !== null
+        ? await updateDmsRequiredDocumentRule({ ...data, id: savedId }, contract)
+        : await createDmsRequiredDocumentRule(data, contract);
+      if (result.success && result.data) { saveAttempt.current.resolved(); setSavedId(result.data.id); setRevision(result.data.revision); toast.success(savedId !== null ? "Rule updated" : "Rule created"); clearDraft(); resetDirty(); if (activeTab?.id) markDirty(activeTab.id, false); return true; }
+      if (!result.success && !result.uncertain) saveAttempt.current.resolved();
       toast.error(result.error ?? "Failed to save"); return false;
-    } catch { toast.error("An unexpected error occurred"); return false; }
-    finally { setIsSubmitting(false); }
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Save unconfirmed. Retry with the same values."); return false; }
+    finally { saving.current = false; setIsSubmitting(false); }
   };
 
   const handleSaveAndClose = async () => { const ok = await handleSave(); if (ok) forceCloseActiveTab(); };

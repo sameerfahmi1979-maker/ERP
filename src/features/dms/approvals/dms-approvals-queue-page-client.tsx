@@ -250,7 +250,8 @@ function DmsApprovalsQueueSession({ authContext }: Props) {
         {/* ── Table ────────────────────────────────────────────────────────── */}
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           {!loaded || isPending ? (
-            <div className="divide-y divide-border">
+            <div role="status" className="divide-y divide-border">
+              <span className="sr-only">Loading document approvals…</span>
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="px-4 py-3 flex items-center gap-4">
                   <Skeleton className="h-4 w-24" />

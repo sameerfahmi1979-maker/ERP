@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { createWorkspaceSaveAttempt } from "@/lib/workspace/save-contract";
+
+import { useRef, useState, useEffect } from "react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,35 +53,43 @@ export function ApprovalRoleWorkspaceForm({ role, mode, authContext, companies =
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
 
+  const [savedId, setSavedId] = useState<number | null>(role?.id ?? null);
+  const [revision, setRevision] = useState(role?.workspace_revision === undefined ? null : String(role.workspace_revision));
+  const saveAttempt = useRef(createWorkspaceSaveAttempt());
+  const saving = useRef(false);
+
   const handleSave = async (): Promise<boolean> => {
-    if (isViewing) return false;
+    if (isViewing || saving.current) return false;
+    saving.current = true;
     setIsSubmitting(true);
-    const form = document.getElementById(FORM_ID) as HTMLFormElement;
-    const fd = new FormData(form);
-    const data = {
-      role_code: masterRecordCode(fd, "role_code", isEditing ? role?.role_code : null) as string,
-      role_name: fd.get("role_name") as string,
-      level_number: parseInt(fd.get("level_number") as string),
-      scope: (fd.get("scope") as "company" | "branch" | "department" | "site" | "module" | "global") || "company",
-      module_code: (fd.get("module_code") as string) || null,
-      amount_limit: fd.get("amount_limit") ? Number(fd.get("amount_limit")) : null,
-      currency_code: (fd.get("currency_code") as string) || "AED",
-      can_approve: fd.has("can_approve"),
-      can_reject: fd.has("can_reject"),
-      can_delegate: fd.get("can_delegate") === "on",
-      escalation_role_id: fd.get("escalation_role_id") ? parseInt(fd.get("escalation_role_id") as string) : null,
-      owner_company_id: fd.get("owner_company_id") ? parseInt(fd.get("owner_company_id") as string) : null,
-      is_active: fd.has("is_active"),
-      description: (fd.get("description") as string) || null,
-    };
     try {
-      const result = isEditing && role
-        ? await updateApprovalRole({ ...data, id: role.id })
-        : await createApprovalRole(data);
-      if (result.success) { toast.success(isEditing ? "Approval role updated" : "Approval role created"); clearDraft(); resetDirty(); if (activeTab?.id) markDirty(activeTab.id, false); return true; }
+      const form = document.getElementById(FORM_ID) as HTMLFormElement;
+      const fd = new FormData(form);
+      const data = {
+        role_code: masterRecordCode(fd, "role_code", isEditing ? role?.role_code : null) as string,
+        role_name: fd.get("role_name") as string,
+        level_number: parseInt(fd.get("level_number") as string),
+        scope: (fd.get("scope") as "company" | "branch" | "department" | "site" | "module" | "global") || "company",
+        module_code: (fd.get("module_code") as string) || null,
+        amount_limit: fd.get("amount_limit") ? Number(fd.get("amount_limit")) : null,
+        currency_code: (fd.get("currency_code") as string) || "AED",
+        can_approve: fd.has("can_approve"),
+        can_reject: fd.has("can_reject"),
+        can_delegate: fd.get("can_delegate") === "on",
+        escalation_role_id: fd.get("escalation_role_id") ? parseInt(fd.get("escalation_role_id") as string) : null,
+        owner_company_id: fd.get("owner_company_id") ? parseInt(fd.get("owner_company_id") as string) : null,
+        is_active: fd.has("is_active"),
+        description: (fd.get("description") as string) || null,
+      };
+      const contract = saveAttempt.current.begin(data, revision);
+      const result = savedId !== null
+        ? await updateApprovalRole({ ...data, id: savedId }, contract)
+        : await createApprovalRole(data, contract);
+      if (result.success && result.data) { saveAttempt.current.resolved(); setSavedId(result.data.id); setRevision(result.data.revision); toast.success(savedId !== null ? "Approval role updated" : "Approval role created"); clearDraft(); resetDirty(); if (activeTab?.id) markDirty(activeTab.id, false); return true; }
+      if (!result.success && !result.uncertain) saveAttempt.current.resolved();
       toast.error(result.error ?? "Failed to save"); return false;
-    } catch { toast.error("An unexpected error occurred"); return false; }
-    finally { setIsSubmitting(false); }
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Save unconfirmed. Retry with the same values."); return false; }
+    finally { saving.current = false; setIsSubmitting(false); }
   };
 
   const handleSaveAndClose = async () => { const ok = await handleSave(); if (ok) forceCloseActiveTab(); };

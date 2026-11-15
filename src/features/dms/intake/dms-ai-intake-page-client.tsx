@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useTransition, useCallback, useRef } from "react";
+import { useState, useTransition, useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useWorkspace } from "@/hooks/use-workspace";
+import { useReadCacheOwner } from "@/components/layout/read-cache-boundary";
 import { useNumberedAiApproval } from "@/hooks/use-numbered-ai-approval";
 import {useRetainedBatchFinalization} from '@/hooks/use-retained-batch-finalization';
 import { toast } from "sonner";
@@ -45,6 +46,7 @@ export function DmsAiIntakePageClient({
 }: DmsAiIntakePageClientProps) {
   const router = useRouter();
   const { activeTab, updateTabRoute, renameTab, closeTab } = useWorkspace();
+  const previewOwner = useReadCacheOwner();
   const [session] = useState<IntakeSessionData>(initialSession);
   const approval = useNumberedAiApproval(String(initialSession.id), approveAiIntakeAndCreateDocument,session.document_id?undefined:recoverAiIntakeApproval);
   const batchApproval=useRetainedBatchFinalization({enabled:!!session.document_id,sessionId:session.id,recover:recoverDraftFinalization,submit:finalizeDraftIntake});
@@ -64,7 +66,22 @@ export function DmsAiIntakePageClient({
     buildInitialReviewValues(initialSession)
   );
   const [isPending, startTransition] = useTransition();
-  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const canPreview = previewOwner?.isLive() === true;
+  const previewContext = useMemo(() => ({
+    owner: canPreview ? previewOwner : null,
+    tabId: activeTab?.id,
+    route: activeTab?.route,
+    sessionId: initialSession.id,
+  }), [activeTab?.id, activeTab?.route, previewOwner, canPreview, initialSession.id]);
+  const [previewRequest, setPreviewRequest] = useState<typeof previewContext | null>(null);
+  const pendingPreview = useRef<Window | null>(null);
+  const cancelPreview = useCallback(() => {
+    const pending = pendingPreview.current;
+    pendingPreview.current = null;
+    pending?.close();
+  }, []);
+  useLayoutEffect(() => cancelPreview, [previewContext, cancelPreview]);
+  const isLoadingPreview = canPreview && previewRequest === previewContext;
   const [discardAnchor, setDiscardAnchor] = useState<"header"|"footer"|null>(null);
   const [discardReason, setDiscardReason] = useState("");
   // HR.DOCLINK.1A — ticked ERP record links, applied on Approve
@@ -270,6 +287,8 @@ export function DmsAiIntakePageClient({
 
   const handleDiscard = () => {
     if (retainedApproval || draftUncertain || isPending || !discardAnchor) return;
+    cancelPreview();
+    setPreviewRequest(null);
     startTransition(async () => {
       // Batch drafts have a draft document that must be soft-deleted per the DMS
       // delete standard; single-file intake has no document yet.
@@ -297,22 +316,32 @@ export function DmsAiIntakePageClient({
   // ── Preview ───────────────────────────────────────────────────────────────
 
   const handlePreview = async () => {
+    const owner = previewContext.owner;
+    if (pendingPreview.current || !owner?.isLive() || previewContext.sessionId !== session.id) return;
     const preview = window.open("about:blank", "_blank");
     if (!preview) {
       toast.error("Allow pop-ups for the ERP to open the original file.");
       return;
     }
     preview.opener = null;
-    setIsLoadingPreview(true);
+    pendingPreview.current = preview;
+    setPreviewRequest(previewContext);
+    const isCurrent = () => pendingPreview.current === preview && owner.isLive();
     try {
       const result = await getIntakeSessionSignedUrl(session.id);
+      if (!isCurrent() || preview.closed) return;
       if (!result.success || !result.data) throw new Error(result.error ?? "Could not generate preview link");
-      if (!preview.closed) preview.location.replace(result.data.url);
+      preview.location.replace(result.data.url);
     } catch (error) {
+      if (!isCurrent()) return;
       preview.close();
       toast.error(error instanceof Error ? error.message : "Could not generate preview link");
     } finally {
-      setIsLoadingPreview(false);
+      if (pendingPreview.current === preview) {
+        if (!owner.isLive()) preview.close();
+        pendingPreview.current = null;
+        setPreviewRequest(null);
+      }
     }
   };
 

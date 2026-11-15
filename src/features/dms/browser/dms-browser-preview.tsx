@@ -10,7 +10,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { format } from "date-fns";
+import { formatBusinessDate } from "@/lib/dubai-calendar";
 import { Download, ExternalLink, Eye, File as FileIcon, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -103,8 +103,8 @@ export function DmsBrowserPreview({ document: doc, canPreview = true, canDownloa
         <p className="text-sm font-semibold leading-snug">{doc.title}</p>
 
         <div className="flex items-center gap-4 text-[11px] text-muted-foreground flex-wrap">
-          {doc.issueDate && <span>Issue: {format(new Date(doc.issueDate), "dd MMM yyyy")}</span>}
-          {doc.expiryDate && <span>Expiry: {format(new Date(doc.expiryDate), "dd MMM yyyy")}</span>}
+          {doc.issueDate && <span>Issue: {formatBusinessDate(doc.issueDate)}</span>}
+          {doc.expiryDate && <span>Expiry: {formatBusinessDate(doc.expiryDate)}</span>}
           <span>{totalFiles ?? doc.files.length} file{(totalFiles ?? doc.files.length) !== 1 ? "s" : ""}</span>
         </div>
 
@@ -160,7 +160,7 @@ export function DmsBrowserPreview({ document: doc, canPreview = true, canDownloa
             key={activeFile.id}
             src={inlineUrl ?? undefined}
             title={activeFile.fileName}
-            className="w-full h-full border-0"
+            className="h-[55dvh] w-full border-0 lg:h-full"
           />
         ) : kind === "image" ? (
           <div className="w-full h-full overflow-auto flex items-start justify-center p-4">

@@ -9,6 +9,7 @@ import "server-only";
 
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { getAuthContext } from "@/lib/rbac/check";
 
@@ -55,10 +56,17 @@ export async function logAudit(params: AuditLogParams): Promise<AuditLogResult> 
     }
 
     // Prepare audit log entry
+    const claims = await supabase.auth.getClaims();
+    const sessionId = claims.data?.claims.session_id;
+    if (claims.error || typeof sessionId !== "string") {
+      return { success: false, error: "Audit session unavailable" };
+    }
+    const companyId = params.owner_company_id === undefined ? ctx.profile.owner_company_id : params.owner_company_id;
     const auditEntry = {
-      actor_user_profile_id: ctx.profile.id,
-      owner_company_id: params.owner_company_id ?? ctx.profile.owner_company_id ?? null,
-      branch_id: params.branch_id ?? ctx.profile.branch_id ?? null,
+      owner_company_id: companyId ?? null,
+      branch_id: params.branch_id === undefined
+        ? companyId === ctx.profile.owner_company_id ? ctx.profile.branch_id ?? null : null
+        : params.branch_id,
       module_code: params.module_code,
       entity_name: params.entity_name,
       entity_id: params.entity_id,
@@ -71,7 +79,11 @@ export async function logAudit(params: AuditLogParams): Promise<AuditLogResult> 
     };
 
     // Insert audit log
-    const { error } = await supabase.from("audit_logs").insert(auditEntry);
+    const { error } = await createAdminClient().rpc("append_erp_server_audit_event", {
+      p_actor: ctx.profile.id,
+      p_session: sessionId,
+      p_event: auditEntry,
+    });
 
     if (error) {
       logger.error("logAudit: Failed to insert audit log", error);

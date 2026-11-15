@@ -1,5 +1,6 @@
 "use client";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import { DmsLoadingStatus } from "@/features/dms/dms-loading-status";
 
 import { getDmsAiPipelineHealth } from "@/server/actions/dms/ai-observability";
 import { useQuery } from "@tanstack/react-query";
@@ -34,7 +35,7 @@ export function AiPipelineHealth({ refreshKey }: Props) {
  const { data, isPending: loading, error: queryError } = uiRead1;
   const error = queryError?.message;
 
-  if (loading) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-muted-foreground">Loading pipeline health...</div></QueryReadBoundary>;
+  if (loading) return <QueryReadBoundary queries={[uiRead1]}><DmsLoadingStatus label="Loading AI pipeline health…" /></QueryReadBoundary>;
   if (error) return <QueryReadBoundary queries={[uiRead1]}><div className="text-sm text-destructive">{error}</div></QueryReadBoundary>;
   if (!data) return null;
 

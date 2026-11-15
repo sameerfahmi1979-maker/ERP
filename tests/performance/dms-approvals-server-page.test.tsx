@@ -8,6 +8,7 @@ vi.mock("next/navigation", () => ({redirect: m.redirect}));
 vi.mock("@/components/erp/page-header", () => ({ERPPageHeader: () => null}));
 vi.mock("@/features/dms/approvals/dms-approvals-queue-page-client", () => ({DmsApprovalsQueuePageClient: (props: unknown) => {m.child(props); return null;}}));
 import ApprovalPage from "@/app/(protected)/dms/approvals/page";
+import { canAccessRoute } from "@/lib/rbac/route-access-registry";
 const auth = syntheticAuthContext(["dms.approvals.view"], {id: 6, auth_user_id: "synthetic"});
 afterEach(() => {cleanup(); vi.clearAllMocks();});
 it("queue parent passes the exact request principal without introducing another read", async () => {
@@ -17,4 +18,13 @@ it("queue parent passes the exact request principal without introducing another 
 it("a no-role principal is rejected before the client is mounted", async () => {
   m.auth.mockResolvedValue({...auth, permissionCodes: [], globalPermissionCodes: []});
   await expect(ApprovalPage()).rejects.toThrow("REDIRECT:/access-denied"); expect(m.child).not.toHaveBeenCalled();
+});
+
+it("permits history-only users to see the same Approval Queue in navigation and by direct route", async () => {
+  const history = syntheticAuthContext(["dms.approvals.history.view"], {id: 6, auth_user_id: "synthetic"});
+  expect(canAccessRoute("/dms/approvals", history.permissionCodes, false)).toBe(true);
+  expect(canAccessRoute("/dms/approvals", ["dms.documents.view"], false)).toBe(false);
+  m.auth.mockResolvedValue(history);
+  render(await ApprovalPage());
+  expect(m.child).toHaveBeenCalledWith({authContext: history, canAct: false, isAdmin: false});
 });

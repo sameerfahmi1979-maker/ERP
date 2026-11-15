@@ -26,6 +26,7 @@
 import type { IOcrProvider } from "./types";
 import type { IDmsAiProvider } from "@/lib/dms/ai/types";
 import { extractFileContent } from "@/lib/dms/file-content-extractor";
+import { traceSpan } from '@/lib/performance/trace';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -261,7 +262,10 @@ async function routeScannedOrImage(
   // buffer. Render them lazily only when the GPT vision path is actually used.
   const ensureImages = async (): Promise<ExtractedImage[]> => {
     if (images.length > 0) return images;
-    const content = await extractFileContent(input.buffer, mimeType, fileName);
+    const content = await extractFileContent(input.buffer, mimeType, fileName, {
+      // A deferred PDF reached this branch only after the text check failed.
+      pdfTextAlreadyChecked: isPdfMime(mimeType),
+    });
     totalPdfPages = content.pageCount ?? totalPdfPages;
     return content.images;
   };
@@ -281,11 +285,11 @@ async function routeScannedOrImage(
   // ── Azure Document Intelligence ──────────────────────────────────────────
   if (!input.forceVision && featureFlags.dmsOcrAzure && azureProvider?.isConfigured() && azureProvider.supports(mimeType)) {
     try {
-      const azureResult = await azureProvider.extractText({
+      const azureResult = await traceSpan('dms.ocr.provider', () => azureProvider.extractText({
         buffer: input.buffer,
         mimeType,
         fileName,
-      });
+      }));
 
       // Azure succeeded — return result.
       return {
@@ -324,7 +328,7 @@ async function routeScannedOrImage(
       // Fall through to GPT, mark fallbackUsed=true
       const fallbackImages = await ensureImages();
       const coverageWarnings = await buildCoverageWarnings(fallbackImages);
-      const gptResult = await tryGptVision(fallbackImages, fileName, gptProvider);
+      const gptResult = await traceSpan('dms.ocr.provider', () => tryGptVision(fallbackImages, fileName, gptProvider));
       return {
         ...gptResult,
         sourceKind,
@@ -338,7 +342,7 @@ async function routeScannedOrImage(
   if (featureFlags.dmsOcrGptVisionFallback) {
     const visionImages = await ensureImages();
     const coverageWarnings = await buildCoverageWarnings(visionImages);
-    const gptResult = await tryGptVision(visionImages, fileName, gptProvider);
+    const gptResult = await traceSpan('dms.ocr.provider', () => tryGptVision(visionImages, fileName, gptProvider));
     return {
       ...gptResult,
       sourceKind,

@@ -1,3 +1,5 @@
+import { CatalogueControls } from "@/features/common-master-data/catalogue-controls";
+import { catalogueCriteria, catalogueHref } from "@/lib/master-data/catalogue-page";
 import { getAuthContext, hasGlobalPermission } from "@/lib/rbac/check";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { LoadError } from "@/components/erp/load-error";
@@ -7,16 +9,19 @@ import { listApprovalRoles } from "@/server/actions/common-master-data/approval-
 import Link from "next/link";
 
 const BASE = "/admin/common-master-data/approval-roles";
-export default async function ApprovalRolesPage() {
+export default async function ApprovalRolesPage({ searchParams }: { searchParams?: Promise<{ page?: string; q?: string }> }) {
   const ctx = await getAuthContext();
+  let query;
+  try { query = catalogueCriteria(await searchParams ?? {}); } catch { return <LoadError title="Catalogue" retryHref={BASE} />; }
   const canManage = hasGlobalPermission(ctx, "common_md.manage") || hasGlobalPermission(ctx, "common_md.approval_roles.manage");
-  const result = await listApprovalRoles({});
+  const result = await listApprovalRoles(query);
   const roles = result.data ?? [];
   return <div className="p-4 md:p-6 space-y-4">
     <ERPPageHeader title="Approval roles" description="Approval authority levels and delegation rules"
       breadcrumbs={[{label:"Common master data",href:"/admin/common-master-data"},{label:"Approval roles"}]}
       actions={canManage ? <Link className={buttonVariants({size:"sm"})} href={BASE + "/record/new"}>Add approval role</Link> : null} />
-    {!result.success ? <LoadError title="Approval roles" retryHref={BASE} /> :
+    <CatalogueControls base={BASE} page={query.page} search={query.search} total={result.totalCount} />
+    {!result.success ? <LoadError title="Approval roles" retryHref={catalogueHref(BASE, query.page, query.search)} /> :
       <CommonMasterList title="Approval roles" basePath={BASE} fields={[{ key:"level", label:"Level", type:"number" }, { key:"scope", label:"Scope" }, { key:"limit", label:"Amount limit", type:"number" }, { key:"currency", label:"Currency" }, { key:"active", label:"Active", type:"select", options:[{value:"true",label:"Yes"},{value:"false",label:"No"}] }]}
         editableRecordIds={canManage ? roles.map(role => role.id) : undefined}
         rows={roles.map(r=>({ id:r.id, name:r.role_name, code:r.role_code, level:r.level_number, scope:r.scope, limit:r.amount_limit == null ? null : Number(r.amount_limit), currency:r.currency_code ?? "", active:r.is_active }))} />}

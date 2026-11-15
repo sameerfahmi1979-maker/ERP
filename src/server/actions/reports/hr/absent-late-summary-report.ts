@@ -31,13 +31,15 @@ export const absentLateSummaryFetcher: ReportFetcher = {
            owner_company:owner_companies!employees_owner_company_id_fkey(legal_name_en)
          )`
       )
-      .in("attendance_type", ["absent", "late", "half_day", "missing_punch"])
+      .or("attendance_type.eq.absent,late_minutes.gt.0,is_missing_punch.eq.true")
       .order("attendance_date", { ascending: false });
 
     if (empIds) q = q.in("employee_id", empIds);
     if (filters.date_from) q = q.gte("attendance_date", String(filters.date_from));
     if (filters.date_to) q = q.lte("attendance_date", String(filters.date_to));
-    if (filters.attendance_status) q = q.eq("attendance_type", String(filters.attendance_status));
+    if (filters.attendance_status === "late") q = q.gt("late_minutes", 0);
+    else if (filters.attendance_status === "missing_punch") q = q.eq("is_missing_punch", true);
+    else if (filters.attendance_status) q = q.eq("attendance_type", String(filters.attendance_status));
 
     const { data, error } = await q.limit(10000);
     if (error) throw new Error(`HR_ABSENT_LATE_SUMMARY fetch error: ${error.message}`);
@@ -51,6 +53,7 @@ export const absentLateSummaryFetcher: ReportFetcher = {
         department: emp?.department?.department_name_en ?? "",
         attendance_date: r.attendance_date,
         attendance_type: r.attendance_type,
+        exception: r.attendance_type === "absent" ? "absent" : r.is_missing_punch ? "missing_punch" : "late",
         late_minutes: r.late_minutes ?? 0,
         early_out_minutes: r.early_out_minutes ?? 0,
         missing_punch: r.is_missing_punch ? "Yes" : "No",
@@ -63,7 +66,7 @@ export const absentLateSummaryFetcher: ReportFetcher = {
     return {
       columns: [
         "employee_code", "employee_name", "company", "department",
-        "attendance_date", "attendance_type", "late_minutes", "early_out_minutes", "missing_punch",
+        "attendance_date", "attendance_type", "exception", "late_minutes", "early_out_minutes", "missing_punch",
       ],
       rows,
       meta: { total: rows.length, ownerCompanyIds },

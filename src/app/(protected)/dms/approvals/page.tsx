@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { canReadDmsApprovals } from "@/lib/reads/dms-approvals-schema";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { DmsApprovalsQueuePageClient } from "@/features/dms/approvals/dms-approvals-queue-page-client";
 
@@ -9,18 +10,7 @@ export const revalidate = 0;
 export default async function DmsApprovalsQueuePage() {
   const ctx = await getAuthContext();
 
-  const canView =
-    hasPermission(ctx, "dms.approvals.view") ||
-    hasPermission(ctx, "dms.approvals.act") ||
-    hasPermission(ctx, "dms.approvals.submit") ||
-    hasPermission(ctx, "dms.approvals.withdraw") ||
-    hasPermission(ctx, "dms.approvals.admin") ||
-    hasPermission(ctx, "dms.approvals.history.view") ||
-    hasPermission(ctx, "dms.documents.approve") ||
-    hasPermission(ctx, "dms.admin") ||
-    ctx.roleCodes.includes("system_admin");
-
-  if (!canView) redirect("/access-denied");
+  if (!canReadDmsApprovals(ctx)) redirect("/access-denied");
 
   const canAct =
     hasPermission(ctx, "dms.approvals.act") ||

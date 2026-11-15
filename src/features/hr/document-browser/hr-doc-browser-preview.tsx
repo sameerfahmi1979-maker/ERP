@@ -10,7 +10,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { format } from "date-fns";
+import { formatBusinessDate } from "@/lib/dubai-calendar";
 import { Download, ExternalLink, Eye, File as FileIcon, FileSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -110,8 +110,8 @@ export function HrDocBrowserPreview({ entity, document: doc, files, totalFiles, 
         <p className="text-sm font-semibold leading-snug">{doc.title}</p>
 
         <div className="flex items-center gap-4 text-[11px] text-muted-foreground flex-wrap">
-          {doc.issueDate && <span>Issue: {format(new Date(doc.issueDate), "dd MMM yyyy")}</span>}
-          {doc.expiryDate && <span>Expiry: {format(new Date(doc.expiryDate), "dd MMM yyyy")}</span>}
+          {doc.issueDate && <span>Issue: {formatBusinessDate(doc.issueDate)}</span>}
+          {doc.expiryDate && <span>Expiry: {formatBusinessDate(doc.expiryDate)}</span>}
           {entity && <span>Owner: {entity.name}</span>}
           <span>
             {totalFiles} permitted file{totalFiles !== 1 ? "s" : ""}

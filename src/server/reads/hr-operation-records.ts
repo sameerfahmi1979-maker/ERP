@@ -10,9 +10,9 @@ import {operationsRealDate, type HrOperationsField} from "@/lib/reads/hr-operati
 /** Static projections reproduce the permitted ORIGINAL labels. Native row and
  * related-label RLS remains authoritative; no privileged business read. */
 const projections = {
-  assignments: "id,assignment_type,assignment_status,effective_from,effective_to,departments(id,name_en:department_name_en),designations(id,name_en:designation_name_en),work_sites(id,name_en:site_name)",
+  assignments: "id,assignment_type,assignment_status,effective_from,effective_to,departments:department,designations(id,name_en:designation_name_en),work_sites:site",
   requirements: "id,requirement_type,requirement_name,is_required,is_met,status,expiry_date",
-  readiness: "id,readiness_status,checked_at,work_sites(id,name_en:site_name)",
+  readiness: "id,readiness_status,checked_at,work_sites:site",
   blocks: "id,block_type,block_reason,block_status,effective_from,effective_to,created_at",
   assets: "id,asset_type,asset_reference,asset_description,issued_date,return_due_date,returned_date,status",
   ppe: "id,ppe_item,standard_or_size,quantity,issued_date,expiry_or_replacement_date,returned_date,status",
@@ -27,6 +27,8 @@ const details = {
   ppe: `${projections.ppe},notes,created_at`,
   accommodation: `${projections.accommodation},notes,created_at`,
 } as const;
+const localLabels = {site_name: "site_label", department_name: "department_label"} as const;
+const relationFor = (kind: keyof typeof HR_OPERATION_RECORD_CONFIG) => kind === "assignments" ? "phase3_hr_assignments" : kind === "readiness" ? "phase3_hr_site_readiness" : HR_OPERATION_RECORD_CONFIG[kind].table;
 const related = {site_name: {alias: "work_sites", column: "site_name"}, department_name: {alias: "departments", column: "department_name_en"}, designation_name: {alias: "designations", column: "designation_name_en"}} as const;
 async function hasVisibleEmployee(db: Awaited<ReturnType<typeof createClient>>, employeeId: number) {
   const subject = await db.from("employees").select("id").eq("id", employeeId).is("deleted_at", null).maybeSingle();
@@ -44,14 +46,15 @@ export async function readHrOperationRecords(input: unknown) {
     const p = parsed.data, config = HR_OPERATION_RECORD_CONFIG[p.kind], fields: readonly HrOperationsField[] = config.fields, db = await createClient();
     if (!await hasVisibleEmployee(db, p.employeeId) || !await hrSubjectPermission(db,p.employeeId,"hr.assignments.view")) return {success: false, error: "Permission denied"};
     let projection: string = projections[p.kind];
-    for (const [key, value] of Object.entries(p.columnFilters)) if (value && key in related) {const r = related[key as keyof typeof related]; projection = projection.replace(`${r.alias}(`, `${r.alias}!inner(`);}
-    if (p.search) for (const f of fields) if (f.id in related) {const r = related[f.id as keyof typeof related]; projection += `,search_${r.alias}:${r.alias}(id)`;}
+    for (const [key, value] of Object.entries(p.columnFilters)) if (value && key in related && !(key in localLabels)) {const r = related[key as keyof typeof related]; projection = projection.replace(`${r.alias}(`, `${r.alias}!inner(`);}
+    if (p.search) for (const f of fields) if (f.id in related && !(f.id in localLabels)) {const r = related[f.id as keyof typeof related]; projection += `,search_${r.alias}:${r.alias}(id)`;}
     const query = (head = false) => {
-      const q = db.from(config.table).select(projection, {count: "exact", head}).eq("employee_id", p.employeeId).is("deleted_at", null);
+      const q = db.from(relationFor(p.kind)).select(projection, {count: "exact", head}).eq("employee_id", p.employeeId).is("deleted_at", null);
       if (p.search) {
         const clauses: string[] = [];
         for (const f of fields) {
-          if (f.id in related) {const r = related[f.id as keyof typeof related]; q.ilike(`search_${r.alias}.${r.column}`, literalLike(p.search)); clauses.push(`search_${r.alias}.not.is.null`);}
+          if (f.id in localLabels) clauses.push(`${localLabels[f.id as keyof typeof localLabels]}.ilike.${literalContains(p.search)}`);
+          else if (f.id in related) {const r = related[f.id as keyof typeof related]; q.ilike(`search_${r.alias}.${r.column}`, literalLike(p.search)); clauses.push(`search_${r.alias}.not.is.null`);}
           else if (f.type === "text" || f.type === "select") clauses.push(`${f.id}.ilike.${literalContains(p.search)}`);
           else if (f.type === "number" && /^\d+(\.\d+)?$/.test(p.search) && Number.isFinite(Number(p.search))) clauses.push(`${f.id}.eq.${Number(p.search)}`);
           else if (f.type === "date" && operationsRealDate(p.search)) {
@@ -63,7 +66,8 @@ export async function readHrOperationRecords(input: unknown) {
       }
       for (const f of fields) {
         const value = p.columnFilters[f.id]; if (!value) continue;
-        if (f.id in related) {const r = related[f.id as keyof typeof related]; q.ilike(`${r.alias}.${r.column}`, literalLike(value));}
+        if (f.id in localLabels) q.ilike(localLabels[f.id as keyof typeof localLabels], literalLike(value));
+        else if (f.id in related) {const r = related[f.id as keyof typeof related]; q.ilike(`${r.alias}.${r.column}`, literalLike(value));}
         else if (f.type === "text") q.ilike(f.id, literalLike(value));
         else if (f.type === "number") q.eq(f.id, Number(value));
         else if (f.id === "checked_at" || f.id === "created_at") {q.gte(f.id, `${value}T00:00:00Z`); q.lt(f.id, new Date(Date.parse(`${value}T00:00:00Z`) + 86400000).toISOString());}
@@ -71,8 +75,8 @@ export async function readHrOperationRecords(input: unknown) {
       }
       if (!head) {
         for (const sort of readSortPriority(p)) {
-          const r = sort.id in related ? related[sort.id as keyof typeof related] : null;
-          q.order(r ? `${r.alias}(name_en)` : sort.id, {ascending: !sort.desc, nullsFirst: false});
+          const r = sort.id in related && !(sort.id in localLabels) ? related[sort.id as keyof typeof related] : null;
+          q.order(r ? `${r.alias}(name_en)` : localLabels[sort.id as keyof typeof localLabels] ?? sort.id, {ascending: !sort.desc, nullsFirst: false});
         }
         q.order("id", {ascending: true});
       }
@@ -98,7 +102,7 @@ export async function readHrOperationRecordDetail(input: unknown) {
     if (!hasHrReadCapability(ctx, "hr.assignments.view")) return {success: false, error: "Permission denied"};
     const p = parsed.data, db = await createClient(), projection: string = details[p.kind];
     if (!await hasVisibleEmployee(db, p.employeeId) || !await hrSubjectPermission(db,p.employeeId,"hr.assignments.view")) return {success: false, error: "Permission denied"};
-    const result = await db.from(HR_OPERATION_RECORD_CONFIG[p.kind].table).select(projection).eq("employee_id", p.employeeId).eq("id", p.recordId).is("deleted_at", null).maybeSingle();
+    const result = await db.from(relationFor(p.kind)).select(projection).eq("employee_id", p.employeeId).eq("id", p.recordId).is("deleted_at", null).maybeSingle();
     const safe = hrOperationRecordDetailSchema.safeParse({kind: p.kind, employeeId: p.employeeId, row: result.data});
     if (result.error || !safe.success || safe.data.row.id !== p.recordId) throw Error("Unavailable operational record detail");
     return {success: true, data: safe.data};

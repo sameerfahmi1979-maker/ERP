@@ -8,6 +8,8 @@
  * Default expiring-soon threshold: 60 days.
  */
 
+import { daysUntilBusinessDate, dubaiBusinessDate } from "@/lib/dubai-calendar";
+
 export type ExpiryStatus =
   | "no_expiry"
   | "valid"
@@ -39,18 +41,13 @@ export type StatusBadgeConfig = {
  */
 export function getExpiryStatus(
   expiryDate: string | Date | null | undefined,
-  thresholdDays = 60
+  thresholdDays = 60,
+  asOf = dubaiBusinessDate()
 ): ExpiryStatus {
   if (!expiryDate) return "no_expiry";
 
-  const expiry = typeof expiryDate === "string" ? new Date(expiryDate) : expiryDate;
-  if (isNaN(expiry.getTime())) return "missing";
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const diffMs = expiry.getTime() - today.getTime();
-  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  const diffDays = getDaysUntilExpiry(expiryDate, asOf);
+  if (diffDays === null) return "missing";
 
   if (diffDays < 0) return "expired";
   if (diffDays <= thresholdDays) return "expiring_soon";
@@ -61,15 +58,12 @@ export function getExpiryStatus(
  * Returns days until expiry (negative = already expired).
  */
 export function getDaysUntilExpiry(
-  expiryDate: string | Date | null | undefined
+  expiryDate: string | Date | null | undefined,
+  asOf = dubaiBusinessDate()
 ): number | null {
   if (!expiryDate) return null;
-  const expiry = typeof expiryDate === "string" ? new Date(expiryDate) : expiryDate;
-  if (isNaN(expiry.getTime())) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diffMs = expiry.getTime() - today.getTime();
-  return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  if (typeof expiryDate === "string") return daysUntilBusinessDate(expiryDate, asOf);
+  return Number.isFinite(expiryDate.getTime()) ? daysUntilBusinessDate(dubaiBusinessDate(expiryDate.getTime()), asOf) : null;
 }
 
 // ── Badge Configs ─────────────────────────────────────────────────────────────
@@ -147,6 +141,7 @@ export function computeComplianceSummary(
   let active = 0;
   let expiringSoon = 0;
   let expired = 0;
+  const asOf = dubaiBusinessDate();
 
   for (const row of rows) {
     const st = row.status;
@@ -155,7 +150,7 @@ export function computeComplianceSummary(
       continue;
     }
     if (st === "active" || st === "valid") {
-      const expiryStatus = getExpiryStatus(row.expiry_date, thresholdDays);
+      const expiryStatus = getExpiryStatus(row.expiry_date, thresholdDays, asOf);
       if (expiryStatus === "expired") {
         expired++;
       } else if (expiryStatus === "expiring_soon") {

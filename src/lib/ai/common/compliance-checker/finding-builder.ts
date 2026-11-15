@@ -119,14 +119,8 @@ export function buildComplianceFindingInput(
   };
 }
 
-export type UpsertComplianceResult = "inserted" | "skipped_existing" | "failed";
-
-export async function upsertComplianceFinding(
-  supabase: SupabaseClient,
-  finding: ComplianceFindingInput,
-  actorUserProfileId: number
-): Promise<UpsertComplianceResult> {
-  const { error } = await supabase.from("erp_ai_compliance_findings").insert({
+export function complianceFindingRow(finding: ComplianceFindingInput) {
+  return {
     finding_type: finding.findingType,
     severity: finding.severity,
     detection_method: finding.detectionMethod,
@@ -144,17 +138,7 @@ export async function upsertComplianceFinding(
     evidence_json: finding.evidenceJson,
     ai_reason: finding.aiReason,
     recommended_action: finding.recommendedAction,
-    status: "open",
-    created_by: actorUserProfileId,
-    updated_by: actorUserProfileId,
-  });
-
-  if (error) {
-    if (error.code === "23505") return "skipped_existing";
-    return "failed";
-  }
-
-  return "inserted";
+  };
 }
 
 export async function insertComplianceFindingEvent(

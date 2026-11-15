@@ -13,7 +13,7 @@ export async function recoverNumberedAiApproval(sessionId:number):Promise<AiAppr
  if(!z.number().int().positive().max(Number.MAX_SAFE_INTEGER).safeParse(sessionId).success)return unavailable;
  try{
   const ctx=await getAuthContext();
-  if(!ctx.profile||!['dms.documents.upload','dms.documents.review_ai','dms.admin'].some(p=>hasPermission(ctx,p))||!hasPermission(ctx,'numbering.rules.generate'))return unavailable;
+  if(!ctx.profile||!hasPermission(ctx,'dms.documents.upload'))return unavailable;
   const client=await createClient();
   const source=await client.from('dms_upload_sessions').select('id,status,document_id').eq('id',sessionId).is('deleted_at',null).maybeSingle();
   if(source.error||!source.data||source.data.status==='cancelled')return unavailable;
@@ -28,11 +28,11 @@ export async function recoverNumberedAiApproval(sessionId:number):Promise<AiAppr
   if(!original.success||original.data.input.uploadSessionId!==sessionId)return unavailable;
   if(original.data.receipt){
    const receipt=original.data.receipt;
-   // A completed receipt needs current document visibility, not the old upload
-   // snapshot (which legitimately changed on completion).
+   // The completed receipt uses current approval authority. The original
+   // upload snapshot legitimately changed when the document was attached.
    if(source.data.document_id!==receipt.documentId)return unavailable;
-   const document=await client.from('dms_documents').select('id,document_no').eq('id',receipt.documentId).is('deleted_at',null).maybeSingle();
-   if(document.error||document.data?.document_no!==receipt.documentNo)return unavailable;
+   const visible=await client.rpc('verify_completed_numbered_ai_intake',{p_operation:original.data.contract.operationId,p_request:original.data.input});
+   if(visible.error||visible.data!==true)return unavailable;
   }else{
    const visible=await client.rpc('prepare_numbered_ai_intake',{p_request:original.data.input});
    const snapshot=aiApprovalSnapshotSchema.safeParse(visible.data);

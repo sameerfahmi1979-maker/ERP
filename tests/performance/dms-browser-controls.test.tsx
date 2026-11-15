@@ -43,7 +43,7 @@ it("erases legacy shared history and keeps new terms only in the current owner s
   fireEvent.keyDown(input, { key: "Enter" });
   fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
   fireEvent.focus(input);
-  expect(screen.getByRole("button", { name: "private first owner", exact: true })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "private first owner" })).toBeTruthy();
   ui.rerender(search(onSearch, "second"));
   fireEvent.focus(screen.getByRole("textbox", { name: "Search documents" }));
   expect(screen.queryByText("private first owner")).toBeNull();
@@ -67,7 +67,7 @@ it("retires a pending search after Clear or after the current account unmounts",
 it("gives filter clear and disclosure their own controls and restores focus on Escape", () => {
   const onChange = vi.fn();
   render(<DmsBrowserFilterBar docTypes={[]} filters={{ ...DEFAULT_FILTERS, status: "active" }} onChange={onChange} />);
-  const disclosure = screen.getByRole("button", { name: "Active", exact: true });
+  const disclosure = screen.getByRole("button", { name: "Active" });
   const clear = screen.getByRole("button", { name: "Clear status filter" });
   expect(disclosure.contains(clear)).toBe(false);
   fireEvent.click(disclosure);

@@ -32,6 +32,8 @@ interface DmsUploadSessionTableProps {
   onAttach: (session: DmsUploadSessionRow) => void;
   onCreateDocument: (session: DmsUploadSessionRow) => void;
   onCancel: (session: DmsUploadSessionRow) => void;
+  onVerify?: (sessionId: number) => void;
+  verificationBusy?: boolean;
   onAiFill?: (session: DmsUploadSessionRow) => void;
   isSubmitting?: boolean;
   onReadAvailable?: (available:boolean)=>void;
@@ -104,6 +106,8 @@ export function DmsUploadSessionTable({
   onAttach,
   onCreateDocument,
   onCancel,
+  onVerify,
+  verificationBusy,
   onAiFill,
   isSubmitting,
   onReadAvailable,
@@ -214,6 +218,12 @@ export function DmsUploadSessionTable({
                     : "—"}
                 </td>
                 <td data-column="actions" className="px-4 py-2.5">
+                  {s.status === 'uploading' && onVerify && (
+                    <Button size="sm" variant="outline" disabled={verificationBusy || isSubmitting}
+                      onClick={() => onVerify(s.id)}>
+                      Retry verification
+                    </Button>
+                  )}
                   {isActionable && (
                     <div className="flex min-w-0 flex-wrap items-center gap-1.5 [&>button]:max-w-full [&>button]:h-auto [&>button]:min-h-7 [&>button]:whitespace-normal [&>button]:py-1">
                       {/* AI review already complete — show direct Review link instead of re-running AI */}

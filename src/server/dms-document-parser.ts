@@ -3,6 +3,9 @@ import {spawn} from 'node:child_process';
 import path from 'node:path';
 
 let active=0;
+const LARGE_PDF_BYTES = 10 * 1024 * 1024;
+const DEFAULT_PARSE_TIMEOUT_MS = 10_000;
+const LARGE_PDF_PARSE_TIMEOUT_MS = 30_000;
 /** Resource boundary, not a security sandbox. Parse in a killable process with
  * no ERP credentials/environment, a bounded heap, finite deadline and concurrency.
  * Only static trusted parsers run; no document content is executed. */
@@ -16,7 +19,10 @@ export async function validateDmsDocument(bytes:Buffer,mime:string):Promise<void
    const child=spawn(process.execPath,['--max-old-space-size=384',path.resolve(process.cwd(),'tooling/dms/validate-intake.cjs'),mime],{env,windowsHide:true,stdio:['pipe','pipe','ignore']});
    let result='',finished=false;
    const finish=(error?:Error)=>{if(finished)return;finished=true;clearTimeout(timer);child.kill();if(error)reject(error);else resolve();};
-   const timer=setTimeout(()=>finish(Error('Document parsing timed out. Retain the file for retry.')),10000);
+   const timeoutMs = mime === 'application/pdf' && bytes.length >= LARGE_PDF_BYTES
+    ? LARGE_PDF_PARSE_TIMEOUT_MS
+    : DEFAULT_PARSE_TIMEOUT_MS;
+   const timer=setTimeout(()=>finish(Error('Document parsing timed out. Retain the file for retry.')),timeoutMs);
    child.on('error',()=>finish(Error('Document parser is unavailable.')));
    child.stdout.on('data',(part:Buffer)=>{result+=part.toString();if(result.length>128)finish(Error('Invalid parser response.'));});
    child.on('close',code=>finish(code===0&&result==='F07_FORMAT_VALID\n'?undefined:Error('The document is malformed, encrypted or exceeds supported parser limits.')));

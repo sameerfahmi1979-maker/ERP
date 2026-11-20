@@ -8,7 +8,8 @@ import { conflict, dbRevision, denied, field, formatProposal, HrError, human, no
 
 type Input<K extends HrCommand["op"]>=Extract<HrCommand,{op:K}>;
 const command=(db:Db,action:string,data:Record<string,unknown>,mutating=false)=>rpc(db,"mobile_hr_command_v1",{p_action:action,p_data:data},mutating);
-const staffRow=z.object({id,employeeId:id,kind:z.enum(["approval","leave"]),employeeLabel:z.string().nullable(),revision:dbRevision,label:z.string(),status:z.string(),canDecide:z.boolean(),startDate:z.string().nullable(),endDate:z.string().nullable()});
+const staffRow=z.object({id,employeeId:id,kind:z.enum(["approval","leave"]),employeeLabel:z.string().nullable(),revision:dbRevision,label:z.string(),status:z.string(),canDecide:z.boolean(),startDate:z.string().nullable(),endDate:z.string().nullable(),
+  leaveType:z.string().nullable(),totalDays:z.number().nullable(),certificateStatus:z.string().nullable(),certificateReference:z.string().nullable()});
 async function staffInbox(db:Db,i:Input<"inbox"|"opening">){
   if(i.kind==="proposal")throw denied();
   const raw=await rpc(db,"mobile_hr_staff_inbox",{p_kind:i.kind,p_after:i.op==="inbox"?i.after:0,p_employee:i.op==="opening"?i.employeeId:null,p_id:i.op==="opening"?i.id:null});
@@ -16,7 +17,8 @@ async function staffInbox(db:Db,i:Input<"inbox"|"opening">){
   if(i.op==="opening"){
     const r=all[0];
     if(!r || r.id!==i.id || r.kind!==i.kind || r.employeeId!==i.employeeId || r.revision!==i.revision)throw conflict();
-    return {...r,fields:[field("Subject",r.label),...(i.kind==="leave"?[field("Start date",r.startDate),field("End date",r.endDate)]:[])]};
+    return {...r,fields:[field("Subject",r.label),...(i.kind==="leave"?[field("Leave type",r.leaveType),field("Charged days",r.totalDays),field("Start date",r.startDate),field("End date",r.endDate),
+      ...(r.certificateStatus?[field("Certificate integrity",r.certificateStatus)]:[]),...(r.certificateReference?[field("Certificate reference",r.certificateReference)]:[])]:[])]};
   }
   const {rows,more}=pageRows(all);
   return {rows,more,nextAfterId:more?rows.at(-1)!.id:null};

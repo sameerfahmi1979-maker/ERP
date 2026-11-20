@@ -94,9 +94,26 @@ SELECT pg_temp.deny($q$select public.mobile_hr_leave_read(998813,'options',1)$q$
 SELECT pg_temp.expect(jsonb_array_length(public.mobile_hr_staff_inbox('approval',0))=2,'only actionable exact branch approvals');
 SELECT pg_temp.expect(public.mobile_hr_staff_inbox('approval',0)->0->>'employeeLabel' LIKE 'MHR-%Synthetic Employee%','actionable staff subject is identified by code and name');
 SELECT pg_temp.expect(public.mobile_hr_staff_inbox('leave',0)='[]','verified empty leave queue');
+SELECT pg_temp.expect(jsonb_array_length(public.mobile_hr_evidence(998810,1))=2 AND public.mobile_hr_evidence(998810,1)->0->>'versionId'='998814','unverified positive-sized unique original eligible for renewal only');
+RESET ROLE;
+SELECT set_config('request.jwt.claims','{}',true);
+SET LOCAL session_replication_role=replica;
+INSERT INTO public.employee_leave_requests(id,employee_id,leave_type_id,start_date,end_date,total_days,created_by,sick_cert_dms_id)
+ OVERRIDING SYSTEM VALUE SELECT 998820,998810,998810,'2026-11-21','2026-11-22',2,id,998810 FROM public.user_profiles WHERE auth_user_id='cccccccc-1111-4000-8000-000000000001';
+INSERT INTO public.employee_leave_requests(id,employee_id,leave_type_id,start_date,end_date,total_days,created_by)
+ OVERRIDING SYSTEM VALUE SELECT 998821,998810,998811,'2026-12-01','2026-12-05',5,id FROM public.user_profiles WHERE auth_user_id='cccccccc-1111-4000-8000-000000000001';
+INSERT INTO erp_private.hr_self_leave_evidence(leave_id,document_id,version_id,original_file_id,original_sha256,original_bytes)
+ VALUES(998820,998810,998810,998810,repeat('a',64),100);
+SET LOCAL session_replication_role=origin;
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.actor(2);
+SELECT pg_temp.expect(public.mobile_hr_staff_inbox('leave',0,998810,998820)->0 @> '{"leaveType":"QA calendar","totalDays":2,"certificateStatus":null,"certificateReference":null}',
+ 'exact leave opening includes entitlement and charge but withholds certificate without medical view');
+SELECT pg_temp.expect(public.mobile_hr_staff_inbox('leave',0,998810,998821)->0 @> '{"leaveType":"QA manual","totalDays":5}',
+ 'a distinct leave type has its actual charged duration in the exact opening');
+SELECT pg_temp.expect(public.mobile_hr_staff_inbox('leave',0,998812,998820)='[]','leave context cannot be paired with another employee');
 SELECT pg_temp.expect(NOT EXISTS(SELECT 1 FROM jsonb_array_elements(public.mobile_hr_evidence(998810,1)) x WHERE (x->>'id')::bigint=998812),'failed original omitted from evidence picker');
 SELECT pg_temp.expect(NOT EXISTS(SELECT 1 FROM jsonb_array_elements(public.mobile_hr_evidence(998810,1)) x WHERE (x->>'id')::bigint=998813),'ambiguous original omitted from evidence picker');
-SELECT pg_temp.expect(jsonb_array_length(public.mobile_hr_evidence(998810,1))=2 AND public.mobile_hr_evidence(998810,1)->0->>'versionId'='998814','unverified positive-sized unique original eligible for renewal only');
 SELECT pg_temp.deny($q$select public.mobile_hr_evidence(998810,1,'leave')$q$,'selecting leave certificate requires scoped medical view');
 RESET ROLE;
 SELECT set_config('request.jwt.claims','{}',true);
@@ -105,6 +122,33 @@ INSERT INTO public.role_permissions(role_id,permission_id) SELECT 998810,id FROM
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.actor(2);
 SELECT pg_temp.expect(jsonb_array_length(public.mobile_hr_evidence(998810,1,'leave'))=1 AND public.mobile_hr_evidence(998810,1,'leave')->0->>'versionId'='998810','certificate filing eligibility requires an exact SHA-backed original');
+SELECT pg_temp.expect(public.mobile_hr_staff_inbox('leave',0,998810,998820)->0 @> '{"certificateStatus":"Pending integrity verification","certificateReference":"DMS #998810 / version #998810"}',
+ 'authorized opening shows pinned certificate as pending rather than reviewed');
+RESET ROLE;
+SELECT set_config('request.jwt.claims','{}',true);
+SET LOCAL session_replication_role=replica;
+UPDATE public.dms_document_files SET integrity_status='verified' WHERE id=998810;
+SET LOCAL session_replication_role=origin;
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.actor(2);
+SELECT pg_temp.expect(public.mobile_hr_staff_inbox('leave',0,998810,998820)->0->>'certificateStatus'='Original integrity verified','unchanged verified certificate is identified precisely');
+RESET ROLE;
+SELECT set_config('request.jwt.claims','{}',true);
+DELETE FROM public.role_permissions WHERE role_id=998810 AND permission_id=(SELECT id FROM public.permissions WHERE permission_code='dms.documents.preview');
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.actor(2);
+SELECT pg_temp.expect(public.mobile_hr_staff_inbox('leave',0,998810,998820)->0 @> '{"certificateStatus":null,"certificateReference":null}',
+ 'revoked DMS preview immediately withholds certificate review status and reference');
+RESET ROLE;
+SELECT set_config('request.jwt.claims','{}',true);
+INSERT INTO public.role_permissions(role_id,permission_id) SELECT 998810,id FROM public.permissions WHERE permission_code='dms.documents.preview';
+SET LOCAL session_replication_role=replica;
+UPDATE public.dms_document_files SET sha256_hash=repeat('b',64) WHERE id=998810;
+SET LOCAL session_replication_role=origin;
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.actor(2);
+SELECT pg_temp.expect(public.mobile_hr_staff_inbox('leave',0,998810,998820)->0 @> '{"certificateStatus":"Unavailable or changed","certificateReference":null}',
+ 'a changed pinned original cannot be represented as verified');
 RESET ROLE;
 SELECT set_config('request.jwt.claims','{}',true);
 INSERT INTO public.user_roles(user_profile_id,role_id,owner_company_id,branch_id) SELECT id,998810,998811,998812 FROM public.user_profiles WHERE right(auth_user_id::text,1)='2';
@@ -199,6 +243,23 @@ SELECT pg_temp.deny('select public.f12_attendance_entry_opening(998813,null)','o
 SELECT pg_temp.expect(jsonb_array_length(public.mobile_hr_time_history(998810,k,1))=26 AND public.mobile_hr_time_history(998810,k,1)->0->>'id'='998835'
  AND public.mobile_hr_time_history(998810,k,1)->24->>'id'='998811' AND public.mobile_hr_time_history(998810,k,2)->0->>'id'='998810'
  AND jsonb_array_length(public.mobile_hr_time_history(998810,k,2))=1,'26 tied '||k||' records use ID order and lookahead without count') FROM unnest(ARRAY['punch','overtime'])k;
+RESET ROLE;
+SELECT set_config('request.jwt.claims','{}',true);
+SET LOCAL session_replication_role=replica;
+INSERT INTO public.employee_attendance_punches(id,employee_id,punch_datetime,punch_type) OVERRIDING SYSTEM VALUE
+ VALUES(998840,998810,'2026-11-20T00:30:00+04','in'),(998841,998810,'2026-11-21T01:15:00+04','out');
+UPDATE public.employee_attendance_daily_summary SET first_in_at='2026-11-20T00:30:00+04',last_out_at='2026-11-21T01:15:00+04' WHERE id=998810;
+SET LOCAL session_replication_role=origin;
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.actor(1);
+SELECT pg_temp.expect(public.mobile_hr_own_records(998810,'punch',1)->0->>'date'='2026-11-21 01:15 +04:00'
+ AND public.mobile_hr_own_records(998810,'punch',1)->1->>'date'='2026-11-20 00:30 +04:00','domain-only midnight and overnight punches display Dubai date without changing order');
+SELECT pg_temp.expect(public.mobile_hr_own_records(998810,'attendance',1)->0->>'date'='2026-11-10'
+ AND public.mobile_hr_own_records(998810,'attendance',1)->0->>'detail' LIKE 'In 2026-11-20 00:30 +04:00 · Out 2026-11-21 01:15 +04:00%',
+ 'domain-only daily date unchanged and in/out show Dubai midnight and overnight dates');
+SELECT pg_temp.actor(3);
+SELECT pg_temp.expect(public.mobile_hr_time_history(998810,'punch',1)->0->>'date'='2026-11-21 01:15 +04:00'
+ AND public.mobile_hr_time_history(998810,'punch',1)->1->>'date'='2026-11-20 00:30 +04:00','full-profile midnight and overnight punches use the same Dubai display');
 CREATE FUNCTION pg_temp.day_entry(subject bigint) RETURNS jsonb LANGUAGE sql STABLE AS $$
   WITH opening AS (SELECT public.f12_attendance_entry_opening(subject,NULL) AS data)
   SELECT jsonb_build_object('employeeId',subject,'date',data->>'date','id',NULL,'revision',NULL,'fingerprint',data->'row'->>'fingerprint',

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "@/lib/rbac/check";
 import { dispatchHr } from "../hr";
-import { employeeContext, type Db } from "../hr-reads";
+import { employeeContext, timeRead, type Db } from "../hr-reads";
 const { createClient,rpc,auth }=vi.hoisted(()=>({createClient:vi.fn(),rpc:vi.fn(),auth:vi.fn()}));
 vi.mock("@/lib/rbac/check",async original=>({...await original<typeof import("@/lib/rbac/check")>(),getAuthContext:auth}));
 vi.mock("@/lib/rbac/employee-access",async original=>({...await original<typeof import("@/lib/rbac/employee-access")>(),getLinkedEmployeeId:async()=>12}));
@@ -14,6 +14,19 @@ function source(row:Record<string,unknown>|null,error:unknown=null):Db {
   return {from:()=>q} as unknown as Db;
 }
 describe("exact subject reads",()=>{
+  it("shows Dubai dates for midnight punches and overnight daily in/out without changing daily dates",async()=>{
+    const q={select:()=>q,eq:()=>q,order:()=>q,range:async()=>({error:null,data:[{id:3,workspace_revision:"1",attendance_date:"2026-11-20",attendance_type:"office",approval_status:"pending",first_in_at:"2026-11-19T20:30:00+00:00",last_out_at:"2026-11-20T21:15:00+00:00",total_hours:24.75}]})};
+    const r=await timeRead({from:()=>q} as unknown as Db,{allows:()=>true} as never,{op:"time",kind:"attendance",employeeId:12,page:1});
+    expect(r.rows[0]).toMatchObject({date:"2026-11-20",detail:"In 2026-11-20 00:30 +04:00 · Out 2026-11-21 01:15 +04:00 · 24.75 h"});
+  });
+  it.each([["Annual",2,null,null],["Sick",5,"Original integrity verified","DMS #71 / version #3"]])("opens the authoritative %s leave context",async(leaveType,totalDays,certificateStatus,certificateReference)=>{
+    rpc.mockResolvedValue({error:null,data:[{id:31,employeeId:12,kind:"leave",employeeLabel:"EMP12",revision:"4",label:"Leave",status:"pending",canDecide:true,startDate:"2026-11-20",endDate:"2026-11-24",leaveType,totalDays,certificateStatus,certificateReference}]});
+    const r=await dispatchHr({op:"opening",kind:"leave",id:31,employeeId:12,revision:"4"},ctx);
+    expect(r).toHaveProperty("fields",expect.arrayContaining([{label:"Leave type",value:leaveType},{label:"Charged days",value:String(totalDays)}]));
+    const text=JSON.stringify(r);
+    if(certificateStatus){expect(text).toContain(certificateStatus);expect(text).toContain(certificateReference);}
+    else {expect(text).not.toContain('"label":"Certificate');expect(text).not.toContain("reviewed");}
+  });
   const actor={...ctx,permissionCodes:["hr.employees.view.team"],roleAssignments:[{roleId:1,roleCode:"manager",ownerCompanyId:1,branchId:1,permissionCodes:["hr.employees.view.team"]}]};
   const report={id:10,owner_company_id:1,branch_id:1,reporting_manager_id:5};
   it("requires the actual direct manager and exact assigned branch",async()=>{
@@ -82,6 +95,16 @@ describe("HR entry for independently assigned domains",()=>{
     createClient.mockResolvedValue({rpc,from:()=>q});
     const r=await dispatchHr({op:"opening",kind:"proposal",id:17,employeeId:9,revision:"4"},ctx);
     expect(r).toMatchObject({employeeLabel:"EMP-9 — Synthetic employee",reference:"HR proposal #17"});
+  });
+  it("keeps two training certificates unambiguous in their authorized proposal openings",async()=>{
+    const q={select:()=>q,in:()=>q,is:()=>q,limit:()=>Promise.resolve({error:null,data:[{id:9,full_name_en:"Synthetic employee",employee_code:"EMP-9"}]})};
+    createClient.mockResolvedValue({rpc,from:()=>q});
+    for(const [id,sourceId,sourceRevision] of [[17,71,"3"],[18,72,"8"]] as const){
+      rpc.mockResolvedValue({data:{id,employeeId:9,kind:"compliance-renewal",status:"pending",revision:"1",canDecide:true,
+        proposal:{sourceKind:"training-certificate",sourceId,sourceRevision,reason:"Renew"},createdAt:"2026-11-20"},error:null});
+      const r=await dispatchHr({op:"opening",kind:"proposal",id,employeeId:9,revision:"1"},ctx);
+      expect(r).toHaveProperty("fields",expect.arrayContaining([{label:"Source record",value:`Training certificate #${sourceId}`},{label:"Source revision",value:sourceRevision}]));
+    }
   });
 });
 it("keeps distinct references and omits the name of an unreadable employee in a proposal list",async()=>{

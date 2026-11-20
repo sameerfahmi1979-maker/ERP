@@ -9,6 +9,13 @@ import { balanceRow, dbRevision, denied, field, human, rpcFailure, unavailable }
 export type Db = Awaited<ReturnType<typeof createClient>>;
 type Input<K extends HrCommand["op"]>=Extract<HrCommand,{op:K}>;
 const nullable=z.string().nullable();
+const dubaiTimestamp=(value:string)=>{
+  const date=new Date(value);
+  if(!Number.isFinite(date.getTime()))throw unavailable();
+  const parts=new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Dubai",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(date);
+  const part=(name:string)=>parts.find(x=>x.type===name)?.value;
+  return `${part("year")}-${part("month")}-${part("day")} ${part("hour")}:${part("minute")} +04:00`;
+};
 const choice=z.object({id,label:z.string()});
 export const pageRows=<T>(rows:T[])=>({rows:rows.slice(0,25),more:rows.length>25});
 export const choicePage=(raw:unknown)=>pageRows(z.array(choice).max(26).parse(raw));
@@ -144,5 +151,5 @@ export async function timeRead(db:Db,a:Access,input:Input<"time">){
   }
   const r=await db.from("employee_attendance_daily_summary").select("id,workspace_revision,attendance_date,attendance_type,approval_status,first_in_at,last_out_at,total_hours").eq("employee_id",input.employeeId).order("attendance_date",{ascending:false}).order("id",{ascending:false}).range(from,from+25);
   if(r.error)throw unavailable();
-  return pageRows(z.array(z.object({id,workspace_revision:dbRevision,attendance_date:z.string(),attendance_type:z.string(),approval_status:z.string(),first_in_at:nullable,last_out_at:nullable,total_hours:z.number().nullable()})).parse(r.data).map(x=>({id:x.id,label:human(x.attendance_type),date:x.attendance_date,detail:[x.first_in_at&&"In "+x.first_in_at,x.last_out_at&&"Out "+x.last_out_at,x.total_hours!=null?x.total_hours+" h":null].filter(Boolean).join(" · ")||null,status:x.approval_status,revision:x.workspace_revision})));
+  return pageRows(z.array(z.object({id,workspace_revision:dbRevision,attendance_date:z.string(),attendance_type:z.string(),approval_status:z.string(),first_in_at:nullable,last_out_at:nullable,total_hours:z.number().nullable()})).parse(r.data).map(x=>({id:x.id,label:human(x.attendance_type),date:x.attendance_date,detail:[x.first_in_at&&"In "+dubaiTimestamp(x.first_in_at),x.last_out_at&&"Out "+dubaiTimestamp(x.last_out_at),x.total_hours!=null?x.total_hours+" h":null].filter(Boolean).join(" · ")||null,status:x.approval_status,revision:x.workspace_revision})));
 }

@@ -60,10 +60,11 @@ BEGIN
   IF p_kind IN ('punch','attendance','overtime','shift') THEN
     WITH facts AS (
       SELECT p.id,initcap(replace(p.punch_type,'_',' ')) AS label,p.punch_datetime AS stamp,
-        p.punch_datetime::text AS date,NULL::text AS detail,NULL::text AS status,NULL::text AS revision
+        to_char(p.punch_datetime AT TIME ZONE 'Asia/Dubai','YYYY-MM-DD HH24:MI')||' +04:00' AS date,NULL::text AS detail,NULL::text AS status,NULL::text AS revision
         FROM public.employee_attendance_punches p WHERE p_kind='punch' AND p.employee_id=p_employee
       UNION ALL SELECT a.id,initcap(replace(a.attendance_type,'_',' ')),a.attendance_date::timestamptz,a.attendance_date::text,
-        nullif(concat_ws(' · ','In '||a.first_in_at::text,'Out '||a.last_out_at::text,a.total_hours::text||' h'),''),
+        nullif(concat_ws(' · ','In '||to_char(a.first_in_at AT TIME ZONE 'Asia/Dubai','YYYY-MM-DD HH24:MI')||' +04:00',
+          'Out '||to_char(a.last_out_at AT TIME ZONE 'Asia/Dubai','YYYY-MM-DD HH24:MI')||' +04:00',a.total_hours::text||' h'),''),
         a.approval_status,a.workspace_revision::text FROM public.employee_attendance_daily_summary a WHERE p_kind='attendance' AND a.employee_id=p_employee
       UNION ALL SELECT o.id,o.hours::text||' h overtime',o.overtime_date::timestamptz,o.overtime_date::text,NULL,o.approval_status,NULL
         FROM public.employee_overtime_records o WHERE p_kind='overtime' AND o.employee_id=p_employee AND o.deleted_at IS NULL
@@ -144,7 +145,7 @@ BEGIN
     AND (NOT p_branch OR e.owner_company_id=p_company) AND public.current_user_can_view_employee(e.id)
     AND erp_private.f11_child_authorized('attendance-summary',e.id)),
   options AS (
-    SELECT c.id,c.legal_name_en AS label FROM public.owner_companies c WHERE NOT p_branch AND c.status='active' 
+    SELECT c.id,c.legal_name_en AS label FROM public.owner_companies c WHERE NOT p_branch AND c.status='active'
     AND EXISTS (SELECT 1 FROM permitted e WHERE e.owner_company_id=c.id)
     UNION ALL SELECT b.id,b.branch_name_en FROM public.branches b WHERE p_branch AND b.owner_company_id=p_company
     AND b.status='active'  AND EXISTS (SELECT 1 FROM permitted e WHERE e.branch_id=b.id))
@@ -191,6 +192,42 @@ REVOKE ALL ON FUNCTION erp_private.mobile_hr_leave_read(bigint,text,bigint),publ
 GRANT EXECUTE ON FUNCTION erp_private.mobile_hr_leave_read(bigint,text,bigint),public.mobile_hr_leave_read(bigint,text,bigint),
   erp_private.mobile_hr_roster_scopes(bigint,boolean,bigint,text),public.mobile_hr_roster_scopes(bigint,boolean,bigint,text),
   erp_private.mobile_hr_evidence(bigint,integer,text),public.mobile_hr_evidence(bigint,integer,text) TO authenticated;
+-- Read the exact officer subject, authoritative charge and pinned evidence in one snapshot.
+-- Certificate metadata requires separate medical and DMS authority; integrity is not a human review.
+CREATE FUNCTION erp_private.mobile_hr_leave_context(p_id bigint,p_employee bigint) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+DECLARE r public.employee_leave_requests; e erp_private.hr_self_leave_evidence; typ text; cert_status text; cert_reference text;
+BEGIN
+  IF NOT erp_private.business_principal_is_active() OR NOT erp_private.f11_child_authorized('leave-request',p_employee)
+    OR NOT public.current_user_has_permission_any_scope('hr.leave.manage') THEN
+    RAISE EXCEPTION 'Current independent leave review required' USING ERRCODE='42501'; END IF;
+  SELECT * INTO r FROM public.employee_leave_requests l WHERE l.id=p_id AND l.employee_id=p_employee
+    AND l.deleted_at IS NULL AND l.approval_status='pending' AND l.created_by<>public.current_user_profile_id()
+    AND NOT EXISTS(SELECT 1 FROM public.erp_user_employee_links own WHERE own.user_profile_id=public.current_user_profile_id() AND own.employee_id=l.employee_id);
+  IF NOT FOUND THEN RAISE EXCEPTION 'Current independent leave opening required' USING ERRCODE='42501'; END IF;
+  SELECT name_en INTO typ FROM public.hr_leave_types WHERE id=r.leave_type_id;
+  IF erp_private.employee_permission(p_employee,'hr.medical.view') AND EXISTS(SELECT 1 FROM public.employees s WHERE s.id=p_employee
+    AND erp_private.permission_in_scope('dms.documents.view',s.owner_company_id,s.branch_id)
+    AND erp_private.permission_in_scope('dms.documents.preview',s.owner_company_id,s.branch_id)) THEN
+    SELECT * INTO e FROM erp_private.hr_self_leave_evidence WHERE leave_id=p_id;
+    IF r.sick_cert_dms_id IS NOT NULL OR FOUND THEN
+      cert_status:='Unavailable or changed';
+      IF e.document_id=r.sick_cert_dms_id AND erp_private.mobile_hr_evidence(p_employee,e.document_id,e.version_id)
+        AND EXISTS(SELECT 1 FROM public.dms_document_files f WHERE f.id=e.original_file_id AND f.document_id=e.document_id AND f.version_id=e.version_id
+          AND f.file_role='original' AND f.deleted_at IS NULL AND f.file_size_bytes=e.original_bytes AND f.file_size_bytes>0
+          AND f.sha256_hash=e.original_sha256 AND f.sha256_hash~'^[0-9a-f]{64}$' AND f.integrity_status<>'failed') THEN
+        cert_reference:='DMS #'||e.document_id||' / version #'||e.version_id;
+        SELECT CASE WHEN f.integrity_status='verified' THEN 'Original integrity verified' ELSE 'Pending integrity verification' END
+          INTO cert_status FROM public.dms_document_files f WHERE f.id=e.original_file_id;
+      END IF;
+    ELSE cert_status:='Not attached'; END IF;
+  END IF;
+  RETURN jsonb_build_object('leaveType',coalesce(typ,'Unavailable leave type'),'totalDays',r.total_days,
+    'certificateStatus',cert_status,'certificateReference',cert_reference);
+END $$;
+REVOKE ALL ON FUNCTION erp_private.mobile_hr_leave_context(bigint,bigint) FROM PUBLIC,anon,service_role;
+GRANT EXECUTE ON FUNCTION erp_private.mobile_hr_leave_context(bigint,bigint) TO authenticated;
+
 -- Filter before pagination so actionable pages contain only independently reviewable rows.
 CREATE FUNCTION public.mobile_hr_staff_inbox(p_kind text,p_after bigint,p_employee bigint DEFAULT NULL,p_id bigint DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $$
@@ -203,19 +240,22 @@ BEGIN
     THEN RAISE EXCEPTION 'Current review permission required' USING ERRCODE='42501'; END IF;
   RETURN (WITH candidates AS (
     SELECT a.id,a.employee_id,a.workspace_revision::text AS revision,a.request_title AS title,
-      NULL::date AS start_date,NULL::date AS end_date
+      NULL::date AS start_date,NULL::date AS end_date,NULL::jsonb AS leave_context
     FROM public.employee_approval_requests a WHERE p_kind='approval' AND a.deleted_at IS NULL AND a.request_status='pending'
       AND a.requested_by<>actor AND a.created_by<>actor AND a.approval_role_id IS NULL
       AND a.approval_type IN ('hr_action','pro_process','other') AND a.related_record_type IS NULL AND a.related_record_id IS NULL
       AND erp_private.f11_child_authorized('approval',a.employee_id)
     UNION ALL
-    SELECT l.id,l.employee_id,l.workspace_revision::text,'Leave request' AS title,l.start_date,l.end_date
+    SELECT l.id,l.employee_id,l.workspace_revision::text,'Leave request' AS title,l.start_date,l.end_date,erp_private.mobile_hr_leave_context(l.id,l.employee_id)
     FROM public.employee_leave_requests l WHERE p_kind='leave' AND l.deleted_at IS NULL AND l.approval_status='pending'
-      AND l.created_by<>actor AND erp_private.f11_child_authorized('leave-request',l.employee_id))
+      AND l.created_by<>actor AND erp_private.f11_child_authorized('leave-request',l.employee_id)
+      AND NOT EXISTS(SELECT 1 FROM public.erp_user_employee_links own WHERE own.user_profile_id=actor AND own.employee_id=l.employee_id))
   SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.id),'[]') FROM (
     SELECT c.id,c.employee_id AS "employeeId",c.revision,p_kind AS kind,c.title || ' — ' || e.full_name_en AS label,'pending'::text AS status,
       concat_ws(' — ',e.employee_code,e.full_name_en) AS "employeeLabel",
-      c.start_date AS "startDate",c.end_date AS "endDate",true AS "canDecide"
+      c.start_date AS "startDate",c.end_date AS "endDate",true AS "canDecide",
+      c.leave_context->>'leaveType' AS "leaveType",(c.leave_context->>'totalDays')::numeric AS "totalDays",
+      c.leave_context->>'certificateStatus' AS "certificateStatus",c.leave_context->>'certificateReference' AS "certificateReference"
     FROM candidates c JOIN public.employees e ON e.id=c.employee_id AND e.deleted_at IS NULL
     WHERE c.id>p_after AND (p_id IS NULL OR (c.id=p_id AND c.employee_id=p_employee))
       AND NOT EXISTS (SELECT 1 FROM public.erp_user_employee_links l WHERE l.user_profile_id=actor AND l.employee_id=c.employee_id)
@@ -274,7 +314,7 @@ BEGIN
   IF NOT public.current_user_can_view_employee(p_employee) OR NOT erp_private.employee_permission(p_employee,'hr.attendance.view') THEN
     RAISE EXCEPTION 'Current time history access required' USING ERRCODE='42501'; END IF;
   RETURN (WITH facts AS (
-    SELECT p.id,p.punch_datetime AS stamp,initcap(replace(p.punch_type,'_',' ')) AS label,to_jsonb(p.punch_datetime)#>>'{}' AS date,
+    SELECT p.id,p.punch_datetime AS stamp,initcap(replace(p.punch_type,'_',' ')) AS label,to_char(p.punch_datetime AT TIME ZONE 'Asia/Dubai','YYYY-MM-DD HH24:MI')||' +04:00' AS date,
       s.site_name AS detail,NULL::text AS status,NULL::text AS revision FROM public.employee_attendance_punches p
       LEFT JOIN public.work_sites s ON s.id=p.work_site_id WHERE p_kind='punch' AND p.employee_id=p_employee
     UNION ALL SELECT o.id,o.overtime_date::timestamptz,o.hours::text||' h overtime',o.overtime_date::text,NULL,o.approval_status,NULL

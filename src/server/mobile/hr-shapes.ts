@@ -28,8 +28,10 @@ export function formatProposal(kind:string,raw:unknown) {
   const proposal=record.parse(raw);
   const changes=kind==="profile-correction"?record.parse(proposal.changes??{}):proposal;
   const keys=kind==="profile-correction"?["mobile_number","personal_email","emergency_contact_name","emergency_contact_mobile"]:
-    kind==="attendance-correction"?["date","reason"]:["sourceKind","reason","documentId","documentVersionId"];
-  return keys.flatMap(k=>typeof changes[k]==="string" || typeof changes[k]==="number"?[field(human(k),changes[k])]:[]);
+    kind==="attendance-correction"?["date","reason"]:["reason","documentId","documentVersionId"];
+  const source=kind==="compliance-renewal" && typeof proposal.sourceKind==="string" && typeof proposal.sourceId==="number"
+    ? [field("Source record",human(proposal.sourceKind)+" #"+proposal.sourceId),field("Source revision",typeof proposal.sourceRevision==="string"?proposal.sourceRevision:null)] : [];
+  return [...source,...keys.flatMap(k=>typeof changes[k]==="string" || typeof changes[k]==="number"?[field(human(k),changes[k])]:[])];
 }
 export const proposalRow=z.object({id,employeeId:id,revision:dbRevision,kind:proposalKind,status:z.string(),canDecide:z.boolean(),
   proposal:record,createdAt:z.string(),decisionReason:z.string().nullable().optional()});

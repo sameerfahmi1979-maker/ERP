@@ -14,10 +14,10 @@ const attachment = { documentId:id.nullable(), documentVersionId:id.nullable() }
 const openingKind = z.enum(["proposal","approval","leave"]);
 const renewKind = z.enum(["identity-document","medical-insurance","access-card","training-certificate"]);
 const changes = z.strictObject({
-  mobile_number:z.string().trim().min(1).max(50).optional(),
+  mobile_number:z.string().trim().min(1).max(40).optional(),
   personal_email:z.email().max(254).optional(),
-  emergency_contact_name:z.string().trim().min(1).max(200).optional(),
-  emergency_contact_mobile:z.string().trim().min(1).max(50).optional(),
+  emergency_contact_name:z.string().trim().min(1).max(160).optional(),
+  emergency_contact_mobile:z.string().trim().min(1).max(40).optional(),
 }).refine(r=>Object.keys(r).length>0);
 export const hrCommand = z.discriminatedUnion("op", [
   z.strictObject({op:z.literal("home")}),

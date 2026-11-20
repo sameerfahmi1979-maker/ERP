@@ -9,6 +9,19 @@ vi.mock("../hr", () => ({ dispatchHr: dispatch }));
 const uid = "69cfc140-a4c8-4ce5-a7ca-4692f08a9e22";
 const write = { operationId:uid, employeeId:12, revision:"3" };
 describe("mobile HR input and private projections", () => {
+  it("enforces the canonical contact maxima at the HTTP boundary",()=>{
+    for(const [key,max] of [["mobile_number",40],["emergency_contact_mobile",40],["emergency_contact_name",160]] as const){
+      expect(hrCommand.safeParse({op:"profileCorrection",...write,changes:{[key]:"a".repeat(max)}}).success).toBe(true);
+      expect(hrCommand.safeParse({op:"profileCorrection",...write,changes:{[key]:"a".repeat(max+1)}}).success).toBe(false);
+    }
+  });
+  it("identifies two same-kind compliance source records by exact ID and revision",()=>{
+    const opening=(sourceId:number,sourceRevision:string)=>formatProposal("compliance-renewal",{sourceKind:"training-certificate",sourceId,sourceRevision,reason:"Renew"});
+    expect(opening(71,"3")).toContainEqual({label:"Source record",value:"Training certificate #71"});
+    expect(opening(71,"3")).toContainEqual({label:"Source revision",value:"3"});
+    expect(opening(72,"8")).toContainEqual({label:"Source record",value:"Training certificate #72"});
+    expect(opening(72,"8")).toContainEqual({label:"Source revision",value:"8"});
+  });
   it("rejects extra authority flags and tampered fields", () => {
     expect(hrCommand.safeParse({op:"profile",isAdmin:true}).success).toBe(false);
     for(const key of ["salary","bank_account","employee_status","blood_group","uae_address"])

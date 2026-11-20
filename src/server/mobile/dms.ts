@@ -1,5 +1,7 @@
 import "server-only";
 import {z} from "zod";
+import {NextRequest} from "next/server";
+import {createHash} from "node:crypto";
 import {canUseApplication,hasPermission,type AuthContext} from "@/lib/rbac/check";
 import {getLinkedEmployeeId} from "@/lib/rbac/employee-access";
 import {createClient} from "@/lib/supabase/server";
@@ -16,6 +18,8 @@ import {completeDmsRenewalRequest} from "@/server/actions/dms/renewals";
 import {literalContains} from "@/lib/reads/search";
 import {normalizeIdentity} from "@/lib/ai/search/vocabulary";
 import {dmsBusinessDate} from "@/lib/dms/expiry-calendar";
+import {mobileAccessToken} from "@/lib/supabase/mobile-request";
+import {GET as deliverDocument} from "@/app/api/dms/file/route";
 import {mobileDocumentCriteria,offlinePermitCriteria,type MobileDocumentsInput,type MobileTasksInput,type MobileApprovalInput,type OfflinePermitInput} from "./contracts";
 
 export class MobileDmsError extends Error {constructor(message:string,public readonly status=503){super(message);}}
@@ -102,11 +106,14 @@ export async function readMobileRecords(entityType:"employee"|"site",search:stri
 export async function readMobileFolder(input:{entityType:"employee"|"site";entityId:number;page:number},ctx:AuthContext){
  await admitFolder(ctx,input.entityType,input.entityId);
  const parent={entityType:input.entityType,entityId:input.entityId};
- const [list,summary]=await Promise.all([readDmsEntityDocuments({...parent,operation:"list",offset:(input.page-1)*25,limit:25},ctx),readDmsEntityDocuments({...parent,operation:"summary"},ctx)]);
+ const [list,summary,checklist]=await Promise.all([readDmsEntityDocuments({...parent,operation:"list",offset:(input.page-1)*25,limit:25},ctx),readDmsEntityDocuments({...parent,operation:"summary"},ctx),readDmsEntityDocuments({...parent,operation:"checklist"},ctx)]);
  if(!list.success||!list.data||list.data.availability!=="available"||!("rows" in list.data)||!("totalCount" in list.data)||list.data.criteria.operation!=="list")throw new MobileDmsError(list.error??"The folder could not be completely loaded.");
  if(!summary.success||!summary.data||summary.data.availability!=="available"||!("summary" in summary.data))throw new MobileDmsError(summary.error??"The folder summary is unavailable.");
+ if(!checklist.success||!checklist.data||checklist.data.availability!=="available"||!("missing" in checklist.data))throw new MobileDmsError(checklist.error??"The required-document checklist is unavailable.");
+ const missing=checklist.data.missing,missingCount=summary.data.summary.missingRequiredDocuments;
+ if((missing===null)!==(missingCount===null)||(missing!==null&&missing.length!==missingCount))throw new MobileDmsError("Required documents changed while loading. Refresh this folder.",409);
  const rows=list.data.rows.map(r=>{if(!("document_id" in r))throw new MobileDmsError("Unexpected folder row.");return mobileDocumentRow({id:r.document_id,title:r.title,document_no:r.document_no,expiry_date:r.expiry_date,status:r.status,document_type:{name_en:r.document_type_name}});});
- return {rows,total:list.data.totalCount,summary:summary.data.summary};
+ return {rows,total:list.data.totalCount,summary:summary.data.summary,missing};
 }
 
 export async function readMobileDocuments(raw:MobileDocumentsInput,ctx:AuthContext){
@@ -201,6 +208,32 @@ export async function completeMobileRenewal(input:{requestId:number;replacementD
  return completeDmsRenewalRequest(input.requestId,{replacement_document_id:doc.id,replacement_version_id:doc.current_version_id,new_expiry_date:doc.expiry_date??undefined,notes:input.notes});
 }
 
+/** Legacy originals use the same authorized/audited delivery as the eventual
+ * phone download. No service-role file access or network self-call is added. */
+async function hashProtectedOriginal(fileId:number,size:number):Promise<string>{
+ const token=mobileAccessToken();if(!token)throw new MobileDmsError("Sign in again before saving this original offline.",401);
+ if(!Number.isSafeInteger(size)||size<1)throw new MobileDmsError("The original file size could not be verified.",409);
+ if(size>52_428_800)throw new MobileDmsError("This original exceeds the 50 MiB offline limit.",413);
+ const response=await deliverDocument(new NextRequest(`http://mobile.internal/api/dms/file?fileId=${fileId}&disposition=attachment`,{headers:{Authorization:`Bearer ${token}`}}));
+ if(response.status!==200||!response.body){
+  try{void response.body?.cancel().catch(()=>undefined);}catch{/* Best-effort cancellation. */}
+  const status=[401,403,404,409].includes(response.status)?response.status:503;
+  throw new MobileDmsError("The authorized original could not be delivered for offline verification. Refresh this document and try again.",status);
+ }
+ const reader=response.body.getReader(),hash=createHash("sha256");let count=0,timer:ReturnType<typeof setTimeout>|undefined;
+ const expired=new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new MobileDmsError("Offline original verification timed out. Try again.",503)),30_000);});
+ try{
+  for(;;){const item=await Promise.race([reader.read(),expired]);if(item.done)break;
+   if(!(item.value instanceof Uint8Array))throw new MobileDmsError("The original byte stream could not be verified.",503);
+   count+=item.value.byteLength;if(count>size||count>52_428_800)throw new MobileDmsError("The original byte size changed. Refresh the document before saving offline.",409);
+   hash.update(item.value);
+  }
+  if(count!==size)throw new MobileDmsError("The original transfer was incomplete. Retry saving this document offline.",409);
+  return hash.digest("hex");
+ }catch(error){if(error instanceof MobileDmsError)throw error;throw new MobileDmsError("The original byte stream could not be verified. Try again.",503);}
+ finally{if(timer)clearTimeout(timer);try{void reader.cancel().catch(()=>undefined);}catch{/* Cancellation cannot delay failure. */}try{reader.releaseLock();}catch{/* A failed stream may still own its read. */}}
+}
+
 export async function authorizeOfflineDocument(raw:OfflinePermitInput,ctx:AuthContext){
  admitted(ctx);const input=offlinePermitCriteria.parse(raw);if(!mobileCapabilities(ctx).offline)denied("Preview and download permissions are required to save offline.");
  const db=await createClient();
@@ -211,12 +244,12 @@ export async function authorizeOfflineDocument(raw:OfflinePermitInput,ctx:AuthCo
  if(original.error)throw new MobileDmsError("The selected original could not be checked.");
  const file=z.object({id:rowId,document_id:rowId,version_id:rowId,file_name:z.string(),mime_type:z.string(),file_role:z.literal("original"),sha256_hash:z.string().nullable(),file_size_bytes:z.number().int().nonnegative()}).safeParse(original.data);
  if(!file.success||file.data.id!==input.fileId||file.data.document_id!==input.documentId)throw new MobileDmsError("The selected original does not belong to this document.",404);
- const sha=file.data.sha256_hash;
- if(!sha||!/^[a-fA-F0-9]{64}$/.test(sha))throw new MobileDmsError("Save offline requires a verified original-file hash. Ask document control to verify this original.",409);
+ const storedSha=file.data.sha256_hash;
  if(!rowId.safeParse(result.data.current_version_id).success)throw new MobileDmsError("The document current version could not be verified. Refresh this document before saving offline.",409);
  const version=await db.from("dms_document_versions").select("id,document_id,version_number,version_label").eq("id",file.data.version_id).eq("document_id",input.documentId).maybeSingle();
  if(version.error)throw new MobileDmsError("The original version could not be checked.");
  if(!version.data||version.data.id!==file.data.version_id||version.data.document_id!==input.documentId)throw new MobileDmsError("The original version is unavailable.",404);
+ const sha=storedSha&&/^[a-fA-F0-9]{64}$/.test(storedSha)?storedSha.toLowerCase():await hashProtectedOriginal(input.fileId,file.data.file_size_bytes);
  const current=await db.from("dms_document_files").select("id,document_id,version_id,file_name,mime_type,file_role,sha256_hash,file_size_bytes").eq("id",input.fileId).is("deleted_at",null).maybeSingle();
  if(current.error)throw new MobileDmsError("The current original-file binding could not be checked.");
  const checked=file.data,binding=current.data;

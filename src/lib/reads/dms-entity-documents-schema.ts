@@ -8,7 +8,8 @@ export const entityDocumentsListCriteria=z.object({...parent,operation:z.literal
 export const entityDocumentsAttachCriteria=z.object({...parent,operation:z.literal("attach"),search:z.string().trim().max(200).default(""),...paging}).strict();
 export const entityDocumentsSelectedCriteria=z.object({...parent,operation:z.literal("selected"),documentIds:z.array(id).min(1).max(100).refine(v=>new Set(v).size===v.length).transform(v=>[...v].sort((a,b)=>a-b))}).strict();
 export const entityDocumentsSummaryCriteria=z.object({...parent,operation:z.literal("summary")}).strict();
-export const entityDocumentsCriteriaSchema=z.discriminatedUnion("operation",[entityDocumentsListCriteria,entityDocumentsAttachCriteria,entityDocumentsSelectedCriteria,entityDocumentsSummaryCriteria]);
+export const entityDocumentsChecklistCriteria=z.object({...parent,operation:z.literal("checklist")}).strict();
+export const entityDocumentsCriteriaSchema=z.discriminatedUnion("operation",[entityDocumentsListCriteria,entityDocumentsAttachCriteria,entityDocumentsSelectedCriteria,entityDocumentsSummaryCriteria,entityDocumentsChecklistCriteria]);
 export type EntityDocumentsCriteria=z.infer<typeof entityDocumentsCriteriaSchema>;
 export const entityDocumentRowSchema=z.object({link_id:id,link_is_primary:z.boolean(),link_role:text,linked_at:z.string(),document_id:id,
   document_no:z.string(),legacy_document_code:text,title:z.string(),description:text,status:z.string(),confidentiality_level:z.string(),issue_date:text,expiry_date:text,migrated_from_table:text,
@@ -28,8 +29,12 @@ export const entityDocumentsAttachPage=z.object({criteria:entityDocumentsAttachC
 export const entityDocumentsSelectedPage=z.object({criteria:entityDocumentsSelectedCriteria,...meta,rows:z.array(entityDocumentOptionSchema).max(100)}).strict()
   .refine(v=>v.rows.length===v.criteria.documentIds.length&&new Set(v.rows.map(r=>r.id)).size===v.rows.length&&v.rows.every(r=>v.criteria.documentIds.includes(r.id)));
 export const entityDocumentsSummaryPage=z.object({criteria:entityDocumentsSummaryCriteria,...meta,summary:entityDocumentSummarySchema}).strict();
+export const entityDocumentMissingRequirementSchema=z.object({ruleId:id,label:z.string(),typeCode:text,documentTypeId:id.nullable()}).strict();
+export const entityDocumentsChecklistPage=z.object({criteria:entityDocumentsChecklistCriteria,...meta,
+  missing:z.array(entityDocumentMissingRequirementSchema).max(5000).refine(rows=>new Set(rows.map(r=>r.ruleId)).size===rows.length).nullable(),
+}).strict();
 export const entityDocumentsUnavailable=z.object({criteria:entityDocumentsCriteriaSchema,asOf:z.iso.datetime(),availability:z.enum(["unavailable","too_large"])}).strict();
-export const entityDocumentsResponseSchema=z.union([entityDocumentsListPage,entityDocumentsAttachPage,entityDocumentsSelectedPage,entityDocumentsSummaryPage,entityDocumentsUnavailable]);
+export const entityDocumentsResponseSchema=z.union([entityDocumentsListPage,entityDocumentsAttachPage,entityDocumentsSelectedPage,entityDocumentsSummaryPage,entityDocumentsChecklistPage,entityDocumentsUnavailable]);
 export type EntityDocumentsResponse=z.infer<typeof entityDocumentsResponseSchema>;
 export type DmsEntityDocumentRow=z.infer<typeof entityDocumentRowSchema>;
 export type AvailableDmsDocumentOption=z.infer<typeof entityDocumentOptionSchema>;

@@ -111,7 +111,7 @@ it("provider-short and changing link pages are not complete",async()=>{
   s.rows.dms_document_links=[link(1),link(2)];s.short="dms_document_links";expect((await read()).success).toBe(false);
   s.short="";s.rows.dms_document_links=Array.from({length:501},(_,i)=>link(i+1));s.after=c=>{if(c.table==="dms_document_links")s.rows.dms_document_links.push(link(900));};expect((await read()).success).toBe(false);
 });
-it.each(["list","attach","summary"])("%s oversized source returns no rows, private counts or false zeros",async operation=>{
+it.each(["list","attach","summary","checklist"])("%s oversized source returns no rows, private counts or false zeros",async operation=>{
   s.rows.dms_document_links=Array.from({length:5001},(_,i)=>link(i+1));const r=await read(operation);expect(r.data).toMatchObject({availability:"too_large"});expect(r.data).not.toHaveProperty("rows");expect(r.data).not.toHaveProperty("totalCount");expect(r.data).not.toHaveProperty("summary");
 });
 it.each(["missing","inactive","password"])("%s principal is rejected before source access",async mode=>{if(mode==="missing")s.ctx.permissionCodes=[];if(mode==="inactive")s.ctx.isAccountActive=false;if(mode==="password")s.ctx.profile!.must_change_password=true;expect(await read()).toEqual({success:false,error:"Permission denied"});expect(s.clients).toBe(0);});
@@ -186,6 +186,29 @@ it("employee findings omit findings for archived or replaced linked records and 
 it("global compliance uses complete native rules and the original deterministic missing-document helper",async()=>{
   s.global=true;s.rows.dms_document_links=[link(1)];s.rows.dms_required_document_rules=[{id:1,rule_code:"A",rule_name:"Present",entity_type:"employee",document_type_id:1,is_required:true,is_active:true,deleted_at:null},{id:2,rule_code:"B",rule_name:"Missing",entity_type:"employee",document_type_id:2,is_required:true,is_active:true,deleted_at:null}];
   expect(entityDocumentsSummaryPage.parse((await read("summary")).data).summary.missingRequiredDocuments).toBe(1);s.rows.dms_documents=[doc(1,{status:"archived"})];expect(entityDocumentsSummaryPage.parse((await read("summary")).data).summary.missingRequiredDocuments).toBe(2);
+});
+it("checklist names only missing required types with the same deterministic count semantics",async()=>{
+  s.global=true;s.rows.dms_document_links=[link(1),link(2)];
+  s.rows.dms_documents=[doc(1,{status:"expired",expiry_date:"2000-01-01"}),doc(2,{status:"archived",document_type_id:2})];
+  s.rows.dms_required_document_rules=[
+    {id:1,rule_code:"PASSPORT",rule_name:"Passport",entity_type:"employee",document_type_id:1,is_required:true,is_active:true,deleted_at:null,document_type:{type_code:"PASSPORT"}},
+    {id:2,rule_code:"EID",rule_name:"Emirates ID",entity_type:"employee",document_type_id:2,is_required:true,is_active:true,deleted_at:null,document_type:{type_code:"EMIRATES_ID"}},
+    {id:3,rule_code:"OPTIONAL",rule_name:"Optional photograph",entity_type:"employee",document_type_id:3,is_required:false,is_active:true,deleted_at:null,document_type:{type_code:"PHOTO"}},
+  ];
+  const r=await read("checklist");expect(r.success).toBe(true);expect(r.data).toMatchObject({availability:"available",missing:[{ruleId:2,label:"Emirates ID",typeCode:"EMIRATES_ID",documentTypeId:2}]});
+  expect(entityDocumentsSummaryPage.parse((await read("summary")).data).summary.missingRequiredDocuments).toBe(1);expect(s.admin).toBe(0);
+});
+it("checklist keeps global-rule visibility restricted even with flattened company permissions",async()=>{
+  s.ctx.permissionCodes.push("ai.compliance.view","common_md.view");s.ctx.roleAssignments=[{roleId:7,roleCode:"Scoped",ownerCompanyId:2,branchId:null,permissionCodes:s.ctx.permissionCodes}];
+  const r=await read("checklist");expect(r.success).toBe(true);expect(r.data).toMatchObject({availability:"available",missing:null});expect(s.calls.some(c=>c.table==="dms_required_document_rules")).toBe(false);
+});
+it("checklist global authority still requires complete protected document coverage",async()=>{s.global=true;s.rows.dms_document_links=[link(1)];s.rows.dms_documents=[];const r=await read("checklist");expect(r.success).toBe(false);expect(r.data).toBeUndefined();});
+it("checklist never fabricates empty requirements on rule read failure",async()=>{s.global=true;s.fault="dms_required_document_rules";expect((await read("checklist")).success).toBe(false);});
+it("checklist requires the actual parent and returns no requirements for an unavailable employee",async()=>{s.global=true;s.rows.employees=[];const r=await read("checklist");expect(r.data).toMatchObject({availability:"unavailable"});expect(r.data).not.toHaveProperty("missing");expect(s.calls.map(c=>c.table)).toEqual(["employees"]);});
+it("checklist rule truncation or unavailable counts never become complete requirements",async()=>{s.global=true;s.rows.dms_required_document_rules=[1,2].map(id=>({id,rule_code:`R${id}`,rule_name:`Rule ${id}`,entity_type:"employee",document_type_id:id,is_required:true,is_active:true,deleted_at:null}));s.short="dms_required_document_rules";expect((await read("checklist")).success).toBe(false);s.short="";s.nullCount="dms_required_document_rules";expect((await read("checklist")).success).toBe(false);});
+it("checklist preserves exact unknown/empty distinction and its private read API contract",async()=>{
+  s.global=true;s.rows.dms_required_document_rules=[];const response=await POST(new Request("http://localhost/api/reads/dms-entity-documents",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({operation:"checklist",entityType:"employee",entityId:1})}));
+  expect(response.status).toBe(200);expect(response.headers.get("cache-control")).toContain("private, no-store");expect(await response.json()).toMatchObject({success:true,data:{criteria:{operation:"checklist"},missing:[]}});
 });
 it("global flag alone never substitutes for a complete linked-document union",async()=>{s.global=true;s.rows.dms_document_links=[link(1)];s.rows.dms_documents=[];expect((await read("summary")).success).toBe(false);});
 it.each(["dms_required_document_rules","erp_ai_compliance_findings"])("%s failure cannot manufacture compliance success/zero",async table=>{s.global=true;s.ctx.permissionCodes.push("ai.compliance.view");s.fault=table;expect((await read("summary")).success).toBe(false);});

@@ -7,8 +7,8 @@ import {hasPermission} from "@/lib/rbac/scope";
 import {readJson,ReadError,retryAuthorizedRead} from "@/lib/reads/client";
 import {canonicalReadParams} from "./use-server-page";
 import {useRecordReadActive} from "./use-record-read-active";
-import {dmsEntityDocumentsIdentity,entityDocumentsCriteriaSchema,entityDocumentsListPage,entityDocumentsAttachPage,entityDocumentsSelectedPage,entityDocumentsSummaryPage,entityDocumentsUnavailable,type EntityDocumentsCriteria} from "@/lib/reads/dms-entity-documents-schema";
-const schemas={list:z.union([entityDocumentsListPage,entityDocumentsUnavailable]),attach:z.union([entityDocumentsAttachPage,entityDocumentsUnavailable]),selected:z.union([entityDocumentsSelectedPage,entityDocumentsUnavailable]),summary:z.union([entityDocumentsSummaryPage,entityDocumentsUnavailable])};
+import {dmsEntityDocumentsIdentity,entityDocumentsCriteriaSchema,entityDocumentsListPage,entityDocumentsAttachPage,entityDocumentsSelectedPage,entityDocumentsSummaryPage,entityDocumentsChecklistPage,entityDocumentsUnavailable,type EntityDocumentsCriteria} from "@/lib/reads/dms-entity-documents-schema";
+const schemas={list:z.union([entityDocumentsListPage,entityDocumentsUnavailable]),attach:z.union([entityDocumentsAttachPage,entityDocumentsUnavailable]),selected:z.union([entityDocumentsSelectedPage,entityDocumentsUnavailable]),summary:z.union([entityDocumentsSummaryPage,entityDocumentsUnavailable]),checklist:z.union([entityDocumentsChecklistPage,entityDocumentsUnavailable])};
 export const entityDocumentsPrefix=(auth:AuthContext,entityType:string,entityId:number)=>["dms","entity-documents-read",dmsEntityDocumentsIdentity(auth),entityType,entityId] as const;
 export function useDmsEntityDocuments<K extends EntityDocumentsCriteria["operation"]>(auth:AuthContext,criteria:EntityDocumentsCriteria & {operation:K},options:{enabled?:boolean;onDenied?:()=>void}={}) {
   const parsed=entityDocumentsCriteriaSchema.parse(criteria),serialized=canonicalReadParams(parsed),qc=useQueryClient();

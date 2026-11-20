@@ -5,10 +5,8 @@ import { createMobileSupabaseClient, withMobileToken } from "@/lib/supabase/mobi
 import { createClient } from "@/lib/supabase/server";
 import { allowSecurityRequest } from "@/lib/auth/security-email";
 import { loginSchema } from "@/lib/validation/auth";
-import { readDmsDocumentPage } from "@/server/reads/dms-documents";
 import { getDmsDocumentRecordData } from "@/server/actions/dms/documents";
 import { readDmsUploadScopes } from "@/server/actions/dms/upload-scope";
-import { searchDmsLinkEntityOptions } from "@/server/actions/dms/document-links";
 import { getDmsDocumentTypes } from "@/server/actions/dms/document-types";
 import { getMetadataDefinitionsForType } from "@/server/actions/dms/document-metadata-values";
 import { acknowledgeDmsSingleUpload, createDmsUploadSession } from "@/server/actions/dms/upload-sessions";
@@ -21,6 +19,9 @@ import { approveNumberedAiIntake } from "@/server/numbered-ai-approval";
 import { recoverNumberedAiApproval } from "@/server/dms-ai-approval-recovery";
 import { DMS_CONFIDENTIALITY_LEVELS } from "@/features/dms/documents/dms-document-constants";
 import { GET as deliverDocument } from "@/app/api/dms/file/route";
+import {mobileDocumentCriteria,mobileTaskCriteria,mobileApprovalCriteria,offlinePermitCriteria} from "@/server/mobile/contracts";
+import {MobileDmsError,readMobileProfile,readMobileDocuments,readMobileFolder,readMobileRecords,readMobileTasks,actOnMobileApproval,completeMobileRenewal,authorizeOfflineDocument} from "@/server/mobile/dms";
+import {createDmsRenewalRequest} from "@/server/actions/dms/renewals";
 
 export const runtime = "nodejs";
 
@@ -33,7 +34,13 @@ const command = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("refresh"), refreshToken: z.string().min(1).max(4096) }),
   z.strictObject({ op: z.literal("logout") }),
   z.strictObject({ op: z.literal("profile") }),
-  z.strictObject({ op: z.literal("documents"), search: z.string().trim().max(200), typeId: id.optional(), page }),
+  mobileDocumentCriteria.safeExtend({op:z.literal("documents")}),
+  z.strictObject({op:z.literal("folder"),entityType:z.enum(["employee","site"]),entityId:id,page}),
+  mobileTaskCriteria.extend({op:z.literal("tasks")}),
+  mobileApprovalCriteria.safeExtend({op:z.literal("approvalAction")}),
+  z.strictObject({op:z.literal("renewalRequest"),documentId:id,priority:z.enum(["normal","high"]),notes:z.string().trim().max(4000)}),
+  z.strictObject({op:z.literal("renewalComplete"),requestId:id,replacementDocumentId:id,notes:z.string().trim().max(4000)}),
+  offlinePermitCriteria.extend({op:z.literal("offlinePermit")}),
   z.strictObject({ op: z.literal("document"), id }),
   z.strictObject({ op: z.literal("scopes"), search: text, after: z.strictObject({ companyId: id, branchId: z.number().int().nonnegative() }).nullable() }),
   z.strictObject({ op: z.literal("records"), search: text, entityType: z.enum(["employee", "site"]) }),
@@ -114,7 +121,7 @@ async function dispatch(input: Exclude<Command, { op: "login" | "refresh" }>, to
     const result = await createMobileSupabaseClient().auth.admin.signOut(token, "local");
     return result.error ? fail("Sign-out could not be confirmed.", 503) : ok(null);
   }
-  if (input.op === "profile") return ok({ userId: ctx.profile.auth_user_id, name: ctx.profile.full_name, capabilities });
+  if (input.op === "profile") return ok(await readMobileProfile(ctx));
   if (["admit", "complete", "scopes", "start"].includes(input.op) && !capabilities.upload) return fail("Upload permission required.", 403);
   if (["uploads", "intake", "intakeFile", "types", "fields"].includes(input.op) && !capabilities.upload && !capabilities.review && !capabilities.view) {
     return fail("DMS permission required.", 403);
@@ -123,11 +130,16 @@ async function dispatch(input: Exclude<Command, { op: "login" | "refresh" }>, to
     return fail("Preview and AI review permission required.", 403);
   }
   switch (input.op) {
-    case "documents": {
-      const result = await readDmsDocumentPage({ page: input.page, pageSize: 25, filters: { search: input.search, document_type_id: input.typeId, excludeArchived: true } }, ctx);
-      if (!result.success || !result.data) return fail(result.error ?? "Documents unavailable.", capabilities.view ? 503 : 403);
-      return ok({ total: result.data.totalCount, rows: result.data.rows.map(row => ({ id: row.id, title: row.title, number: row.document_no, expiry: row.expiry_date, type: row.document_type?.name_en })) });
+    case "documents": return ok(await readMobileDocuments({search:input.search,typeId:input.typeId,page:input.page,personal:input.personal,entityType:input.entityType,entityId:input.entityId,validity:input.validity},ctx));
+    case "folder": return ok(await readMobileFolder(input,ctx));
+    case "tasks": return ok(await readMobileTasks(input,ctx));
+    case "approvalAction": return json(await actOnMobileApproval(input,ctx));
+    case "renewalRequest": {
+      if(!allowed("dms.renewals.manage"))return fail("Renewal management permission required.",403);
+      return json(await createDmsRenewalRequest({document_id:input.documentId,priority:input.priority,notes:input.notes}));
     }
+    case "renewalComplete": return json(await completeMobileRenewal(input,ctx));
+    case "offlinePermit": return ok(await authorizeOfflineDocument({documentId:input.documentId,fileId:input.fileId,days:input.days},ctx));
     case "document": {
       const result = await getDmsDocumentRecordData(input.id);
       if (!result.success || !result.data) return fail("Document unavailable.", 404);
@@ -145,7 +157,7 @@ async function dispatch(input: Exclude<Command, { op: "login" | "refresh" }>, to
       const result = await readDmsUploadScopes(input.search, input.after);
       return result.success ? ok({ rows: result.rows, more: result.hasMore }) : fail(result.error, 503);
     }
-    case "records": return json(await searchDmsLinkEntityOptions(input.entityType, input.search, 30));
+    case "records": return json(await readMobileRecords(input.entityType,input.search,ctx));
     case "admit": {
       const request = input.request;
       if (request.authUserId !== ctx.profile.auth_user_id) return fail("This draft belongs to another account.", 403);
@@ -192,12 +204,14 @@ async function dispatch(input: Exclude<Command, { op: "login" | "refresh" }>, to
       if (row.uploaded_by !== ctx.profile.id && !mayReview) return fail("Intake unavailable or outside your access.", 404);
       const reviewReady = ["review_pending", "review_in_progress"].includes(row.intake_status);
       const detail = mayReview && reviewReady && !row.document_id ? await getAiIntakeSession(input.code) : null;
+      if(detail&&!detail.success)return fail(detail.error??"Intake review information is unavailable.",503);
       const entityId = row.origin_entity_id;
       const entityType = row.origin_entity_type;
       let entityLabel: string | undefined;
       if (entityId && (entityType === "employee" || entityType === "site")) {
-        const { data: entity } = await client.from(entityType === "employee" ? "employees" : "work_sites")
+        const { data: entity, error: entityError } = await client.from(entityType === "employee" ? "employees" : "work_sites")
           .select(entityType === "employee" ? "full_name_en" : "site_name").eq("id", entityId).maybeSingle();
+        if(entityError)return fail("The linked intake record could not be loaded.",503);
         if (entity && typeof entity === "object") {
           const name = (entity as Record<string, unknown>)[entityType === "employee" ? "full_name_en" : "site_name"];
           if (typeof name === "string") entityLabel = name;
@@ -267,7 +281,7 @@ export async function POST(request: Request) {
     if (!token) return fail("Sign in with your ERP account.", 401);
     const data = parsed.data;
     return await withMobileToken(token, () => dispatch(data, token));
-  } catch { return fail("Mobile DMS is temporarily unavailable. Retry the same request.", 503); }
+  } catch (error) { return error instanceof MobileDmsError ? fail(error.message,error.status) : fail("Mobile DMS is temporarily unavailable. Retry the same request.", 503); }
 }
 
 export async function GET(request: NextRequest) {

@@ -165,6 +165,33 @@ SELECT pg_temp.expect(public.mobile_hr_roster_sites(998810,998810,'2026-11-10','
 SELECT pg_temp.expect(public.f12_attendance_roster('2026-11-10',998810,998810,998811)->'rows'->0->>'employee_id'='998810','selected temporary site resolves recorded attendance');
 SELECT pg_temp.expect(public.mobile_hr_roster_sites(998810,998810,'2026-11-11','site',0,'')='[]','recorded-site filter is date specific');
 SELECT pg_temp.expect(jsonb_array_length(public.mobile_hr_roster_sites(998810,998810,'2026-11-10','workSite',0,''))=2,'entry work-site picker includes eligible unrecorded sites');
+-- The team assignment in A and a manage-only assignment in B are deliberately unequal.
+RESET ROLE;
+SELECT set_config('request.jwt.claims','{}',true);
+INSERT INTO public.roles(id,role_code,role_name) VALUES(998817,'QA_MHR_MANAGE_ONLY','Synthetic attendance manager');
+INSERT INTO public.role_permissions(role_id,permission_id) SELECT 998817,id FROM public.permissions WHERE permission_code='hr.attendance.manage';
+INSERT INTO public.user_roles(user_profile_id,role_id,owner_company_id,branch_id)
+ SELECT id,998817,998810,998811 FROM public.user_profiles WHERE auth_user_id='cccccccc-1111-4000-8000-000000000003';
+SET LOCAL session_replication_role=replica;
+INSERT INTO public.work_sites(id,site_code,site_name,site_type,owner_company_id,branch_id,address_line_1,available_to_all_organizations)
+ OVERRIDING SYSTEM VALUE VALUES
+ (998817,'QA-MIX','Sibling private','office',998810,998811,'Withheld sibling address',false),
+ (998818,'QA-SHARE','Sibling shared','yard',998810,998811,'Withheld shared address',true),
+ (998819,'QA-OTHER','Other shared','yard',998811,998812,'Withheld other address',true);
+UPDATE public.work_sites SET address_line_1='Authorized team address' WHERE id=998811;
+SET LOCAL session_replication_role=origin;
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.actor(3);
+SELECT pg_temp.expect(public.mobile_hr_roster_sites(998810,998810,'2026-11-10','workSite',0,'Sibling private')='[]',
+ 'separate sibling manage grant cannot reveal a local site without sibling read');
+SELECT pg_temp.expect(public.mobile_hr_roster_sites(998810,NULL,'2026-11-10','workSite',0,'QA-MIX')='[]',
+ 'company-wide selector cannot combine different branches for site labels');
+SELECT pg_temp.expect(public.mobile_hr_roster_sites(998810,998810,'2026-11-10','workSite',0,'QA-SHARE')='[{"id":998818,"label":"QA-SHARE — Sibling shared"}]',
+ 'shared sibling site exposes only code and name despite local manage-only assignment');
+SELECT pg_temp.expect(public.mobile_hr_roster_sites(998810,998810,'2026-11-10','workSite',0,'QA-OTHER')='[{"id":998819,"label":"QA-OTHER — Other shared"}]'
+ AND public.mobile_hr_roster_sites(998810,998810,'2026-11-10','workSite',0,'Withheld')='[]','shared-site addresses in other scopes are absent from labels and search');
+SELECT pg_temp.expect(public.mobile_hr_roster_sites(998810,998810,'2026-11-10','workSite',0,'Authorized team address')='[{"id":998811,"label":"QA-SITE — Recorded work site — Authorized team address"}]'
+ AND public.mobile_hr_profile(998811) IS NULL,'team-only manager with an authorized matching-branch direct report can select that local site');
 SELECT pg_temp.expect(public.f12_attendance_entry_opening(998810,998810)->'row'->>'id'='998810','team supervisor opens original summary');
 SELECT pg_temp.deny('select public.f12_attendance_entry_opening(998816,null)','nonreport opening denied');
 SELECT pg_temp.deny('select public.f12_attendance_entry_opening(998812,null)','sibling report opening denied');

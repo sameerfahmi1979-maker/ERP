@@ -290,13 +290,18 @@ BEGIN
   IF p_date IS NULL OR p_after IS NULL OR p_after<0 OR p_search IS NULL OR length(p_search)>100
     OR p_kind IS NULL OR p_kind NOT IN ('site','workSite') THEN RAISE EXCEPTION 'Invalid site criteria' USING ERRCODE='22023'; END IF;
   RETURN (WITH subjects AS MATERIALIZED (
-    SELECT e.id,e.branch_id FROM public.employees e WHERE e.deleted_at IS NULL AND e.owner_company_id=p_company
+    SELECT e.id,e.branch_id,e.reporting_manager_id FROM public.employees e WHERE e.deleted_at IS NULL AND e.owner_company_id=p_company
       AND (p_branch IS NULL OR e.branch_id=p_branch) AND public.current_user_can_view_employee(e.id)
       AND erp_private.f11_child_authorized('attendance-summary',e.id)),
     choices AS (
     SELECT s.id,concat_ws(' — ',s.site_code,s.site_name,CASE WHEN p_kind='workSite' AND local.allowed THEN nullif(s.address_line_1,'') END) AS label
     FROM public.work_sites s
-    CROSS JOIN LATERAL (SELECT s.owner_company_id=p_company AND erp_private.permission_in_scope('hr.attendance.manage',s.owner_company_id,s.branch_id) AS allowed) local
+    CROSS JOIN LATERAL (SELECT s.owner_company_id=p_company
+      AND erp_private.permission_in_scope('hr.attendance.manage',s.owner_company_id,s.branch_id)
+      AND (erp_private.permission_in_scope('hr.attendance.view',s.owner_company_id,s.branch_id)
+        OR (erp_private.permission_in_scope('hr.attendance.view.team',s.owner_company_id,s.branch_id)
+          AND EXISTS (SELECT 1 FROM subjects e WHERE e.branch_id IS NOT DISTINCT FROM s.branch_id
+            AND e.id<>e.reporting_manager_id AND e.reporting_manager_id=(SELECT erp_private.mobile_hr_linked_id())))) AS allowed) local
     WHERE s.id>p_after AND EXISTS(SELECT 1 FROM subjects e WHERE
       (local.allowed OR (s.available_to_all_organizations AND erp_private.permission_in_scope('hr.attendance.manage',p_company,e.branch_id)))
       AND (p_kind='workSite' AND s.deleted_at IS NULL AND s.status='active' AND (s.opening_date IS NULL OR s.opening_date<=p_date)

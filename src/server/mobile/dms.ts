@@ -39,7 +39,9 @@ export async function readMobileProfile(ctx:AuthContext){
   if(r.error)throw new MobileDmsError("Your linked employee profile could not be loaded.");
   if(r.data){const row=z.object({id:z.number(),full_name_en:z.string(),employee_code:z.string().nullable()}).parse(r.data);if(row.id!==linked)throw new MobileDmsError("Employee identity mismatch.");employee={id:linked,label:row.full_name_en,code:row.employee_code};}
  }
- return {apiVersion:2,userId:ctx.profile!.auth_user_id,name:ctx.profile!.full_name,employee,capabilities:{...mobileCapabilities(ctx),personal:employee!==null&&allowed(ctx,"dms.documents.view")}};
+ return {apiVersion:2,userId:ctx.profile!.auth_user_id,name:ctx.profile!.full_name,employee,
+  latestRelease:{versionName:"4.0.0",versionCode:9},
+  capabilities:{...mobileCapabilities(ctx),personal:employee!==null&&allowed(ctx,"dms.documents.view")}};
 }
 
 type Db=Awaited<ReturnType<typeof createClient>>;

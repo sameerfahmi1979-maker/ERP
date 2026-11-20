@@ -3047,6 +3047,15 @@
       ]
     },
     {
+      "code": "hr.requests.submit.self",
+      "module": "hr",
+      "scope": "branch",
+      "reason": "Submit own HR proposals and pending leave within the current verified employee link and exact matching assignment.",
+      "acceptance": "classification_reviewed_native_inheritance_verified",
+      "boundary": "Requires matching employee relationship and current domain visibility. Management and independent decision capabilities remain separate.",
+      "reviewSources": ["supabase/migrations/20261120200218_mobile_hr_self_service.sql", "tests/remediation/f12/mobile-hr-self-service.native.sql"]
+    },
+    {
       "code": "hr.search.use",
       "module": "HR",
       "scope": "branch",

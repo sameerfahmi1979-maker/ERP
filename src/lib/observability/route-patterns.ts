@@ -199,6 +199,7 @@ export const APPLICATION_ROUTE_PATTERNS = [
   "/api/internal/process-notification-events",
   "/api/internal/report-schedules/process",
   "/api/mobile/dms/v1",
+  "/api/mobile/hr/v1",
   "/api/notifications/bell",
   "/api/output/file",
   "/api/reads/audit",

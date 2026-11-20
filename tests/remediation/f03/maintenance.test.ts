@@ -34,3 +34,12 @@ it('normal mode keeps assets out of Auth but business paths in it',async()=>{
 it('normal-mode liveness remains no-store without exposing environment values',async()=>{
  vi.stubEnv('ERP_MAINTENANCE_MODE','0');const res=await proxy(new NextRequest('https://erp.invalid/api/health/release'));expect(await res.json()).toEqual({service:'algt-erp',status:'ok',check:'liveness-only'});expect(res.headers.get('cache-control')).toContain('no-store');expect(state.refresh).not.toHaveBeenCalled();
 });
+it.each(['/api/mobile/dms/v1','/api/mobile/hr/v1'])('keeps bearer endpoint %s behind maintenance without cookie refresh',async path=>{
+ expect((await proxy(new NextRequest('https://erp.invalid'+path,{method:'POST'}))).status).toBe(503);
+ expect(state.refresh).not.toHaveBeenCalled();
+ vi.stubEnv('ERP_MAINTENANCE_MODE','0');
+ expect((await proxy(new NextRequest('https://erp.invalid'+path,{method:'POST'}))).status).toBe(200);
+ expect(state.refresh).not.toHaveBeenCalled();
+ await proxy(new NextRequest('https://erp.invalid'+path+'/child'));
+ expect(state.refresh).toHaveBeenCalledOnce();
+});

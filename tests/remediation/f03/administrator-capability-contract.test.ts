@@ -18,7 +18,7 @@ describe('administrator capability contract',()=>{
   const seed=policy.split('UPDATE public.permissions p SET administrator_scope=v.scope FROM (VALUES')[1]?.split(') v(code,scope)')[0];
   expect(seed).toBeTruthy();
   const entries=[...seed.matchAll(/\('([^']+)','(global|company|branch|held)'\)/g)].map(m=>({code:m[1],scope:m[2]}));
-  const releaseSeed=fs.readFileSync(path.resolve('supabase/migrations','20261120181126_mobile_hr_self_service.sql'),'utf8');
+  const releaseSeed=fs.readFileSync(path.resolve('supabase/migrations','20261120200218_mobile_hr_self_service.sql'),'utf8');
   const addition=releaseSeed.match(/INSERT INTO public\.permissions\(permission_code,permission_name,module_code,action_code,administrator_scope\)\s+VALUES \('([^']+)','[^']+','[^']+','[^']+','(global|company|branch|held)'\)/);
   expect(addition,'New mobile HR classification must come from its executable migration').toBeTruthy();
   entries.push({code:addition![1],scope:addition![2]});

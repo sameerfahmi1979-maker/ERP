@@ -5,7 +5,7 @@ import {z} from "zod";
 import {getAuthContext,hasPermission,type AuthContext} from "@/lib/rbac/check";
 import {createClient} from "@/lib/supabase/server";
 import {collectCompletePages} from "@/lib/reads/complete-pages";
-import {countMissingRequiredDocuments} from "@/lib/ai/common/compliance-checker/rule-engine";
+import {countMissingRequiredDocuments,evaluateRequiredDocumentRulesForEntity} from "@/lib/ai/common/compliance-checker/rule-engine";
 import type {LinkedDocumentForCompliance,RequiredDocumentRuleForCompliance} from "@/lib/ai/common/compliance-checker/types";
 import {entityDocumentsCriteriaSchema,entityDocumentsResponseSchema,entityDocumentRowSchema,entityDocumentOptionSchema,entityDocumentSummarySchema,
   type EntityDocumentsCriteria,type EntityDocumentsResponse,type DmsEntityDocumentRow,type AvailableDmsDocumentOption,type DmsEntityDocumentComplianceSummary} from "@/lib/reads/dms-entity-documents-schema";
@@ -109,16 +109,28 @@ async function execute(input:unknown,context:AuthContext|undefined,callerSignal:
     // Keep the complete protected read for coverage checks. Use the same
     // current-document set for the employee list and its compliance counts.
     const byId = new Map(docs.filter(d => !excludedEmployeeDocumentIds.has(d.id)).map(d => [d.id, d]));
-    if(p.operation==="summary"){
+    if(p.operation==="summary"||p.operation==="checklist"){
       const visible=links.flatMap(l=>{const d=byId.get(l.document_id);return d?[d]:[];});
       const global=await scalar("current_user_is_global_admin");let missingRequiredDocuments:number|null=null;
+      let missing:Array<{ruleId:number;label:string;typeCode:string|null;documentTypeId:number|null}>|null=null;
       if(global){
         if(docs.length!==linkedIds.length)throw Error("Complete compliance coverage unavailable");
-        const rules=await complete(()=>select("dms_required_document_rules","id,rule_code,rule_name,entity_type,document_type_id,is_required").eq("entity_type",p.entityType).eq("is_active",true).is("deleted_at",null).order("id",{ascending:true}),z.object({id,rule_code:z.string(),rule_name:z.string(),entity_type:z.string(),document_type_id:id.nullable(),is_required:z.boolean()}).strip());
-        const ruleModels:RequiredDocumentRuleForCompliance[]=rules.map(r=>({id:r.id,ruleCode:r.rule_code,ruleName:r.rule_name,entityType:r.entity_type,documentTypeId:r.document_type_id,typeCode:null,isRequired:r.is_required,requiresExpiryDate:false,requiresIssueDate:false,blocksActivation:false,reminderDaysBeforeExpiry:null}));
+        // Summary and checklist deliberately share this exact global-rule gate,
+        // complete coverage check, rule loader and presence-only rule model.
+        // Date/expiry findings remain separate from a missing required type.
+        const ruleFields="id,rule_code,rule_name,entity_type,document_type_id,is_required"+(p.operation==="checklist"?",document_type:dms_document_types(type_code)":"");
+        const rules=await complete(()=>select("dms_required_document_rules",ruleFields).eq("entity_type",p.entityType).eq("is_active",true).is("deleted_at",null).order("id",{ascending:true}),z.object({id,rule_code:z.string(),rule_name:z.string(),entity_type:z.string(),document_type_id:id.nullable(),is_required:z.boolean(),document_type:z.object({type_code:text}).nullable().optional()}).strip());
+        const ruleModels:RequiredDocumentRuleForCompliance[]=rules.map(r=>({id:r.id,ruleCode:r.rule_code,ruleName:r.rule_name,entityType:r.entity_type,documentTypeId:r.document_type_id,typeCode:r.document_type?.type_code??null,isRequired:r.is_required,requiresExpiryDate:false,requiresIssueDate:false,blocksActivation:false,reminderDaysBeforeExpiry:null}));
         const linkedModels:LinkedDocumentForCompliance[]=visible.map(d=>({id:d.id,documentNo:d.document_no,title:d.title,documentTypeId:d.document_type_id,typeCode:d.document_type?.type_code??null,issueDate:d.issue_date,expiryDate:d.expiry_date,aiRiskLevel:d.ai_risk_level,completenessScore:d.completeness_score,ocrTextAvailable:false,aiSummaryStatus:null,summaryEmbeddingStatus:null,confidentialityLevel:d.confidentiality_level,status:d.status}));
         missingRequiredDocuments=countMissingRequiredDocuments({entityType:p.entityType,rules:ruleModels,linkedDocuments:linkedModels});
+        if(p.operation==="checklist"){
+          const missingIds=new Set(evaluateRequiredDocumentRulesForEntity({entityType:p.entityType,entityId:p.entityId,rules:ruleModels,linkedDocuments:linkedModels})
+            .filter(f=>f.findingType==="missing_required_document").map(f=>f.sourceRuleId));
+          missing=ruleModels.filter(r=>missingIds.has(r.id)).map(r=>({ruleId:r.id,label:r.ruleName,typeCode:r.typeCode,documentTypeId:r.documentTypeId}));
+          if(missing.length!==missingRequiredDocuments)throw Error("Required document checklist could not be verified");
+        }
       }
+      if(p.operation==="checklist")return output({criteria:p,asOf,availability:"available",missing});
       let openComplianceFindings:number|null=null;
       // The retained findings RLS uses GLOBAL current_user_has_permission,
       // not the flattened client capability list. Reuse those exact predicates

@@ -1,0 +1,23 @@
+# Android DMS 4.0 enhancement design
+
+Approved direction derives from the owner accepting the mobile enhancement review on 20 November 2026. One Android APK serves employees and HR/document-control staff according to existing ERP authority. Manual Save offline is selected. The existing ERP web Mobile DMS workspace stays retired.
+
+## Product outcome
+
+Four main areas are Home, Documents, Upload, and Tasks. Account/offline controls are reachable from the header. Documents offers permitted general search, My documents, employee/site folders, filters, and a manually downloaded offline library. Search accepts partial names, document text and numbers, with deterministic relevance and explicit ambiguity. Upload includes employee/site selection, front/back or multipage capture, crop/rotation/contrast editing, receiving PDFs/images through Android Share, AI field correction, and existing verified idempotent save. Tasks contains upload history, review, approvals, expiry/missing-document information and renewals exposed by existing ERP services. Notifications report processing and task changes. Persistent native Android jobs recover queued uploads and poll task changes when connected. They are scheduled background notifications; delivery timing follows Android job scheduling.
+
+## Implementation approach
+
+Extend existing native Java code, Android framework APIs and the protected Next ERP API. Keep the established APK signing identity. Use native crop/rotation/contrast tools and Android JobScheduler rather than introducing an external scanning or push-provider account. New mobile API operations call existing scoped ERP readers/actions and preserve separate company/branch checks, employee identity mapping, confidentiality and independent approval. Search may add a narrowly scoped, indexed migration only if the current authorized readers cannot support partial results correctly. Prefer no schema change where existing queries suffice. There is no automatic document overwrite, duplicate override, role grant or change to unrelated ERP modules.
+
+## Offline and account controls
+
+Save offline downloads one selected original after current server download/preview authorization. Store documents, metadata and drafts encrypted with per-account Android Keystore AES-GCM keys. A copy is usable for at most seven days since server authorization; show last verification and expiry, allow refresh/remove/clear, and recheck version and authority when connected. Default validity is seven days with shorter user choices. Offline copies remain tied to their account and optional Android device credential/biometric app lock. An expired login can still open previously authorized, unexpired offline copies after unlocking. Background work and server operations require a valid ERP session. Sign-out removes local session, offline files and account drafts; preserve an explicit confirmation for unsent drafts. Offline preview decrypts only to private temporary storage and cleans it on leave/background. Sharing original copies continues to use existing online authorization. Retained offline copies show document expiry separately from their offline validity. A disconnected phone cannot receive immediate revocation.
+
+## Role and workflow rules
+
+Use the verified ERP user-to-employee relationship for personal documents. Existing view/download permissions still control document availability. HR/staff selectors require real scope and parent permission. No inference from a matching name or role label. Employee uploads can remain pending for an authorized reviewer. Approval and renewal actions reuse the existing exact-review and server workflow functions, expected revisions and idempotency wherever provided. Similar-document warnings compare accessible identity/type/number/date evidence; a renewal remains a distinct action. Missing or denied information must never be shown as zero or empty success.
+
+## Delivery and verification
+
+Deliver version 4.0.0 with a higher version code as C:\dev\mobile_app\ALGT-Mobile-DMS.apk, using the current signer. Record implemented functionality, actual deployment receipt and remaining device acceptance in the existing handoff. Verify JVM regressions, Android resource/Java/DEX build, signature and alignment; ERP types, relevant isolated regression tests, exact-source CI and HTTP contracts. No browser testing or computer/device control is authorized. No employee live mutations are permitted as tests. Physical employee-phone acceptance remains pending until performed by the owner.

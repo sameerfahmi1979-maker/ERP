@@ -21,7 +21,10 @@ vi.mock('@/features/dms/upload/dms-create-document-from-upload-dialog',()=>({Dms
 vi.mock('@/features/dms/upload/dms-duplicate-warning-panel',()=>({DmsDuplicateWarningPanel:()=>null}));
 vi.mock('@/features/dms/upload/dms-upload-attach-dialog',()=>({DmsUploadAttachDialog:()=>null}));
 vi.mock('@/features/dms/upload/dms-upload-cleanup-panel',()=>({DmsUploadCleanupPanel:()=>null}));
-vi.mock('@/features/dms/upload/dms-upload-session-table',()=>({DmsUploadSessionTable:({onCancel,isSubmitting}:any)=><button disabled={isSubmitting} onClick={()=>onCancel({...session,original_filename:'Synthetic passport.pdf'})}>Discard synthetic upload</button>}));
+vi.mock('@/features/dms/upload/dms-upload-session-table',()=>({DmsUploadSessionTable:({onCancel,onVerify,isSubmitting}:any)=><>
+  <button disabled={isSubmitting} onClick={()=>onCancel({...session,original_filename:'Synthetic passport.pdf'})}>Discard synthetic upload</button>
+  {onVerify && <button disabled={isSubmitting} onClick={()=>onVerify(session.id)}>Retry stored verification</button>}
+</>}));
 vi.mock('@/features/dms/upload/dms-upload-dropzone',()=>({DmsUploadDropzone:({onFileSelected,disabled}:any)=><input aria-label="Synthetic upload" disabled={disabled} type="file" onChange={e=>{const file=e.target.files![0];void onFileSelected({file,original_filename:file.name,mime_type:'application/pdf',file_size_bytes:file.size,sha256_hash:'a'.repeat(64)});}}/>}));
 vi.mock('@/server/actions/dms/upload-scope',()=>({readDmsUploadScopes:m.choices}));
 vi.mock('@/components/erp/combobox',()=>({ERPCombobox:({ariaLabel,value,options,disabled,onValueChange}:any)=><select aria-label={ariaLabel} value={value??''} disabled={disabled} onChange={e=>onValueChange(e.target.value)}><option value="">Choose</option>{options.map((o:any)=><option key={o.value} value={o.value}>{o.label}</option>)}</select>}));
@@ -42,6 +45,16 @@ it('lost acknowledgment does not clear retention or require another upload',asyn
 it('only an exact server-confirmed cancellation releases the old retained request',async()=>{m.single.mockImplementationOnce(async(_input,contract)=>({success:false,cancelled:{operationId:contract.operationId,sessionId:7010,retained:true},error:'Original cancelled'})).mockResolvedValue(admission);await mount();select();await waitFor(()=>expect(screen.getByText(/Original cancelled/)).toBeTruthy());const original=m.single.mock.calls[0][1].operationId;select('new.pdf');await waitFor(()=>expect(m.success).toHaveBeenCalled());expect(m.single.mock.calls[1][1].operationId).not.toBe(original);});
 
 it('requires owning company before admitting a general file and sends no false record origin',async()=>{mountRaw();await screen.findByRole('option',{name:'Synthetic company'});expect((screen.getByLabelText('Synthetic upload') as HTMLInputElement).disabled).toBe(true);expect(m.single).not.toHaveBeenCalled();fireEvent.change(screen.getByRole('combobox'),{target:{value:'7002:0'}});select();await waitFor(()=>expect(m.success).toHaveBeenCalled());expect(m.single.mock.calls[0][0]).toMatchObject({scope:{companyId:7002,branchId:null}});expect(m.single.mock.calls[0][0].context).toBeFalsy();});
+
+it('resumes a retained upload by session ID without admission or another file transfer', async () => {
+  mountRaw();
+  fireEvent.click(screen.getByRole('button', {name:'Retry stored verification'}));
+  await waitFor(() => expect(m.success).toHaveBeenCalled());
+  expect(m.complete.mock.calls).toEqual([[session.id]]);
+  expect(m.single).not.toHaveBeenCalled();
+  expect(m.upload).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', {name:'Create Manually'})).toBeTruthy();
+});
 
 it('Inbox discard needs explicit confirmation and keeps an uncertain request retryable',async()=>{
  await mount();m.cancel.mockResolvedValueOnce({success:false,uncertain:true,error:'Unconfirmed'}).mockResolvedValue({success:true});

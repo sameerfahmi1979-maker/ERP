@@ -1,6 +1,7 @@
 "use client";
 
 import {DmsReadReady} from "@/features/dms/documents/section-read-boundary";
+import {useReadCacheOwner} from "@/components/layout/read-cache-boundary";
 import {useQueryClient} from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {AlertDialog,AlertDialogContent,AlertDialogHeader,AlertDialogTitle,AlertDialogDescription,AlertDialogFooter,AlertDialogCancel,AlertDialogAction} from '@/components/ui/alert-dialog';
@@ -85,6 +86,7 @@ function batchMemberProgress(phase: string): { label: string; terminal?: "comple
 export function DmsUploadInboxPageClient({ initialSessions, documents, documentTypes, entityContext, isAdmin = false, batchEnabled = false, autoStartEnabled = false, recoveryReceipt }: Props) {
   const router = useRouter();
   const qc=useQueryClient();
+  const readOwner = useReadCacheOwner();
   const [inboxReadAvailable,setInboxReadAvailable]=useState(true);
   const [sessions, setSessions] = useState<DmsUploadSessionRow[]>(initialSessions);
   const [uploadState, setUploadState] = useState<UploadState>({ phase: "idle" });
@@ -95,6 +97,8 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
   const [discardSession,setDiscardSession]=useState<DmsUploadSessionRow|null>(null);
   const [discardBusy,setDiscardBusy]=useState(false);
   const discardFlight=useRef(false);
+  const verifyFlight = useRef(false);
+  const [verifyingUpload, setVerifyingUpload] = useState(false);
 
   const [uploadMode, setUploadMode] = useState<UploadMode>(recoveryReceipt ? "batch" : "single");
   const [owningScope,setOwningScope]=useState<UploadOwningScope|null>(null);
@@ -383,6 +387,34 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
     setCreateDocDialogOpen(true);
   };
 
+  const handleVerifyStoredUpload = async (sessionId: number) => {
+    if (verifyFlight.current || uploadState.phase === 'uploading') return;
+    const identity = readOwner?.identity;
+    const isCurrent = () => !!identity && !!readOwner?.isLive() && readOwner.admits(identity);
+    if (!isCurrent()) return;
+    verifyFlight.current = true;
+    setVerifyingUpload(true);
+    try {
+      const result = await completeDmsTempUpload(sessionId);
+      if (!isCurrent()) return;
+      const session = result.data;
+      if (!result.success || session?.id !== sessionId || session.status !== 'uploaded') {
+        toast.error(result.error ?? 'Verification is unconfirmed. Keep this upload and retry verification.');
+        return;
+      }
+      setSessions(previous => [session, ...previous.filter(row => row.id !== session.id)]);
+      setUploadState(session.is_duplicate
+        ? {phase: 'duplicate', session, duplicateDocument: session.duplicate_document}
+        : {phase: 'ready', session});
+      toast.success('Stored file verified. Continue from this upload.');
+    } catch {
+      if (isCurrent()) toast.error('Verification is unconfirmed. Keep this upload and retry verification.');
+    } finally {
+      verifyFlight.current = false;
+      setVerifyingUpload(false);
+    }
+  };
+
   const handleCancelSession = async (session: DmsUploadSessionRow) => {
     if(discardFlight.current)return;
     discardFlight.current=true;setDiscardBusy(true);
@@ -490,7 +522,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
             {!entityContext&&<DmsUploadScopePicker value={selectedOwningScope} onChange={setOwningScope} disabled={singleAdmission.pending||uploadState.phase==='uploading'}/>}
             <DmsUploadDropzone
               onFileSelected={handleFileSelected}
-              disabled={uploadState.phase === "uploading"||(!entityContext&&!selectedOwningScope&&!singleAdmission.pending)}
+              disabled={verifyingUpload||uploadState.phase === "uploading"||(!entityContext&&!selectedOwningScope&&!singleAdmission.pending)}
             />
             {uploadState.phase === "uploading" && (
               <div role="status" className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
@@ -679,6 +711,8 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
           onAttach={handleAttach}
           onCreateDocument={handleCreateDocument}
           onCancel={setDiscardSession}
+          onVerify={handleVerifyStoredUpload}
+          verificationBusy={verifyingUpload || uploadState.phase === 'uploading'}
           isSubmitting={discardBusy}
           onAiFill={handleAiFill}
         />

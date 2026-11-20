@@ -198,7 +198,7 @@ CREATE FUNCTION erp_private.mobile_hr_leave_context(p_id bigint,p_employee bigin
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
 DECLARE r public.employee_leave_requests; e erp_private.hr_self_leave_evidence; typ text; cert_status text; cert_reference text;
 BEGIN
-  IF NOT erp_private.business_principal_is_active() OR NOT erp_private.f11_child_authorized('leave-request',p_employee)
+  IF NOT erp_private.business_principal_is_active() OR NOT erp_private.mobile_hr_officer(p_employee,'leave','{}'::jsonb)
     OR NOT public.current_user_has_permission_any_scope('hr.leave.manage') THEN
     RAISE EXCEPTION 'Current independent leave review required' USING ERRCODE='42501'; END IF;
   SELECT * INTO r FROM public.employee_leave_requests l WHERE l.id=p_id AND l.employee_id=p_employee

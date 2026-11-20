@@ -151,6 +151,20 @@ SELECT pg_temp.expect(public.mobile_hr_staff_inbox('leave',0,998810,998820)->0 @
  'a changed pinned original cannot be represented as verified');
 RESET ROLE;
 SELECT set_config('request.jwt.claims','{}',true);
+DELETE FROM public.role_permissions WHERE role_id=998810 AND permission_id=(SELECT id FROM public.permissions WHERE permission_code='hr.employees.view');
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.actor(2);
+SELECT pg_temp.expect(NOT public.current_user_can_view_employee(998810) AND erp_private.f11_child_authorized('leave-request',998810),
+ 'profile revocation retains the separate scoped leave read and manage grants');
+SELECT pg_temp.deny($q$select erp_private.mobile_hr_leave_context(998820,998810)$q$,
+ 'leave-only officer cannot directly call definer leave opening after profile revocation');
+RESET ROLE;
+SELECT set_config('request.jwt.claims','{}',true);
+INSERT INTO public.role_permissions(role_id,permission_id) SELECT 998810,id FROM public.permissions WHERE permission_code='hr.employees.view';
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.actor(2);
+RESET ROLE;
+SELECT set_config('request.jwt.claims','{}',true);
 INSERT INTO public.user_roles(user_profile_id,role_id,owner_company_id,branch_id) SELECT id,998810,998811,998812 FROM public.user_profiles WHERE right(auth_user_id::text,1)='2';
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.actor(2);

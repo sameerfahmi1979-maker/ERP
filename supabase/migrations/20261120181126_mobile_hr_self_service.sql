@@ -48,9 +48,30 @@ CREATE TABLE erp_private.hr_self_leave_admissions(
  actor uuid NOT NULL, tx xid8 NOT NULL, backend integer NOT NULL, employee_id bigint NOT NULL, operation_id uuid NOT NULL,
  data jsonb NOT NULL, action text NOT NULL, request_hash text NOT NULL, PRIMARY KEY(actor,tx)
 );
+-- An F11 receipt proves an ERP action. Only a separate, consumed admission
+-- proves that this operation also passed the original mobile independence checks.
+CREATE TABLE erp_private.hr_mobile_staff_admissions(
+ actor uuid NOT NULL, operation_id uuid NOT NULL, tx xid8 NOT NULL, backend integer NOT NULL,
+ action text NOT NULL, employee_id bigint NOT NULL, record_id bigint NOT NULL, opening_revision bigint NOT NULL,
+ mobile_hash text NOT NULL, native_hash text NOT NULL, PRIMARY KEY(actor,operation_id)
+);
+ALTER TABLE erp_private.hr_mobile_staff_admissions ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON erp_private.hr_mobile_staff_admissions FROM PUBLIC,anon,authenticated,service_role;
+CREATE FUNCTION erp_private.mobile_hr_settle_staff() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+BEGIN
+ IF EXISTS(SELECT FROM erp_private.hr_mobile_staff_admissions a WHERE a.actor=NEW.actor AND a.operation_id=NEW.operation_id AND a.tx=NEW.tx) THEN
+  RAISE EXCEPTION 'Unsettled staff decision cannot commit' USING ERRCODE='23514';
+ END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION erp_private.mobile_hr_settle_staff() FROM PUBLIC,anon,authenticated,service_role;
+CREATE CONSTRAINT TRIGGER mobile_hr_staff_settlement AFTER INSERT ON erp_private.hr_mobile_staff_admissions
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION erp_private.mobile_hr_settle_staff();
 CREATE TABLE erp_private.hr_self_leave_evidence(
  leave_id bigint PRIMARY KEY REFERENCES public.employee_leave_requests, document_id bigint NOT NULL REFERENCES public.dms_documents,
- version_id bigint NOT NULL REFERENCES public.dms_document_versions
+ version_id bigint NOT NULL REFERENCES public.dms_document_versions,
+ original_file_id bigint NOT NULL, original_sha256 text NOT NULL CHECK(original_sha256~'^[0-9a-f]{64}$'),
+ original_bytes bigint NOT NULL CHECK(original_bytes>0)
 );
 ALTER TABLE erp_private.hr_self_service_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE erp_private.hr_self_operation_receipts ENABLE ROW LEVEL SECURITY;
@@ -68,7 +89,8 @@ CREATE FUNCTION erp_private.mobile_hr_self(eid bigint) RETURNS boolean LANGUAGE 
 $$;
 CREATE FUNCTION erp_private.mobile_hr_domain(eid bigint,kind text,proposal jsonb) RETURNS boolean
 LANGUAGE sql STABLE SET search_path='' AS $$
- SELECT public.current_user_can_view_employee(eid) AND erp_private.employee_permission(eid,
+ SELECT (public.current_user_can_view_employee(eid) OR (kind IN ('leave','attendance-correction','compliance-renewal')
+   AND erp_private.mobile_hr_self(eid) AND erp_private.employee_permission(eid,'hr.requests.submit'))) AND erp_private.employee_permission(eid,
    CASE kind WHEN 'profile-correction' THEN 'hr.employees.view' WHEN 'attendance-correction' THEN 'hr.attendance.view'
     WHEN 'attendance' THEN 'hr.attendance.view' WHEN 'compliance-renewal' THEN 'hr.compliance.view'
     WHEN 'leave' THEN 'hr.leave.view' WHEN 'approval' THEN 'hr.actions.view' END)
@@ -76,7 +98,7 @@ LANGUAGE sql STABLE SET search_path='' AS $$
 $$;
 CREATE FUNCTION erp_private.mobile_hr_officer(eid bigint,kind text,proposal jsonb) RETURNS boolean
 LANGUAGE sql STABLE SET search_path='' AS $$
- SELECT public.f03_current_session_valid() AND erp_private.mobile_hr_domain(eid,kind,proposal)
+ SELECT public.f03_current_session_valid() AND public.current_user_can_view_employee(eid) AND erp_private.mobile_hr_domain(eid,kind,proposal)
    AND NOT EXISTS(SELECT 1 FROM public.erp_user_employee_links l WHERE l.user_profile_id=public.current_user_profile_id() AND l.employee_id=eid)
    AND CASE kind WHEN 'leave' THEN erp_private.f11_child_authorized('leave-request',eid)
                  WHEN 'attendance' THEN erp_private.f11_child_authorized('attendance-summary',eid)
@@ -98,11 +120,12 @@ BEGIN
 END $$;
 CREATE FUNCTION erp_private.mobile_hr_text(v jsonb,n integer) RETURNS text
 LANGUAGE plpgsql IMMUTABLE SET search_path='' AS $$
+DECLARE cleaned text:=btrim(v#>>'{}',E' \t\n\r\f\v'||U&'\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF');
 BEGIN
- IF jsonb_typeof(v) IS DISTINCT FROM 'string' OR length(btrim(v#>>'{}')) NOT BETWEEN 1 AND n THEN
+ IF jsonb_typeof(v) IS DISTINCT FROM 'string' OR length(cleaned) NOT BETWEEN 1 AND n THEN
    RAISE EXCEPTION 'Text is required within the field length' USING ERRCODE='22023';
  END IF;
- RETURN btrim(v#>>'{}');
+ RETURN cleaned;
 END $$;
 
 -- Verify a real file in the exact employee's DMS folder; a numeric document ID is never authority.
@@ -116,7 +139,8 @@ LANGUAGE sql STABLE SET search_path='' AS $$
     AND public.current_user_can_view_dms_document(did)
     AND NOT EXISTS(SELECT FROM public.dms_document_links l WHERE l.document_id=did AND l.deleted_at IS NULL AND l.entity_type='employee_dependent')
     AND erp_private.document_permission(did,'dms.documents.view') AND erp_private.document_permission(did,'dms.documents.preview')
-    AND EXISTS(SELECT 1 FROM public.dms_document_files f WHERE f.document_id=did AND f.version_id=vid AND f.file_role='original' AND f.deleted_at IS NULL AND f.file_size_bytes>0)
+    AND EXISTS(SELECT 1 FROM public.dms_document_files f WHERE f.document_id=did AND f.version_id=vid AND f.file_role='original' AND f.deleted_at IS NULL AND f.file_size_bytes>0 AND f.integrity_status<>'failed')
+    AND (SELECT count(*) FROM public.dms_document_files f WHERE f.document_id=did AND f.version_id=vid AND f.file_role='original' AND f.deleted_at IS NULL)=1
     AND EXISTS(SELECT 1 FROM public.dms_document_links l WHERE l.document_id=did AND l.deleted_at IS NULL AND l.entity_type='employee' AND l.entity_id=eid)
     AND NOT EXISTS(SELECT 1 FROM public.dms_document_links l WHERE l.document_id=did AND l.deleted_at IS NULL AND l.entity_type='employee' AND l.entity_id IS DISTINCT FROM eid))
 $$;
@@ -132,15 +156,17 @@ BEGIN
   PERFORM erp_private.mobile_hr_keys(changes,'{}',ARRAY['mobile_number','personal_email','emergency_contact_name','emergency_contact_mobile']);
   IF changes='{}' THEN RAISE EXCEPTION 'Contact correction required' USING ERRCODE='22023'; END IF;
   FOR k IN SELECT jsonb_object_keys(changes) LOOP
-   PERFORM erp_private.mobile_hr_text(changes->k,CASE k WHEN 'personal_email' THEN 254 WHEN 'emergency_contact_name' THEN 160 ELSE 40 END);
+   IF changes->>k IS DISTINCT FROM erp_private.mobile_hr_text(changes->k,CASE k WHEN 'personal_email' THEN 254 WHEN 'emergency_contact_name' THEN 160 ELSE 40 END)
+      OR changes->>k ~ '[[:cntrl:]]' THEN RAISE EXCEPTION 'Use a trimmed, single-line contact value' USING ERRCODE='22023'; END IF;
    IF k='personal_email' AND changes->>k !~ '^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$' THEN RAISE EXCEPTION 'Invalid email' USING ERRCODE='22023'; END IF;
   END LOOP;
   IF NOT EXISTS(SELECT FROM public.employees WHERE id=eid AND workspace_revision=(p->>'sourceRevision')::bigint) THEN RAISE EXCEPTION 'Profile changed' USING ERRCODE='PT409'; END IF;
  WHEN 'attendance-correction' THEN
   PERFORM erp_private.mobile_hr_keys(p,ARRAY['date','reason'],ARRAY['summaryId','sourceRevision']);
   PERFORM erp_private.mobile_hr_text(p->'reason',2000);
-  day:=(p->>'date')::date;
-  IF day::text IS DISTINCT FROM p->>'date' OR day>(now() AT TIME ZONE 'Asia/Dubai')::date OR (p?'summaryId')<>(p?'sourceRevision') THEN RAISE EXCEPTION 'Invalid attendance correction opening' USING ERRCODE='22023'; END IF;
+  IF jsonb_typeof(p->'date')<>'string' OR p->>'date' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN RAISE EXCEPTION 'ISO attendance date required' USING ERRCODE='22023'; END IF;
+  BEGIN day:=(p->>'date')::date; EXCEPTION WHEN datetime_field_overflow OR invalid_datetime_format THEN RAISE EXCEPTION 'Invalid calendar date' USING ERRCODE='22023'; END;
+  IF NOT isfinite(day) OR day::text IS DISTINCT FROM p->>'date' OR day>(now() AT TIME ZONE 'Asia/Dubai')::date OR (p?'summaryId')<>(p?'sourceRevision') THEN RAISE EXCEPTION 'Invalid attendance correction opening' USING ERRCODE='22023'; END IF;
   SELECT id,workspace_revision INTO src FROM public.employee_attendance_daily_summary WHERE employee_id=eid AND attendance_date=day FOR SHARE;
   IF src.id IS DISTINCT FROM (p->>'summaryId')::bigint OR src.workspace_revision IS DISTINCT FROM (p->>'sourceRevision')::bigint THEN RAISE EXCEPTION 'Attendance changed; reopen' USING ERRCODE='PT409'; END IF;
  WHEN 'compliance-renewal' THEN
@@ -208,19 +234,34 @@ END $$;
 
 -- Self-submitted leave also retains independence and evidence checks when an
 -- officer opens the same ERP request in the existing staff workflow.
+CREATE FUNCTION erp_private.mobile_hr_check_leave_certificate(r public.employee_leave_requests) RETURNS void LANGUAGE plpgsql SET search_path='' AS $$
+DECLARE evidence erp_private.hr_self_leave_evidence; required boolean;
+BEGIN
+ SELECT t.requires_document INTO required FROM public.hr_leave_types t WHERE t.id=r.leave_type_id AND t.is_active AND t.deleted_at IS NULL FOR SHARE;
+ IF NOT FOUND OR required IS NULL THEN RAISE EXCEPTION 'Current leave policy unavailable' USING ERRCODE='23514'; END IF;
+ SELECT * INTO evidence FROM erp_private.hr_self_leave_evidence WHERE leave_id=r.id;
+ IF NOT FOUND THEN
+  IF required OR r.sick_cert_dms_id IS NOT NULL THEN RAISE EXCEPTION 'Current policy requires a pinned certificate; officer review required' USING ERRCODE='23514'; END IF;
+  RETURN;
+ END IF;
+ PERFORM 1 FROM public.dms_documents WHERE id=evidence.document_id FOR SHARE;
+ IF evidence.document_id IS DISTINCT FROM r.sick_cert_dms_id OR NOT erp_private.employee_permission(r.employee_id,'hr.medical.view')
+  OR NOT erp_private.mobile_hr_evidence(r.employee_id,evidence.document_id,evidence.version_id) OR NOT EXISTS(
+   SELECT FROM public.dms_document_files f WHERE f.id=evidence.original_file_id AND f.document_id=evidence.document_id AND f.version_id=evidence.version_id
+     AND f.file_role='original' AND f.deleted_at IS NULL AND f.integrity_status='verified' AND f.file_size_bytes=evidence.original_bytes
+     AND f.file_size_bytes>0 AND f.sha256_hash=evidence.original_sha256 AND f.sha256_hash~'^[0-9a-f]{64}$') THEN
+  RAISE EXCEPTION 'Current verified original leave certificate unavailable or changed' USING ERRCODE='42501';
+ END IF;
+END $$;
+REVOKE ALL ON FUNCTION erp_private.mobile_hr_check_leave_certificate(public.employee_leave_requests) FROM PUBLIC,anon,authenticated,service_role;
+
 CREATE FUNCTION erp_private.mobile_hr_leave_decision_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-DECLARE evidence erp_private.hr_self_leave_evidence;
 BEGIN
  IF auth.uid() IS NULL OR OLD.approval_status<>'pending' OR NEW.approval_status NOT IN ('approved','rejected') THEN RETURN NEW; END IF;
  IF EXISTS(SELECT FROM erp_private.hr_self_operation_receipts r WHERE r.action='leave.submit' AND (r.result->>'id')::bigint=OLD.id) THEN
   IF OLD.created_by IS NULL OR OLD.created_by=public.current_user_profile_id() OR NOT erp_private.mobile_hr_officer(OLD.employee_id,'leave','{}') THEN
    RAISE EXCEPTION 'Independent current leave reviewer required' USING ERRCODE='42501'; END IF;
-  SELECT * INTO evidence FROM erp_private.hr_self_leave_evidence WHERE leave_id=OLD.id;
-  IF FOUND AND NEW.approval_status='approved' THEN
-   PERFORM 1 FROM public.dms_documents WHERE id=evidence.document_id FOR SHARE;
-   IF NOT erp_private.employee_permission(OLD.employee_id,'hr.medical.view') OR NOT erp_private.mobile_hr_evidence(OLD.employee_id,evidence.document_id,evidence.version_id) THEN
-    RAISE EXCEPTION 'Leave evidence changed or access unavailable' USING ERRCODE='42501'; END IF;
-  END IF;
+  IF NEW.approval_status='approved' THEN PERFORM erp_private.mobile_hr_check_leave_certificate(OLD); END IF;
  END IF;
  RETURN NEW;
 END $$;
@@ -231,7 +272,7 @@ CREATE FUNCTION erp_private.mobile_hr_request_visible(r erp_private.hr_self_serv
 LANGUAGE sql STABLE SET search_path='' AS $$
  SELECT EXISTS(SELECT FROM public.employees e WHERE e.id=r.employee_id AND e.deleted_at IS NULL AND e.owner_company_id=r.company_id AND e.branch_id IS NOT DISTINCT FROM r.branch_id)
   AND erp_private.mobile_hr_domain(r.employee_id,r.kind,r.proposal)
-  AND CASE mode WHEN 'mine' THEN r.requester=auth.uid() AND erp_private.mobile_hr_self(r.employee_id)
+  AND CASE mode WHEN 'mine' THEN r.requester=auth.uid() AND erp_private.mobile_hr_self(r.employee_id) AND erp_private.employee_permission(r.employee_id,'hr.requests.submit')
         WHEN 'officer' THEN r.requester<>auth.uid() AND erp_private.mobile_hr_officer(r.employee_id,r.kind,r.proposal)
         WHEN 'review' THEN r.status='pending' AND r.requester<>auth.uid() AND erp_private.mobile_hr_officer(r.employee_id,r.kind,r.proposal)
         WHEN 'team' THEN erp_private.employee_permission(r.employee_id,'hr.actions.view') AND EXISTS(
@@ -241,8 +282,8 @@ $$;
 CREATE FUNCTION erp_private.mobile_hr_request_item(r erp_private.hr_self_service_requests) RETURNS jsonb
 LANGUAGE sql STABLE SET search_path='' AS $$
  SELECT jsonb_build_object('id',r.id,'employeeId',r.employee_id,'kind',r.kind,'status',r.status,'revision',r.revision,
-  'createdAt',r.created_at,'decidedAt',r.decided_at,'decisionReason',CASE WHEN r.requester=auth.uid() OR erp_private.mobile_hr_request_visible(r,'officer') THEN r.decision_reason END,
-  'proposal',CASE WHEN r.requester<>auth.uid() AND NOT erp_private.mobile_hr_request_visible(r,'officer') THEN '{}'::jsonb WHEN r.proposal?'documentId' AND NOT erp_private.mobile_hr_evidence(r.employee_id,(r.proposal->>'documentId')::bigint,(r.proposal->>'documentVersionId')::bigint)
+  'createdAt',r.created_at,'decidedAt',r.decided_at,'decisionReason',CASE WHEN erp_private.mobile_hr_request_visible(r,'mine') OR erp_private.mobile_hr_request_visible(r,'officer') THEN r.decision_reason END,
+  'proposal',CASE WHEN NOT (erp_private.mobile_hr_request_visible(r,'mine') OR erp_private.mobile_hr_request_visible(r,'officer')) THEN '{}'::jsonb WHEN r.proposal?'documentId' AND NOT erp_private.mobile_hr_evidence(r.employee_id,(r.proposal->>'documentId')::bigint,(r.proposal->>'documentVersionId')::bigint)
    THEN r.proposal-'documentId'-'documentVersionId' ELSE r.proposal END,
   'canDecide',erp_private.mobile_hr_request_visible(r,'review'))
 $$;
@@ -366,7 +407,13 @@ BEGIN
    INSERT INTO public.employee_leave_requests(employee_id,leave_type_id,start_date,end_date,total_days,reason,approval_status,created_by,updated_by,sick_cert_dms_id)
     VALUES(eid,typ.id,(d->>'startDate')::date,(d->>'endDate')::date,(d->>'endDate')::date-(d->>'startDate')::date+1,reason,'pending',actor,actor,(d->>'documentId')::bigint)
     RETURNING id,workspace_revision INTO target_id,rev;
-   IF attachments THEN INSERT INTO erp_private.hr_self_leave_evidence VALUES(target_id,(d->>'documentId')::bigint,(d->>'documentVersionId')::bigint); END IF;
+   IF attachments THEN
+    INSERT INTO erp_private.hr_self_leave_evidence(leave_id,document_id,version_id,original_file_id,original_sha256,original_bytes)
+     SELECT target_id,f.document_id,f.version_id,f.id,f.sha256_hash,f.file_size_bytes FROM public.dms_document_files f
+     WHERE f.document_id=(d->>'documentId')::bigint AND f.version_id=(d->>'documentVersionId')::bigint AND f.file_role='original'
+       AND f.deleted_at IS NULL AND f.file_size_bytes>0 AND f.sha256_hash~'^[0-9a-f]{64}$' AND f.integrity_status<>'failed';
+    IF NOT FOUND THEN RAISE EXCEPTION 'Leave certificate requires a current original file and SHA-256' USING ERRCODE='23514'; END IF;
+   END IF;
    status:='pending';
   ELSE
    SELECT * INTO original FROM public.employee_leave_requests WHERE id=target_id AND employee_id=eid AND deleted_at IS NULL FOR UPDATE;
@@ -397,8 +444,20 @@ BEGIN
   ELSIF domain='attendance' AND NOT EXISTS(SELECT 1 FROM public.employee_attendance_daily_summary WHERE employee_id=eid AND id=target_id AND created_by IS NOT NULL AND created_by<>actor AND updated_by IS DISTINCT FROM actor) AND NOT finish THEN RAISE EXCEPTION 'Attendance unavailable' USING ERRCODE='42501';
   END IF;
   payload:=CASE WHEN reason IS NOT NULL AND (decision='reject' OR domain='approval') THEN jsonb_build_object('reason',reason) ELSE '{}'::jsonb END;
-  IF NOT finish THEN RETURN jsonb_build_object('dispatch',fkind,'decision',decision,'data',payload); END IF;
   fhash:=encode(sha256(convert_to(jsonb_build_array(fkind,eid,target_id,original_rev,decision,payload)::text,'UTF8')),'hex');
+  IF NOT finish THEN
+   IF EXISTS(SELECT FROM erp_private.f11_child_receipts x WHERE x.actor=auth.uid() AND x.operation_id=op) THEN RAISE EXCEPTION 'Operation already belongs to an ERP decision' USING ERRCODE='PT409'; END IF;
+   IF domain='leave' AND (original.workspace_revision IS DISTINCT FROM original_rev OR original.approval_status<>'pending')
+    OR domain='attendance' AND NOT EXISTS(SELECT FROM public.employee_attendance_daily_summary s WHERE s.id=target_id AND s.employee_id=eid AND s.workspace_revision=original_rev AND s.approval_status='pending')
+    OR domain='approval' AND NOT EXISTS(SELECT FROM public.employee_approval_requests a WHERE a.id=target_id AND a.employee_id=eid AND a.workspace_revision=original_rev AND a.request_status='pending') THEN
+    RAISE EXCEPTION 'Staff decision opening changed' USING ERRCODE='PT409'; END IF;
+   IF domain='leave' AND decision='approve' THEN PERFORM erp_private.mobile_hr_check_leave_certificate(original); END IF;
+   INSERT INTO erp_private.hr_mobile_staff_admissions VALUES(auth.uid(),op,pg_current_xact_id(),pg_backend_pid(),action,eid,target_id,original_rev,digest,fhash);
+   RETURN jsonb_build_object('dispatch',fkind,'decision',decision,'data',payload);
+  END IF;
+  DELETE FROM erp_private.hr_mobile_staff_admissions a WHERE a.actor=auth.uid() AND a.operation_id=op AND a.tx=pg_current_xact_id() AND a.backend=pg_backend_pid()
+   AND a.action=mobile_hr_command.action AND a.employee_id=eid AND a.record_id=target_id AND a.opening_revision=original_rev AND a.mobile_hash=digest AND a.native_hash=fhash;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Current mobile decision admission required' USING ERRCODE='42501'; END IF;
   SELECT x.revision INTO rev FROM erp_private.f11_child_receipts x WHERE x.actor=auth.uid() AND x.operation_id=op AND x.employee_id=eid AND x.record_id=target_id AND x.kind=fkind AND x.action=decision AND x.request_hash=fhash;
   IF NOT FOUND THEN RAISE EXCEPTION 'Canonical ERP operation receipt required' USING ERRCODE='42501'; END IF;
   status:=CASE decision WHEN 'approve' THEN 'approved' ELSE 'rejected' END;

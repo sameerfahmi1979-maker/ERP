@@ -226,7 +226,9 @@ async function dispatch(input: Exclude<Command, { op: "login" | "refresh" }>, to
         canPreview, canStart, duplicate: row.is_duplicate, confidentialityLevels: DMS_CONFIDENTIALITY_LEVELS,
         canReview: canApprove && !!detail?.success && !row.document_id,
         ai: ai ? { id: ai.id, title: ai.suggested_title, description: ai.suggested_description, issue: ai.issue_date_suggestion,
-          expiry: ai.expiry_date_suggestion, typeId: ai.suggested_document_type_id, fields: ai.extracted_fields_json } : null,
+          expiry: ai.expiry_date_suggestion, typeId: ai.suggested_document_type_id, fields: ai.extracted_fields_json,
+          confidence: ai.classification_confidence, score: ai.classification_score, reason: ai.classification_reason,
+          fieldConfidence: ai.field_confidence_json } : null,
         draft: detail?.data?.draft_values?.map(v => ({ scope: v.field_scope, code: v.field_code, value: v.reviewed_value_json })) });
     }
     case "intakeFile": return json(await getIntakeSessionSignedUrl(input.sessionId));
@@ -237,7 +239,8 @@ async function dispatch(input: Exclude<Command, { op: "login" | "refresh" }>, to
     }
     case "fields": {
       const result = await getMetadataDefinitionsForType(input.typeId, "intake");
-      return result.success ? ok(result.data?.map(row => ({ id: row.id, code: row.field_code, label: row.field_label_en, type: row.field_type, required: row.is_required }))) : fail(result.error ?? "Review fields unavailable.", 403);
+      return result.success ? ok(result.data?.map(row => ({ id: row.id, code: row.field_code, label: row.field_label_en, type: row.field_type, required: row.is_required,
+        options: row.options_json, help: row.help_text_en }))) : fail(result.error ?? "Review fields unavailable.", 403);
     }
     case "verify": return json(await prepareExactIntakeReview({ sessionId: input.sessionId, typeId: input.typeId, expiryDate: input.expiryDate }));
     case "recoverApproval": {

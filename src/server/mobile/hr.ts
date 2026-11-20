@@ -91,7 +91,7 @@ export async function dispatchHr(raw:HrCommand,ctx:AuthContext){
         const staff=await staffCapabilities(db);
         const allowed=i.op==="requests"?staff.requestsTeam:i.kind==="proposal"?staff.approvalsProposal:i.kind==="leave"?staff.approvalsLeave:staff.approvalsGeneral;
         if(!allowed)throw denied();
-      } else if(i.op==="requests" && await ownAccess(db)===null)throw denied();
+      } else if(i.op==="requests" && !(await ownAccess(db))?.mine)throw denied();
       return requests(db,i);
     }
     case "roster":case "rosterChoices":case "rosterOpening":case "rosterSave":case "rosterReceipt":return roster(db,ctx,i);

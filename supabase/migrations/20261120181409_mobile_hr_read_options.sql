@@ -15,6 +15,9 @@ CREATE FUNCTION erp_private.mobile_hr_own_access() RETURNS jsonb LANGUAGE sql ST
       'employeeId',s.id,'profile',public.current_user_can_view_employee(s.id),
       'leave',erp_private.employee_permission(s.id,'hr.leave.view'),'attendance',erp_private.employee_permission(s.id,'hr.attendance.view'),
       'compliance',erp_private.employee_permission(s.id,'hr.compliance.view'),'medical',erp_private.employee_permission(s.id,'hr.medical.view'),
+      'mine',erp_private.employee_permission(s.id,'hr.requests.submit') AND
+        (erp_private.employee_permission(s.id,'hr.employees.view') OR erp_private.employee_permission(s.id,'hr.attendance.view')
+         OR erp_private.employee_permission(s.id,'hr.compliance.view')),
       'submit',erp_private.employee_permission(s.id,'hr.requests.submit'),'actions',erp_private.employee_permission(s.id,'hr.actions.view'),
       'evidence',erp_private.permission_in_scope('dms.documents.view',e.owner_company_id,e.branch_id)
         AND erp_private.permission_in_scope('dms.documents.preview',e.owner_company_id,e.branch_id))
@@ -130,8 +133,9 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path='' AS $$ SELECT erp_private
 CREATE FUNCTION erp_private.mobile_hr_roster_scopes(p_company bigint,p_branch boolean,p_after bigint,p_search text)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
 BEGIN
-  IF NOT erp_private.business_principal_is_active() OR NOT public.current_user_has_permission_any_scope('hr.attendance.manage')
-     OR NOT public.current_user_has_permission_any_scope('hr.attendance.view') THEN
+  IF NOT erp_private.business_principal_is_active() OR NOT EXISTS (
+      SELECT 1 FROM public.employees e WHERE e.deleted_at IS NULL AND public.current_user_can_view_employee(e.id)
+        AND erp_private.f11_child_authorized('attendance-summary',e.id)) THEN
     RAISE EXCEPTION 'Attendance management required' USING ERRCODE='42501'; END IF;
   IF p_search IS NULL OR length(p_search)>100 OR p_after IS NULL OR p_after<0 OR p_branch IS NULL
      OR (p_branch AND (p_company IS NULL OR p_company<=0)) THEN RAISE EXCEPTION 'Invalid criteria' USING ERRCODE='22023'; END IF;
@@ -223,9 +227,7 @@ GRANT EXECUTE ON FUNCTION public.mobile_hr_staff_inbox(text,bigint,bigint,bigint
 -- Evaluate role assignments on actual subjects. Menu hints never substitute for row authorization.
 CREATE FUNCTION public.mobile_hr_staff_capabilities() RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER SET search_path='' AS $$
   WITH actor AS (SELECT public.current_user_profile_id() AS id),
-  linked AS (SELECT l.employee_id FROM public.erp_user_employee_links l JOIN actor ON actor.id=l.user_profile_id
-    JOIN public.employees self ON self.id=l.employee_id AND self.deleted_at IS NULL
-    JOIN public.user_profiles u ON u.id=l.user_profile_id AND u.owner_company_id=self.owner_company_id AND u.branch_id IS NOT DISTINCT FROM self.branch_id),
+  linked AS (SELECT (public.mobile_hr_own_access()->>'employeeId')::bigint AS employee_id),
   permitted AS (SELECT e.id,e.reporting_manager_id FROM public.employees e WHERE e.deleted_at IS NULL),
   independent AS (SELECT e.* FROM permitted e WHERE NOT EXISTS(SELECT 1 FROM public.erp_user_employee_links l JOIN actor ON actor.id=l.user_profile_id WHERE l.employee_id=e.id))
   SELECT jsonb_build_object(
@@ -234,11 +236,105 @@ CREATE FUNCTION public.mobile_hr_staff_capabilities() RETURNS jsonb LANGUAGE sql
     'approvalsGeneral',EXISTS(SELECT 1 FROM independent e WHERE erp_private.f11_child_authorized('approval',e.id)),
     'approvalsLeave',EXISTS(SELECT 1 FROM independent e WHERE erp_private.f11_child_authorized('leave-request',e.id)),
     'approvalsProposal',EXISTS(SELECT 1 FROM independent e WHERE erp_private.f11_child_authorized('approval',e.id)
-      AND (erp_private.employee_permission(e.id,'hr.employees.update') OR erp_private.f11_child_authorized('attendance-summary',e.id)
-        OR erp_private.f11_child_authorized('identity-document',e.id))));
+      AND ((erp_private.employee_permission(e.id,'hr.employees.view') AND erp_private.employee_permission(e.id,'hr.employees.update')) OR erp_private.f11_child_authorized('attendance-summary',e.id)
+        OR (erp_private.employee_permission(e.id,'hr.compliance.view') AND (
+          erp_private.hr_compliance_renewal_authorized(e.id,'identity-document') OR
+          (erp_private.employee_permission(e.id,'hr.medical.view') AND erp_private.hr_compliance_renewal_authorized(e.id,'medical-insurance')))))));
 $$;
 REVOKE ALL ON FUNCTION public.mobile_hr_staff_capabilities() FROM PUBLIC,anon,service_role;
 GRANT EXECUTE ON FUNCTION public.mobile_hr_staff_capabilities() TO authenticated;
+
+
+-- Subject, identity, current permissions, visible organization labels and contacts share one statement snapshot.
+CREATE FUNCTION public.mobile_hr_profile(p_employee bigint) RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER SET search_path='' AS $$
+  WITH own AS (SELECT (public.mobile_hr_own_access()->>'employeeId')::bigint AS id)
+  SELECT jsonb_build_object(
+    'id',e.id,'full_name_en',e.full_name_en,'employee_code',e.employee_code,'employee_status',e.employee_status,
+    'joining_date',e.joining_date,'workspace_revision',e.workspace_revision::text,
+    'owner_company_id',e.owner_company_id,'branch_id',e.branch_id,'reporting_manager_id',e.reporting_manager_id,'own',e.id IS NOT DISTINCT FROM own.id,
+    'owner_company',c.legal_name_en,'branch',b.branch_name_en,'designation',d.designation_name_en,'department',g.department_name_en,
+    'manager',m.full_name_en,'site',w.site_name,
+    'contacts',CASE WHEN own.id=e.id OR erp_private.employee_permission(e.id,'hr.employees.update')
+      OR erp_private.employee_permission(e.id,'hr.employee_profile.manage') THEN jsonb_build_object(
+        'mobile_number',e.mobile_number,'personal_email',e.personal_email,'emergency_contact_name',e.emergency_contact_name,
+        'emergency_contact_mobile',e.emergency_contact_mobile) END)
+  FROM public.employees e CROSS JOIN own
+  LEFT JOIN public.owner_companies c ON c.id=e.owner_company_id LEFT JOIN public.branches b ON b.id=e.branch_id
+  LEFT JOIN public.departments g ON g.id=e.department_id LEFT JOIN public.designations d ON d.id=e.designation_id
+  LEFT JOIN public.employees m ON m.id=e.reporting_manager_id AND m.deleted_at IS NULL LEFT JOIN public.work_sites w ON w.id=e.primary_work_site_id
+  WHERE e.id=coalesce(p_employee,own.id) AND e.deleted_at IS NULL AND public.current_user_can_view_employee(e.id);
+$$;
+
+-- Full-profile history uses native table RLS, deterministic tie-breaks and one lookahead row.
+CREATE FUNCTION public.mobile_hr_time_history(p_employee bigint,p_kind text,p_page integer) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path='' AS $$
+BEGIN
+  IF p_kind IS NULL OR p_kind NOT IN ('punch','overtime') OR p_page IS NULL OR p_page NOT BETWEEN 1 AND 100000 THEN
+    RAISE EXCEPTION 'Invalid history page' USING ERRCODE='22023'; END IF;
+  IF NOT public.current_user_can_view_employee(p_employee) OR NOT erp_private.employee_permission(p_employee,'hr.attendance.view') THEN
+    RAISE EXCEPTION 'Current time history access required' USING ERRCODE='42501'; END IF;
+  RETURN (WITH facts AS (
+    SELECT p.id,p.punch_datetime AS stamp,initcap(replace(p.punch_type,'_',' ')) AS label,to_jsonb(p.punch_datetime)#>>'{}' AS date,
+      s.site_name AS detail,NULL::text AS status,NULL::text AS revision FROM public.employee_attendance_punches p
+      LEFT JOIN public.work_sites s ON s.id=p.work_site_id WHERE p_kind='punch' AND p.employee_id=p_employee
+    UNION ALL SELECT o.id,o.overtime_date::timestamptz,o.hours::text||' h overtime',o.overtime_date::text,NULL,o.approval_status,NULL
+      FROM public.employee_overtime_records o WHERE p_kind='overtime' AND o.employee_id=p_employee AND o.deleted_at IS NULL)
+    SELECT coalesce(jsonb_agg(to_jsonb(x)-'stamp' ORDER BY stamp DESC,id DESC),'[]') FROM
+      (SELECT * FROM facts ORDER BY stamp DESC,id DESC LIMIT 26 OFFSET (p_page-1)*25) x);
+END $$;
+
+-- 'site' filters a date's recorded entry. 'workSite' selects a destination for an entry.
+CREATE FUNCTION erp_private.mobile_hr_roster_sites(p_company bigint,p_branch bigint,p_date date,p_kind text,p_after bigint,p_search text)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+BEGIN
+  IF p_date IS NULL OR p_after IS NULL OR p_after<0 OR p_search IS NULL OR length(p_search)>100
+    OR p_kind IS NULL OR p_kind NOT IN ('site','workSite') THEN RAISE EXCEPTION 'Invalid site criteria' USING ERRCODE='22023'; END IF;
+  RETURN (WITH subjects AS MATERIALIZED (
+    SELECT e.id,e.branch_id FROM public.employees e WHERE e.deleted_at IS NULL AND e.owner_company_id=p_company
+      AND (p_branch IS NULL OR e.branch_id=p_branch) AND public.current_user_can_view_employee(e.id)
+      AND erp_private.f11_child_authorized('attendance-summary',e.id)),
+    choices AS (
+    SELECT s.id,concat_ws(' — ',s.site_code,s.site_name,CASE WHEN p_kind='workSite' AND local.allowed THEN nullif(s.address_line_1,'') END) AS label
+    FROM public.work_sites s
+    CROSS JOIN LATERAL (SELECT s.owner_company_id=p_company AND erp_private.permission_in_scope('hr.attendance.manage',s.owner_company_id,s.branch_id) AS allowed) local
+    WHERE s.id>p_after AND EXISTS(SELECT 1 FROM subjects e WHERE
+      (local.allowed OR (s.available_to_all_organizations AND erp_private.permission_in_scope('hr.attendance.manage',p_company,e.branch_id)))
+      AND (p_kind='workSite' AND s.deleted_at IS NULL AND s.status='active' AND (s.opening_date IS NULL OR s.opening_date<=p_date)
+        AND (s.closing_date IS NULL OR s.closing_date>=p_date)
+        OR p_kind='site' AND EXISTS(SELECT 1 FROM public.employee_attendance_daily_summary a
+          WHERE a.employee_id=e.id AND a.attendance_date=p_date AND a.work_site_id=s.id))))
+    SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.id),'[]') FROM (
+      SELECT id,label FROM choices WHERE strpos(lower(label),lower(p_search))>0 ORDER BY id LIMIT 26) x);
+END $$;
+CREATE FUNCTION public.mobile_hr_roster_sites(p_company bigint,p_branch bigint,p_date date,p_kind text,p_after bigint,p_search text)
+RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER SET search_path='' AS $$ SELECT erp_private.mobile_hr_roster_sites($1,$2,$3,$4,$5,$6) $$;
+REVOKE ALL ON FUNCTION public.mobile_hr_profile(bigint),public.mobile_hr_time_history(bigint,text,integer),
+  public.mobile_hr_roster_sites(bigint,bigint,date,text,bigint,text),erp_private.mobile_hr_roster_sites(bigint,bigint,date,text,bigint,text) FROM PUBLIC,anon,service_role;
+GRANT EXECUTE ON FUNCTION public.mobile_hr_profile(bigint),public.mobile_hr_time_history(bigint,text,integer),
+  public.mobile_hr_roster_sites(bigint,bigint,date,text,bigint,text),erp_private.mobile_hr_roster_sites(bigint,bigint,date,text,bigint,text) TO authenticated;
+
+
+-- Match selected groups to authorized roster subjects. A hidden manager profile can
+-- still identify the current actor's group without revealing that profile's name.
+CREATE FUNCTION public.mobile_hr_roster_groups(p_company bigint,p_branch bigint,p_date date,p_kind text,p_after bigint,p_search text)
+RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER SET search_path='' AS $$
+  WITH permitted AS MATERIALIZED (
+    SELECT e.id,e.reporting_manager_id FROM public.employees e WHERE e.deleted_at IS NULL AND e.owner_company_id=p_company
+      AND (p_branch IS NULL OR e.branch_id=p_branch) AND erp_private.f11_child_authorized('attendance-summary',e.id)),
+  own AS (SELECT (public.mobile_hr_own_access()->>'employeeId')::bigint AS id),
+  choices AS (
+    SELECT DISTINCT e.reporting_manager_id AS id,CASE WHEN m.id IS NOT NULL THEN m.employee_code||' — '||m.full_name_en
+      WHEN e.reporting_manager_id=own.id THEN 'My direct reports' END AS label FROM permitted e CROSS JOIN own
+      LEFT JOIN public.employees m ON m.id=e.reporting_manager_id AND m.deleted_at IS NULL WHERE p_kind='team'
+    UNION ALL SELECT DISTINCT a.work_shift_id,coalesce(s.shift_code||' — '||s.shift_name,'Shift #'||a.work_shift_id)
+      FROM permitted e JOIN public.employee_shift_assignments a ON a.employee_id=e.id AND a.deleted_at IS NULL
+      LEFT JOIN public.work_shifts s ON s.id=a.work_shift_id AND s.deleted_at IS NULL WHERE p_kind='shift' AND a.effective_from<=p_date
+        AND (a.effective_to IS NULL OR a.effective_to>=p_date))
+  SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.id),'[]') FROM (SELECT id,label FROM choices
+    WHERE id>p_after AND p_after>=0 AND length(p_search)<=100 AND strpos(lower(label),lower(p_search))>0 ORDER BY id LIMIT 26) x;
+$$;
+REVOKE ALL ON FUNCTION public.mobile_hr_roster_groups(bigint,bigint,date,text,bigint,text) FROM PUBLIC,anon,service_role;
+GRANT EXECUTE ON FUNCTION public.mobile_hr_roster_groups(bigint,bigint,date,text,bigint,text) TO authenticated;
 
 NOTIFY pgrst,'reload schema';
 COMMIT;

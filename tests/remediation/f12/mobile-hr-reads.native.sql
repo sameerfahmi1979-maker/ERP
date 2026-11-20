@@ -121,8 +121,106 @@ SELECT pg_temp.actor(2);
 SELECT pg_temp.expect(public.mobile_hr_own_access() @> '{"employeeId":998812,"profile":false}' AND public.mobile_hr_staff_capabilities() @> '{"roster":true,"approvalsGeneral":true}', 'independent branch officer retains staff options while own profile is restricted');
 RESET ROLE;
 SELECT set_config('request.jwt.claims','{}',true);
+
+-- Role and DTO regressions through the same public procedures used by the mobile handler.
+SET LOCAL session_replication_role=replica;
+INSERT INTO public.roles(id,role_code,role_name) VALUES(998812,'QA_MHR_TEAM','Team only'),(998813,'QA_MHR_INSURANCE','Insurance reviewer');
+INSERT INTO public.permissions(permission_code,permission_name,module_code,action_code)
+ SELECT code,code,'hr','view' FROM unnest(ARRAY['hr.employee_profile.view.team','hr.actions.view.team','hr.attendance.view.team','hr.medical.manage']) code ON CONFLICT DO NOTHING;
+INSERT INTO public.role_permissions(role_id,permission_id)
+ SELECT 998812,id FROM public.permissions WHERE permission_code IN ('hr.employee_profile.view.team','hr.attendance.view.team','hr.actions.view.team','hr.attendance.manage');
+INSERT INTO public.role_permissions(role_id,permission_id)
+ SELECT 998813,id FROM public.permissions WHERE permission_code IN ('hr.employees.view','hr.actions.view','hr.actions.manage','hr.compliance.view','hr.medical.view','hr.medical.manage');
+INSERT INTO public.user_roles(user_profile_id,role_id,owner_company_id,branch_id)
+ SELECT id,CASE right(auth_user_id::text,1) WHEN '3' THEN 998812 ELSE 998813 END,998810,998810
+ FROM public.user_profiles WHERE auth_user_id::text LIKE 'cccccccc-1111-%' AND right(auth_user_id::text,1) IN ('3','4');
+INSERT INTO public.erp_user_employee_links(user_profile_id,employee_id) SELECT id,998811 FROM public.user_profiles WHERE auth_user_id='cccccccc-1111-4000-8000-000000000003';
+INSERT INTO public.employees(id,employee_code,full_name_en,gender,date_of_birth,mobile_number,owner_company_id,branch_id,joining_date,emergency_contact_name,emergency_contact_mobile,employee_category_id)
+ OVERRIDING SYSTEM VALUE SELECT n,'MHR-'||n,'Synthetic roster '||n,'male','1992-03-01','0000000000',998810,998810,'2020-01-01','Synthetic','0000000000',998810 FROM generate_series(998815,998816)n;
+UPDATE public.employees SET reporting_manager_id=998811 WHERE id IN(998810,998812,998813,998815);
+INSERT INTO public.work_sites(id,site_code,site_name,site_type,owner_company_id,branch_id) OVERRIDING SYSTEM VALUE
+ VALUES(998810,'QA-PRI','Primary only','office',998810,998810),(998811,'QA-SITE','Recorded work site','project_site',998810,998810);
+UPDATE public.employees SET primary_work_site_id=998810 WHERE id IN(998810,998815);
+INSERT INTO public.employee_attendance_daily_summary(id,employee_id,attendance_date,attendance_type,work_site_id)
+ OVERRIDING SYSTEM VALUE VALUES(998810,998810,'2026-11-10','site',998811);
+INSERT INTO public.employee_attendance_punches(id,employee_id,punch_datetime,punch_type)
+ OVERRIDING SYSTEM VALUE SELECT n,998810,'2026-11-10T08:00:00+04','in' FROM generate_series(998810,998835)n;
+INSERT INTO public.employee_overtime_records(id,employee_id,overtime_date,hours)
+ OVERRIDING SYSTEM VALUE SELECT n,998810,'2026-11-10',1 FROM generate_series(998810,998835)n;
+INSERT INTO erp_private.hr_self_service_requests(employee_id,company_id,branch_id,requester,kind,proposal)
+ VALUES(998810,998810,998810,'cccccccc-1111-4000-8000-000000000001','attendance-correction','{"reason":"Review hours"}'),
+ (998810,998810,998810,'cccccccc-1111-4000-8000-000000000001','compliance-renewal','{"sourceKind":"medical-insurance","reason":"Renewal needed"}');
+SET LOCAL session_replication_role=origin;
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.actor(3);
+SELECT pg_temp.expect(public.mobile_hr_profile(998811) IS NULL AND public.mobile_hr_own_access()->>'employeeId'='998811','team manager has verified link and hidden own profile');
+SELECT pg_temp.expect(public.mobile_hr_profile(998810)->>'employee_code'='MHR-1' AND public.mobile_hr_profile(998810)->'contacts'='null','direct report opens with all contacts withheld');
+SELECT pg_temp.expect(public.mobile_hr_profile(998816) IS NULL AND public.mobile_hr_profile(998812) IS NULL AND public.mobile_hr_profile(998813) IS NULL,'same-branch nonreport, sibling report and other-company report stay hidden');
+SELECT pg_temp.expect(public.mobile_hr_staff_capabilities() @> '{"requestsTeam":true,"roster":true}' AND public.mobile_hr_own_access()->>'mine'='false','team-only history and roster offered independently of own history');
+SELECT pg_temp.expect(jsonb_array_length(public.mobile_hr_command_v1('request.list','{"mode":"team"}')->'items')=1,'team manager sees only own report and authorized domain request');
+SELECT pg_temp.expect(public.mobile_hr_roster_scopes(998810,true,0,'')='[{"id":998810,"label":"A"}]','team supervisor branch selector resolves only a direct report scope');
+SELECT pg_temp.expect(public.mobile_hr_roster_groups(998810,998810,'2026-11-10','team',0,'')='[{"id":998811,"label":"My direct reports"}]','manager team picker works without revealing hidden manager profile');
+SELECT pg_temp.expect(public.f12_attendance_roster('2026-11-10',998810)->>'total'='2','unfiltered roster includes unentered report, excludes nonreports and sibling');
+SELECT pg_temp.expect(public.mobile_hr_roster_sites(998810,998810,'2026-11-10','site',0,'')='[{"id":998811,"label":"QA-SITE — Recorded work site"}]','site picker uses recorded site, excludes unentered primary site');
+SELECT pg_temp.expect(public.f12_attendance_roster('2026-11-10',998810,998810,998811)->'rows'->0->>'employee_id'='998810','selected temporary site resolves recorded attendance');
+SELECT pg_temp.expect(public.mobile_hr_roster_sites(998810,998810,'2026-11-11','site',0,'')='[]','recorded-site filter is date specific');
+SELECT pg_temp.expect(jsonb_array_length(public.mobile_hr_roster_sites(998810,998810,'2026-11-10','workSite',0,''))=2,'entry work-site picker includes eligible unrecorded sites');
+SELECT pg_temp.expect(public.f12_attendance_entry_opening(998810,998810)->'row'->>'id'='998810','team supervisor opens original summary');
+SELECT pg_temp.deny('select public.f12_attendance_entry_opening(998816,null)','nonreport opening denied');
+SELECT pg_temp.deny('select public.f12_attendance_entry_opening(998812,null)','sibling report opening denied');
+SELECT pg_temp.deny('select public.f12_attendance_entry_opening(998813,null)','other company report opening denied');
+SELECT pg_temp.expect(jsonb_array_length(public.mobile_hr_time_history(998810,k,1))=26 AND public.mobile_hr_time_history(998810,k,1)->0->>'id'='998835'
+ AND public.mobile_hr_time_history(998810,k,1)->24->>'id'='998811' AND public.mobile_hr_time_history(998810,k,2)->0->>'id'='998810'
+ AND jsonb_array_length(public.mobile_hr_time_history(998810,k,2))=1,'26 tied '||k||' records use ID order and lookahead without count') FROM unnest(ARRAY['punch','overtime'])k;
+CREATE FUNCTION pg_temp.day_entry(subject bigint) RETURNS jsonb LANGUAGE sql STABLE AS $$
+  WITH opening AS (SELECT public.f12_attendance_entry_opening(subject,NULL) AS data)
+  SELECT jsonb_build_object('employeeId',subject,'date',data->>'date','id',NULL,'revision',NULL,'fingerprint',data->'row'->>'fingerprint',
+    'operation','68c78070-5e92-4d23-b207-000000000001','reason','Synthetic roster',
+    'values',jsonb_build_object('attendance_type','office','work_site_id',998811,'intervals',jsonb_build_array(jsonb_build_object(
+      'start',(data->>'date')||'T08:00:00+04:00','end',(data->>'date')||'T09:00:00+04:00','breaks','[]'::jsonb)))) FROM opening;
+$$;
+SELECT pg_temp.deny('select public.f12_save_attendance(pg_temp.day_entry(998815))','minimal viewer cannot bypass native employee-write scope');
+SELECT pg_temp.expect(NOT public.current_user_can_manage_employee(998815),'minimal roster viewer has no employee-write authority');
+RESET ROLE;
+SELECT set_config('request.jwt.claims','{}',true);
+INSERT INTO public.permissions(permission_code,permission_name,module_code,action_code) VALUES('hr.employee_profile.manage.team','Synthetic team writer','hr','manage') ON CONFLICT DO NOTHING;
+INSERT INTO public.role_permissions(role_id,permission_id) SELECT 998812,id FROM public.permissions WHERE permission_code='hr.employee_profile.manage.team';
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.actor(3);
+SELECT pg_temp.expect(public.f12_save_attendance(pg_temp.day_entry(998815))->>'employee_id'='998815','team supervisor with scoped write authority saves original F12 attendance');
+SELECT pg_temp.expect(public.f12_reconcile_attendance('68c78070-5e92-4d23-b207-000000000001')->>'employee_id'='998815','team-only manager reconciles original F12 operation');
+SELECT pg_temp.actor(4);
+SELECT pg_temp.expect(public.mobile_hr_staff_capabilities()->>'approvalsProposal'='true' AND jsonb_array_length(public.mobile_hr_command_v1('request.list','{"mode":"review"}')->'items')=1,'insurance-only officer gets actionable insurance proposal');
+RESET ROLE;
+SELECT set_config('request.jwt.claims','{}',true);
+DELETE FROM public.role_permissions WHERE role_id=998813 AND permission_id=(SELECT id FROM public.permissions WHERE permission_code='hr.medical.manage');
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.actor(4);
+SELECT pg_temp.expect(public.mobile_hr_staff_capabilities()->>'approvalsProposal'='false' AND public.mobile_hr_command_v1('request.list','{"mode":"review"}')->'items'='[]','removal of medical management removes the insurance inbox');
+RESET ROLE;
+SELECT set_config('request.jwt.claims','{}',true);
+INSERT INTO public.role_permissions(role_id,permission_id) SELECT 998811,id FROM public.permissions WHERE permission_code='hr.requests.submit.self';
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.actor(1);
+SELECT pg_temp.expect(public.mobile_hr_own_access()->>'mine'='true' AND jsonb_array_length(public.mobile_hr_command_v1('request.list','{"mode":"mine"}')->'items')=1,'linked attendance submitter has own history');
+RESET ROLE;
+SELECT set_config('request.jwt.claims','{}',true);
+DELETE FROM public.role_permissions WHERE role_id=998811 AND permission_id=(SELECT id FROM public.permissions WHERE permission_code='hr.requests.submit.self');
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.actor(1);
+SELECT pg_temp.expect(public.mobile_hr_own_access()->>'mine'='false','submit revocation closes own history even with prior requests');
+RESET ROLE;
+SELECT set_config('request.jwt.claims','{}',true);
+
+\if :{?profile_race}
+-- Only the disposable two-session harness may persist its synthetic fixture.
+DO $$ BEGIN IF current_database() NOT LIKE 'mobile_hr_api_race_%' THEN RAISE EXCEPTION 'Use a disposable race database'; END IF; END $$;
+COMMIT;
+\ir mobile-hr-profile-race.native.sql
+\else
 DELETE FROM auth.sessions WHERE id='dddddddd-1111-4000-8000-000000000002';
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.actor(2);
 SELECT pg_temp.deny($q$select public.mobile_hr_leave_read(998810,'options',1)$q$,'revoked session inaccessible');
 ROLLBACK;
+\endif

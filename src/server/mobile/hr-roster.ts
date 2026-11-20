@@ -1,11 +1,10 @@
 import { z } from "zod";
 import type { AuthContext } from "@/lib/rbac/check";
-import { canUseHrChild } from "@/lib/hr/child-authority";
-import { type AttendanceRosterRow } from "@/lib/hr/attendance-workbench-contract";
-import { readAttendanceChoices,readTimesheetSites,readAttendanceRoster,readAttendanceEntryOpening,saveAttendanceRow,reconcileAttendanceRow } from "@/server/actions/hr/attendance-workbench";
-import { choicePage, linkedEmployee, rpc, type Db } from "./hr-reads";
+import { revalidatePath } from "next/cache";
+import { attendanceRosterPage,attendanceRosterRow,attendanceReceipt,type AttendanceRosterRow } from "@/lib/hr/attendance-workbench-contract";
+import { choicePage, ownAccess, rpc, type Db } from "./hr-reads";
 import { type HrCommand } from "./hr-contracts";
-import { conflict, denied, HrError, normalizeReceipt, unavailable } from "./hr-shapes";
+import { denied, HrError, normalizeReceipt, unavailable } from "./hr-shapes";
 
 type RosterInput=Extract<HrCommand,{op:"roster"|"rosterChoices"|"rosterOpening"|"rosterReceipt"|"rosterSave"}>;
 async function scopes(db:Db,company:number|null,branch:boolean,after:number,search:string){
@@ -19,58 +18,57 @@ async function authorizeScope(db:Db,company:number,branch:number|null){
 async function withReviewState(db:Db,ctx:AuthContext,rows:AttendanceRosterRow[]){
   const ids=rows.flatMap(x=>x.id!==null&&x.approval_status==="pending"?[x.id]:[]);
   if(!ids.length)return rows.map(x=>({...x,canApprove:false}));
-  const [r,linked]=await Promise.all([db.from("employee_attendance_daily_summary").select("id,employee_id,workspace_revision,created_by,updated_by,approval_status").in("id",ids).limit(25),linkedEmployee(db,ctx)]);
+  const [r,linked]=await Promise.all([db.from("employee_attendance_daily_summary").select("id,employee_id,workspace_revision,created_by,updated_by,approval_status").in("id",ids).limit(25),ownAccess(db)]);
   if(r.error)throw unavailable();
   return rows.map(row=>{
     const source=r.data?.find(x=>x.id===row.id && x.employee_id===row.employee_id && String(x.workspace_revision)===row.revision);
     const actor=ctx.profile!.id;
     const canApprove=!!source && source.approval_status==="pending" && source.created_by!=null && source.created_by!==actor &&
-      source.updated_by!==actor && linked!==row.employee_id;
+      source.updated_by!==actor && linked?.employeeId!==row.employee_id;
     return {...row,canApprove};
   });
 }
 export async function roster(db:Db,ctx:AuthContext,i:RosterInput){
-  if(!canUseHrChild(ctx,"attendance-summary"))throw denied();
   switch(i.op){
     case "rosterChoices":{
       if(i.kind==="company"||i.kind==="branch")return scopes(db,i.company,i.kind==="branch",i.after,i.search);
       if(i.company===null)throw denied();
       await authorizeScope(db,i.company,i.branch);
-      const r=i.kind==="workSite"?await readTimesheetSites({company:i.company,date:i.date,search:i.search,after:i.after}):
-        await readAttendanceChoices({kind:i.kind,company:i.company,branch:i.branch,date:i.date,search:i.search,after:i.after});
-      if(!r.success)throw "denied" in r && r.denied?denied():unavailable();
-      return {rows:r.rows,more:r.hasMore};
+      const name=i.kind==="workSite"||i.kind==="site"?"mobile_hr_roster_sites":"mobile_hr_roster_groups";
+      return choicePage(await rpc(db,name,{p_company:i.company,p_branch:i.branch,p_date:i.date,p_kind:i.kind,p_after:i.after,p_search:i.search}));
     }
     case "roster":{
       await authorizeScope(db,i.company,i.branch);
-      const {op,...input}=i;void op;
-      const r=await readAttendanceRoster(input);
-      if(!r.success)throw r.denied?denied():unavailable();
-      return {...r.data,rows:await withReviewState(db,ctx,r.data.rows),more:r.data.total>r.data.page*25};
+      const data=attendanceRosterPage.parse(await rpc(db,"f12_attendance_roster",{p_date:i.date,p_company:i.company,p_branch:i.branch,
+        p_site:i.site,p_team:i.team,p_shift:i.shift,p_search:i.search,p_page:i.page,p_history:i.history,p_state:i.state}));
+      if(data.page!==i.page)throw unavailable();
+      return {...data,rows:await withReviewState(db,ctx,data.rows),more:data.total>data.page*25};
     }
     case "rosterOpening":{
-      const r=await readAttendanceEntryOpening(i.employeeId,i.id);
-      if(!r.success)throw r.denied?denied():unavailable();
-      const [row]=await withReviewState(db,ctx,[r.data.row]);
-      return {...r.data,row};
+      const raw=await rpc(db,"f12_attendance_entry_opening",{p_employee:i.employeeId,p_id:i.id});
+      const data=z.object({date:z.iso.date(),company:z.number().int().positive().safe(),row:attendanceRosterRow}).parse(raw);
+      if(data.row.employee_id!==i.employeeId || (i.id!==null && data.row.id!==i.id))throw denied();
+      const [row]=await withReviewState(db,ctx,[data.row]);
+      return {...data,row};
     }
     case "rosterSave":{
-      const r=await saveAttendanceRow(i.request);
-      if(!r.success){
-        if(r.denied)throw denied();
-        if(r.conflict)throw conflict();
-        throw new HrError(r.uncertain?503:422,r.error,r.uncertain);
-      }
-      return nativeReceipt(r.data,i.request.operation,i.request.employeeId,i.request.id);
+      const raw=await rpc(db,"f12_save_attendance",{p_request:i.request},true);
+      const result=nativeReceipt(raw,i.request.operation,i.request.employeeId,i.request.id);
+      try{
+        revalidatePath("/admin/hr/time/attendance");
+        revalidatePath(`/admin/hr/employees/record/${i.request.employeeId}`);
+      }catch{/* The committed receipt remains authoritative. */}
+      return result;
     }
     case "rosterReceipt":{
-      const r=await reconcileAttendanceRow(i.operationId);
-      if(!r.success)throw r.denied?denied():new HrError(503,"The original attendance outcome is unresolved.",true);
-      return nativeReceipt(r.data,i.operationId);
+      const raw=await rpc(db,"f12_reconcile_attendance",{p_operation:i.operationId});
+      return nativeReceipt(raw,i.operationId);
     }
   }
 }
 function nativeReceipt(raw:unknown,operation:string,employee?:number,id?:number|null){
-  const r=z.object({operation_id:z.uuid(),employee_id:z.number(),id:z.number(),revision:z.string(),replayed:z.boolean()}).parse(raw);
+  const result=attendanceReceipt.safeParse(raw);
+  if(!result.success)throw new HrError(503,"The original attendance outcome is unresolved.",true);
+  const r=result.data;
   return normalizeReceipt({operationId:r.operation_id,employeeId:r.employee_id,id:r.id,revision:r.revision,replayed:r.replayed},operation,employee,id);
 }

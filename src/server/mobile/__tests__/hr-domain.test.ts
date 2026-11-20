@@ -65,7 +65,7 @@ describe("HR entry for independently assigned domains",()=>{
     const entry=await dms(request({op:"profile"}));
     expect(entry.status).toBe(200);
     expect(await entry.json()).toMatchObject({data:{capabilities:{hr:true,view:false}}});
-    rpc.mockImplementation(async(name:string)=>({error:null,data:name==="mobile_hr_own_access"?{employeeId:12,profile:false,leave:true,attendance:false,compliance:false,medical:false,submit:false,actions:false,evidence:false}:name==="mobile_hr_staff_capabilities"?{roster:false,approvalsGeneral:false,approvalsLeave:false,approvalsProposal:false,requestsTeam:false}:[{id:1,label:"Annual",requiresDocument:false}]}));
+    rpc.mockImplementation(async(name:string)=>({error:null,data:name==="mobile_hr_profile"?null:name==="mobile_hr_own_access"?{employeeId:12,profile:false,leave:true,attendance:false,compliance:false,medical:false,submit:false,mine:false,actions:false,evidence:false}:name==="mobile_hr_staff_capabilities"?{roster:false,approvalsGeneral:false,approvalsLeave:false,approvalsProposal:false,requestsTeam:false}:[{id:1,label:"Annual",requiresDocument:false}]}));
     const homeResponse=await hr(request({op:"home"}));
     expect(homeResponse.status).toBe(200);
     const home=(await homeResponse.json()).data;
@@ -104,4 +104,44 @@ it.each([
     employeeId:9,id:2,revision:"1",operationId:uid,...(part.op==="decision"?{decision:"reject",reason:"Review required"}:{})
   }});
 });
-
+describe("current HR wire admissions",()=>{
+  const staff={roster:true,approvalsGeneral:false,approvalsProposal:false,approvalsLeave:false,requestsTeam:true};
+  const own={employeeId:12,profile:false,leave:false,attendance:false,compliance:false,medical:false,submit:false,mine:false,actions:true,evidence:false};
+  it("allows team history separately and refuses own history after submit revocation",async()=>{
+    rpc.mockImplementation(async(name:string)=>({error:null,data:name==="mobile_hr_staff_capabilities"?staff:name==="mobile_hr_own_access"?own:{items:[],nextAfterId:null}}));
+    expect(await dispatchHr({op:"home"},ctx)).toMatchObject({capabilities:{requests:false,requestsTeam:true}});
+    await expect(dispatchHr({op:"requests",scope:"own",after:0},ctx)).rejects.toMatchObject({status:403});
+    expect(await dispatchHr({op:"requests",scope:"team",after:0},ctx)).toMatchObject({rows:[],more:false});
+  });
+  it("returns a verified empty own history for a currently eligible submitter",async()=>{
+    rpc.mockImplementation(async(name:string)=>({error:null,data:name==="mobile_hr_own_access"?{...own,mine:true,submit:true,attendance:true}:{items:[],nextAfterId:null}}));
+    expect(await dispatchHr({op:"requests",scope:"own",after:0},ctx)).toEqual({rows:[],more:false,nextAfterId:null});
+  });
+  it("passes a team-only roster opening to the request-bound F12 subject check",async()=>{
+    rpc.mockResolvedValue({data:null,error:{code:"42501"}});
+    await expect(dispatchHr({op:"rosterOpening",employeeId:19,id:null},ctx)).rejects.toMatchObject({status:403});
+    expect(rpc).toHaveBeenCalledWith("f12_attendance_entry_opening",{p_employee:19,p_id:null});
+  });
+});
+it.each(["punch","overtime"] as const)("reports the 26th %s record without a count",async(kind)=>{
+  const grant=["hr.employees.view","hr.attendance.view"];
+  const reader={...ctx,permissionCodes:grant,roleAssignments:[{roleId:1,roleCode:"scope",ownerCompanyId:1,branchId:1,permissionCodes:grant}]};
+  const q=source({id:19,owner_company_id:1,branch_id:1,reporting_manager_id:null});
+  createClient.mockResolvedValue({...q,rpc});
+  const facts=Array.from({length:26},(_,n)=>({id:26-n,label:"Synthetic time",date:"2026-11-20",detail:null,status:null,revision:null}));
+  rpc.mockImplementation(async(name:string,args:{p_page?:number})=>({error:null,count:null,data:name==="mobile_hr_own_access"?null:args.p_page===1?facts:facts.slice(25)}));
+  const page=await dispatchHr({op:"time",kind,employeeId:19,page:1},reader);
+  expect(page).toMatchObject({more:true,rows:facts.slice(0,25)});
+  expect(await dispatchHr({op:"time",kind,employeeId:19,page:2},reader)).toMatchObject({more:false,rows:facts.slice(25)});
+});
+it("honors a single current profile projection after contact management changes",async()=>{
+  const staff={roster:false,approvalsGeneral:false,approvalsProposal:false,approvalsLeave:false,requestsTeam:false};
+  const p={id:19,full_name_en:"Synthetic report",employee_code:"19",employee_status:"active",joining_date:null,workspace_revision:"2",
+    contacts:null,owner_company:null,branch:null,designation:null,department:null,manager:null,site:null,owner_company_id:1,branch_id:2,reporting_manager_id:null,own:false};
+  rpc.mockImplementation(async(name:string)=>({error:null,data:name==="mobile_hr_profile"?p:name==="mobile_hr_staff_capabilities"?staff:null}));
+  const actual=await dispatchHr({op:"profile",employeeId:19},ctx);
+  expect(actual).toMatchObject({employeeId:19,name:"Synthetic report",revision:"2"});
+  expect(actual).not.toHaveProperty("contacts");
+  expect("fields" in actual && actual.fields.some(f=>/mobile|email|emergency/i.test(f.label))).toBe(false);
+  expect(rpc).toHaveBeenCalledWith("mobile_hr_profile",{p_employee:19});
+});

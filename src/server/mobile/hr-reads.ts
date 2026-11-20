@@ -1,10 +1,8 @@
 import { z } from "zod";
 import { type AuthContext, hasPermission, hasPermissionInScope } from "@/lib/rbac/check";
 import { hasEmployeePermission, type EmployeeSubject } from "@/lib/rbac/employee-access";
-import { canUseHrChild } from "@/lib/hr/child-authority";
 import { literalContains } from "@/lib/reads/search";
 import { createClient } from "@/lib/supabase/server";
-import { listEmployeeAttendancePunches, listEmployeeOvertimeRecords } from "@/server/actions/hr/time";
 import { type HrCommand, id } from "./hr-contracts";
 import { balanceRow, dbRevision, denied, field, human, rpcFailure, unavailable } from "./hr-shapes";
 
@@ -18,14 +16,6 @@ export async function rpc(db:Db,name:string,args:Record<string,unknown>,write=fa
   const {data,error}=await db.rpc(name,args);
   if(error) throw rpcFailure(error.code,write,error.message);
   return data as unknown;
-}
-export async function linkedEmployee(db:Db,ctx:AuthContext) {
-  const link=await db.from("erp_user_employee_links").select("employee_id").eq("user_profile_id",ctx.profile!.id).maybeSingle();
-  if(link.error) throw unavailable();
-  if(!link.data) return null;
-  const employee=await db.from("employees").select("id,owner_company_id,branch_id").eq("id",link.data.employee_id).is("deleted_at",null).maybeSingle();
-  if(employee.error) throw unavailable();
-  return employee.data && employee.data.owner_company_id===ctx.profile!.owner_company_id && employee.data.branch_id===ctx.profile!.branch_id ? employee.data.id as number:null;
 }
 export async function employeeContext(db:Db,ctx:AuthContext,employeeId:number,linked:number|null) {
   const r=await db.from("employees").select("id,owner_company_id,branch_id,reporting_manager_id").eq("id",employeeId).is("deleted_at",null).maybeSingle();
@@ -43,17 +33,17 @@ export function capabilities(ctx:AuthContext,a?:Access){
   const evidence=!!a && ["dms.documents.view","dms.documents.preview"].every(s=>hasPermissionInScope(ctx,s,a.subject.owner_company_id,a.subject.branch_id));
   return {leaveCertificate:evidence&&permits("hr.medical.view")&&permits("hr.leave.view"),profileCorrection:submit&&permits("hr.employees.view"),renewalCompliance:permits("hr.compliance.view"),renewalMedical:permits("hr.medical.view"),leave:permits("hr.leave.view"),attendance:permits("hr.attendance.view"),renewals:permits("hr.compliance.view")||permits("hr.medical.view"),
     leaveSubmit:submit&&permits("hr.leave.view"),timeCorrection:submit&&permits("hr.attendance.view"),renewalSubmit:submit&&permits("hr.compliance.view"),
-    requests:submit||permits("hr.actions.view")||hasPermission(ctx,"hr.actions.view.team"),
-    approvals:canUseHrChild(ctx,"approval")||canUseHrChild(ctx,"leave-request"),roster:canUseHrChild(ctx,"attendance-summary"),evidence,
+    evidence,
     employees:["hr.employees.view","hr.employee_profile.view","hr.employees.view.team","hr.employee_profile.view.team"].some(s=>hasPermission(ctx,s))};
 }
 const staffSchema=z.object({roster:z.boolean(),approvalsGeneral:z.boolean(),approvalsLeave:z.boolean(),approvalsProposal:z.boolean(),requestsTeam:z.boolean()});
 export async function staffCapabilities(db:Db){return staffSchema.parse(await rpc(db,"mobile_hr_staff_capabilities",{}));}
 const relation=(s:string)=>z.record(z.string(),z.unknown()).nullable().transform(v=>v&&typeof v[s]==="string"?String(v[s]):null);
+const contacts=z.object({mobile_number:nullable,personal_email:nullable,emergency_contact_name:nullable,emergency_contact_mobile:nullable});
 const profileSchema=z.object({id,full_name_en:z.string(),employee_code:z.string(),employee_status:z.string(),joining_date:nullable,workspace_revision:dbRevision,
-  mobile_number:nullable,personal_email:nullable,emergency_contact_name:nullable,emergency_contact_mobile:nullable,owner_company:relation("legal_name_en"),
-  branch:relation("branch_name_en"),designation:relation("designation_name_en"),department:relation("department_name_en"),reporting_manager_id:id.nullable(),site:relation("site_name")});
-const ownSchema=z.object({employeeId:id,profile:z.boolean(),leave:z.boolean(),attendance:z.boolean(),compliance:z.boolean(),medical:z.boolean(),submit:z.boolean(),actions:z.boolean(),evidence:z.boolean()});
+  contacts:contacts.nullable(),owner_company:nullable,branch:nullable,designation:nullable,department:nullable,manager:nullable,site:nullable,
+  owner_company_id:id,branch_id:id.nullable(),reporting_manager_id:id.nullable(),own:z.boolean()});
+const ownSchema=z.object({employeeId:id,profile:z.boolean(),leave:z.boolean(),attendance:z.boolean(),compliance:z.boolean(),medical:z.boolean(),submit:z.boolean(),mine:z.boolean(),actions:z.boolean(),evidence:z.boolean()});
 type OwnAccess=z.infer<typeof ownSchema>;
 export async function ownAccess(db:Db){return ownSchema.nullable().parse(await rpc(db,"mobile_hr_own_access",{}));}
 export async function home(db:Db,ctx:AuthContext){
@@ -66,7 +56,7 @@ export async function home(db:Db,ctx:AuthContext){
   return {employeeId:own?.employeeId??null,own:own!==null,name:person?.data?.full_name_en??null,capabilities:{
     ...staff,profile,profileCorrection:canCorrectProfile,leave,attendance,renewals:compliance||medical,renewalCompliance:compliance,renewalMedical:medical,
     leaveSubmit:submit&&leave,timeCorrection:submit&&attendance,renewalSubmit:submit&&compliance,evidence,leaveCertificate:evidence&&medical&&leave,
-    requests:!!own && (submit||own.actions)||staff.requestsTeam,approvals:staff.approvalsGeneral||staff.approvalsLeave||staff.approvalsProposal,employees:capabilities(ctx).employees}};
+    requests:own?.mine===true,approvals:staff.approvalsGeneral||staff.approvalsLeave||staff.approvalsProposal,employees:capabilities(ctx).employees}};
 }
 type PersonalInput=Input<"leaveOptions"|"leaveBalances"|"leaveRequests"|"renewals"|"time"|"evidence">;
 export async function ownDomainRead(db:Db,own:OwnAccess,i:PersonalInput){
@@ -89,23 +79,21 @@ export async function evidencePage(db:Db,i:Input<"evidence">){
   return pageRows(z.array(z.object({id,label:z.string(),versionId:id})).max(26).parse(raw));
 }
 export async function profile(db:Db,ctx:AuthContext,employeeId?:number){
-  const [linked,staff]=await Promise.all([linkedEmployee(db,ctx),staffCapabilities(db)]);
-  const menu=(a?:Access)=>({...capabilities(ctx,a),...staff,profile:!!a,requests:linked!==null && (a?capabilities(ctx,a).requests:true) || staff.requestsTeam,
+  const [raw,own,staff]=await Promise.all([rpc(db,"mobile_hr_profile",{p_employee:employeeId??null}),ownAccess(db),staffCapabilities(db)]);
+  const menu=(a?:Access)=>({...capabilities(ctx,a),...staff,profile:!!a,requests:own?.mine===true,
     approvals:staff.approvalsGeneral||staff.approvalsLeave||staff.approvalsProposal});
-  const target=employeeId??linked;
-  if(!target) return {employeeId:null,name:null,own:false,revision:null,fields:[],capabilities:menu()};
-  const a=await employeeContext(db,ctx,target,linked);
-  const r=await db.from("employees").select("id,full_name_en,employee_code,employee_status,joining_date,workspace_revision,mobile_number,personal_email,emergency_contact_name,emergency_contact_mobile,owner_company:owner_companies!employees_owner_company_id_fkey(legal_name_en),branch:branches!employees_branch_id_fkey(branch_name_en),designation:designations(designation_name_en),department:departments(department_name_en),reporting_manager_id,site:work_sites!employees_primary_work_site_id_fkey(site_name)").eq("id",target).is("deleted_at",null).maybeSingle();
-  if(r.error)throw unavailable();
-  if(!r.data)throw denied();
-  const p=profileSchema.parse(r.data);
-  const manager=p.reporting_manager_id===null?null:await db.from("employees").select("full_name_en").eq("id",p.reporting_manager_id).is("deleted_at",null).maybeSingle();
-  if(manager?.error)throw unavailable();
-  const contacts=a.own || a.allows("hr.employees.update") || a.allows("hr.employee_profile.manage");
-  return {employeeId:target,name:p.full_name_en,own:a.own,revision:p.workspace_revision,capabilities:menu(a),fields:[
+  if(raw==null){
+    if(employeeId!=null||own)throw denied();
+    return {employeeId:null,name:null,own:false,revision:null,fields:[],capabilities:menu()};
+  }
+  const p=profileSchema.parse(raw);
+  if(employeeId!=null && p.id!==employeeId)throw denied();
+  const a={subject:p,own:p.own,allows:(code:string)=>hasEmployeePermission(ctx,p,own?.employeeId??null,code)};
+  return {employeeId:p.id,name:p.full_name_en,own:p.own,revision:p.workspace_revision,capabilities:menu(a),fields:[
     field("Employee code",p.employee_code),field("Company",p.owner_company),field("Branch",p.branch),field("Department",p.department),
-    field("Designation",p.designation),field("Manager",manager?.data?.full_name_en??null),field("Work site",p.site),field("Employment status",p.employee_status),field("Joining date",p.joining_date),
-    ...(contacts?[field("Mobile number",p.mobile_number),field("Personal email",p.personal_email),field("Emergency contact",p.emergency_contact_name),field("Emergency contact mobile",p.emergency_contact_mobile)]:[])]};
+    field("Designation",p.designation),field("Manager",p.manager),field("Work site",p.site),field("Employment status",p.employee_status),field("Joining date",p.joining_date),
+    ...(p.contacts?[field("Mobile number",p.contacts.mobile_number),field("Personal email",p.contacts.personal_email),
+      field("Emergency contact",p.contacts.emergency_contact_name),field("Emergency contact mobile",p.contacts.emergency_contact_mobile)]:[])]};
 }
 export async function employees(db:Db,ctx:AuthContext,input:Input<"employees">){
   if(!capabilities(ctx).employees)throw denied();
@@ -144,16 +132,10 @@ export async function renewalRead(db:Db,a:Access,input:Input<"renewals">){
 }
 export async function timeRead(db:Db,a:Access,input:Input<"time">){
   if(!a.allows("hr.attendance.view"))throw denied();
-  const from=(input.page-1)*25, options={page:input.page,page_size:25};
-  if(input.kind==="punch"){
-    const r=await listEmployeeAttendancePunches(input.employeeId,options);
-    if(!r.success||!r.data)throw unavailable();
-    return {rows:r.data.data.map(x=>({id:x.id,label:human(x.punch_type),date:x.punch_datetime,detail:x.work_site?.site_name??null,status:null,revision:null})),more:r.data.count>from+25};
-  }
-  if(input.kind==="overtime"){
-    const r=await listEmployeeOvertimeRecords(input.employeeId,options);
-    if(!r.success||!r.data)throw unavailable();
-    return {rows:r.data.data.map(x=>({id:x.id,label:`${x.hours} h overtime`,date:x.overtime_date,detail:null,status:x.approval_status,revision:null})),more:r.data.count>from+25};
+  const from=(input.page-1)*25;
+  if(input.kind==="punch"||input.kind==="overtime"){
+    const raw=await rpc(db,"mobile_hr_time_history",{p_employee:input.employeeId,p_kind:input.kind,p_page:input.page});
+    return pageRows(z.array(z.object({id,label:z.string(),date:z.string(),detail:nullable,status:nullable,revision:dbRevision.nullable()})).max(26).parse(raw));
   }
   if(input.kind==="shift"){
     const r=await db.from("employee_shift_assignments").select("id,effective_from,effective_to,weekly_off_day,shift:work_shifts!employee_shift_assignments_work_shift_id_fkey(shift_name)").eq("employee_id",input.employeeId).is("deleted_at",null).order("effective_from",{ascending:false}).order("id",{ascending:false}).range(from,from+25);

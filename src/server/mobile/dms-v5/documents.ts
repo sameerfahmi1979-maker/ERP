@@ -99,7 +99,7 @@ export async function documents(input:CommandFor<DocOp>,ctx:AuthContext){
 }
 
 export async function employeeDocuments(employeeId:number,page:number,ctx:AuthContext){
- const r=await rpc("mobile_dms_document",{p_action:"employee_folder",p_data:{employeeId,page}},pagePayload(z.strictObject({id,title:z.string(),number:z.string()})).extend({employeeId:z.literal(employeeId)}));
  await verifySession(ctx);
+ const r=await rpc("mobile_dms_document",{p_action:"employee_folder",p_data:{employeeId,page}},pagePayload(z.strictObject({id,title:z.string(),number:z.string()})).extend({employeeId:z.literal(employeeId)}));
  return {...completePage(r.rows,page,25,r.totalCount,row=>row.id),employeeId};
 }

@@ -153,7 +153,7 @@ it("overview routes are private, uncached, strictly validated and hide internal 
 it("selects a shift spanning the Dubai work date and excludes future time from month totals", async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-10-31T21:00:00Z"));
-  expect((await read(["time"])).data!.sections.time.status).toBe("ready");
+  expect((await read(["time"])).data!.sections.time?.status).toBe("ready");
   const shift = state.calls.find(c => c.table === "employee_shift_assignments")!;
   expect(shift.methods).toContainEqual(["lte", "effective_from", "2026-11-01"]);
   expect(shift.methods).toContainEqual(["or", "effective_to.is.null,effective_to.gte.2026-11-01"]);

@@ -200,6 +200,8 @@ export const APPLICATION_ROUTE_PATTERNS = [
   "/api/internal/report-schedules/process",
   "/api/mobile/dms/v1",
   "/api/mobile/hr/v1",
+  "/api/mobile/hr/v1/issued-file",
+  "/api/mobile/hr/v1/photo",
   "/api/notifications/bell",
   "/api/output/file",
   "/api/reads/audit",

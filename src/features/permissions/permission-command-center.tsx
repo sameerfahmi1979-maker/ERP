@@ -29,7 +29,7 @@ import { useWorkspaceFormDraft } from "@/hooks/use-workspace-form-draft";
 import { useWorkspaceTabDirty } from "@/hooks/use-workspace-tab-dirty";
 import { useWorkspaceContext } from "@/components/workspace/workspace-provider";
 import { permissionModuleGroup, permissionModuleLabel } from "@/lib/rbac/permission-taxonomy";
-import { parseCommandCenterDraft } from "./command-center-draft";
+import { parseCommandCenterDraft, retainPendingPermissionChanges } from "./command-center-draft";
 import { toast } from "sonner";
 import { PermissionExplorer } from "./permission-explorer";
 import { PermissionReviewSaveDialog } from "./permission-review-save-dialog";
@@ -295,8 +295,9 @@ return (<>
                             : `Grant ${selectedPermission.permission_name} permission to ${role.role_name}`
                         }
                         className={cn(
-                          isPendingGrant && "data-[state=checked]:bg-blue-600",
-                          isPendingRevoke && "data-[state=unchecked]:bg-amber-200",
+                          status === "assigned" && "data-checked:bg-emerald-600",
+                          isPendingGrant && "data-checked:bg-blue-600",
+                          isPendingRevoke && "data-unchecked:bg-amber-200",
                         )}
                       />
                     </>);}}];
@@ -395,7 +396,9 @@ return (<>
             )}
           </div>
         ) : (
-          <ERPDataTable presentation="embedded" tableId={`permission-roles:${selectedPermission.id}`} resultsLabel="Role assignments" data={filteredRoles} columns={assignmentColumns} enableRowSelection={false} enableGlobalFilter={false} />
+          <div className="min-w-[34rem]">
+            <ERPDataTable presentation="embedded" tableId={`permission-roles:${selectedPermission.id}`} resultsLabel="Role assignments" data={filteredRoles} columns={assignmentColumns} enableRowSelection={false} enableGlobalFilter={false} />
+          </div>
         )}
       </div>
     </div>
@@ -476,8 +479,20 @@ export function PermissionCommandCenter({
     formId: "permission-command-center", enabled: canManage, ownerRoute: "/admin/permissions",
   });
   const [selectedPermission, setSelectedPermission] = useState<Permission | null>(null);
+  // Build the original assignment lookup map
+  const originalPermissions = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const rp of rolePermissions) {
+      map.set(`${rp.permission_id}:${rp.role_id}`, true);
+    }
+    return map;
+  }, [rolePermissions]);
+
   const [draftChanges, setDraftChanges] = useState<Map<string, PermissionDraftChange>>(
-    () => parseCommandCenterDraft(getDraftDefault("permission_changes", "[]")),
+    () => retainPendingPermissionChanges(
+      parseCommandCenterDraft(getDraftDefault("permission_changes", "[]")),
+      originalPermissions,
+    ),
   );
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
   const [showReviewDialog, setShowReviewDialog] = useState(false);
@@ -496,15 +511,6 @@ export function PermissionCommandCenter({
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [draftChanges.size]);
-
-  // Build the original assignment lookup map
-  const originalPermissions = useMemo(() => {
-    const map = new Map<string, boolean>();
-    for (const rp of rolePermissions) {
-      map.set(`${rp.permission_id}:${rp.role_id}`, true);
-    }
-    return map;
-  }, [rolePermissions]);
 
   // Role lookup map
   const roleMap = useMemo(() => {

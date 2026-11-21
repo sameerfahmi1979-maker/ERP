@@ -100,9 +100,9 @@ export function PermissionExplorer({
   const allExpanded = grouped.length > 0 && grouped.every(([mod]) => expandedModules.has(mod));
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Search */}
-      <div className="px-3 pb-2">
+      <div className="shrink-0 px-3 pb-2">
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input

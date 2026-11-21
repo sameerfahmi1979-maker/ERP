@@ -3,10 +3,10 @@ import {join} from "node:path";
 import {describe,expect,it} from "vitest";
 import {mobileDmsV5Command} from "@/server/mobile/dms-v5/contracts";
 const migrations = [
- "20261121024943_mobile_dms_requests_and_receipts.sql",
- "20261121025434_mobile_dms_authenticated_shares.sql",
- "20261121025537_mobile_dms_personal_collections.sql",
- "20261121030521_dms_question_source_provenance.sql",
+ "20261121120033_mobile_dms_requests_and_receipts.sql",
+ "20261121120037_mobile_dms_authenticated_shares.sql",
+ "20261121120041_mobile_dms_personal_collections.sql",
+ "20261121120050_dms_question_source_provenance.sql",
 ].map(name=>readFileSync(join(process.cwd(),"supabase/migrations",name),"utf8"));
 const wire:Record<string,object>={
  documentReceiptLookup:{original:{op:"documentCommentAdd",documentId:1,operationId:"5ea3d979-e84a-42b1-8aba-ad6db365da26",sourceHash:"0".repeat(64),text:"First note"}},

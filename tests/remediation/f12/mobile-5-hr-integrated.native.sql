@@ -15,6 +15,22 @@ BEGIN
   RAISE EXCEPTION 'Missing mapped managed calendar row or unsafe fields'; END IF;
  IF public.mobile_hr_v5_calendar(pg_temp.t04_day(71),pg_temp.t04_day(71),1,920001,920012,920001,'')<>'[]' THEN
   RAISE EXCEPTION 'Managed calendar ignored explicit branch'; END IF;
+ IF public.current_user_can_view_employee(920001) OR public.mobile_hr_own_access()->>'employeeId' IS DISTINCT FROM '920001'
+   OR public.mobile_hr_staff_capabilities(true,NULL,false)#>'{expanded,teamCalendar}' IS DISTINCT FROM 'true'::jsonb THEN
+  RAISE EXCEPTION 'Linked self-only employee with an opened leave row needs a calendar menu'; END IF;
+ PERFORM pg_temp.t04_actor(4);
+ IF public.mobile_hr_own_access()->>'employeeId' IS NOT NULL OR public.current_user_can_view_employee(920001)
+   OR erp_private.employee_permission(920001,'hr.leave.view') IS NOT TRUE THEN
+  RAISE EXCEPTION 'Invalid unlinked leave-only calendar test grants'; END IF;
+ IF public.mobile_hr_v5_calendar(pg_temp.t04_day(71),pg_temp.t04_day(71),1,NULL,NULL,NULL,'')<>'[]'
+   OR public.mobile_hr_staff_capabilities(true,NULL,false)#>'{expanded,teamCalendar}' IS DISTINCT FROM 'false'::jsonb THEN
+  RAISE EXCEPTION 'Unlinked leave-only actor received a calendar menu without an admissible employee'; END IF;
+ PERFORM pg_temp.t04_actor(1);
+ IF public.mobile_hr_staff_capabilities(true,NULL,false)#>'{expanded,teamCalendar}' IS DISTINCT FROM 'true'::jsonb
+   OR NOT EXISTS(SELECT FROM jsonb_array_elements(public.mobile_hr_v5_calendar(pg_temp.t04_day(71),pg_temp.t04_day(71),
+    1,920001,920011,920001,'')) r WHERE (r->>'id')::bigint=annual_id) THEN
+  RAISE EXCEPTION 'Scoped officer calendar menu and mapped leave opening disagree'; END IF;
+ RAISE NOTICE 'PASS: expanded calendar menu matches rows for linked self, unlinked leave-only and scoped staff';
  PERFORM pg_temp.t04_actor(5);
  IF public.mobile_hr_v5_calendar(pg_temp.t04_day(71),pg_temp.t04_day(71),1,NULL,NULL,NULL,'T00-E01')<>'[]' THEN
   RAISE EXCEPTION 'Sibling branch saw managed calendar row'; END IF;

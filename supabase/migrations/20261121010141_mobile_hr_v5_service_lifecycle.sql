@@ -870,7 +870,7 @@ BEGIN
   'services',coalesce(bool_or(self_services AND (employee_view OR attendance OR work OR dependents OR pro OR offboarding)),false),
   'serviceReview',coalesce(bool_or(review AND directory),false),'issuedDocuments',coalesce(bool_or(wallet AND directory),false),
   'ppeAssets',coalesce(bool_or(work),false),'onboarding',coalesce(bool_or((self_services AND employee_view) OR recruitment),false),
-  'pro',coalesce(bool_or(pro),false),'teamCalendar',coalesce(bool_or(calendar),false),'dependents',coalesce(bool_or(dependents),false),
+  'pro',coalesce(bool_or(pro),false),'teamCalendar',coalesce(bool_or(calendar AND (directory OR id=(SELECT erp_private.mobile_hr_linked_id()))),false),'dependents',coalesce(bool_or(dependents),false),
   'accommodation',coalesce(bool_or(work),false),'offboarding',coalesce(bool_or(offboarding),false)) INTO result FROM grants;
  RETURN result;
 END $$;

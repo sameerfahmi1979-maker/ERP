@@ -22,3 +22,13 @@ export function parseCommandCenterDraft(raw: string): Map<string, PermissionDraf
     return result;
   } catch { return new Map(); }
 }
+
+/** A restored draft can contain a change that already reached the database. */
+export function retainPendingPermissionChanges(
+  changes: Map<string, PermissionDraftChange>,
+  currentAssignments: ReadonlyMap<string, boolean>,
+): Map<string, PermissionDraftChange> {
+  return new Map(
+    [...changes].filter(([key, change]) => (currentAssignments.get(key) ?? false) === change.originalAssigned),
+  );
+}

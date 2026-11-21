@@ -1,4 +1,5 @@
 import { ERPExportMenu } from "@/components/erp/export/erp-export-menu";
+import { LoadError } from "@/components/erp/load-error";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PermissionCommandCenter } from "@/features/permissions/permission-command-center";
@@ -37,6 +38,10 @@ export default async function AdminPermissionsPage() {
     listRoles(),
     getAllRolePermissions(),
   ]);
+
+  if (!permissions || !rolePermissions) {
+    return <LoadError title="Role permissions" retryHref="/admin/permissions" />;
+  }
 
   const canManage = hasPermission(ctx, "roles.manage");
 

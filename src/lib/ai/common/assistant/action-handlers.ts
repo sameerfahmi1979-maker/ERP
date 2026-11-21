@@ -430,7 +430,13 @@ export async function runShowNextActionsAction(
   const summaryLines: string[] = [];
 
   if (entityType && entityId) {
-    if (!await readAuthorizedAssistantEntity(entityType, entityId)) return { responseText: "The source record is unavailable.", outputType: "error" };
+    const source = await readAuthorizedAssistantEntity(entityType, entityId);
+    if (!source) return { responseText: "The source record is unavailable.", outputType: "error" };
+    const subjectType = source.reference.entityType;
+    if (subjectType === "company" || subjectType === "party") {
+      const recordRoute = buildEntityRoute(subjectType, source.reference.entityId);
+      if (recordRoute) recommendations.push({ label: "Open source record", route: recordRoute });
+    }
     // Check risk
     const riskResult = await getRiskScoreForEntity({
       entityType: entityType as "company" | "party" | "branch" | "site" | "dms_document",
@@ -464,7 +470,6 @@ export async function runShowNextActionsAction(
     summaryLines.push("No urgent signals were returned by this bounded check. This does not certify good standing.");
   }
 
-  recommendations.push({ label: "AI Field Suggestions", route: "/admin/ai/field-suggestions" });
 
   return {
     responseText: summaryLines.join("\n"),

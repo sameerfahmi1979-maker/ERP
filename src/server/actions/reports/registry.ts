@@ -15,6 +15,7 @@ import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/c
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
 import {listReportTemplates as listScopedTemplates,listBrandingProfiles as listScopedBrandingProfiles} from "./templates";
+import { readActiveReportRegistryEntry, REPORT_CONFIGURATION_LOAD_ERROR } from "@/server/reads/report-registry-entry";
 import type {
   ReportRegistryEntry,
   ReportTemplate,
@@ -49,10 +50,10 @@ export async function listReportRegistry(): Promise<
       .order("sort_order")
       .order("report_name_en");
 
-    if (error) return { success: false, error: error.message };
-    return { success: true, data: (data ?? []) as ReportRegistryEntry[] };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
+    if (error || !Array.isArray(data)) return { success: false, error: "Report catalogue could not be loaded. Retry the request." };
+    return { success: true, data: data as ReportRegistryEntry[] };
+  } catch {
+    return { success: false, error: "Report catalogue could not be loaded. Retry the request." };
   }
 }
 
@@ -65,20 +66,12 @@ export async function getReportRegistryDetail(
       return { success: false, error: "You do not have permission to view reports." };
     }
 
-    const db = createAdminClient();
-    const { data, error } = await db
-      .from("erp_report_registry")
-      .select("*")
-      .eq("report_code", reportCode)
-      .eq("is_active", true)
-      .is("deleted_at", null)
-      .maybeSingle();
-
-    if (error) return { success: false, error: error.message };
-    if (!data) return { success: false, error: `Report '${reportCode}' not found.` };
-    return { success: true, data: data as ReportRegistryEntry };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
+    const registry = await readActiveReportRegistryEntry(reportCode);
+    if (registry.state === "failed") return { success: false, error: REPORT_CONFIGURATION_LOAD_ERROR };
+    if (registry.state === "missing") return { success: false, error: `Report '${reportCode}' not found.` };
+    return { success: true, data: registry.entry };
+  } catch {
+    return { success: false, error: REPORT_CONFIGURATION_LOAD_ERROR };
   }
 }
 

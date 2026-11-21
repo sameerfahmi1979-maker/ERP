@@ -51,6 +51,8 @@ import { attendanceSummaryFetcher } from "@/server/actions/reports/hr/attendance
 import { leaveBalanceFetcher } from "@/server/actions/reports/hr/leave-balance-report";
 import { leaveRequestsFetcher } from "@/server/actions/reports/hr/leave-requests-report";
 import { wpsReadinessFetcher } from "@/server/actions/reports/hr/wps-readiness-report";
+import { payrollFinanceFetcher } from "@/server/actions/reports/hr/payroll-finance-reconciliation";
+import { PAYROLL_FINANCE_REPORT } from "./payroll-finance-contract";
 import { assignmentBySiteFetcher } from "@/server/actions/reports/hr/assignment-by-site-report";
 import { proProcessesFetcher } from "@/server/actions/reports/hr/pro-processes-report";
 import { candidatePipelineFetcher } from "@/server/actions/reports/hr/candidate-pipeline-report";
@@ -89,6 +91,7 @@ export const REPORT_FETCHERS: Record<string, ReportFetcher> = {
   HR_LEAVE_BALANCE: leaveBalanceFetcher,
   HR_LEAVE_REQUESTS: leaveRequestsFetcher,
   HR_WPS_READINESS: wpsReadinessFetcher,
+  [PAYROLL_FINANCE_REPORT]: payrollFinanceFetcher,
   HR_ASSIGNMENT_BY_SITE: assignmentBySiteFetcher,
   HR_PRO_PROCESSES: proProcessesFetcher,
   HR_CANDIDATE_PIPELINE: candidatePipelineFetcher,

@@ -13,7 +13,11 @@ export function createEmailQueueStore<T extends EmailClaim>(
 ): EmailQueueStore<T> {
   const call = async (name: string, args: Record<string, unknown>) => {
     const result = await boundedQuery(db.rpc(name, args));
-    if (result.error) throw new Error(`Email queue transition failed: ${name}`);
+    if (result.error) {
+      if (name === "f09_admit_email_dispatch" && typeof result.error === "object" &&
+        "code" in result.error && result.error.code === "P1710") return "rejected";
+      throw new Error(`Email queue transition failed: ${name}`);
+    }
     return result.data;
   };
   const fence = (q: T) => ({ p_id: q.id, p_owner: q.lease_owner, p_token: q.lease_token });

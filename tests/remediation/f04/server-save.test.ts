@@ -32,6 +32,16 @@ it('network exceptions remain uncertain and do not leak diagnostics',async()=>{
 
 const unconfirmed={success:false,uncertain:true,error:'Save unconfirmed. Keep the same values and retry safely to recover its result.'};
 const rejected={success:false,uncertain:false,error:'The save was rejected. Check the entered values and try again.'};
+it('distinguishes missing employee numbering from other rejected saves', async () => {
+  db.rpc.mockResolvedValueOnce({ data: null, error: { code: 'P0002', message: 'No eligible numbering rule' } })
+    .mockResolvedValueOnce({ data: null, error: { code: 'P0002', message: 'Private missing record detail' } });
+  const draft = { ...contract, revision: null };
+  const fields = { full_name_en: 'Synthetic numbered employee' };
+  await expect(saveWorkspaceRecord('employees', null, fields, draft)).resolves.toMatchObject({
+    success: false, uncertain: false, error: expect.stringMatching(/employee numbering.*numbering rules/i),
+  });
+  await expect(saveWorkspaceRecord('employees', null, fields, draft)).resolves.toEqual(rejected);
+});
 const conflict={success:false,error:'Someone changed this record after you opened it. Your draft is retained. Reopen the latest record and compare your changes before saving.'};
 const unknownCodes: Array<[string,unknown]> = [
  ['statement completion unknown','40003'],['transaction resolution unknown','08007'],

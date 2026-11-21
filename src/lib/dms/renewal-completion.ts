@@ -2,6 +2,25 @@ import {z} from 'zod';
 import {zOptionalDateString} from './date-validators';
 
 export const dmsLifecycleId=z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+export const RENEWAL_REPLACEMENT_PAGE_SIZE = 25;
+export const RENEWAL_REPLACEMENT_SEARCH_LIMIT = 100;
+export const renewalReplacementSearchSchema = z.object({
+  renewalId: dmsLifecycleId,
+  query: z.string().trim().max(RENEWAL_REPLACEMENT_SEARCH_LIMIT),
+  before: dmsLifecycleId.nullable(),
+});
+const renewalReplacementCandidateSchema = z.object({
+  id: dmsLifecycleId,
+  document_no: z.string(),
+  title: z.string(),
+  expiry_date: z.iso.date().nullable(),
+  status: z.enum(["active", "approved"]),
+}).strict();
+export const renewalReplacementPageSchema = z.object({
+  rows: z.array(renewalReplacementCandidateSchema).max(RENEWAL_REPLACEMENT_PAGE_SIZE),
+  nextBefore: dmsLifecycleId.nullable(),
+}).strict();
+export type RenewalReplacementPage = z.infer<typeof renewalReplacementPageSchema>;
 export const completeRenewalSchema=z.object({
   new_expiry_date:zOptionalDateString,
   replacement_document_id:dmsLifecycleId,

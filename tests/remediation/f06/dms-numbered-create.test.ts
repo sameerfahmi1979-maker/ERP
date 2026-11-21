@@ -6,7 +6,7 @@ vi.mock('@/lib/rbac/check',()=>({getAuthContext:m.auth,hasPermission:m.permissio
 vi.mock('next/cache',()=>({revalidatePath:m.cache}));
 vi.mock('@/server/actions/audit',()=>({logAudit:m.audit}));
 vi.mock('@/server/actions/dms/expiry-reminders',()=>({generateDmsExpiryRemindersForDocument:m.reminders,rebuildDmsExpiryReminders:vi.fn()}));
-vi.mock('@/server/actions/dms/notification-settings',()=>({getDmsNotificationSettingsForScheduler:m.settings}));
+vi.mock('@/server/dms-notification-policy',()=>({getDmsNotificationSettingsForScheduler:m.settings}));
 import {createDmsDocument,type CreateDmsDocumentInput} from '@/server/actions/dms/documents';
 const contract={operationId:'00000000-0000-4000-8000-000000000001',revision:null};
 const payload:CreateDmsDocumentInput={title:'Synthetic document',document_type_id:8,category_id:9,status:'draft',confidentiality_level:'internal'};

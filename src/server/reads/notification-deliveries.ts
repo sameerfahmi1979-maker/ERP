@@ -1,6 +1,7 @@
 import "server-only";
 import {z} from "zod";
-import {getAuthContext,hasPermission,type AuthContext} from "@/lib/rbac/check";
+import {getAuthContext,type AuthContext} from "@/lib/rbac/check";
+import {canViewNotificationDeliveryLogs} from "@/lib/notifications/access";
 import {createClient} from "@/lib/supabase/server";
 import {literalContains,literalLike} from "@/lib/reads/search";
 import {notificationDeliveryCriteriaSchema,notificationDeliveryPageSchema} from "@/lib/reads/notification-delivery-schema";
@@ -11,7 +12,7 @@ export async function readNotificationDeliveries(input:unknown,context?:AuthCont
  if(!parsed.success)return {success:false as const,error:"Invalid notification delivery criteria"};
  try{
   signal?.throwIfAborted();const ctx=context??await getAuthContext();signal?.throwIfAborted();
-  if(!["notifications.logs.view","notifications.admin"].some(code=>hasPermission(ctx,code)))return {success:false as const,error:"Permission denied"};
+  if(!canViewNotificationDeliveryLogs(ctx))return {success:false as const,error:"Permission denied"};
   const p=parsed.data,db=await createClient();signal?.throwIfAborted();
   const base=(head=false)=>{
    const q=db.from("perf_notification_delivery_read").select(fields.join(","),{count:"exact",head});if(signal)q.abortSignal(signal);

@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { LoadError } from "@/components/erp/load-error";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { getAiDailyDashboard, isAiDailyDashboardEnabled } from "@/server/actions/ai/common/dashboard";
+import { getAuthContext } from "@/lib/rbac/check";
+import { canViewAiDailyDashboard } from "@/lib/ai/observability/access";
+import { getAiDailyDashboard, getAiDailyDashboardAvailability } from "@/server/actions/ai/common/dashboard";
 import { AiDailyDashboardPageClient } from "@/features/ai/common/dashboard";
 
 export const metadata = {
@@ -12,26 +13,19 @@ export const metadata = {
 export default async function AiDailyDashboardPage() {
   const ctx = await getAuthContext();
 
-  const canView =
-    hasPermission(ctx, "ai.dashboard.view") ||
-    hasPermission(ctx, "ai.dashboard.admin") ||
-    hasPermission(ctx, "ai.common.view") ||
-    hasPermission(ctx, "ai.common.admin");
-
-  if (!canView) {
+  if (!canViewAiDailyDashboard(ctx)) {
     redirect("/access-denied");
   }
 
-  const enabled = await isAiDailyDashboardEnabled();
-  if (enabled === null) return <LoadError title="AI dashboard availability" retryHref="/admin/ai/dashboard" />;
-
-  if (!enabled) {
+  const availability = await getAiDailyDashboardAvailability();
+  if (availability === "unavailable") return <LoadError title="AI dashboard availability" retryHref="/admin/ai/dashboard" />;
+  if (availability !== "enabled") {
     return (
-      <div className="p-8 text-center text-slate-500 dark:text-slate-400">
-        <h1 className="text-lg font-medium">AI Daily Dashboard is not enabled.</h1>
-        <p className="text-sm mt-1">
-          Enable the <code className="font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-xs">ERP_AI_DAILY_DASHBOARD</code> feature flag in AI Settings to activate.
-        </p>
+      <div role="status" className="p-8 text-center text-muted-foreground">
+        <h1 className="text-lg font-medium">{availability === "setup_required" ? "AI Daily Dashboard setup required" : "AI Daily Dashboard is disabled"}</h1>
+        <p className="mt-1 text-sm">{availability === "setup_required"
+          ? "An administrator needs to complete the feature setup."
+          : "An administrator can review this feature in AI Settings."}</p>
       </div>
     );
   }

@@ -3,13 +3,13 @@ import {Button} from "@/components/ui/button";
 import {useCountedTableRead} from "@/hooks/use-counted-table-read";
 import {notificationTemplatesCriteriaSchema,notificationTemplatesPageSchema,notificationTemplatesIdentity,type NotificationTemplatesReadPage} from "@/lib/reads/notification-templates-schema";
 import type {AuthContext} from "@/lib/rbac/check";
-import {hasPermission} from "@/lib/rbac/scope";
+import {canManageNotificationTemplates,canViewNotificationTemplates} from "@/lib/notifications/access";
 import {NotificationTemplatesTable} from "./notification-templates-table";
 type Props={authContext:AuthContext;initialPage?:NotificationTemplatesReadPage;initialIdentity?:string;initialUpdatedAt?:number};
 export function NotificationTemplatesPageClient(props:Props){const identity=notificationTemplatesIdentity(props.authContext);return <TemplatesView key={identity} {...props} identity={identity}/>;}
 function TemplatesView(props:Props&{identity:string}){
- const allowed=["notifications.templates.view","notifications.admin"].some(c=>hasPermission(props.authContext,c));
- const canManage=["notifications.templates.manage","notifications.admin"].some(c=>hasPermission(props.authContext,c));
+ const allowed=canViewNotificationTemplates(props.authContext);
+ const canManage=canManageNotificationTemplates(props.authContext);
  const read=useCountedTableRead({resource:"notification-templates",prefix:["notifications","templates"],identity:props.identity,allowed,seed:props.initialPage,seedIdentity:props.initialIdentity,seedUpdatedAt:props.initialUpdatedAt,
  defaultSort:[{id:"sourceModule",desc:false},{id:"templateCode",desc:false}],parseCriteria:i=>{const p=notificationTemplatesCriteriaSchema.safeParse(i);return p.success?p.data:null;},parsePage:i=>notificationTemplatesPageSchema.parse(i),
  filters:[{id:"isActive",label:"Status",type:"select",options:[{value:"true",label:"Active"},{value:"false",label:"Inactive"}]},{id:"sourceModule",label:"Module",type:"text"},{id:"defaultSeverity",label:"Severity",type:"select",options:["info","success","warning","urgent","critical"].map(value=>({value,label:value}))}]});

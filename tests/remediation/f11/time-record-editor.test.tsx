@@ -36,3 +36,15 @@ it('access withdrawal fences an earlier successful callback',async()=>{let finis
 it.each([{id:null,action:'create'},{id:51,action:'update'}]as const)('daily $action hands off without guessing or mutating total hours',async target=>{m.read.mockResolvedValue({success:true,id:target.id,revision:target.id?'4':null,values:target.id?legacyTimeValues['attendance-summary']:{},actualAttendance:target.id!==null});mount('attendance-summary',target);const link=await screen.findByRole('link',{name:'Open central actual-time entry'});expect(link.getAttribute('href')).toBe('/admin/hr/time/attendance?entry_employee=7'+(target.id?'&entry_record=51':''));expect(screen.queryByLabelText('Total Hours')).toBeNull();expect(m.mutate).not.toHaveBeenCalled();});
 it('historical summary-only edit retains its guarded original workflow, not fabricated intervals',async()=>{m.read.mockResolvedValue({success:true,id:51,revision:'4',values:legacyTimeValues['attendance-summary'],actualAttendance:false});mount('attendance-summary',{id:51,action:'update'});expect(await screen.findByLabelText('Total Hours')).toBeTruthy();expect(screen.queryByRole('link',{name:'Open central actual-time entry'})).toBeNull();expect(screen.getByText(/Historical summary only/)).toBeTruthy();});
 it('an uncertain legacy daily edit keeps its exact original request instead of being redirected',async()=>{const {createChildOperationState}=await import('@/lib/hr/child-operation-state');const {hrReadIdentity}=await import('@/lib/reads/hr-read-identity');const state=createChildOperationState(m.store!,actor,hrReadIdentity(auth),7,'attendance-summary');const pending=state.prepare({kind:'attendance-summary',employeeId:7,id:51,revision:'4',action:'update',values:legacyTimeValues['attendance-summary']});mount('attendance-summary',{id:51,action:'update'});expect(await screen.findByText('Retry unchanged Time change')).toBeTruthy();expect(screen.queryByRole('link',{name:'Open central actual-time entry'})).toBeNull();fireEvent.click(screen.getByText('Retry unchanged Time change'));await waitFor(()=>expect(m.mutate).toHaveBeenCalledOnce());expect(m.mutate.mock.calls[0]).toEqual([pending.request,pending.contract]);});
+
+it("holds a sick approval until the exact verified certificate is selected",async()=>{
+ m.read.mockResolvedValue({success:true,id:51,revision:'4',values:{},certificate:{required:true,choices:[{medical_record_id:93,version_id:103,label:'Synthetic verified certificate'}]}});
+ mount('leave-request',{id:51,action:'approve'});
+ const select=await screen.findByLabelText('Verified sick certificate');
+ const submit=screen.getByText('Approve '+TIME_EDITORS['leave-request'].noun);
+ expect(submit).toHaveProperty('disabled',true);
+ fireEvent.change(select,{target:{value:'93'}});
+ fireEvent.click(submit);
+ await waitFor(()=>expect(m.mutate).toHaveBeenCalledOnce());
+ expect(m.mutate.mock.calls[0][0]).toMatchObject({kind:'leave-request',action:'approve',id:51,revision:'4',values:{medical_record_id:93,version_id:103}});
+});

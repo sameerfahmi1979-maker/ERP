@@ -502,7 +502,9 @@ export async function removeRoleFromUser(
 export async function deleteUser(
   userProfileId: number,
 ): Promise<ActionResult> {
+  const unavailable = { success: false, error: "This account is unavailable or outside your company/branch scope." };
   try {
+    if (!Number.isSafeInteger(userProfileId) || userProfileId < 1) return unavailable;
     // 1. Check permissions
     const ctx = await getAuthContext();
     assertAccountActive(ctx);
@@ -515,7 +517,17 @@ export async function deleteUser(
       return { success: false, error: "You do not have permission to perform this action." };
     }
 
-    // 2. Fetch the target user profile — use adminClient to bypass RLS
+    if (ctx.profile?.id === userProfileId) {
+      return { success: false, error: "You cannot delete your own account" };
+    }
+
+    const identityClient = await createClient();
+    const authority = await identityClient.rpc("administrator_can_manage_identity", {
+      target_profile: userProfileId, capability: "users.delete",
+    });
+    if (authority.error || authority.data !== true) return unavailable;
+
+    // 2. Fetch the profile only after verifying the target's complete authority.
     const adminClient = createAdminClient();
     const { data: profile, error: fetchError } = await adminClient
       .from("user_profiles")
@@ -523,27 +535,16 @@ export async function deleteUser(
       .eq("id", userProfileId)
       .single();
 
-    if (fetchError || !profile) {
-      return { success: false, error: `User not found (id: ${userProfileId}${fetchError ? ` — ${fetchError.message}` : ""})` };
-    }
-
-    const identityClient = await createClient();
-    const authority = await identityClient.rpc('administrator_can_manage_identity', {target_profile:userProfileId,capability:'users.delete'});
-    if (authority.error || authority.data !== true) return {success:false,error:'This account has authority outside your administrative scope.'};
-    if (!(profile.owner_company_id == null ? hasGlobalPermission(ctx, "users.delete") : hasPermissionInScope(ctx, "users.delete", profile.owner_company_id, profile.branch_id))) return { success: false, error: "You cannot delete this account in its company/branch scope." };
+    if (fetchError || !profile) return unavailable;
+    if (!(profile.owner_company_id == null ? hasGlobalPermission(ctx, "users.delete") : hasPermissionInScope(ctx, "users.delete", profile.owner_company_id, profile.branch_id))) return unavailable;
     if (!isGlobalAdmin(ctx)) {
       const targetRoles = await adminClient.from("user_roles").select("roles!inner(role_code, is_active)")
         .eq("user_profile_id", userProfileId).eq("is_active", true).is("owner_company_id", null).is("branch_id", null);
-      if (targetRoles.error) return { success: false, error: "Cannot verify target account privileges. No change was made." };
+      if (targetRoles.error) return unavailable;
       if (targetRoles.data.some(row => {
         const role = (Array.isArray(row.roles) ? row.roles[0] : row.roles) as { role_code: string; is_active: boolean } | null;
         return role?.is_active && ["system_admin", "group_admin"].includes(role.role_code);
-      })) return { success: false, error: "Only a global administrator can delete a privileged account." };
-    }
-
-    // 3. Prevent self-deletion
-    if (ctx.profile?.id === userProfileId) {
-      return { success: false, error: "You cannot delete your own account" };
+      })) return unavailable;
     }
 
     // USERS.1 — Last-admin guard
@@ -576,7 +577,7 @@ export async function deleteUser(
       );
       if (deleteAuthError) {
         logger.error("deleteUser auth error", deleteAuthError);
-        return { success: false, error: `Failed to delete auth user: ${deleteAuthError.message}` };
+        return { success: false, error: "Account deletion could not be confirmed." };
       }
     } else {
       // No auth user linked — delete the profile row directly
@@ -585,7 +586,8 @@ export async function deleteUser(
         .delete()
         .eq("id", userProfileId);
       if (deleteProfileError) {
-        return { success: false, error: `Failed to delete user profile: ${deleteProfileError.message}` };
+        logger.error("deleteUser profile error", deleteProfileError);
+        return { success: false, error: "Account deletion could not be confirmed." };
       }
     }
 
@@ -595,6 +597,6 @@ export async function deleteUser(
     return { success: true };
   } catch (error) {
     logger.error("deleteUser exception", error);
-    return { success: false, error: sanitizeServerActionError(error) };
+    return unavailable;
   }
 }

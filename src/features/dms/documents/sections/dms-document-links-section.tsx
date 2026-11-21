@@ -23,7 +23,7 @@ import { queryKeys } from "@/lib/query/query-keys";
 import { DMS_ENTITY_TYPES, DMS_ENTITY_TYPE_LABELS } from "../dms-document-constants";
 import { suggestDmsDocumentLinks, applyDmsLinkSuggestions, rejectDmsLinkSuggestions, type DmsLinkSuggestionRow } from "@/server/actions/dms/ai-links";
 
-const ENTITY_TYPE_OPTIONS = DMS_ENTITY_TYPES.map((t) => ({
+const ENTITY_TYPE_OPTIONS = DMS_ENTITY_TYPES.filter((t) => t !== "vehicle" && t !== "equipment").map((t) => ({
   value: t,
   label: DMS_ENTITY_TYPE_LABELS[t],
 }));

@@ -5,6 +5,7 @@ import {readNotifications} from "@/server/reads/notifications";
 import {notificationReadIdentity} from "@/lib/reads/notifications-schema";
 import {AdminNotificationsPageClient} from "@/features/notifications/admin/admin-notifications-page-client";
 import {NotificationRecoveryPanel} from '@/features/notifications/admin/notification-recovery-panel';
+import {ExpiryReminderPolicyPanel} from "@/features/notifications/admin/expiry-reminder-policy-panel";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const metadata: Metadata = {title: "Notification Center | ERP Admin", description: "All permitted ERP notifications."};
@@ -14,5 +15,7 @@ export default async function AdminNotificationsPage() {
   const result = await readNotifications({audience: "admin"}, ctx);
   return <div className="p-6 space-y-4"><AdminNotificationsPageClient authContext={ctx} audience="admin"
     initialIdentity={notificationReadIdentity(ctx)} initialUpdatedAt={result.success ? result.updatedAt : undefined} initialPage={result.success ? result.data : undefined}/>
-    <NotificationRecoveryPanel key={notificationReadIdentity(ctx)} identity={notificationReadIdentity(ctx)}/></div>;
+    <NotificationRecoveryPanel key={notificationReadIdentity(ctx)} identity={notificationReadIdentity(ctx)}/>
+    {hasGlobalPermission(ctx, "notifications.admin") && <ExpiryReminderPolicyPanel key={notificationReadIdentity(ctx) + "-expiry"}/>}
+    </div>;
 }

@@ -31,8 +31,13 @@ const evidence=[
  * Lookup outages are retryable, never evidence of an absent relationship. */
 export async function notificationDocumentSubjectsAllowed(ctx:AuthContext,documentId:number):Promise<boolean>{
  if(!canUseApplication(ctx)||!id.safeParse(documentId).success)return false;
- if(isGlobalAdmin(ctx))return true; // Same explicit exception as F03 document_permission.
  const db=createAdminClient();
+ const fleet=await boundedQuery(db.rpc('t05_has_fleet_document_subject',{p_document:documentId}));
+ if(fleet.error||typeof fleet.data!=='boolean')throw Error('Linked notification authority unavailable');
+ // Fleet proof is available to authenticated document recipients through DMS.
+ // Machine delivery needs an independently approved Fleet recipient policy.
+ if(fleet.data)return false;
+ if(isGlobalAdmin(ctx))return true;
  async function rows(table:string,projection:string,column='dms_document_id'){
   const r=await boundedQuery(db.from(table).select(projection).eq(column,documentId).is('deleted_at',null).limit(501));
   if(r.error||!Array.isArray(r.data)||r.data.length>500)throw Error('Linked notification authority unavailable');

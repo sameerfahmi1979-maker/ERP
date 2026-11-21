@@ -1,21 +1,21 @@
 import "server-only";
 import {z} from "zod";
-import {getAuthContext,hasPermission,type AuthContext} from "@/lib/rbac/check";
+import {getAuthContext,type AuthContext} from "@/lib/rbac/check";
+import {canManageNotificationTemplates,canViewNotificationTemplates} from "@/lib/notifications/access";
 import {createClient} from "@/lib/supabase/server";
 import {literalContains,literalLike} from "@/lib/reads/search";
 import {notificationTemplatesCriteriaSchema,notificationTemplatesPageSchema,notificationTemplateDetailCriteriaSchema,notificationTemplateDetailSchema} from "@/lib/reads/notification-templates-schema";
 const fields=["id","template_code","template_name","source_module","notification_type","default_severity","default_channel_in_app","default_channel_email","is_active"];
 const detailFields=[...fields,"subject_template","html_template","text_template","is_system","created_at","updated_at"];
 const sorts={templateCode:"template_code",templateName:"template_name",sourceModule:"source_module",notificationType:"notification_type",defaultSeverity:"default_severity",isActive:"is_active"};
-const allowed=(ctx:AuthContext)=>["notifications.templates.view","notifications.admin"].some(c=>hasPermission(ctx,c));
 function camel(rows:unknown,columns:string[]){return z.array(z.record(z.string(),z.unknown())).parse(rows).map(row=>Object.fromEntries(columns.map(f=>[f.replace(/_([a-z])/g,(_,l:string)=>l.toUpperCase()),row[f]])));}
 export async function readNotificationTemplates(input:unknown,context?:AuthContext,signal?:AbortSignal){
  const parsed=notificationTemplatesCriteriaSchema.safeParse(input);if(!parsed.success)return {success:false as const,error:"Invalid notification template criteria"};
  try{
-  signal?.throwIfAborted();const ctx=context??await getAuthContext();signal?.throwIfAborted();if(!allowed(ctx))return {success:false as const,error:"Permission denied"};
+  signal?.throwIfAborted();const ctx=context??await getAuthContext();signal?.throwIfAborted();if(!canViewNotificationTemplates(ctx))return {success:false as const,error:"Permission denied"};
   const db=await createClient(),p=parsed.data;signal?.throwIfAborted();
   const base=(head=false)=>{
-   const q=db.from("erp_notification_templates").select(fields.join(","),{count:"exact",head}).is("deleted_at",null);if(signal)q.abortSignal(signal);
+   const q=db.from("notification_template_metadata_read").select(fields.join(","),{count:"exact",head});if(signal)q.abortSignal(signal);
    if(p.isActive)q.eq("is_active",p.isActive==="true");if(p.sourceModule)q.ilike("source_module",literalLike(p.sourceModule));if(p.defaultSeverity)q.eq("default_severity",p.defaultSeverity);
    if(p.search)q.or(["template_code","template_name","source_module","notification_type","default_severity"].map(f=>`${f}.ilike.${literalContains(p.search)}`).join(","));
    return q;
@@ -31,7 +31,7 @@ export async function readNotificationTemplateDetail(input:unknown,context?:Auth
  const p=notificationTemplateDetailCriteriaSchema.safeParse(input);if(!p.success)return {success:false as const,error:"Invalid notification template selection"};
  try{
   signal?.throwIfAborted();const ctx=context??await getAuthContext();signal?.throwIfAborted();
-  if(!allowed(ctx)||!["notifications.templates.manage","notifications.admin"].some(c=>hasPermission(ctx,c)))return {success:false as const,error:"Permission denied"};
+  if(!canManageNotificationTemplates(ctx))return {success:false as const,error:"Permission denied"};
   const db=await createClient();signal?.throwIfAborted();const q=db.from("erp_notification_templates").select(detailFields.join(","),{count:"exact"}).eq("id",p.data.id).is("deleted_at",null).range(0,0);if(signal)q.abortSignal(signal);
   const r=await q;signal?.throwIfAborted();if(r.error||r.count!==1||!Array.isArray(r.data)||r.data.length!==1)throw Error("Detail unavailable");
   const data=notificationTemplateDetailSchema.parse(camel(r.data,detailFields)[0]);if(data.id!==p.data.id)throw Error("Wrong template");

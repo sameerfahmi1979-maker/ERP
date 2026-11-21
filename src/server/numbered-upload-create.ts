@@ -51,6 +51,9 @@ export async function createNumberedDocumentFromUpload(input:UploadCreationInput
   }
   dispatched=true;
   const begun=await client.rpc('create_numbered_dms_upload',{p_operation:identity.data.operationId,p_request:request});
+  if (begun.error?.code === 'P0002' && begun.error.message === 'No eligible numbering rule') {
+   return {success:false,uncertain:false,error:'Document numbering is unavailable. Ask an administrator to check the DMS rule in Numbering Rules, then retry this upload.'};
+  }
   if(begun.error)return failure(begun.error.code);
   const plan=uploadCreationPlanSchema.safeParse(begun.data);
   if(!plan.success||plan.data.operation_id!==identity.data.operationId||plan.data.upload_session_id!==request.uploadSessionId)return {success:false,uncertain:true,error:unconfirmed};

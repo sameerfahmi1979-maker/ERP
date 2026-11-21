@@ -17,36 +17,18 @@ import { logger } from "@/lib/logger";
 import type {
   ReportRunRequest,
   ReportRunResult,
-  ReportRegistryEntry,
   ReportDataResult,
 } from "./types";
 import { resolveReportBranding } from "./branding-resolver";
 import { applyRedaction } from "./redaction-engine";
 import { REPORT_FETCHERS } from "./report-fetchers";
+import { PAYROLL_FINANCE_REPORT } from "./payroll-finance-contract";
 import { assertAccountActive, hasPermission, getAuthContextForProfileId, type AuthContext } from "@/lib/rbac/check";
 import { createScopedReportReadClient,revalidateScopedReportReadClient,type ReportReadClient } from "./scoped-read-client";
 import { isRecruitmentReport } from "./recruitment-reports";
 import {collectedCompanyIds,reportAuthorityIdentity} from './result-identity';
 import {getEmployeeAccess} from '@/lib/rbac/employee-access';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Registry loader
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function loadRegistryEntry(
-  reportCode: string
-): Promise<ReportRegistryEntry | null> {
-  const db = createAdminClient();
-  const { data, error } = await db
-    .from("erp_report_registry")
-    .select("*")
-    .eq("report_code", reportCode)
-    .eq("is_active", true)
-    .is("deleted_at", null)
-    .maybeSingle();
-  if(error)throw Error('Report configuration could not be loaded. Retry the request.');
-  return data as ReportRegistryEntry | null;
-}
+import { readActiveReportRegistryEntry, REPORT_CONFIGURATION_LOAD_ERROR } from "@/server/reads/report-registry-entry";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Run log helpers
@@ -182,18 +164,23 @@ export async function runReport(
   const startMs = Date.now();
   assertAccountActive(actor);
   if(actor.profile!.id!==request.requestedByUserId) return {success:false,error:"Report principal mismatch"};
+  if (request.reportCode === PAYROLL_FINANCE_REPORT && request.outputFormat !== "screen") {
+    return { success: false, error: "Payroll reconciliation is available only in Report Center." };
+  }
   let callerPermissionCodes=actor.permissionCodes;
   const deliveryPermissions = request.outputFormat === "screen" ? [] : request.outputFormat === "email" ? ["reports.export","reports.email"] : ["reports.export"];
   if (deliveryPermissions.some(code=>!hasPermission(actor,code))) return {success:false,error:"Separate report export/email permission is required."};
 
   // ── 1. Load registry ──────────────────────────────────────────────────────
-  const registryEntry = await loadRegistryEntry(request.reportCode);
-  if (!registryEntry) {
+  const registry = await readActiveReportRegistryEntry(request.reportCode);
+  if (registry.state === "failed") return { success: false, error: REPORT_CONFIGURATION_LOAD_ERROR };
+  if (registry.state === "missing") {
     return {
       success: false,
       error: `Report '${request.reportCode}' not found in registry.`,
     };
   }
+  const registryEntry = registry.entry;
 
   // ── 2. Permission check ───────────────────────────────────────────────────
   registryEntry.required_permissions=[...new Set([...registryEntry.required_permissions,...(HR_LETTER_CAPABILITIES[request.reportCode]??[])])];

@@ -23,8 +23,6 @@ export function buildEntityLink(
       return `/admin/ai/duplicates`;
     case 'ai_compliance_finding':
       return `/admin/ai/compliance`;
-    case 'ai_field_suggestion':
-      return `/admin/ai/field-suggestions`;
     case 'ai_assistant_draft':
       return `/assistant`;
     case 'ai_audit_explanation':

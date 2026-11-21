@@ -4,7 +4,7 @@ import type { AuthContext } from "@/lib/rbac/check";
 const m = vi.hoisted(() => ({ ctx: {} as AuthContext, read: vi.fn(), admin: vi.fn(), flag: vi.fn() }));
 vi.mock("@/lib/rbac/check", async () => ({ ...await vi.importActual("@/lib/rbac/scope"), getAuthContext: async () => m.ctx }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: m.admin }));
-vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from: () => chain(m.flag) }) }));
+vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ rpc: m.flag }) }));
 function chain(read: typeof m.read) {
   const calls: Array<[string, ...unknown[]]> = [];
   const q = new Proxy({}, { get: (_target, key) => key === "then"
@@ -17,7 +17,7 @@ import { getDmsAiJobQueueObservability, getDmsAiPipelineHealth, getDmsAiObservab
 beforeEach(() => {
   vi.clearAllMocks();
   m.ctx = { profile: { id: 1 } as AuthContext["profile"], email: null, isAccountActive: true, accountStatus: "active", roleCodes: [], permissionCodes: ["dms.ai_observability.view"], globalPermissionCodes: ["dms.ai_observability.view"], roleAssignments: [] };
-  m.flag.mockResolvedValue({ data: { is_enabled: true }, error: null });
+  m.flag.mockResolvedValue({ data: "enabled", error: null });
   m.admin.mockReturnValue({ from: () => chain(m.read) });
   m.read.mockResolvedValue({ data: [], count: 0, error: null });
 });

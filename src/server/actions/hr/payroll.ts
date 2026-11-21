@@ -1,4 +1,5 @@
 "use server";
+import {payrollPointSchemas} from "@/lib/reads/hr-payroll-records-schema";
 
 /**
  * ERP HR.5 — Payroll & WPS Readiness Server Actions
@@ -43,7 +44,6 @@ async function mutateOriginalPayroll(kind:PayrollChildKind,id:number,action:'upd
  return mutateHrChild({kind,employeeId:r.data.employee_id,id,revision:contract.revision,action,values:input},contract);
 }
 import {
-  redactWpsProfile,
   redactSalaryComponent,
   redactSalaryRevision,
 } from "@/lib/hr/payroll/redaction";
@@ -141,7 +141,7 @@ export type WpsProfileRow = {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
-  bank?: { id: number; bank_name_en: string; bank_code: string } | null;
+  bank?: { id: number; bank_name_en: string; bank_code: string | null } | null;
   mohre_establishment?: { id: number; establishment_name: string; establishment_number: string } | null;
 };
 
@@ -350,25 +350,11 @@ export async function archiveEmployeePayrollHold(id:number,contract:ChildSaveCon
 export async function getEmployeeWpsProfile(
   employeeId: number
 ): Promise<ActionResult<WpsProfileRow | null>> {
-  const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "hr.payroll.view"))
-    return { success: false, error: "Permission denied: hr.payroll.view required" };
-
-  const canView = hasPermission(ctx, "hr.payroll.view");
-
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("employee_wps_profiles")
-    .select("*, bank:banks!employee_wps_profiles_bank_id_fkey(id,bank_name_en,bank_code), mohre_establishment:hr_mohre_establishments!employee_wps_profiles_mohre_establishment_id_fkey(id,establishment_name,establishment_number)")
-    .eq("employee_id", employeeId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (error) return { success: false, error: error.message };
-  if (!data) return { success: true, data: null };
-
-  const redacted = redactWpsProfile(data, canView);
-  return { success: true, data: redacted as WpsProfileRow };
+  const result = await readPayrollPoint({kind: "wps", employeeId});
+  if (!result.success || result.data?.kind !== "wps") return {success: false, error: result.error ?? "WPS profile unavailable"};
+  const profile = payrollPointSchemas.wps.safeParse(result.data.value);
+  if (!profile.success) return {success: false, error: "WPS profile unavailable"};
+  return {success: true, data: profile.data.profile};
 }
 
 export async function createOrUpdateEmployeeWpsProfile(employeeId:number,input:unknown,contract:ChildSaveContract,originalId:number|null):Promise<ChildSaveResult>{return mutateHrChild({kind:'wps-profile',employeeId,id:originalId,revision:contract?.revision,action:originalId===null?'create':'update',values:input},contract);}

@@ -15,10 +15,21 @@ export function normalizeReceipt(raw:unknown,operation:string,employee?:number,r
       || (record!=null && parsed.data.id!==record)) throw new HrError(503,"The original operation receipt could not be verified.",true);
   return parsed.data;
 }
-type Period = {id:number,leave_type_id:number,leave_year:number,period_start:string|null,period_end:string|null,known:boolean,entitled_days:number,used_days:number,reserved_days:number|null};
-export function balanceRow(p:Period,label:string) {
-  return {id:p.id,label,startDate:p.period_start,endDate:p.period_end,year:p.leave_year,known:p.known,entitled:p.entitled_days,used:p.used_days,reserved:p.reserved_days,
-    available:p.known && p.reserved_days!==null?p.entitled_days-p.used_days-p.reserved_days:null};
+const balancePeriod=z.object({id,leave_year:z.number().int(),period_start:z.string().nullable(),period_end:z.string().nullable(),label:z.string().nullish()});
+export const mobileBalanceFact=z.union([
+  balancePeriod.extend({source:z.literal("t04"),known:z.literal(true),entitled_days:z.number(),earned_days:z.number(),
+    used_days:z.number(),reserved_days:z.number(),carry_forward_days:z.number(),available_days:z.number()}),
+  balancePeriod.extend({source:z.enum(["t04","legacy"]),known:z.literal(false),entitled_days:z.null(),used_days:z.null(),
+    reserved_days:z.null(),review_reason:z.string().min(1)}),
+  balancePeriod.extend({source:z.literal("legacy").optional(),known:z.boolean(),entitled_days:z.number(),used_days:z.number(),
+    reserved_days:z.number().nullable()}),
+]);
+export function balanceRow(p:z.infer<typeof mobileBalanceFact>,label:string) {
+  const row={id:p.id,label,startDate:p.period_start,endDate:p.period_end,year:p.leave_year,known:p.known,
+    entitled:p.entitled_days,used:p.used_days,reserved:p.reserved_days};
+  if("review_reason" in p) return {...row,source:p.source,available:null,reviewReason:p.review_reason};
+  if(p.source==="t04") return {...row,source:p.source,earned:p.earned_days,carryForward:p.carry_forward_days,available:p.available_days};
+  return {...row,available:p.known && p.reserved_days!==null?p.entitled_days-p.used_days-p.reserved_days:null};
 }
 export const human=(s:string)=>s.replace(/[-_]/g," ").replace(/^./,x=>x.toUpperCase());
 export const field=(label:string,v?:string|number|null)=>({label,value:v==null?null:String(v)});
@@ -37,6 +48,7 @@ export const proposalRow=z.object({id,employeeId:id,revision:dbRevision,kind:pro
   proposal:record,createdAt:z.string(),decisionReason:z.string().nullable().optional()});
 const workflowMessages:Record<string,string>={
   "Reviewed leave policy unavailable":"The selected leave policy or joining date requires HR review.",
+  "Managed leave requires PRO review before it can be submitted":"Ask HR to review this leave request before submitting it.",
   "Leave span is too long":"Select a leave period of at most 366 calendar days.",
   "Current document and version required":"This leave type requires a current certificate from your employee DMS folder.",
   "Only pending leave can be cancelled":"Only a pending leave request can be cancelled.",

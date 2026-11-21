@@ -96,14 +96,14 @@ export async function resolveDmsLinkEntityDisplayName(
       }
 
       case "vehicle":
+      case "equipment":
+        return null;
       case "fleet_asset": {
         const { data } = await supabase
-          .from("vehicles")
-          .select("plate_number")
-          .eq("id", entityId)
-          .is("deleted_at", null)
+          .rpc("t05_search_fleet_assets", { p_asset: entityId, p_limit: 1 })
           .maybeSingle();
-        return pick(data?.plate_number ? `Plate ${data.plate_number}` : null);
+        const asset = data as { name?: string; asset_no?: string } | null;
+        return asset?.name && asset.asset_no ? `${asset.asset_no} · ${asset.name}` : null;
       }
 
       case "employee_identity_document": {

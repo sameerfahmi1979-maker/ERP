@@ -19,6 +19,7 @@ export const ALLOWED_ENTITY_TYPES = [
   "party_license",
   "party_tax_registration",
   "employee",
+  "fleet_asset",
   "vehicle",
   "equipment",
   "project",

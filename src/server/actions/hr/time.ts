@@ -21,6 +21,7 @@
  */
 
 
+import {payrollToday} from "@/lib/hr/payroll/salary-as-of";
 import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
 
 import { createClient } from "@/lib/supabase/server";
@@ -120,7 +121,7 @@ export type LeaveRequestRow = {
   start_date: string;
   end_date: string;
   total_days: number | null;
-  reason: string | null;
+  reason?: string | null;
   approval_status: string;
   approved_by: number | null;
   approved_at: string | null;
@@ -128,9 +129,9 @@ export type LeaveRequestRow = {
   rejected_at: string | null;
   cancelled_by: number | null;
   cancelled_at: string | null;
-  sick_cert_dms_id: number | null;
+  sick_cert_dms_id?: number | null;
   return_date: string | null;
-  notes: string | null;
+  notes?: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -171,6 +172,7 @@ export type OvertimeRecordRow = {
 
 export type EmployeeTimeSummary = {
   currentShiftAssignment: ShiftAssignmentRow | null;
+  currentShiftAmbiguous?: boolean;
   attendanceThisMonthCount: number;
   leaveBalances: LeaveBalanceRow[];
   pendingLeaveCount: number;
@@ -184,7 +186,7 @@ export type EmployeeTimeSummary = {
 import { getEmployeeCtx as getEmployeeCtxRls } from "./_shared/employee-context";
 
 const LEAVE_REQUEST_LIST_SELECT =
-  "*, leave_type:hr_leave_types!employee_leave_requests_leave_type_id_fkey(name_en,code), approver:user_profiles!employee_leave_requests_approved_by_fkey(display_name), employee:employees!employee_leave_requests_employee_id_fkey(full_name_en,employee_code)";
+  "id,employee_id,leave_type_id,request_date,start_date,end_date,total_days,approval_status,approved_by,approved_at,rejected_by,rejected_at,cancelled_by,cancelled_at,return_date,created_at,updated_at,deleted_at, leave_type:hr_leave_types!employee_leave_requests_leave_type_id_fkey(name_en,code), approver:user_profiles!employee_leave_requests_approved_by_fkey(display_name), employee:employees!employee_leave_requests_employee_id_fkey(full_name_en,employee_code)";
 
 function canViewLeave(ctx: Awaited<ReturnType<typeof getAuthContext>>): boolean {
   return (
@@ -409,7 +411,7 @@ export async function listEmployeeLeaveRequests(
 
   const { data, error, count } = await q;
   if (error) return { success: false, error: error.message };
-  return { success: true, data: { data: (data ?? []) as LeaveRequestRow[], count: count ?? 0 } };
+  return { success: true, data: { data: (data ?? []) as unknown as LeaveRequestRow[], count: count ?? 0 } };
 }
 
 export async function listLeaveRequests(params?: {
@@ -455,7 +457,7 @@ export async function listLeaveRequests(params?: {
 
   const { data, error, count } = await q;
   if (error) return { success: false, error: error.message };
-  return { success: true, data: { data: (data ?? []) as LeaveRequestRow[], count: count ?? 0 } };
+  return { success: true, data: { data: (data ?? []) as unknown as LeaveRequestRow[], count: count ?? 0 } };
 }
 
 export async function createLeaveRequest(employeeId:number,input:unknown,contract:ChildSaveContract):Promise<ChildSaveResult>{return mutateHrChild({kind:'leave-request',employeeId,id:null,revision:contract?.revision,action:'create',values:input},contract);}
@@ -576,7 +578,7 @@ export async function getEmployeeTimeSummary(
   const supabase = await createClient();
   const ctx=await getAuthContext();
   if(!ctx.profile||!ctx.isAccountActive||ctx.profile.must_change_password||!canViewLeave(ctx)||!hasPermission(ctx,'hr.attendance.view')||!timeEmployeeId.safeParse(employeeId).success||!await getEmployeeCtxRls(employeeId))return{success:false,error:'Current employee and time/leave access required.'};
-  const today = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const today = payrollToday();
   const monthStart = today.slice(0,7)+'-01';
   const currentYear = Number(today.slice(0,4));
 
@@ -589,8 +591,8 @@ export async function getEmployeeTimeSummary(
       .lte("effective_from", today)
       .or(`effective_to.is.null,effective_to.gte.${today}`)
       .order("effective_from", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+      .order("id")
+      .limit(2),
 
     supabase
       .from("employee_attendance_daily_summary")
@@ -628,7 +630,8 @@ export async function getEmployeeTimeSummary(
   return {
     success: true,
     data: {
-      currentShiftAssignment: (shiftRes.data as ShiftAssignmentRow | null) ?? null,
+      currentShiftAssignment: shiftRes.data?.length === 1 ? shiftRes.data[0] as unknown as ShiftAssignmentRow : null,
+      ...(shiftRes.data && shiftRes.data.length > 1 ? {currentShiftAmbiguous: true} : {}),
       attendanceThisMonthCount: attRes.count ?? 0,
       leaveBalances: (balRes.data ?? []) as LeaveBalanceRow[],
       pendingLeaveCount: leaveRes.count ?? 0,

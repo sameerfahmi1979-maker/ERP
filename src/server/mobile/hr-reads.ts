@@ -4,7 +4,7 @@ import { hasEmployeePermission, type EmployeeSubject } from "@/lib/rbac/employee
 import { literalContains } from "@/lib/reads/search";
 import { createClient } from "@/lib/supabase/server";
 import { type HrCommand, id } from "./hr-contracts";
-import { balanceRow, dbRevision, denied, field, human, rpcFailure, unavailable } from "./hr-shapes";
+import { balanceRow, dbRevision, denied, field, human, mobileBalanceFact, rpcFailure, unavailable } from "./hr-shapes";
 
 export type Db = Awaited<ReturnType<typeof createClient>>;
 type Input<K extends HrCommand["op"]>=Extract<HrCommand,{op:K}>;
@@ -123,7 +123,6 @@ export async function employees(db:Db,ctx:AuthContext,input:Input<"employees">){
   if(r.error)throw unavailable();
   return pageRows((r.data??[]).map(e=>({id:e.id,label:`${e.employee_code} — ${e.full_name_en}`})));
 }
-const period=z.object({id,leave_type_id:id,leave_year:z.number(),period_start:nullable,period_end:nullable,known:z.boolean(),entitled_days:z.number(),used_days:z.number(),reserved_days:z.number().nullable(),label:nullable});
 export async function leaveRead(db:Db,a:Access,input:Input<"leaveOptions"|"leaveBalances"|"leaveRequests">){
   if(!a.allows("hr.leave.view"))throw denied();
   return leaveFacts(db,input);
@@ -132,7 +131,7 @@ async function leaveFacts(db:Db,input:Input<"leaveOptions"|"leaveBalances"|"leav
   const kind=input.op==="leaveOptions"?"options":input.op==="leaveBalances"?"balances":"requests";
   const data=await rpc(db,"mobile_hr_leave_read",{p_kind:kind,p_employee:input.employeeId,p_cursor:input.op==="leaveBalances"?input.after:input.page});
   if(input.op==="leaveOptions")return pageRows(z.array(choice.extend({requiresDocument:z.boolean()})).max(26).parse(data));
-  if(input.op==="leaveBalances")return pageRows(z.array(period).max(26).parse(data).map(p=>balanceRow(p,p.label??"Leave balance")));
+  if(input.op==="leaveBalances")return pageRows(z.array(mobileBalanceFact).max(26).parse(data).map(p=>balanceRow(p,p.label??"Leave balance")));
   return pageRows(z.array(z.object({id,revision:dbRevision,label:z.string(),startDate:z.string(),endDate:z.string(),status:z.string(),canCancel:z.boolean()})).max(26).parse(data));
 }
 const inspections={

@@ -1,5 +1,6 @@
 import "server-only";
-import {getAuthContext,hasPermission,type AuthContext} from "@/lib/rbac/check";
+import {getAuthContext,type AuthContext} from "@/lib/rbac/check";
+import {canManageDmsNotifications,canViewDmsNotifications} from "@/lib/notifications/access";
 import {createClient} from "@/lib/supabase/server";
 import {literalContains,literalLike} from "@/lib/reads/search";
 import {dmsNotificationsCriteriaSchema,dmsNotificationPageSchema} from "@/lib/reads/dms-notifications-schema";
@@ -8,8 +9,8 @@ export async function readDmsNotifications(input:unknown,context?:AuthContext,si
  const parsed=dmsNotificationsCriteriaSchema.safeParse(input);if(!parsed.success)return {success:false as const,error:"Invalid document notification criteria"};
  try{
   signal?.throwIfAborted();const ctx=context??await getAuthContext();signal?.throwIfAborted();const p=parsed.data;
-  if(!ctx.profile||!["dms.notifications.view","dms.notifications.manage","dms.admin"].some(c=>hasPermission(ctx,c)))return {success:false as const,error:"Permission denied"};
-  if(p.audience==="all"&&!["dms.notifications.manage","dms.admin"].some(c=>hasPermission(ctx,c)))return {success:false as const,error:"Permission denied"};
+  if(!ctx.profile||!canViewDmsNotifications(ctx))return {success:false as const,error:"Permission denied"};
+  if(p.audience==="all"&&!canManageDmsNotifications(ctx))return {success:false as const,error:"Permission denied"};
   const db=await createClient();signal?.throwIfAborted();
   const base=(head=false)=>{const q=db.from(p.audience==="my"?"f10_dms_personal_notification_read":"perf_dms_notification_read").select(columns,{count:"exact",head});if(signal)q.abortSignal(signal);
    if(p.audience==="my")q.eq("recipient_user_id",ctx.profile!.id);if(p.unreadOnly)q.eq('status','pending');

@@ -46,12 +46,23 @@ async function execute(input:unknown,context:AuthContext|undefined,callerSignal:
     },{identity:r=>(r as {id:number}).id,maxRows:ENTITY_DOCUMENTS_MAX_ROWS,signal});
     // Only current, reviewed parent contracts. Future registry entries are not
     // guessed into tables; absence/invisibility remains non-enumerating.
-    const parent=ENTITY_DOCUMENT_PARENTS[p.entityType];if(!parent)throw new ParentUnavailable();
+    const parent=ENTITY_DOCUMENT_PARENTS[p.entityType];
+    const fleetParent=p.entityType==="fleet_asset";
+    if(!parent&&!fleetParent)throw new ParentUnavailable();
+    let fleetScope:{company:number;branch:number;can_link:boolean}|undefined;
     const point=async(table:string,entityId:number,soft:boolean)=>{
       const rows=await complete(()=>{const q=select(table,"id").eq("id",entityId);if(soft)q.is("deleted_at",null);return q.order("id",{ascending:true});},z.object({id}).strip());
       if(rows.length!==1||rows[0].id!==entityId)throw new ParentUnavailable();return rows[0];
     };
-    if(p.entityType==="employee_dependent"){
+    if(fleetParent){
+      attempt();
+      const result=await db.rpc("t05_fleet_document_context",{p_asset:p.entityId},{get:true}).abortSignal(signal).maybeSingle();
+      signal.throwIfAborted();
+      if(result.error)throw new ParentUnavailable();
+      const scope=z.object({company:id,branch:id,can_link:z.boolean()}).strict().safeParse(result.data);
+      if(!scope.success||((p.operation==="attach"||p.operation==="selected")&&!scope.data.can_link))throw new ParentUnavailable();
+      fleetScope=scope.data;
+    }else if(p.entityType==="employee_dependent"){
       const dependents=await complete(()=>select(parent.table,"id,employee_id").eq("id",p.entityId).is("deleted_at",null).order("id",{ascending:true}),z.object({id,employee_id:id}).strip());
       if(dependents.length!==1||dependents[0].id!==p.entityId)throw new ParentUnavailable();
       await point("employees",dependents[0].employee_id,true);
@@ -64,7 +75,11 @@ async function execute(input:unknown,context:AuthContext|undefined,callerSignal:
         .order("linked_at",{ascending:false}).order("id",{ascending:false}).abortSignal(signal) as unknown as Query;
     },linkSchema);
     const linkedIds=[...new Set(links.map(r=>r.document_id))];
-    const readDocs=async(ids:number[])=>{const docs:Document[]=[];for(const batch of batches(ids)){const rows=await complete(()=>select("dms_documents",DOC_FIELDS).in("id",batch).order("id",{ascending:true}),documentSchema);if(rows.some(r=>!batch.includes(r.id)))throw Error("Document mismatch");docs.push(...rows);}return docs;};
+    const readDocs=async(ids:number[])=>{const docs:Document[]=[];for(const batch of batches(ids)){const rows=await complete(()=>{
+      const query=select("dms_documents",DOC_FIELDS).in("id",batch);
+      if(fleetScope&&p.operation==="selected")query.eq("owning_company_id",fleetScope.company).eq("owning_branch_id",fleetScope.branch);
+      return query.order("id",{ascending:true});
+    },documentSchema);if(rows.some(r=>!batch.includes(r.id)))throw Error("Document mismatch");docs.push(...rows);}return docs;};
     const enrich=async(docs:Document[]):Promise<AvailableDmsDocumentOption[]>=>{
       const caps=new Map<number,{preview:boolean;extraction:boolean}>();
       // A small concurrency bound; every RPC participates in the same finite
@@ -93,7 +108,11 @@ async function execute(input:unknown,context:AuthContext|undefined,callerSignal:
         if(docs.length!==p.documentIds.length||docs.some(d=>d.deleted_at!==null||d.status==="deleted"||linkedIds.includes(d.id)))return output({criteria:p,asOf,availability:"unavailable"});
       }else{
         const shared=p.search?await prepareDocumentQuery(db,p.search,ctx,{signal}):null;
-        docs=await complete(()=>{const q=shared?shared.query.select(DOC_FIELDS).is("deleted_at",null).not("status","eq","deleted"):select("dms_documents",DOC_FIELDS).is("deleted_at",null).neq("status","deleted");return q.order("created_at",{ascending:false}).order("id",{ascending:false}) as unknown as Query;},documentSchema);
+        docs=await complete(()=>{
+          const q=shared?shared.query.select(DOC_FIELDS).is("deleted_at",null).not("status","eq","deleted"):select("dms_documents",DOC_FIELDS).is("deleted_at",null).neq("status","deleted");
+          if(fleetScope)q.eq("owning_company_id",fleetScope.company).eq("owning_branch_id",fleetScope.branch);
+          return q.order("created_at",{ascending:false}).order("id",{ascending:false}) as unknown as Query;
+        },documentSchema);
         docs=docs.filter(d=>!linkedIds.includes(d.id));
       }
       const totalCount=docs.length,window=p.operation==="selected"||legacy?docs:docs.slice(p.offset,p.offset+p.limit),rows=await enrich(window);

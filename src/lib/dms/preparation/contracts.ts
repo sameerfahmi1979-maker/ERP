@@ -111,5 +111,6 @@ export const duplicateAdvisorySchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("no_visible_match"), authoritative: z.literal(false) }),
   z.strictObject({ status: z.literal("existing_document"), authoritative: z.literal(false), documentId: preparationId, documentNo: z.string(), title: z.string() }),
   z.strictObject({ status: z.literal("retained_upload"), authoritative: z.literal(false), sessionCode: z.string() }),
+  z.strictObject({ status: z.literal("transfer_pending"), authoritative: z.literal(false), sessionCode: z.string(), resumable: z.boolean() }),
 ]);
 export type DuplicateAdvisory = z.infer<typeof duplicateAdvisorySchema>;

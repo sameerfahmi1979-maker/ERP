@@ -1,6 +1,7 @@
 import "server-only";
 import {getAuthContext, hasPermission, type AuthContext} from "@/lib/rbac/check";
 import {createClient} from "@/lib/supabase/server";
+import {HR_ACTIVE_CANDIDATE_STATES, hrDashboardCalendar} from "@/lib/hr/dashboard-metrics";
 import {recruitmentSummaryCriteriaSchema, recruitmentSummarySchema, candidateSummaryCriteriaSchema, candidateSummarySchema} from "@/lib/reads/hr-recruitment-summary-schema";
 const permitted = (ctx: AuthContext) => hasPermission(ctx, "hr.recruitment.view") || hasPermission(ctx, "hr.recruitment.manage");
 const validCounts = (results: {error: unknown; count: number | null}[]) => results.every(r => !r.error && r.count !== null && Number.isSafeInteger(r.count) && r.count >= 0);
@@ -11,19 +12,21 @@ export async function readRecruitmentSummary(input: unknown, context?: AuthConte
     const ctx = context ?? await getAuthContext();
     if (!permitted(ctx)) return {success: false, error: "Permission denied"};
     const db = await createClient();
-    // Preserve the original server-local rolling Sunday/month-start semantics.
-    // Changing business time boundaries belongs to the HR workflow decision.
-    const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-    const monthStart = new Date(); monthStart.setDate(1);
+    const calendar = hrDashboardCalendar();
+    const nextMonth = new Date(`${calendar.month}T00:00:00Z`);
+    nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
+    const nextMonthInstant = `${nextMonth.toISOString().slice(0, 10)}T00:00:00+04:00`;
     const results = await Promise.all([
       db.from("hr_job_requisitions").select("id", {count: "exact", head: true}).is("deleted_at", null),
       db.from("hr_job_requisitions").select("id", {count: "exact", head: true}).is("deleted_at", null).eq("requisition_status", "open"),
       db.from("hr_candidates").select("id", {count: "exact", head: true}).is("deleted_at", null),
-      db.from("hr_candidates").select("id", {count: "exact", head: true}).is("deleted_at", null).in("candidate_status", ["new", "screening", "shortlisted", "interview", "selected", "offered", "accepted"]),
-      db.from("hr_interviews").select("id", {count: "exact", head: true}).is("deleted_at", null).eq("interview_status", "scheduled").gte("interview_datetime", weekStart.toISOString()),
+      db.from("hr_candidates").select("id", {count: "exact", head: true}).is("deleted_at", null).in("candidate_status", HR_ACTIVE_CANDIDATE_STATES),
+      db.from("hr_interviews").select("id", {count: "exact", head: true}).is("deleted_at", null).eq("interview_status", "scheduled")
+        .gte("interview_datetime", calendar.weekStartInstant).lt("interview_datetime", calendar.nextWeekInstant),
       db.from("hr_offers").select("id", {count: "exact", head: true}).is("deleted_at", null).in("offer_status", ["draft", "pending_approval", "sent"]),
       db.from("hr_onboarding_tasks").select("id", {count: "exact", head: true}).is("deleted_at", null).in("task_status", ["pending", "in_progress"]),
-      db.from("employee_recruitment_links").select("id", {count: "exact", head: true}).gte("converted_at", monthStart.toISOString()),
+      db.from("employee_recruitment_links").select("id", {count: "exact", head: true})
+        .gte("converted_at", calendar.monthStartInstant).lt("converted_at", nextMonthInstant),
     ]);
     if (!validCounts(results)) throw Error("Incomplete recruitment counts");
     const parsed = recruitmentSummarySchema.safeParse(Object.fromEntries(Object.keys(recruitmentSummarySchema.shape).map((key, index) => [key, results[index].count])));

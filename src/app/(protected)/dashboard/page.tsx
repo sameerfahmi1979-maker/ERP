@@ -10,7 +10,7 @@ import {readHomeDashboard} from "@/server/reads/home-dashboard";
 
 export default async function DashboardPage(){
   const ctx=await getAuthContext();
-  if(!hasPermission(ctx,"dashboard.view"))redirect(getFirstPermittedRoute(ctx.permissionCodes,isGlobalAdmin(ctx)));
+  if(!hasPermission(ctx,"dashboard.view"))redirect(getFirstPermittedRoute(ctx.permissionCodes,isGlobalAdmin(ctx), ctx.globalPermissionCodes));
   const data=await readHomeDashboard(ctx);
   const label=(metric:{status:string;value?:number})=>metric.status==="ready"?String(metric.value):metric.status==="restricted"?"Restricted":"Unavailable";
   const cards=[

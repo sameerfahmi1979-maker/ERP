@@ -1,4 +1,7 @@
 import type { WorkspaceRouteConfig } from "./workspace-route-registry";
+import { operationalWorkspaceRoutes } from "./operational-workspace-routes";
+
+export const reportRunWorkspacePattern = /^\/admin\/reports\/run\/([A-Za-z0-9_-]{1,100})$/;
 
 /** Implemented screen metadata only. This registry never grants route access. */
 const lists: [string, string][] = [
@@ -11,6 +14,12 @@ const lists: [string, string][] = [
   ["/admin/hr", "Human resources"], ["/admin/hr/actions", "HR actions"],
   ["/admin/hr/operations", "HR operations"], ["/admin/hr/payroll", "Payroll"],
   ["/admin/hr/recruitment", "Recruitment"], ["/admin/hr/time", "Time and attendance"],
+  ["/admin/hr/actions/final-settlement", "Final Settlement"], ["/admin/hr/operations/recoveries", "Fines and Recovery"],
+  ["/admin/hr/operations/workshop-labour", "Workshop Time Review"], ["/admin/hr/operations/workshop-referrals", "Workshop Referrals"],
+  ["/admin/hr/payroll/approvals", "Payroll Approvals"], ["/admin/hr/payroll/fleet-time", "Fleet Overtime"],
+  ["/admin/hr/payroll/payslips", "Payslips"], ["/admin/hr/payroll/runs", "Payroll Runs"],
+  ["/admin/hr/payroll/settlement", "WPS & Payments"], ["/admin/hr/payroll/trip-allowances", "Trip Allowances"],
+  ["/admin/hr/payroll/workshop", "Workshop Overtime"], ["/admin/operations/work-queues", "Work Queues"],
   ["/admin/master-data/parties/banks", "Banks"],
   ["/admin/reports", "Report center"], ["/admin/reports/history", "Report history"],
   ["/admin/reports/schedules", "Report schedules"], ["/admin/reports/templates", "Report templates"],
@@ -40,6 +49,8 @@ const records: [string, string, string][] = [
   ["/admin/master-data/customers", "Customers", "Customer"],
 ];
 export const additionalWorkspaceRoutes: WorkspaceRouteConfig[] = [
+  ...operationalWorkspaceRoutes,
+  { route: "/admin/reports/run/[reportCode]", title: "Run Report", tabKind: "utility", moduleCode: "REPORTS", pattern: reportRunWorkspacePattern },
   ...[...lists, ...settings.map(([slug, title]): [string, string] => [`/admin/hr/settings/${slug}`, title])]
     .map(([route, title]): WorkspaceRouteConfig => ({ route, title, icon: "List", tabKind: "list", singleton: true, closable: true })),
   ...records.flatMap(([route, title, singular]): WorkspaceRouteConfig[] => [

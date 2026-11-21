@@ -6,20 +6,24 @@ import {timeFixture} from "./fixtures/time-record-fixture";
 
 type Row = Record<string, unknown>;
 type Call = {table: string; steps: [string, ...unknown[]][]};
+type RpcArgs = {employee_id: number; permission_code: string} | {p_employee: number; p_request: number};
+type LeaveMedicalDetail = {reason: string | null; notes: string | null};
 const state = vi.hoisted(() => ({subject: {id: 7} as unknown, summary: {id: 17, employee_id: 7} as unknown,
   subjectError: false, summaryError: false, context: {} as unknown, rows: [] as Row[], calls: [] as Call[],
   grants: {} as Record<string, unknown>, rpcError: false, error: false, partial: false, duplicate: false, noCount: false,
+  leaveMedicalDetail: null as LeaveMedicalDetail | null,
   forcedCount: null as number | null, range416: false, headError: false, abortAfter: null as AbortController | null, authCalls: 0, changeProjected: false}));
 vi.mock("@/lib/rbac/check", async () => ({...await import("@/lib/rbac/scope"), getAuthContext: async () => {state.authCalls++; return state.context;}}));
 vi.mock("@/lib/logger", () => ({logger: {warn: vi.fn()}}));
 vi.mock("@/lib/supabase/admin", () => ({createAdminClient: () => {throw Error("Privileged access forbidden");}}));
 vi.mock("@/lib/supabase/server", () => ({createClient: async () => ({from: (table: string) => builder(table),
-  rpc: (name: string, args: {employee_id: number; permission_code: string}) => builder(name, args)})}));
-function builder(table: string, args?: {employee_id: number; permission_code: string}) {
+  rpc: (name: string, args: RpcArgs) => builder(name, args)})}));
+function builder(table: string, args?: RpcArgs) {
   const call: Call = {table, steps: args ? [["args", args]] : []}; state.calls.push(call);
   const q: Record<string, unknown> = {then: (resolve: (value: unknown) => unknown) => {
     const select = call.steps.find(s => s[0] === "select"), head = (select?.[2] as {head?: boolean} | undefined)?.head;
-    if (args) return Promise.resolve({data: state.grants[args.permission_code] ?? true, error: state.rpcError ? {message: "PRIVATE NATIVE ERROR"} : null}).then(resolve);
+    if (table === "t01_leave_medical_detail") return Promise.resolve({data: state.leaveMedicalDetail, error: null}).then(resolve);
+    if (args && "permission_code" in args) return Promise.resolve({data: state.grants[args.permission_code] ?? true, error: state.rpcError ? {message: "PRIVATE NATIVE ERROR"} : null}).then(resolve);
     if (table === "employees") return Promise.resolve({data: state.subject, error: state.subjectError ? {message: "PRIVATE NATIVE ERROR"} : null}).then(resolve);
     if (table === "employee_attendance_daily_summary" && select?.[1] === "id,employee_id") return Promise.resolve({data: state.summary, error: state.summaryError ? {message: "PRIVATE NATIVE ERROR"} : null}).then(resolve);
     let rows = [...state.rows];
@@ -49,6 +53,7 @@ const request = (body: unknown, signal?: AbortSignal) => new Request("http://loc
 beforeEach(() => {
   state.subject = {id: 7}; state.summary = {id: 17, employee_id: 7}; state.subjectError = false; state.summaryError = false;
   state.context = {profile: {id: 7, must_change_password: false}, isAccountActive: true}; state.rows = []; state.calls = []; state.grants = {};
+  state.leaveMedicalDetail = null;
   state.rpcError = false; state.error = false; state.partial = false; state.duplicate = false; state.noCount = false; state.forcedCount = null;
   state.abortAfter = null; state.range416 = false; state.headError = false; state.authCalls = 0; state.changeProjected = false;
 });
@@ -81,9 +86,16 @@ describe.each(TIME_RECORD_KINDS)("%s actual request composition", kind => {
   });
   it("selected detail is exact and missing child is non-enumerating, not whole employee denial", async () => {
     const absent = await readHrTimeRecords(detail(kind)); expect(absent.success && absent.data).toEqual({...detail(kind), availability: "unavailable"});
+    expect(state.calls.some(call => call.table === "t01_leave_medical_detail")).toBe(false);
     state.rows = [timeFixture(kind)]; const result = await readHrTimeRecords(detail(kind));
     expect(result.success && "row" in result.data && result.data.row.id).toBe(17);
-    expect(state.calls.at(-1)?.steps).toContainEqual(["eq", "id", 17]); expect(state.calls.at(-1)?.steps).toContainEqual(["eq", "employee_id", 7]);
+    const record = state.calls.findLast(call => call.table === TIME_RECORD_CONFIG[kind].table);
+    expect(record?.steps).toContainEqual(["eq", "id", 17]); expect(record?.steps).toContainEqual(["eq", "employee_id", 7]);
+    if (kind === "leave") {
+      expect(record?.steps.find(step => step[0] === "select")?.[1]).not.toMatch(/\b(?:reason|notes)\b/);
+      expect(state.calls.at(-1)).toEqual({table: "t01_leave_medical_detail", steps: [["args", {p_employee: 7, p_request: 17}]]});
+      expect(result.success && "row" in result.data && result.data.row).toMatchObject({reason: null, notes: null});
+    }
     delete state.rows[0].employee_id; expect((await readHrTimeRecords(detail(kind))).success).toBe(true); // RLS-empty analogue, not malformed data.
   });
   it("restricts an unauthorized kind without a fabricated empty list or a child table read", async () => {
@@ -96,6 +108,15 @@ describe.each(TIME_RECORD_KINDS)("%s actual request composition", kind => {
     expect(state.calls.at(-1)?.steps).toContainEqual(["order", TIME_RECORD_CONFIG[kind].sort, {ascending: false}]);
     if (kind === "balances") expect(state.calls.at(-1)?.steps).toContainEqual(["order", "leave_type_id", {ascending: true}]);
   });
+});
+it("uses the separate scoped leave detail result for reason and notes", async () => {
+  state.rows = [timeFixture("leave")];
+  state.leaveMedicalDetail = {reason: "Scoped reason", notes: "Scoped notes"};
+  const result = await readHrTimeRecords(detail("leave"));
+  expect(result.success && "row" in result.data && result.data.row).toMatchObject({id: 17, ...state.leaveMedicalDetail});
+  expect(state.calls.filter(call => call.table === "t01_leave_medical_detail")).toEqual([
+    {table: "t01_leave_medical_detail", steps: [["args", {p_employee: 7, p_request: 17}]]},
+  ]);
 });
 it.each([{employeeId: "7"}, {employeeId: 0}, {employeeId: 2 ** 53}, {page: 0}, {pageSize: 101}, {search: "x".repeat(201)}, {table: "users"}, {columnFilters: {notes: "secret"}},
   {sorting: [{id: "notes", desc: false}]}, {sorting: [{id: "attendance_date", desc: true}, {id: "attendance_date", desc: false}]}, {summaryId: 3}, {year: 2026}])("rejects untrusted criteria before auth: %j", async input => {

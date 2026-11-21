@@ -20,7 +20,6 @@ import {
   createDmsUploadSession,
   completeDmsTempUpload,
   acknowledgeDmsSingleUpload,
-  type CreateUploadSessionInput,
   type DmsUploadSessionRow,
 } from "@/server/actions/dms/upload-sessions";
 import { AlertTriangle, Bot, File as FileIcon, Files, FileText, Inbox, Info, RefreshCw } from "lucide-react";
@@ -33,7 +32,7 @@ import { DmsDuplicateWarningPanel } from "./dms-duplicate-warning-panel";
 import { DmsUploadAttachDialog } from "./dms-upload-attach-dialog";
 import { DmsUploadCleanupPanel } from "./dms-upload-cleanup-panel";
 import { DMS_MAX_BATCH_FILES } from "./dms-upload-constants";
-import { DmsUploadDropzone } from "./dms-upload-dropzone";
+import { DmsUploadDropzone, type SelectedDmsFile } from "./dms-upload-dropzone";
 import { DmsUploadSessionTable } from "./dms-upload-session-table";
 
 interface Props {
@@ -97,13 +96,17 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
   const [discardSession,setDiscardSession]=useState<DmsUploadSessionRow|null>(null);
   const [discardBusy,setDiscardBusy]=useState(false);
   const discardFlight=useRef(false);
-  const verifyFlight = useRef(false);
+  const singleOperationActive = useRef(false);
   const [verifyingUpload, setVerifyingUpload] = useState(false);
 
   const [uploadMode, setUploadMode] = useState<UploadMode>(recoveryReceipt ? "batch" : "single");
   const [owningScope,setOwningScope]=useState<UploadOwningScope|null>(null);
   const singleAdmission=useDmsSingleUploadAdmission(entityContext,entityContext?undefined:owningScope);
   const selectedOwningScope=owningScope??singleAdmission.retainedScope;
+  const singleSelectionOwner=JSON.stringify([
+    readOwner?.isLive() ? readOwner.identity : null, readOwner?.generation,
+    entityContext?.entityType, entityContext?.entityId, selectedOwningScope?.companyId, selectedOwningScope?.branchId,
+  ]);
   const batchFailureRef = useRef<HTMLDivElement>(null);
   const batch = useDmsBatchAdmission({
     enabled: batchEnabled && uploadMode === "batch",
@@ -270,23 +273,26 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
   }, [router, stopAiPolling]);
 
   const handleFileSelected = useCallback(async (
-    input: CreateUploadSessionInput & { file: File }
+    input: SelectedDmsFile
   ) => {
-    const { file, ...sessionInput } = input;
+    if (singleOperationActive.current) return;
+    const { file, resumeSessionCode, ...sessionInput } = input;
     if(!entityContext&&!selectedOwningScope&&!singleAdmission.pending){setUploadState({phase:"error",message:"Choose an owning company before selecting a file."});return;}
+    const hadPendingRequest=singleAdmission.pending;
     let retained:ReturnType<typeof singleAdmission.begin>;
     try{retained=singleAdmission.begin(sessionInput);}
     catch(e){setUploadState({phase:'error',message:e instanceof Error?e.message:'Retained upload recovery is unavailable.'});return;}
+    singleOperationActive.current = true;
     try{
     setUploadState({ phase: "uploading", progress: 0 });
 
     let result = await createDmsUploadSession({...sessionInput,context:retained.request.context??undefined,scope:retained.request.scope},
-      {operationId:retained.request.operationId,authUserId:retained.request.authUserId});
+      {operationId:retained.request.operationId,authUserId:retained.request.authUserId,...(resumeSessionCode&&{resumeSessionCode})});
     if(!retained.isCurrent())return;
     if(result.recovery){
       if(!retained.recover(result.recovery))return;
       result=await createDmsUploadSession({...sessionInput,context:retained.request.context??undefined,scope:retained.request.scope},
-        {operationId:retained.request.operationId,authUserId:retained.request.authUserId});
+        {operationId:retained.request.operationId,authUserId:retained.request.authUserId,...(resumeSessionCode&&{resumeSessionCode})});
       if(!retained.isCurrent())return;
     }
     if(result.cancelled&&result.cancelled.operationId===retained.request.operationId){
@@ -294,12 +300,14 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
       return;
     }
     if (!result.success || !result.data) {
+      if(resumeSessionCode&&!hadPendingRequest&&!result.uncertain&&!result.recovery)retained.confirmed();
       setUploadState({ phase: "error", message: result.error ?? "Failed to create upload session" });
       return;
     }
 
     const { session:pendingSession, token, path, isDuplicate, duplicateDocument,uploadRequired } = result.data;
     let transferMs: number | undefined;
+    let transferUnconfirmed = false;
 
     if(uploadRequired){
     try {
@@ -321,25 +329,20 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
       const { error: uploadError } = await Promise.race([uploadPromise, timeoutPromise]).finally(()=>clearTimeout(uploadTimer));
       if(!retained.isCurrent())return;
 
-      if (uploadError) {
-        setUploadState({ phase: "error", message: `Upload failed: ${uploadError.message}` });
-        toast.error(`Upload failed: ${uploadError.message}`);
-        return;
-      }
-      transferMs = performance.now() - transferStarted;
-    } catch (e) {
+      if (uploadError) transferUnconfirmed = true;
+      else transferMs = performance.now() - transferStarted;
+    } catch {
       if(!retained.isCurrent())return;
-      const msg = e instanceof Error ? e.message : String(e);
-      setUploadState({ phase: "error", message: msg });
-      toast.error(msg.startsWith("Upload timed out") ? msg : "Upload failed. Please try again.");
-      return;
+      transferUnconfirmed = true;
     }
     }
 
     const verified=await (transferMs===undefined?completeDmsTempUpload(pendingSession.id):completeDmsTempUpload(pendingSession.id,transferMs));
     if(!retained.isCurrent())return;
     if(!verified.success||!verified.data){
-      setUploadState({phase:'error',message:verified.error??'Upload verification is pending. Retain the existing Inbox session.'});
+      setUploadState({phase:'error',message:transferUnconfirmed
+        ? 'The transfer could not be confirmed. Reselect the exact original file to resume this upload.'
+        : verified.error??'Upload verification is pending. Retain the existing Inbox session.'});
       return;
     }
     const session=verified.data;
@@ -361,7 +364,10 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
     }
     }catch{
       if(retained.isCurrent())setUploadState({phase:'error',message:'Upload outcome is unconfirmed. Reselect the same original file to recover this request; do not start another copy.'});
-    }finally{retained.settled();}
+    } finally {
+      singleOperationActive.current = false;
+      retained.settled();
+    }
   }, [autoStartEnabled, handleAiFill, singleAdmission, entityContext, selectedOwningScope]);
 
   const handleCancelDuplicate = () => {
@@ -388,11 +394,11 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
   };
 
   const handleVerifyStoredUpload = async (sessionId: number) => {
-    if (verifyFlight.current || uploadState.phase === 'uploading') return;
+    if (singleOperationActive.current) return;
     const identity = readOwner?.identity;
     const isCurrent = () => !!identity && !!readOwner?.isLive() && readOwner.admits(identity);
     if (!isCurrent()) return;
-    verifyFlight.current = true;
+    singleOperationActive.current = true;
     setVerifyingUpload(true);
     try {
       const result = await completeDmsTempUpload(sessionId);
@@ -410,7 +416,7 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
     } catch {
       if (isCurrent()) toast.error('Verification is unconfirmed. Keep this upload and retry verification.');
     } finally {
-      verifyFlight.current = false;
+      singleOperationActive.current = false;
       setVerifyingUpload(false);
     }
   };
@@ -519,9 +525,11 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
 
         {uploadMode === "single" ? (
           <>
-            {!entityContext&&<DmsUploadScopePicker value={selectedOwningScope} onChange={setOwningScope} disabled={singleAdmission.pending||uploadState.phase==='uploading'}/>}
+            {!entityContext&&<DmsUploadScopePicker value={selectedOwningScope} onChange={setOwningScope} disabled={verifyingUpload||singleAdmission.pending||uploadState.phase==='uploading'}/>}
             <DmsUploadDropzone
+              key={singleSelectionOwner}
               onFileSelected={handleFileSelected}
+              recoverVerified={singleAdmission.pending}
               disabled={verifyingUpload||uploadState.phase === "uploading"||(!entityContext&&!selectedOwningScope&&!singleAdmission.pending)}
             />
             {uploadState.phase === "uploading" && (

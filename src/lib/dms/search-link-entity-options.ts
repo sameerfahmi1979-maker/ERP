@@ -232,8 +232,23 @@ async function searchSites(
   );
 }
 
-async function searchVehicles(): Promise<DmsLinkEntityOption[]> {
-  throw new Error("Vehicle linking is not available until its owning module adapter is registered.");
+async function searchFleetAssets(
+  supabase: SupabaseClient,
+  search: string | null,
+  limit: number
+): Promise<DmsLinkEntityOption[]> {
+  const { data, error } = await supabase.rpc("t05_search_fleet_assets", {
+    p_query: search,
+    p_limit: limit,
+    p_link_picker: true,
+  });
+  if (error) {
+    logSearchError("fleet", error);
+    throw new Error("Linked entity search is unavailable");
+  }
+  return (data ?? []).map((asset: { id: number; name: string; asset_no: string; plate: string | null }) =>
+    toOption(asset.id, asset.name, asset.asset_no, asset.plate)
+  );
 }
 
 async function searchPartyLicenses(
@@ -412,8 +427,10 @@ export async function searchDmsLinkEntityOptionsForType(
     case "site":
       return searchSites(supabase, q, limit);
     case "vehicle":
+    case "equipment":
+      throw new Error("Select Fleet Asset to link to the canonical register.");
     case "fleet_asset":
-      return searchVehicles();
+      return searchFleetAssets(supabase, q, limit);
     case "employee_dependent":
       return searchEmployeeDependents(supabase, q, limit);
     case "employee_identity_document":

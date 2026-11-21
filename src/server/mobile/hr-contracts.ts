@@ -1,3 +1,4 @@
+import { expandedCommand } from "./hr-services-contracts";
 import { z } from "zod";
 import { attendanceRosterQuery, attendanceRowRequest } from "@/lib/hr/attendance-workbench-contract";
 
@@ -19,7 +20,7 @@ const changes = z.strictObject({
   emergency_contact_name:z.string().trim().min(1).max(160).optional(),
   emergency_contact_mobile:z.string().trim().min(1).max(40).optional(),
 }).refine(r=>Object.keys(r).length>0);
-export const hrCommand = z.discriminatedUnion("op", [
+const legacyCommand = z.discriminatedUnion("op", [
   z.strictObject({op:z.literal("home")}),
   z.strictObject({op:z.literal("profile"),employeeId:id.optional()}),
   z.strictObject({op:z.literal("employees"),page,search}),
@@ -52,4 +53,5 @@ export const hrCommand = z.discriminatedUnion("op", [
   if(r.op==="decision" && r.decision==="reject" && !r.reason) c.addIssue({code:"custom",message:"Enter the rejection reason."});
   if(r.op==="rosterChoices" && r.kind!=="company" && r.company===null) c.addIssue({code:"custom",message:"Choose the roster company."});
 });
+export const hrCommand = z.union([legacyCommand,expandedCommand]);
 export type HrCommand = z.infer<typeof hrCommand>;

@@ -43,8 +43,20 @@ export function capabilities(ctx:AuthContext,a?:Access){
     evidence,
     employees:["hr.employees.view","hr.employee_profile.view","hr.employees.view.team","hr.employee_profile.view.team"].some(s=>hasPermission(ctx,s))};
 }
-const staffSchema=z.object({roster:z.boolean(),approvalsGeneral:z.boolean(),approvalsLeave:z.boolean(),approvalsProposal:z.boolean(),requestsTeam:z.boolean()});
-export async function staffCapabilities(db:Db){return staffSchema.parse(await rpc(db,"mobile_hr_staff_capabilities",{}));}
+const expandedCapabilities=z.strictObject({
+  directory:z.boolean(),employeeRecord:z.boolean(),work:z.boolean(),teamReadiness:z.boolean(),services:z.boolean(),serviceReview:z.boolean(),
+  issuedDocuments:z.boolean(),ppeAssets:z.boolean(),onboarding:z.boolean(),pro:z.boolean(),teamCalendar:z.boolean(),dependents:z.boolean(),
+  accommodation:z.boolean(),offboarding:z.boolean(),
+});
+const staffSchema=z.object({roster:z.boolean(),approvalsGeneral:z.boolean(),approvalsLeave:z.boolean(),approvalsProposal:z.boolean(),requestsTeam:z.boolean(),expanded:expandedCapabilities.optional()});
+export async function staffCapabilities(db:Db,subject?:number|null,own=false){
+  if(subject!==undefined){
+    const result=await db.rpc("mobile_hr_staff_capabilities",{p_expanded:true,p_subject:subject,p_own:own});
+    if(!result.error)return staffSchema.parse(result.data);
+    if(result.error.code!=="PGRST202" && result.error.code!=="42883")throw rpcFailure(result.error.code,false,result.error.message);
+  }
+  return staffSchema.parse(await rpc(db,"mobile_hr_staff_capabilities",{}));
+}
 const relation=(s:string)=>z.record(z.string(),z.unknown()).nullable().transform(v=>v&&typeof v[s]==="string"?String(v[s]):null);
 const contacts=z.object({mobile_number:nullable,personal_email:nullable,emergency_contact_name:nullable,emergency_contact_mobile:nullable});
 const profileSchema=z.object({id,full_name_en:z.string(),employee_code:z.string(),employee_status:z.string(),joining_date:nullable,workspace_revision:dbRevision,
@@ -54,14 +66,14 @@ const ownSchema=z.object({employeeId:id,profile:z.boolean(),leave:z.boolean(),at
 type OwnAccess=z.infer<typeof ownSchema>;
 export async function ownAccess(db:Db){return ownSchema.nullable().parse(await rpc(db,"mobile_hr_own_access",{}));}
 export async function home(db:Db,ctx:AuthContext){
-  const [own,staff]=await Promise.all([ownAccess(db),staffCapabilities(db)]);
+  const [own,{expanded,...staff}]=await Promise.all([ownAccess(db),staffCapabilities(db,null)]);
   const submit=own?.submit===true, leave=own?.leave===true, attendance=own?.attendance===true, compliance=own?.compliance===true, medical=own?.medical===true;
   const profile=own?.profile===true,evidence=own?.evidence===true;
   const person=profile&&own?await db.from("employees").select("id,owner_company_id,branch_id,reporting_manager_id,full_name_en").eq("id",own.employeeId).is("deleted_at",null).maybeSingle():null;
   if(person?.error)throw unavailable();
   const canCorrectProfile=submit && !!person?.data && !!own && hasEmployeePermission(ctx,person.data,own.employeeId,"hr.employees.view");
-  return {employeeId:own?.employeeId??null,own:own!==null,name:person?.data?.full_name_en??null,capabilities:{
-    ...staff,profile,profileCorrection:canCorrectProfile,leave,attendance,renewals:compliance||medical,renewalCompliance:compliance,renewalMedical:medical,
+  return {hrContractVersion:expanded?2:1,employeeId:own?.employeeId??null,own:own!==null,name:person?.data?.full_name_en??null,capabilities:{
+    ...staff,...expanded,profile,profileCorrection:canCorrectProfile,leave,attendance,renewals:compliance||medical,renewalCompliance:compliance,renewalMedical:medical,
     leaveSubmit:submit&&leave,timeCorrection:submit&&attendance,renewalSubmit:submit&&compliance,evidence,leaveCertificate:evidence&&medical&&leave,
     requests:own?.mine===true,approvals:staff.approvalsGeneral||staff.approvalsLeave||staff.approvalsProposal,employees:capabilities(ctx).employees}};
 }
@@ -86,8 +98,8 @@ export async function evidencePage(db:Db,i:Input<"evidence">){
   return pageRows(z.array(z.object({id,label:z.string(),versionId:id})).max(26).parse(raw));
 }
 export async function profile(db:Db,ctx:AuthContext,employeeId?:number){
-  const [raw,own,staff]=await Promise.all([rpc(db,"mobile_hr_profile",{p_employee:employeeId??null}),ownAccess(db),staffCapabilities(db)]);
-  const menu=(a?:Access)=>({...capabilities(ctx,a),...staff,profile:!!a,requests:own?.mine===true,
+  const [raw,own,{expanded,...staff}]=await Promise.all([rpc(db,"mobile_hr_profile",{p_employee:employeeId??null}),ownAccess(db),staffCapabilities(db,employeeId??null,employeeId===undefined)]);
+  const menu=(a?:Access,selected=expanded)=>({...capabilities(ctx,a),...staff,...selected,profile:!!a,requests:own?.mine===true,
     approvals:staff.approvalsGeneral||staff.approvalsLeave||staff.approvalsProposal});
   if(raw==null){
     if(employeeId!=null||own)throw denied();

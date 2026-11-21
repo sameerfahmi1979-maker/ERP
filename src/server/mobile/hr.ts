@@ -75,6 +75,8 @@ async function mutate(db:Db,i:Mutation){
   }
   return normalizeReceipt(raw,i.operationId,i.employeeId,expectedId);
 }
+export function dispatchHr(raw:Input<"profile">,ctx:AuthContext):ReturnType<typeof profile>;
+export function dispatchHr(raw:HrCommand,ctx:AuthContext):Promise<unknown>;
 export async function dispatchHr(raw:HrCommand,ctx:AuthContext){
   if(!canUseApplication(ctx))throw denied();
   const i=hrCommand.parse(raw);
@@ -98,7 +100,7 @@ export async function dispatchHr(raw:HrCommand,ctx:AuthContext){
     }
     case "roster":case "rosterChoices":case "rosterOpening":case "rosterSave":case "rosterReceipt":return roster(db,ctx,i);
     case "decision":case "rosterApprove":case "profileCorrection":case "timeCorrection":case "renewalSubmit":case "leaveSubmit":case "leaveCancel":return mutate(db,i);
-    default:{
+    case "leaveRequests":case "leaveOptions":case "leaveBalances":case "time":case "renewals":case "evidence":{
       const own=await ownAccess(db);
       if(own?.employeeId===i.employeeId && !own.profile)return ownDomainRead(db,own,i);
       const a=await employeeContext(db,ctx,i.employeeId,own?.employeeId??null);
@@ -113,5 +115,6 @@ export async function dispatchHr(raw:HrCommand,ctx:AuthContext){
         }
       }
     }
+    default:return (await import("./hr-expanded")).expandedHr(db,ctx,i);
   }
 }

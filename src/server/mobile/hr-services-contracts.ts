@@ -31,7 +31,7 @@ const changes = z.strictObject({
   sponsoredBy:z.enum(["employee","company"]).optional(), active:z.boolean().optional(),
 }).refine(r=>Object.keys(r).length>0);
 export const proposalSchema = z.discriminatedUnion("kind", [
-  z.strictObject({kind:z.literal("letter"),employeeRevision,outputCode:text(100),language:lang,recipient:text(200),purpose:text(500),neededBy:day.nullable(),...attachment}),
+  z.strictObject({kind:z.literal("letter"),employeeRevision,outputCode:text(100),language:lang,recipient:text(200),purpose:text(500),recipientAr:text(200).optional(),purposeAr:text(500).optional(),validUntil:day.optional(),neededBy:day.nullable(),...attachment}),
   z.strictObject({kind:z.literal("issue-replacement"),source:issue,reason,...attachment}),
   z.strictObject({kind:z.literal("issue-return"),source:issue,requestedDate:day,reason,...attachment}),
   z.strictObject({kind:z.literal("task-evidence"),source:task,evidence,note}),

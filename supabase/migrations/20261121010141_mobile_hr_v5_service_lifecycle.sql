@@ -14,11 +14,25 @@ ALTER TABLE erp_private.hr_self_service_requests ADD COLUMN mobile_evidence_proo
 CREATE UNIQUE INDEX mobile_hr_issue_one_confirmation ON erp_private.hr_self_service_requests(employee_id,(proposal->'source'->>'kind'),(proposal->'source'->>'id'),(proposal->'source'->>'revision'),(proposal->>'statementVersion')) WHERE kind='issue-acknowledgement';
 
 CREATE TABLE erp_private.mobile_hr_service_attempts(
- request_id bigint PRIMARY KEY REFERENCES erp_private.hr_self_service_requests, actor uuid NOT NULL, operation_id uuid NOT NULL,
+ request_id bigint NOT NULL REFERENCES erp_private.hr_self_service_requests, actor uuid NOT NULL, operation_id uuid NOT NULL,
  request_revision bigint NOT NULL, command jsonb NOT NULL, command_hash text NOT NULL, proposal_hash text NOT NULL,
  created_at timestamptz NOT NULL DEFAULT clock_timestamp(), canonical jsonb, fulfilled_at timestamptz,
- UNIQUE(actor,operation_id), CHECK((canonical IS NULL)=(fulfilled_at IS NULL))
+ no_effect_at timestamptz, reserved_output_id bigint UNIQUE, issuance_key text UNIQUE, PRIMARY KEY(actor,operation_id), CHECK(no_effect_at IS NULL OR canonical IS NULL), CHECK((canonical IS NULL)=(fulfilled_at IS NULL))
 );
+CREATE UNIQUE INDEX mobile_hr_one_active_attempt ON erp_private.mobile_hr_service_attempts(request_id) WHERE no_effect_at IS NULL;
+CREATE TABLE erp_private.mobile_hr_operation_bindings(
+ actor uuid NOT NULL, operation_id uuid NOT NULL, action text NOT NULL, command_hash text NOT NULL, PRIMARY KEY(actor,operation_id)
+);
+ALTER TABLE erp_private.mobile_hr_operation_bindings ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON erp_private.mobile_hr_operation_bindings FROM PUBLIC,anon,authenticated,service_role;
+INSERT INTO erp_private.mobile_hr_operation_bindings SELECT actor,operation_id,action,request_hash FROM erp_private.hr_self_operation_receipts;
+CREATE FUNCTION erp_private.mobile_hr_bind(action_name text,op uuid,digest text) RETURNS void LANGUAGE plpgsql SET search_path='' AS $$
+BEGIN
+ INSERT INTO erp_private.mobile_hr_operation_bindings VALUES(auth.uid(),op,action_name,digest) ON CONFLICT DO NOTHING;
+ IF NOT EXISTS(SELECT FROM erp_private.mobile_hr_operation_bindings b WHERE b.actor=auth.uid() AND b.operation_id=op AND b.action=action_name AND b.command_hash=digest)
+ THEN RAISE EXCEPTION 'Operation already bound' USING ERRCODE='PT409'; END IF;
+END $$;
+REVOKE ALL ON FUNCTION erp_private.mobile_hr_bind(text,uuid,text) FROM PUBLIC,anon,authenticated,service_role;
 ALTER TABLE erp_private.mobile_hr_service_attempts ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON erp_private.mobile_hr_service_attempts FROM PUBLIC,anon,authenticated,service_role;
 CREATE UNIQUE INDEX mobile_hr_service_one_output ON erp_private.mobile_hr_service_attempts(((canonical->>'issuanceId')::bigint)) WHERE canonical->>'issuanceId' IS NOT NULL;
@@ -37,6 +51,7 @@ BEGIN
  SELECT prosrc,pg_get_functiondef(oid) INTO original,definition FROM pg_proc WHERE oid='erp_private.mobile_hr_command(text,jsonb,boolean)'::regprocedure;
  IF encode(sha256(convert_to(original,'UTF8')),'hex')<>'265c9f09685fe1ca40a78428a6f79352f24acf280481a2245d36483a6905169e' THEN RAISE EXCEPTION 'Unreviewed legacy command definition'; END IF;
  body:=replace(original,'domain:=r.kind; proposal:=r.proposal;', 'IF r.kind NOT IN '||kinds||' THEN RAISE EXCEPTION ''Unsupported legacy request'' USING ERRCODE=''22023''; END IF; domain:=r.kind; proposal:=r.proposal;');
+ body:=replace(body,'eid:=CASE WHEN action=''receipt''','IF action<>''receipt'' THEN PERFORM erp_private.mobile_hr_bind(action,op,digest); END IF; eid:=CASE WHEN action=''receipt''');
  body:=replace(body,'IF action=''receipt'' AND rec.actor IS NULL','IF action=''receipt'' AND (rec.actor IS NULL OR rec.action LIKE ''v5.%'')');
  EXECUTE replace(definition,original,body);
 END $$;
@@ -152,7 +167,7 @@ BEGIN
   WHEN 'shift-change' THEN 'source employeeRevision shiftId from to reason' WHEN 'pro-follow-up' THEN 'source message evidence'
   WHEN 'clearance-evidence' THEN 'source caseId evidence note' WHEN 'issue-acknowledgement' THEN 'source statementVersion confirmed' END;
  IF keys IS NULL THEN RAISE EXCEPTION 'Unknown service' USING ERRCODE='22023'; END IF;
- PERFORM erp_private.mobile_hr_v5_keys(p,'kind '||keys);
+ PERFORM erp_private.mobile_hr_v5_keys(p,'kind '||keys,CASE WHEN k='letter' THEN 'recipientAr purposeAr validUntil' ELSE '' END);
  PERFORM erp_private.mobile_hr_v5_values(p,'{"employeeRevision":"revision","outputCode":"100","language":"=en|ar|bilingual","recipient":"200","purpose":"500","neededBy":"date?","reason":"2000","requestedDate":"date","note":"*2000","category":"=maintenance|room|transport|safety|other","description":"2000","date":"date","hours":"hours","shiftId":"id","from":"date","to":"date?","message":"2000","caseId":"id","statementVersion":"=receipt-v1","confirmed":"bool"}');
  IF k='overtime' THEN PERFORM erp_private.mobile_hr_v5_values(p,'{"reason":"500"}'); END IF;
  IF k='issue-acknowledgement' AND p->'confirmed'<>'true' THEN RAISE EXCEPTION 'Explicit acknowledgment required' USING ERRCODE='22023'; END IF;
@@ -189,6 +204,19 @@ BEGIN
  -- Fixed definitions in src/lib/official-documents/registry.ts support all three reviewed languages.
  -- Legacy catalogue outputs without a fixed language definition offer English.
  IF k='letter' AND p->>'language'<>'en' AND (p->>'outputCode') NOT IN ('HR_EMPLOYMENT_LETTER','HR_EMPLOYMENT_CONFIRMATION','HR_EXPERIENCE_LETTER','HR_SALARY_CERT_WITH_AMOUNT','HR_SALARY_CERT_GENERAL','HR_NOC','HR_WARNING_LETTER','HR_CLEARANCE_FORM','HR_JOINING_CHECKLIST','HR_PPE_ISSUE_FORM','HR_BANK_SALARY_TRANSFER','HR_EMBASSY_LETTER','HR_HANDOVER_FORM','HR_LEAVE_CONFIRMATION') THEN RAISE EXCEPTION 'Unsupported catalogue language' USING ERRCODE='22023'; END IF;
+ IF k='letter' THEN
+  PERFORM erp_private.mobile_hr_v5_values(p,'{"recipientAr":"200","purposeAr":"500","validUntil":"date"}');
+  IF ((p->>'outputCode'='HR_NOC') IS DISTINCT FROM (p?'validUntil')) OR
+    ((p->>'language'<>'en' AND p->>'outputCode' IN('HR_NOC','HR_SALARY_CERT_WITH_AMOUNT','HR_EMBASSY_LETTER','HR_EMPLOYMENT_CONFIRMATION')) IS DISTINCT FROM (p?'recipientAr')) OR
+    ((p->>'language'<>'en' AND p->>'outputCode' IN('HR_NOC','HR_SALARY_CERT_WITH_AMOUNT','HR_EMBASSY_LETTER')) IS DISTINCT FROM (p?'purposeAr'))
+  THEN RAISE EXCEPTION 'Explicit letter particulars required for the selected language and definition' USING ERRCODE='22023'; END IF;
+  IF (p->>'outputCode'='HR_NOC' AND length(p->>'purpose')>200) OR
+     (p->>'outputCode'='HR_SALARY_CERT_WITH_AMOUNT' AND p->>'language'<>'ar' AND length(p->>'recipient')>120)
+   THEN RAISE EXCEPTION 'Official letter input length exceeded' USING ERRCODE='22023'; END IF;
+  IF (p->>'outputCode'='HR_EMPLOYMENT_CONFIRMATION' AND greatest(length(p->>'recipient'),length(p->>'recipientAr'))>180) OR
+     (p->>'outputCode' IN('HR_NOC','HR_SALARY_CERT_WITH_AMOUNT','HR_EMBASSY_LETTER') AND greatest(length(p->>'purpose'),length(p->>'purposeAr'))>250)
+  THEN RAISE EXCEPTION 'Official letter input length exceeded' USING ERRCODE='22023'; END IF;
+ END IF;
  IF k='letter' AND NOT EXISTS(SELECT FROM public.erp_report_registry g WHERE g.report_code=p->>'outputCode' AND g.is_active AND g.deleted_at IS NULL AND lower(g.module_code)='hr' AND g.document_class IN('A','B','C','D')) THEN
   RAISE EXCEPTION 'Current employee catalogue entry required' USING ERRCODE='22023'; END IF;
  IF k='dependent-change' THEN
@@ -201,6 +229,13 @@ BEGIN
  END IF;
 END $$;
 
+-- Validation acquires subject, source and all evidence locks. This separate statement
+-- obtains a fresh READ COMMITTED snapshot after any wait, before the write.
+CREATE FUNCTION erp_private.mobile_hr_v5_locked_authority(r erp_private.hr_self_service_requests,right_name text) RETURNS void LANGUAGE plpgsql SET search_path='' AS $$
+BEGIN
+ IF (erp_private.mobile_hr_v5_rights(r)->>right_name)::boolean IS NOT TRUE THEN RAISE EXCEPTION 'Original evidence or authority changed' USING ERRCODE='42501'; END IF;
+END $$;
+REVOKE ALL ON FUNCTION erp_private.mobile_hr_v5_locked_authority(erp_private.hr_self_service_requests,text) FROM PUBLIC,anon,authenticated,service_role;
 CREATE FUNCTION erp_private.mobile_hr_v5_lock_actor() RETURNS void LANGUAGE plpgsql SET search_path='' AS $$
 DECLARE actor bigint:=public.current_user_profile_id();
 BEGIN
@@ -244,7 +279,7 @@ CREATE FUNCTION erp_private.mobile_hr_v5_summary(r erp_private.hr_self_service_r
 LANGUAGE plpgsql STABLE SET search_path='' AS $$
 DECLARE full_access boolean:=(a->>'full')::boolean; attempt erp_private.mobile_hr_service_attempts; j jsonb;
 BEGIN
- SELECT * INTO attempt FROM erp_private.mobile_hr_service_attempts WHERE request_id=r.id;
+ SELECT * INTO attempt FROM erp_private.mobile_hr_service_attempts WHERE no_effect_at IS NULL AND request_id=r.id;
  j:=jsonb_build_object('id',r.id,'employeeId',r.employee_id,'employeeLabel',(SELECT full_name_en FROM public.employees WHERE id=r.employee_id AND public.current_user_can_view_employee(id)),
  'revision',r.revision::text,'kind',CASE WHEN full_access THEN r.kind END,'title',CASE WHEN full_access THEN initcap(replace(r.kind,'-',' ')) ELSE 'Employee service' END,'createdAt',r.created_at,
  'review',CASE r.status WHEN 'fulfilled' THEN 'approved' WHEN 'recorded' THEN 'not-required' ELSE r.status END,
@@ -337,6 +372,8 @@ BEGIN
  IF lock_actor THEN
   PERFORM pg_advisory_xact_lock(hashtextextended(auth.uid()::text||':'||op::text,0));
   PERFORM erp_private.mobile_hr_v5_lock_actor();
+  IF mode<>'serviceReceipt' THEN PERFORM erp_private.mobile_hr_bind('v5.'||mode,op,h); END IF;
+  IF EXISTS(SELECT FROM erp_private.mobile_hr_service_attempts t WHERE t.actor=auth.uid() AND t.operation_id=op AND t.no_effect_at IS NOT NULL) THEN RAISE EXCEPTION 'Original issuance definitively closed without effect' USING ERRCODE='22023'; END IF;
   SELECT * INTO rec FROM erp_private.hr_self_operation_receipts WHERE actor=auth.uid() AND operation_id=op;
   IF rec.actor IS NOT NULL THEN
    IF rec.action NOT LIKE 'v5.%' OR (mode<>'serviceReceipt' AND rec.request_hash<>h) THEN RAISE EXCEPTION 'Operation already bound' USING ERRCODE='PT409'; END IF;
@@ -359,13 +396,14 @@ BEGIN
   IF mode='serviceOpening' THEN RETURN erp_private.mobile_hr_v5_summary(r,a,true); END IF;
   IF (a->>'officer')::boolean IS NOT TRUE OR (a->>'full')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'Independent officer authority required' USING ERRCODE='42501'; END IF;
   IF mode='serviceAttempt' THEN
-    SELECT * INTO attempt FROM erp_private.mobile_hr_service_attempts WHERE request_id=r.id AND actor=auth.uid();
+    SELECT * INTO attempt FROM erp_private.mobile_hr_service_attempts WHERE no_effect_at IS NULL AND request_id=r.id AND actor=auth.uid();
     RETURN jsonb_build_object('id',r.id,'employeeId',eid,'revision',r.revision::text,'attempt',CASE WHEN attempt.request_id IS NOT NULL THEN jsonb_build_object('operationId',attempt.operation_id,'command',attempt.command,'state',CASE WHEN attempt.canonical IS NULL THEN 'pending' ELSE 'fulfilled' END) END);
   END IF;
   IF mode='serviceActionChoices' THEN RETURN erp_private.mobile_hr_v5_action_choices(r,d); END IF;
   IF mode='serviceFulfil' THEN RETURN erp_private.mobile_hr_v5_reserve(r,d,h); END IF;
   IF mode<>'serviceDecision' OR (a->>'decide')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'Independent pending decision required' USING ERRCODE='42501'; END IF;
   PERFORM erp_private.mobile_hr_v5_validate(eid,r.proposal);
+  PERFORM erp_private.mobile_hr_v5_locked_authority(r,'decide');
   effect:=CASE WHEN d->>'decision'='approve' THEN 'approved' ELSE 'rejected' END;
   IF effect='rejected' AND length(d->>'reason')=0 THEN RAISE EXCEPTION 'Rejection reason required' USING ERRCODE='22023'; END IF;
   UPDATE erp_private.hr_self_service_requests SET status=effect,revision=revision+1,decided_by=auth.uid(),decided_at=clock_timestamp(),decision_reason=d->>'reason' WHERE id=r.id RETURNING * INTO r;
@@ -399,16 +437,23 @@ CREATE TABLE erp_private.mobile_hr_verified_proofs(
 ALTER TABLE erp_private.mobile_hr_verified_proofs ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON erp_private.mobile_hr_verified_proofs FROM PUBLIC,anon,authenticated,service_role;
 CREATE INDEX mobile_hr_verified_proof_request ON erp_private.mobile_hr_verified_proofs(request_id,actor,id);
+-- Preserve the canonical normalized input and link deltas until its existing receipt
+-- trigger completes. The signed receipt hash verifies this transaction-local data.
+DO $$ DECLARE original text; definition text; BEGIN
+ SELECT prosrc,pg_get_functiondef(oid) INTO original,definition FROM pg_proc WHERE oid='public.f11_save_dependent(uuid,bigint,bigint,bigint,text,jsonb,bigint[],bigint[])'::regprocedure;
+ IF encode(sha256(convert_to(original,'UTF8')),'hex')<>'893ea6a2c1021a4d113e46b1c109eefb5b68d7f5f5fa6d16857eafc64dc0dd96' THEN RAISE EXCEPTION 'Unreviewed dependent predecessor'; END IF;
+ EXECUTE replace(definition,'''hash'',digest)::text,true);','''hash'',digest,''data'',p_data,''add'',p_add,''remove'',p_remove)::text,true);');
+END $$;
 CREATE FUNCTION erp_private.mobile_hr_v5_capture_proof() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE x jsonb:=to_jsonb(NEW); oldrow jsonb; r erp_private.hr_self_service_requests; changes jsonb; verified boolean; proof uuid; child erp_private.f11_child_receipts;
- dep erp_private.f11_dependent_receipts; before_revision bigint; candidate_count integer:=0; match_id bigint; proposed jsonb; source_kind text; request_kind text;
+ dep erp_private.f11_dependent_receipts; dep_input jsonb; doc_id bigint; before_revision bigint; candidate_count integer:=0; match_id bigint; proposed jsonb; source_kind text; request_kind text;
  mapping jsonb:='{"nameEn":"dependent_name_en","nameAr":"dependent_name_ar","relationshipId":"relationship_type_id","dateOfBirth":"date_of_birth","nationalityId":"nationality_id","passportNumber":"passport_number","passportExpiry":"passport_expiry","emiratesIdNumber":"emirates_id_number","emiratesIdExpiry":"emirates_id_expiry","visaNumber":"residence_visa_number","visaExpiry":"residence_visa_expiry","sponsoredBy":"sponsored_by","active":"is_active"}';
 BEGIN
  IF auth.uid() IS NULL THEN RETURN NEW; END IF;
  IF TG_OP='UPDATE' THEN oldrow:=to_jsonb(OLD);before_revision:=OLD.workspace_revision; END IF;
  source_kind:=CASE TG_TABLE_NAME WHEN 'employee_dependents' THEN 'dependent' WHEN 'employee_assets' THEN 'asset' WHEN 'employee_ppe_issues' THEN 'ppe' WHEN 'employee_accommodation_records' THEN 'accommodation' WHEN 'employee_hr_actions' THEN 'hr-action' END;
  IF source_kind='dependent' THEN
-  proof:=(nullif(current_setting('erp.f11_dependent_save',true),'')::jsonb->>'operation_id')::uuid;
+  dep_input:=nullif(current_setting('erp.f11_dependent_save',true),'')::jsonb; proof:=(dep_input->>'operation_id')::uuid;
   SELECT * INTO dep FROM erp_private.f11_dependent_receipts WHERE actor=auth.uid() AND operation_id=proof AND employee_id=NEW.employee_id AND record_id=NEW.id AND revision=NEW.workspace_revision AND kind='save';
   IF dep.actor IS NULL THEN RETURN NEW; END IF;
   request_kind:='dependent-change';
@@ -422,7 +467,13 @@ BEGIN
   IF (erp_private.mobile_hr_v5_rights(r)->>'fulfil')::boolean IS NOT TRUE THEN CONTINUE; END IF;
   IF source_kind='dependent' THEN
    SELECT jsonb_object_agg(mapping->>key,value) INTO changes FROM jsonb_each(r.proposal->'changes');
-   verified:=x @> changes AND ((TG_OP='INSERT' AND r.proposal->'source'='null') OR
+   doc_id:=(r.proposal#>>'{evidence,documentId}')::bigint;
+   verified:=dep.request_hash=encode(sha256(convert_to(jsonb_build_array('f11_dependent',NEW.employee_id,(r.proposal#>>'{source,id}')::bigint,before_revision,'save',dep_input->'data',dep_input->'add',dep_input->'remove')::text,'UTF8')),'hex')
+    AND dep_input->'remove'='[]' AND (dep_input->'add'='[]' OR (doc_id IS NOT NULL AND dep_input->'add'=jsonb_build_array(doc_id)))
+    AND dep_input->'data' @> changes AND NOT EXISTS(SELECT FROM jsonb_each(dep_input->'data') input
+     WHERE NOT (changes?input.key OR input.value IS NOT DISTINCT FROM coalesce(oldrow->input.key,CASE input.key WHEN 'is_active' THEN 'true'::jsonb ELSE 'null'::jsonb END)
+       OR (input.key='dms_document_id' AND doc_id IS NOT NULL AND input.value=to_jsonb(doc_id))))
+    AND x @> changes AND ((TG_OP='INSERT' AND r.proposal->'source'='null') OR
     (TG_OP='UPDATE' AND (r.proposal#>>'{source,id}')::bigint=NEW.id AND (r.proposal#>>'{source,revision}')::bigint=before_revision
      AND x-ARRAY['workspace_revision','updated_by','updated_at']-ARRAY(SELECT jsonb_object_keys(changes))=
        oldrow-ARRAY['workspace_revision','updated_by','updated_at']-ARRAY(SELECT jsonb_object_keys(changes))));
@@ -432,7 +483,7 @@ BEGIN
     AND strpos(coalesce(x->>'notes',''),'[HR service '||r.id||']')>0 AND x->>'status'='issued';
   ELSIF source_kind='hr-action' THEN
    verified:=(((x->>'related_record_type'='hr_self_service_request' AND (x->>'related_record_id')=r.id::text)
-    OR strpos(coalesce(x->>'action_title',''),'[HR service '||r.id||']')>0) AND x->>'action_status'='closed' AND child.action='close');
+    OR strpos(coalesce(x->>'action_title',''),'[HR service '||r.id||']')>0) AND x->>'action_status'='closed' AND child.action='close' AND (r.proposal->>'source' IS NULL OR erp_private.mobile_hr_v5_source(r.employee_id,r.proposal->'source',true)->>'workspace_revision'=r.proposal#>>'{source,revision}'));
   ELSE
    verified:=child.action IN('update','end') AND (r.proposal#>>'{source,id}')::bigint=NEW.id AND (r.proposal#>>'{source,revision}')::bigint=before_revision
    AND strpos(coalesce(x->>'notes',''),'[HR service '||r.id||']')>0
@@ -463,6 +514,7 @@ BEGIN
  EXECUTE format('SELECT workspace_revision,to_jsonb(x) FROM public.%I x WHERE id=$1 AND employee_id=$2 AND deleted_at IS NULL',tbl)
  INTO current_rev,issue USING f.record_id,r.employee_id;
  IF current_rev IS DISTINCT FROM f.revision THEN RETURN false; END IF;
+ IF f.kind='hr-action' AND r.proposal->>'source' IS NOT NULL AND (erp_private.mobile_hr_v5_source(r.employee_id,r.proposal->'source',false)->>'workspace_revision') IS DISTINCT FROM r.proposal#>>'{source,revision}' THEN RETURN false; END IF;
  IF f.kind='dependent' AND r.proposal->>'evidence' IS NOT NULL AND NOT EXISTS(SELECT FROM public.dms_document_links l WHERE l.entity_type='employee_dependent'
   AND l.entity_id=f.record_id AND l.document_id=(r.proposal#>>'{evidence,documentId}')::bigint AND l.deleted_at IS NULL) THEN RETURN false; END IF;
  IF f.kind IN('ppe','asset') THEN
@@ -482,21 +534,35 @@ BEGIN
  RETURN v.fingerprint IS NOT DISTINCT FROM erp_private.hr_letter_fingerprint(eid,code,v.source_id,v.receiver_id,v.document_id,v.version_id);
 EXCEPTION WHEN insufficient_privilege OR invalid_parameter_value OR check_violation OR SQLSTATE 'PT409' THEN RETURN false;
 END $$;
+-- Match the effective rendered fields. A request-bound issuance key can bind
+-- request-only context for fixed text, but cannot substitute for printed fields.
+CREATE FUNCTION erp_private.mobile_hr_v5_particulars(p jsonb,inputs jsonb,request_origin boolean) RETURNS boolean LANGUAGE plpgsql IMMUTABLE SET search_path='' AS $$
+DECLARE code text:=p->>'outputCode'; lang text:=p->>'language'; v text; rec text; purpose text; suffix text;
+BEGIN
+ IF code NOT IN('HR_EMPLOYMENT_CONFIRMATION','HR_NOC','HR_EMBASSY_LETTER','HR_SALARY_CERT_WITH_AMOUNT') THEN RETURN request_origin; END IF;
+ FOR v IN SELECT unnest(CASE lang WHEN 'bilingual' THEN ARRAY['en','ar'] ELSE ARRAY[lang] END) LOOP
+  suffix:=CASE v WHEN 'ar' THEN '_ar' ELSE '' END;
+  rec:=CASE WHEN code='HR_EMPLOYMENT_CONFIRMATION' THEN concat_ws(' — ',nullif(btrim(inputs->>('recipient_organization_'||v)),''),nullif(btrim(inputs->>('recipient_department_'||v)),''))
+    ELSE inputs->>('addressee'||suffix) END;
+  IF rec IS DISTINCT FROM p->>(CASE v WHEN 'ar' THEN 'recipientAr' ELSE 'recipient' END) THEN RETURN false; END IF;
+  IF code<>'HR_EMPLOYMENT_CONFIRMATION' THEN
+   purpose:=inputs->>('purpose'||suffix);
+   IF purpose IS DISTINCT FROM p->>(CASE v WHEN 'ar' THEN 'purposeAr' ELSE 'purpose' END) THEN RETURN false; END IF;
+  END IF;
+ END LOOP;
+ IF code='HR_EMPLOYMENT_CONFIRMATION' THEN RETURN request_origin AND inputs->>'recipient_mode'='specific'; END IF;
+ IF code='HR_NOC' THEN RETURN inputs->>'valid_until'=p->>'validUntil' AND coalesce(inputs->>'approved_conditions_en','')='' AND coalesce(inputs->>'approved_conditions_ar','')=''; END IF;
+ RETURN true;
+END $$;
+REVOKE ALL ON FUNCTION erp_private.mobile_hr_v5_particulars(jsonb,jsonb,boolean) FROM PUBLIC,anon,authenticated,service_role;
 CREATE FUNCTION erp_private.mobile_hr_v5_output_matches(r erp_private.hr_self_service_requests,o public.erp_generated_pdf_documents) RETURNS boolean
 LANGUAGE sql STABLE SET search_path='' AS $$
  SELECT coalesce(r.kind='letter' AND o.source_record_type='employee' AND o.source_record_id=r.employee_id AND o.output_code=r.proposal->>'outputCode'
   AND o.data_snapshot_json->>'language'=r.proposal->>'language' AND public.f03_has_generated_pdf_permission(o.id,'download')
   AND (o.output_code NOT IN ('HR_EXPERIENCE_LETTER','HR_WARNING_LETTER','HR_PPE_ISSUE_FORM','HR_HANDOVER_FORM') OR
     erp_private.mobile_hr_v5_review_valid((o.data_snapshot_json#>>'{inputs,source_review_id}')::bigint,r.employee_id,o.output_code))
-  AND (EXISTS(SELECT FROM erp_private.mobile_hr_service_attempts a WHERE a.request_id=r.id AND a.command->>'kind'='issue-letter'
-    AND o.request_key='req_'||left(encode(sha256(convert_to(o.output_code||'|'||r.employee_id||'|'||o.generated_by||'|'||a.operation_id,'UTF8')),'hex'),48))
-    OR o.data_snapshot_json#>>'{inputs,recipient}'=r.proposal->>'recipient' OR o.data_snapshot_json#>>'{inputs,addressee}'=r.proposal->>'recipient'
-   OR o.data_snapshot_json#>>'{inputs,addressee_ar}'=r.proposal->>'recipient' OR o.data_snapshot_json#>>'{inputs,recipient_organization_en}'=r.proposal->>'recipient'
-   OR o.data_snapshot_json#>>'{inputs,recipient_organization_ar}'=r.proposal->>'recipient')
-  AND (o.data_snapshot_json#>>'{inputs,purpose}'=r.proposal->>'purpose' OR o.data_snapshot_json#>>'{inputs,purpose_ar}'=r.proposal->>'purpose'
-   OR (o.data_snapshot_json#>>'{inputs,purpose}' IS NULL AND o.data_snapshot_json#>>'{inputs,purpose_ar}' IS NULL AND EXISTS(
-    SELECT FROM erp_private.mobile_hr_service_attempts a WHERE a.request_id=r.id AND a.command->>'kind'='issue-letter'
-    AND o.request_key='req_'||left(encode(sha256(convert_to(o.output_code||'|'||r.employee_id||'|'||o.generated_by||'|'||a.operation_id,'UTF8')),'hex'),48)))),false)
+  AND erp_private.mobile_hr_v5_particulars(r.proposal,o.data_snapshot_json->'inputs',
+    EXISTS(SELECT FROM erp_private.mobile_hr_service_attempts a WHERE a.request_id=r.id AND a.no_effect_at IS NULL AND a.issuance_key=o.request_key)),false)
 $$;
 CREATE FUNCTION erp_private.mobile_hr_v5_action_choices(r erp_private.hr_self_service_requests,d jsonb) RETURNS jsonb LANGUAGE plpgsql STABLE SET search_path='' AS $$
 DECLARE typ text:=d->>'kind'; cursor_id bigint:=(d->>'after')::bigint; needle text:=lower(d->>'search');
@@ -508,6 +574,8 @@ BEGIN
   FROM erp_private.mobile_hr_verified_proofs f WHERE typ='canonical-proof' AND f.request_id=r.id AND f.actor=auth.uid() AND erp_private.mobile_hr_v5_current_proof(r,f)
   UNION ALL SELECT o.id,o.file_name,jsonb_build_object('issuanceId',o.id,'checksum',CASE WHEN o.lifecycle_state='issued' THEN o.checksum END) FROM public.erp_generated_pdf_documents o
    WHERE typ='issuance' AND r.kind='letter' AND o.source_record_id=r.employee_id AND o.source_record_type='employee' AND o.output_code=r.proposal->>'outputCode'
+   AND NOT EXISTS(SELECT FROM erp_private.mobile_hr_service_attempts used WHERE used.request_id<>r.id AND used.no_effect_at IS NULL
+    AND (used.reserved_output_id=o.id OR used.issuance_key=o.request_key))
    AND erp_private.mobile_hr_v5_output_matches(r,o) AND o.archived_at IS NULL AND o.revoked_at IS NULL AND o.superseded_by_id IS NULL AND (o.expires_at IS NULL OR o.expires_at>now())
    AND (o.lifecycle_state='issued' OR (o.generated_by=public.current_user_profile_id() AND o.lifecycle_state IN('rendering','uploaded','pending','failed_retryable','reconciliation_required')))
   UNION ALL SELECT v.id,'Approved source review #'||v.id,jsonb_build_object('sourceReviewId',v.id,'sourceId',v.source_id)
@@ -515,8 +583,10 @@ BEGIN
     AND erp_private.document_permission(v.document_id,'dms.documents.view') AND erp_private.document_permission(v.document_id,'dms.documents.preview') AND erp_private.mobile_hr_v5_disclose_evidence(r.employee_id,v.document_id)
   UNION ALL SELECT e.id,'EOS case #'||e.id,jsonb_build_object('sourceId',e.id,'sourceReviewId',NULL) FROM public.employee_eos_cases e WHERE typ='letter-source' AND r.kind='letter' AND r.proposal->>'outputCode'='HR_CLEARANCE_FORM' AND e.employee_id=r.employee_id AND e.deleted_at IS NULL
   UNION ALL SELECT l.id,'Approved leave #'||l.id,jsonb_build_object('sourceId',l.id,'sourceReviewId',NULL) FROM public.employee_leave_requests l WHERE typ='letter-source' AND r.kind='letter' AND r.proposal->>'outputCode'='HR_LEAVE_CONFIRMATION' AND l.employee_id=r.employee_id AND l.approval_status='approved' AND l.deleted_at IS NULL
-  UNION ALL SELECT t.id,t.template_name,jsonb_build_object('templateId',t.id) FROM public.erp_report_templates t JOIN public.erp_report_registry reg ON reg.default_template_id=t.id
-   WHERE typ='letter-template' AND r.kind='letter' AND reg.report_code=r.proposal->>'outputCode' AND reg.is_active AND reg.deleted_at IS NULL AND t.is_active AND t.deleted_at IS NULL AND t.governance_status='published' AND erp_private.employee_permission(r.employee_id,'reports.branding.override'))
+  UNION ALL SELECT t.id,t.template_name,jsonb_build_object('templateId',t.id) FROM public.erp_report_templates t JOIN public.erp_report_branding_profiles bp ON bp.id=t.branding_profile_id CROSS JOIN public.erp_report_registry reg
+   WHERE typ='letter-template' AND r.kind='letter' AND reg.report_code=r.proposal->>'outputCode' AND reg.is_active AND reg.deleted_at IS NULL AND t.is_active AND t.deleted_at IS NULL AND t.governance_status='published'
+    AND bp.is_active AND bp.deleted_at IS NULL AND (bp.owner_company_id=r.company_id OR (bp.owner_company_id IS NULL AND (bp.is_group_profile OR bp.is_neutral_profile)))
+    AND erp_private.can_read_report_template_branding(t.branding_profile_id) AND erp_private.employee_permission(r.employee_id,'reports.branding.override'))
   SELECT coalesce(jsonb_agg(jsonb_build_object('kind',typ,'label',x.label,'id',x.id)||x.extra ORDER BY x.id),'[]') FROM
    (SELECT * FROM choices WHERE id>cursor_id AND strpos(lower(label),needle)>0 ORDER BY id LIMIT 26)x);
 END $$;
@@ -530,10 +600,11 @@ DECLARE cmd jsonb:=d->'command'; cmd_kind text:=cmd->>'kind'; p jsonb:=r.proposa
  step_id uuid:=extensions.uuid_generate_v5(op,'canonical-1'); selection jsonb; long_note text; command_keys text;
 BEGIN
  IF r.status<>'approved' OR (erp_private.mobile_hr_v5_rights(r)->>'fulfil')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'Approved independent request required' USING ERRCODE='42501'; END IF;
- SELECT * INTO a FROM erp_private.mobile_hr_service_attempts WHERE request_id=r.id;
+ SELECT * INTO a FROM erp_private.mobile_hr_service_attempts WHERE no_effect_at IS NULL AND request_id=r.id;
  IF FOUND THEN
   IF a.actor IS DISTINCT FROM auth.uid() OR a.operation_id<>op OR a.command_hash<>h THEN RAISE EXCEPTION 'Another attempt owns the original operation' USING ERRCODE='PT409'; END IF;
-  PERFORM erp_private.mobile_hr_v5_validate(r.employee_id,p,cmd_kind NOT IN('save-dependent','record-replacement','resolve-accommodation'),erp_private.mobile_hr_v5_evidence_source(r));
+  PERFORM erp_private.mobile_hr_v5_validate(r.employee_id,p,(cmd_kind NOT IN('save-dependent','record-replacement','resolve-accommodation') OR (cmd_kind='resolve-accommodation' AND cmd#>>'{canonical,kind}'='hr-action')),erp_private.mobile_hr_v5_evidence_source(r));
+  PERFORM erp_private.mobile_hr_v5_locked_authority(r,'fulfil');
   RETURN jsonb_build_object('pending',true,'plan',a.plan,'proposal',p,'command',cmd);
  END IF;
  IF NOT coalesce(CASE r.kind WHEN 'letter' THEN cmd_kind IN('issue-letter','link-issued-letter','recover-letter') WHEN 'issue-return' THEN cmd_kind='record-return'
@@ -547,7 +618,8 @@ BEGIN
  PERFORM erp_private.mobile_hr_v5_keys(cmd,'kind'||command_keys);
  PERFORM erp_private.mobile_hr_v5_values(cmd,'{"returnedDate":"date","condition":"500?","checksum":"sha","issuanceId":"id","canonicalOperationId":"uuid","caseId":"id","sourceReviewId":"id?","sourceId":"id?","templateId":"id?"}');
  IF cmd?'source' AND cmd->'source' IS DISTINCT FROM src OR cmd?'caseId' AND cmd->'caseId' IS DISTINCT FROM p->'caseId' THEN RAISE EXCEPTION 'Wrong original service source' USING ERRCODE='PT409'; END IF;
- PERFORM erp_private.mobile_hr_v5_validate(r.employee_id,p,cmd_kind NOT IN('save-dependent','record-replacement','resolve-accommodation'),erp_private.mobile_hr_v5_evidence_source(r));
+ PERFORM erp_private.mobile_hr_v5_validate(r.employee_id,p,(cmd_kind NOT IN('save-dependent','record-replacement','resolve-accommodation') OR (cmd_kind='resolve-accommodation' AND cmd#>>'{canonical,kind}'='hr-action')),erp_private.mobile_hr_v5_evidence_source(r));
+  PERFORM erp_private.mobile_hr_v5_locked_authority(r,'fulfil');
  IF cmd_kind IN('save-dependent','record-replacement','resolve-accommodation') THEN
   SELECT * INTO f FROM erp_private.mobile_hr_verified_proofs x WHERE x.request_id=r.id AND x.actor=auth.uid()
     AND x.operation_id=coalesce((cmd->>'canonicalOperationId')::uuid,(cmd#>>'{canonical,operationId}')::uuid) AND erp_private.mobile_hr_v5_current_proof(r,x);
@@ -555,6 +627,9 @@ BEGIN
     OR (cmd_kind='resolve-accommodation' AND cmd->'canonical' IS DISTINCT FROM jsonb_build_object('kind',f.kind,'id',f.record_id,'revision',f.revision::text,'operationId',f.operation_id,'issuanceId',NULL)) THEN RAISE EXCEPTION 'No matching canonical proof' USING ERRCODE='PT409'; END IF;
  ELSIF cmd_kind IN('issue-letter','link-issued-letter','recover-letter') THEN
   IF cmd_kind='issue-letter' THEN
+   IF NOT EXISTS(SELECT FROM public.erp_report_registry reg JOIN public.erp_output_class_policies pol ON pol.document_class=reg.document_class WHERE reg.report_code=p->>'outputCode') THEN RAISE EXCEPTION 'Current official output policy required' USING ERRCODE='22023'; END IF;
+   IF EXISTS(SELECT FROM public.erp_report_registry reg JOIN public.erp_output_class_policies pol ON pol.document_class=reg.document_class WHERE reg.report_code=p->>'outputCode'
+    AND coalesce(reg.approval_required_override,pol.approval_required) AND NOT erp_private.employee_permission(r.employee_id,'reports.pdf.approve')) THEN RAISE EXCEPTION 'Current official issuer approval required' USING ERRCODE='42501'; END IF;
    IF p->>'outputCode' IN('HR_EXPERIENCE_LETTER','HR_WARNING_LETTER','HR_PPE_ISSUE_FORM','HR_HANDOVER_FORM') AND cmd->>'sourceReviewId' IS NULL THEN RAISE EXCEPTION 'Approved source review required' USING ERRCODE='22023'; END IF;
    IF p->>'outputCode' IN('HR_CLEARANCE_FORM','HR_LEAVE_CONFIRMATION') AND cmd->>'sourceId' IS NULL THEN RAISE EXCEPTION 'Original source selection required' USING ERRCODE='22023'; END IF;
    IF cmd->'outputCode' IS DISTINCT FROM p->'outputCode' OR cmd->'language' IS DISTINCT FROM p->'language' THEN RAISE EXCEPTION 'Approved letter differs' USING ERRCODE='22023'; END IF;
@@ -563,7 +638,10 @@ BEGIN
     SELECT v INTO selection FROM jsonb_array_elements(erp_private.mobile_hr_v5_action_choices(r,jsonb_build_object('kind','letter-source','after',coalesce((cmd->>'sourceReviewId')::bigint,(cmd->>'sourceId')::bigint)-1,'search',''))) v WHERE v->'sourceReviewId'=cmd->'sourceReviewId' AND v->'sourceId'=cmd->'sourceId';
     IF selection IS NULL THEN RAISE EXCEPTION 'Official source unavailable' USING ERRCODE='42501'; END IF;
    END IF;
-  ELSIF NOT EXISTS(SELECT FROM jsonb_array_elements(erp_private.mobile_hr_v5_action_choices(r,jsonb_build_object('kind','issuance','after',(cmd->>'issuanceId')::bigint-1,'search',''))) v WHERE v->'id'=cmd->'issuanceId' AND (cmd_kind<>'link-issued-letter' OR v->'checksum'=cmd->'checksum')) THEN RAISE EXCEPTION 'Original output unavailable' USING ERRCODE='42501'; END IF;
+  ELSE
+   PERFORM 1 FROM public.erp_generated_pdf_documents WHERE id=(cmd->>'issuanceId')::bigint AND source_record_type='employee' AND source_record_id=r.employee_id FOR UPDATE;
+   IF NOT EXISTS(SELECT FROM jsonb_array_elements(erp_private.mobile_hr_v5_action_choices(r,jsonb_build_object('kind','issuance','after',(cmd->>'issuanceId')::bigint-1,'search',''))) v WHERE v->'id'=cmd->'issuanceId' AND (cmd_kind<>'link-issued-letter' OR v->'checksum'=cmd->'checksum')) THEN RAISE EXCEPTION 'Original output unavailable' USING ERRCODE='42501'; END IF;
+  END IF;
  ELSE
   row_data:=erp_private.mobile_hr_v5_source(r.employee_id,src,true);
   CASE cmd_kind
@@ -582,6 +660,10 @@ BEGIN
    WHEN 'record-pro-follow-up' THEN
     kind:='pro-process';action:='update';long_note:=concat_ws(E'\n',nullif(row_data->>'notes',''),p->>'message');
     data:=jsonb_build_object('process_title',row_data->'process_title','priority',row_data->'priority','request_date',row_data->'request_date','target_date',row_data->'target_date','process_status',row_data->'process_status','notes',long_note);
+    IF p->>'evidence' IS NOT NULL THEN
+     IF row_data->>'related_document_id' IS NOT NULL AND row_data->'related_document_id'<>p#>'{evidence,documentId}' THEN RAISE EXCEPTION 'Existing PRO evidence must be preserved' USING ERRCODE='PT409'; END IF;
+     data:=data||jsonb_build_object('related_document_id',p#>'{evidence,documentId}','related_document_version_id',p#>'{evidence,documentVersionId}');
+    END IF;
    WHEN 'record-clearance' THEN
     data:=jsonb_build_object('eos_case_id',p->'caseId','evidence_document_id',p#>'{evidence,documentId}','evidence_version_id',p#>'{evidence,documentVersionId}');
     plan:=jsonb_build_array(jsonb_build_object('rpc','clearance','operationId',step_id,'employeeId',r.employee_id,'id',original_id,'revision',original_revision,'action','update','data',data),
@@ -593,9 +675,34 @@ BEGIN
   END CASE;
   IF kind IS NOT NULL THEN plan:=jsonb_build_array(jsonb_build_object('rpc',kind,'operationId',step_id,'employeeId',r.employee_id,'id',original_id,'revision',original_revision,'action',action,'data',data)); END IF;
  END IF;
- INSERT INTO erp_private.mobile_hr_service_attempts(request_id,actor,operation_id,request_revision,command,command_hash,proposal_hash,plan,external_proof_id)
- VALUES(r.id,auth.uid(),op,r.revision,cmd,h,encode(sha256(convert_to(p::text,'UTF8')),'hex'),plan,f.id);
+ INSERT INTO erp_private.mobile_hr_service_attempts(request_id,actor,operation_id,request_revision,command,command_hash,proposal_hash,plan,external_proof_id,reserved_output_id,issuance_key)
+ VALUES(r.id,auth.uid(),op,r.revision,cmd,h,encode(sha256(convert_to(p::text,'UTF8')),'hex'),plan,f.id,(cmd->>'issuanceId')::bigint,CASE WHEN cmd_kind='issue-letter' THEN 'req_'||left(encode(sha256(convert_to((p->>'outputCode')||'|'||r.employee_id||'|'||public.current_user_profile_id()||'|'||op,'UTF8')),'hex'),48) END);
  RETURN jsonb_build_object('pending',true,'plan',plan,'proposal',p,'command',cmd);
+END $$;
+
+-- Extend the existing F11 operation and receipt checks to permit a pinned
+-- evidence attachment only for the exact approved, executing service step.
+DO $$ DECLARE original text; definition text; guard text; BEGIN
+ SELECT prosrc,pg_get_functiondef(oid) INTO original,definition FROM pg_proc WHERE oid='public.f11_mutate_pro_process(text,bigint,bigint,bigint,uuid,text,jsonb)'::regprocedure;
+ IF encode(sha256(convert_to(original,'UTF8')),'hex')<>'8e4c8f43690b442b80bf176eccdda07e9602e2be40cd56ee06fa19bcd56079cf' THEN RAISE EXCEPTION 'Unreviewed F11 PRO operation'; END IF;
+ definition:=replace(definition,'''f12_source_kind'',''f12_source_id'',''f12_replacement_id'']','''f12_source_kind'',''f12_source_id'',''f12_replacement_id'',''related_document_id'',''related_document_version_id'']');
+ definition:=replace(definition,'IF p_action<>''archive''THEN','IF (p_data?''related_document_id'' OR p_data?''related_document_version_id'') AND (p_action<>''update'' OR NOT(p_data ?& ARRAY[''related_document_id'',''related_document_version_id'']) OR jsonb_typeof(p_data->''related_document_id'') IS DISTINCT FROM ''number'' OR jsonb_typeof(p_data->''related_document_version_id'') IS DISTINCT FROM ''number'') THEN RAISE EXCEPTION ''Use both identifiers on an approved evidence update'' USING ERRCODE=''22023''; END IF; IF p_action<>''archive''THEN');
+ definition:=replace(definition,'SET assigned_to=CASE','SET related_document_id=CASE WHEN p_data?''related_document_id'' THEN (p_data->>''related_document_id'')::bigint ELSE x.related_document_id END,related_document_version_id=CASE WHEN p_data?''related_document_version_id'' THEN (p_data->>''related_document_version_id'')::bigint ELSE x.related_document_version_id END,assigned_to=CASE');
+ EXECUTE definition;
+ SELECT prosrc,pg_get_functiondef(oid) INTO original,definition FROM pg_proc WHERE oid='erp_private.f11_capture_pro_process()'::regprocedure;
+ IF encode(sha256(convert_to(original,'UTF8')),'hex')<>'df2987f637359cd10c7e83f98101d24cda53bddf263293c4c1b6b6ebf2f4a9f3' THEN RAISE EXCEPTION 'Unreviewed F11 PRO trigger'; END IF;
+ guard:=$guard$
+   IF (NEW.related_document_id,NEW.related_document_version_id) IS DISTINCT FROM (OLD.related_document_id,OLD.related_document_version_id) AND NOT EXISTS(
+    SELECT FROM erp_private.mobile_hr_service_attempts a JOIN erp_private.hr_self_service_requests r ON r.id=a.request_id
+    WHERE a.actor=auth.uid() AND a.no_effect_at IS NULL AND a.canonical IS NULL AND r.status='approved' AND r.employee_id=NEW.employee_id AND r.kind='pro-follow-up'
+     AND a.plan#>>'{0,operationId}'=context->>'operation_id' AND (r.proposal#>>'{source,id}')::bigint=NEW.id AND (r.proposal#>>'{source,revision}')::bigint=OLD.workspace_revision
+     AND NEW.related_document_id=(r.proposal#>>'{evidence,documentId}')::bigint AND NEW.related_document_version_id=(r.proposal#>>'{evidence,documentVersionId}')::bigint
+     AND r.mobile_evidence_proof IS NOT NULL AND r.mobile_evidence_proof=erp_private.mobile_hr_v5_evidence_facts(r.employee_id,r.proposal)
+     AND (erp_private.mobile_hr_v5_rights(r)->>'fulfil')::boolean) THEN RAISE EXCEPTION 'Authorized PRO evidence operation required' USING ERRCODE='42501'; END IF;
+ $guard$;
+ definition:=replace(definition,'ELSIF context->>''action''=''update''THEN','ELSIF context->>''action''=''update''THEN'||guard);
+ definition:=replace(definition,'''workspace_revision'',''assigned_to'',''f12_replacement_id''','''workspace_revision'',''related_document_id'',''related_document_version_id'',''assigned_to'',''f12_replacement_id''');
+ EXECUTE definition;
 END $$;
 
 CREATE FUNCTION erp_private.mobile_hr_v5_finish(d jsonb,output_id bigint DEFAULT NULL,output_sha text DEFAULT NULL)
@@ -608,11 +715,12 @@ BEGIN
  PERFORM erp_private.mobile_hr_v5_active();PERFORM erp_private.mobile_hr_v5_lock_actor();
  SELECT * INTO e FROM public.employees WHERE id=eid AND deleted_at IS NULL FOR UPDATE;
  SELECT * INTO r FROM erp_private.hr_self_service_requests WHERE id=(d->>'id')::bigint AND employee_id=eid AND company_id=e.owner_company_id AND branch_id IS NOT DISTINCT FROM e.branch_id FOR UPDATE;
- SELECT * INTO a FROM erp_private.mobile_hr_service_attempts WHERE request_id=r.id AND actor=auth.uid() AND operation_id=(d->>'operationId')::uuid FOR UPDATE;
+ SELECT * INTO a FROM erp_private.mobile_hr_service_attempts WHERE no_effect_at IS NULL AND request_id=r.id AND actor=auth.uid() AND operation_id=(d->>'operationId')::uuid FOR UPDATE;
  IF a.request_id IS NULL OR r.status<>'approved' OR r.revision<>a.request_revision OR (erp_private.mobile_hr_v5_rights(r)->>'fulfil')::boolean IS NOT TRUE OR a.command_hash<>encode(sha256(convert_to(d::text,'UTF8')),'hex')
  OR a.proposal_hash<>encode(sha256(convert_to(r.proposal::text,'UTF8')),'hex') THEN RAISE EXCEPTION 'Original service attempt required' USING ERRCODE='42501'; END IF;
  IF r.kind='letter' THEN
   PERFORM erp_private.mobile_hr_v5_validate(eid,r.proposal);
+  PERFORM erp_private.mobile_hr_v5_locked_authority(r,'fulfil');
   IF output_id IS NULL THEN RAISE EXCEPTION 'Verified output bytes required' USING ERRCODE='42501'; END IF;
   SELECT * INTO o FROM public.erp_generated_pdf_documents WHERE id=output_id FOR SHARE;
   IF o.id IS NULL OR erp_private.mobile_hr_v5_output_matches(r,o) IS NOT TRUE OR o.lifecycle_state<>'issued' OR o.revoked_at IS NOT NULL OR o.archived_at IS NOT NULL OR o.superseded_by_id IS NOT NULL OR o.expires_at<=now() OR o.checksum IS DISTINCT FROM output_sha OR coalesce(o.file_size_bytes,0)<=0
@@ -641,12 +749,13 @@ BEGIN
     WHEN 'pro-process' THEN 'employee_pro_processes' WHEN 'shift-assignment' THEN 'employee_shift_assignments' WHEN 'overtime' THEN 'employee_overtime_records' WHEN 'clearance' THEN 'employee_clearance_items' END;
   IF tbl IS NULL THEN RAISE EXCEPTION 'Missing canonical result' USING ERRCODE='PT409'; END IF;
   EXECUTE format('SELECT to_jsonb(x) FROM public.%I x WHERE id=$1 AND employee_id=$2 AND workspace_revision=$3 AND deleted_at IS NULL FOR SHARE',tbl) INTO final_row USING native_id,eid,native_revision;
-  IF final_row IS NULL OR(subject_kind='overtime' AND final_row->>'approval_status' IS DISTINCT FROM 'pending') OR(subject_kind='task' AND (final_row->>'task_status' IS DISTINCT FROM 'completed' OR final_row->'dms_document_id' IS DISTINCT FROM r.proposal#>'{evidence,documentId}')) OR(subject_kind='clearance' AND (final_row->'eos_case_id' IS DISTINCT FROM r.proposal->'caseId' OR final_row->'evidence_version_id' IS DISTINCT FROM r.proposal#>'{evidence,documentVersionId}'))
+  IF final_row IS NULL OR (subject_kind='pro-process' AND r.proposal->>'evidence' IS NOT NULL AND
+    (final_row->'related_document_id' IS DISTINCT FROM r.proposal#>'{evidence,documentId}' OR final_row->'related_document_version_id' IS DISTINCT FROM r.proposal#>'{evidence,documentVersionId}')) OR(subject_kind='overtime' AND final_row->>'approval_status' IS DISTINCT FROM 'pending') OR(subject_kind='task' AND (final_row->>'task_status' IS DISTINCT FROM 'completed' OR final_row->'dms_document_id' IS DISTINCT FROM r.proposal#>'{evidence,documentId}')) OR(subject_kind='clearance' AND (final_row->'eos_case_id' IS DISTINCT FROM r.proposal->'caseId' OR final_row->'evidence_version_id' IS DISTINCT FROM r.proposal#>'{evidence,documentVersionId}'))
     THEN RAISE EXCEPTION 'Canonical outcome changed' USING ERRCODE='PT409'; END IF;
   verified_canonical:=jsonb_build_object('kind',CASE WHEN subject_kind='task' THEN 'onboarding-task' ELSE subject_kind END,'id',native_id,'revision',native_revision::text,'operationId',operation,'issuanceId',NULL);
  END IF;
  IF r.proposal->>'evidence' IS NOT NULL AND r.mobile_evidence_proof IS DISTINCT FROM erp_private.mobile_hr_v5_evidence_facts(eid,r.proposal||jsonb_build_object('source',coalesce(erp_private.mobile_hr_v5_evidence_source(r),r.proposal->'source'))) THEN RAISE EXCEPTION 'Evidence changed' USING ERRCODE='42501'; END IF;
- UPDATE erp_private.mobile_hr_service_attempts SET canonical=verified_canonical,fulfilled_at=clock_timestamp() WHERE request_id=r.id;
+ UPDATE erp_private.mobile_hr_service_attempts SET canonical=verified_canonical,reserved_output_id=output_id,fulfilled_at=clock_timestamp() WHERE actor=a.actor AND operation_id=a.operation_id;
  UPDATE erp_private.hr_self_service_requests SET status='fulfilled',revision=3 WHERE id=r.id;
  outcome:=jsonb_build_object('effect','fulfilled','employeeId',eid,'id',r.id,'revision','3','operationId',a.operation_id,'replayed',false,'canonical',verified_canonical);
  INSERT INTO erp_private.hr_self_operation_receipts(actor,operation_id,action,request_hash,result) VALUES(auth.uid(),a.operation_id,'v5.serviceFulfil',a.command_hash,outcome);
@@ -657,6 +766,37 @@ END $$;
 CREATE FUNCTION erp_private.mobile_hr_v5_finish_native(p_data jsonb) RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path='' AS $$
  SELECT erp_private.mobile_hr_v5_finish(p_data,NULL,NULL)
 $$;
+-- Serialise cancellation with late/in-flight canonical issuance inserts. The
+-- tombstone remains authoritative even if an earlier external worker resumes.
+CREATE FUNCTION erp_private.mobile_hr_v5_guard_issuance() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+DECLARE reserved erp_private.mobile_hr_service_attempts;
+BEGIN
+ IF NEW.request_key IS NULL THEN RETURN NEW; END IF;
+ SELECT * INTO reserved FROM erp_private.mobile_hr_service_attempts WHERE issuance_key=NEW.request_key FOR SHARE;
+ IF reserved.no_effect_at IS NOT NULL THEN RAISE EXCEPTION 'Original issue attempt closed without effect' USING ERRCODE='PT409'; END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION erp_private.mobile_hr_v5_guard_issuance() FROM PUBLIC,anon,authenticated,service_role;
+CREATE TRIGGER mobile_hr_guard_issue BEFORE INSERT OR UPDATE OF request_key ON public.erp_generated_pdf_documents FOR EACH ROW EXECUTE FUNCTION erp_private.mobile_hr_v5_guard_issuance();
+CREATE FUNCTION public.mobile_hr_v5_close_unissued(p_claims jsonb,p_data jsonb) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+DECLARE previous text:=current_setting('request.jwt.claims',true); reserved erp_private.mobile_hr_service_attempts; r erp_private.hr_self_service_requests;
+BEGIN
+ IF auth.role() IS DISTINCT FROM 'service_role' OR p_data#>>'{command,kind}' IS DISTINCT FROM 'issue-letter' THEN RAISE EXCEPTION 'Trusted pre-issuance outcome required' USING ERRCODE='42501'; END IF;
+ PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',p_claims->>'sub','session_id',p_claims->>'session_id','role','authenticated')::text,true);
+ PERFORM erp_private.mobile_hr_v5_lock_actor();
+ SELECT * INTO r FROM erp_private.hr_self_service_requests WHERE id=(p_data->>'id')::bigint AND employee_id=(p_data->>'employeeId')::bigint FOR UPDATE;
+ SELECT * INTO reserved FROM erp_private.mobile_hr_service_attempts WHERE request_id=r.id AND actor=auth.uid() AND operation_id=(p_data->>'operationId')::uuid FOR UPDATE;
+ IF reserved.issuance_key IS NULL OR reserved.command_hash<>encode(sha256(convert_to(p_data::text,'UTF8')),'hex') OR reserved.canonical IS NOT NULL
+   OR (erp_private.mobile_hr_v5_rights(r)->>'fulfil')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'Current original attempt required' USING ERRCODE='42501'; END IF;
+ IF EXISTS(SELECT FROM public.erp_generated_pdf_documents WHERE request_key=reserved.issuance_key) THEN
+  PERFORM set_config('request.jwt.claims',previous,true); RETURN false;
+ END IF;
+ UPDATE erp_private.mobile_hr_service_attempts SET no_effect_at=coalesce(no_effect_at,clock_timestamp()) WHERE actor=reserved.actor AND operation_id=reserved.operation_id;
+ PERFORM set_config('request.jwt.claims',previous,true); RETURN true;
+END $$;
+REVOKE ALL ON FUNCTION public.mobile_hr_v5_close_unissued(jsonb,jsonb) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.mobile_hr_v5_close_unissued(jsonb,jsonb) TO service_role;
+
 CREATE FUNCTION public.mobile_hr_v5_attest_output(p_claims jsonb,p_data jsonb,p_issuance bigint,p_sha text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE previous text:=current_setting('request.jwt.claims',true); outcome jsonb;

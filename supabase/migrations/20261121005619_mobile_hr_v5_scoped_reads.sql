@@ -130,6 +130,8 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.mobile_hr_v5_team_readiness(date,text,bigint,bigint,bigint,integer) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.mobile_hr_v5_team_readiness(date,text,bigint,bigint,bigint,integer) TO authenticated;
+ALTER TABLE public.employee_pro_processes ADD COLUMN related_document_version_id bigint REFERENCES public.dms_document_versions(id);
+CREATE INDEX employee_pro_process_evidence_version ON public.employee_pro_processes(related_document_version_id) WHERE related_document_version_id IS NOT NULL;
 CREATE FUNCTION erp_private.mobile_hr_v5_detail(eid bigint,k text,rid bigint,case_id bigint) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
 DECLARE doc bigint; ver bigint; item jsonb; ev jsonb; result jsonb:='[]'; protected boolean; label text; val text; who text; src text;
 BEGIN
@@ -147,7 +149,7 @@ BEGIN
   END IF;
  ELSIF k='pro-process' THEN
   IF erp_private.employee_permission(eid,'hr.actions.view') IS NOT TRUE THEN RAISE EXCEPTION 'PRO access required' USING ERRCODE='42501'; END IF;
-  SELECT p.related_document_id,d.current_version_id INTO doc,ver FROM public.employee_pro_processes p LEFT JOIN public.dms_documents d ON d.id=p.related_document_id WHERE p.id=rid AND p.employee_id=eid AND p.deleted_at IS NULL;
+  SELECT p.related_document_id,coalesce(p.related_document_version_id,d.current_version_id) INTO doc,ver FROM public.employee_pro_processes p LEFT JOIN public.dms_documents d ON d.id=p.related_document_id WHERE p.id=rid AND p.employee_id=eid AND p.deleted_at IS NULL;
  ELSE
   IF erp_private.employee_permission(eid,'hr.assignments.view') IS NOT TRUE THEN RAISE EXCEPTION 'Operations access required' USING ERRCODE='42501'; END IF;
   src:=CASE k WHEN 'blocks' THEN 'employee_operational_blocks' WHEN 'requirements' THEN 'employee_role_requirements' WHEN 'readiness' THEN 'employee_site_readiness' WHEN 'assets' THEN 'employee_assets' WHEN 'ppe' THEN 'employee_ppe_issues' WHEN 'accommodation' THEN 'employee_accommodation_records' WHEN 'assignments' THEN 'employee_assignments' END;

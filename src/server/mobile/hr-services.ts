@@ -1,3 +1,4 @@
+import { approvedLetterInputs } from "./hr-letter-inputs";
 import { z } from "zod";
 import { getOfficialDocumentDefinition } from "@/lib/official-documents/registry";
 import { rpc, type Db } from "./hr-reads";
@@ -18,9 +19,7 @@ export const serviceRpc=(db:Db,d:ExpandedCommand,write=false)=>rpc(db,"mobile_hr
 export async function serviceReadWrite(db:Db,i:ExpandedCommand) {
   const write=["serviceDecision","serviceSubmit","issueAcknowledge"].includes(i.op);
   if(i.op==="serviceSubmit" && i.proposal.kind==="letter"){
-    const {outputCode,language}=i.proposal;
-    const languages=getOfficialDocumentDefinition(outputCode)?.supportedLanguages??["en"];
-    if(!languages.some(supported=>supported===language))throw new HrError(422,"The letter does not support the requested language.");
+    approvedLetterInputs(i.proposal);
   }
   const raw=await serviceRpc(db,i,write);
   if(write || i.op==="serviceReceipt"){

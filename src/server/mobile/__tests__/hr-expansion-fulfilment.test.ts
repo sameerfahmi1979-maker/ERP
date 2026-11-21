@@ -43,3 +43,27 @@ it("rejects a full proposal smuggled into a summary-only opening",async()=>{
   review:"approved",fulfilment:"not-started",canRead:false,canDecide:false,canFulfil:false,visibility:"summary",proposal,decidedAt:null,decisionReason:null,fulfilledAt:null,result:null,fields:[]}});
  await expect(serviceReadWrite(db,{op:"serviceOpening",employeeId:8,id:3,revision:"2"})).rejects.toThrow();
 });
+
+it("releases a proven pre-issuance failure and retains uncertain original attempts",async()=>{
+ const command={kind:"issue-letter" as const,outputCode:"HR_EMBASSY_LETTER",language:"en" as const,sourceId:null,sourceReviewId:null,templateId:null};
+ dep.generate.mockResolvedValue({success:false,blocked:"approval_required"});
+ dep.finalise.mockResolvedValue({data:true});
+ await expect(fulfilService(db,{...context,command})).rejects.toMatchObject({status:422,uncertain:false});
+ expect(dep.finalise).toHaveBeenCalledWith("mobile_hr_v5_close_unissued",expect.objectContaining({p_data:{...context,command}}));
+ dep.finalise.mockResolvedValue({data:false});
+ await expect(fulfilService(db,{...context,command})).rejects.toMatchObject({status:503,uncertain:true});
+ dep.finalise.mockClear();
+ dep.generate.mockResolvedValue({success:false,blocked:"reconciliation_required"});
+ await expect(fulfilService(db,{...context,command})).rejects.toMatchObject({status:503,uncertain:true});
+ expect(dep.finalise).not.toHaveBeenCalled();
+});
+
+it("passes the approved bilingual recipient to the actual issuer call",async()=>{
+ const bilingual={...proposal,outputCode:"HR_EMPLOYMENT_CONFIRMATION",language:"bilingual" as const,recipientAr:"Approved Arabic recipient"};
+ rpc.mockResolvedValue({data:{pending:true,proposal:bilingual}});
+ dep.generate.mockResolvedValue({success:true,lifecycleState:"issued",issuanceId:5,finalSha256:checksum});
+ await fulfilService(db,{...context,command:{kind:"issue-letter",outputCode:bilingual.outputCode,language:bilingual.language,sourceId:null,sourceReviewId:null,templateId:null}});
+ expect(dep.generate).toHaveBeenCalledWith(bilingual.outputCode,8,expect.objectContaining({inputs:expect.objectContaining({
+  recipient_mode:"specific",recipient_organization_en:bilingual.recipient,recipient_organization_ar:bilingual.recipientAr
+ })}));
+});

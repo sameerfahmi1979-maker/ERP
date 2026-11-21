@@ -26,6 +26,7 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
+import {publishMobileStepReceipt,reserveWebStep} from "@/server/mobile/dms-v5/orchestration-receipt";
 
 import {
   buildInitialSteps,
@@ -490,7 +491,7 @@ export async function retryDmsOrchestrationStep(input: {
     const supabase = await createClient();
     const { data: session } = await supabase
       .from("dms_upload_sessions")
-      .select("document_id, uploaded_by, orchestration_steps_json")
+      .select("id, document_id, uploaded_by, orchestration_steps_json")
       .eq("session_code", sessionCode)
       .is("deleted_at", null)
       .single();
@@ -506,6 +507,7 @@ export async function retryDmsOrchestrationStep(input: {
     const uploadSessionId = typedSession.id as number;
     if (!documentId) return { success: false, error: "No draft document exists for this session." };
 
+    const verifyWebStep=await reserveWebStep(uploadSessionId,sessionCode,stepCode);
     // Run the step
     let stepResult: DmsAiOrchestrationStepResult;
     const code = stepCode as DmsAiOrchestrationStepCode;
@@ -555,11 +557,12 @@ export async function retryDmsOrchestrationStep(input: {
     const updatedSteps = mergeStepResult(existingSteps, stepResult);
     const newStatus = calculateOverallStatus(updatedSteps);
 
-    await updateSessionOrchestration(sessionCode, {
+    if(!await publishMobileStepReceipt(sessionCode,stepResult,newStatus))await updateSessionOrchestration(sessionCode, {
       orchestration_status: newStatus,
       orchestration_steps_json: updatedSteps,
     });
 
+    if(verifyWebStep)await verifyWebStep(stepResult);
     return { success: true, data: stepResult };
   } catch (err) {
     return { success: false, error: String(err).slice(0, 200) };

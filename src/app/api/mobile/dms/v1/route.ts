@@ -18,7 +18,9 @@ import { aiApprovalInputSchema } from "@/lib/dms/numbered-ai-approval";
 import { approveNumberedAiIntake } from "@/server/numbered-ai-approval";
 import { recoverNumberedAiApproval } from "@/server/dms-ai-approval-recovery";
 import { DMS_CONFIDENTIALITY_LEVELS } from "@/features/dms/documents/dms-document-constants";
-import { GET as deliverDocument } from "@/app/api/dms/file/route";
+import {mobileDmsV5Command,type MobileDmsV5Command} from "@/server/mobile/dms-v5/contracts";
+import {dispatchMobileDmsV5,deliverMobileDmsV5File,dmsErrorResponse} from "@/server/mobile/dms-v5";
+import {DmsError,readDmsFeatureAvailability} from "@/server/mobile/dms-v5/access";
 import {mobileDocumentCriteria,mobileTaskCriteria,mobileApprovalCriteria,offlinePermitCriteria} from "@/server/mobile/contracts";
 import {MobileDmsError,readMobileProfile,readMobileDocuments,readMobileFolder,readMobileRecords,readMobileTasks,actOnMobileApproval,completeMobileRenewal,authorizeOfflineDocument} from "@/server/mobile/dms";
 import {createDmsRenewalRequest} from "@/server/actions/dms/renewals";
@@ -29,7 +31,7 @@ const id = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const page = z.number().int().min(1).max(100_000);
 const text = z.string().trim().max(100);
 const code = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
-const command = z.discriminatedUnion("op", [
+const legacyCommand = z.discriminatedUnion("op", [
   loginSchema.extend({ op: z.literal("login") }).strict(),
   z.strictObject({ op: z.literal("refresh"), refreshToken: z.string().min(1).max(4096) }),
   z.strictObject({ op: z.literal("logout") }),
@@ -56,12 +58,16 @@ const command = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("approve"), operationId: z.uuid(), input: aiApprovalInputSchema, review: intakeReviewConfirmationSchema }),
   z.strictObject({ op: z.literal("recoverApproval"), sessionId: id }),
 ]);
-type Command = z.infer<typeof command>;
+type LegacyCommand = z.infer<typeof legacyCommand>;
+const command=z.discriminatedUnion("op",[legacyCommand,mobileDmsV5Command]);
+type Command=LegacyCommand|MobileDmsV5Command;
+const legacyOps=new Set<string>(legacyCommand.options.map(schema=>schema.shape.op.value));
+const isV5=(v:Command):v is MobileDmsV5Command=>!legacyOps.has(v.op);
 
-const headers = { "Cache-Control": "private, no-store", Vary: "Authorization", "X-Content-Type-Options": "nosniff" };
+const headers = { "Cache-Control": "private, no-store", Vary: "Authorization", "X-Content-Type-Options": "nosniff", "Referrer-Policy":"no-referrer" };
 const json = (value: unknown, status = 200) => Response.json(value, { status, headers });
 const ok = (data: unknown) => json({ success: true, data });
-const fail = (error: string, status = 400) => json({ success: false, error }, status);
+const fail = (error: string, status = 400) => json({ success: false, error, code:status===401?"authentication_required":status===403?"permission_denied":status===404?"unavailable":status===429?"rate_limited":status===503?"temporarily_unavailable":"invalid_request" }, status);
 const bearer = (request: Request) => /^Bearer ([\w-]+\.[\w-]+\.[\w-]+)$/i.exec(request.headers.get("Authorization")?.slice(0, 8193) ?? "")?.[1];
 
 async function readCommand(request: Request) {
@@ -74,11 +80,11 @@ async function readCommand(request: Request) {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > 262_144) { await reader.cancel(); return null; }
+      if (size > 262_144) { await reader.cancel(); throw new DmsError(413,"request_limit","The request exceeds 262,144 bytes."); }
       chunks.push(value);
     }
     return command.safeParse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks))));
-  } catch { return null; }
+  } catch (e) {if(e instanceof DmsError)throw e;return null;}
 }
 
 async function signIn(input: Extract<Command, { op: "login" | "refresh" }>) {
@@ -111,6 +117,7 @@ async function dispatch(input: Exclude<Command, { op: "login" | "refresh" }>, to
   const ctx = await getAuthContext();
   if (!ctx.profile) return fail("Your ERP session ended. Sign in again.", 401);
   if (!canUseApplication(ctx)) return fail("ERP access is unavailable for this account.", 403);
+  if(isV5(input))return dispatchMobileDmsV5(input,ctx);
   const allowed = (p: string) => hasPermission(ctx, p) || hasPermission(ctx, "dms.admin");
   const capabilities = {
     view: allowed("dms.documents.view"), upload: allowed("dms.documents.upload"),
@@ -121,7 +128,8 @@ async function dispatch(input: Exclude<Command, { op: "login" | "refresh" }>, to
     const result = await createMobileSupabaseClient().auth.admin.signOut(token, "local");
     return result.error ? fail("Sign-out could not be confirmed.", 503) : ok(null);
   }
-  if (input.op === "profile") return ok(await readMobileProfile(ctx));
+  if (input.op === "profile") return ok({...await readMobileProfile(ctx),dmsContractVersion:"mobile-dms/5.0",
+    dmsFeatures:{details:true,processing:true,comparison:true,requests:true,links:true,packs:true,collections:true,qr:true,...await readDmsFeatureAvailability()}});
   if (["admit", "complete", "scopes", "start"].includes(input.op) && !capabilities.upload) return fail("Upload permission required.", 403);
   if (["uploads", "intake", "intakeFile", "types", "fields"].includes(input.op) && !capabilities.upload && !capabilities.review && !capabilities.view) {
     return fail("DMS permission required.", 403);
@@ -284,11 +292,18 @@ export async function POST(request: Request) {
     if (!token) return fail("Sign in with your ERP account.", 401);
     const data = parsed.data;
     return await withMobileToken(token, () => dispatch(data, token));
-  } catch (error) { return error instanceof MobileDmsError ? fail(error.message,error.status) : fail("Mobile DMS is temporarily unavailable. Retry the same request.", 503); }
+  } catch (error) { if(error instanceof DmsError)return dmsErrorResponse(error);return error instanceof MobileDmsError ? fail(error.message,error.status) : fail("Mobile DMS is temporarily unavailable. Retry the same request.", 503); }
 }
 
 export async function GET(request: NextRequest) {
   const token = bearer(request);
   if (!token) return fail("Sign in with your ERP account.", 401);
-  return withMobileToken(token, () => deliverDocument(request));
+  return withMobileToken(token, async () => {
+    try {
+      const ctx=await getAuthContext();
+      if(!ctx.profile)return fail("Sign in with your ERP account.",401);
+      if(!canUseApplication(ctx))return fail("ERP access is unavailable for this account.",403);
+      return await deliverMobileDmsV5File(request,ctx);
+    } catch(error){return dmsErrorResponse(error);}
+  });
 }

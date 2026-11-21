@@ -34,3 +34,7 @@
 /tests/remediation/f06/n02-browser-resource-check.mjs text eol=lf
 /tests/remediation/f06/n02-browser-authoring.test.ts text eol=lf
 /tests/remediation/f06/dms-destination-fixed-runtime-acl.mjs text eol=lf
+/supabase/migrations/20261121024943_mobile_dms_requests_and_receipts.sql text eol=lf
+/supabase/migrations/20261121025434_mobile_dms_authenticated_shares.sql text eol=lf
+/supabase/migrations/20261121025537_mobile_dms_personal_collections.sql text eol=lf
+/supabase/migrations/20261121030521_dms_question_source_provenance.sql text eol=lf

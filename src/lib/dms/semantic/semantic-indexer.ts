@@ -14,6 +14,7 @@
  *   - Max 200 chunks per document enforced by chunk builder.
  */
 
+import {captureQuestionParents,publishQuestionArtifact,questionTextHash} from "@/server/dms-question-publication";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { buildSemanticChunkDrafts } from "./chunk-builder";
@@ -200,6 +201,7 @@ export async function indexDmsDocumentSemantically(
     }
 
     // ── Build new chunks ───────────────────────────────────────────────────────
+    const questionParent=await captureQuestionParents(documentId,[{kind:"content_text",artifactId:String(documentId),artifactContentHash:questionTextHash(row.content_text??"")}]);
     const drafts = buildSemanticChunkDrafts({
       documentId,
       contentId:   row.id,
@@ -237,9 +239,8 @@ export async function indexDmsDocumentSemantically(
       created_by:       0,  // system context
     }));
 
-    const { error: insertErr } = await db
-      .from("dms_document_content_chunks")
-      .insert(insertRows);
+    const insertQuery=db.from("dms_document_content_chunks").insert(insertRows);
+    const {data: inserted,error:insertErr}=await (questionParent?insertQuery.select("id,chunk_index,chunk_hash"):insertQuery);
 
     if (insertErr) {
       logger.warn("[semantic-indexer] chunk insert failed", {
@@ -254,6 +255,12 @@ export async function indexDmsDocumentSemantically(
       };
     }
 
+    if(questionParent&&Array.isArray(inserted)){
+      for(const row of inserted as {id:number;chunk_index:number;chunk_hash:string}[]){
+        const draft=drafts.find(d=>d.chunkIndex===row.chunk_index);
+        if(draft&&questionTextHash(draft.chunkText)===row.chunk_hash)await publishQuestionArtifact({kind:"chunk_text",documentId,artifactId:String(row.id),artifactContentHash:row.chunk_hash,...questionParent});
+      }
+    }
     logger.info("[semantic-indexer] chunks created", {
       documentId,
       source,

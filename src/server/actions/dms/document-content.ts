@@ -1,4 +1,5 @@
 "use server";
+import {captureQuestionParents,publishVerifiedContent,withVerifiedContent,questionTextHash} from "@/server/dms-question-publication";
 
 /**
  * DMS 12.1 — Document Content Server Actions
@@ -138,6 +139,7 @@ export async function writeDocumentContentTextSystem(params: {
       return { success: false, charCount: 0, isTruncated, error: upsertError.message };
     }
 
+    await publishVerifiedContent(params.documentId,hash);
     await logAudit({
       module_code: "DMS",
       entity_name: "dms_document_content",
@@ -248,12 +250,13 @@ export async function resyncDocumentContentText(
       )
       .join("");
 
-    const result = await writeDocumentContentTextSystem({
+    const parents=await captureQuestionParents(documentId,usableFiles.map(f=>({kind:"file_ocr",artifactId:String(f.id),artifactContentHash:questionTextHash(f.ocr_text as string)})));
+    const result = await withVerifiedContent(documentId,sha256Text(capDmsContentText(consolidatedText).text),parents,()=>writeDocumentContentTextSystem({
       documentId,
       text: consolidatedText,
       source: "system_resync",
-      performedBy: ctx.profile.id as number,
-    });
+      performedBy: ctx.profile!.id as number,
+    }));
 
     if (!result.success) return { success: false, error: result.error };
 

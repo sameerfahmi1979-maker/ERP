@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "net.algt.mobiledms",
+      "sha256_cert_fingerprints": [
+        "9A:31:31:F6:46:42:48:68:95:9A:99:C1:E1:F2:5F:F0:0C:52:F7:B6:04:6D:D5:83:77:DD:93:30:CC:CC:B2:34"
+      ]
+    }
+  }
+]

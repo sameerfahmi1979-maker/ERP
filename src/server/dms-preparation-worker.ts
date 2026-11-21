@@ -23,7 +23,7 @@ const receivedAnalysisReceipt = analysisReceipt.omit({ output: true }).extend({
 });
 const storedAnalysisReceipt = z.union([analysisReceipt, receivedAnalysisReceipt]);
 const safePreparationCodes = new Set<string>([...structuredFailureCodes, "quality_evaluation_held", "preparation_outcome_unconfirmed", "source_changed", "database_error"]);
-const ocrReceipt = z.strictObject({ text: z.string().max(100000), provider: z.string(), model: z.string().nullable(), method: z.string(), pageCount: z.number().int().positive().nullable(), sha256: z.string().regex(/^[a-f0-9]{64}$/) });
+const ocrReceipt = z.strictObject({ text: z.string().max(100000), provider: z.string(), model: z.string().nullable(), method: z.string(), pageCount: z.number().int().positive().nullable(), fileId:z.number().int().positive().optional(),versionId:z.number().int().positive().optional(),artifactContentHash:z.string().regex(/^[a-f0-9]{64}$/).optional(), sha256: z.string().regex(/^[a-f0-9]{64}$/) });
 const targetSchema = z.strictObject({ documentTypeId: z.number().int().positive(), typeCode: z.string(), typeName: z.string(), categoryId: z.number().int().positive(), categoryName: z.string().nullable(),
   profile: preparationSnapshotSchema.shape.profile, profileHash: preparationSnapshotSchema.shape.profileHash, schemaHash: preparationSnapshotSchema.shape.profileHash, fields: preparationSnapshotSchema.shape.fields, canApply: z.boolean(), holdReason: z.string().nullable() });
 
@@ -76,7 +76,8 @@ async function prepareDocument(documentId: number, claim: NonNullable<ReturnType
             featureFlags: { dmsOcr: true, dmsOcrRouter: true, dmsOcrAzure: false, dmsOcrGptVisionFallback: enabled.get("DMS_OCR_GPT_VISION_FALLBACK") === true },
             azureProvider: null, gptProvider: provider, forceVision: false }));
           if (!result.text.trim()) throw Error("source_text_unavailable");
-          return { text: result.text.slice(0, 100000), provider: result.providerCode, model: result.model, method: result.method, pageCount: result.pageCount ?? null, sha256: verified.proof.sha256 };
+          const text=result.text.slice(0,100000);
+          return { text,fileId:file.id,versionId:file.versionId,artifactContentHash:createHash("sha256").update(text,"utf8").digest("hex"), provider: result.providerCode, model: result.model, method: result.method, pageCount: result.pageCount ?? null, sha256: verified.proof.sha256 };
         });
         if (extracted.sha256 !== file.sha256) throw Error("source_fingerprint_changed");
         file.text = extracted.text;

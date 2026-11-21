@@ -29,5 +29,5 @@ export function releaseResponse(request: NextRequest): NextResponse | null {
 
 /** Preserve previous refresh exclusions only after the maintenance gate runs. */
 export function skipsSessionRefresh(pathname: string): boolean {
-  return pathname === STARTUP_HEALTH_PATH || pathname === "/api/mobile/dms/v1" || pathname === "/api/mobile/hr/v1" || /^\/(?:_next\/static|_next\/image|favicon\.ico)/.test(pathname) || /\.(?:svg|png|jpg|jpeg|gif|webp)$/.test(pathname);
+  return pathname === STARTUP_HEALTH_PATH || pathname === "/api/mobile/dms/v1" || pathname === "/api/mobile/dms/shared" || pathname === "/.well-known/assetlinks.json" || pathname === "/api/mobile/hr/v1" || /^\/(?:_next\/static|_next\/image|favicon\.ico)/.test(pathname) || /\.(?:svg|png|jpg|jpeg|gif|webp)$/.test(pathname);
 }

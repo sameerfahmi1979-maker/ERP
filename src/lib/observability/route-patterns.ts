@@ -212,6 +212,7 @@ export const APPLICATION_ROUTE_PATTERNS = [
   "/api/internal/process-email-queue",
   "/api/internal/process-notification-events",
   "/api/internal/report-schedules/process",
+  "/api/mobile/dms/shared",
   "/api/mobile/dms/v1",
   "/api/mobile/hr/v1",
   "/api/mobile/hr/v1/issued-file",

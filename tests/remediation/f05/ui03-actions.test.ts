@@ -1,4 +1,5 @@
 import {beforeEach,expect,it,vi} from 'vitest';
+import {syntheticAuthContext} from '../../performance/fixtures/auth-context';
 const m=vi.hoisted(()=>({auth:vi.fn(),client:vi.fn(),admin:vi.fn(),permit:vi.fn(),delivery:vi.fn(),audit:vi.fn(),cache:vi.fn()}));
 vi.mock('server-only',()=>({}));
 vi.mock('@/lib/rbac/check',()=>({getAuthContext:m.auth,hasPermission:m.permit,hasGlobalPermission:m.permit,hasPermissionInScope:m.permit}));
@@ -44,16 +45,46 @@ it('stale client revision is rejected before a schedule update',async()=>{
  const db=database([{data:{id:12,created_by:5,owner_company_id:1,updated_at:'2026-10-01T01:00:00Z',recipient_to:['qa@example.invalid'],recipient_cc:[]}},{data:null,error:{code:'P0409'}}]);m.client.mockResolvedValue(db);
  expect(await updateReportSchedule({id:12,requestId:input.requestId,expectedRevision:'1',scheduleName:'New'})).toMatchObject({success:false,error:expect.stringContaining('changed after')});expect(db.writes).toHaveLength(0);expect(db.rpcs).toHaveLength(1);
 });
-it.each([[true,activateNotificationTemplate],[false,deactivateNotificationTemplate]] as const)('template active state %s is actually written',async(active,action)=>{
- const db=database([{data:{id:7}}]);m.client.mockResolvedValue(db);expect((await action(7)).success).toBe(true);expect(db.writes[0]).toMatchObject({is_active:active});
+const templateEditorPermissions = ['notifications.templates.view', 'notifications.templates.manage'];
+const templateEditor = syntheticAuthContext(templateEditorPermissions, { id: 5 });
+it.each([[true, activateNotificationTemplate], [false, deactivateNotificationTemplate]] as const)('global template editor writes active state %s', async (active, action) => {
+ m.auth.mockResolvedValue(templateEditor);
+ const db = database([{ data: { id: 7 } }]);
+ m.client.mockResolvedValue(db);
+ expect(await action(7)).toEqual({ success: true });
+ expect(db.writes).toEqual([expect.objectContaining({ is_active: active, updated_by: 5 })]);
 });
-it('template zero-row update and database errors never report success',async()=>{
- for(const response of [{data:null},{data:null,error:{message:'private'}}]){m.client.mockResolvedValue(database([response]));expect((await deactivateNotificationTemplate(7)).success).toBe(false);}
+it.each([{ data: null }, { data: null, error: { message: 'private' } }])('an authorized template update requires a returned row (%j)', async response => {
+ m.auth.mockResolvedValue(templateEditor);
+ const db = database([response]);
+ m.client.mockResolvedValue(db);
+ expect(await deactivateNotificationTemplate(7)).toMatchObject({ success: false, error: expect.stringContaining('was not updated') });
+ expect(db.writes).toEqual([expect.objectContaining({ is_active: false })]);
  expect(m.audit).not.toHaveBeenCalled();
 });
-it('template mutation requires permission and strict validated fields',async()=>{
- const db=database([]);m.client.mockResolvedValue(db);m.permit.mockReturnValue(false);expect((await activateNotificationTemplate(7)).success).toBe(false);m.permit.mockReturnValue(true);
- expect((await updateNotificationTemplate(7,{unexpected:'field'} as never)).success).toBe(false);expect((await activateNotificationTemplate(-1)).success).toBe(false);expect(db.writes).toHaveLength(0);
+it.each([
+ ['global view-only', syntheticAuthContext(['notifications.templates.view'])],
+ ['global manage-only', syntheticAuthContext(['notifications.templates.manage'])],
+ ['branch editor', {
+  ...syntheticAuthContext(templateEditorPermissions, { id: 5, owner_company_id: 1, branch_id: 2 }),
+  globalPermissionCodes: [],
+  roleAssignments: [{ roleId: 7, roleCode: 'template_editor', ownerCompanyId: 1, branchId: 2, permissionCodes: templateEditorPermissions }],
+ }],
+])('denies template activation for a %s actor', async (_label, actor) => {
+ m.auth.mockResolvedValue(actor);
+ const db = database([{ data: { id: 7 } }]);
+ m.client.mockResolvedValue(db);
+ expect(await activateNotificationTemplate(7)).toEqual({ success: false, error: 'Permission denied' });
+ expect(db.writes).toHaveLength(0);
+ expect(m.audit).not.toHaveBeenCalled();
+});
+it('an authorized template editor cannot write unrecognized fields or invalid IDs', async () => {
+ m.auth.mockResolvedValue(templateEditor);
+ const db = database([{ data: { id: 7 } }]);
+ m.client.mockResolvedValue(db);
+ expect(await updateNotificationTemplate(7, { unexpected: 'field' } as never)).toMatchObject({ success: false });
+ expect(await activateNotificationTemplate(-1)).toMatchObject({ success: false });
+ expect(db.writes).toHaveLength(0);
 });
 it('attempt history rejects unauthorized users before creating an admin client',async()=>{
  m.delivery.mockImplementation(()=>{throw Error('denied');});expect((await getEmailAttemptHistory(12)).success).toBe(false);expect(m.admin).not.toHaveBeenCalled();

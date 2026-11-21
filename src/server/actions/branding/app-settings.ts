@@ -18,6 +18,9 @@ import {
 } from "@/lib/branding";
 
 type ActionResult<T = unknown> = { success: boolean; data?: T; error?: string };
+type ActiveAppBranding =
+  | { state: "configured"; data: AppBrandingSettings }
+  | { state: "setup_required" | "inactive" | "unavailable" };
 
 const updateAppBrandingSettingsSchema = z.object({
   id: z.number().int().positive(),
@@ -47,31 +50,25 @@ const updateAppBrandingSettingsSchema = z.object({
   is_active: z.boolean().optional(),
 }).strict();
 
-export async function getActiveAppBrandingSettings(): Promise<
-  ActionResult<AppBrandingSettings>
-> {
+export async function getActiveAppBrandingSettings(): Promise<ActiveAppBranding> {
   try {
     const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canViewAppBranding(ctx)) {
-      return { success: false, error: "Permission denied: requires branding.app.view" };
-    }
+    if (!ctx.profile || !canViewAppBranding(ctx)) return { state: "unavailable" };
 
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("erp_app_branding_settings")
       .select("*")
       .eq("settings_code", DEFAULT_APP_BRANDING_SETTINGS_CODE)
-      .eq("is_active", true)
       .is("deleted_at", null)
       .maybeSingle();
 
-    if (error) return { success: false, error: "App branding settings could not be loaded. Retry before making changes." };
-    if (!data) return { success: false, error: "Active app branding settings not found" };
-
-    return { success: true, data: data as AppBrandingSettings };
+    if (error || (data && typeof data.is_active !== "boolean")) return { state: "unavailable" };
+    if (!data) return { state: "setup_required" };
+    if (!data.is_active) return { state: "inactive" };
+    return { state: "configured", data: data as AppBrandingSettings };
   } catch {
-    return { success: false, error: "App branding settings could not be loaded." };
+    return { state: "unavailable" };
   }
 }
 

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
-import { DollarSign, Landmark, PauseCircle } from "lucide-react";
+import { Clock, DollarSign, FileText, Landmark, PauseCircle } from "lucide-react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { HrReportsMenu } from "@/components/erp/hr-reports-menu";
@@ -49,6 +49,71 @@ export default async function HrPayrollHubPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {authContext.permissionCodes.includes("hr.payroll.view") &&
+          (authContext.permissionCodes.includes("hr.payroll.run.submit") || authContext.permissionCodes.includes("hr.payroll.run.approve")) &&
+          <Link href="/admin/hr/payroll/approvals">
+            <Card className="h-full transition-colors hover:bg-accent/50">
+              <CardHeader>
+                <div className="flex items-center gap-2"><DollarSign className="h-5 w-5 text-primary" /><CardTitle>Payroll approvals</CardTitle></div>
+                <CardDescription>Submit or decide an exact monthly payroll version.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>}
+        {authContext.permissionCodes.includes("hr.payroll.view") &&
+          (authContext.permissionCodes.includes("hr.payroll.wps.issue") || authContext.permissionCodes.includes("hr.payroll.payment.reconcile")) &&
+          <Link href="/admin/hr/payroll/settlement">
+            <Card className="h-full transition-colors hover:bg-accent/50">
+              <CardHeader>
+                <div className="flex items-center gap-2"><Landmark className="h-5 w-5 text-primary" /><CardTitle>WPS &amp; payments</CardTitle></div>
+                <CardDescription>Prepare approved salary files and reconcile employee payments.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>}
+        {authContext.permissionCodes.includes("hr.payroll.view") && authContext.permissionCodes.includes("hr.payroll.payslip.view") &&
+          <Link href="/admin/hr/payroll/payslips">
+            <Card className="h-full transition-colors hover:bg-accent/50">
+              <CardHeader>
+                <div className="flex items-center gap-2"><FileText className="h-5 w-5 text-primary" /><CardTitle>Payslips</CardTitle></div>
+                <CardDescription>Issue and retrieve original payslips for reconciled payroll.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>}
+        {authContext.permissionCodes.includes("hr.payroll.run.manage") && authContext.permissionCodes.includes("hr.payroll.view") &&
+          <Link href="/admin/hr/payroll/runs">
+            <Card className="h-full transition-colors hover:bg-accent/50">
+              <CardHeader>
+                <div className="flex items-center gap-2"><DollarSign className="h-5 w-5 text-primary" /><CardTitle>Payroll runs</CardTitle></div>
+                <CardDescription>Calculate monthly drafts and review each employee’s pay lines.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>}
+        {authContext.permissionCodes.includes("hr.payroll.workshop.review") && authContext.permissionCodes.includes("hr.payroll.view") &&
+          <Link href="/admin/hr/payroll/workshop">
+            <Card className="h-full transition-colors hover:bg-accent/50">
+              <CardHeader>
+                <div className="flex items-center gap-2"><DollarSign className="h-5 w-5 text-primary" /><CardTitle>Workshop overtime</CardTitle></div>
+                <CardDescription>Review eligible time and linked corrections by payroll cutoff.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>}
+        {authContext.roleAssignments?.some(a=>a.ownerCompanyId&&a.permissionCodes.includes("hr.payroll.trip_allowance.review"))&&
+          <Link href="/admin/hr/payroll/trip-allowances">
+            <Card className="h-full hover:border-primary/50">
+              <CardHeader>
+                <div className="flex items-center gap-2"><DollarSign className="h-5 w-5 text-primary" /><CardTitle>Trip allowances</CardTitle></div>
+                <CardDescription>Review loaded legs, delivery proof and linked adjustments.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>}
+        {authContext.roleAssignments?.some(a => a.ownerCompanyId && a.permissionCodes.includes("hr.payroll.fleet_time.review")) &&
+          <Link href="/admin/hr/payroll/fleet-time">
+            <Card className="h-full hover:border-primary/50">
+              <CardHeader>
+                <div className="flex items-center gap-2"><Clock className="h-5 w-5 text-primary" /><CardTitle>Fleet overtime</CardTitle></div>
+                <CardDescription>Review verified Fleet work and its original pay basis.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>}
         {PAYROLL_SECTIONS.map((section) => {
           const canAccess =
             hasPermission(authContext, section.permission) ||

@@ -3,7 +3,6 @@
 import { useState, useCallback } from "react";
 import { RefreshCw, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import type { ObservabilityConfig, ObservabilityFilters } from "@/server/actions/dms/ai-observability";
 import { AiObservabilityFilters } from "./ai-observability-filters";
 import { AiUsageOverviewCards } from "./sections/ai-usage-overview-cards";
@@ -43,19 +42,16 @@ export function DmsAiObservabilityPageClient({ config }: Props) {
 
   if (!config.featureFlagEnabled) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4 text-center px-8">
+      <div role="status" className="flex flex-col items-center justify-center min-h-[400px] gap-4 text-center px-8">
         <div className="rounded-full bg-muted p-4">
           <AlertTriangle className="h-8 w-8 text-muted-foreground" />
         </div>
         <div>
-          <h1 className="text-lg font-semibold mb-1">DMS AI Observability is not enabled</h1>
+          <h1 className="text-lg font-semibold mb-1">DMS AI Observability is disabled</h1>
           <p className="text-muted-foreground text-sm max-w-md">
-            The <strong>DMS_AI_OBSERVABILITY</strong> feature flag is currently disabled.
-            Enable it in Administration → Settings → AI Settings (Feature Flags) to access
-            the AI usage, token, cost, and pipeline observability dashboard.
+            An administrator can review this feature in AI Settings.
           </p>
         </div>
-        <Badge variant="secondary" className="text-xs">Feature Flag: DMS_AI_OBSERVABILITY = false</Badge>
       </div>
     );
   }

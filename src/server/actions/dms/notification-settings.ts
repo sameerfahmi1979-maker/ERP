@@ -1,7 +1,8 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { getAuthContext, hasGlobalPermission, isGlobalAdmin } from "@/lib/rbac/check";
+import { getAuthContext } from "@/lib/rbac/check";
+import { canManageDmsNotificationSettings, canViewDmsNotificationSettings } from "@/lib/notifications/access";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
@@ -55,25 +56,6 @@ export type SaveDmsNotificationSettingsInput = z.infer<typeof settingsSchema>;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function canManage(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
-  return (
-    isGlobalAdmin(ctx) ||
-    hasGlobalPermission(ctx, "dms.admin") ||
-    hasGlobalPermission(ctx, "dms.notifications.manage") ||
-    hasGlobalPermission(ctx, "dms.notifications.settings.manage")
-  );
-}
-
-function canView(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
-  return (
-    isGlobalAdmin(ctx) ||
-    hasGlobalPermission(ctx, "dms.admin") ||
-    hasGlobalPermission(ctx, "dms.notifications.manage") ||
-    hasGlobalPermission(ctx, "dms.notifications.view") ||
-    hasGlobalPermission(ctx, "dms.notifications.settings.manage")
-  );
-}
-
 function rowToSettings(r: Record<string, unknown>): DmsNotificationSettingsRow {
   return {
     id: r.id as number,
@@ -101,7 +83,7 @@ export async function getDmsNotificationSettings(): Promise<
     const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canView(ctx)) return { success: false, error: "Permission denied" };
+    if (!canViewDmsNotificationSettings(ctx)) return { success: false, error: "Permission denied" };
 
     const { data, error } = await supabase
       .from("dms_notification_settings")
@@ -109,27 +91,7 @@ export async function getDmsNotificationSettings(): Promise<
       .eq("id", 1)
       .single();
 
-    if (error) {
-      // Row may not exist yet — return safe defaults
-      return {
-        success: true,
-        data: {
-          id: 1,
-          is_enabled: true,
-          email_enabled: false,
-          in_app_enabled: true,
-          reminder_days_before: [90, 60, 30, 14, 7, 1, 0],
-          include_document_owner: true,
-          include_document_creator: true,
-          recipient_roles: [],
-          recipient_user_ids: [],
-          config_name: "Default DMS Notification Settings",
-          notes: null,
-          updated_by: null,
-          updated_at: new Date().toISOString(),
-        },
-      };
-    }
+    if (error || !data) return { success: false, error: "DMS notification settings could not be verified." };
 
     return { success: true, data: rowToSettings(data as Record<string, unknown>) };
   } catch (e) {
@@ -146,7 +108,7 @@ export async function saveDmsNotificationSettings(
     const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canManage(ctx)) return { success: false, error: "Permission denied — dms.admin or dms.notifications.manage required" };
+    if (!canManageDmsNotificationSettings(ctx)) return { success: false, error: "Permission denied. Global DMS notification management is required." };
 
     const parsed = settingsSchema.safeParse(input);
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
@@ -188,26 +150,6 @@ export async function saveDmsNotificationSettings(
   }
 }
 
-// ── getDmsNotificationSettingsPublic ─────────────────────────────────────────
-// Used by the scheduler / bridge to read recipient config without auth context.
-// MUST only be called from server-side scheduler code (Edge Function or server action).
-
-export async function getDmsNotificationSettingsForScheduler(): Promise<DmsNotificationSettingsRow | null> {
-  try {
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("dms_notification_settings")
-      .select("*")
-      .eq("id", 1)
-      .single();
-
-    if (error || !data) return null;
-    return rowToSettings(data as Record<string, unknown>);
-  } catch {
-    return null;
-  }
-}
-
 // ── Lookup options for the settings UI ───────────────────────────────────────
 
 export type RoleOption = { role_code: string; role_name: string };
@@ -220,7 +162,7 @@ export async function getDmsNotificationRecipientOptions(): Promise<
     const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canView(ctx)) return { success: false, error: "Permission denied" };
+    if (!canManageDmsNotificationSettings(ctx)) return { success: false, error: "Permission denied" };
 
     const [rolesResult, usersResult] = await Promise.all([
       supabase

@@ -55,6 +55,16 @@ it("detail failures expose an explicit retry rather than assuming no redaction o
   expect(state.read).toHaveBeenCalledTimes(2); expect(screen.queryByText("No redaction applied.")).toBeNull(); expect(state.delivery).not.toHaveBeenCalled();
   state.read.mockResolvedValue(detail()); fireEvent.click(screen.getByRole("button", {name: "Retry run details"})); await screen.findByText("Synthetic detail 3");
 });
+it("a missing or scoped-out detail keeps the admitted list and offers no service retry", async () => {
+  state.read.mockResolvedValue({success: true, data: {mode: "detail", record: null}});
+  mount();
+  fireEvent.click(screen.getByRole("button", {name: "View run PERF-RUN-3 details"}));
+  await screen.findByText("This report run is no longer available.");
+  expect(screen.queryByRole("button", {name: "Retry run details"})).toBeNull();
+  expect(screen.getByText("1 runs")).toBeTruthy();
+  expect(state.read).toHaveBeenCalledTimes(1);
+  expect(state.delivery).not.toHaveBeenCalled();
+});
 it.each([401, 403])("detail denial %s masks warm rows, destroys the detail mount, clears caches and never retries", async status => {
   state.read.mockRejectedValue(new ReadError("Denied", status)); const view = mount(); fireEvent.click(screen.getByRole("button", {name: "View run PERF-RUN-3 details"}));
   await screen.findByText(/Your access to report history could not be verified/); expect(state.read).toHaveBeenCalledTimes(1); expect(screen.queryByText("Synthetic report 3")).toBeNull(); expect(screen.queryByRole("dialog")).toBeNull();

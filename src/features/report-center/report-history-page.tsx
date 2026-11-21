@@ -239,6 +239,7 @@ function ReportHistoryView(props: ReportHistoryProps & {identity: string}) {
             </DialogTitle>
           </DialogHeader>
           {read.detailBusy && <div role="status">Loading run details...</div>}
+          {read.detailUnavailable && <div role="status">This report run is no longer available.</div>}
           {!read.detailBusy && !!read.detailError && <div role="alert">Could not load complete run details. <Button onClick={() => void read.retryDetail()}>Retry run details</Button></div>}
           {detailRun && <RunDetailPanel key={`${props.identity}:${detailRun.id}`} run={detailRun} />}
         </DialogContent>

@@ -113,7 +113,9 @@ it("failed refresh masks salary/count, retries once, and permits a manual retry"
 it.each([401, 403])("HTTP %s permanently retires this principal's private data without retry", async status => {
   state.read.mockRejectedValue(new ReadError("Restricted", status)); const view = mount(page("wps", {count: 1})); await ready(); fireEvent.click(screen.getByRole("button", {name: "Refresh records"})); await screen.findByRole("alert");
   expect(state.read).toHaveBeenCalledTimes(1); expect(screen.queryByText("Synthetic payroll employee 1")).toBeNull(); expect(screen.queryByRole("button", {name: "Refresh records"})).toBeNull();
-  expect(view.client.getQueryCache().findAll().some(q => q.queryKey.includes(payrollInquiryIdentity(context)))).toBe(false);
+  await waitFor(() => {
+    expect(view.client.getQueryCache().findAll().some(q => q.queryKey.includes(payrollInquiryIdentity(context)))).toBe(false);
+  });
 });
 it("an out-of-range result preserves count and returns to the last valid page", async () => {
   state.read.mockImplementation((_r, p) => Promise.resolve(response(p, {count: 1}))); mount(page("salary")); await ready(); fireEvent.click(screen.getByRole("button", {name: "Next"}));

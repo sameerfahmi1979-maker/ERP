@@ -3,12 +3,12 @@ import {Button} from "@/components/ui/button";
 import {useCountedTableRead} from "@/hooks/use-counted-table-read";
 import {notificationDeliveryCriteriaSchema,notificationDeliveryPageSchema,notificationDeliveryIdentity,type NotificationDeliveryReadPage} from "@/lib/reads/notification-delivery-schema";
 import type {AuthContext} from "@/lib/rbac/check";
-import {hasPermission} from "@/lib/rbac/scope";
+import {canViewNotificationDeliveryLogs} from "@/lib/notifications/access";
 import {DeliveryLogsTable} from "./delivery-logs-table";
 type Props={authContext:AuthContext;initialPage?:NotificationDeliveryReadPage;initialIdentity?:string;initialUpdatedAt?:number};
 export function DeliveryLogsPageClient(props:Props){const identity=notificationDeliveryIdentity(props.authContext);return <DeliveryView key={identity} {...props} identity={identity}/>;}
 function DeliveryView(props:Props&{identity:string}){
- const allowed=["notifications.logs.view","notifications.admin"].some(c=>hasPermission(props.authContext,c));
+ const allowed=canViewNotificationDeliveryLogs(props.authContext);
  const read=useCountedTableRead({resource:"notification-deliveries",prefix:["notifications","delivery-logs"],identity:props.identity,allowed,seed:props.initialPage,seedIdentity:props.initialIdentity,seedUpdatedAt:props.initialUpdatedAt,defaultSort:[{id:"createdAt",desc:true}],
  parseCriteria:i=>{const p=notificationDeliveryCriteriaSchema.safeParse(i);return p.success?p.data:null;},parsePage:i=>notificationDeliveryPageSchema.parse(i),
  filters:[{id:"status",label:"Status",type:"text"},{id:"deliveryChannel",label:"Channel",type:"select",options:[{value:"email",label:"Email"},{value:"in_app",label:"In-App"}]}]});

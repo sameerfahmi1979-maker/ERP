@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createTabFromRoute, isWorkspaceRoute, safePersistedWorkspaceRoute } from "@/lib/workspace/workspace-route-registry";
 import { getInitialState, persistToStorage, restoreFromStorage, workspaceReducer, MAX_TABS } from "@/lib/workspace/workspace-store";
 import { WorkspaceDraftProvider } from "@/components/workspace/workspace-draft-provider";
+import { canAccessRoute } from "@/lib/rbac/route-access-registry";
 const nav=vi.hoisted(()=>({pathname:"/dashboard",query:"",push:vi.fn(),replace:vi.fn(),warning:vi.fn()}));
 vi.mock("next/navigation",()=>({usePathname:()=>nav.pathname,useSearchParams:()=>new URLSearchParams(nav.query),useRouter:()=>({push:nav.push,replace:nav.replace})}));
 vi.mock("sonner",()=>({toast:{warning:nav.warning}}));
@@ -139,4 +140,67 @@ it("the reducer cannot activate a nonexistent tab or bypass admission through ro
   const active=state.activeTabId;state=workspaceReducer(state,{type:"SET_ACTIVE_TAB",tabId:"unknown"});expect(state.activeTabId).toBe(active);
   for(let i=0;i<MAX_TABS+5;i++){const tab=createTabFromRoute("/admin/hr/employees/record/"+i);state=workspaceReducer(state,{type:"SYNC_ROUTE",route:tab.route,tab});}
   expect(state.tabs.filter(t=>t.closable)).toHaveLength(MAX_TABS);
+});
+it.each([
+  '/admin/hr/actions/final-settlement',
+  '/admin/hr/operations/recoveries',
+  '/admin/hr/operations/workshop-labour',
+  '/admin/hr/operations/workshop-referrals',
+  '/admin/hr/payroll/approvals',
+  '/admin/hr/payroll/fleet-time',
+  '/admin/hr/payroll/payslips',
+  '/admin/hr/payroll/runs',
+  '/admin/hr/payroll/settlement',
+  '/admin/hr/payroll/trip-allowances',
+  '/admin/hr/payroll/workshop',
+  '/admin/operations/work-queues',
+  '/admin/reports/run/HR_WPS_READINESS',
+  '/modules/fleet',
+  '/modules/fleet/42',
+  '/modules/fleet/allowance-rates',
+  '/modules/fleet/allowances',
+  '/modules/fleet/fines',
+  '/modules/fleet/fuel',
+  '/modules/fleet/operations',
+  '/modules/fleet/operations/42',
+  '/modules/fleet/time',
+  '/modules/inventory',
+  '/modules/procurement',
+  '/modules/workshop',
+  '/modules/workshop/job-work',
+  '/modules/workshop/job-work/42',
+])('can restore a work tab for %s without private parameters', route => {
+  const tab = createTabFromRoute(route + '?search=private&token=secret');
+  persistToStorage([tab], tab.id, 'actor-a');
+  expect(restoreFromStorage('actor-a')?.tabs).toEqual([expect.objectContaining({ route })]);
+  expect(restoreFromStorage('actor-b')).toBeNull();
+});
+
+it.each(['/modules/fleet/42/extra', '/modules/fleet/42private', '/modules/finance', '/admin/reports/run/invalid_code/extra', '/dev/auth-debug'])
+('does not persist unapproved work tab paths %s', route => {
+  expect(safePersistedWorkspaceRoute(route)).toBeNull();
+});
+
+it.each([
+  ['/admin/ai/dashboard', 'ai.dashboard.view'],
+  ['/admin/dms/ai-observability', 'dms.ai_observability.view'],
+])('restores %s for a global reader and drops it when that grant becomes scoped', (route, code) => {
+  const tab = createTabFromRoute(route + '?filter=private');
+  expect(safePersistedWorkspaceRoute(tab.route)).toBe(route);
+  const home = createTabFromRoute('/notifications');
+  const showFor = (globalPermissionCodes: string[]) => render(
+    <WorkspaceDraftProvider>
+      <WorkspaceProvider principalId="actor-a" defaultRoute="/notifications"
+        canRestoreRoute={path => canAccessRoute(path, [code], false, globalPermissionCodes)}>
+        <Observe />
+      </WorkspaceProvider>
+    </WorkspaceDraftProvider>,
+  );
+  nav.pathname = '/notifications';
+  persistToStorage([home, tab], tab.id, 'actor-a');
+  const view = showFor([code]);
+  expect(context.state.tabs.map(tab => tab.route)).toContain(route);
+  view.unmount();
+  showFor([]);
+  expect(context.state.tabs.map(tab => tab.route)).not.toContain(route);
 });

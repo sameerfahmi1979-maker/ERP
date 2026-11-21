@@ -50,11 +50,18 @@ const registry = required => ({report_code: 'HR_SOURCE_ONLY', report_name_en: 'S
   report_category: 'HR', document_class: 'A', required_permissions: required, sensitive_profile: 'normal'});
 async function route(context, required = ['hr.employees.view']) {
   const calls = [];
+  const registryReader = load('src/server/reads/report-registry-entry.ts', {
+    'server-only': {},
+    '@/lib/supabase/admin': {createAdminClient: () => db(registry(required), calls)},
+  });
   const mod = load('src/app/(protected)/admin/reports/run/[reportCode]/page.tsx', {
     '@/lib/rbac/check': {getAuthContext: async () => context, hasPermission: scope.hasPermission},
     'next/navigation': {redirect(path) {const e = Error('redirect'); e.redirect = path; throw e;}, notFound() {throw Error('not-found');}},
-    '@/lib/supabase/admin': {createAdminClient: () => db(registry(required), calls)},
+    '@/components/erp/load-error': {LoadError: 'LoadError'},
     '@/features/report-center/report-run-page': {ReportRunPage: 'ReportRunPage'},
+    '@/features/report-center/payroll-finance-report': {PayrollFinanceReport: 'PayrollFinanceReport'},
+    '@/lib/report-center/payroll-finance-contract': load('src/lib/report-center/payroll-finance-contract.ts', {zod: {z}}),
+    '@/server/reads/report-registry-entry': registryReader,
     'react/jsx-runtime': {jsx: (type, props) => ({type, props}), jsxs: (type, props) => ({type, props})},
   });
   try {return {rendered: await mod.default({params: Promise.resolve({reportCode: 'hr_source_only'}), searchParams: Promise.resolve({employee_id: '101'})}), calls};}

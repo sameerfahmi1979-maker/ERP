@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
+import { getAuthContext } from "@/lib/rbac/check";
+import { canManageDmsNotificationSettings } from "@/lib/notifications/access";
 import { getDmsNotificationSettings } from "@/server/actions/dms/notification-settings";
 import { ERPPageHeader } from "@/components/erp/page-header";
+import { LoadError } from "@/components/erp/load-error";
 import { DmsNotificationSettingsClient } from "@/features/dms/notifications/dms-notification-settings-page-client";
 
 export const dynamic = "force-dynamic";
@@ -14,14 +16,7 @@ export const metadata = {
 
 export default async function DmsNotificationSettingsPage() {
   const ctx = await getAuthContext();
-  if (
-    !isGlobalAdmin(ctx) &&
-    !hasPermission(ctx, "dms.admin") &&
-    !hasPermission(ctx, "dms.notifications.manage") &&
-    !hasPermission(ctx, "dms.notifications.settings.manage")
-  ) {
-    redirect("/access-denied");
-  }
+  if (!canManageDmsNotificationSettings(ctx)) redirect("/access-denied");
 
   const result = await getDmsNotificationSettings();
   const settings = result.success ? result.data ?? null : null;
@@ -37,7 +32,8 @@ export default async function DmsNotificationSettingsPage() {
           { label: "Notification Settings" },
         ]}
       />
-      <DmsNotificationSettingsClient initialSettings={settings} />
+      {settings ? <DmsNotificationSettingsClient initialSettings={settings} />
+        : <LoadError title="DMS notification settings" retryHref="/admin/dms/notification-settings" />}
     </div>
   );
 }

@@ -266,7 +266,6 @@ export function DmsRenewalRequestsTable({ filter = {}, canManage = false }: DmsR
           renewalId={completeDialog.renewal.id}
           renewalNo={completeDialog.renewal.renewal_no ?? `#${completeDialog.renewal.id}`}
           documentId={completeDialog.renewal.document_id}
-          documentTypeId={completeDialog.renewal.document?.document_type_id ?? null}
           onSuccess={() => setCompleteDialog(null)}
         />
       )}

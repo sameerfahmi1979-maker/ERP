@@ -43,8 +43,8 @@ export function useReportHistory(props: ReportHistoryProps, identity: string) {
     gcTime: 0, staleTime: 0, retry: retryAuthorizedRead, refetchOnWindowFocus: true,
     queryFn: async ({signal}) => {
       const result = await readJson<{success: true; data: {mode?: unknown; record?: unknown}}>("report-history", {mode: "detail", recordId: selectedId}, signal);
-      const detail = reportHistoryDetailSchema.safeParse(result.data?.record);
-      if (result.data?.mode !== "detail" || !detail.success || detail.data.id !== selectedId) throw Error("Complete report details could not be verified");
+      const detail = reportHistoryDetailSchema.nullable().safeParse(result.data?.record);
+      if (result.data?.mode !== "detail" || !detail.success || (detail.data !== null && detail.data.id !== selectedId)) throw Error("Complete report details could not be verified");
       return detail.data;
     }});
   const denied = !allowed || accessDenied || isDenied(query.error) || isDenied(detailQuery.error);
@@ -72,9 +72,10 @@ export function useReportHistory(props: ReportHistoryProps, identity: string) {
       {id: "run_status", label: "Status", type: "select", options: REPORT_RUN_STATUSES.map(value => ({value, label: value}))},
       {id: "row_count", label: "Rows", type: "number"}, {id: "duration", label: "Duration (ms)", type: "number"}, {id: "started_at", label: "Started (UTC)", type: "date"}],
   };
+  const detail = denied || selectedId === null || detailQuery.isFetching || detailQuery.isError ? undefined : detailQuery.data;
   return {rows: page?.rows ?? [], totalCount: page?.totalCount ?? null, busy, denied, invalid: !safe.success, error: query.error,
     refresh: () => {setSeedRetired(true); return qc.invalidateQueries({queryKey: prefix});}, retry: () => query.refetch(), serverRead,
     selectedId: denied ? null : selectedId, select: (id: number | null) => {if (!denied) setSelectedId(id);},
-    detail: denied || selectedId === null || detailQuery.isFetching || detailQuery.isError ? undefined : detailQuery.data,
+    detail: detail ?? undefined, detailUnavailable: detail === null,
     detailBusy: selectedId !== null && !denied && detailQuery.isFetching, detailError: detailQuery.error, retryDetail: () => detailQuery.refetch()};
 }

@@ -1,5 +1,16 @@
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { canBrowseEmployees } from "@/lib/rbac/employee-access";
+
+const HR_LANDING_ROUTES = [
+  ["hr.actions.view", "/admin/hr/actions/pro"],
+  ["hr.attendance.view", "/admin/hr/time/attendance"],
+  ["hr.recruitment.view", "/admin/hr/recruitment/requisitions"],
+  ["hr.recruitment.manage", "/admin/hr/recruitment/requisitions"],
+  ["hr.leave.view", "/admin/hr/time/leave"],
+  ["hr.eos.view", "/admin/hr/actions/eos"],
+  ["hr.assignments.view", "/admin/hr/operations/assignments"],
+] as const;
 
 /**
  * ERP USERS.4 — HR module entry point.
@@ -9,32 +20,17 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 export default async function HrIndexPage() {
   const ctx = await getAuthContext();
 
-  // Redirect to the most appropriate HR page for this user
   if (hasPermission(ctx, "hr.dashboard.view")) {
     redirect("/admin/hr/dashboard");
   }
 
-  if (hasPermission(ctx, "hr.employees.view")) {
+  if (canBrowseEmployees(ctx)) {
     redirect("/admin/hr/employees");
   }
 
-  if (hasPermission(ctx, "hr.actions.view") || hasPermission(ctx, "hr.actions.manage")) {
-    redirect("/admin/hr/actions/pro");
+  for (const [permission, route] of HR_LANDING_ROUTES) {
+    if (hasPermission(ctx, permission)) redirect(route);
   }
 
-  if (hasPermission(ctx, "hr.attendance.view") || hasPermission(ctx, "hr.attendance.manage")) {
-    redirect("/admin/hr/time/attendance");
-  }
-
-  if (hasPermission(ctx, "hr.recruitment.view") || hasPermission(ctx, "hr.recruitment.manage")) {
-    redirect("/admin/hr/recruitment/requisitions");
-  }
-
-  // User has some HR access but not to specific sub-modules — send to employees as safe fallback
-  if (ctx.roleCodes.includes("hr_manager") || ctx.roleCodes.includes("hr_admin")) {
-    redirect("/admin/hr/employees");
-  }
-
-  // No HR access at all
   redirect("/access-denied");
 }

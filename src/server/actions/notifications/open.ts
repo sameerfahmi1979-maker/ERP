@@ -2,7 +2,7 @@
 import {z} from 'zod';
 import {createClient} from '@/lib/supabase/server';
 import {getAuthContext,canUseApplication} from '@/lib/rbac/check';
-const target=z.string().regex(/^(?:\/dms\/documents\/record\/[1-9]\d*|\/admin\/hr\/(?:employees|recruitment\/candidates)\/record\/[1-9]\d*(?:\?task=(?:leave|attendance|salary|payroll-hold|employee-request|identity|insurance|interview|offer|onboarding)&task_id=[1-9]\d*)?|\/admin\/reports\/templates\/governance\?template_id=[1-9]\d*|\/dms\/review-queue\?item_id=[1-9]\d*)$/);
+const target=z.string().regex(/^(?:\/modules\/fleet\/[1-9]\d*|\/dms\/documents\/record\/[1-9]\d*|\/admin\/hr\/(?:employees|recruitment\/candidates)\/record\/[1-9]\d*(?:\?task=(?:leave|attendance|salary|payroll-hold|employee-request|identity|insurance|interview|offer|onboarding)&task_id=[1-9]\d*)?|\/admin\/reports\/templates\/governance\?template_id=[1-9]\d*|\/dms\/review-queue\?item_id=[1-9]\d*)$/);
 const receipt=z.object({id:z.number().int().positive(),token:z.uuid(),path:target}).strict();
 export async function prepareNotificationOpen(id:number){
  try{

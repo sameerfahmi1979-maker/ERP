@@ -1,7 +1,8 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext } from "@/lib/rbac/check";
+import { canManageNotificationTemplates } from "@/lib/notifications/access";
 import { revalidatePath } from "next/cache";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
@@ -68,12 +69,9 @@ import { renderTemplate } from "@/lib/notifications/template-renderer";
 
 export async function getNotificationTemplates(): Promise<ActionResult<NotificationTemplateRow[]>> {
   try {
-    const supabase = await createClient();
     const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!hasPermission(ctx, "notifications.templates.view") && !hasPermission(ctx, "notifications.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
+    if (!canManageNotificationTemplates(ctx)) return { success: false, error: "Permission denied" };
+    const supabase = await createClient();
     const { data, error } = await supabase
       .from("erp_notification_templates")
       .select("*")
@@ -90,13 +88,13 @@ export async function getNotificationTemplates(): Promise<ActionResult<Notificat
 
 export async function getNotificationTemplate(idOrCode: number | string): Promise<ActionResult<NotificationTemplateRow>> {
   try {
-    const supabase = await createClient();
     const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
+    if (!canManageNotificationTemplates(ctx)) return { success: false, error: "Permission denied" };
+    const supabase = await createClient();
 
     const q = typeof idOrCode === "number"
-      ? supabase.from("erp_notification_templates").select("*").eq("id", idOrCode).single()
-      : supabase.from("erp_notification_templates").select("*").eq("template_code", idOrCode).single();
+      ? supabase.from("erp_notification_templates").select("*").eq("id", idOrCode).is("deleted_at", null).single()
+      : supabase.from("erp_notification_templates").select("*").eq("template_code", idOrCode).is("deleted_at", null).single();
 
     const { data, error } = await q;
     if (error || !data) return { success: false, error: "Template not found" };
@@ -110,12 +108,9 @@ export async function createNotificationTemplate(
   input: z.infer<typeof templateSchema>
 ): Promise<ActionResult<{ id: number }>> {
   try {
-    const supabase = await createClient();
     const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!hasPermission(ctx, "notifications.templates.manage") && !hasPermission(ctx, "notifications.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
+    if (!ctx.profile || !canManageNotificationTemplates(ctx)) return { success: false, error: "Permission denied" };
+    const supabase = await createClient();
 
     const parsed = templateSchema.safeParse(input);
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
@@ -142,12 +137,9 @@ export async function updateNotificationTemplate(
   input: Partial<z.infer<typeof templateSchema>> & { is_active?: boolean }
 ): Promise<ActionResult> {
   try {
-    const supabase = await createClient();
     const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!hasPermission(ctx, "notifications.templates.manage") && !hasPermission(ctx, "notifications.admin")) {
-      return { success: false, error: "Permission denied" };
-    }
+    if (!ctx.profile || !canManageNotificationTemplates(ctx)) return { success: false, error: "Permission denied" };
+    const supabase = await createClient();
 
     const parsed = templateSchema.partial().extend({is_active:z.boolean().optional()}).strict().safeParse(input);
     if (!Number.isSafeInteger(id) || id <= 0 || !parsed.success) return {success:false,error:"Check the template values before saving."};

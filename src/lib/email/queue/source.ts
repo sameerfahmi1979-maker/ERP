@@ -114,6 +114,10 @@ export async function prepareQueueMessage(q: DeliveryClaim, signal: AbortSignal)
         const { prepareScheduleMessage } = await import("@/lib/report-center/schedule-execution");
         return prepareScheduleMessage(q, signal);
     }
+    if (q.source_module === "HR_PAYSLIP") {
+        const { preparePayslipEmail } = await import("@/lib/hr/payroll/payslip-delivery");
+        return preparePayslipEmail(q, signal);
+    }
     if (q.source_module === "REPORTS")
         throw new DeliveryPolicyError(); // no legacy attachment bypass
     if (q.source_module === "DMS")

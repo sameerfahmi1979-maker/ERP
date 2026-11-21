@@ -8,6 +8,12 @@ import { canUseHrChild } from "@/lib/hr/child-authority";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clock } from "lucide-react";
 import {readAttendanceEntryOpening} from '@/server/actions/hr/attendance-workbench';
+import { readFleetAttendanceDrafts } from "@/server/actions/fleet/rental-time";
+import { FleetAttendanceReview } from "@/features/fleet/time-workspace";
+import { fleetTimeDate } from "@/lib/fleet/time-contract";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -35,6 +41,12 @@ export default async function GlobalAttendancePage(props: {searchParams?:Promise
     if(!opening.success)return <LoadError title="Attendance context"retryHref="/admin/hr/time/attendance"/>;
     entrySeed={company:opening.data.company,date:opening.data.date,search:opening.data.row.employee_code};
   }
+  const fleetDay = fleetTimeDate.safeParse(params?.fleet_day ?? entrySeed?.date ??
+    new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(new Date()));
+  const fleetAfter = typeof params?.fleet_after === "string" ? Number(params.fleet_after) : undefined;
+  const canReviewFleet = canUseHrChild(authContext, "attendance-summary");
+  const showFleetDrafts = canReviewFleet && params?.fleet_day !== undefined;
+  const fleetDrafts = showFleetDrafts && fleetDay.success ? await readFleetAttendanceDrafts(fleetDay.data, fleetAfter) : null;
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -51,6 +63,21 @@ export default async function GlobalAttendancePage(props: {searchParams?:Promise
           </div>
         </CardHeader>
         <CardContent>
+          {canReviewFleet && <details className="mb-5 space-y-3 rounded-md border p-3" open={showFleetDrafts}>
+            <summary className="cursor-pointer font-semibold">Fleet attendance drafts</summary>
+            <form className="flex flex-wrap items-end gap-2">
+              <label className="space-y-1 text-sm"><span>Fleet work date</span>
+                <Input type="date" name="fleet_day" defaultValue={fleetDay.success ? fleetDay.data : undefined} required />
+              </label>
+              <Button type="submit" size="sm">Load drafts</Button>
+            </form>
+            {showFleetDrafts && (fleetDrafts && fleetDay.success ? <>
+              {fleetDrafts.length === 0 && <p className="text-sm text-muted-foreground">No Fleet drafts for this date.</p>}
+              {fleetDrafts.slice(0, 25).map(draft => <FleetAttendanceReview key={draft.employee} draft={draft} day={fleetDay.data} />)}
+              {fleetDrafts.length > 25 && <Link className="text-primary underline" href={"/admin/hr/time/attendance?fleet_day=" + fleetDay.data
+                + "&fleet_after=" + fleetDrafts[24].employee}>More drafts</Link>}
+            </> : <p role="status" className="text-sm">Fleet drafts could not be loaded for this date.</p>)}
+          </details>}
           <HrAttendancePageClient
             initialRows={historyPage?.rows ?? []}
             initialCount={historyPage?.totalCount ?? 0}

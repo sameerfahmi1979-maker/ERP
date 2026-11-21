@@ -9,6 +9,11 @@ const listColumns = runColumns + ",report,runner";
 const detailColumns = runColumns + ",report:erp_report_registry!report_id(report_name_en,module_code),runner:user_profiles!run_by(display_name),completed_at,template_selected_manually,error_message,redaction_summary_json";
 const sortColumns = {report: "report_sort", output_format: "output_format", run_status: "run_status", row_count: "row_count", duration: "duration_sort", run_by: "runner_sort", started_at: "started_at"} satisfies Record<(typeof REPORT_HISTORY_SORT_KEYS)[number], string>;
 const searchColumns = ["report_display", "format_search", "status_search", "rows_search", "duration_search", "runner_display", "started_search", "code_search", "reference_search"] as const;
+const denied = () => ({success: false as const, error: "Permission denied"});
+function isReadDenied(result: {status: number; error: {code: string} | null}) {
+  return result.status === 401 || result.status === 403 || result.error?.code === "42501";
+}
+
 /** Internal context sharing is only for the SSR composition. RLS and the
  * original own-run/history-viewer policy remain authoritative for every row. */
 export async function readReportHistory(input: unknown, context?: AuthContext, signal?: AbortSignal) {
@@ -18,15 +23,20 @@ export async function readReportHistory(input: unknown, context?: AuthContext, s
     signal?.throwIfAborted();
     const p = parsed.data, ctx = context ?? await getAuthContext();
     signal?.throwIfAborted();
-    if (!hasPermission(ctx, "reports.view") && !hasPermission(ctx, "reports.history.view")) return {success: false as const, error: "Permission denied"};
+    if (!hasPermission(ctx, "reports.view") && !hasPermission(ctx, "reports.history.view")) return denied();
     const db = await createClient();
     signal?.throwIfAborted();
     if (p.mode === "detail") {
       const query = db.from("erp_report_runs").select(detailColumns).eq("id", p.recordId);
       if (signal) query.abortSignal(signal);
-      const result = await query.maybeSingle(), safe = reportHistoryDetailSchema.safeParse(result.data);
+      const result = await query.maybeSingle();
       signal?.throwIfAborted();
-      if (result.error || !safe.success || safe.data.id !== p.recordId) throw Error("Unavailable detail");
+      if (isReadDenied(result)) return denied();
+      if (result.error) throw Error("Unavailable detail");
+      // Caller RLS gives the same absence for a missing run and a hidden one.
+      if (result.data === null) return {success: true as const, data: {mode: "detail" as const, record: null}, updatedAt: Date.now()};
+      const safe = reportHistoryDetailSchema.safeParse(result.data);
+      if (!safe.success || safe.data.id !== p.recordId) throw Error("Unavailable detail");
       return {success: true as const, data: {mode: "detail" as const, record: safe.data}, updatedAt: Date.now()};
     }
     const makeQuery = (head = false) => {
@@ -53,10 +63,12 @@ export async function readReportHistory(input: unknown, context?: AuthContext, s
     };
     const from = (p.page - 1) * p.pageSize, result = await makeQuery().range(from, from + p.pageSize - 1);
     signal?.throwIfAborted();
+    if (isReadDenied(result)) return denied();
     let rows: unknown = result.data, count = result.count, error = result.error;
     if (from > 0 && result.status === 416 && result.error?.code === "PGRST103") {
       const recount = await makeQuery(true);
       signal?.throwIfAborted();
+      if (isReadDenied(recount)) return denied();
       if (recount.error || recount.count === null || !Number.isSafeInteger(recount.count) || recount.count < 0 || recount.count > from) throw Error("Unverified count");
       rows = []; count = recount.count; error = null;
     }

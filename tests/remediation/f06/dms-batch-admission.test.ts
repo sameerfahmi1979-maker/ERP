@@ -754,7 +754,7 @@ describe("ordinary-auth atomic batch server adapter", () => {
     expect(result.success).toBe(true);
     expect(m.rpc).toHaveBeenCalledWith('f07_admit_single_upload',{p_request:{version:1,operationId:operation,authUserId,context:null,metadata:{original_filename:'a.pdf',mime_type:'application/pdf',file_size_bytes:1,sha256_hash:hash}}});
     expect(m.from.mock.calls.map(([table]) => table)).toEqual(["dms_document_files"]);
-    expect(m.sign).toHaveBeenCalledExactlyOnceWith(path);
+    expect(m.sign).toHaveBeenCalledExactlyOnceWith(path, {upsert: false});
     expect(m.rpc.mock.invocationCallOrder[0]).toBeLessThan(m.sign.mock.invocationCallOrder[0]);
     expect(m.audit).not.toHaveBeenCalled(); // Audit is atomic with admission, not post-commit bookkeeping.
   });

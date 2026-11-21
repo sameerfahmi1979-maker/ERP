@@ -3048,6 +3048,7 @@
     },
     {
       "code": "hr.requests.submit.self",
+      "migration": "20261120200218_mobile_hr_self_service.sql",
       "module": "hr",
       "scope": "branch",
       "reason": "Submit own HR proposals and pending leave within the current verified employee link and exact matching assignment.",
@@ -4825,6 +4826,981 @@
       "acceptance": "classification_reviewed_native_inheritance_verified",
       "boundary": "Module landing/navigation capability only; no additional data mutation is supplied by this code. Record operations require their separately named current capability and ownership checks.",
       "reviewSources": []
+    },
+    {
+      "code": "integrated.policy.view",
+      "module": "HR",
+      "scope": "held",
+      "reason": "Read scoped work policy versions and resolve applicable facts for a visible employee.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119092724_hr_t02_integrated_authority_policy.sql",
+      "boundary": "Explicit ordinary business role assignment in the matching company or branch. Reserved administrator roles confer no T02 business authority.",
+      "reviewSources": [
+        "supabase/migrations/20261119092724_hr_t02_integrated_authority_policy.sql",
+        "tests/remediation/f12/t02-authority-policy.native.sql"
+      ]
+    },
+    {
+      "code": "integrated.policy.prepare",
+      "module": "HR",
+      "scope": "held",
+      "reason": "Prepare exact dated work policy facts for independent review.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119092724_hr_t02_integrated_authority_policy.sql",
+      "boundary": "Explicit ordinary business role assignment in the matching company or branch. Reserved administrator roles confer no T02 business authority.",
+      "reviewSources": [
+        "supabase/migrations/20261119092724_hr_t02_integrated_authority_policy.sql",
+        "tests/remediation/f12/t02-authority-policy.native.sql"
+      ]
+    },
+    {
+      "code": "integrated.policy.review",
+      "module": "HR",
+      "scope": "held",
+      "reason": "Review employment terms and policy evidence with authority distinct from the preparer.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119092724_hr_t02_integrated_authority_policy.sql",
+      "boundary": "Explicit ordinary business role assignment in the matching company or branch. Reserved administrator roles confer no T02 business authority.",
+      "reviewSources": [
+        "supabase/migrations/20261119092724_hr_t02_integrated_authority_policy.sql",
+        "tests/remediation/f12/t02-authority-policy.native.sql"
+      ]
+    },
+    {
+      "code": "integrated.policy.approve",
+      "module": "HR",
+      "scope": "held",
+      "reason": "Approve exact reviewed facts with an actor distinct from the preparer and reviewer.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119092724_hr_t02_integrated_authority_policy.sql",
+      "boundary": "Explicit ordinary business role assignment in the matching company or branch. Reserved administrator roles confer no T02 business authority.",
+      "reviewSources": [
+        "supabase/migrations/20261119092724_hr_t02_integrated_authority_policy.sql",
+        "tests/remediation/f12/t02-authority-policy.native.sql"
+      ]
+    },
+    {
+      "code": "integrated.policy.exception",
+      "module": "HR",
+      "scope": "held",
+      "reason": "Require separate authorization for individual overtime rule exceptions and access to their supporting reason.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119092724_hr_t02_integrated_authority_policy.sql",
+      "boundary": "Explicit ordinary business role assignment in the matching company or branch. Reserved administrator roles confer no T02 business authority.",
+      "reviewSources": [
+        "supabase/migrations/20261119092724_hr_t02_integrated_authority_policy.sql",
+        "tests/remediation/f12/t02-authority-policy.native.sql"
+      ]
+    },
+    {
+      "code": "integrated.custody.transfer",
+      "module": "FLEET",
+      "scope": "held",
+      "reason": "Require an explicit role assignment in both companies and exact branches before admitting cross-company custody transfers.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119092724_hr_t02_integrated_authority_policy.sql",
+      "boundary": "Explicit ordinary business role assignment in the matching company or branch. Reserved administrator roles confer no T02 business authority.",
+      "reviewSources": [
+        "supabase/migrations/20261119092724_hr_t02_integrated_authority_policy.sql",
+        "tests/remediation/f12/t02-authority-policy.native.sql"
+      ]
+    },
+    {
+      "code": "hr.employment.lifecycle.manage",
+      "module": "HR",
+      "scope": "held",
+      "reason": "Prepare and apply reviewed employment changes and release joining in the actual employing scope.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119100750_hr_t03_employment_lifecycle.sql",
+      "boundary": "Explicit current ordinary role in the recorded company and branch. Each required acceptance is independent and bound to the same exact change revision.",
+      "reviewSources": [
+        "supabase/migrations/20261119100750_hr_t03_employment_lifecycle.sql",
+        "src/server/actions/hr/employment-lifecycle.ts",
+        "src/features/hr/recruitment/candidate-joining-controls.tsx",
+        "tests/remediation/f12/t03-employment-lifecycle.native.sql"
+      ]
+    },
+    {
+      "code": "hr.employment.lifecycle.accept",
+      "module": "HR",
+      "scope": "held",
+      "reason": "Accept exact employment changes independently for the actor’s recorded source or receiving scope.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119100750_hr_t03_employment_lifecycle.sql",
+      "boundary": "Explicit current ordinary role in the recorded company and branch. Each required acceptance is independent and bound to the same exact change revision.",
+      "reviewSources": [
+        "supabase/migrations/20261119100750_hr_t03_employment_lifecycle.sql",
+        "src/server/actions/hr/employment-lifecycle.ts",
+        "src/features/hr/recruitment/candidate-joining-controls.tsx",
+        "tests/remediation/f12/t03-employment-lifecycle.native.sql"
+      ]
+    },
+    {
+      "code": "hr.leave.assist",
+      "module": "HR",
+      "scope": "held",
+      "reason": "Submit and review dated leave for a current scoped employee, and propose reviewed annual balance changes.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119105422_hr_t04_leave_balances_and_policy.sql",
+      "boundary": "Current explicit business role in the exact employer and branch. No reserved administrator inheritance. Separate medical authority and independent review apply where relevant.",
+      "reviewSources": [
+        "supabase/migrations/20261119105422_hr_t04_leave_balances_and_policy.sql",
+        "src/server/actions/hr/leave-operations.ts",
+        "tests/remediation/f12/t04-integrated-leave.native.sql"
+      ]
+    },
+    {
+      "code": "hr.leave.approve",
+      "module": "HR",
+      "scope": "held",
+      "reason": "Independently approve exact PRO-reviewed annual and unpaid requests and reviewed setup or carry changes.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119105422_hr_t04_leave_balances_and_policy.sql",
+      "boundary": "Current explicit business role in the exact employer and branch. No reserved administrator inheritance. Separate medical authority and independent review apply where relevant.",
+      "reviewSources": [
+        "supabase/migrations/20261119105422_hr_t04_leave_balances_and_policy.sql",
+        "src/server/actions/hr/leave-operations.ts",
+        "tests/remediation/f12/t04-integrated-leave.native.sql"
+      ]
+    },
+    {
+      "code": "hr.leave.sick.review",
+      "module": "HR",
+      "scope": "held",
+      "reason": "Verify current protected certificates and decide routine reviewed sick leave in scope.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119105422_hr_t04_leave_balances_and_policy.sql",
+      "boundary": "Current explicit business role in the exact employer and branch. No reserved administrator inheritance. Separate medical authority and independent review apply where relevant.",
+      "reviewSources": [
+        "supabase/migrations/20261119105422_hr_t04_leave_balances_and_policy.sql",
+        "src/server/actions/hr/leave-operations.ts",
+        "tests/remediation/f12/t04-integrated-leave.native.sql"
+      ]
+    },
+    {
+      "code": "hr.leave.sick.exception",
+      "module": "HR",
+      "scope": "held",
+      "reason": "Allow independent review at a configured cutoff only when the dated scope and policy admit an exception.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119105422_hr_t04_leave_balances_and_policy.sql",
+      "boundary": "Current explicit business role in the exact employer and branch. No reserved administrator inheritance. Separate medical authority and independent review apply where relevant.",
+      "reviewSources": [
+        "supabase/migrations/20261119105422_hr_t04_leave_balances_and_policy.sql",
+        "src/server/actions/hr/leave-operations.ts",
+        "tests/remediation/f12/t04-integrated-leave.native.sql"
+      ]
+    },
+    {
+      "code": "hr.leave.payroll.read",
+      "module": "HR",
+      "scope": "held",
+      "reason": "Return approved active pay days and rate bands for the historical employer, with no medical evidence fields.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119105422_hr_t04_leave_balances_and_policy.sql",
+      "boundary": "Current explicit business role in the exact employer and branch. No reserved administrator inheritance. Separate medical authority and independent review apply where relevant.",
+      "reviewSources": [
+        "supabase/migrations/20261119105422_hr_t04_leave_balances_and_policy.sql",
+        "src/server/actions/hr/leave-operations.ts",
+        "tests/remediation/f12/t04-integrated-leave.native.sql"
+      ]
+    },
+    {
+      "code": "hr.leave.policy.prepare",
+      "module": "HR",
+      "scope": "held",
+      "reason": "Prepare explicitly dated and reviewable leave, accrual and sick-tier policies for approved business scope.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119105422_hr_t04_leave_balances_and_policy.sql",
+      "boundary": "Current explicit business role in the exact employer and branch. No reserved administrator inheritance. Separate medical authority and independent review apply where relevant.",
+      "reviewSources": [
+        "supabase/migrations/20261119105422_hr_t04_leave_balances_and_policy.sql",
+        "src/server/actions/hr/leave-operations.ts",
+        "tests/remediation/f12/t04-integrated-leave.native.sql"
+      ]
+    },
+    {
+      "code": "fleet.assets.view",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Read Fleet assets within the authorized home or current operating scope.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119115139_fleet_t05_asset_identity_and_dms.sql",
+      "boundary": "Explicit ordinary company or branch assignment. DMS evidence has a separate home-scope and document capability check.",
+      "reviewSources": ["tests/remediation/f12/t05-fleet-assets.native.sql"]
+    },
+    {
+      "code": "fleet.assets.manage",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Create and maintain the canonical Fleet asset and dated technical facts.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119115139_fleet_t05_asset_identity_and_dms.sql",
+      "boundary": "Explicit ordinary assignment in the asset home and any selected operating scope. Numbering is restricted to the Fleet action.",
+      "reviewSources": ["tests/remediation/f12/t05-fleet-assets.native.sql"]
+    },
+    {
+      "code": "fleet.assets.documents",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Link DMS documents and verify exact registration or insurance originals.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119115139_fleet_t05_asset_identity_and_dms.sql",
+      "boundary": "Fleet home-scope access and independent DMS edit or preview permission are required.",
+      "reviewSources": ["tests/remediation/f12/t05-fleet-assets.native.sql"]
+    },
+    {
+      "code": "fleet.custody.manage",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Maintain exact local custody, meter and signed handover/return facts.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119144600_fleet_t06_custody_commitments.sql",
+      "boundary": "Current explicit ordinary Fleet authority. Source, destination, evidence and independent decisions are checked in the owning transaction.",
+      "reviewSources": [
+        "tests/remediation/f12/t06-fleet-custody.native.sql"
+      ]
+    },
+    {
+      "code": "fleet.custody.approve",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Approve a named overnight loan within the current local scope.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119144600_fleet_t06_custody_commitments.sql",
+      "boundary": "Current explicit ordinary Fleet authority. Source, destination, evidence and independent decisions are checked in the owning transaction.",
+      "reviewSources": [
+        "tests/remediation/f12/t06-fleet-custody.native.sql"
+      ]
+    },
+    {
+      "code": "fleet.availability.plan",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Manage reservations and verify an assignment against current readiness.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119144600_fleet_t06_custody_commitments.sql",
+      "boundary": "Current explicit ordinary Fleet authority. Source, destination, evidence and independent decisions are checked in the owning transaction.",
+      "reviewSources": [
+        "tests/remediation/f12/t06-fleet-custody.native.sql"
+      ]
+    },
+    {
+      "code": "fleet.availability.policy",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Prepare or independently approve an effective-dated company Fleet policy.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119144600_fleet_t06_custody_commitments.sql",
+      "boundary": "Current explicit ordinary Fleet authority. Source, destination, evidence and independent decisions are checked in the owning transaction.",
+      "reviewSources": [
+        "tests/remediation/f12/t06-fleet-custody.native.sql"
+      ]
+    },
+    {
+      "code": "fleet.holds.workshop",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Place or release one exact Workshop hold in the asset home scope.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119144600_fleet_t06_custody_commitments.sql",
+      "boundary": "Current explicit ordinary Fleet authority. Source, destination, evidence and independent decisions are checked in the owning transaction.",
+      "reviewSources": [
+        "tests/remediation/f12/t06-fleet-custody.native.sql"
+      ]
+    },
+    {
+      "code": "fleet.holds.hse",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Place or release one exact HSE hold in the asset home scope.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119144600_fleet_t06_custody_commitments.sql",
+      "boundary": "Current explicit ordinary Fleet authority. Source, destination, evidence and independent decisions are checked in the owning transaction.",
+      "reviewSources": [
+        "tests/remediation/f12/t06-fleet-custody.native.sql"
+      ]
+    },
+    {
+      "code": "fleet.operations.view",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Read the scoped dispatch, trip and rental board and its authorized operation evidence.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119152100_fleet_t07_operations_foundation.sql",
+      "boundary": "Explicit ordinary company and branch assignment. T06 readiness, exact DMS source and independent commercial approval retain separate authority.",
+      "reviewSources": [
+        "tests/remediation/f12/t07-fleet-operations.native.sql"
+      ]
+    },
+    {
+      "code": "fleet.operations.manage",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Manage scoped operational requests, reservations, paper facts and execution through the owning order.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119152100_fleet_t07_operations_foundation.sql",
+      "boundary": "Explicit ordinary company and branch assignment. T06 readiness, exact DMS source and independent commercial approval retain separate authority.",
+      "reviewSources": [
+        "tests/remediation/f12/t07-fleet-operations.native.sql"
+      ]
+    },
+    {
+      "code": "fleet.operations.approve",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Independently authorize, extend, clear or reopen a scoped operation.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119152100_fleet_t07_operations_foundation.sql",
+      "boundary": "Explicit ordinary company and branch assignment. T06 readiness, exact DMS source and independent commercial approval retain separate authority.",
+      "reviewSources": [
+        "tests/remediation/f12/t07-fleet-operations.native.sql"
+      ]
+    },
+    {
+      "code": "fleet.operations.commercial",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Review restricted quote, signed terms, LPO and statement quantities within the operating scope.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119152100_fleet_t07_operations_foundation.sql",
+      "boundary": "Explicit ordinary company and branch assignment. T06 readiness, exact DMS source and independent commercial approval retain separate authority.",
+      "reviewSources": [
+        "tests/remediation/f12/t07-fleet-operations.native.sql"
+      ]
+    },
+    {
+      "code": "fleet.time.enter",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Record actual intervals for a named Fleet assignment in its operating or accepted receiving scope.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119202200_fleet_t08_time_reconciliation.sql",
+      "boundary": "Exact branch grant and recorded handover. Wage data remains in Payroll.",
+      "reviewSources": ["tests/remediation/f12/t08-fleet-time.native.sql"]
+    },
+    {
+      "code": "fleet.time.verify",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Independently reconcile assigned work against the signed sheet or verify internal work.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119202200_fleet_t08_time_reconciliation.sql",
+      "boundary": "Exact receiving branch, independent actor and existing DMS preview authority.",
+      "reviewSources": ["tests/remediation/f12/t08-fleet-time.native.sql"]
+    },
+    {
+      "code": "fleet.time.host",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Propose and independently accept a named receiving-company work window.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119202200_fleet_t08_time_reconciliation.sql",
+      "boundary": "Source proposal and receiving acceptance use exact ordinary assignments and different actors.",
+      "reviewSources": ["tests/remediation/f12/t08-fleet-time.native.sql"]
+    },
+    {
+      "code": "hr.payroll.fleet_time.review",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Review Fleet overtime using the historical employing branch, approved rules and salary basis.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119202200_fleet_t08_time_reconciliation.sql",
+      "boundary": "Exact historical employer branch and current payroll read authority. Independent from operational work verification.",
+      "reviewSources": ["tests/remediation/f12/t08-fleet-time.native.sql"]
+    },
+    {
+      "code": "fleet.allowance.rates.prepare",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Prepare the company catalogue of directional loaded-leg allowances.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119210600_fleet_t09_allowance_rates.sql",
+      "boundary": "Company-wide ordinary assignment. Preparation cannot approve the same version.",
+      "reviewSources": ["tests/remediation/f12/t09-trip-allowances.native.sql"]
+    },
+    {
+      "code": "fleet.allowance.rates.approve",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Independently approve an effective-dated company rate version.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119210600_fleet_t09_allowance_rates.sql",
+      "boundary": "Company-wide ordinary assignment. Exact direction, truck type and effective date.",
+      "reviewSources": ["tests/remediation/f12/t09-trip-allowances.native.sql"]
+    },
+    {
+      "code": "fleet.allowance.submit",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Submit matched delivery evidence and linked corrections for scoped Fleet legs.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119210600_fleet_t09_allowance_rates.sql",
+      "boundary": "Actual operating company and branch, exact DMS original and no wage projection.",
+      "reviewSources": ["tests/remediation/f12/t09-trip-allowances.native.sql"]
+    },
+    {
+      "code": "fleet.allowance.approve",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Independently decide alternate delivery evidence and changed route or rate basis.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119210600_fleet_t09_allowance_rates.sql",
+      "boundary": "Exact branch, independent manager and existing DMS preview. Leaves signed POD and billing state unchanged.",
+      "reviewSources": ["tests/remediation/f12/t09-trip-allowances.native.sql"]
+    },
+    {
+      "code": "hr.payroll.trip_allowance.review",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Review and accept exact trip allowances and linked corrections for the employing branch.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119210600_fleet_t09_allowance_rates.sql",
+      "boundary": "Historical employing branch plus current payroll view. Settlement belongs to the trusted payroll handoff.",
+      "reviewSources": ["tests/remediation/f12/t09-trip-allowances.native.sql"]
+    },
+    {
+      "code": "fleet.inspections.report",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Report an operating finding against a named asset.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119215000_workshop_t10_intake.sql",
+      "boundary": "Exact operating company and branch, evidence scoped to the asset and no repair-cost projection.",
+      "reviewSources": [
+        "tests/remediation/f12/t10-workshop-assessment.native.sql"
+      ]
+    },
+    {
+      "code": "workshop.assess",
+      "module": "workshop",
+      "scope": "held",
+      "reason": "Diagnose a scoped finding and decide repair or technical usability.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119215000_workshop_t10_intake.sql",
+      "boundary": "Exact source branch, independent assessor and verified historical employee for HR referral.",
+      "reviewSources": [
+        "tests/remediation/f12/t10-workshop-assessment.native.sql"
+      ]
+    },
+    {
+      "code": "workshop.jobs.manage",
+      "module": "workshop",
+      "scope": "held",
+      "reason": "Plan scoped job cycles and submit actual work for QC.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119215000_workshop_t10_intake.sql",
+      "boundary": "Exact source branch and named employee with dated employment.",
+      "reviewSources": [
+        "tests/remediation/f12/t10-workshop-assessment.native.sql"
+      ]
+    },
+    {
+      "code": "workshop.jobs.release",
+      "module": "workshop",
+      "scope": "held",
+      "reason": "Independently review work and release the exact technical restriction.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119215000_workshop_t10_intake.sql",
+      "boundary": "Exact source branch, separate QC actor and current operating scope for new holds.",
+      "reviewSources": [
+        "tests/remediation/f12/t10-workshop-assessment.native.sql"
+      ]
+    },
+    {
+      "code": "fleet.maintenance.manage",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Maintain operational service clocks, approved readings and reminder state.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119215000_workshop_t10_intake.sql",
+      "boundary": "Exact current operating branch and exact linked released job for service baseline.",
+      "reviewSources": [
+        "tests/remediation/f12/t10-workshop-assessment.native.sql"
+      ]
+    },
+    {
+      "code": "hr.workshop.referrals.view",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Read possible employee responsibility findings referred by Workshop.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119215000_workshop_t10_intake.sql",
+      "boundary": "Exact historical employing branch and existing DMS preview authority.",
+      "reviewSources": [
+        "tests/remediation/f12/t10-workshop-assessment.native.sql"
+      ]
+    },
+    {
+      "code": "supply.setup",
+      "module": "inventory",
+      "scope": "held",
+      "reason": "Configure scoped supply masters and propose a pilot owner.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119222800_supply_t11_foundation.sql",
+      "boundary": "Company authority for shared items and UOM. Exact branch for sites, stock owner and routing.",
+      "reviewSources": [
+        "tests/remediation/f12/t11-shared-supply.native.sql"
+      ]
+    },
+    {
+      "code": "supply.approve",
+      "module": "inventory",
+      "scope": "held",
+      "reason": "Accept pilot routing and independently decide counts and corrections.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119222800_supply_t11_foundation.sql",
+      "boundary": "Named independent owner for routing and exact stock scope. Internal fuel checks require DMS preview.",
+      "reviewSources": [
+        "tests/remediation/f12/t11-shared-supply.native.sql"
+      ]
+    },
+    {
+      "code": "supply.stock",
+      "module": "inventory",
+      "scope": "held",
+      "reason": "Reserve, issue, transfer and physically receive eligible stock.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119222800_supply_t11_foundation.sql",
+      "boundary": "Both scoped bins for transfer. Approved routing, current site access and exact movement lineage.",
+      "reviewSources": [
+        "tests/remediation/f12/t11-shared-supply.native.sql"
+      ]
+    },
+    {
+      "code": "supply.request",
+      "module": "inventory",
+      "scope": "held",
+      "reason": "Create one demand per retained Workshop job line or internal fuel voucher.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119222800_supply_t11_foundation.sql",
+      "boundary": "Exact Workshop cycle or verified voucher, scope, owner and item.",
+      "reviewSources": [
+        "tests/remediation/f12/t11-shared-supply.native.sql"
+      ]
+    },
+    {
+      "code": "supply.purchase",
+      "module": "procurement",
+      "scope": "held",
+      "reason": "Prepare a purchase and record separately scoped physical goods receipts.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119222800_supply_t11_foundation.sql",
+      "boundary": "Exact branch, approved Party Master vendor, quantity authority for physical movement.",
+      "reviewSources": [
+        "tests/remediation/f12/t11-shared-supply.native.sql"
+      ]
+    },
+    {
+      "code": "supply.purchase.approve",
+      "module": "procurement",
+      "scope": "held",
+      "reason": "Independently accept purchases and decide quarantine inspection.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119222800_supply_t11_foundation.sql",
+      "boundary": "Exact branch and separate actors. Stock booking authority for quarantine release.",
+      "reviewSources": [
+        "tests/remediation/f12/t11-shared-supply.native.sql"
+      ]
+    },
+    {
+      "code": "supply.fuel",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Capture manual fuel voucher, source and meter against the asset.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119222800_supply_t11_foundation.sql",
+      "boundary": "Exact asset operation scope, original DMS permission and no quantity or accounting effect.",
+      "reviewSources": [
+        "tests/remediation/f12/t11-shared-supply.native.sql"
+      ]
+    },
+    {
+      "code": "supply.value",
+      "module": "finance",
+      "scope": "held",
+      "reason": "Verify operational valuation evidence and read authorised movement amounts.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261119222800_supply_t11_foundation.sql",
+      "boundary": "Exact stock origin and legal owner branch. Only approved Finance value visible.",
+      "reviewSources": [
+        "tests/remediation/f12/t11-shared-supply.native.sql"
+      ]
+    },
+    {
+      "code": "workshop.labour.record",
+      "module": "workshop",
+      "scope": "held",
+      "reason": "Allocate a named technician and bay and record factual signed Workshop time.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120071100_workshop_t12_labour.sql",
+      "boundary": "Exact repair cycle, site, work period and verified DMS original.",
+      "reviewSources": [
+        "tests/remediation/f12/t12-workshop-labour.native.sql"
+      ]
+    },
+    {
+      "code": "workshop.labour.approve",
+      "module": "workshop",
+      "scope": "held",
+      "reason": "Independently decide the exact signed labour version.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120071100_workshop_t12_labour.sql",
+      "boundary": "Named supervisor in the operating branch and separate subject and entrant.",
+      "reviewSources": [
+        "tests/remediation/f12/t12-workshop-labour.native.sql"
+      ]
+    },
+    {
+      "code": "workshop.labour.cost",
+      "module": "workshop",
+      "scope": "held",
+      "reason": "Prepare and independently approve Workshop costing and view verified labour cost.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120071100_workshop_t12_labour.sql",
+      "boundary": "Branch only, dated costing snapshot and no salary inheritance.",
+      "reviewSources": [
+        "tests/remediation/f12/t12-workshop-labour.native.sql"
+      ]
+    },
+    {
+      "code": "hr.workshop.labour.review",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Reconcile signed Workshop time against approved attendance.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120071100_workshop_t12_labour.sql",
+      "boundary": "Historical employing branch and concurrent attendance view, separate subject and decision actors.",
+      "reviewSources": [
+        "tests/remediation/f12/t12-workshop-labour.native.sql"
+      ]
+    },
+    {
+      "code": "workshop.outside.manage",
+      "module": "workshop",
+      "scope": "held",
+      "reason": "Record approved outside repair supplier custody, evidence and milestones.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120071100_workshop_t12_labour.sql",
+      "boundary": "Exact T10 cycle and T11 purchasing policy. Scope retains vendor custody and separate technical QC.",
+      "reviewSources": [
+        "tests/remediation/f12/t12-outside-work.native.sql"
+      ]
+    },
+    {
+      "code": "workshop.finance.intake",
+      "module": "workshop",
+      "scope": "held",
+      "reason": "Prepare verified outside repair costs for the approved Finance pathway.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120071100_workshop_t12_labour.sql",
+      "boundary": "Exact vendor evidence, independent reviewer and completed technical QC. Local staging only.",
+      "reviewSources": [
+        "tests/remediation/f12/t12-outside-work.native.sql"
+      ]
+    },
+    {
+      "code": "hr.payroll.workshop.review",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Read Workshop payroll candidates and independently approve linked corrections.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120071100_workshop_t12_labour.sql",
+      "boundary": "Historical employing branch and current payroll view. Shared underlying payable intervals.",
+      "reviewSources": [
+        "tests/remediation/f12/t12-workshop-labour.native.sql"
+      ]
+    },
+    {
+      "code": "fleet.fines.view",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Read scoped official fine notices and factual history.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120083500_fleet_t13_incident_intake.sql",
+      "boundary": "Exact operating branch, with personnel and protected evidence gated separately.",
+      "reviewSources": [
+        "tests/remediation/f12/t13-fine-intake.native.sql"
+      ]
+    },
+    {
+      "code": "fleet.fines.record",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Record official notices and authority changes once.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120083500_fleet_t13_incident_intake.sql",
+      "boundary": "Exact operating branch, authority and reference, plus a verified DMS original.",
+      "reviewSources": [
+        "tests/remediation/f12/t13-fine-intake.native.sql"
+      ]
+    },
+    {
+      "code": "fleet.fines.match",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Match the exact offence time to historical custody.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120083500_fleet_t13_incident_intake.sql",
+      "boundary": "Exact operating branch and timestamp; custody yields a candidate.",
+      "reviewSources": [
+        "tests/remediation/f12/t13-fine-intake.native.sql"
+      ]
+    },
+    {
+      "code": "fleet.fines.verify",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Confirm the actual driver independently with recorded proof.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120083500_fleet_t13_incident_intake.sql",
+      "boundary": "Exact operating and, where different, historical employing scope.",
+      "reviewSources": [
+        "tests/remediation/f12/t13-fine-intake.native.sql"
+      ]
+    },
+    {
+      "code": "fleet.incidents.manage",
+      "module": "fleet",
+      "scope": "held",
+      "reason": "Link related operations, repair, HSE and insurer activities.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120083500_fleet_t13_incident_intake.sql",
+      "boundary": "Exact incident, asset and operating branch. HSE details stay restricted.",
+      "reviewSources": [
+        "tests/remediation/f12/t13-fine-intake.native.sql"
+      ]
+    },
+    {
+      "code": "workshop.recoveries.intake",
+      "module": "workshop",
+      "scope": "held",
+      "reason": "Register and refresh recovery facts from an assessed Workshop case.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120083500_fleet_t13_incident_intake.sql",
+      "boundary": "Exact Workshop assessment, repair cycle and employing scope for a supported referral.",
+      "reviewSources": [
+        "tests/remediation/f12/t13-fine-intake.native.sql"
+      ]
+    },
+    {
+      "code": "hr.recovery.review",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Review employee responsibility, notice, response and disputes.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120085600_hr_t13_recovery.sql",
+      "boundary": "Historical employing scope, separate actors and protected HR-grade evidence.",
+      "reviewSources": [
+        "tests/remediation/f12/t13-recoveries.native.sql"
+      ]
+    },
+    {
+      "code": "hr.recovery.policy",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Prepare or independently approve an effective-dated recovery policy.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120085600_hr_t13_recovery.sql",
+      "boundary": "Exact company and branch, approved currency, basis, limits and nonoverlapping dates.",
+      "reviewSources": [
+        "tests/remediation/f12/t13-recoveries.native.sql"
+      ]
+    },
+    {
+      "code": "hr.recovery.accounts",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Reconcile supported amounts and propose repayment and linked corrections.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120085600_hr_t13_recovery.sql",
+      "boundary": "Historical employing scope plus payroll view. Operating scope is also required for authority remittance and allocation.",
+      "reviewSources": [
+        "tests/remediation/f12/t13-recoveries.native.sql",
+        "tests/remediation/f12/t13-recovery-settlement.native.sql"
+      ]
+    },
+    {
+      "code": "hr.payroll.run.manage",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Calculate and review scoped draft payroll and verify a signed adjustment independently.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120112000_hr_t14_payroll_foundation.sql",
+      "boundary": "Exact employing company and branch with current payroll view. Private draft facts, wage amounts and source context only within that scope.",
+      "reviewSources": [
+        "tests/remediation/f12/t14-monthly-payroll.native.sql"
+      ]
+    },
+    {
+      "code": "hr.payroll.run.policy",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Prepare or independently approve monthly calculation rules.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120112000_hr_t14_payroll_foundation.sql",
+      "boundary": "Exact company and branch, effective monthly range and ordinary held authority. Policy-only scope hides payroll results.",
+      "reviewSources": [
+        "tests/remediation/f12/t14-monthly-payroll.native.sql"
+      ]
+    },
+    {
+      "code": "hr.payroll.run.submit",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Review and submit exact scoped payroll, acknowledge exceptions, withdraw and request replacement.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120122000_hr_t15_payroll_review_foundation.sql",
+      "boundary": "Exact employing company and branch with ordinary payable-data view; original approved payroll control stays separate.",
+      "reviewSources": [
+        "tests/remediation/f12/t15-payroll-approval.native.sql",
+        "tests/remediation/f12/t15-shared-claims.native.sql"
+      ]
+    },
+    {
+      "code": "hr.payroll.run.approve",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Independently approve or reject an exact payroll version or authorised replacement.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120122000_hr_t15_payroll_review_foundation.sql",
+      "boundary": "Exact employing scope and current payroll view; independent actor, exact source hashes and exclusive shared claims.",
+      "reviewSources": [
+        "tests/remediation/f12/t15-payroll-approval.native.sql",
+        "tests/remediation/f12/t15-shared-claims.native.sql"
+      ]
+    },
+    {
+      "code": "hr.payroll.wps.issue",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Prepare and retrieve the exact approved payroll file and verify bank handoff.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120130000_hr_t16_foundation.sql",
+      "boundary": "An ordinary role in the exact employing scope, current payroll view, and separate private evidence access for external events.",
+      "reviewSources": [
+        "tests/remediation/f12/t16-wps-issue.native.sql"
+      ]
+    },
+    {
+      "code": "hr.payroll.payment.reconcile",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Verify employee cash and link allocations to the exact approved payroll lines.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120130000_hr_t16_foundation.sql",
+      "boundary": "Ordinary Accounts role for the exact payer, scoped private evidence, and independent T13 approval and balance gates.",
+      "reviewSources": [
+        "tests/remediation/f12/t16-settlement.native.sql"
+      ]
+    },
+    {
+      "code": "hr.payroll.payslip.view",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Read the authorised original payslip and its masked delivery history.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120141000_hr_t17_payslips.sql",
+      "boundary": "Exact paying company and branch, ordinary payroll view and audited checksum-verified private retrieval.",
+      "reviewSources": [
+        "tests/remediation/f12/t17-payslip-issuance.native.sql"
+      ]
+    },
+    {
+      "code": "hr.payroll.payslip.issue",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Issue the exact employee result against fully reconciled payment.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120141000_hr_t17_payslips.sql",
+      "boundary": "Exact employer and payroll view, independent actor, immutable payable result and verified PDF storage readback.",
+      "reviewSources": [
+        "tests/remediation/f12/t17-payslip-issuance.native.sql"
+      ]
+    },
+    {
+      "code": "hr.payroll.payslip.deliver",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Deliver the retained original using a verified mailbox or audited print handover.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120141000_hr_t17_payslips.sql",
+      "boundary": "Current payslip and payroll views, exact employer branch, separate action authority and verified current T16 conditions before sending.",
+      "reviewSources": [
+        "tests/remediation/f12/t17-payslip-delivery.native.sql"
+      ]
+    },
+    {
+      "code": "hr.payroll.finance.reconcile",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Read restricted Finance payroll reconciliation aggregates.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120143000_hr_t17_finance.sql",
+      "boundary": "Exact payer company and branch with Report Center access. No employee, contact, private evidence or bank account identifiers.",
+      "reviewSources": [
+        "tests/remediation/f12/t17-payroll-finance.native.sql"
+      ]
+    },
+    {
+      "code": "hr.exit.settlement.view",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Read exit clearance and settlement for an exact employer and branch.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120150000_hr_t18_foundation.sql",
+      "boundary": "Current business access and both payroll and EOS inquiry rights.",
+      "reviewSources": [
+        "tests/remediation/f12/t18-exit-settlement.native.sql"
+      ]
+    },
+    {
+      "code": "hr.exit.settlement.hr",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Open and review the employment exit and clearance.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120150000_hr_t18_foundation.sql",
+      "boundary": "Exact ordinary HR authority. Departmental clearance is resolved only through its verified source.",
+      "reviewSources": [
+        "tests/remediation/f12/t18-exit-settlement.native.sql"
+      ]
+    },
+    {
+      "code": "hr.exit.settlement.accounts",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Calculate, review recovery dispositions and submit an exact settlement.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120150000_hr_t18_foundation.sql",
+      "boundary": "Exact ordinary Accounts authority with a separate HR review and independent GM approval.",
+      "reviewSources": [
+        "tests/remediation/f12/t18-exit-settlement.native.sql"
+      ]
+    },
+    {
+      "code": "hr.exit.settlement.approve",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Approve the exact settlement or calculation policy.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120150000_hr_t18_foundation.sql",
+      "boundary": "Exact ordinary decision authority. Protected from the preparer, reviewer, submitter, relevant case actors and beneficiary.",
+      "reviewSources": [
+        "tests/remediation/f12/t18-exit-settlement.native.sql"
+      ]
+    },
+    {
+      "code": "hr.exit.settlement.pay",
+      "module": "hr",
+      "scope": "held",
+      "reason": "Record evidence and reconcile the exact approved settlement.",
+      "acceptance": "classification_reviewed_isolated_native_scope_verified",
+      "migration": "20261120150000_hr_t18_foundation.sql",
+      "boundary": "Exact ordinary payment authority, independent from approval and bound to retained evidence and shared wage and payment claims.",
+      "reviewSources": [
+        "tests/remediation/f12/t18-exit-settlement.native.sql"
+      ]
     }
   ],
   "acceptanceLimit": "Explicit policy and current consumer boundaries reviewed; native inheritance and affected non-browser regressions are recorded separately. This register is not a production deployment receipt or visual/mobile acceptance."

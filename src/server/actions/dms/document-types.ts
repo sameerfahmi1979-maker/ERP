@@ -70,6 +70,10 @@ const documentTypeSchema = z.object({
 });
 
 export type CreateDmsDocumentTypeInput = z.infer<typeof documentTypeSchema>;
+type UpdateDmsDocumentTypeInput = Omit<Partial<CreateDmsDocumentTypeInput>, "allowed_entity_types"> & {
+  allowed_entity_types?: string[];
+};
+const allowedEntityTypes = new Set<string>(ALLOWED_ENTITY_TYPES);
 
 function revalidateDmsDocumentTypePaths() {
   revalidatePath("/admin/dms");
@@ -176,7 +180,7 @@ export async function createDmsDocumentType(
 
 export async function updateDmsDocumentType(
   id: number,
-  input: Partial<CreateDmsDocumentTypeInput>
+  input: UpdateDmsDocumentTypeInput
 ): Promise<ActionResult> {
   try {
     const ctx = await getAuthContext();
@@ -184,13 +188,21 @@ export async function updateDmsDocumentType(
       return { success: false, error: "Permission denied" };
     }
     const supabase = await createClient();
-    const { data: existing } = await supabase
+    const { data: existing, error: existingError } = await supabase
       .from("dms_document_types")
-      .select("type_code, is_system")
+      .select("type_code, is_system, allowed_entity_types")
       .eq("id", id)
       .single();
+    if (existingError || !existing) return { success: false, error: "Could not load the document type." };
     if (existing?.is_system && input.type_code && input.type_code !== existing.type_code) {
       return { success: false, error: "Cannot change the code of a system document type" };
+    }
+    if (input.allowed_entity_types !== undefined) {
+      const entities = z.array(z.string()).safeParse(input.allowed_entity_types);
+      const retained = new Set<string>(existing.allowed_entity_types ?? []);
+      if (!entities.success || entities.data.some((entity) => !allowedEntityTypes.has(entity) && !retained.has(entity))) {
+        return { success: false, error: "Select supported entity types for this document type." };
+      }
     }
     const { error } = await supabase
       .from("dms_document_types")

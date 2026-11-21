@@ -9,7 +9,7 @@ import {verifyTemporaryUpload} from '@/server/dms-temp-upload-verification';
 import type {CreateUploadSessionInput,CreateUploadSessionResult,ActionResult,DmsUploadSessionRow} from '@/server/actions/dms/upload-sessions';
 import {traceOperation, traceSpan} from '@/lib/performance/trace';
 
-const contractSchema=z.object({operationId:batchUuid,authUserId:batchUuid}).strict();
+const contractSchema=z.object({operationId:batchUuid,authUserId:batchUuid,resumeSessionCode:z.string().regex(/^[a-zA-Z0-9._-]{1,80}$/).optional()}).strict();
 const sessionSchema=z.object({id:z.number().int().positive(),session_code:z.string().min(1),uploaded_by:z.number().int().positive(),
   temp_storage_path:z.string().min(1),original_filename:z.string(),mime_type:z.string(),file_size_bytes:z.number().int().positive(),sha256_hash:z.string(),
   status:z.string(),intake_status:z.string(),document_id:z.number().nullable(),expires_at:z.string(),
@@ -38,7 +38,8 @@ async function admitRetainedSingleUpload(input:CreateUploadSessionInput,contract
     const m=dmsFileMetadataSchema.safeParse(metadata),c=contractSchema.safeParse(contract);
     const subject=context===undefined?{success:true as const,data:null}:singleUploadContextSchema.safeParse(context);
     if(!m.success||!subject.success||!c.success)return {success:false,error:'Invalid file, upload subject or retained operation identity.'};
-    const request=singleUploadRequestSchema.parse({version:1,...c.data,metadata:m.data,context:subject.data,...(scope===undefined?{}:{scope})});
+    const {resumeSessionCode,...identity}=c.data;
+    const request=singleUploadRequestSchema.parse({version:1,...identity,metadata:m.data,context:subject.data,...(scope===undefined?{}:{scope})});
     const active=async()=>{
       const ctx=await getAuthContext();
       return ctx.profile?.auth_user_id===request.authUserId&&
@@ -48,7 +49,9 @@ async function admitRetainedSingleUpload(input:CreateUploadSessionInput,contract
     if(!profile)return {success:false,error:denied};
     const client=await createClient();
     const read=async()=>{
-      const result=await traceSpan('dms.admit', () => client.rpc('f07_admit_single_upload',{p_request:request}));
+      const result=await traceSpan('dms.admit', () => resumeSessionCode
+        ? client.rpc('f07_resume_single_upload',{p_request:request,p_session_code:resumeSessionCode})
+        : client.rpc('f07_admit_single_upload',{p_request:request}));
       if(result.error)throw result.error;
       const cancelled=cancellationSchema.safeParse(result.data);
       if(cancelled.success){if(cancelled.data.cancelled.operationId!==request.operationId||(await active())?.id!==profile.id)throw Error('Unverified cancellation');return cancelled.data;}
@@ -59,6 +62,7 @@ async function admitRetainedSingleUpload(input:CreateUploadSessionInput,contract
       }
       const r=receiptSchema.parse(result.data),s=r.session;
       if(r.operationId!==request.operationId||r.authUserId!==request.authUserId||s.uploaded_by!==profile.id||
+        (resumeSessionCode&&s.session_code!==resumeSessionCode)||
         s.original_filename!==m.data.original_filename||s.mime_type!==m.data.mime_type||s.file_size_bytes!==m.data.file_size_bytes||s.sha256_hash!==m.data.sha256_hash||
         s.origin_entity_type!==(request.context?.entityType??null)||s.origin_entity_id!==(request.context?.entityId??null)||
         (request.scope&&(s.owning_company_id!==request.scope.companyId||s.owning_branch_id!==request.scope.branchId))||
@@ -87,9 +91,14 @@ async function admitRetainedSingleUpload(input:CreateUploadSessionInput,contract
     const refreshed=await read();
     if('recovery' in refreshed||'cancelled' in refreshed||refreshed.session.id!==session.id||refreshed.session.temp_storage_path!==session.temp_storage_path||
       refreshed.session.document_id!==null||!['uploading','uploaded'].includes(refreshed.session.status))throw Error('Upload changed');
+    if(uploadRequired&&refreshed.session.status==='uploaded'){
+      const verified=await verifyTemporaryUpload(session.id);
+      if(!verified.success||!verified.data)return {success:false,uncertain:true,error:verified.error??unknown};
+      session=sessionSchema.parse(verified.data);uploadRequired=false;
+    }
     let token='',signedUrl='',path=session.temp_storage_path;
     if(uploadRequired){
-      const signed=await storage.createSignedUploadUrl(path);
+      const signed=await storage.createSignedUploadUrl(path,{upsert:false});
       if(signed.error||!signed.data||signed.data.path!==path||!signed.data.token)return {success:false,uncertain:true,error:unknown};
       ({token,signedUrl,path}=signed.data);
     }

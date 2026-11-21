@@ -12,12 +12,12 @@ import { z } from "zod";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { readActiveReportRegistryEntry, REPORT_CONFIGURATION_LOAD_ERROR } from "@/server/reads/report-registry-entry";
 import { runReport, createReportRunLog } from "@/lib/report-center/report-runner";
 import { resolveReportBranding } from "@/lib/report-center/branding-resolver";
 import type {
   ReportRunRequest,
   ReportRunResult,
-  ReportRegistryEntry,
   ResolvedReportTemplate,
 } from "@/lib/report-center/types";
 
@@ -147,24 +147,16 @@ export async function resolveReportTemplateForContextAction(
     }
 
     // Load registry entry for this report
-    const db = createAdminClient();
-    const { data: regRow, error: registryError } = await db
-      .from("erp_report_registry")
-      .select("*")
-      .eq("report_code", parsed.data.reportCode)
-      .eq("is_active", true)
-      .is("deleted_at", null)
-      .maybeSingle();
-
-    if (registryError) return { success: false, error: "Report configuration could not be loaded. Retry the request." };
-    if (!regRow) {
+    const registry = await readActiveReportRegistryEntry(parsed.data.reportCode);
+    if (registry.state === "failed") return { success: false, error: REPORT_CONFIGURATION_LOAD_ERROR };
+    if (registry.state === "missing") {
       return { success: false, error: `Report '${parsed.data.reportCode}' not found.` };
     }
 
     const result = await resolveReportBranding({
       templateId: parsed.data.templateId,
       ownerCompanyIds: parsed.data.ownerCompanyIds ?? [],
-      registryEntry: regRow as ReportRegistryEntry,
+      registryEntry: registry.entry,
       isLetterType: parsed.data.isLetterType,
     }, ctx);
 

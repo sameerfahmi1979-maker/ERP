@@ -22,7 +22,7 @@ const hrProjection:Record<typeof hrSources[number],string>={
  employee_medical_insurances:'id,employee_id,expiry_date,status',hr_interviews:'id,candidate_id,interviewer_id,interview_status,interview_datetime',
  hr_offers:'id,candidate_id,offer_status',hr_onboarding_tasks:'id,employee_id,candidate_id,assigned_to,due_date,task_status',hr_candidates:'id,candidate_id:id,requisition_id,joining_status,candidate_status,pipeline_stage',
 };
-const eventSchema=z.object({id:positive,event_key:z.string(),source_table:z.enum(['dms_document_events','dms_notification_queue','dms_review_queue','erp_report_template_events',...hrSources]),
+const eventSchema=z.object({id:positive,event_key:z.string(),source_table:z.enum(['dms_document_events','dms_notification_queue','dms_review_queue','erp_report_template_events','fleet_asset_evidence',...hrSources]),
  source_id:positive,event_type:z.string(),actor_id:positive.nullable(),source_snapshot:z.record(z.string(),z.unknown()),lease_token:z.uuid()}).passthrough();
 export type NotificationEvent=z.infer<typeof eventSchema>;
 type Recipient={profile_id:number;state:'pending'|'created'|'held';outcome?:string|null};
@@ -122,7 +122,29 @@ async function hrRecipients(event:NotificationEvent,db:DB,considered?:Set<number
  }
  return result;
 }
+async function expiryRecipients(
+ event:NotificationEvent,db:DB,considered:Set<number>|undefined,options:RoutingOptions,
+):Promise<number[]> {
+ const args={p_event:event.id,p_lease:event.lease_token};
+ const parseRoster=z.array(positive).max(50);
+ async function resolve(candidate?:number) {
+  const result=await boundedQuery(db.rpc('t19_expiry_recipients',
+   candidate===undefined?args:{...args,p_candidate:candidate}));
+  if(result.error)throw Error('Expiry recipient authority unavailable');
+  return parseRoster.parse(result.data);
+ }
+ if(options.discoverOnly)return resolve();
+ const roster=options.candidateIds??await resolve();
+ const authorized:number[]=[];
+ for(const candidate of roster) {
+  considered?.add(candidate);
+  if((await resolve(candidate)).includes(candidate))authorized.push(candidate);
+ }
+ return authorized;
+}
+
 export async function resolveNotificationRecipients(event:NotificationEvent,db:DB,considered?:Set<number>,options:RoutingOptions={}):Promise<number[]>{
+ if('t19_policy_id' in event.source_snapshot)return expiryRecipients(event,db,considered,options);
  if(hrSources.some(s=>s===event.source_table))return hrRecipients(event,db,considered,options);
  const snapshot=event.source_snapshot,ids=new Set<number>();
  if(event.source_table==='dms_notification_queue'){
@@ -280,6 +302,7 @@ export async function processNotificationEvents(limit=10){
  ]);
  await rpc('f10_cleanup_expired_open_intents',{batch_limit:500});
  if(process.env.F10_HR_EXPIRY_ENABLED==='true')await rpc('f10_collect_hr_expiry_events',{batch_limit:200});
+ if(process.env.T19_FLEET_EXPIRY_ENABLED==='true')await rpc('t19_collect_fleet_expiry_events',{batch_limit:200});
  return runNotificationEventBatch({
   // Claim one event at a time: do not abandon other leases when the bounded
   // route budget is spent. Large rosters yield without spending failure retries.

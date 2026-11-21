@@ -1,16 +1,23 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 import {syntheticAuthContext} from '../../performance/fixtures/auth-context';
-const s=vi.hoisted(()=>({from:vi.fn(),employee:vi.fn(),rows:{} as Record<string,unknown[]>,failed:''}));
-vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>({from:s.from})}));
+const s=vi.hoisted(()=>({from:vi.fn(),rpc:vi.fn(),employee:vi.fn(),rows:{} as Record<string,unknown[]>,failed:''}));
+vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>({from:s.from,rpc:s.rpc})}));
 vi.mock('@/lib/rbac/employee-access',()=>({getEmployeeAccess:s.employee}));
 import {notificationDocumentSubjectsAllowed} from '@/server/notification-document-authority';
 const ctx=syntheticAuthContext(['dms.documents.view']);
 beforeEach(()=>{
  vi.clearAllMocks();s.rows={};s.failed='';
+ s.rpc.mockResolvedValue({data:false,error:null});
  s.employee.mockResolvedValue({subject:{id:7,owner_company_id:1,branch_id:2},allows:()=>false});
  s.from.mockImplementation((table:string)=>{const result=()=>({data:s.rows[table]??[],error:table===s.failed?{message:'private'}:null});const q:Record<string,unknown>={then:(resolve:(r:unknown)=>unknown)=>Promise.resolve(result()).then(resolve)};for(const method of ['select','eq','is','limit'])q[method]=()=>q;q.maybeSingle=()=>Promise.resolve({...result(),data:s.rows[table]?.[0]??null});return q;});
 });
 it('document with no linked subjects does not invent a confidential restriction',async()=>{expect(await notificationDocumentSubjectsAllowed(ctx,1)).toBe(true);});
+it('holds machine delivery for a Fleet-bound document, including a detached link',async()=>{
+ s.rpc.mockResolvedValue({data:true,error:null});
+ expect(await notificationDocumentSubjectsAllowed(ctx,1)).toBe(false);
+ expect(s.rpc).toHaveBeenCalledWith('t05_has_fleet_document_subject',{p_document:1});
+ expect(s.from).not.toHaveBeenCalled();
+});
 it.each(['employee_medical_insurances','employee_medical_records'])('direct %s FK requires medical permission even without generic DMS links',async table=>{
  s.rows[table]=[{employee_id:7}];expect(await notificationDocumentSubjectsAllowed(ctx,1)).toBe(false);expect(s.employee).toHaveBeenCalledWith(ctx,7);
  s.employee.mockResolvedValue({allows:(code:string)=>code==='hr.medical.view'});expect(await notificationDocumentSubjectsAllowed(ctx,1)).toBe(true);

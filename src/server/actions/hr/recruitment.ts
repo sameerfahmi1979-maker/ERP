@@ -8,7 +8,9 @@ import {requisitionCreationSchema,candidateConversionInputSchema,requisitionCrea
 import { logger } from "@/lib/logger";
 import { getAuthContext, hasPermission, hasPermissionInScope, hasGlobalPermission } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
+import type { RecruitmentSummary } from "@/lib/reads/hr-recruitment-summary-schema";
 import { logAudit } from "@/server/actions/audit";
+import { readRecruitmentSummary } from "@/server/reads/hr-recruitment-summary";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import{offerValues}from'@/lib/hr/recruitment-lifecycle-contract';
@@ -1402,58 +1404,8 @@ export async function getEmployeeRecruitmentLink(employeeId: number): Promise<Ac
 // Summary
 // ============================================================================
 
-export async function getRecruitmentSummary(): Promise<ActionResult<{
-  total_requisitions: number;
-  open_requisitions: number;
-  total_candidates: number;
-  active_candidates: number;
-  interviews_this_week: number;
-  pending_offers: number;
-  pending_onboarding_tasks: number;
-  conversions_this_month: number;
-}>> {
-  try {
-    const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.recruitment.view") && !hasPermission(ctx, "hr.recruitment.manage") && !ctx.roleCodes?.includes("system_admin")) {
-      return { success: false, error: "Permission denied" };
-    }
-    const supabase = await createClient();
-
-    const weekStart = new Date();
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-    const monthStart = new Date();
-    monthStart.setDate(1);
-
-    const [reqRes, candRes, intRes, offerRes, taskRes, convRes] = await Promise.all([
-      supabase.from("hr_job_requisitions").select("requisition_status").is("deleted_at", null),
-      supabase.from("hr_candidates").select("candidate_status").is("deleted_at", null),
-      supabase.from("hr_interviews").select("id", { count: "exact" }).is("deleted_at", null).eq("interview_status", "scheduled").gte("interview_datetime", weekStart.toISOString()),
-      supabase.from("hr_offers").select("id", { count: "exact" }).is("deleted_at", null).in("offer_status", ["draft", "pending_approval", "sent"]),
-      supabase.from("hr_onboarding_tasks").select("id", { count: "exact" }).is("deleted_at", null).in("task_status", ["pending", "in_progress"]),
-      supabase.from("employee_recruitment_links").select("id", { count: "exact" }).gte("converted_at", monthStart.toISOString()),
-    ]);
-
-    const reqs = Array.isArray(reqRes.data) ? reqRes.data : [];
-    const cands = Array.isArray(candRes.data) ? candRes.data : [];
-    const activeStatuses = ["new", "screening", "shortlisted", "interview", "selected", "offered", "accepted"];
-
-    return {
-      success: true,
-      data: {
-        total_requisitions: reqs.length,
-        open_requisitions: reqs.filter((r) => r.requisition_status === "open").length,
-        total_candidates: cands.length,
-        active_candidates: cands.filter((c) => activeStatuses.includes(c.candidate_status)).length,
-        interviews_this_week: intRes.count ?? 0,
-        pending_offers: offerRes.count ?? 0,
-        pending_onboarding_tasks: taskRes.count ?? 0,
-        conversions_this_month: convRes.count ?? 0,
-      },
-    };
-  } catch (err) {
-    logger.error("getRecruitmentSummary error", err);
-    return { success: false, error: "Failed to get recruitment summary" };
-  }
+export async function getRecruitmentSummary(): Promise<ActionResult<RecruitmentSummary>> {
+  return readRecruitmentSummary({});
 }
 
 export async function getCandidateSummary(candidateId: number): Promise<ActionResult<{

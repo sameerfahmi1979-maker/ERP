@@ -4,7 +4,7 @@ import {describe,expect,it} from 'vitest';
 
 const base='20261025093000_administrator_scope_policy.sql';
 const registry=JSON.parse(fs.readFileSync(path.resolve('docs/security/administrator-capabilities.json'),'utf8')) as {
-  version:string;state:string;permissions:{code:string;module:string;scope:string;reason:string;acceptance:string}[];
+  version:string;state:string;permissions:{code:string;module:string;scope:string;reason:string;acceptance:string;migration?:string}[];
 };
 const policy=fs.readFileSync(path.resolve('supabase/migrations',base),'utf8');
 function hasUnclassifiedInsert(input:string):boolean {
@@ -18,14 +18,21 @@ describe('administrator capability contract',()=>{
   const seed=policy.split('UPDATE public.permissions p SET administrator_scope=v.scope FROM (VALUES')[1]?.split(') v(code,scope)')[0];
   expect(seed).toBeTruthy();
   const entries=[...seed.matchAll(/\('([^']+)','(global|company|branch|held)'\)/g)].map(m=>({code:m[1],scope:m[2]}));
-  const releaseSeed=fs.readFileSync(path.resolve('supabase/migrations','20261120200218_mobile_hr_self_service.sql'),'utf8');
-  const addition=releaseSeed.match(/INSERT INTO public\.permissions\(permission_code,permission_name,module_code,action_code,administrator_scope\)\s+VALUES \('([^']+)','[^']+','[^']+','[^']+','(global|company|branch|held)'\)/);
-  expect(addition,'New mobile HR classification must come from its executable migration').toBeTruthy();
-  entries.push({code:addition![1],scope:addition![2]});
-  entries.sort((left,right)=>left.code<right.code?-1:left.code>right.code?1:0);
-  expect(entries).toEqual(registry.permissions.map(({code,scope})=>({code,scope})));
-  expect(new Set(entries.map(p=>p.code)).size).toBe(entries.length);expect(entries.length).toBeGreaterThan(0);
+  expect(entries).toEqual(registry.permissions.filter(p=>!p.migration).map(({code,scope})=>({code,scope})));
+  expect(new Set(registry.permissions.map(p=>p.code)).size).toBe(registry.permissions.length);
+  expect(entries.length).toBeGreaterThan(0);
   for(const permission of registry.permissions){expect(permission.reason.length).toBeGreaterThan(10);expect(permission.acceptance).toBeTruthy();}
+ });
+ it('keeps named post-baseline business capabilities in agreement with their migration',()=>{
+  const additions=registry.permissions.filter(p=>p.migration);
+  for(const filename of new Set(additions.map(p=>p.migration!))){
+   const sql=fs.readFileSync(path.resolve('supabase/migrations',filename),'utf8');
+   const definitions=sql.match(/INSERT INTO public\.permissions\(permission_code,permission_name,module_code,action_code,administrator_scope\)\s+VALUES\s*([^;]+);/i)?.[1];
+   expect(definitions,filename).toBeTruthy();
+   const entries=[...definitions!.matchAll(/\('([^']+)','[^']+','([^']+)','[^']+','(global|company|branch|held)'\)/g)]
+    .map(m=>({code:m[1],module:m[2],scope:m[3]}));
+   expect(entries).toEqual(additions.filter(p=>p.migration===filename).map(({code,module,scope})=>({code,module,scope})));
+  }
  });
  it('keeps unreviewed definitions held instead of inheriting them by default',()=>{
   expect(policy).toMatch(/administrator_scope text NOT NULL DEFAULT 'held'/);

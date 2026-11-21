@@ -23,9 +23,9 @@ const HOME_ROUTE_PRIORITY = [
   "/notifications",
 ];
 
-function getDefaultRoute(permissionCodes: string[], isGlobalAdmin: boolean): string {
+function getDefaultRoute(permissionCodes: string[], isGlobalAdmin: boolean, globalPermissionCodes: string[]): string {
   for (const route of HOME_ROUTE_PRIORITY) {
-    if (canAccessRoute(route, permissionCodes, isGlobalAdmin)) return route;
+    if (canAccessRoute(route, permissionCodes, isGlobalAdmin, globalPermissionCodes)) return route;
   }
   return "/no-access";
 }
@@ -59,13 +59,13 @@ export function ErpShell({
 
   // Compute the workspace home tab route based on the user's permissions.
   // This is client-side but uses the permissionCodes passed from the server (layout.tsx).
-  const defaultRoute = getDefaultRoute(permissionCodes, isGlobalAdmin);
+  const defaultRoute = getDefaultRoute(permissionCodes, isGlobalAdmin, globalPermissionCodes);
 
   return (
     // WorkspaceDraftProvider must wrap WorkspaceProvider so it can consume the draft
     // store context to clear drafts on tab close.
     <WorkspaceUiMemoryProvider key={principalId} principalId={principalId}><WorkspaceDraftProvider key={principalId}>
-      <WorkspaceProvider defaultRoute={defaultRoute} principalId={principalId} canRestoreRoute={route => canAccessRoute(route.split("?")[0], permissionCodes, isGlobalAdmin)}>
+      <WorkspaceProvider defaultRoute={defaultRoute} principalId={principalId} canRestoreRoute={route => canAccessRoute(route, permissionCodes, isGlobalAdmin, globalPermissionCodes)}>
         <RealtimeProvider>
           <div className="algt-shell">
             <a className="algt-skip-link" href="#erp-main-content">Skip to content</a>

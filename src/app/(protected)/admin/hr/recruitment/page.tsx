@@ -1,5 +1,6 @@
 ﻿import { HrReportsMenu } from "@/components/erp/hr-reports-menu";
 import { Card, CardContent } from "@/components/ui/card";
+import { LoadError } from "@/components/erp/load-error";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { getRecruitmentSummary } from "@/server/actions/hr/recruitment";
 import { ArrowRight, Briefcase, Calendar, CheckSquare, Gift, Users } from "lucide-react";
@@ -8,11 +9,11 @@ import { redirect } from "next/navigation";
 
 export default async function RecruitmentHubPage() {
   const ctx = await getAuthContext();
-  const canView = hasPermission(ctx, "hr.recruitment.view") || hasPermission(ctx, "hr.recruitment.manage") || ctx.roleCodes?.includes("system_admin");
+  const canView = hasPermission(ctx, "hr.recruitment.view") || hasPermission(ctx, "hr.recruitment.manage");
   if (!canView) redirect("/access-denied");
 
   const summaryRes = await getRecruitmentSummary();
-  const summary = summaryRes.data;
+  const summary = summaryRes.success ? summaryRes.data : undefined;
 
   const cards = [
     {
@@ -88,14 +89,14 @@ export default async function RecruitmentHubPage() {
         ]} />
       </div>
 
-      {summary && (
+      {summary ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <StatCard label="Open Positions" value={summary.open_requisitions} />
           <StatCard label="Active Candidates" value={summary.active_candidates} />
           <StatCard label="Pending Offers" value={summary.pending_offers} />
           <StatCard label="Conversions (Month)" value={summary.conversions_this_month} />
         </div>
-      )}
+      ) : <LoadError title="Recruitment summary" retryHref="/admin/hr/recruitment" />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {cards.map((card) => (

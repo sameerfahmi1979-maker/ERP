@@ -7,7 +7,7 @@
  * Also provides CRUD for erp_ai_model_cost_rates (admin only).
  *
  * Security rules:
- *   - ALL reads require DMS_AI_OBSERVABILITY=true AND dms.ai_observability.view permission.
+ *   - Usage and health reads require DMS_AI_OBSERVABILITY=true and a global observability view grant.
  *   - Cost rate mutations require dms.ai_observability.admin.
  *   - Never returns raw prompts, responses, OCR text, vectors, or API keys.
  *   - Never returns raw metadata_json — safe fields extracted by extractSafeUsageDisplayFields.
@@ -16,9 +16,10 @@
  */
 
 import { extractSafeUsageDisplayFields } from "@/lib/ai/observability/safe-usage-redaction";
+import { canViewDmsAiObservability } from "@/lib/ai/observability/access";
+import { readFeatureAvailability } from "@/lib/ai/read-feature-availability";
 import { getAuthContext, hasGlobalPermission, canUseApplication } from "@/lib/rbac/check";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
 import {verifiedAggregate} from "@/server/reads/verified-aggregate";
 
 import { readDmsUsage, readDmsQueueHealth, readDmsPipelineHealth } from "@/server/reads/dms-ai-observability";
@@ -148,6 +149,7 @@ export interface ErrorBreakdownRow {
 
 export interface ObservabilityConfig {
   featureFlagEnabled: boolean;
+  setupRequired: boolean;
   hasViewPermission: boolean;
   hasAdminPermission: boolean;
 }
@@ -188,15 +190,13 @@ export interface CreateCostRateInput {
 
 // Read authority is checked before elevated monitoring reads and again before delivery.
 // There is no role-name bypass, cross-request cache or provider call.
-const viewPermissions = ["dms.ai_observability.view", "dms.ai_observability.admin", "dms.admin", "settings.ai.view", "settings.ai.manage"];
 async function checkObservabilityAccess() {
   const ctx = await getAuthContext();
   if (!canUseApplication(ctx)) return { ok: false as const, error: "Sign in with an active account." };
-  if (!viewPermissions.some(p => hasGlobalPermission(ctx, p))) return { ok: false as const, error: "Permission denied." };
-  const db = await createClient();
-  const result = await db.from("erp_ai_feature_flags").select("is_enabled").eq("feature_code", "DMS_AI_OBSERVABILITY").maybeSingle();
-  if (result.error || !result.data || typeof result.data.is_enabled !== "boolean") return { ok: false as const, error: "Feature availability could not be verified. Try again." };
-  return { ok: true as const, ctx, flagEnabled: result.data.is_enabled };
+  if (!canViewDmsAiObservability(ctx)) return { ok: false as const, error: "Permission denied." };
+  const availability = await readFeatureAvailability("DMS_AI_OBSERVABILITY");
+  if (availability === "unavailable") return { ok: false as const, error: "Feature availability could not be verified. Try again." };
+  return { ok: true as const, ctx, flagEnabled: availability === "enabled", setupRequired: availability === "setup_required" };
 }
 async function monitoredRead<T>(read: () => Promise<T>): Promise<ActionResult<T>> {
   try {
@@ -216,7 +216,7 @@ export async function getDmsAiObservabilityConfig(): Promise<ActionResult<Observ
   try {
     const access = await checkObservabilityAccess();
     if (!access.ok) return { success: false, error: access.error };
-    return { success: true, data: { featureFlagEnabled: access.flagEnabled, hasViewPermission: true,
+    return { success: true, data: { featureFlagEnabled: access.flagEnabled, setupRequired: access.setupRequired, hasViewPermission: true,
       hasAdminPermission: hasGlobalPermission(access.ctx, "dms.ai_observability.admin") || hasGlobalPermission(access.ctx, "settings.ai.manage") } };
   } catch { return { success: false, error: "Feature availability could not be verified. Try again." }; }
 }

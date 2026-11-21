@@ -33,6 +33,29 @@ it('shows the existing document reference in plain language without automaticall
  fireEvent.click(screen.getByRole('button',{name:'Continue to reviewed upload'}));
  expect(selected).toHaveBeenCalledTimes(1);
 });
+it('offers an explicit resume of the exact unverified intake',async()=>{
+ check.mockResolvedValue({success:true,data:{status:'transfer_pending',authoritative:false,sessionCode:'SYN-TRANSFER',resumable:true}});
+ const selected=vi.fn();render(<DmsUploadDropzone onFileSelected={selected}/>);select();
+ const resume=await screen.findByRole('button',{name:'Resume upload with this file'});
+ expect(screen.getByRole('status').textContent).not.toContain('already been uploaded');
+ expect(selected).not.toHaveBeenCalled();
+ fireEvent.click(resume);
+ expect(selected).toHaveBeenCalledWith(expect.objectContaining({resumeSessionCode:'SYN-TRANSFER',file:expect.any(File)}));
+});
+it('does not convert an interrupted upload into a new batch member',async()=>{
+ check.mockResolvedValue({success:true,data:{status:'transfer_pending',authoritative:false,sessionCode:'SYN-TRANSFER',resumable:true}});
+ const selected=vi.fn();render(<DmsUploadDropzone multiple onFilesSelected={selected}/>);select(true);
+ await screen.findByRole('status');
+ expect(screen.queryByRole('button',{name:'Continue to reviewed upload'})).toBeNull();
+ expect(selected).not.toHaveBeenCalled();
+});
+it('links to an unverified legacy or batch intake without promising single-file resume',async()=>{
+ check.mockResolvedValue({success:true,data:{status:'transfer_pending',authoritative:false,sessionCode:'SYN-BATCH',resumable:false}});
+ const selected=vi.fn();render(<DmsUploadDropzone onFileSelected={selected}/>);select();
+ expect((await screen.findByRole('link',{name:'Open existing intake'})).getAttribute('href')).toBe('/dms/intake/SYN-BATCH');
+ expect(screen.queryByRole('button',{name:'Resume upload with this file'})).toBeNull();
+ expect(selected).not.toHaveBeenCalled();
+});
 it('lets a file with no active match proceed, including a cancelled intake excluded by the database',async()=>{
  check.mockResolvedValue({success:true,data:{status:'no_visible_match',authoritative:false}});
  const selected=vi.fn();render(<DmsUploadDropzone onFileSelected={selected}/>);select();

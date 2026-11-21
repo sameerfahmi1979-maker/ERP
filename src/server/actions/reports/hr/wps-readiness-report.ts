@@ -11,7 +11,7 @@ const revision=z.union([id,z.string().regex(/^[1-9]\d{0,18}$/).refine(v=>BigInt(
 const company=z.object({legal_name_en:z.string()}).nullable();
 const employee=z.object({id,workspace_revision:revision,employee_code:z.string(),full_name_en:z.string(),employee_status:z.string(),joining_date:z.string(),owner_company_id:id,owner_company:company});
 const profile=z.object({employee_id:id,workspace_revision:revision,effective_date:z.string(),currency:z.string(),payroll_status:z.string()});
-const wps=z.object({employee_id:id,workspace_revision:revision,wps_applicable:z.boolean(),wps_status:z.string(),salary_payment_method:z.string(),labour_card_number:z.string().nullable(),mohre_person_code:z.string().nullable(),bank_id:id.nullable(),iban:z.string().nullable(),account_number:z.string().nullable(),exchange_house:z.string().nullable(),bank:z.object({bank_name_en:z.string()}).nullable()});
+const wps=z.object({employee_id:id,workspace_revision:revision,wps_applicable:z.boolean(),wps_status:z.string(),salary_payment_method:z.string(),labour_card_number:z.string().nullable(),mohre_person_code:z.string().nullable(),bank_id:id.nullable(),iban_state:z.enum(["missing","invalid","valid"]),exchange_house:z.string().nullable(),bank:z.object({bank_name_en:z.string()}).nullable()});
 const component=z.object({id,employee_id:id,workspace_revision:revision,component_type_id:id,amount:z.union([z.number().finite(),z.string()]).nullable(),effective_from:z.string(),effective_to:z.string().nullable(),is_active:z.boolean(),deleted_at:z.string().nullable(),component_type:z.object({component_kind:z.string(),is_basic:z.boolean(),workspace_revision:revision}).nullable()});
 const effect=z.object({id,employee_id:id,revision_id:id,effective_date:z.string(),new_basic:z.union([z.number().finite(),z.string()]),currency:z.string()});
 const hold=z.object({id,employee_id:id,workspace_revision:revision,is_active:z.boolean()});
@@ -38,7 +38,7 @@ export const wpsReadinessFetcher:ReportFetcher={
   if(!ids.length)return{employees,profiles:[],wpsRows:[],components:[],effects:[],holds:[]};
   const [p,w,c,a,h]=await Promise.all([
    db.from("employee_payroll_profiles").select("employee_id,workspace_revision,effective_date,currency,payroll_status").in("employee_id",ids).is("deleted_at",null).order("employee_id"),
-   db.from("employee_wps_profiles").select("employee_id,workspace_revision,wps_applicable,wps_status,salary_payment_method,labour_card_number,mohre_person_code,bank_id,iban,account_number,exchange_house,bank:banks(bank_name_en)").in("employee_id",ids).is("deleted_at",null).order("employee_id"),
+   db.from("employee_wps_profiles").select("employee_id,workspace_revision,wps_applicable,wps_status,salary_payment_method,labour_card_number,mohre_person_code,bank_id,iban_state,exchange_house,bank:banks(bank_name_en)").in("employee_id",ids).is("deleted_at",null).order("employee_id"),
    db.from("employee_salary_components").select("id,employee_id,workspace_revision,component_type_id,amount,effective_from,effective_to,is_active,deleted_at,component_type:hr_salary_component_types!employee_salary_components_component_type_id_fkey(component_kind,is_basic,workspace_revision)").in("employee_id",ids).is("deleted_at",null).order("id"),
    db.from("employee_salary_revision_effects").select("id,employee_id,revision_id,effective_date,new_basic,currency").in("employee_id",ids).order("id"),
    db.from("employee_payroll_holds").select("id,employee_id,workspace_revision,is_active").in("employee_id",ids).eq("is_active",true).is("deleted_at",null).order("id")

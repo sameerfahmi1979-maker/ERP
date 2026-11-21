@@ -590,10 +590,10 @@ function TimeSummarySection() {
                 <span className="text-xs text-muted-foreground">Current Shift</span>
               </div>
               <p className="text-sm font-bold truncate">
-                {summary.currentShiftAssignment?.work_shift?.shift_name ?? "—"}
+                {summary.currentShiftAmbiguous ? "Overlapping shift assignments" : summary.currentShiftAssignment?.work_shift?.shift_name ?? "—"}
               </p>
               <p className="text-xs text-muted-foreground">
-                {summary.currentShiftAssignment?.work_calendar?.calendar_name ?? "No calendar"}
+                {summary.currentShiftAmbiguous ? "Review the Shift Calendar" : summary.currentShiftAssignment?.work_calendar?.calendar_name ?? "No calendar"}
               </p>
             </div>
             <div className="flex flex-col gap-1 p-3 rounded-lg border bg-card">

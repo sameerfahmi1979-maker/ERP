@@ -4,10 +4,10 @@ const m=vi.hoisted(()=>({actor:vi.fn(),recipient:vi.fn(),mailbox:vi.fn(),db:vi.f
 vi.mock('@/server/notification-document-authority',()=>({notificationDocumentSubjectsAllowed:m.subjects}));
 vi.mock('@/lib/rbac/check',()=>({getAuthContext:m.actor,getAuthContextForProfileId:m.recipient}));
 vi.mock('@/lib/supabase/server',()=>({createClient:m.db}));
-vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>({auth:{admin:{getUserById:m.mailbox}}})}));
+vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>({from:(table:string)=>m.db().from(table),auth:{admin:{getUserById:m.mailbox}}})}));
 vi.mock('@/server/actions/notifications/email-queue',()=>({queueEmail:m.enqueue}));
 vi.mock('@/server/actions/notifications/notifications',()=>({createNotification:m.notify}));
-vi.mock('@/server/actions/notifications/templates',()=>({renderNotificationTemplate:m.render}));
+vi.mock('@/server/dms-notification-wording',()=>({renderDmsNotificationWording:m.render}));
 import {bridgeDmsEmailSource} from '@/server/dms-email-source';
 import {canUseDmsEmailBridge,confirmedDeliveryMailbox,dmsEmailQueueOutcome,DMS_NOTICE,requireDmsNoticeAccess} from '@/lib/email/queue/dms-policy';
 const doc={id:7,document_no:'SYNTHETIC',title:'PRIVATE DOCUMENT',owner_user_id:2,created_by:1,expiry_date:'2099-01-01',owning_company_id:1,owning_branch_id:2,confidentiality_level:'internal',status:'active',is_archived:false,expiry_tracking_override:null};
@@ -24,7 +24,7 @@ beforeEach(()=>{
  m.actor.mockResolvedValue(syntheticAuthContext(['dms.notifications.manage','notifications.manage','notifications.email_queue.manage','notifications.email_queue.process']));
  m.recipient.mockResolvedValue(recipient());
  m.mailbox.mockResolvedValue({data:{user:confirmed},error:null});m.enqueue.mockResolvedValue({success:true,data:{id:17}});
- m.render.mockResolvedValue({success:true,data:{subject:'PRIVATE DOCUMENT',textBody:'PRIVATE TEXT'}});m.notify.mockResolvedValue({success:true,data:{id:11}});
+ m.render.mockResolvedValue({subject:'PRIVATE DOCUMENT',textBody:'PRIVATE TEXT'});m.notify.mockResolvedValue({success:true,data:{id:11}});
  const query=(table:string)=>{const q:Record<string,unknown>={then:(resolve:(v:unknown)=>unknown)=>{m.calls.push(['execute',table]);if(!m.results.length)throw Error('Unexpected query '+table);return Promise.resolve(m.results.shift()).then(resolve);}};for(const method of ['select','update','eq','is','in','limit','maybeSingle','abortSignal'])q[method]=(...args:unknown[])=>{m.calls.push([table,method,...args]);return q;};return q;};
  m.db.mockImplementation(()=>({from:query,rpc:(name:string,args:unknown)=>{m.calls.push(['rpc',name,args]);return query(name);}}));
 });
@@ -75,7 +75,7 @@ it('new email uses the confirmed mailbox and generic wording, never cached confi
 });
 it.each(['expired_document','document_expired'])('preserves expired-event urgency for both existing producer spellings: %s',async notification_type=>{
  m.results=[ok({...row,global_notification_id:null,notification_type}),...settings(),ok(null),...tail()];
- expect((await bridgeDmsEmailSource(3)).success).toBe(true);expect(m.render).toHaveBeenCalledWith('DMS_DOCUMENT_EXPIRED',expect.any(Object));expect(m.notify).toHaveBeenCalledWith(expect.objectContaining({severity:'urgent'}));expect(m.enqueue).toHaveBeenCalledWith(expect.objectContaining({priority:'high'}),{autoProcess:false});
+ expect((await bridgeDmsEmailSource(3)).success).toBe(true);expect(m.render).toHaveBeenCalledWith('DMS_DOCUMENT_EXPIRED',expect.any(Object),expect.any(AbortSignal));expect(m.notify).toHaveBeenCalledWith(expect.objectContaining({severity:'urgent'}));expect(m.enqueue).toHaveBeenCalledWith(expect.objectContaining({priority:'high'}),{autoProcess:false});
 });
 it.each(['sent','delivery_unknown','cancelled'])('retains the original %s intent without a resend',async status=>{
  const state=status==='sent'?'provider_accepted':status==='delivery_unknown'?'email_uncertain':'email_cancelled';

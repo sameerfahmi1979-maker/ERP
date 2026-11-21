@@ -5,13 +5,19 @@ vi.mock('@/lib/rbac/check',async()=>({...await import('@/lib/rbac/scope'),getAut
 vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({from:s.from})}));
 vi.mock('@/server/notification-personal-state',()=>({changePersonalDmsNotification:s.change}));
 vi.mock('@/server/actions/audit',()=>({logAudit:vi.fn()}));
-vi.mock('@/server/actions/dms/notification-settings',()=>({getDmsNotificationSettingsForScheduler:s.settings}));
+vi.mock('@/server/dms-notification-policy',()=>({getDmsNotificationSettingsForScheduler:s.settings}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
-import {getUnreadDmsNotificationsCount,markDmsNotificationRead,dismissDmsNotification,generateDmsExpiryNotifications} from '@/server/actions/dms/notifications';
+import {getDmsNotifications,getUnreadDmsNotificationsCount,markDmsNotificationRead,dismissDmsNotification,generateDmsExpiryNotifications} from '@/server/actions/dms/notifications';
 beforeEach(()=>{
  vi.clearAllMocks();s.auth.mockResolvedValue(syntheticAuthContext([], {id:7}));s.result={count:0,error:null};s.results=[];s.calls=[];
  s.settings.mockResolvedValue({is_enabled:true,in_app_enabled:true,email_enabled:false,include_document_owner:false,include_document_creator:false,recipient_roles:[],recipient_user_ids:[]});
- s.from.mockImplementation((...args:unknown[])=>{s.calls.push(['from',...args]);const result=s.results.shift()??s.result;const q:Record<string,unknown>={then:(fn:(r:unknown)=>unknown)=>Promise.resolve(result).then(fn)};for(const method of ['select','eq','is','lte','neq','limit','insert','update'])q[method]=(...args:unknown[])=>{s.calls.push([method,...args]);return q;};return q;});
+ s.from.mockImplementation((...args:unknown[])=>{s.calls.push(['from',...args]);const result=s.results.shift()??s.result;const q:Record<string,unknown>={then:(fn:(r:unknown)=>unknown)=>Promise.resolve(result).then(fn)};for(const method of ['select','eq','is','lte','neq','limit','insert','update','order'])q[method]=(...args:unknown[])=>{s.calls.push([method,...args]);return q;};return q;});
+});
+it('view-only DMS users retain the recipient filter even when the legacy list requests all',async()=>{
+ s.auth.mockResolvedValue(syntheticAuthContext(['dms.notifications.view'], {id:7}));
+ s.result={data:[],error:null};
+ expect(await getDmsNotifications({myOnly:false})).toEqual({success:true,data:[]});
+ expect(s.calls).toContainEqual(['eq','recipient_user_id',7]);
 });
 it('true zero is confirmed from the same own due in-app global deliveries as the bell',async()=>{
  expect(await getUnreadDmsNotificationsCount()).toEqual({success:true,data:0});expect(s.calls).toContainEqual(['from','erp_notifications']);expect(s.calls).toContainEqual(['eq','recipient_user_id',7]);expect(s.calls).toContainEqual(['eq','source_module','DMS']);expect(s.calls).toContainEqual(['eq','channel_in_app',true]);expect(s.calls).toContainEqual(['is','deleted_at',null]);expect(s.calls.some(c=>c[0]==='lte'&&c[1]==='scheduled_for')).toBe(true);

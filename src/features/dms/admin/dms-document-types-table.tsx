@@ -265,13 +265,16 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
       default_confidentiality: form.default_confidentiality as typeof ALLOWED_CONFIDENTIALITY[number],
       requires_approval: form.requires_approval,
       default_retention_days: retDays,
-      allowed_entity_types: form.allowed_entity_types as typeof ALLOWED_ENTITY_TYPES[number][],
+      allowed_entity_types: form.allowed_entity_types,
       is_active: form.is_active,
       sort_order: form.sort_order,
     };
     const result = editing
       ? await updateDmsDocumentType(editing.id, payload)
-      : await createDmsDocumentType(payload);
+      : await createDmsDocumentType({
+          ...payload,
+          allowed_entity_types: payload.allowed_entity_types as typeof ALLOWED_ENTITY_TYPES[number][],
+        });
 
     if (!result.success) { setSaveError("The record was not saved. Check your access and whether this code or name is already in use. Your entries are retained."); return; }
     toast.success(editing ? "Document type updated" : "Document type created");
@@ -592,7 +595,7 @@ export function DmsDocumentTypesTable({ rows, categories, authContext }: Props) 
                     onChange={() => toggleEntityType(et)}
                     className="rounded border-border"
                   />
-                  <span className="font-mono">{et}</span>
+                  <span className={et === "fleet_asset" ? undefined : "font-mono"}>{et === "fleet_asset" ? "Fleet Asset" : et}</span>
                 </label>
               ))}
             </div>

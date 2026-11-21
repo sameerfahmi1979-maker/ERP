@@ -24,6 +24,9 @@ export async function saveWorkspaceRecord(entity: "departments" | "employees" | 
       if (error.code === "P0409" || error.code === "40001") return {success:false,error:"Someone changed this record after you opened it. Your draft is retained. Reopen the latest record and compare your changes before saving."};
       if (error.code === "42501") return {success:false,error:"This record is unavailable or you no longer have permission to save it."};
       if (error.code === "23505") return {success:false,error:"A record with this unique code already exists. Check the existing record before retrying."};
+      if (entity === "employees" && id === null && error.code === "P0002" && error.message === "No eligible numbering rule") {
+        return {success:false,uncertain:false,error:"Employee numbering is unavailable. Ask an administrator to check the employee rule in Numbering Rules, then retry."};
+      }
       if (error.code === "P0601" && (entity === "work_calendars" || entity === "work_shifts")) return {success:false,error:entity === "work_calendars"
         ? "This calendar has employee assignment history. Create a new calendar for different schedule rules; existing history is unchanged."
         : "This shift has employee assignment history. Create a new shift for different working times; existing history is unchanged."};

@@ -12,13 +12,13 @@ import{employeeId,isDefiniteEmployeeRejection}from '@/lib/hr/employee-contract';
 import{roleRequirementOpeningValues,requirementRefreshValues}from'@/lib/hr/role-requirement-contract';
 import{siteReadinessValues}from'@/lib/hr/site-readiness-contract';
 import{payrollChildKind,payrollOpeningValues,PAYROLL_CHILD_COLUMNS,PAYROLL_CHILD_TABLES}from'@/lib/hr/payroll-child-contract';
-import{timeChildKind,timeOpeningValues,TIME_CHILD_COLUMNS,TIME_CHILD_TABLES}from'@/lib/hr/time-child-contract';
+import{timeChildKind,timeOpeningValues,TIME_CHILD_COLUMNS,TIME_CHILD_TABLES,leaveCertificateOpening,type LeaveCertificateOpening}from'@/lib/hr/time-child-contract';
 import{attendanceInterval}from'@/lib/hr/attendance-workbench-contract';
 import{operationalBlockOpeningValues}from'@/lib/hr/operational-block-contract';
 import{employeeDate}from '@/lib/hr/employee-contract';
 import{operationItemKind,operationItemOpeningValues,OPERATION_ITEM_TABLES,OPERATION_ITEM_PROJECTIONS,type OperationItemKind}from '@/lib/hr/operation-item-contract';
 async function authorized(kind?:ChildKind){return canUseHrChild(await getAuthContext(),kind);}
-export async function readTimeChildOpening(rawKind:unknown,employee:number,id:number|null=null,action='create',rawBalance?:unknown):Promise<{success:boolean;id?:number|null;revision?:string|null;values?:Record<string,unknown>;actualAttendance?:boolean;error?:string;denied?:true}>{
+export async function readTimeChildOpening(rawKind:unknown,employee:number,id:number|null=null,action='create',rawBalance?:unknown):Promise<{success:boolean;id?:number|null;revision?:string|null;values?:Record<string,unknown>;actualAttendance?:boolean;certificate?:LeaveCertificateOpening;error?:string;denied?:true}>{
  const parsed=timeChildKind.safeParse(rawKind),balance=z.object({leave_type_id:employeeId,leave_year:z.number().int().min(2000).max(2100)}).strict().safeParse(rawBalance);
  if(!parsed.success||!employeeId.safeParse(employee).success||id!==null&&!employeeId.safeParse(id).success||!['create','update','archive','approve','reject','cancel','query','correct','recalculate'].includes(action)||rawBalance!==undefined&&!balance.success)return{success:false,error:'Invalid time opening identity.'};
  const kind=parsed.data;
@@ -35,13 +35,20 @@ export async function readTimeChildOpening(rawKind:unknown,employee:number,id:nu
   const row=r.data as unknown as Record<string,unknown>,{id:recordId,employee_id,workspace_revision,entered_intervals,...values}=row;
   if(kind==='attendance-summary'&&action==='update'&&entered_intervals!==undefined&&entered_intervals!==null&&!z.array(attendanceInterval).max(8).safeParse(entered_intervals).success)return{success:false,error:'Complete actual-time provenance unavailable.'};
   if(employee_id!==employee||!employeeId.safeParse(recordId).success||!employeeId.safeParse(workspace_revision).success||!timeOpeningValues(kind).safeParse(values).success)return{success:false,error:'The complete Time opening or revision is invalid.'};
+  let certificate:LeaveCertificateOpening|undefined;
+  if(kind==='leave-request'&&action==='approve'){
+   const r=await client.rpc('t01_leave_approval_opening',{p_employee:employee,p_request:recordId});
+   const parsed=leaveCertificateOpening.safeParse(r.data);
+   if(r.error||!parsed.success)return{success:false,error:'The current leave certificate requirements could not be verified.'};
+   certificate=parsed.data;
+  }
   let opening=values;
   if(action==='correct')opening={correction_reason:'',notes:values.notes};
   else if(['query','reject','cancel'].includes(action))opening={reason:''};
   else if(['archive','approve'].includes(action))opening={};
   else if(action==='recalculate'){const fingerprint=await client.rpc('f11_leave_balance_opening',{p_employee:employee,p_id:recordId});if(fingerprint.error||!z.string().regex(/^[0-9a-f]{64}$/).safeParse(fingerprint.data).success)return{success:false,error:'Complete leave sources unavailable.'};opening={fingerprint:fingerprint.data};}
   if(!await authorized(kind))return{success:false,error:'Current Time access changed.',denied:true};
-  return{success:true,id:recordId as number,revision:String(workspace_revision),values:opening,...(kind==='attendance-summary'&&action==='update'?{actualAttendance:entered_intervals!==undefined&&entered_intervals!==null}:{})};
+  return{success:true,id:recordId as number,revision:String(workspace_revision),values:opening,certificate,...(kind==='attendance-summary'&&action==='update'?{actualAttendance:entered_intervals!==undefined&&entered_intervals!==null}:{})};
  }catch{return{success:false,error:'Time opening unavailable. No request was sent.'};}
 }
 export async function readPayrollChildOpening(rawKind:unknown,employee:number,id:number|null=null,action='create'):Promise<{success:boolean;id?:number|null;revision?:string|null;values?:Record<string,unknown>;error?:string;denied?:true}>{
@@ -105,7 +112,7 @@ export async function mutateHrChild(raw:unknown,rawContract:unknown):Promise<Chi
   if(!await authorized(r.kind))return{success:false,error:'Permission denied',accessDenied:true};
   const parsed=childOperationValues(r.kind,r.action).safeParse(r.values);
   if(!parsed.success)return{success:false,error:'Check the child fields before saving.',fieldErrors:Object.fromEntries(parsed.error.issues.map(issue=>[issue.path.join('.'),issue.message]))};
-  if(complianceChildKind.safeParse(r.kind).success&&parsed.data.entry_source==='document'&&!await canUseComplianceDocumentEntry(await getAuthContext()))return{success:false,error:'The document-to-record entry is unavailable with current access or settings.',accessDenied:true};
+  if(complianceChildKind.safeParse(r.kind).success&&'entry_source' in parsed.data&&parsed.data.entry_source==='document'&&!await canUseComplianceDocumentEntry(await getAuthContext()))return{success:false,error:'The document-to-record entry is unavailable with current access or settings.',accessDenied:true};
   const client=await createClient();dispatched=true;
   const result=await client.rpc(complianceChildKind.safeParse(r.kind).success?'f11_mutate_compliance_child':timeChildKind.safeParse(r.kind).success?'f11_mutate_time_child':payrollChildKind.safeParse(r.kind).success?'f11_mutate_payroll_child':r.kind==='site-readiness'?'f11_mutate_site_readiness':['role-requirement','requirements-refresh'].includes(r.kind)?'f11_mutate_role_requirement':r.kind==='operational-block'?'f11_mutate_operational_block':['asset','ppe','accommodation'].includes(r.kind)?'f11_mutate_operation_item':r.kind==='assignment'?'f11_mutate_assignment':r.kind==='hr-note'?'f11_mutate_hr_child':r.kind==='pro-process'?'f11_mutate_pro_process':r.kind==='performance'?'f11_mutate_performance':r.kind==='disciplinary'?'f11_mutate_disciplinary':r.kind==='approval'?'f11_mutate_approval':r.kind==='eos-case'?'f11_mutate_eos_case':r.kind==='clearance'?'f11_mutate_clearance':'f11_mutate_hr_action',{p_kind:r.kind,p_employee:r.employeeId,p_id:r.id,p_revision:c.revision,p_operation:c.operationId,p_action:r.action,p_data:parsed.data});
   if(result.error){const definite=isDefiniteEmployeeRejection(result.error.code)||result.error.code==='PT409';return{success:false,uncertain:!definite,...(result.error.code==='42501'?{accessDenied:true as const}:{}),error:hrServiceGuidance(result.error.code,result.error.message)??(['P0409','PT409'].includes(result.error.code)?'This record or its policy sources changed after opening. Reopen and compare before changing it.':result.error.code==='42501'?'Current access to this employee or confidential record is unavailable.':definite?'The change was rejected. Check the fields and current record.':'The outcome is unconfirmed. Keep the original request for reconciliation.')};}

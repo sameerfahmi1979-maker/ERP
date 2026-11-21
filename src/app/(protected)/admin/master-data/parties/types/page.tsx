@@ -10,7 +10,7 @@ import { ERPPageHeader } from "@/components/erp/page-header";
 export default async function PartyTypesPage() {
   const ctx = await getAuthContext();
   if (!hasGlobalPermission(ctx, "master_data.parties.view")&&!hasGlobalPermission(ctx,"master_data.parties.manage_types")) {
-    redirect("/admin");
+    redirect("/access-denied");
   }
 
   const result = await getPartyTypesAdmin();

@@ -62,6 +62,7 @@ import { EmployeeHrActionsTab } from "./tabs/employee-hr-actions-tab";
 import { EmployeeOperationsTab } from "./tabs/employee-operations-tab";
 import { EmployeeOverviewTab } from "./tabs/employee-overview-tab";
 import {EmployeeEmploymentHistory} from './employee-employment-history';
+import {EmployeeEmploymentChangeRequest} from './employment-change-controls';
 import {EmployeeQualitySummary}from './employee-quality-summary';
 import { EmployeePayrollTab } from "./tabs/employee-payroll-tab";
 import { EmployeeProfileTab, type EmployeeProfileFormState } from "./tabs/employee-profile-tab";
@@ -587,7 +588,11 @@ function EmployeeWorkspaceFormInstance({ employee, mode, authContext,notificatio
 
         {/* Audit */}
         <ERPRecordSectionPanel id="audit" activeId={activeSection} title="Audit" lazyMount>
-          {employee?<EmployeeEmploymentHistory employeeId={employee.id} authContext={authContext}/>:<p>Complete the employee profile first. Employment history begins when the employee is saved.</p>}
+          {employee?<div className="space-y-3">
+            <EmployeeEmploymentChangeRequest employee={employee.id} revision={employee.workspace_revision}
+              company={employee.owner_company_id} branch={employee.branch_id} authContext={authContext}/>
+            <EmployeeEmploymentHistory employeeId={employee.id} authContext={authContext}/>
+          </div>:<p>Complete the employee profile first. Employment history begins when the employee is saved.</p>}
         </ERPRecordSectionPanel>
       </form>
     </ERPRecordWorkspaceForm>

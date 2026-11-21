@@ -15,7 +15,7 @@ export const employeeOverviewDataSchemas = {
   compliance: z.object({identityDocuments: expiry, medicalInsurances: expiry.nullable(), dependents: z.object({total: count, active: count}).strict(), accessCards: expiry,
     trainingCertificates: z.object({total: count, valid: count, expiringSoon: count, expired: count}).strict(),
     medicalRecords: z.object({total: count, fit: count, lastExaminationDate: text}).strict().nullable(), dmsDocuments: z.object({total: count}).strict()}).strict(),
-  time: z.object({currentShiftAssignment: z.object({work_calendar: z.object({calendar_name: z.string()}).strip().nullable(), work_shift: z.object({shift_name: z.string()}).strip().nullable()}).strip().nullable(),
+  time: z.object({currentShiftAmbiguous: z.boolean().optional(), currentShiftAssignment: z.object({work_calendar: z.object({calendar_name: z.string()}).strip().nullable(), work_shift: z.object({shift_name: z.string()}).strip().nullable()}).strip().nullable(),
     attendanceThisMonthCount: count, leaveBalanceCount: count.nullable(), pendingLeaveCount: count.nullable(), overtimeHoursThisMonth: z.number().finite()}).strict(),
   payroll: z.object({payrollStatus: text, grossSalary: z.number().finite(), currency: z.string().regex(/^[A-Z]{3}$/).optional(), asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), hasActiveHold: z.boolean(), wpsStatus: text,
     wpsReadiness: z.object({status: z.enum(["ready", "incomplete", "on_hold", "exempt", "not_enrolled"]), missingRequirements: z.array(z.string()).default([])}).strict().nullable(), bankingRestricted: z.boolean()}).strict(),

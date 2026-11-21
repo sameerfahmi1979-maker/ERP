@@ -15,7 +15,7 @@ const joins: Partial<Record<TimeRecordKind, Record<string, string>>> = {
   balances: {leave_type: "hr_leave_types!employee_leave_balances_leave_type_id_fkey(name_en,code)"},
 };
 function projection(kind: TimeRecordKind, detail: boolean) {
-  return Object.keys((detail ? timeRecordDetailSchemas : timeRecordRowSchemas)[kind].shape).map(key => joins[kind]?.[key] ? `${key}:${joins[kind]![key]}` : key).join(",");
+  return Object.keys((detail ? timeRecordDetailSchemas : timeRecordRowSchemas)[kind].shape).filter(key => kind !== "leave" || !["reason","notes"].includes(key)).map(key => joins[kind]?.[key] ? `${key}:${joins[kind]![key]}` : key).join(",");
 }
 function compose(rows: Record<string, unknown>[], p: z.infer<typeof timeRecordCriteriaSchema> & {operation: "page"}) {
   const config = TIME_RECORD_CONFIG[p.kind], fields = [...new Set([...config.fields.map(f => f.id), config.sort])];
@@ -81,7 +81,16 @@ export async function readHrTimeRecords(input: unknown, context?: AuthContext, s
       const result = await query(projection(p.kind, true)).eq("id", p.recordId).maybeSingle(); signal?.throwIfAborted();
       if (result.error) throw Error("Time detail unavailable");
       if (!result.data) return {success: true as const, data: timeRecordUnavailableSchema.parse({...p, availability: "unavailable"})};
-      return {success: true as const, data: timeRecordDetailSchema.parse({...p, row: result.data, access})};
+      let row: unknown = result.data;
+      if (p.kind === "leave") {
+        const sensitive = await bind(db.rpc("t01_leave_medical_detail", {p_employee:p.employeeId,p_request:p.recordId}));
+        signal?.throwIfAborted();
+        if (sensitive.error) throw Error("Leave detail unavailable");
+        const detail = z.object({reason:z.string().nullable(), notes:z.string().nullable()}).strict().nullable().parse(sensitive.data);
+        const facts = timeRecordRowSchemas.leave.extend({leave_type_id:subjectSchema.shape.id}).parse(row);
+        row = {...facts, reason:detail?.reason ?? null, notes:detail?.notes ?? null};
+      }
+      return {success: true as const, data: timeRecordDetailSchema.parse({...p, row, access})};
     }
     const ordered = (select: string) => {
       const q = query(select).order(config.sort, {ascending: false});

@@ -49,6 +49,7 @@ const nextConfig: NextConfig = {
   },
   // Branding/DMS uploads use Server Actions with FormData; default 1 MB is too small.
   experimental: {
+    agentUpgrade: "security",
     serverActions: {
       bodySizeLimit: "10mb",
     },

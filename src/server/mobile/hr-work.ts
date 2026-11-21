@@ -15,15 +15,16 @@ const records = {
 } as const;
 type Kind=keyof typeof records;
 async function read(db:Db,employeeId:number,kind:Kind,page:number,id?:number,date?:string) {
+  if(kind==="assignments"||kind==="readiness"||kind==="blocks"){
+    const rows=await rpc(db,"mobile_hr_v5_work_rows",{p_employee:employeeId,p_kind:kind,p_page:page,p_record:id??null,p_day:date??null});
+    return checkedRows({data:rows,error:null});
+  }
   const c=records[kind];
   const columns=[...new Set(["id","workspace_revision",c.title,c.status,c.start,c.end,...c.extra].filter(Boolean))];
   const q=db.from(c.table).select(columns.join(",")).eq("employee_id",employeeId).is("deleted_at",null);
   if(id)q.eq("id",id);
   if(date && c.start)q.lte(c.start,date);
   if(date && c.end)q.or(`${c.end}.is.null,${c.end}.gte.${date}`);
-  if(date && kind==="readiness")q.lt("checked_at",new Date(Date.parse(date+"T20:00:00Z")).toISOString());
-  if(date && kind==="blocks")q.eq("block_status","active");
-  if(date && kind==="assignments")q.eq("assignment_status","active");
   return checkedRows(await q.order("id",{ascending:false}).range((page-1)*25,(page-1)*25+25));
 }
 function shape(r:Row,kind:Kind) {

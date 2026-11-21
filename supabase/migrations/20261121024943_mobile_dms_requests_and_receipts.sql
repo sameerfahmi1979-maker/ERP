@@ -143,6 +143,44 @@ CREATE FUNCTION erp_private.mobile_dms_document(p_action text,p_data jsonb) RETU
 DECLARE who bigint:=erp_private.mobile_dms_actor(); doc bigint:=(p_data->>'documentId')::bigint; pg int:=(p_data->>'page')::int; op uuid:=(p_data->>'operationId')::uuid;
  src jsonb; r jsonb; vals jsonb; defs jsonb; rules jsonb; d public.dms_documents; editable boolean; n bigint; added int; removed int; a bigint[]; b bigint[]; q tsquery;
 BEGIN
+ IF p_action='renewal_parent' THEN
+  PERFORM erp_private.mobile_dms_keys(p_data,ARRAY['documentId'],ARRAY['parent']);
+  FOR r IN SELECT candidates.parent FROM (SELECT DISTINCT jsonb_build_object('entityType',l.entity_type,'entityId',l.entity_id) AS parent,
+    (l.entity_type='employee' AND erp_private.mobile_hr_self(l.entity_id)) AS own
+   FROM public.dms_document_links l WHERE l.document_id=doc AND l.deleted_at IS NULL AND l.entity_type IN ('employee','site')
+   AND (NOT p_data?'parent' OR l.entity_type=p_data->'parent'->>'entityType' AND l.entity_id=(p_data->'parent'->>'entityId')::bigint)
+   ) candidates ORDER BY candidates.own DESC,candidates.parent
+  LOOP
+   BEGIN
+    IF (erp_private.mobile_dms_renewal_rights(doc,r)->>'canSubmit')::boolean THEN RETURN r; END IF;
+   EXCEPTION WHEN SQLSTATE '42501' OR SQLSTATE 'PT404' OR SQLSTATE 'PT409' THEN NULL;
+   END;
+  END LOOP;
+  RETURN 'null'::jsonb;
+ END IF;
+ IF p_action IN ('employee_folder_access','employee_folder','employee_link') THEN
+  PERFORM erp_private.mobile_dms_keys(p_data,ARRAY['employeeId']||CASE p_action WHEN 'employee_folder' THEN ARRAY['page'] WHEN 'employee_link' THEN ARRAY['documentId'] ELSE '{}'::text[] END);
+  BEGIN
+   PERFORM erp_private.mobile_dms_parent(jsonb_build_object('entityType','employee','entityId',p_data->'employeeId'));
+   IF NOT (erp_private.employee_permission((p_data->>'employeeId')::bigint,'hr.employees.view') OR erp_private.employee_permission((p_data->>'employeeId')::bigint,'hr.employee_profile.view'))
+   THEN RAISE EXCEPTION 'Employee unavailable' USING ERRCODE='42501'; END IF;
+  EXCEPTION WHEN SQLSTATE '42501' THEN IF p_action='employee_folder_access' THEN RETURN 'false'::jsonb; END IF; RAISE;
+  END;
+  IF p_action='employee_folder_access' THEN RETURN 'true'::jsonb; END IF;
+  IF p_action='employee_link' THEN
+   IF NOT erp_private.mobile_dms_can(doc,'dms.documents.view') OR NOT EXISTS(SELECT FROM public.dms_document_links l WHERE l.document_id=doc AND l.entity_type='employee' AND l.entity_id=(p_data->>'employeeId')::bigint AND l.deleted_at IS NULL)
+   THEN RAISE EXCEPTION 'Document unavailable' USING ERRCODE='PT404'; END IF;
+   RETURN 'true'::jsonb;
+  END IF;
+  IF pg IS NULL OR pg NOT BETWEEN 1 AND 100000 THEN RAISE EXCEPTION 'Invalid page' USING ERRCODE='22023'; END IF;
+  WITH permitted AS MATERIALIZED(SELECT item.id,item.title,item.document_no FROM public.dms_documents item WHERE item.deleted_at IS NULL
+   AND EXISTS(SELECT FROM public.dms_document_links l WHERE l.document_id=item.id AND l.entity_type='employee' AND l.entity_id=(p_data->>'employeeId')::bigint AND l.deleted_at IS NULL)
+   AND erp_private.mobile_dms_can(item.id,'dms.documents.view')),
+   selected AS (SELECT * FROM permitted ORDER BY id DESC LIMIT 25 OFFSET (pg-1)*25)
+  SELECT jsonb_build_object('employeeId',p_data->'employeeId','totalCount',(SELECT count(*) FROM permitted),'rows',
+   coalesce(jsonb_agg(jsonb_build_object('id',id,'title',title,'number',document_no) ORDER BY id DESC),'[]')) INTO r FROM selected;
+  RETURN r;
+ END IF;
  IF p_action='search_parent' THEN PERFORM erp_private.mobile_dms_keys(p_data,ARRAY['parent']); PERFORM erp_private.mobile_dms_parent(p_data->'parent');RETURN 'true'::jsonb;END IF;
  IF p_action='search_origins' THEN
   PERFORM erp_private.mobile_dms_keys(p_data,ARRAY['ids','textQuery','structured']);
@@ -227,6 +265,22 @@ BEGIN
  IF company IS NULL OR revision IS NULL OR NOT (erp_private.permission_in_scope('dms.documents.view',company,branch) OR erp_private.permission_in_scope('dms.admin',company,branch)) THEN RAISE EXCEPTION 'Parent unavailable' USING ERRCODE='42501'; END IF;
  RETURN jsonb_build_object('company',company,'branch',branch,'department',department,'subtype',subtype,'revision',revision,'canManage',officer,'canSubmit',officer OR (own AND (erp_private.permission_in_scope('dms.documents.upload',company,branch) OR erp_private.employee_permission(target,'hr.requests.submit'))));
 END $$;
+-- Options, creation and both native entry points use the same current link and grant.
+CREATE FUNCTION erp_private.mobile_dms_renewal_rights(doc bigint,p jsonb) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+DECLARE ps jsonb:=erp_private.mobile_dms_parent(p); manage boolean;
+BEGIN
+ IF NOT erp_private.mobile_dms_can(doc,'dms.documents.view') THEN RAISE EXCEPTION 'Unavailable source' USING ERRCODE='42501'; END IF;
+ IF NOT EXISTS(SELECT FROM public.dms_document_links l JOIN public.dms_documents d ON d.id=l.document_id
+   JOIN public.dms_document_types t ON t.id=d.document_type_id WHERE d.id=doc AND d.deleted_at IS NULL AND NOT d.is_archived
+   AND d.status NOT IN ('archived','superseded','deleted') AND d.current_version_id IS NOT NULL AND d.superseded_by_document_id IS NULL AND t.is_renewable
+   AND l.entity_type=p->>'entityType' AND l.entity_id=(p->>'entityId')::bigint AND l.deleted_at IS NULL)
+ THEN RAISE EXCEPTION 'Unavailable renewal source' USING ERRCODE='PT409'; END IF;
+ manage:=(ps->>'canManage')::boolean AND erp_private.mobile_dms_can(doc,'dms.renewals.manage');
+ RETURN jsonb_build_object('canManage',manage,'canSubmit',manage OR (p->>'entityType'='employee' AND erp_private.mobile_hr_self((p->>'entityId')::bigint) AND (ps->>'canSubmit')::boolean));
+END $$;
+REVOKE ALL ON FUNCTION erp_private.mobile_dms_renewal_rights(bigint,jsonb) FROM PUBLIC,anon,authenticated,service_role;
+
 CREATE FUNCTION erp_private.mobile_dms_parent_key(typ text,eid bigint) RETURNS bigint LANGUAGE sql IMMUTABLE SET search_path='' AS $$ SELECT hashtextextended('mobile-dms-parent/'||typ||'/'||eid::text,0) $$;
 CREATE FUNCTION erp_private.mobile_dms_link_fence() RETURNS trigger LANGUAGE plpgsql SET search_path='' SECURITY DEFINER AS $$
 DECLARE a bigint;b bigint;
@@ -412,13 +466,13 @@ BEGIN
   IF kind='renewal' THEN
    IF p_action='create' THEN PERFORM erp_private.mobile_dms_lock(doc); END IF;
    src:=erp_private.mobile_dms_source(jsonb_strip_nulls(jsonb_build_object('documentId',doc,'sourceHash',p_data->>'sourceHash')),ARRAY['dms.documents.view']);
-   IF NOT EXISTS(SELECT 1 FROM public.dms_document_links l JOIN public.dms_documents d ON d.id=l.document_id JOIN public.dms_document_types t ON t.id=d.document_type_id WHERE d.id=doc AND NOT d.is_archived AND d.superseded_by_document_id IS NULL AND t.is_renewable AND l.entity_type=p->>'entityType' AND l.entity_id=(p->>'entityId')::bigint AND l.deleted_at IS NULL) THEN RAISE EXCEPTION 'Unavailable renewal source' USING ERRCODE='PT409'; END IF;
-   officer:=officer AND erp_private.mobile_dms_can(doc,'dms.renewals.manage');allow_submit:=officer OR (p->>'entityType'='employee' AND erp_private.mobile_hr_self((p->>'entityId')::bigint) AND allow_submit);
+   ps:=erp_private.mobile_dms_renewal_rights(doc,p);
+   officer:=(ps->>'canManage')::boolean;allow_submit:=(ps->>'canSubmit')::boolean;
   END IF;
   IF NOT allow_submit THEN RAISE EXCEPTION 'Submission unavailable' USING ERRCODE='42501'; END IF;
  END IF;
  IF p_action='options' THEN
-  PERFORM erp_private.mobile_dms_keys(p_data,ARRAY['kind','parent','page','search']||CASE WHEN kind='renewal' THEN ARRAY['documentId'] ELSE '{}'::text[] END);
+  PERFORM erp_private.mobile_dms_keys(p_data,ARRAY['kind','parent','page','search']||CASE WHEN kind='renewal' THEN ARRAY['documentId'] ELSE '{}'::text[] END,CASE WHEN kind='renewal' THEN ARRAY['sourceHash'] ELSE '{}'::text[] END);
   IF pg IS NULL OR pg NOT BETWEEN 1 AND 100000 OR length(p_data->>'search')>100 THEN RAISE EXCEPTION 'Invalid options' USING ERRCODE='22023'; END IF;
   WITH choices AS MATERIALIZED(SELECT * FROM erp_private.mobile_dms_officers(p,kind,doc) x WHERE x.id<>who AND strpos(lower(x.label),lower(p_data->>'search'))>0), selected AS(SELECT * FROM choices ORDER BY label,id LIMIT 25 OFFSET (pg-1)*25)
   SELECT (SELECT count(*) FROM choices),coalesce(jsonb_agg(to_jsonb(s) ORDER BY label,id),'[]') INTO n,rows FROM selected s;

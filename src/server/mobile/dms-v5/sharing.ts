@@ -15,10 +15,11 @@ export function parseFileMode(request:Request) {
   return {mode:"share" as const,token:value.data,disposition:mode.data};
  }
  if(keys.some(k=>k.startsWith("expected"))){
-  if(!exact(["fileId","disposition","expectedDocumentId","expectedVersionId","expectedSourceHash"])||params.get("disposition")!=="attachment")invalid();
+  const employee=params.has("expectedEmployeeId"),mode=disposition.safeParse(params.get("disposition"));
+  if(!exact(["fileId","disposition","expectedDocumentId","expectedVersionId","expectedSourceHash",...(employee?["expectedEmployeeId"]:[])])||!mode.success||!employee&&mode.data!=="attachment")invalid();
   const number=(key:string)=>{const raw=params.get(key)??"";if(!/^[1-9][0-9]*$/.test(raw)||!id.safeParse(Number(raw)).success)invalid();return Number(raw);};
   const fingerprint=hash.safeParse(params.get("expectedSourceHash"));if(!fingerprint.success)invalid();
-  return {mode:"pinned" as const,disposition:"attachment" as const,documentId:number("expectedDocumentId"),versionId:number("expectedVersionId"),fileId:number("fileId"),sourceHash:fingerprint.data};
+  return {mode:"pinned" as const,disposition:mode.data,...(employee?{employeeId:number("expectedEmployeeId")}:{}),documentId:number("expectedDocumentId"),versionId:number("expectedVersionId"),fileId:number("fileId"),sourceHash:fingerprint.data};
  }
  if(keys.some(k=>!["fileId","disposition"].includes(k)))invalid();
  return {mode:"legacy" as const};
@@ -32,7 +33,7 @@ export async function readShares(input:CommandFor<"documentShareRecipients"|"doc
  const r=await rpc("mobile_dms_shares",{p_action:"list",p_data:{documentId:input.documentId,page:input.page}},pagePayload(z.strictObject({id,recipientLabel:z.string(),createdAt:z.iso.datetime({offset:true}),expiresAt:z.iso.datetime({offset:true}),state:z.enum(["active","expired","revoked","stale_source"]),canRevoke:z.boolean(),versionId:id,fileId:id})));
  return completePage(r.rows,input.page,25,r.totalCount,v=>v.id);
 }
-const tokenHash=(token:string)=>createHash("sha256").update(Buffer.from(shareToken.parse(token),"base64url")).digest("hex");
+export const tokenHash=(token:string)=>createHash("sha256").update(Buffer.from(shareToken.parse(token),"base64url")).digest("hex");
 const resolveSchema=z.strictObject({shareId:id,title:z.string().max(1000),number:z.string().max(128),expiresAt:z.iso.datetime({offset:true}),source:z.strictObject({documentId:id,versionId:id,fileId:id,sourceHash:hash}),canPreview:z.literal(true),canDownload:z.literal(true)});
 export function resolveShare(token:string,action:"resolve"|"preflight"|"delivered"="resolve",eventId?:number){
  return rpc("mobile_dms_shares",{p_action:action,p_data:{tokenHash:tokenHash(token),...(eventId?{eventId}:{})}},resolveSchema);

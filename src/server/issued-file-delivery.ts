@@ -10,7 +10,7 @@ const noStore = { "Cache-Control": "private, no-store" };
 const unavailable = () => NextResponse.json({ error: "Document unavailable or access denied." }, { status: 404, headers: noStore });
 
 export type IssuedBinding = {employeeId:number;checksum:string;mode:"preview"|"download"};
-export async function deliverIssuedFile(id:number,binding?:IssuedBinding): Promise<NextResponse> {
+export async function deliverIssuedFile(id:number,binding?:IssuedBinding,checkOnly=false): Promise<NextResponse> {
   try {
     const ctx = await getAuthContext();
     if (!canUseApplication(ctx)) return NextResponse.json({ error: "Sign in required." }, { status: 401, headers: noStore });
@@ -23,6 +23,26 @@ export async function deliverIssuedFile(id:number,binding?:IssuedBinding): Promi
       (doc.expires_at && Date.parse(doc.expires_at) <= Date.now())) return unavailable();
     if(binding && (doc.source_record_type!=="employee" || doc.source_record_id!==binding.employeeId || doc.superseded_by_id))return unavailable();
     if(binding && binding.checksum!==doc.checksum)return NextResponse.json({error:"The original changed."},{status:409,headers:noStore});
+    // The source and employee binding can change during storage or permission checks.
+    const verifyCurrent=async()=>{
+      if (!(await canAccessIssuedFile(id, "download"))) return unavailable();
+      const current = await (await createClient()).from("erp_generated_pdf_documents").select("lifecycle_state,revoked_at,expires_at,archived_at,superseded_by_id,source_record_type,source_record_id,storage_path,checksum,file_size_bytes").eq("id", id).maybeSingle();
+      if(binding && current.error)return NextResponse.json({error:"Output verification unavailable."},{status:503,headers:noStore});
+      if(binding && current.data && (current.data.checksum!==doc.checksum || current.data.file_size_bytes!==doc.file_size_bytes || current.data.storage_path!==doc.storage_path))
+        return NextResponse.json({error:"The retained original changed."},{status:409,headers:noStore});
+      if (current.error || !current.data || current.data.lifecycle_state !== "issued" || current.data.revoked_at || current.data.archived_at ||
+        (current.data.expires_at && Date.parse(current.data.expires_at) <= Date.now()) ||
+        current.data.storage_path !== doc.storage_path || current.data.checksum !== doc.checksum || current.data.file_size_bytes !== doc.file_size_bytes) return unavailable();
+      if(binding && (current.data.source_record_type!=="employee" || current.data.source_record_id!==binding.employeeId || current.data.superseded_by_id))return unavailable();
+      return null;
+    };
+    if(checkOnly && binding){
+      const changed=await verifyCurrent();
+      if(changed)return changed;
+      if(!Number.isSafeInteger(doc.file_size_bytes) || Number(doc.file_size_bytes)<=0)return unavailable();
+      return new NextResponse(null,{headers:{...noStore,"X-HR-Employee-Id":String(binding.employeeId),
+        "X-HR-Issuance-Id":String(id),"X-HR-Issued-Checksum":binding.checksum,"X-HR-Issued-Bytes":String(doc.file_size_bytes)}});
+    }
     const admin = createAdminClient();
     const file = await admin.storage.from("erp-generated-pdfs").download(doc.storage_path);
     if (file.error || !file.data) return NextResponse.json({ error: "File storage is unavailable." }, { status: binding ? 503 : 502, headers: noStore });
@@ -31,16 +51,8 @@ export async function deliverIssuedFile(id:number,binding?:IssuedBinding): Promi
         bytes.length !== doc.file_size_bytes || createHash("sha256").update(bytes).digest("hex") !== doc.checksum) {
       return NextResponse.json({ error: "The retained original failed its integrity check. Reconciliation is required." }, { status: 409, headers: noStore });
     }
-    // Recheck after storage latency: do not serve bytes if permissions changed during the request.
-    if (!(await canAccessIssuedFile(id, "download"))) return unavailable();
-    const current = await (await createClient()).from("erp_generated_pdf_documents").select("lifecycle_state,revoked_at,expires_at,archived_at,superseded_by_id,source_record_type,source_record_id,storage_path,checksum,file_size_bytes").eq("id", id).maybeSingle();
-    if(binding && current.error)return NextResponse.json({error:"Output verification unavailable."},{status:503,headers:noStore});
-    if(binding && current.data && (current.data.checksum!==doc.checksum || current.data.file_size_bytes!==doc.file_size_bytes || current.data.storage_path!==doc.storage_path))
-      return NextResponse.json({error:"The retained original changed."},{status:409,headers:noStore});
-    if (current.error || !current.data || current.data.lifecycle_state !== "issued" || current.data.revoked_at || current.data.archived_at ||
-      (current.data.expires_at && Date.parse(current.data.expires_at) <= Date.now()) ||
-      current.data.storage_path !== doc.storage_path || current.data.checksum !== doc.checksum || current.data.file_size_bytes !== doc.file_size_bytes) return unavailable();
-    if(binding && (current.data.source_record_type!=="employee" || current.data.source_record_id!==binding.employeeId || current.data.superseded_by_id))return unavailable();
+    const changed=await verifyCurrent();
+    if(changed)return changed;
     const audit = await admin.from("audit_logs").insert({
       actor_user_profile_id: ctx.profile!.id, owner_company_id: doc.owner_company_id,
       module_code: "reports", entity_name: "erp_generated_pdf_documents", entity_id: id,

@@ -72,4 +72,46 @@ REVOKE ALL ON FUNCTION erp_private.mobile_dms_collections(text,jsonb) FROM PUBLI
 REVOKE ALL ON FUNCTION public.mobile_dms_collections(text,jsonb) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION erp_private.mobile_dms_collections(text,jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.mobile_dms_collections(text,jsonb) TO authenticated;
+-- Receipt recovery never invokes reserve, settlement, a provider, a mutation or a locking read.
+CREATE FUNCTION erp_private.mobile_dms_receipt(p_command text,p_data jsonb) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+DECLARE who bigint:=erp_private.mobile_dms_actor(); result jsonb; doc bigint:=(p_data->>'documentId')::bigint;
+ target bigint; f public.dms_saved_searches; s erp_private.mobile_dms_shares; criteria jsonb;
+BEGIN
+ SELECT r.result INTO result FROM erp_private.mobile_dms_receipts r WHERE r.actor=who AND r.operation=(p_data->>'operationId')::uuid
+   AND r.command=p_command AND r.payload_hash=erp_private.mobile_dms_hash(p_data) AND r.state='settled';
+ IF result IS NULL THEN RETURN false; END IF;
+ IF doc IS NOT NULL AND NOT erp_private.mobile_dms_can(doc,'dms.documents.view') THEN RETURN false; END IF;
+ CASE
+ WHEN p_command IN ('comment/add','comment/edit','comment/delete') THEN
+  RETURN EXISTS(SELECT FROM public.dms_document_comments c WHERE c.id=(result->>'commentId')::bigint AND c.document_id=doc AND c.created_by=who);
+ WHEN p_command='metadata/save' THEN RETURN erp_private.mobile_dms_can(doc,'dms.documents.edit') OR erp_private.mobile_dms_can(doc,'dms.admin');
+ WHEN p_command='tags/change' THEN RETURN erp_private.mobile_dms_can(doc,'dms.documents.manage_tags') OR erp_private.mobile_dms_can(doc,'dms.documents.edit');
+ WHEN p_command IN ('filter/save_filter','filter/delete_filter') THEN
+  IF NOT EXISTS(SELECT FROM (
+    SELECT c.id AS company,NULL::bigint AS branch FROM public.owner_companies c WHERE c.status='active'
+    UNION ALL SELECT b.owner_company_id,b.id FROM public.branches b JOIN public.owner_companies c ON c.id=b.owner_company_id AND c.status='active' WHERE b.status='active'
+  ) scope WHERE erp_private.permission_in_scope('dms.documents.view',scope.company,scope.branch) OR erp_private.permission_in_scope('dms.admin',scope.company,scope.branch)) THEN RETURN false; END IF;
+  SELECT * INTO f FROM public.dms_saved_searches WHERE id=(result->>'id')::bigint AND user_id=who AND NOT is_shared;
+  IF f.id IS NULL THEN RETURN false; END IF;
+  FOR criteria IN SELECT f.filter_json UNION SELECT p_data->'criteria' LOOP
+   IF criteria?'entityId' THEN PERFORM erp_private.mobile_dms_parent(jsonb_build_object('entityType',criteria->'entityType','entityId',criteria->'entityId')); END IF;
+   IF criteria->'personal'='true'::jsonb THEN PERFORM erp_private.mobile_dms_parent(jsonb_build_object('entityType','employee','entityId',erp_private.mobile_hr_linked_id())); END IF;
+  END LOOP;
+  RETURN true;
+ WHEN p_command IN ('request/create/missing','request/act/missing','request/create/renewal','request/act/renewal') THEN
+  target:=(result->'request'->>'id')::bigint;
+  RETURN erp_private.mobile_dms_request_row(p_data->>'kind',target,p_data->'parent') IS NOT NULL;
+ WHEN p_command IN ('share/create','share/revoke') THEN
+  SELECT * INTO s FROM erp_private.mobile_dms_shares WHERE id=coalesce((result->>'id')::bigint,(result->>'shareId')::bigint);
+  RETURN s.id IS NOT NULL AND erp_private.mobile_dms_can(s.document_id,'dms.documents.view') AND
+    ((s.issuer=who AND erp_private.mobile_dms_can(s.document_id,'dms.documents.share_external')) OR erp_private.mobile_dms_can(s.document_id,'dms.admin'));
+ ELSE RETURN false;
+ END CASE;
+EXCEPTION WHEN SQLSTATE '42501' OR SQLSTATE 'PT404' OR SQLSTATE 'PT409' THEN RETURN false;
+END $$;
+CREATE FUNCTION public.mobile_dms_receipt(p_command text,p_data jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path='' AS $$SELECT erp_private.mobile_dms_receipt(p_command,p_data)$$;
+REVOKE ALL ON FUNCTION erp_private.mobile_dms_receipt(text,jsonb),public.mobile_dms_receipt(text,jsonb) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION erp_private.mobile_dms_receipt(text,jsonb),public.mobile_dms_receipt(text,jsonb) TO authenticated;
 COMMIT;

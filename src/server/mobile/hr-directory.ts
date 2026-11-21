@@ -49,8 +49,9 @@ export async function employeeRecord(db:Db,ctx:AuthContext,employeeId:number) {
   const raw=z.record(z.string(),z.unknown()).parse(record.data);
   const r={...raw,nationality:related(raw,"nationality","name_en"),category:related(raw,"category","name_en"),employment_type:related(raw,"employment_type","name_en"),supervisor:related(raw,"supervisor","full_name_en"),sponsor:related(raw,"sponsor","legal_name_en"),mohre:related(raw,"mohre","establishment_name"),relationship:related(raw,"relationship","name_en")};
   const blood=medicalAllowed?nullable.parse(await rpc(db,"f03_employee_blood_group",{employee_id:employeeId})):null;
+  const folder=await db.rpc("mobile_dms_document",{p_action:"employee_folder_access",p_data:{employeeId}});
   const contact=(key:string,label:string,value:string|null,dialable=false)=>({key,label,value,dialable});
-  return {employeeId,employeeCode:p.employee_code,name:p.full_name_en,company:p.owner_company,branch:p.branch,revision:p.workspace_revision,own:p.own,photo,capabilities:legacy.capabilities,
+  return {employeeId,employeeCode:p.employee_code,name:p.full_name_en,company:p.owner_company,branch:p.branch,revision:p.workspace_revision,own:p.own,photo,capabilities:{...legacy.capabilities,linkedDocuments:!folder.error&&folder.data===true},
     sections:{personal:fields(r,["known_name","full_name_ar","gender","nationality","date_of_birth","marital_status","uae_address","home_country_address"]),
       employment:[...fields(p,["owner_company","branch","department","designation","manager","site","employee_status"]),
         ...fields(r,["category","employment_type","joining_date","actual_joining_date","supervisor","sponsor","mohre","probation_start_date","probation_end_date","contract_type","contract_start_date","contract_end_date","notice_period_days","inactive_date","inactive_reason"])],

@@ -1,9 +1,16 @@
 import "server-only";
+import {AsyncLocalStorage} from "node:async_hooks";
+
 import {getDmsAiProvider} from "@/lib/dms/ai/factory";
 import {z} from "zod";
 import {createClient} from "@/lib/supabase/server";
 import {canUseApplication,getAuthContext,type AuthContext} from "@/lib/rbac/check";
 import {source,type Source} from "./contracts";
+
+// Request-local: only a successful transactional write marks later delivery errors ambiguous.
+const effects=new AsyncLocalStorage<{committed:boolean}>();
+export function withMutationEffect<T>(run:()=>Promise<T>){return effects.run({committed:false},run);}
+export function mutationCommitted(){return effects.getStore()?.committed===true;}
 
 export class DmsError extends Error {
  constructor(readonly status:number,readonly code:string,message:string,readonly uncertain=false){super(message);}
@@ -27,7 +34,7 @@ export async function readDmsFeatureAvailability() {
   return {questions:ask&&configured,naturalSearch:search&&configured,batch:flags.has("DMS_BATCH_INTAKE")};
  }catch{return unavailable;}
 }
-type RpcName="mobile_dms_source"|"mobile_dms_comment"|"mobile_dms_document"|"mobile_dms_checklist"|"mobile_dms_requests"|"mobile_dms_renewal_request"|"mobile_dms_operation"|"mobile_dms_shares"|"mobile_dms_collections"|"mobile_dms_question_context"|"mobile_dms_progress";
+type RpcName="mobile_dms_receipt"|"mobile_dms_source"|"mobile_dms_comment"|"mobile_dms_document"|"mobile_dms_checklist"|"mobile_dms_requests"|"mobile_dms_renewal_request"|"mobile_dms_operation"|"mobile_dms_shares"|"mobile_dms_collections"|"mobile_dms_question_context"|"mobile_dms_progress";
 export async function rpc<T>(name:RpcName,args:Record<string,unknown>,schema:z.ZodType<T>,mutation=false):Promise<T> {
  const db=await createClient();const r=await db.rpc(name,args);
  if(r.error){
@@ -41,6 +48,7 @@ export async function rpc<T>(name:RpcName,args:Record<string,unknown>,schema:z.Z
    default:throw new DmsError(503,"operation_unavailable","The result could not be verified.",mutation);
   }
  }
+ const active=effects.getStore();if(mutation&&active)active.committed=true;
  const parsed=schema.safeParse(r.data);
  if(!parsed.success)throw new DmsError(503,"invalid_receipt","The result could not be verified.",mutation);
  return parsed.data;
@@ -60,4 +68,8 @@ export async function admitMobileDmsSource(ctx:AuthContext,selection:Selection,c
 export async function verifyMobileDmsDelivery(ctx:AuthContext,binding:Source,capabilities:Capability[]=["dms.documents.view"],historical=false){
  await verifySession(ctx);
  await admitMobileDmsSource(ctx,{documentId:binding.documentId,versionId:binding.documentVersionId,...(binding.fileId!==null?{fileId:binding.fileId}:{}),sourceHash:binding.sourceHash,historical},capabilities);
+}
+
+export async function verifyEmployeeDocument(employeeId:number,documentId:number){
+ return rpc("mobile_dms_document",{p_action:"employee_link",p_data:{employeeId,documentId}},z.literal(true));
 }

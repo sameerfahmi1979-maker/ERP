@@ -4,8 +4,8 @@ import {createClient} from "@/lib/supabase/server";
 import {getDmsDocumentRecordData} from "@/server/actions/dms/documents";
 import {getDmsDocumentLifecycle,getDmsDocumentHistoryPage} from "@/server/actions/dms/lifecycle-history";
 import {literalContains} from "@/lib/reads/search";
-import {admitMobileDmsSource,verifyMobileDmsDelivery,readDmsFeatureAvailability,rpc,unavailable,conflict,type Capability} from "./access";
-import {id,hash,commentRevision,completePage,summary,source,type CommandFor} from "./contracts";
+import {admitMobileDmsSource,verifyMobileDmsDelivery,verifyEmployeeDocument,verifySession,readDmsFeatureAvailability,rpc,unavailable,conflict,type Capability} from "./access";
+import {id,hash,commentRevision,completePage,summary,source,parent,type CommandFor} from "./contracts";
 import {pagePayload} from "./collections";
 type DocOp="documentDetails"|"documentSources"|"documentMetadata"|"documentMetadataSave"|"documentTags"|"documentTagOptions"|"documentTagsChange"|"documentComments"|"documentCommentAdd"|"documentCommentEdit"|"documentCommentDelete"|"documentHistory";
 export async function readHistory(input:CommandFor<"documentHistory">){
@@ -36,14 +36,20 @@ async function permissions(doc:number,codes:Capability[]){
 export async function documents(input:CommandFor<DocOp>,ctx:AuthContext){
  const doc=input.documentId;const bound=await admitMobileDmsSource(ctx,{documentId:doc,...("sourceHash" in input?{sourceHash:input.sourceHash}:{})});
  const db=await createClient();
+ const employeeLink=async()=>{
+  if("employeeId" in input && input.employeeId!==undefined)
+   await verifyEmployeeDocument(input.employeeId,doc);
+ };
+ await employeeLink();
  const read=async()=>{
   switch(input.op){
    case "documentDetails":{
-    const [r,l,flags,rights]=await Promise.all([getDmsDocumentRecordData(doc),getDmsDocumentLifecycle(doc),readDmsFeatureAvailability(),permissions(doc,["dms.documents.preview","dms.documents.download","dms.documents.edit","dms.documents.manage_tags","dms.renewals.manage","dms.documents.share_external","dms.admin"])]);
+    const [r,l,flags,rights,renewalParent]=await Promise.all([getDmsDocumentRecordData(doc),getDmsDocumentLifecycle(doc),readDmsFeatureAvailability(),permissions(doc,["dms.documents.preview","dms.documents.download","dms.documents.edit","dms.documents.manage_tags","dms.documents.share_external","dms.admin"]),
+     rpc("mobile_dms_document",{p_action:"renewal_parent",p_data:{documentId:doc,...(input.renewalParent?{parent:input.renewalParent}:{})}},parent.nullable())]);
     if(!r.success||!r.data||!l.success||!l.data)unavailable();const d=r.data;
-    const [preview,download,edit,tags,renew,share,admin]=rights;
+    const [preview,download,edit,tags,share,admin]=rights;
     const header=summary.parse({id:d.id,title:d.title,number:d.document_no,type:d.document_type?.name_en??null,expiry:d.expiry_date,status:d.status});
-    return {...header,issue:d.issue_date,description:z.string().max(4000).nullable().parse(d.description),currentVersionId:bound.documentVersionId,sourceHash:bound.sourceHash,lifecycle:{stage:l.data.stage,next:l.data.next,owner:l.data.owner,section:l.data.section,blocker:l.data.blocker},actions:{preview,download,editMetadata:(edit||admin)&&!d.is_archived&&!["archived","superseded","deleted"].includes(d.status)&&d.approval_status!=="pending_approval",manageTags:tags||edit,comment:true,compare:preview,ask:flags.questions&&preview&&(!["hr","legal","executive"].includes(d.confidentiality_level)||admin),requestRenewal:renew&&d.document_type?.is_renewable!==false,share:share&&preview&&download&&!d.is_archived&&!d.superseded_by_document_id}};
+    return {...header,renewalParent,issue:d.issue_date,description:z.string().max(4000).nullable().parse(d.description),currentVersionId:bound.documentVersionId,sourceHash:bound.sourceHash,lifecycle:{stage:l.data.stage,next:l.data.next,owner:l.data.owner,section:l.data.section,blocker:l.data.blocker},actions:{preview,download,editMetadata:(edit||admin)&&!d.is_archived&&!["archived","superseded","deleted"].includes(d.status)&&d.approval_status!=="pending_approval",manageTags:tags||edit,comment:true,compare:preview,ask:flags.questions&&preview&&(!["hr","legal","executive"].includes(d.confidentiality_level)||admin),requestRenewal:renewalParent!==null,share:share&&preview&&download&&!d.is_archived&&!d.superseded_by_document_id}};
    }
    case "documentSources":{
     const offset=(input.page-1)*25;
@@ -89,5 +95,11 @@ export async function documents(input:CommandFor<DocOp>,ctx:AuthContext){
  };
  const result=await read();
  if("source" in result && result.source.sourceHash!==bound.sourceHash)conflict();
- await verifyMobileDmsDelivery(ctx,bound);return result;
+ await verifyMobileDmsDelivery(ctx,bound);await employeeLink();return result;
+}
+
+export async function employeeDocuments(employeeId:number,page:number,ctx:AuthContext){
+ const r=await rpc("mobile_dms_document",{p_action:"employee_folder",p_data:{employeeId,page}},pagePayload(z.strictObject({id,title:z.string(),number:z.string()})).extend({employeeId:z.literal(employeeId)}));
+ await verifySession(ctx);
+ return {...completePage(r.rows,page,25,r.totalCount,row=>row.id),employeeId};
 }

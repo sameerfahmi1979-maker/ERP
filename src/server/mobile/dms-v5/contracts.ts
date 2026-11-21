@@ -22,13 +22,32 @@ const metadataValue=z.strictObject({definition_id:id,value_text:z.string().max(1
 const doc={documentId:id}, mutation={...doc,operationId,sourceHash:hash}, comment={...mutation,commentId:id,commentRevision}, pageDoc={...doc,page};
 const command=<N extends string,F extends z.ZodRawShape>(name:N,fields:F)=>z.strictObject({op:z.literal(name),...fields});
 const requestBase={parent,assigneeId:id.nullable(),dueDate:z.iso.date().nullable(),notes,operationId};
-export const mobileDmsV5Command=z.discriminatedUnion("op",[
- command("documentDetails",doc),command("documentSources",{...pageDoc,kind:z.enum(["versions","files"]),versionId:id.optional()}).refine(v=>v.kind==="files"||v.versionId===undefined),
- command("documentMetadata",doc),command("documentMetadataSave",{...mutation,snapshot:hash,values:z.array(metadataValue).max(250).refine(v=>new Set(v.map(row=>row.definition_id)).size===v.length)}),
- command("documentTags",pageDoc),command("documentTagOptions",{...pageDoc,search}),
+const ordinaryWrites=[
+ command("documentMetadataSave",{...mutation,snapshot:hash,values:z.array(metadataValue).max(250).refine(v=>new Set(v.map(row=>row.definition_id)).size===v.length)}),
  command("documentTagsChange",{...mutation,add:ids(0,100),remove:ids(0,100)}).refine(v=>v.add.every(n=>!v.remove.includes(n))),
- command("documentComments",pageDoc),command("documentCommentAdd",{...mutation,text:requiredText(2000)}),command("documentCommentEdit",{...comment,text:requiredText(2000)}),command("documentCommentDelete",comment),
- command("documentHistory",{...pageDoc,filter:z.enum(["all","downloads"])}),command("processingStatus",{...doc,jobId:id.optional()}),
+ command("documentCommentAdd",{...mutation,text:requiredText(2000)}),
+ command("documentCommentEdit",{...comment,text:requiredText(2000)}),
+ command("documentCommentDelete",comment),
+ z.discriminatedUnion("kind",[command("documentRequestCreate",{...requestBase,kind:z.literal("missing"),ruleId:id,checklistHash:hash}),command("documentRequestCreate",{...requestBase,kind:z.literal("renewal"),...doc,sourceHash:hash,priority:z.enum(["normal","high","urgent"])})]),
+ command("documentRequestAct",{requestId:id,kind,operationId,expectedRevision:id,action:z.enum(["start","submit_document","fulfil","reject","cancel"]),documentId:id.optional(),versionId:id.optional(),notes}).refine(v=>(v.action==="submit_document")===(v.documentId!==undefined)&&(v.documentId===undefined)===(v.versionId===undefined)),
+ command("documentShareCreate",{...mutation,fileId:id,versionId:id,recipientProfileId:id,token:shareToken,lifetimeHours:z.union([z.literal(1),z.literal(24),z.literal(168)])}),
+ command("documentShareRevoke",{shareId:id,operationId}),
+ command("documentSavedFilterSave",{id:id.optional(),name:requiredText(80),criteria:savedCriteria,operationId,revision:requiredText(128).optional()}).refine(v=>(v.id===undefined)===(v.revision===undefined)),
+ command("documentSavedFilterDelete",{id,operationId,revision:requiredText(128)})
+] as const;
+const ordinaryOriginal=z.discriminatedUnion("op",ordinaryWrites);
+export type OrdinaryOriginal=z.infer<typeof ordinaryOriginal>;
+export const mobileDmsV5Command=z.discriminatedUnion("op",[
+ ...ordinaryWrites,
+ command("documentReceiptLookup",{original:ordinaryOriginal}),
+ command("documentDetails",{...doc,renewalParent:parent.optional(),employeeId:id.optional()}),
+ command("documentSources",{...pageDoc,employeeId:id.optional(),kind:z.enum(["versions","files"]),versionId:id.optional()}).refine(v=>v.kind==="files"||v.versionId===undefined),
+ command("documentMetadata",doc),
+ command("documentTags",pageDoc),
+ command("documentTagOptions",{...pageDoc,search}),
+ command("documentComments",pageDoc),
+ command("documentHistory",{...pageDoc,filter:z.enum(["all","downloads"])}),
+ command("processingStatus",{...doc,jobId:id.optional()}),
  z.discriminatedUnion("action",[
   command("processingAction",{...mutation,jobId:id,action:z.enum(["resume","cancel"])}),
   command("processingAction",{...mutation,jobId:id,action:z.literal("retry_step"),step:retryStep}),
@@ -36,20 +55,23 @@ export const mobileDmsV5Command=z.discriminatedUnion("op",[
  ]),
  command("documentCompare",{sources:z.array(z.strictObject({...doc,versionId:id})).min(2).max(10).refine(v=>new Set(v.map(s=>s.documentId+"/"+s.versionId)).size===v.length),recordFindings:z.literal(false)}),
  command("documentQuestion",{...doc,sourceHash:hash,question:requiredText(500).min(3),contextMode:z.enum(["verified_text","metadata_only"]).default("verified_text")}),
- command("documentNaturalSearch",{query:requiredText(500).min(3),subject:parent.optional(),page}),command("documentNotifications",{page,unreadOnly:z.boolean()}),
- command("documentNotificationAction",{notificationId:id,action:z.enum(["read","dismiss"])}),command("requiredChecklist",{parent,page}),
- command("documentRequestOptions",{parent,kind,documentId:id.optional(),search,page}).refine(v=>(v.kind==="renewal")===(v.documentId!==undefined)),
+ command("documentNaturalSearch",{query:requiredText(500).min(3),subject:parent.optional(),page}),
+ command("documentNotifications",{page,unreadOnly:z.boolean()}),
+ command("documentNotificationAction",{notificationId:id,action:z.enum(["read","dismiss"])}),
+ command("requiredChecklist",{parent,page}),
+ command("documentRequestOptions",{parent,kind,documentId:id.optional(),sourceHash:hash.optional(),search,page}).refine(v=>(v.kind==="renewal")===(v.documentId!==undefined)&&(v.kind==="renewal"||v.sourceHash===undefined)),
  command("documentRequests",{audience:z.enum(["mine","assigned","parent"]),parent:parent.optional(),status:requestStatus.optional(),page}).refine(v=>(v.audience==="parent")===(v.parent!==undefined)),
- z.discriminatedUnion("kind",[command("documentRequestCreate",{...requestBase,kind:z.literal("missing"),ruleId:id,checklistHash:hash}),command("documentRequestCreate",{...requestBase,kind:z.literal("renewal"),...doc,sourceHash:hash,priority:z.enum(["normal","high","urgent"])})]),
- command("documentRequestAct",{requestId:id,kind,operationId,expectedRevision:id,action:z.enum(["start","submit_document","fulfil","reject","cancel"]),documentId:id.optional(),versionId:id.optional(),notes}).refine(v=>(v.action==="submit_document")===(v.documentId!==undefined)&&(v.documentId===undefined)===(v.versionId===undefined)),
- command("documentShareRecipients",{...pageDoc,sourceHash:hash,search}),command("documentShares",pageDoc),
- command("documentShareCreate",{...mutation,fileId:id,versionId:id,recipientProfileId:id,token:shareToken,lifetimeHours:z.union([z.literal(1),z.literal(24),z.literal(168)])}),
- command("documentShareRevoke",{shareId:id,operationId}),command("documentShareResolve",{token:shareToken}),
- command("documentPackManifest",{documentIds:ids(1,25),format}),command("documentPackValidate",{documentIds:ids(1,25),format,manifestHash:hash}),
- command("documentFavourites",{page}),command("documentFavouriteSet",{...doc,value:z.boolean()}),command("documentSavedFilters",{page}),
- command("documentSavedFilterSave",{id:id.optional(),name:requiredText(80),criteria:savedCriteria,operationId,revision:requiredText(128).optional()}).refine(v=>(v.id===undefined)===(v.revision===undefined)),
- command("documentSavedFilterDelete",{id,operationId,revision:requiredText(128)}),command("documentQrLookup",{payload:requiredText(512)}),
- command("documentBatchAdmit",{request:batchRequestSchema}),command("documentBatchRecover",{request:batchRequestSchema}),
+ command("documentShareRecipients",{...pageDoc,sourceHash:hash,search}),
+ command("documentShares",pageDoc),
+ command("documentShareResolve",{token:shareToken}),
+ command("documentPackManifest",{documentIds:ids(1,25),format}),
+ command("documentPackValidate",{documentIds:ids(1,25),format,manifestHash:hash}),
+ command("documentFavourites",{page}),
+ command("documentFavouriteSet",{...doc,value:z.boolean()}),
+ command("documentSavedFilters",{page}),
+ command("documentQrLookup",{payload:requiredText(512)}),
+ command("documentBatchAdmit",{request:batchRequestSchema}),
+ command("documentBatchRecover",{request:batchRequestSchema}),
  command("documentBatchMember",{request:batchRequestSchema,position:z.number().int().min(0).max(9),action:z.enum(["recover","verify","prepare_draft"])}).refine(v=>v.position<v.request.manifest.files.length)
 ]);
 export type MobileDmsV5Command=z.infer<typeof mobileDmsV5Command>;

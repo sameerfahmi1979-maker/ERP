@@ -38,6 +38,20 @@ describe("scoped mobile byte delivery",()=>{
    expect((await mobileBytes(request(query),"issued-file")).status).toBe(404);
    expect(m.download).not.toHaveBeenCalled();
  });
+ it("rechecks a deferred HR export with a byte-free HEAD and rejects changed issuance, employee, checksum or permission",async()=>{
+   const check=()=>mobileBytes(new Request(request(query),{method:"HEAD"}),"issued-file");
+   const r=await check();expect(r.status).toBe(200);expect(await r.text()).toBe("");
+   expect([r.headers.get("X-HR-Employee-Id"),r.headers.get("X-HR-Issuance-Id"),r.headers.get("X-HR-Issued-Checksum"),r.headers.get("X-HR-Issued-Bytes")]).toEqual(["9","2",checksum,String(bytes.length)]);
+   for(const change of [{revoked_at:"2026-11-21"},{source_record_id:10},{superseded_by_id:3},{checksum:"b".repeat(64)}]){
+    m.row.mockResolvedValueOnce({data:{...doc,...change}});expect([404,409]).toContain((await check()).status);
+   }
+   m.allowed.mockResolvedValueOnce(true).mockResolvedValueOnce(false);expect((await check()).status).toBe(404);
+   for(const change of [{revoked_at:"2026-11-21"},{source_record_id:10},{file_size_bytes:bytes.length+1}]){
+    m.row.mockResolvedValueOnce({data:doc}).mockResolvedValueOnce({data:{...doc,...change}});
+    expect([404,409]).toContain((await check()).status);
+   }
+   expect(m.download).not.toHaveBeenCalled();expect(m.audit).not.toHaveBeenCalled();
+ });
  it("forbidden salary output never reaches storage",async()=>{
    m.allowed.mockResolvedValue(false);expect((await mobileBytes(request(query),"issued-file")).status).toBe(404);
    expect(m.download).not.toHaveBeenCalled();

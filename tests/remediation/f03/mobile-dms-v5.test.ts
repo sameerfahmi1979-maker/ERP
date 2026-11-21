@@ -9,6 +9,7 @@ const migrations = [
  "20261121030521_dms_question_source_provenance.sql",
 ].map(name=>readFileSync(join(process.cwd(),"supabase/migrations",name),"utf8"));
 const wire:Record<string,object>={
+ documentReceiptLookup:{original:{op:"documentCommentAdd",documentId:1,operationId:"5ea3d979-e84a-42b1-8aba-ad6db365da26",sourceHash:"0".repeat(64),text:"First note"}},
  documentDetails:{documentId:1},documentSources:{documentId:1,kind:"files",page:1},
  documentMetadata:{documentId:1},documentMetadataSave:{snapshot:"0".repeat(64),values:[]},
  documentTags:{documentId:1,page:1},documentTagOptions:{documentId:1,page:1,search:""},
@@ -35,7 +36,7 @@ const sourceChanges=new Set(["documentMetadataSave","documentTagsChange","docume
 const receiptChanges=new Set(["documentRequestCreate","documentRequestAct","documentShareRevoke","documentSavedFilterSave","documentSavedFilterDelete"]);
 const request={contract:{operationId,revision:null},manifest:{version:1,context:null,files:[{position:0,original_filename:"a.pdf",mime_type:"application/pdf",file_size_bytes:7,sha256_hash:"a".repeat(64)}]}};
 describe("Mobile DMS canonical surface",()=>{
- it("contains exactly the forty accepted mobile operations",()=>expect(Object.keys(wire)).toHaveLength(40));
+ it("preserves the forty originals and adds a read-only receipt lookup",()=>expect(Object.keys(wire)).toHaveLength(41));
  it.each(Object.entries(wire))("admits %s and rejects extra transport authority", (op,fields)=>{
   const data={op,...fields,...(sourceChanges.has(op)?{documentId:1,operationId,sourceHash:"0".repeat(64)}:{}),...(receiptChanges.has(op)?{operationId}:{}),...(op.startsWith("documentBatch")?{request}:{})};
   expect(mobileDmsV5Command.parse(data).op).toBe(op);

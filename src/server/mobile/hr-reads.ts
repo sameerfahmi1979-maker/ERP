@@ -72,10 +72,16 @@ export async function home(db:Db,ctx:AuthContext){
   const person=profile&&own?await db.from("employees").select("id,owner_company_id,branch_id,reporting_manager_id,full_name_en").eq("id",own.employeeId).is("deleted_at",null).maybeSingle():null;
   if(person?.error)throw unavailable();
   const canCorrectProfile=submit && !!person?.data && !!own && hasEmployeePermission(ctx,person.data,own.employeeId,"hr.employees.view");
-  return {hrContractVersion:expanded?2:1,employeeId:own?.employeeId??null,own:own!==null,name:person?.data?.full_name_en??null,capabilities:{
+  // Team grants may apply to a different person. Keep the linked employee's home actions scoped to that employee.
+  const personal=expanded&&own?(await staffCapabilities(db,own.employeeId)).expanded:undefined;
+  const staffEntry=staff.roster||staff.approvalsGeneral||staff.approvalsLeave||staff.approvalsProposal||staff.requestsTeam||
+    !!expanded&&(expanded.directory||expanded.teamReadiness||expanded.teamCalendar||expanded.serviceReview);
+  const ownEntry=!!own&&(profile||leave||attendance||compliance||medical||own.mine||!!personal&&
+    (personal.work||personal.services||personal.issuedDocuments||personal.ppeAssets||personal.onboarding||personal.dependents||personal.pro||personal.accommodation||personal.offboarding));
+  return {...(expanded?{entryAvailable:staffEntry||ownEntry,personalCapabilities:personal??null}:{}),hrContractVersion:expanded?2:1,employeeId:own?.employeeId??null,own:own!==null,name:person?.data?.full_name_en??null,capabilities:{
     ...staff,...expanded,profile,profileCorrection:canCorrectProfile,leave,attendance,renewals:compliance||medical,renewalCompliance:compliance,renewalMedical:medical,
     leaveSubmit:submit&&leave,timeCorrection:submit&&attendance,renewalSubmit:submit&&compliance,evidence,leaveCertificate:evidence&&medical&&leave,
-    requests:own?.mine===true,approvals:staff.approvalsGeneral||staff.approvalsLeave||staff.approvalsProposal,employees:capabilities(ctx).employees}};
+    requests:own?.mine===true,approvals:staff.approvalsGeneral||staff.approvalsLeave||staff.approvalsProposal,employees:expanded?expanded.directory:capabilities(ctx).employees}};
 }
 type PersonalInput=Input<"leaveOptions"|"leaveBalances"|"leaveRequests"|"renewals"|"time"|"evidence">;
 export async function ownDomainRead(db:Db,own:OwnAccess,i:PersonalInput){

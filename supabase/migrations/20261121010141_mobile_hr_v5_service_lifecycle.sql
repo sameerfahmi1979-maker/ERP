@@ -865,13 +865,13 @@ BEGIN
   (erp_private.f11_child_authorized('approval',e.id) AND NOT EXISTS(SELECT FROM public.erp_user_employee_links l WHERE l.employee_id=e.id AND l.user_profile_id=public.current_user_profile_id())
     AND (erp_private.f11_child_authorized('pro-process',e.id) OR erp_private.f11_child_authorized('asset',e.id))) review
   FROM public.employees e WHERE e.deleted_at IS NULL AND (subject IS NULL OR e.id=subject))
- SELECT jsonb_build_object('directory',coalesce(bool_or(directory),false),'employeeRecord',coalesce(bool_or(directory),false),
-  'work',coalesce(bool_or(work),false),'teamReadiness',coalesce(bool_or(work AND directory),false),
+ SELECT jsonb_build_object('directory',coalesce(bool_or(directory AND id IS DISTINCT FROM (SELECT erp_private.mobile_hr_linked_id())),false),'employeeRecord',coalesce(bool_or(directory),false),
+  'work',coalesce(bool_or(work),false),'teamReadiness',coalesce(bool_or(work AND directory AND id IS DISTINCT FROM (SELECT erp_private.mobile_hr_linked_id())),false),
   'services',coalesce(bool_or(self_services AND (employee_view OR attendance OR work OR dependents OR pro OR offboarding)),false),
   'serviceReview',coalesce(bool_or(review AND directory),false),'issuedDocuments',coalesce(bool_or(wallet AND directory),false),
-  'ppeAssets',coalesce(bool_or(work),false),'onboarding',coalesce(bool_or((self_services AND employee_view) OR recruitment),false),
-  'pro',coalesce(bool_or(pro),false),'teamCalendar',coalesce(bool_or(calendar AND (directory OR id=(SELECT erp_private.mobile_hr_linked_id()))),false),'dependents',coalesce(bool_or(dependents),false),
-  'accommodation',coalesce(bool_or(work),false),'offboarding',coalesce(bool_or(offboarding),false)) INTO result FROM grants;
+  'ppeAssets',coalesce(bool_or(work AND directory),false),'onboarding',coalesce(bool_or((self_services AND employee_view) OR recruitment),false),
+  'pro',coalesce(bool_or(pro),false),'teamCalendar',coalesce(bool_or(calendar AND directory AND (subject IS NOT NULL OR id IS DISTINCT FROM (SELECT erp_private.mobile_hr_linked_id()))),false),'dependents',coalesce(bool_or(dependents),false),
+  'accommodation',coalesce(bool_or(work AND directory),false),'offboarding',coalesce(bool_or(offboarding),false)) INTO result FROM grants;
  RETURN result;
 END $$;
 REVOKE ALL ON FUNCTION erp_private.mobile_hr_v5_capabilities(bigint) FROM PUBLIC,anon,authenticated,service_role;

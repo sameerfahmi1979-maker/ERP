@@ -200,4 +200,37 @@ END $$;
 CREATE FUNCTION public.mobile_hr_v5_detail(p_employee bigint,p_kind text,p_id bigint,p_case bigint DEFAULT NULL) RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER SET search_path='' AS $$ SELECT erp_private.mobile_hr_v5_detail(p_employee,p_kind,p_id,p_case) $$;
 REVOKE ALL ON FUNCTION erp_private.mobile_hr_v5_detail(bigint,text,bigint,bigint),public.mobile_hr_v5_detail(bigint,text,bigint,bigint) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION erp_private.mobile_hr_v5_detail(bigint,text,bigint,bigint),public.mobile_hr_v5_detail(bigint,text,bigint,bigint) TO authenticated;
+-- Personal work does not carry a grant to browse profiles or whole operations tables.
+-- The existing general table RLS continues to require profile access. Project just the published work rows.
+CREATE FUNCTION erp_private.mobile_hr_v5_work_rows(eid bigint,k text,pg integer,rid bigint,day date) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+DECLARE rows jsonb;
+BEGIN
+ PERFORM erp_private.mobile_hr_v5_active();
+ IF NOT coalesce(erp_private.employee_permission(eid,'hr.assignments.view') AND
+     (erp_private.mobile_hr_self(eid) OR public.current_user_can_view_employee_operations(eid)),false)
+ THEN RAISE EXCEPTION 'Work subject unavailable' USING ERRCODE='42501'; END IF;
+ IF k IS NULL OR k NOT IN('assignments','readiness','blocks') OR pg IS NULL OR pg NOT BETWEEN 1 AND 100000 OR rid<=0 THEN
+    RAISE EXCEPTION 'Invalid work selection' USING ERRCODE='22023'; END IF;
+ WITH items AS (
+  SELECT a.id,jsonb_build_object('id',a.id,'workspace_revision',a.workspace_revision::text,'assignment_type',a.assignment_type,'assignment_status',a.assignment_status,
+      'effective_from',a.effective_from,'effective_to',a.effective_to) AS item
+   FROM public.employee_assignments a WHERE k='assignments' AND a.employee_id=eid AND a.deleted_at IS NULL AND (rid IS NULL OR a.id=rid)
+   AND (day IS NULL OR a.assignment_status='active' AND a.effective_from<=day AND (a.effective_to IS NULL OR a.effective_to>=day))
+  UNION ALL
+  SELECT r.id,jsonb_build_object('id',r.id,'workspace_revision',r.workspace_revision::text,'readiness_status',r.readiness_status,'checked_at',r.checked_at)
+   FROM public.employee_site_readiness r WHERE k='readiness' AND r.employee_id=eid AND r.deleted_at IS NULL AND (rid IS NULL OR r.id=rid)
+   AND (day IS NULL OR r.checked_at<((day+1)::timestamp AT TIME ZONE 'Asia/Dubai'))
+  UNION ALL
+  SELECT b.id,jsonb_build_object('id',b.id,'workspace_revision',b.workspace_revision::text,'block_status',b.block_status,'effective_from',b.effective_from,'effective_to',b.effective_to)
+   FROM public.employee_operational_blocks b WHERE k='blocks' AND b.employee_id=eid AND b.deleted_at IS NULL AND (rid IS NULL OR b.id=rid)
+   AND (day IS NULL OR b.block_status='active' AND b.effective_from<=day AND (b.effective_to IS NULL OR b.effective_to>=day))
+ ), selected AS (SELECT * FROM items ORDER BY id DESC LIMIT 26 OFFSET (pg-1)*25)
+ SELECT coalesce(jsonb_agg(item ORDER BY id DESC),'[]'::jsonb) INTO rows FROM selected;
+ RETURN rows;
+END $$;
+CREATE FUNCTION public.mobile_hr_v5_work_rows(p_employee bigint,p_kind text,p_page integer,p_record bigint,p_day date) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path='' AS $$SELECT erp_private.mobile_hr_v5_work_rows(p_employee,p_kind,p_page,p_record,p_day)$$;
+REVOKE ALL ON FUNCTION public.mobile_hr_v5_work_rows(bigint,text,integer,bigint,date),erp_private.mobile_hr_v5_work_rows(bigint,text,integer,bigint,date) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.mobile_hr_v5_work_rows(bigint,text,integer,bigint,date),erp_private.mobile_hr_v5_work_rows(bigint,text,integer,bigint,date) TO authenticated;
 COMMIT;

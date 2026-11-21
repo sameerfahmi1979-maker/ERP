@@ -18,6 +18,7 @@ import { aiApprovalInputSchema } from "@/lib/dms/numbered-ai-approval";
 import { approveNumberedAiIntake } from "@/server/numbered-ai-approval";
 import { recoverNumberedAiApproval } from "@/server/dms-ai-approval-recovery";
 import { DMS_CONFIDENTIALITY_LEVELS } from "@/features/dms/documents/dms-document-constants";
+import {employeeDocuments} from "@/server/mobile/dms-v5/documents";
 import {mobileDmsV5Command,type MobileDmsV5Command} from "@/server/mobile/dms-v5/contracts";
 import {dispatchMobileDmsV5,deliverMobileDmsV5File,dmsErrorResponse} from "@/server/mobile/dms-v5";
 import {DmsError,readDmsFeatureAvailability} from "@/server/mobile/dms-v5/access";
@@ -37,7 +38,7 @@ const legacyCommand = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("logout") }),
   z.strictObject({ op: z.literal("profile") }),
   mobileDocumentCriteria.safeExtend({op:z.literal("documents")}),
-  z.strictObject({op:z.literal("folder"),entityType:z.enum(["employee","site"]),entityId:id,page}),
+  z.strictObject({op:z.literal("folder"),entityType:z.enum(["employee","site"]),entityId:id,page,employeeRecord:z.literal(true).optional()}).refine(i=>!i.employeeRecord||i.entityType==="employee"),
   mobileTaskCriteria.extend({op:z.literal("tasks")}),
   mobileApprovalCriteria.safeExtend({op:z.literal("approvalAction")}),
   z.strictObject({op:z.literal("renewalRequest"),documentId:id,priority:z.enum(["normal","high"]),notes:z.string().trim().max(4000)}),
@@ -139,7 +140,7 @@ async function dispatch(input: Exclude<Command, { op: "login" | "refresh" }>, to
   }
   switch (input.op) {
     case "documents": return ok(await readMobileDocuments({search:input.search,typeId:input.typeId,page:input.page,personal:input.personal,entityType:input.entityType,entityId:input.entityId,validity:input.validity},ctx));
-    case "folder": return ok(await readMobileFolder(input,ctx));
+    case "folder": return input.employeeRecord?ok(await employeeDocuments(input.entityId,input.page,ctx)):ok(await readMobileFolder(input,ctx));
     case "tasks": return ok(await readMobileTasks(input,ctx));
     case "approvalAction": return json(await actOnMobileApproval(input,ctx));
     case "renewalRequest": {

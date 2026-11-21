@@ -36,7 +36,7 @@ it("settles a native pre-provider failure and recovers the same operation when c
  f.trusted.mockResolvedValue({data:receipt,error:null});
  f.retry.mockImplementation(async()=>({success:false,error:"Content unavailable"}));
  await expect(processing(command,actor)).resolves.toEqual(receipt);
- expect(f.trusted.mock.calls[0][1].p_result).toEqual({...failure,providerEffect:"never_started"});expect(f.completion).not.toHaveBeenCalled();
+ expect(f.trusted.mock.calls[0][1].p_result).toEqual({...failure,providerEffect:"never_started",abandoned:true});expect(f.completion).not.toHaveBeenCalled();
  f.rpc.mockResolvedValue({...receipt,replayed:true});f.provider.mockRejectedValue(Error("disabled"));
  await expect(processing(command,actor)).resolves.toMatchObject({replayed:true});expect(f.retry).toHaveBeenCalledTimes(1);
 });
@@ -55,4 +55,11 @@ it.each([false,true])("preserves web provider start evidence at trusted settleme
   else await settle!(failure);
  });
  expect(f.trusted.mock.calls[1][1].p_result.providerEffect).toBe(started?"started":"never_started");expect(f.completion).toHaveBeenCalledTimes(Number(started));
+});
+
+it("marks an executed non-provider skip for normal row settlement",async()=>{
+ f.trusted.mockResolvedValue({data:{...receipt,state:"skipped"},error:null});
+ f.retry.mockImplementation(async()=>{await publishMobileStepReceipt("fixture",{step:"content_sync",status:"skipped"},"complete");return {success:true};});
+ await expect(processing({...command,step:"content_sync"},actor)).resolves.toMatchObject({state:"skipped"});
+ expect(f.trusted.mock.calls[0][1].p_result).toEqual({step:"content_sync",status:"skipped",providerEffect:"never_started"});
 });

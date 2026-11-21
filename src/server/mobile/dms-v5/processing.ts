@@ -33,11 +33,11 @@ export async function processing(input:CommandFor<"processingStatus"|"processing
  let settled:z.infer<typeof receipt>|null=null;
  await withRetryEffects(async()=>{
   let settlementAttempted=false;
-  const save=async(step:Parameters<Parameters<typeof withMobileStepReceipt>[2]>[0],overall:string)=>{
+  const save=async(step:Parameters<Parameters<typeof withMobileStepReceipt>[2]>[0],overall:string,abandoned=false)=>{
    const effect=retryProviderEffect();
    if(["ai_summary","embedding","tag_suggestions","link_suggestions"].includes(input.step)&&step.status!=="completed"&&effect!=="never_started")throw new Error("Provider result requires reconciliation");
    settlementAttempted=true;
-   const write=await createAdminClient().rpc("mobile_dms_finish_retry",{p_actor:r.actor,p_operation:input.operationId,p_result:{...step,providerEffect:effect},p_status:overall});
+   const write=await createAdminClient().rpc("mobile_dms_finish_retry",{p_actor:r.actor,p_operation:input.operationId,p_result:{...step,providerEffect:effect,...(abandoned?{abandoned:true}:{})},p_status:overall});
    if(write.error)throw new Error("Unconfirmed canonical step");
    settled=receipt.parse(write.data);
   };
@@ -46,12 +46,12 @@ export async function processing(input:CommandFor<"processingStatus"|"processing
    await verifyMobileDmsDelivery(ctx,src,["dms.documents.preview"]);
    configured=await configuredFor(input.step);
   }catch(error){
-   await save({step:input.step,status:"failed"},"failed");
+   await save({step:input.step,status:"failed"},"failed",true);
    throw error;
   }
-  if(!configured){await save({step:input.step,status:"failed"},"failed");return;}
+  if(!configured){await save({step:input.step,status:"failed"},"failed",true);return;}
   const result=await withMobileStepReceipt(r.sessionCode,input.step,save,()=>retryDmsOrchestrationStep({sessionCode:r.sessionCode,stepCode:input.step}));
-  if(!settlementAttempted&&!result.success&&retryProviderEffect()==="never_started")await save({step:input.step,status:"failed"},"failed");
+  if(!settlementAttempted&&!result.success&&retryProviderEffect()==="never_started")await save({step:input.step,status:"failed"},"failed",true);
  });
  if(!settled)throw new DmsError(409,"reconciliation_required","The original processing operation requires reconciliation.",true);
  await verifyMobileDmsDelivery(ctx,src,["dms.documents.preview"]);return settled;

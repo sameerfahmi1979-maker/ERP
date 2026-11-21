@@ -510,6 +510,11 @@ async function runCanonicalRetry(input:{sessionCode:string;stepCode:DmsAiOrchest
     const uploadSessionId = typedSession.id as number;
     if (!documentId) return { success: false, error: "No draft document exists for this session." };
 
+    const existingSteps = (typedSession.orchestration_steps_json as DmsAiOrchestrationStepResult[] | null) ?? [];
+    const targets = Array.isArray(existingSteps) ? existingSteps.filter(entry => entry?.step === stepCode) : [];
+    if (targets.length !== 1 || !["failed", "skipped"].includes(targets[0].status)) {
+      return {success:false,error:"The selected step is no longer available for retry."};
+    }
     const verifyWebStep=await reserveWebStep(uploadSessionId,sessionCode,stepCode);
     // Run the step
     let stepResult: DmsAiOrchestrationStepResult;
@@ -556,7 +561,6 @@ async function runCanonicalRetry(input:{sessionCode:string;stepCode:DmsAiOrchest
     }
 
     // Update step in session
-    const existingSteps = (typedSession.orchestration_steps_json as DmsAiOrchestrationStepResult[] | null) ?? [];
     const updatedSteps = mergeStepResult(existingSteps, stepResult);
     const newStatus = calculateOverallStatus(updatedSteps);
 

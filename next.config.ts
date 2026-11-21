@@ -28,6 +28,8 @@ const nextConfig: NextConfig = {
   generateBuildId: async()=>buildId,
   deploymentId: process.env.NODE_ENV === "production" ? buildId : undefined,
   async headers() {
+    // Production next start uses the built header manifest; its image omits the source tree.
+    const { handoffPolicy } = await import("./src/app/api/mobile/dms/shared/handoff.mjs");
     return [{ source: "/:path*", headers: [
       { key: "X-ALGT-Build", value: buildId },
       { key: "X-Content-Type-Options", value: "nosniff" },
@@ -39,7 +41,10 @@ const nextConfig: NextConfig = {
       { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
       ...(process.env.NODE_ENV === "production" && process.env.NEXT_PUBLIC_SITE_URL?.startsWith("https://")
         ? [{ key: "Strict-Transport-Security", value: "max-age=31536000" }] : []),
-    ] }];
+    ] }, {
+      source: "/api/mobile/dms/shared",
+      headers: [{ key: "Content-Security-Policy", value: handoffPolicy }],
+    }];
   },
   // Nested package.json files (e.g. under spikes/) confuse Turbopack's
   // workspace-root inference and crash the dev server with "Next.js package

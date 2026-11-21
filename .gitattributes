@@ -38,3 +38,5 @@
 /supabase/migrations/20261121025434_mobile_dms_authenticated_shares.sql text eol=lf
 /supabase/migrations/20261121025537_mobile_dms_personal_collections.sql text eol=lf
 /supabase/migrations/20261121030521_dms_question_source_provenance.sql text eol=lf
+/supabase/migrations/20261121054457_permissions_matrix_access_performance.sql -text
+/supabase/migrations/20261121070619_qatar_residency_permit_catalog.sql text eol=lf

@@ -63,6 +63,6 @@ describe("protected file selection",()=>{
  it("serves the same no-data fallback and cannot reflect query inputs",async()=>{
   const res=await handoff();const html=await res.text();
   expect(res.headers.get("content-security-policy")).toContain("connect-src 'none'");
-  expect(html).toContain("Open in ALGT Mobile");expect(html).not.toContain("fetch(");
+  expect(html).toContain("Open in ALGT ERP System");expect(html).not.toContain("fetch(");
  });
 });

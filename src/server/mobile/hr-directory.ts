@@ -42,7 +42,7 @@ export async function directory(db:Db,i:ExpandedInput<"directoryChoices"|"direct
 export async function employeeRecord(db:Db,ctx:AuthContext,employeeId:number) {
   await requireDomain(db,employeeId,"hr.employees.view","hr.employee_profile.view");
   const [p,legacy,photo,record,medicalAllowed]=await Promise.all([identity(db,employeeId),profile(db,ctx,employeeId),subjectPhoto(employeeId),
-    db.from("employees").select(EMPLOYEE_PUBLIC_FIELDS+",nationality:countries(name_en),category:hr_employee_categories(name_en),employment_type:hr_employment_types(name_en),supervisor:employees!employees_supervisor_id_fkey(full_name_en),sponsor:owner_companies!employees_sponsor_company_id_fkey(legal_name_en),mohre:hr_mohre_establishments!employees_mohre_establishment_id_fkey(establishment_name),relationship:hr_relationship_types!employees_emergency_contact_relationship_type_id_fkey(name_en)").eq("id",employeeId).is("deleted_at",null).maybeSingle(),
+    db.from("employees").select(EMPLOYEE_PUBLIC_FIELDS+",nationality:countries(name_en),category:hr_employee_categories(name_en),employment_type:hr_employment_types(name_en),supervisor:supervisor_id(full_name_en),sponsor:owner_companies!employees_sponsor_company_id_fkey(legal_name_en),mohre:hr_mohre_establishments!employees_mohre_establishment_id_fkey(establishment_name),relationship:hr_relationship_types!employees_emergency_contact_relationship_type_id_fkey(name_en)").eq("id",employeeId).is("deleted_at",null).maybeSingle(),
     hrSubjectPermission(db,employeeId,"hr.medical.view")]);
   if(record.error)throw unavailable();
   if(!record.data)throw denied();

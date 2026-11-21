@@ -20,16 +20,34 @@ BEGIN
   IF p_employee IS NOT NULL AND erp_private.employee_permission(p_employee,'hr.leave.view') IS NOT TRUE THEN
     RAISE EXCEPTION 'Leave access required' USING ERRCODE='42501';
   END IF;
-  RETURN (SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x."startDate",x.id),'[]') FROM (
-    SELECT l.id,e.id AS "employeeId",e.full_name_en AS "employeeLabel",l.start_date AS "startDate",
-      l.end_date AS "endDate",l.approval_status AS status,t.name_en AS label
-    FROM public.employee_leave_requests l JOIN public.employees e ON e.id=l.employee_id
-      JOIN public.hr_leave_types t ON l.leave_type_id=t.id
-    WHERE l.deleted_at IS NULL AND e.deleted_at IS NULL AND l.start_date<=p_to AND l.end_date>=p_from
-      AND erp_private.employee_permission(e.id,'hr.leave.view') AND (p_employee IS NULL OR p_employee=e.id)
-      AND (p_company IS NULL OR e.owner_company_id=p_company) AND (p_branch IS NULL OR e.branch_id=p_branch)
-      AND strpos(lower(e.full_name_en||' '||e.employee_code),lower(p_search))>0
-    ORDER BY l.start_date,l.id LIMIT 26 OFFSET (p_page-1)*25) x);
+  RETURN (
+    WITH subjects AS NOT MATERIALIZED (
+      SELECT e.id,e.full_name_en,e.owner_company_id,e.branch_id FROM public.employees e
+      WHERE e.deleted_at IS NULL AND (p_employee IS NULL OR p_employee=e.id)
+        AND (p_company IS NULL OR p_company=e.owner_company_id) AND (p_branch IS NULL OR p_branch=e.branch_id)
+        AND strpos(lower(e.full_name_en||' '||e.employee_code),lower(p_search))>0
+        AND (public.current_user_can_view_employee(e.id) OR e.id=erp_private.mobile_hr_linked_id())
+        AND erp_private.employee_permission(e.id,'hr.leave.view')
+    ), events AS (
+      SELECT l.id,e.id AS "employeeId",e.full_name_en AS "employeeLabel",l.start_date AS "startDate",
+        l.end_date AS "endDate",l.approval_status AS status,t.name_en AS label
+      FROM subjects e JOIN public.employee_leave_requests l ON l.employee_id=e.id
+      JOIN public.hr_leave_types t ON t.id=l.leave_type_id
+      WHERE l.deleted_at IS NULL AND l.start_date<=p_to AND l.end_date>=p_from
+      UNION ALL
+      -- Only mapped Mobile submissions have a reserved, collision-free leave history ID.
+      SELECT m.request_id,e.id,e.full_name_en,lower(c.dates),upper(c.dates)-1,
+        CASE c.status WHEN 'reviewed' THEN 'pending' WHEN 'withdrawn' THEN 'cancelled' ELSE c.status END,
+        coalesce(t.name_en,'Leave request')
+      FROM subjects e JOIN erp_private.t04_cases c ON c.employee_id=e.id AND c.company_id=e.owner_company_id
+        AND c.branch_id IS NOT DISTINCT FROM e.branch_id
+      JOIN erp_private.hr_mobile_managed_leave m ON m.case_id=c.id
+      JOIN public.hr_leave_types t ON t.id=m.leave_type_id
+      WHERE c.dates && daterange(p_from,p_to,'[]')
+    )
+    SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x."startDate",x.id),'[]')
+    FROM (SELECT * FROM events ORDER BY "startDate",id LIMIT 26 OFFSET (p_page-1)*25) x
+  );
 END $$;
 
 CREATE FUNCTION public.mobile_hr_v5_calendar(p_from date,p_to date,p_page integer,p_company bigint,p_branch bigint,p_employee bigint,p_search text)
@@ -67,6 +85,10 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path='' AS $$ SELECT erp_private
 REVOKE ALL ON FUNCTION erp_private.mobile_hr_v5_directory_choices(text,bigint,bigint,text,bigint) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION erp_private.mobile_hr_v5_directory_choices(text,bigint,bigint,text,bigint) TO authenticated;
 
+-- Look up each candidate original before applying the evidence page limit.
+CREATE INDEX mobile_hr_managed_evidence_document ON erp_private.hr_mobile_managed_leave(document_id,case_id) WHERE document_id IS NOT NULL;
+CREATE INDEX mobile_hr_reviewed_sick_document ON erp_private.t04_sick_evidence(document_id,case_id);
+
 -- Own employees may read only an employee-bound onboarding projection without recruitment role assignment.
 CREATE FUNCTION erp_private.mobile_hr_v5_disclose_evidence(eid bigint,doc bigint) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
  SELECT erp_private.business_principal_is_active() AND public.current_user_can_view_dms_document(doc) AND erp_private.document_permission(doc,'dms.documents.preview')
@@ -74,6 +96,12 @@ CREATE FUNCTION erp_private.mobile_hr_v5_disclose_evidence(eid bigint,doc bigint
    SELECT FROM public.employee_medical_records m WHERE m.employee_id=eid AND m.dms_document_id=doc AND m.deleted_at IS NULL
    UNION ALL SELECT FROM public.employee_medical_insurances m WHERE m.employee_id=eid AND m.dms_document_id=doc AND m.deleted_at IS NULL
    UNION ALL SELECT FROM public.employee_leave_requests l WHERE l.employee_id=eid AND l.sick_cert_dms_id=doc AND l.deleted_at IS NULL))
+ AND NOT EXISTS (
+   SELECT FROM erp_private.hr_mobile_managed_leave m JOIN erp_private.t04_cases c ON c.id=m.case_id
+   WHERE m.document_id=doc AND erp_private.employee_permission(c.employee_id,'hr.medical.view') IS NOT TRUE
+   UNION ALL
+   SELECT FROM erp_private.t04_sick_evidence m JOIN erp_private.t04_cases c ON c.id=m.case_id
+   WHERE m.document_id=doc AND erp_private.employee_permission(c.employee_id,'hr.medical.view') IS NOT TRUE)
  AND (erp_private.employee_permission(eid,'hr.confidential.view') OR NOT EXISTS(SELECT FROM public.employee_disciplinary_records d WHERE d.employee_id=eid AND d.dms_document_id=doc AND d.deleted_at IS NULL))
 $$;
 REVOKE ALL ON FUNCTION erp_private.mobile_hr_v5_disclose_evidence(bigint,bigint) FROM PUBLIC,anon,authenticated,service_role;

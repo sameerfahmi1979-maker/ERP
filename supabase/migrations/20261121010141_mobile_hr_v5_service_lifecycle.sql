@@ -49,7 +49,12 @@ BEGIN
  body:=replace(body,'WHERE s.id>after_id','WHERE s.kind IN '||kinds||' AND s.id>after_id');
  EXECUTE replace(definition,original,body);
  SELECT prosrc,pg_get_functiondef(oid) INTO original,definition FROM pg_proc WHERE oid='erp_private.mobile_hr_command(text,jsonb,boolean)'::regprocedure;
- IF encode(sha256(convert_to(original,'UTF8')),'hex')<>'265c9f09685fe1ca40a78428a6f79352f24acf280481a2245d36483a6905169e' THEN RAISE EXCEPTION 'Unreviewed legacy command definition'; END IF;
+ -- Reviewed integrated T04 dispatcher. Every patch point must occur exactly once.
+ IF encode(sha256(convert_to(original,'UTF8')),'hex') IS DISTINCT FROM '254bf4de75cf6471efc517907620624189e4271851c27062106982a5df0a90b5'
+    OR EXISTS (SELECT FROM unnest(ARRAY['domain:=r.kind; proposal:=r.proposal;',
+       'eid:=CASE WHEN action=''receipt''','IF action=''receipt'' AND rec.actor IS NULL']) anchor
+       WHERE cardinality(string_to_array(original,anchor))<>2)
+ THEN RAISE EXCEPTION 'Unreviewed integrated mobile command definition or patch point'; END IF;
  body:=replace(original,'domain:=r.kind; proposal:=r.proposal;', 'IF r.kind NOT IN '||kinds||' THEN RAISE EXCEPTION ''Unsupported legacy request'' USING ERRCODE=''22023''; END IF; domain:=r.kind; proposal:=r.proposal;');
  body:=replace(body,'eid:=CASE WHEN action=''receipt''','IF action<>''receipt'' THEN PERFORM erp_private.mobile_hr_bind(action,op,digest); END IF; eid:=CASE WHEN action=''receipt''');
  body:=replace(body,'IF action=''receipt'' AND rec.actor IS NULL','IF action=''receipt'' AND (rec.actor IS NULL OR rec.action LIKE ''v5.%'')');

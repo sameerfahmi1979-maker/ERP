@@ -18,6 +18,7 @@ export type DmsDocumentCommentRow = {
   id: number;
   document_id: number;
   comment_text: string;
+  workspace_revision: string;
   created_by: number | null;
   created_at: string;
   updated_by: number | null;
@@ -43,7 +44,7 @@ export async function getDmsDocumentComments(
     const data = await readAllPages(async (from,to) => {
       const result = await supabase
       .from("dms_document_comments")
-      .select("id, document_id, comment_text, created_by, created_at, updated_by, updated_at, deleted_at, author:user_profiles!created_by(display_name)", {count:"exact"})
+      .select("id, document_id, comment_text, workspace_revision::text, created_by, created_at, updated_by, updated_at, deleted_at, author:user_profiles!created_by(display_name)", {count:"exact"})
       .eq("document_id", documentId)
       .is("deleted_at", null)
       .order("created_at").order("id",{ascending:true}).range(from,to);

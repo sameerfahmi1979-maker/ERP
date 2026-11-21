@@ -1,3 +1,4 @@
+import { mobileAccessToken } from "@/lib/supabase/mobile-request";
 import 'server-only';
 import {z} from 'zod';
 import {createHash} from 'node:crypto';
@@ -18,7 +19,7 @@ export async function currentPhotoState(employee:number,dependent:number|null) {
   const ctx=await getAuthContext();
   if(!ctx.profile||!ctx.isAccountActive||ctx.profile.must_change_password)throw Error('Current account required.');
   const client=await createClient(),r=await client.rpc('hr_subject_photo_state',{p_employee:employee,p_dependent:dependent});
-  if(r.error)throw Error('Photo access unavailable.');
+  if(r.error)throw Error(r.error.code==='42501'?'Photo access restricted.':'Photo access unavailable.');
   return {client,ctx,state:photoStateSchema.parse(r.data)};
 }
 export async function loadPhotoSource(employee:number,dependent:number|null,documentId:number,download=false) {
@@ -41,7 +42,7 @@ export async function loadPhotoSource(employee:number,dependent:number|null,docu
   const again=await client.rpc('f12_subject_photo',{p_employee:employee,p_dependent:dependent,p_document:documentId});
   if(again.error||JSON.stringify(again.data)!==JSON.stringify(r.data)||!(await checkDocumentConfidentialityAccess(client,documentId,ctx,required)).allowed)throw Error('Photo access changed.');
   const source={...image,documentId,versionId:choice.version_id,fileId:choice.file_id};
-  const claims=await client.auth.getClaims();
+  const claims=await client.auth.getClaims(mobileAccessToken());
   if(claims.error||claims.data?.claims.sub!==ctx.profile.auth_user_id)throw Error('Photo session changed.');
   const attested=await admin.rpc('hr_attest_photo_image',{p_employee:employee,p_dependent:dependent,p_source:source,p_claims:{sub:claims.data.claims.sub,session_id:claims.data.claims.session_id}});
   if(attested.error||attested.data!==true)throw Error('Photo decoding could not be recorded.');

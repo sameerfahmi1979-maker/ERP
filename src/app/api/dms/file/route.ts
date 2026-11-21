@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { checkDocumentConfidentialityAccess } from "@/lib/dms/document-access";
 import {createHash} from "node:crypto";
+import {retainFileResponseReceipt} from "@/server/dms-file-response-receipt";
 import {readBoundedDmsObject} from '@/server/dms-file-verification';
 
 const noStore = {"Cache-Control":"private, no-store", "Referrer-Policy":"no-referrer"};
@@ -137,7 +138,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     });
     if (event.error || !event.data || event.data.fileId !== fileId || event.data.documentId !== file.document_id || !Number.isSafeInteger(event.data.eventId))
       return unavailable("The current file response could not be verified. Please retry.",event.error?.code === "42501" ? 403 : event.error?.code === "PT409" ? 409 : 503);
-    return new NextResponse(blob, { status: 200, headers });
+    return retainFileResponseReceipt(new NextResponse(blob, { status: 200, headers }),event.data.eventId);
   } catch {
     return unavailable("Unable to deliver the file.",500);
   }

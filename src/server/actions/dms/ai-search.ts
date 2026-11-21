@@ -27,7 +27,7 @@ import {prepareDocumentQuery,SearchClarification} from "@/server/ai/search/docum
 import {normalizeIdentity} from "@/lib/ai/search/vocabulary";
 import {verifySearchDelivery} from "@/server/ai/search/security";
 import {constrainDocumentQuery} from "@/server/ai/search/documents";
-import {sharedSearchSchema} from "@/lib/ai/search/vocabulary";
+import {sharedSearchSchema,subjectSchema} from "@/lib/ai/search/vocabulary";
 import { logDmsAiUsage } from "@/lib/ai/observability/log-dms-ai-usage";
 import { logger } from "@/lib/logger";
 
@@ -255,7 +255,7 @@ async function readSearchLookups(
 // ── searchDmsDocumentsByIntent ─────────────────────────────────────────────────
 
 export async function searchDmsDocumentsByIntent(
-  intent: DmsSearchIntent,paging:unknown={page:1,pageSize:MAX_RESULTS},scope:unknown={}
+  intent: DmsSearchIntent,paging:unknown={page:1,pageSize:MAX_RESULTS},scope:unknown={},subjectInput?:unknown,withOrigins=false
 ): Promise<ActionResult<DmsAiSearchResult[]>> {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "dms.documents.view")) {
@@ -267,6 +267,7 @@ export async function searchDmsDocumentsByIntent(
   const parsedPage=z.strictObject({page:z.number().int().min(1).max(100000).default(1),pageSize:z.number().int().min(1).max(100).default(MAX_RESULTS)}).safeParse(paging);
   if(!parsedPage.success)return {success:false,error:"Invalid search page."};
   const parsedScope=sharedSearchSchema.shape.filters.safeParse(scope);if(!parsedScope.success)return {success:false,error:"Invalid search scope."};
+  const selectedSubject=subjectSchema.optional().safeParse(subjectInput);if(!selectedSubject.success)return {success:false,error:"Invalid search subject."};
   intent = parsedIntent.data;
   if(intent.confidentiality_max!==null)return {success:false,error:"A confidentiality ceiling is not supported. Use the exact confidentiality filter."};
   const isAdmin = isAdminUser(ctx);
@@ -290,7 +291,7 @@ export async function searchDmsDocumentsByIntent(
       : [];
 
     // Base query — never return content_text
-    const planned=await prepareDocumentQuery(supabase,"",ctx,{personHint:intent.person_name_hint??intent.party_name_hint,typeHint:intent.document_type_hint,metadataFilters,types:typeRows});
+    const planned=await prepareDocumentQuery(supabase,"",ctx,{subject:selectedSubject.data,personHint:intent.person_name_hint??intent.party_name_hint,typeHint:intent.document_type_hint,metadataFilters,types:typeRows});
     let query = planned.query
       .select(
         "id,document_no,title,created_at,expiry_date,ai_risk_level,completeness_score,ai_summary"
@@ -415,6 +416,14 @@ export async function searchDmsDocumentsByIntent(
     });
 
     if(count===null||!Number.isSafeInteger(count)||results.length!==Math.min(parsedPage.data.pageSize,Math.max(0,count-(parsedPage.data.page-1)*parsedPage.data.pageSize)))return {success:false,error:"Search count or page could not be verified."};
+    if(withOrigins && results.length){
+      const ids=results.map(hit=>hit.documentId);
+      const structured=Boolean(hasMetaFilters||planned.subject||typeIds.length||categoryIds.length||intent.expiry_state||intent.risk_hint||intent.date_from||intent.date_to||Object.entries(parsedScope.data).some(([key,value])=>key==="lifecycle"?value!=="current":Array.isArray(value)?value.length>0:Boolean(value)));
+      const origins=await supabase.rpc("mobile_dms_document",{p_action:"search_origins",p_data:{ids,textQuery:tsQuery??"",structured}});
+      const checked=z.array(z.strictObject({id:z.number().int().positive(),matchSource:z.enum(["metadata","content","both"])})).safeParse(origins.data);
+      if(origins.error||!checked.success||checked.data.length!==ids.length||checked.data.some((hit,i)=>hit.id!==ids[i]))throw Error("Search source changed");
+      results.forEach((hit,i)=>{hit.matchSource=checked.data[i].matchSource;});
+    }
     await verifySearchDelivery(ctx);
     return { success: true, data: results,totalCount:count };
   } catch (err) {
@@ -427,7 +436,7 @@ export async function searchDmsDocumentsByIntent(
 
 // ── askDmsDocumentsQuestion ───────────────────────────────────────────────────
 
-export async function askDmsDocumentsQuestion(question: string,scope:unknown={}): Promise<
+export async function askDmsDocumentsQuestion(question: string,scope:unknown={},paging?:unknown,subject?:unknown,withOrigins=false): Promise<
   ActionResult<{
     intent: DmsSearchIntent;
     results: DmsAiSearchResult[];
@@ -454,7 +463,7 @@ export async function askDmsDocumentsQuestion(question: string,scope:unknown={})
   }
 
   const intent = intentResult.data;
-  const searchResult = await searchDmsDocumentsByIntent(intent,undefined,scope);
+  const searchResult = await searchDmsDocumentsByIntent(intent,paging,scope,subject,withOrigins);
   if (!searchResult.success) {
     return { success: false, error: searchResult.error ?? "Search failed." };
   }

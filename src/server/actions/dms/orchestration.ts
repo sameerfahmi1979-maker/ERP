@@ -26,6 +26,7 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
+import {publishMobileStepReceipt,reserveWebStep,withRetryEffects} from "@/server/mobile/dms-v5/orchestration-receipt";
 
 import {
   buildInitialSteps,
@@ -457,6 +458,9 @@ export async function retryDmsOrchestrationStep(input: {
   sessionCode: string;
   stepCode: DmsAiOrchestrationStepCode;
 }): Promise<ActionResult<DmsAiOrchestrationStepResult>> {
+  return withRetryEffects(()=>runCanonicalRetry(input));
+}
+async function runCanonicalRetry(input:{sessionCode:string;stepCode:DmsAiOrchestrationStepCode}):Promise<ActionResult<DmsAiOrchestrationStepResult>> {
   const RETRYABLE: DmsAiOrchestrationStepCode[] = [
     "content_sync", "ai_summary", "intelligence", "embedding", "tag_suggestions", "link_suggestions",
   ];
@@ -490,7 +494,7 @@ export async function retryDmsOrchestrationStep(input: {
     const supabase = await createClient();
     const { data: session } = await supabase
       .from("dms_upload_sessions")
-      .select("document_id, uploaded_by, orchestration_steps_json")
+      .select("id, document_id, uploaded_by, orchestration_steps_json")
       .eq("session_code", sessionCode)
       .is("deleted_at", null)
       .single();
@@ -506,6 +510,12 @@ export async function retryDmsOrchestrationStep(input: {
     const uploadSessionId = typedSession.id as number;
     if (!documentId) return { success: false, error: "No draft document exists for this session." };
 
+    const existingSteps = (typedSession.orchestration_steps_json as DmsAiOrchestrationStepResult[] | null) ?? [];
+    const targets = Array.isArray(existingSteps) ? existingSteps.filter(entry => entry?.step === stepCode) : [];
+    if (targets.length !== 1 || !["failed", "skipped"].includes(targets[0].status)) {
+      return {success:false,error:"The selected step is no longer available for retry."};
+    }
+    const verifyWebStep=await reserveWebStep(uploadSessionId,sessionCode,stepCode);
     // Run the step
     let stepResult: DmsAiOrchestrationStepResult;
     const code = stepCode as DmsAiOrchestrationStepCode;
@@ -551,11 +561,11 @@ export async function retryDmsOrchestrationStep(input: {
     }
 
     // Update step in session
-    const existingSteps = (typedSession.orchestration_steps_json as DmsAiOrchestrationStepResult[] | null) ?? [];
     const updatedSteps = mergeStepResult(existingSteps, stepResult);
     const newStatus = calculateOverallStatus(updatedSteps);
 
-    await updateSessionOrchestration(sessionCode, {
+    if(verifyWebStep)await verifyWebStep(stepResult);
+    else if(!await publishMobileStepReceipt(sessionCode,stepResult,newStatus))await updateSessionOrchestration(sessionCode, {
       orchestration_status: newStatus,
       orchestration_steps_json: updatedSteps,
     });

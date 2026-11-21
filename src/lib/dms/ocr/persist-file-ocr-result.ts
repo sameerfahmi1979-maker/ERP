@@ -15,6 +15,8 @@
  *  - Idempotent and safe to re-run
  */
 
+import {publishQuestionArtifact,captureQuestionParents,questionTextHash,withVerifiedContent} from "@/server/dms-question-publication";
+import {capDmsContentText} from "@/lib/dms/content-text";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { OcrProviderCode } from "./types";
 import { writeDocumentContentTextSystem } from "@/server/actions/dms/document-content";
@@ -22,6 +24,7 @@ import { writeDocumentContentTextSystem } from "@/server/actions/dms/document-co
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface PersistFileOcrResultParams {
+  verifiedFile?:{fileId:number;versionId:number;sha256:string};
   /** Authenticated RLS supabase client (createClient(), already created by caller). */
   supabase: SupabaseClient;
   /** dms_document_files.id */
@@ -150,12 +153,16 @@ export async function persistFileOcrResult(
 
   if (hasText) {
     try {
-      const result = await writeDocumentContentTextSystem({
+      const binding=params.verifiedFile;
+      const artifactContentHash=questionTextHash(text!.slice(0,500000));
+      const published=binding?.fileId===fileId && await publishQuestionArtifact({kind:"file_ocr",artifactId:String(fileId),documentId,versionId:binding.versionId,fileBindings:[binding],derivationHashes:[],artifactContentHash});
+      const parent=published?await captureQuestionParents(documentId,[{kind:"file_ocr",artifactId:String(fileId),artifactContentHash}]):null;
+      const result = await withVerifiedContent(documentId,questionTextHash(capDmsContentText(text!).text),parent,()=>writeDocumentContentTextSystem({
         documentId,
         text: text!,
         source,
         performedBy,
-      });
+      }));
       contentSynced = result.success;
       if (!result.success && result.error) {
         errors.push("Saved file OCR, but extracted document text could not be synchronized. Retry the operation.");

@@ -33,7 +33,7 @@ export function mobileCapabilities(ctx:AuthContext){
  const view=allowed(ctx,"dms.documents.view"),upload=allowed(ctx,"dms.documents.upload"),preview=allowed(ctx,"dms.documents.preview"),download=allowed(ctx,"dms.documents.download");
  const review=allowed(ctx,"dms.documents.review_ai"),renewals=any(ctx,["dms.renewals.view","dms.renewals.manage"]),approvals=any(ctx,["dms.approvals.view","dms.approvals.act","dms.documents.approve","dms.approvals.admin"]);
  const notifications=any(ctx,["dms.notifications.view","dms.notifications.manage"]);
- const hr=["hr.admin","hr.employees.view","hr.employee_profile.view","hr.employee_profile.view.self","hr.employee_profile.view.team","hr.employees.view.self","hr.employees.view.team","hr.leave.view","hr.leave.view.self","hr.leave.view.team","hr.attendance.view","hr.attendance.view.self","hr.attendance.view.team","hr.medical.view","hr.medical.view.self","hr.medical.view.team","hr.actions.view","hr.actions.view.self","hr.actions.view.team","hr.compliance.view","hr.compliance.view.self","hr.compliance.view.team","hr.assignments.view","hr.requests.submit.self"].some(code=>hasPermission(ctx,code));
+ const hr=["hr.admin","hr.employees.view","hr.employee_profile.view","hr.employee_profile.view.self","hr.employee_profile.view.team","hr.employees.view.self","hr.employees.view.team","hr.leave.view","hr.leave.view.self","hr.leave.view.team","hr.attendance.view","hr.attendance.view.self","hr.attendance.view.team","hr.medical.view","hr.medical.view.self","hr.medical.view.team","hr.actions.view","hr.actions.view.self","hr.actions.view.team","hr.compliance.view","hr.compliance.view.self","hr.compliance.view.team","hr.assignments.view","hr.assignments.view.self","hr.assignments.view.team","hr.requests.submit.self"].some(code=>hasPermission(ctx,code));
  return {apiVersion:2,view,upload,preview,download,review,numbering:hasPermission(ctx,"numbering.rules.generate"),
   personal:false,records:view&&(staffEmployee(ctx)||staffSite(ctx)),tasks:view||upload||review||renewals||approvals||notifications,renewals,renewalsManage:allowed(ctx,"dms.renewals.manage"),approvals,offline:preview&&download,notifications,hr};
 }
@@ -45,7 +45,7 @@ export async function readMobileProfile(ctx:AuthContext){
   if(r.data){const row=z.object({id:z.number(),full_name_en:z.string(),employee_code:z.string().nullable()}).parse(r.data);if(row.id!==linked)throw new MobileDmsError("Employee identity mismatch.");employee={id:linked,label:row.full_name_en,code:row.employee_code};}
  }
  return {apiVersion:2,userId:ctx.profile!.auth_user_id,name:ctx.profile!.full_name,employee,
-  latestRelease:{versionName:"4.1.0",versionCode:10},
+  latestRelease:{versionName:"5.0.0",versionCode:11},
   capabilities:{...mobileCapabilities(ctx),personal:employee!==null&&allowed(ctx,"dms.documents.view")}};
 }
 

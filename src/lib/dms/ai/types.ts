@@ -287,6 +287,7 @@ export interface DmsSearchIntent {
 }
 
 export interface DmsAiSearchResult {
+  matchSource?: "metadata" | "content" | "both";
   documentId: number;
   documentNo: string;
   title: string;

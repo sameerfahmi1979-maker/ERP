@@ -1,4 +1,6 @@
 "use server";
+import {createHash as createProofHash} from "node:crypto";
+const questionTextHashBytes=(bytes:Buffer)=>createProofHash("sha256").update(bytes).digest("hex");
 
 /**
  * DMS.9 — OCR Pipeline Server Actions
@@ -307,7 +309,7 @@ export async function triggerDmsOcrForFile(
     // 1. Load file record
     const { data: file, error: fileErr } = await supabase
       .from("dms_document_files")
-      .select("id, document_id, storage_bucket, storage_path, file_name, mime_type, ocr_status, file_size_bytes")
+      .select("id, document_id, storage_bucket, storage_path, file_name, mime_type, ocr_status, file_size_bytes, version_id, sha256_hash")
       .eq("id", fileId)
       .is("deleted_at", null)
       .single();
@@ -470,7 +472,9 @@ export async function triggerDmsOcrForFile(
     }
     if (finalStatus === "complete") {
       try {
+        const actualSha=questionTextHashBytes(fileBuffer);
         const saved = await persistFileOcrResult({
+          verifiedFile:typeof file.version_id==="number"&&actualSha===file.sha256_hash?{fileId,versionId:file.version_id,sha256:actualSha}:undefined,
           supabase,
           fileId,
           documentId,

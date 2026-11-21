@@ -1,4 +1,6 @@
 "use server";
+import {markRetryProviderStarted} from "@/server/mobile/dms-v5/orchestration-receipt";
+import {captureQuestionParents,publishQuestionArtifact,questionTextHash} from "@/server/dms-question-publication";
 
 /**
  * DMS 12.2 — AI Document Summary Server Actions
@@ -229,6 +231,9 @@ async function runSummaryForDocument(params: {
     return { success: false, error: "AI provider is not configured. Please configure an AI provider in Administration → Settings → AI Settings." };
   }
 
+  const questionParent=await captureQuestionParents(documentId,[{kind:"content_text",artifactId:String(documentId),artifactContentHash:questionTextHash(fullContentText)}],{
+    number:typedDoc.document_no,title:typedDoc.title,type:docType?.name_en??null,category:category?.name_en??null,issue:typedDoc.issue_date??null,expiry:typedDoc.expiry_date??null
+  });
   // 7. Build prompts (never log these)
   const systemPrompt = buildSummarySystemPrompt();
   const userMessage = buildSummaryUserMessage({
@@ -247,6 +252,7 @@ async function runSummaryForDocument(params: {
 
   // 8. Call AI
   try {
+    markRetryProviderStarted();
     summaryResult = await provider.summarize(systemPrompt, userMessage);
     if (!summaryResult.summary || summaryResult.summary.trim().length === 0) {
       throw new Error("AI returned an empty summary.");
@@ -277,6 +283,7 @@ async function runSummaryForDocument(params: {
     if (updateErr) {
       return { success: false, error: "Failed to save summary: " + updateErr.message };
     }
+    if(questionParent)await publishQuestionArtifact({kind:"ai_summary",documentId,artifactId:String(documentId),artifactContentHash:questionTextHash(summaryResult.summary.trim()),...questionParent});
   } else {
     await supabase
       .from("dms_documents")

@@ -1,4 +1,5 @@
 "use server";
+import {markRetryProviderStarted} from "@/server/mobile/dms-v5/orchestration-receipt";
 
 /**
  * DMS 12.5 — Semantic Search / pgvector / Embeddings
@@ -207,6 +208,7 @@ async function runEmbeddingForDocument(params: {
   let embedError: string | null = null;
 
   try {
+    markRetryProviderStarted();
     const result = await provider.embedText(sourceText, { model: modelId });
     if (!result.embedding || result.embedding.length === 0) {
       throw new Error("Provider returned an empty embedding.");

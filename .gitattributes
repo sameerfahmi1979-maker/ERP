@@ -34,3 +34,9 @@
 /tests/remediation/f06/n02-browser-resource-check.mjs text eol=lf
 /tests/remediation/f06/n02-browser-authoring.test.ts text eol=lf
 /tests/remediation/f06/dms-destination-fixed-runtime-acl.mjs text eol=lf
+/supabase/migrations/20261121120033_mobile_dms_requests_and_receipts.sql text eol=lf
+/supabase/migrations/20261121120037_mobile_dms_authenticated_shares.sql text eol=lf
+/supabase/migrations/20261121120041_mobile_dms_personal_collections.sql text eol=lf
+/supabase/migrations/20261121120050_dms_question_source_provenance.sql text eol=lf
+/supabase/migrations/20261121054457_permissions_matrix_access_performance.sql -text
+/supabase/migrations/20261121070619_qatar_residency_permit_catalog.sql text eol=lf

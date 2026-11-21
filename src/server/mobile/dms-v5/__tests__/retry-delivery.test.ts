@@ -12,7 +12,8 @@ vi.mock("@/lib/dms/ai/factory",()=>({getDmsAiProvider:f.provider}));
 vi.mock("@/server/actions/dms/orchestration",()=>({retryDmsOrchestrationStep:f.retry}));
 vi.mock("../access",async original=>({...await original<typeof import("../access")>(),admitMobileDmsSource:f.admit,verifyMobileDmsDelivery:f.deliver,verifySession:f.session,rpc:f.rpc}));
 const actor={profile:{id:7}} as AuthContext;
-const command={op:"processingAction",action:"retry_step",step:"ai_summary",documentId:10,jobId:12,sourceHash:"c".repeat(64),operationId:"91a4138d-9687-44d0-8097-230781a8149e"} as const;
+const retryIntent={action:"retry_step",step:"ai_summary",documentId:10,jobId:12,sourceHash:"c".repeat(64),operationId:"91a4138d-9687-44d0-8097-230781a8149e"} as const;
+const command={op:"processingAction",...retryIntent} as const;
 const receipt={documentId:10,jobId:12,operationId:command.operationId,state:"failed",replayed:false};
 const failure={step:"ai_summary",status:"failed"} as const;
 beforeEach(()=>{vi.resetAllMocks();f.admit.mockResolvedValue({documentId:10,documentVersionId:20,sourceHash:command.sourceHash});f.rpc.mockResolvedValue({admitted:true,actor:7,sessionCode:"fixture"});f.provider.mockResolvedValue({provider:{isConfigured:()=>true}});});
@@ -36,7 +37,7 @@ it("settles a native pre-provider failure and recovers the same operation when c
  f.trusted.mockResolvedValue({data:receipt,error:null});
  f.retry.mockImplementation(async()=>({success:false,error:"Content unavailable"}));
  await expect(processing(command,actor)).resolves.toEqual(receipt);
- expect(f.trusted.mock.calls[0][1].p_result).toEqual({...failure,providerEffect:"never_started",abandoned:true});expect(f.completion).not.toHaveBeenCalled();
+ expect(f.trusted.mock.calls[0][1].p_result).toEqual({...failure,intent:retryIntent,providerEffect:"never_started",abandoned:true});expect(f.completion).not.toHaveBeenCalled();
  f.rpc.mockResolvedValue({...receipt,replayed:true});f.provider.mockRejectedValue(Error("disabled"));
  await expect(processing(command,actor)).resolves.toMatchObject({replayed:true});expect(f.retry).toHaveBeenCalledTimes(1);
 });
@@ -61,5 +62,5 @@ it("marks an executed non-provider skip for normal row settlement",async()=>{
  f.trusted.mockResolvedValue({data:{...receipt,state:"skipped"},error:null});
  f.retry.mockImplementation(async()=>{await publishMobileStepReceipt("fixture",{step:"content_sync",status:"skipped"},"complete");return {success:true};});
  await expect(processing({...command,step:"content_sync"},actor)).resolves.toMatchObject({state:"skipped"});
- expect(f.trusted.mock.calls[0][1].p_result).toEqual({step:"content_sync",status:"skipped",providerEffect:"never_started"});
+ expect(f.trusted.mock.calls[0][1].p_result).toEqual({step:"content_sync",status:"skipped",intent:{...retryIntent,step:"content_sync"},providerEffect:"never_started"});
 });

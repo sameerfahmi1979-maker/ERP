@@ -30,16 +30,33 @@ export async function processing(input:CommandFor<"processingStatus"|"processing
   await verifyMobileDmsDelivery(ctx,src,["dms.documents.preview"]);return r;
  }
  if(input.action!=="retry_step"||r.actor!==ctx.profile?.id)throw new DmsError(409,"reconciliation_required","Refresh the original processing operation.",true);
+ const trustedReceipt=receipt.extend({accessChanged:z.literal(true).optional()});
  let settled:z.infer<typeof receipt>|null=null;
+ let accessChanged=false;
  await withRetryEffects(async()=>{
   let settlementAttempted=false;
   const save=async(step:Parameters<Parameters<typeof withMobileStepReceipt>[2]>[0],overall:string,abandoned=false)=>{
    const effect=retryProviderEffect();
    if(["ai_summary","embedding","tag_suggestions","link_suggestions"].includes(input.step)&&step.status!=="completed"&&effect!=="never_started")throw new Error("Provider result requires reconciliation");
    settlementAttempted=true;
-   const write=await createAdminClient().rpc("mobile_dms_finish_retry",{p_actor:r.actor,p_operation:input.operationId,p_result:{...step,providerEffect:effect,...(abandoned?{abandoned:true}:{})},p_status:overall});
-   if(write.error)throw new Error("Unconfirmed canonical step");
-   settled=receipt.parse(write.data);
+   const db=createAdminClient();
+   const args={p_actor:r.actor,p_operation:input.operationId,p_result:{...step,intent:data,providerEffect:effect,...(abandoned?{abandoned:true}:{})},p_status:overall};
+   // Retry only the identical trusted write when its acknowledgement may have been lost.
+   for(let attempt=0;attempt<2;attempt++){
+    let write;
+    try{write=await db.rpc("mobile_dms_finish_retry",args);}
+    catch{if(attempt===0)continue;break;}
+    if(write.error){
+     if(attempt===0&&(!write.error.code||[0,502,503,504].includes(write.status)))continue;
+     break;
+    }
+    const parsed=trustedReceipt.safeParse(write.data);
+    if(parsed.success){
+     const {accessChanged:denied,...confirmed}=parsed.data;
+     accessChanged=denied===true;settled=confirmed;return;
+    }
+   }
+   throw new DmsError(409,"reconciliation_required","The original processing operation requires reconciliation.",true);
   };
   let configured:boolean;
   try{
@@ -54,5 +71,7 @@ export async function processing(input:CommandFor<"processingStatus"|"processing
   if(!settlementAttempted&&!result.success&&retryProviderEffect()==="never_started")await save({step:input.step,status:"failed"},"failed",true);
  });
  if(!settled)throw new DmsError(409,"reconciliation_required","The original processing operation requires reconciliation.",true);
- await verifyMobileDmsDelivery(ctx,src,["dms.documents.preview"]);return settled;
+ await verifyMobileDmsDelivery(ctx,src,["dms.documents.preview"]);
+ if(accessChanged)throw new DmsError(403,"permission_denied","Current access is required.");
+ return settled;
 }

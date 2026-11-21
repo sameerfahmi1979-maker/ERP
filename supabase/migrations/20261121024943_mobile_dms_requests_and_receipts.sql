@@ -495,7 +495,7 @@ CREATE FUNCTION public.mobile_dms_renewal_request(p_data jsonb) RETURNS jsonb LA
 -- ECMAScript trim whitespace used by the canonical AI source readers.
 CREATE FUNCTION erp_private.mobile_dms_has_text(v text) RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path='' AS $$SELECT coalesce(btrim(v,E' \t\n\r\f' || chr(11) || U&'\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF')<>'',false)$$;
 REVOKE ALL ON FUNCTION erp_private.mobile_dms_has_text(text) FROM PUBLIC,anon,authenticated,service_role;
-CREATE TABLE erp_private.mobile_dms_retries(actor bigint NOT NULL,operation uuid NOT NULL,job_id bigint NOT NULL REFERENCES public.dms_ai_job_queue,session_id bigint NOT NULL REFERENCES public.dms_upload_sessions,document_id bigint NOT NULL REFERENCES public.dms_documents,source_hash text NOT NULL,step text NOT NULL,prior_steps jsonb NOT NULL,claims jsonb NOT NULL,settled boolean NOT NULL DEFAULT false,PRIMARY KEY(actor,operation),FOREIGN KEY(actor,operation) REFERENCES erp_private.mobile_dms_receipts);
+CREATE TABLE erp_private.mobile_dms_retries(actor bigint NOT NULL,operation uuid NOT NULL,job_id bigint NOT NULL REFERENCES public.dms_ai_job_queue,session_id bigint NOT NULL REFERENCES public.dms_upload_sessions,document_id bigint NOT NULL REFERENCES public.dms_documents,source_hash text NOT NULL,step text NOT NULL,prior_steps jsonb NOT NULL,claims jsonb NOT NULL,settled boolean NOT NULL DEFAULT false,settlement_hash text,delivery_denied boolean NOT NULL DEFAULT false,PRIMARY KEY(actor,operation),FOREIGN KEY(actor,operation) REFERENCES erp_private.mobile_dms_receipts);
 CREATE UNIQUE INDEX mobile_dms_one_pending_step ON erp_private.mobile_dms_retries(session_id,step) WHERE NOT settled;
 ALTER TABLE erp_private.mobile_dms_retries ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON erp_private.mobile_dms_retries FROM PUBLIC,anon,authenticated,service_role;
@@ -635,27 +635,78 @@ BEGIN
 END $$;
 CREATE FUNCTION public.mobile_dms_operation(p_action text,p_data jsonb) RETURNS jsonb LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$SELECT erp_private.mobile_dms_operation(p_action,p_data)$$;
 CREATE FUNCTION erp_private.mobile_dms_finish_retry(p_actor bigint,p_operation uuid,p_result jsonb,p_status text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-DECLARE t erp_private.mobile_dms_retries;u public.dms_upload_sessions;original text:=current_setting('request.jwt.claims',true); receipt jsonb;safe jsonb;rows jsonb;
+DECLARE
+ t erp_private.mobile_dms_retries;
+ reserved erp_private.mobile_dms_receipts;
+ u public.dms_upload_sessions;
+ original text:=current_setting('request.jwt.claims',true);
+ completion_hash text:=erp_private.mobile_dms_hash(jsonb_build_array(p_result,p_status));
+ paid boolean;
+ zero_call_failure boolean;
+ receipt_only boolean;
+ access_changed boolean:=false;
+ admin_allowed boolean;
+ receipt jsonb;
 BEGIN
  IF auth.role() IS DISTINCT FROM 'service_role' THEN RAISE EXCEPTION 'Canonical writer required' USING ERRCODE='42501'; END IF;
- SELECT * INTO STRICT t FROM erp_private.mobile_dms_retries WHERE actor=p_actor AND operation=p_operation AND NOT settled FOR UPDATE;
- -- A trusted pre-invocation failure releases only this reservation. Leave business state untouched even if the caller lost access.
- IF p_result->>'step'=t.step AND p_result->>'status'='failed' AND p_result->'abandoned'='true'::jsonb AND p_result->>'providerEffect'='never_started' THEN
-  receipt:=jsonb_build_object('documentId',t.document_id,'jobId',t.job_id,'operationId',p_operation,'state',p_result->'status','replayed',false);
+ SELECT * INTO STRICT t FROM erp_private.mobile_dms_retries WHERE actor=p_actor AND operation=p_operation FOR UPDATE;
+ SELECT * INTO STRICT reserved FROM erp_private.mobile_dms_receipts WHERE actor=t.actor AND operation=t.operation;
+ IF reserved.command<>'processing/retry_step' OR reserved.payload_hash IS DISTINCT FROM erp_private.mobile_dms_hash(p_result->'intent')
+    OR p_result->>'step' IS DISTINCT FROM t.step OR coalesce(p_result->>'status','') NOT IN('failed','skipped','completed')
+    OR coalesce(p_status,'') NOT IN('complete','complete_with_warnings','failed','running','pending','queued','skipped_feature_disabled') THEN
+  RAISE EXCEPTION 'Retry intent changed' USING ERRCODE='PT409';
+ END IF;
+ IF t.settled THEN
+  IF t.settlement_hash IS DISTINCT FROM completion_hash OR reserved.state<>'settled' THEN RAISE EXCEPTION 'Retry completion changed' USING ERRCODE='PT409'; END IF;
+  RETURN reserved.result || CASE WHEN t.delivery_denied THEN '{"accessChanged":true}'::jsonb ELSE '{}'::jsonb END;
+ END IF;
+ paid:=t.step IN('ai_summary','embedding','tag_suggestions','link_suggestions');
+ zero_call_failure:=p_result->>'status'='failed' AND p_result->>'providerEffect' IS NOT DISTINCT FROM 'never_started';
+ receipt_only:=coalesce(p_result->'abandoned'='true'::jsonb,false);
+ IF (receipt_only AND NOT zero_call_failure) OR (paid AND p_result->>'status'<>'completed' AND p_result->>'providerEffect' IS DISTINCT FROM 'never_started') THEN
+  RAISE EXCEPTION 'Retry outcome unconfirmed' USING ERRCODE='PT409';
+ END IF;
+ receipt:=jsonb_build_object('documentId',t.document_id,'jobId',t.job_id,'operationId',t.operation,'state',p_result->'status','replayed',false);
+ IF NOT receipt_only THEN
+  PERFORM set_config('request.jwt.claims',t.claims::text,true);
+  BEGIN
+   IF erp_private.mobile_dms_actor()<>t.actor THEN RAISE EXCEPTION 'Session changed' USING ERRCODE='42501'; END IF;
+   PERFORM erp_private.mobile_dms_lock(t.document_id);
+   PERFORM erp_private.mobile_dms_source(jsonb_build_object('documentId',t.document_id,'sourceHash',t.source_hash),ARRAY['dms.documents.preview']);
+   SELECT * INTO u FROM public.dms_upload_sessions WHERE id=t.session_id AND document_id=t.document_id AND deleted_at IS NULL FOR UPDATE;
+   IF NOT FOUND OR NOT EXISTS(SELECT 1 FROM public.dms_ai_job_queue q WHERE q.id=t.job_id AND q.related_document_id=t.document_id AND q.related_upload_session_id=t.session_id) THEN
+    RAISE EXCEPTION 'Retry source changed' USING ERRCODE='PT409';
+   END IF;
+   admin_allowed:=erp_private.mobile_dms_can(t.document_id,'dms.admin');
+   IF NOT admin_allowed AND (u.uploaded_by IS DISTINCT FROM t.actor
+       OR NOT(public.f03_has_document_permission(t.document_id,'dms.documents.ai.run') OR public.f03_has_document_permission(t.document_id,'dms.documents.upload'))
+       OR (t.step IN('ai_summary','embedding') AND NOT public.f03_has_document_permission(t.document_id,'dms.documents.ai.run'))
+       OR (t.step IN('intelligence','tag_suggestions','link_suggestions') AND NOT erp_private.mobile_dms_can(t.document_id,'dms.documents.edit'))) THEN
+    RAISE EXCEPTION 'Retry permission changed' USING ERRCODE='42501';
+   END IF;
+  EXCEPTION WHEN insufficient_privilege OR SQLSTATE 'PT404' OR SQLSTATE 'PT409' THEN
+   IF NOT (paid AND zero_call_failure) THEN RAISE; END IF;
+   -- Only the private reservation can be released after losing the original authority or source.
+   receipt_only:=true;access_changed:=true;
+  END;
+  IF NOT receipt_only THEN
+   BEGIN
+    PERFORM erp_private.mobile_dms_merge_step(t.session_id,t.step,(SELECT x FROM jsonb_array_elements(t.prior_steps)x WHERE x->>'step'=t.step),p_result-'safeErrorMessage');
+    PERFORM erp_private.mobile_dms_settle(t.operation,receipt);
+   EXCEPTION WHEN insufficient_privilege THEN
+    -- A session revoked at the final caller-bound write rolls back this merge.
+    IF NOT (paid AND zero_call_failure) THEN RAISE; END IF;
+    receipt_only:=true;access_changed:=true;
+   END;
+  END IF;
+  PERFORM set_config('request.jwt.claims',original,true);
+ END IF;
+ IF receipt_only THEN
   UPDATE erp_private.mobile_dms_receipts SET result=receipt,state='settled' WHERE actor=t.actor AND operation=t.operation AND state='admitted';
   IF NOT FOUND THEN RAISE EXCEPTION 'Retry receipt changed' USING ERRCODE='PT409'; END IF;
-  UPDATE erp_private.mobile_dms_retries SET settled=true WHERE actor=t.actor AND operation=t.operation;
-  RETURN receipt;
  END IF;
- PERFORM set_config('request.jwt.claims',t.claims::text,true);
- IF erp_private.mobile_dms_actor()<>t.actor THEN RAISE EXCEPTION 'Session changed' USING ERRCODE='42501'; END IF;
- PERFORM erp_private.mobile_dms_lock(t.document_id);PERFORM erp_private.mobile_dms_source(jsonb_build_object('documentId',t.document_id,'sourceHash',t.source_hash),ARRAY['dms.documents.preview']);
- SELECT * INTO STRICT u FROM public.dms_upload_sessions WHERE id=t.session_id AND document_id=t.document_id AND deleted_at IS NULL FOR UPDATE;
- IF NOT(public.f03_has_document_permission(t.document_id,'dms.documents.ai.run') OR public.f03_has_document_permission(t.document_id,'dms.documents.upload') OR erp_private.mobile_dms_can(t.document_id,'dms.admin')) OR (t.step IN('ai_summary','embedding','tag_suggestions','link_suggestions') AND p_result->>'status'<>'completed' AND p_result->>'providerEffect' IS DISTINCT FROM 'never_started') OR (u.uploaded_by IS DISTINCT FROM t.actor AND NOT erp_private.mobile_dms_can(t.document_id,'dms.admin')) OR p_result->>'step' IS DISTINCT FROM t.step OR coalesce(p_result->>'status','') NOT IN('failed','skipped','completed') OR p_status NOT IN ('complete','complete_with_warnings','failed','running','pending','queued','skipped_feature_disabled') OR NOT EXISTS(SELECT 1 FROM public.dms_ai_job_queue q WHERE q.id=t.job_id AND q.related_document_id=t.document_id AND q.related_upload_session_id=u.id) THEN RAISE EXCEPTION 'Retry receipt changed' USING ERRCODE='PT409'; END IF;
- PERFORM erp_private.mobile_dms_merge_step(t.session_id,t.step,(SELECT x FROM jsonb_array_elements(t.prior_steps)x WHERE x->>'step'=t.step),p_result-'safeErrorMessage');
- UPDATE erp_private.mobile_dms_retries SET settled=true WHERE actor=p_actor AND operation=p_operation;
- receipt:=erp_private.mobile_dms_settle(p_operation,jsonb_build_object('documentId',t.document_id,'jobId',t.job_id,'operationId',p_operation,'state',p_result->'status','replayed',false));
- PERFORM set_config('request.jwt.claims',original,true);RETURN receipt;
+ UPDATE erp_private.mobile_dms_retries SET settled=true,settlement_hash=completion_hash,delivery_denied=access_changed WHERE actor=t.actor AND operation=t.operation;
+ RETURN receipt || CASE WHEN access_changed THEN '{"accessChanged":true}'::jsonb ELSE '{}'::jsonb END;
 END $$;
 CREATE FUNCTION public.mobile_dms_finish_retry(p_actor bigint,p_operation uuid,p_result jsonb,p_status text) RETURNS jsonb LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$SELECT erp_private.mobile_dms_finish_retry(p_actor,p_operation,p_result,p_status)$$;
 REVOKE ALL ON FUNCTION erp_private.mobile_dms_hash(jsonb) FROM PUBLIC,anon,authenticated,service_role;

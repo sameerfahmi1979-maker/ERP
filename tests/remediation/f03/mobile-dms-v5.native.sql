@@ -344,7 +344,7 @@ RESET ROLE;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
 SET LOCAL ROLE service_role;
 DO $$BEGIN BEGIN PERFORM public.mobile_dms_web_retry(998814,'content_sync',gen_random_uuid(),NULL);RAISE EXCEPTION 'web repeated pending native step';EXCEPTION WHEN SQLSTATE '55000' THEN NULL;END;END$$;
-SELECT pg_temp.check_it(public.mobile_dms_finish_retry((SELECT v::text::bigint FROM m5 WHERE k='actor1'),(SELECT (v->>'operationId')::uuid FROM m5 WHERE k='retryInput'),'{"step":"content_sync","status":"completed"}','complete')->>'state'='completed','trusted result settles exact operation and source');
+SELECT pg_temp.check_it(public.mobile_dms_finish_retry((SELECT v::text::bigint FROM m5 WHERE k='actor1'),(SELECT (v->>'operationId')::uuid FROM m5 WHERE k='retryInput'),'{"step":"content_sync","status":"completed"}'::jsonb||jsonb_build_object('intent',(SELECT v FROM m5 WHERE k='retryInput')),'complete')->>'state'='completed','trusted result settles exact operation and source');
 RESET ROLE; SET LOCAL ROLE authenticated; SELECT pg_temp.actor(1);
 SELECT pg_temp.check_it(public.mobile_dms_operation('admit',(SELECT v FROM m5 WHERE k='retryInput'))->>'replayed'='true','settled canonical retry replays without executing step');
 
@@ -391,7 +391,7 @@ INSERT INTO m5 SELECT 'abandoned',v||jsonb_build_object('operationId',gen_random
 SELECT public.mobile_dms_operation('admit',(SELECT v FROM m5 WHERE k='abandoned'));
 RESET ROLE;SET LOCAL session_replication_role=replica;UPDATE public.user_profiles SET must_change_password=true WHERE id=(SELECT v::text::bigint FROM m5 WHERE k='actor1');SET LOCAL session_replication_role=origin;
 SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);SET LOCAL ROLE service_role;
-SELECT pg_temp.check_it(public.mobile_dms_finish_retry((SELECT v::text::bigint FROM m5 WHERE k='actor1'),(SELECT (v->>'operationId')::uuid FROM m5 WHERE k='abandoned'),'{"step":"content_sync","status":"failed","abandoned":true,"providerEffect":"never_started"}','failed')->>'state'='failed','explicitly abandoned pre-dispatch reservation releases after source authority is lost');
+SELECT pg_temp.check_it(public.mobile_dms_finish_retry((SELECT v::text::bigint FROM m5 WHERE k='actor1'),(SELECT (v->>'operationId')::uuid FROM m5 WHERE k='abandoned'),'{"step":"content_sync","status":"failed","abandoned":true,"providerEffect":"never_started"}'::jsonb||jsonb_build_object('intent',(SELECT v FROM m5 WHERE k='abandoned')),'failed')->>'state'='failed','explicitly abandoned pre-dispatch reservation releases after source authority is lost');
 RESET ROLE;
 SELECT pg_temp.check_it((SELECT orchestration_steps_json='[{"step":"content_sync","status":"skipped"}]' FROM public.dms_upload_sessions WHERE id=998814),'abandoning pre-dispatch leaves the prior canonical tracker intact');
 ROLLBACK TO SAVEPOINT before_dispatch;
@@ -405,7 +405,7 @@ RESET ROLE;SELECT set_config('request.jwt.claims','{"role":"service_role"}',true
 INSERT INTO m5 VALUES('siblingWeb',to_jsonb(gen_random_uuid()));
 SELECT public.mobile_dms_web_retry(998814,'ai_summary',(SELECT (v#>>'{}')::uuid FROM m5 WHERE k='siblingWeb'),NULL);
 SELECT public.mobile_dms_web_retry(998814,'ai_summary',(SELECT (v#>>'{}')::uuid FROM m5 WHERE k='siblingWeb'),'{"step":"ai_summary","status":"completed","providerEffect":"started"}');
-SELECT pg_temp.check_it(public.mobile_dms_finish_retry((SELECT v::text::bigint FROM m5 WHERE k='actor1'),(SELECT (v->>'operationId')::uuid FROM m5 WHERE k='skipOperation'),'{"step":"content_sync","status":"skipped","providerEffect":"never_started","safeErrorMessage":"Content already synced."}','failed')->>'state'='skipped','executed non-provider skip settles the receipt');
+SELECT pg_temp.check_it(public.mobile_dms_finish_retry((SELECT v::text::bigint FROM m5 WHERE k='actor1'),(SELECT (v->>'operationId')::uuid FROM m5 WHERE k='skipOperation'),'{"step":"content_sync","status":"skipped","providerEffect":"never_started","safeErrorMessage":"Content already synced."}'::jsonb||jsonb_build_object('intent',(SELECT v FROM m5 WHERE k='skipOperation')),'failed')->>'state'='skipped','executed non-provider skip settles the receipt');
 RESET ROLE;SET LOCAL ROLE authenticated;SELECT pg_temp.actor(1);
 SELECT pg_temp.check_it((SELECT v->>'state'='skipped' AND v->>'replayed'='true' FROM (SELECT public.mobile_dms_operation('admit',(SELECT v FROM m5 WHERE k='skipOperation'))v)s),'original executed skip replays without new work');
 SELECT pg_temp.check_it((SELECT orchestration_steps_json @> '[{"step":"ai_summary","status":"completed"},{"step":"content_sync","status":"skipped"}]' AND orchestration_status='complete' FROM public.dms_upload_sessions WHERE session_code='M5D-SESSION'),'persisted skipped target retains the newly completed sibling and overall completion');
@@ -470,13 +470,29 @@ INSERT INTO m5 SELECT 'paidInput',v||jsonb_build_object('step','ai_summary','ope
 SELECT pg_temp.check_it(public.mobile_dms_operation('admit',(SELECT v FROM m5 WHERE k='paidInput'))->>'admitted'='true','native paid retry offered after prerequisites recover');
 RESET ROLE;SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);SET LOCAL ROLE service_role;
 SAVEPOINT native_unknown;
-DO $$BEGIN BEGIN PERFORM public.mobile_dms_finish_retry((SELECT v::text::bigint FROM m5 WHERE k='actor1'),(SELECT (v->>'operationId')::uuid FROM m5 WHERE k='paidInput'),'{"step":"ai_summary","status":"failed","providerEffect":"started"}','failed');RAISE EXCEPTION 'unknown native paid work settled';EXCEPTION WHEN SQLSTATE 'PT409' THEN NULL;END;END$$;
+DO $$BEGIN BEGIN PERFORM public.mobile_dms_finish_retry((SELECT v::text::bigint FROM m5 WHERE k='actor1'),(SELECT (v->>'operationId')::uuid FROM m5 WHERE k='paidInput'),'{"step":"ai_summary","status":"failed","providerEffect":"started"}'::jsonb||jsonb_build_object('intent',(SELECT v FROM m5 WHERE k='paidInput')),'failed');RAISE EXCEPTION 'unknown native paid work settled';EXCEPTION WHEN SQLSTATE 'PT409' THEN NULL;END;END$$;
 RESET ROLE;
 SELECT pg_temp.check_it((SELECT NOT settled FROM erp_private.mobile_dms_retries WHERE operation=(SELECT (v->>'operationId')::uuid FROM m5 WHERE k='paidInput')),'unknown native paid effect remains reserved');
 ROLLBACK TO SAVEPOINT native_unknown;
 RESET ROLE;
 SET LOCAL ROLE service_role;
-SELECT pg_temp.check_it(public.mobile_dms_finish_retry((SELECT v::text::bigint FROM m5 WHERE k='actor1'),(SELECT (v->>'operationId')::uuid FROM m5 WHERE k='paidInput'),'{"step":"ai_summary","status":"failed","providerEffect":"never_started"}','failed')->>'state'='failed','definitive native pre-invocation failure settles');
+SAVEPOINT revoked_at_final_write;
+RESET ROLE;
+INSERT INTO m5 SELECT 'originalPaidTracker',jsonb_build_array(orchestration_steps_json,orchestration_status) FROM public.dms_upload_sessions WHERE id=998814;
+CREATE FUNCTION pg_temp.revoke_at_merge() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+ PERFORM set_config('session_replication_role','replica',true);
+ UPDATE public.user_profiles SET must_change_password=true WHERE auth_user_id='cccccccc-1111-4000-8000-000000000001';
+ PERFORM set_config('session_replication_role','origin',true);
+ RETURN NEW;
+END $$;
+CREATE TRIGGER m5_revoke_at_merge AFTER UPDATE OF orchestration_steps_json ON public.dms_upload_sessions FOR EACH ROW WHEN (NEW.id=998814) EXECUTE FUNCTION pg_temp.revoke_at_merge();
+SET LOCAL ROLE service_role;
+SELECT pg_temp.check_it(public.mobile_dms_finish_retry((SELECT v::text::bigint FROM m5 WHERE k='actor1'),(SELECT (v->>'operationId')::uuid FROM m5 WHERE k='paidInput'),'{"step":"ai_summary","status":"failed","providerEffect":"never_started"}'::jsonb||jsonb_build_object('intent',(SELECT v FROM m5 WHERE k='paidInput')),'failed')->>'accessChanged'='true','original caller revocation at final settlement returns a private denial');
+RESET ROLE;
+SELECT pg_temp.check_it((SELECT jsonb_build_array(orchestration_steps_json,orchestration_status)=(SELECT v FROM m5 WHERE k='originalPaidTracker') FROM public.dms_upload_sessions WHERE id=998814) AND (SELECT settled AND delivery_denied FROM erp_private.mobile_dms_retries WHERE operation=(SELECT (v->>'operationId')::uuid FROM m5 WHERE k='paidInput')),'final caller rejection rolls back business merge and releases only the zero-call receipt');
+ROLLBACK TO SAVEPOINT revoked_at_final_write;
+SELECT pg_temp.check_it(public.mobile_dms_finish_retry((SELECT v::text::bigint FROM m5 WHERE k='actor1'),(SELECT (v->>'operationId')::uuid FROM m5 WHERE k='paidInput'),'{"step":"ai_summary","status":"failed","providerEffect":"never_started"}'::jsonb||jsonb_build_object('intent',(SELECT v FROM m5 WHERE k='paidInput')),'failed')->>'state'='failed','definitive native pre-invocation failure settles');
 INSERT INTO m5 VALUES('paidWeb',to_jsonb(gen_random_uuid()));
 SELECT pg_temp.check_it(public.mobile_dms_web_retry(998814,'ai_summary',(SELECT (v#>>'{}')::uuid FROM m5 WHERE k='paidWeb'),NULL),'web can reserve after confirmed native pre-invocation exit');
 SAVEPOINT web_unknown;

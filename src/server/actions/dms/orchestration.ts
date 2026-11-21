@@ -26,7 +26,7 @@ import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/server/actions/audit";
 import { z } from "zod";
-import {publishMobileStepReceipt,reserveWebStep} from "@/server/mobile/dms-v5/orchestration-receipt";
+import {publishMobileStepReceipt,reserveWebStep,withRetryEffects} from "@/server/mobile/dms-v5/orchestration-receipt";
 
 import {
   buildInitialSteps,
@@ -458,6 +458,9 @@ export async function retryDmsOrchestrationStep(input: {
   sessionCode: string;
   stepCode: DmsAiOrchestrationStepCode;
 }): Promise<ActionResult<DmsAiOrchestrationStepResult>> {
+  return withRetryEffects(()=>runCanonicalRetry(input));
+}
+async function runCanonicalRetry(input:{sessionCode:string;stepCode:DmsAiOrchestrationStepCode}):Promise<ActionResult<DmsAiOrchestrationStepResult>> {
   const RETRYABLE: DmsAiOrchestrationStepCode[] = [
     "content_sync", "ai_summary", "intelligence", "embedding", "tag_suggestions", "link_suggestions",
   ];
@@ -557,12 +560,12 @@ export async function retryDmsOrchestrationStep(input: {
     const updatedSteps = mergeStepResult(existingSteps, stepResult);
     const newStatus = calculateOverallStatus(updatedSteps);
 
-    if(!await publishMobileStepReceipt(sessionCode,stepResult,newStatus))await updateSessionOrchestration(sessionCode, {
+    if(verifyWebStep)await verifyWebStep(stepResult);
+    else if(!await publishMobileStepReceipt(sessionCode,stepResult,newStatus))await updateSessionOrchestration(sessionCode, {
       orchestration_status: newStatus,
       orchestration_steps_json: updatedSteps,
     });
 
-    if(verifyWebStep)await verifyWebStep(stepResult);
     return { success: true, data: stepResult };
   } catch (err) {
     return { success: false, error: String(err).slice(0, 200) };

@@ -3,6 +3,15 @@ import {randomUUID} from "node:crypto";
 import {createAdminClient} from "@/lib/supabase/admin";
 import {AsyncLocalStorage} from "node:async_hooks";
 import type {DmsAiOrchestrationStepResult} from "@/lib/dms/orchestration/types";
+type ProviderEffect="never_started"|"started";
+const effects=new AsyncLocalStorage<{started:boolean}>();
+export function withRetryEffects<T>(run:()=>Promise<T>){return effects.getStore()?run():effects.run({started:false},run);}
+export function markRetryProviderStarted(){const state=effects.getStore();if(state)state.started=true;}
+export function retryProviderEffect():ProviderEffect{
+ const state=effects.getStore();
+ // Missing positive proof of a pre-provider exit must remain uncertain.
+ return state&&!state.started?"never_started":"started";
+}
 type Save=(step:DmsAiOrchestrationStepResult,status:string)=>Promise<void>;
 const scope=new AsyncLocalStorage<{sessionCode:string;step:string;save:Save}>();
 export const withMobileStepReceipt=<T>(sessionCode:string,step:string,save:Save,action:()=>Promise<T>)=>scope.run({sessionCode,step,save},action);
@@ -22,7 +31,7 @@ export async function reserveWebStep(sessionId:number,code:string,step:string) {
  if(result.data===false)return null;
  if(result.data!==true)throw Error("The retry could not be admitted.");
  return async (completed:DmsAiOrchestrationStepResult)=>{
-  const confirmed=await createAdminClient().rpc("mobile_dms_web_retry",{...args,p_result:completed});
+  const confirmed=await createAdminClient().rpc("mobile_dms_web_retry",{...args,p_result:{...completed,providerEffect:retryProviderEffect()}});
   if(confirmed.error||confirmed.data!==true)throw Error("The original retry requires reconciliation.");
  };
 }

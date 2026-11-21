@@ -29,9 +29,9 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
  AND NOT EXISTS(SELECT 1 FROM public.employee_medical_records m WHERE m.dms_document_id=doc AND m.deleted_at IS NULL AND NOT public.current_user_can_view_employee_medical(m.employee_id));
 $$;
 
--- Mutation callers lock first and run this volatile source read again after a wait.
-CREATE FUNCTION erp_private.mobile_dms_source(p_data jsonb,p_caps text[]) RETURNS jsonb
-LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path='' AS $$
+-- Calculate the complete binding and its authority at one statement snapshot.
+CREATE FUNCTION erp_private.mobile_dms_read_source(p_data jsonb,p_caps text[]) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
 DECLARE doc public.dms_documents; ver public.dms_document_versions; f public.dms_document_files;
  selected bigint:=(p_data->>'fileId')::bigint; version bigint:=(p_data->>'versionId')::bigint;
  revision text; fingerprint text; files jsonb; cap text;
@@ -57,6 +57,9 @@ BEGIN
  IF p_data ? 'sourceHash' AND fingerprint IS DISTINCT FROM p_data->>'sourceHash' THEN RAISE EXCEPTION 'Source changed' USING ERRCODE='PT409'; END IF;
  RETURN jsonb_build_object('documentId',doc.id,'documentVersionId',ver.id,'documentRevision',revision,'fileId',selected,'fileSha256',f.sha256_hash,'sourceHash',fingerprint);
 END $$;
+REVOKE ALL ON FUNCTION erp_private.mobile_dms_read_source(jsonb,text[]) FROM PUBLIC,anon,authenticated,service_role;
+-- Re-enter the stable projection through a fresh statement after a mutation lock wait.
+CREATE FUNCTION erp_private.mobile_dms_source(p_data jsonb,p_caps text[]) RETURNS jsonb LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path='' AS $$SELECT erp_private.mobile_dms_read_source(p_data,p_caps)$$;
 CREATE FUNCTION public.mobile_dms_source(p_data jsonb,p_caps text[]) RETURNS jsonb LANGUAGE sql VOLATILE SECURITY INVOKER SET search_path='' AS $$ SELECT erp_private.mobile_dms_source(p_data,p_caps) $$;
 CREATE FUNCTION erp_private.mobile_dms_lock(doc bigint) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 BEGIN
@@ -128,11 +131,42 @@ BEGIN
 END $$;
 CREATE FUNCTION public.mobile_dms_comment(p_action text,p_data jsonb) RETURNS jsonb LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$ SELECT erp_private.mobile_dms_comment(p_action,p_data) $$;
 
+CREATE FUNCTION erp_private.mobile_dms_notification_current(item jsonb) RETURNS boolean LANGUAGE plpgsql STABLE SET search_path='' AS $$
+BEGIN
+ PERFORM erp_private.mobile_dms_keys(item,ARRAY['documentId','versionId','sourceHash']);
+ PERFORM erp_private.mobile_dms_read_source(item,ARRAY['dms.documents.view']);
+ RETURN true;
+EXCEPTION WHEN SQLSTATE '42501' OR SQLSTATE 'PT404' OR SQLSTATE 'PT409' THEN RETURN false;
+END $$;
+REVOKE ALL ON FUNCTION erp_private.mobile_dms_notification_current(jsonb) FROM PUBLIC,anon,authenticated,service_role;
 CREATE FUNCTION erp_private.mobile_dms_document(p_action text,p_data jsonb) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE who bigint:=erp_private.mobile_dms_actor(); doc bigint:=(p_data->>'documentId')::bigint; pg int:=(p_data->>'page')::int; op uuid:=(p_data->>'operationId')::uuid;
- src jsonb; r jsonb; vals jsonb; defs jsonb; rules jsonb; d public.dms_documents; editable boolean; n bigint; added int; removed int; a bigint[]; b bigint[];
+ src jsonb; r jsonb; vals jsonb; defs jsonb; rules jsonb; d public.dms_documents; editable boolean; n bigint; added int; removed int; a bigint[]; b bigint[]; q tsquery;
 BEGIN
  IF p_action='search_parent' THEN PERFORM erp_private.mobile_dms_keys(p_data,ARRAY['parent']); PERFORM erp_private.mobile_dms_parent(p_data->'parent');RETURN 'true'::jsonb;END IF;
+ IF p_action='search_origins' THEN
+  PERFORM erp_private.mobile_dms_keys(p_data,ARRAY['ids','textQuery','structured']);
+  IF jsonb_typeof(p_data->'ids') IS DISTINCT FROM 'array' OR jsonb_array_length(p_data->'ids')>100 OR jsonb_typeof(p_data->'structured') IS DISTINCT FROM 'boolean' OR length(p_data->>'textQuery')>8000 THEN RAISE EXCEPTION 'Invalid search page' USING ERRCODE='22023'; END IF;
+  SELECT array_agg(value::bigint) INTO a FROM jsonb_array_elements_text(p_data->'ids');
+  IF coalesce(cardinality(a),0)=0 THEN RETURN '[]'; END IF;
+  q:=to_tsquery('simple',nullif(p_data->>'textQuery',''));
+  -- The canonical search projection removes protected summary text and rebuilds the index for metadata-only viewers.
+  WITH hits AS (
+   SELECT hit.id,to_tsvector('simple',concat_ws(' ',hit.document_no,hit.title,hit.description,hit.legacy_document_code)) @@ q AS metadata,
+     to_tsvector('simple',coalesce(hit.ai_summary,'')) @@ q AS content
+   FROM erp_private.read_documents_matching(a,NULL,NULL,NULL,NULL,q) hit WHERE erp_private.mobile_dms_can(hit.id,'dms.documents.view')
+  )
+  SELECT coalesce(jsonb_agg(jsonb_build_object('id',h.id,'matchSource',CASE WHEN q IS NULL THEN 'metadata'
+    WHEN h.content AND (h.metadata OR (p_data->>'structured')::boolean) THEN 'both'
+    WHEN h.content THEN 'content' WHEN h.metadata THEN 'metadata' ELSE 'both' END) ORDER BY array_position(a,h.id)),'[]') INTO r FROM hits h;
+  RETURN r;
+ ELSIF p_action='notification_targets' THEN
+  PERFORM erp_private.mobile_dms_keys(p_data,ARRAY['sources']);
+  IF jsonb_typeof(p_data->'sources') IS DISTINCT FROM 'array' OR jsonb_array_length(p_data->'sources')>25 THEN RAISE EXCEPTION 'Invalid notification page' USING ERRCODE='22023'; END IF;
+  -- All retained bindings use the same final statement snapshot.
+  SELECT coalesce(jsonb_agg(erp_private.mobile_dms_notification_current(item) ORDER BY ord),'[]') INTO r FROM jsonb_array_elements(p_data->'sources') WITH ORDINALITY e(item,ord);
+  RETURN r;
+ END IF;
  IF p_action IN ('metadata_save','tags_change') THEN PERFORM erp_private.mobile_dms_lock(doc); END IF;
  src:=erp_private.mobile_dms_source(jsonb_strip_nulls(jsonb_build_object('documentId',doc,'sourceHash',p_data->>'sourceHash')),ARRAY['dms.documents.view']);
  IF p_action='comments' THEN
@@ -212,10 +246,19 @@ BEGIN
  PERFORM 1 FROM public.dms_documents d WHERE EXISTS(SELECT 1 FROM public.dms_document_links l WHERE l.document_id=d.id AND l.entity_type=typ AND l.entity_id=eid AND l.deleted_at IS NULL) ORDER BY d.id FOR SHARE;
  PERFORM 1 FROM public.dms_document_files f JOIN public.dms_documents d ON d.id=f.document_id AND d.current_version_id=f.version_id WHERE f.deleted_at IS NULL AND EXISTS(SELECT 1 FROM public.dms_document_links l WHERE l.document_id=d.id AND l.entity_type=typ AND l.entity_id=eid AND l.deleted_at IS NULL) ORDER BY f.id FOR SHARE OF f;
 END $$;
+CREATE TABLE erp_private.mobile_dms_missing_requests(id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,parent_type text NOT NULL CHECK(parent_type IN ('employee','site')),parent_id bigint NOT NULL,rule_id bigint NOT NULL REFERENCES public.dms_required_document_rules,document_type_id bigint NOT NULL REFERENCES public.dms_document_types,requester bigint NOT NULL REFERENCES public.user_profiles,assignee bigint REFERENCES public.user_profiles,due_date date,notes text NOT NULL CHECK(length(notes)<=2000),
+ status text NOT NULL DEFAULT 'requested' CHECK(status IN('requested','in_progress','submitted','fulfilled','rejected','cancelled')),revision bigint NOT NULL DEFAULT 1,submitted_doc bigint REFERENCES public.dms_documents,submitted_version bigint REFERENCES public.dms_document_versions,evidence_submitter bigint REFERENCES public.user_profiles,submitted_hash text,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
+CREATE UNIQUE INDEX mobile_dms_missing_open ON erp_private.mobile_dms_missing_requests(parent_type,parent_id,rule_id) WHERE status IN('requested','in_progress','submitted');
+ALTER TABLE erp_private.mobile_dms_missing_requests ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON erp_private.mobile_dms_missing_requests FROM PUBLIC,anon,authenticated,service_role;
+CREATE FUNCTION erp_private.mobile_dms_accepted(d public.dms_documents) RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path='' AS $$
+ SELECT d.deleted_at IS NULL AND NOT d.is_archived AND d.superseded_by_document_id IS NULL AND d.current_version_id IS NOT NULL AND d.status IN ('active','approved','expired') AND d.review_status IN ('not_required','approved','reviewed','verified','completed') AND (d.approval_status IS NULL OR d.approval_status='approved');
+$$;
+REVOKE ALL ON FUNCTION erp_private.mobile_dms_accepted(public.dms_documents) FROM PUBLIC,anon,authenticated,service_role;
 CREATE FUNCTION erp_private.mobile_dms_rule_rows(p jsonb, selected bigint DEFAULT NULL) RETURNS TABLE(rule_id bigint,row_data jsonb)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
  WITH parent AS MATERIALIZED(SELECT erp_private.mobile_dms_parent(p) v), coverage AS MATERIALIZED(
- SELECT d.id,d.document_type_id,d.status,d.current_version_id,d.is_archived,d.superseded_by_document_id,l.id link,erp_private.mobile_dms_can(d.id,'dms.documents.view') visible,
+ SELECT d.id,d.document_type_id,d.status,d.review_status,d.approval_status,erp_private.mobile_dms_accepted(d) accepted,d.current_version_id,d.is_archived,d.superseded_by_document_id,l.id link,erp_private.mobile_dms_can(d.id,'dms.documents.view') visible,
  (SELECT coalesce(jsonb_agg(jsonb_build_array(f.id,f.sha256_hash,f.file_size_bytes,f.file_name,f.mime_type,f.storage_path) ORDER BY f.id),'[]') FROM public.dms_document_files f WHERE f.document_id=d.id AND f.version_id=d.current_version_id AND f.deleted_at IS NULL) files
  FROM public.dms_document_links l JOIN public.dms_documents d ON d.id=l.document_id AND d.deleted_at IS NULL WHERE l.entity_type=p->>'entityType' AND l.entity_id=(p->>'entityId')::bigint AND l.deleted_at IS NULL),
  applicable AS(SELECT r.*,parent.v authority FROM parent CROSS JOIN public.dms_required_document_rules r WHERE (selected IS NULL OR r.id=selected) AND r.entity_type=p->>'entityType' AND r.is_active AND r.is_required AND r.deleted_at IS NULL
@@ -223,13 +266,13 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
  AND (r.department_id IS NULL OR r.department_id=(parent.v->>'department')::bigint) AND (r.effective_from IS NULL OR r.effective_from<=(now() AT TIME ZONE 'Asia/Dubai')::date)
  AND (r.effective_to IS NULL OR r.effective_to>=(now() AT TIME ZONE 'Asia/Dubai')::date) AND (r.entity_subtype IS NULL OR parent.v->>'subtype' IS NULL OR r.entity_subtype=parent.v->>'subtype')),
  checked AS(SELECT a.*,CASE WHEN a.document_type_id IS NULL OR (a.entity_subtype IS NOT NULL AND a.authority->>'subtype' IS NULL) THEN 'unknown'
- WHEN EXISTS(SELECT 1 FROM coverage c WHERE c.visible AND c.document_type_id=a.document_type_id AND c.status IN('active','approved','expired') AND NOT c.is_archived AND c.superseded_by_document_id IS NULL AND c.current_version_id IS NOT NULL) THEN 'present'
- WHEN EXISTS(SELECT 1 FROM coverage c WHERE NOT c.visible) THEN 'unknown' ELSE 'missing' END state FROM applicable a)
- SELECT a.id,jsonb_build_object('ruleId',a.id,'documentTypeId',a.document_type_id,'label',a.rule_name,'state',a.state,'canRequest',a.state='missing' AND (a.authority->>'canSubmit')::boolean,
- 'checklistHash',CASE WHEN a.state='missing' AND (a.authority->>'canSubmit')::boolean THEN erp_private.mobile_dms_hash(jsonb_build_array(auth.uid(),auth.jwt()->>'session_id',p,a.authority,a.id,a.workspace_revision,a.document_type_id,a.state,
+ WHEN EXISTS(SELECT 1 FROM coverage c WHERE c.visible AND c.document_type_id=a.document_type_id AND c.accepted) THEN 'present'
+ WHEN EXISTS(SELECT 1 FROM coverage c WHERE NOT c.visible OR (c.document_type_id=a.document_type_id AND c.status IN ('active','approved','pending_review') AND NOT c.accepted)) THEN 'unknown' ELSE 'missing' END state FROM applicable a), offered AS(SELECT c.*,c.state='missing' AND (c.authority->>'canSubmit')::boolean AND NOT EXISTS(SELECT 1 FROM erp_private.mobile_dms_missing_requests m WHERE m.parent_type=p->>'entityType' AND m.parent_id=(p->>'entityId')::bigint AND m.rule_id=c.id AND m.status IN ('requested','in_progress','submitted')) AS requestable FROM checked c)
+ SELECT a.id,jsonb_build_object('ruleId',a.id,'documentTypeId',a.document_type_id,'label',a.rule_name,'state',a.state,'canRequest',a.requestable,
+ 'checklistHash',CASE WHEN a.requestable THEN erp_private.mobile_dms_hash(jsonb_build_array(auth.uid(),auth.jwt()->>'session_id',p,a.authority,a.id,a.workspace_revision,a.document_type_id,a.state,
  (SELECT coalesce(jsonb_agg(to_jsonb(c) ORDER BY c.link),'[]') FROM coverage c WHERE c.document_type_id=a.document_type_id),
  (SELECT coalesce(jsonb_agg(jsonb_build_array(ur.id,ur.role_id,ur.owner_company_id,ur.branch_id) ORDER BY ur.id),'[]') FROM public.user_roles ur WHERE ur.user_profile_id=public.current_user_profile_id() AND ur.is_active))) END)
- FROM checked a;
+ FROM offered a;
 $$;
 CREATE FUNCTION erp_private.mobile_dms_checklist(p_data jsonb) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE pg int:=(p_data->>'page')::int; r jsonb;
@@ -242,18 +285,13 @@ BEGIN
  RETURN r;
 END $$;
 CREATE FUNCTION public.mobile_dms_checklist(p_data jsonb) RETURNS jsonb LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$SELECT erp_private.mobile_dms_checklist(p_data)$$;
-CREATE TABLE erp_private.mobile_dms_missing_requests(id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,parent_type text NOT NULL CHECK(parent_type IN ('employee','site')),parent_id bigint NOT NULL,rule_id bigint NOT NULL REFERENCES public.dms_required_document_rules,document_type_id bigint NOT NULL REFERENCES public.dms_document_types,requester bigint NOT NULL REFERENCES public.user_profiles,assignee bigint REFERENCES public.user_profiles,due_date date,notes text NOT NULL CHECK(length(notes)<=2000),
- status text NOT NULL DEFAULT 'requested' CHECK(status IN('requested','in_progress','submitted','fulfilled','rejected','cancelled')),revision bigint NOT NULL DEFAULT 1,submitted_doc bigint REFERENCES public.dms_documents,submitted_version bigint REFERENCES public.dms_document_versions,submitted_hash text,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
-CREATE UNIQUE INDEX mobile_dms_missing_open ON erp_private.mobile_dms_missing_requests(parent_type,parent_id,rule_id) WHERE status IN('requested','in_progress','submitted');
-ALTER TABLE erp_private.mobile_dms_missing_requests ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON erp_private.mobile_dms_missing_requests FROM PUBLIC,anon,authenticated,service_role;
 ALTER TABLE public.dms_renewal_requests ADD COLUMN workspace_revision bigint NOT NULL DEFAULT 1 CHECK(workspace_revision>0);
 CREATE TRIGGER mobile_dms_renewal_revision BEFORE UPDATE ON public.dms_renewal_requests FOR EACH ROW EXECUTE FUNCTION erp_private.mobile_dms_increment_revision();
-CREATE TABLE erp_private.mobile_dms_renewal_context(request_id bigint PRIMARY KEY REFERENCES public.dms_renewal_requests,parent_type text NOT NULL CHECK(parent_type IN('employee','site')),parent_id bigint NOT NULL,source_version bigint NOT NULL REFERENCES public.dms_document_versions,source_hash text NOT NULL,submitted_doc bigint REFERENCES public.dms_documents,submitted_version bigint REFERENCES public.dms_document_versions,submitted_hash text);
+CREATE TABLE erp_private.mobile_dms_renewal_context(request_id bigint PRIMARY KEY REFERENCES public.dms_renewal_requests,parent_type text NOT NULL CHECK(parent_type IN('employee','site')),parent_id bigint NOT NULL,source_version bigint NOT NULL REFERENCES public.dms_document_versions,source_hash text NOT NULL,submitted_doc bigint REFERENCES public.dms_documents,submitted_version bigint REFERENCES public.dms_document_versions,evidence_submitter bigint REFERENCES public.user_profiles,submitted_hash text);
 ALTER TABLE erp_private.mobile_dms_renewal_context ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON erp_private.mobile_dms_renewal_context FROM PUBLIC,anon,authenticated,service_role;
 
-CREATE FUNCTION erp_private.mobile_dms_officers(p jsonb,kind text) RETURNS TABLE(id bigint,label text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
+CREATE FUNCTION erp_private.mobile_dms_officers(p jsonb,kind text,doc_id bigint) RETURNS TABLE(id bigint,label text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
  WITH pscope AS MATERIALIZED(SELECT erp_private.mobile_dms_parent(p) AS s), grants AS(
  SELECT up.id,coalesce(nullif(up.display_name,''),up.full_name) label,
  bool_or(perm.permission_code IN ('dms.documents.view','dms.admin')) doc, bool_or(perm.permission_code='dms.renewals.manage') renewal,
@@ -261,14 +299,24 @@ CREATE FUNCTION erp_private.mobile_dms_officers(p jsonb,kind text) RETURNS TABLE
  FROM pscope JOIN public.user_roles ur ON ur.owner_company_id=(s->>'company')::bigint AND (ur.branch_id IS NULL OR ur.branch_id=(s->>'branch')::bigint)
  JOIN public.user_profiles up ON up.id=ur.user_profile_id JOIN public.roles r ON r.id=ur.role_id JOIN public.role_permissions rp ON rp.role_id=r.id JOIN public.permissions perm ON perm.id=rp.permission_id
  WHERE up.status='active' AND NOT up.must_change_password AND ur.is_active AND r.is_active AND perm.is_active GROUP BY up.id)
- SELECT g.id,g.label FROM grants g WHERE g.doc AND g.officer AND (kind='missing' OR g.renewal);
+ SELECT g.id,g.label FROM grants g CROSS JOIN pscope ps WHERE g.doc AND g.officer
+ AND CASE WHEN p->>'entityType'='employee' THEN erp_private.ai_mod04_profile_employee_capability(g.id,(p->>'entityId')::bigint,'hr.compliance.manage')
+   ELSE erp_private.ai_mod04_profile_grant(g.id,'common_md.work_sites.view',(ps.s->>'company')::bigint,(ps.s->>'branch')::bigint) OR erp_private.ai_mod04_profile_grant(g.id,'common_md.view',(ps.s->>'company')::bigint,(ps.s->>'branch')::bigint) END
+ AND (kind='missing' OR (g.renewal AND EXISTS(SELECT 1 FROM public.dms_documents d WHERE d.id=doc_id AND d.deleted_at IS NULL AND d.confidentiality_level IN ('internal','company','hr','finance','legal','executive')
+ AND erp_private.ai_mod04_profile_grant(g.id,'dms.renewals.manage',d.owning_company_id,d.owning_branch_id)
+ AND erp_private.ai_mod04_profile_grant(g.id,'dms.documents.view',d.owning_company_id,d.owning_branch_id)
+ AND (d.confidentiality_level IN ('internal','company') OR erp_private.ai_mod04_profile_grant(g.id,'dms.documents.view.'||d.confidentiality_level,d.owning_company_id,d.owning_branch_id))
+ AND erp_private.ai_mod04_profile_hr_allowed(g.id,d.id) AND erp_private.ai_mod04_profile_recruitment_allowed(g.id,d.id)
+ AND NOT EXISTS(SELECT 1 FROM public.dms_document_links l WHERE l.document_id=d.id AND l.deleted_at IS NULL AND l.entity_type='employee' AND NOT erp_private.ai_mod04_profile_employee_capability(g.id,l.entity_id,'hr.employees.view'))
+ AND NOT EXISTS(SELECT 1 FROM public.employee_medical_records m WHERE m.dms_document_id=d.id AND m.deleted_at IS NULL AND NOT erp_private.ai_mod04_profile_employee_capability(g.id,m.employee_id,'hr.medical.view'))
+ AND NOT EXISTS(SELECT 1 FROM public.dms_document_links l LEFT JOIN public.employee_dependents child ON child.id=l.entity_id AND child.deleted_at IS NULL WHERE l.document_id=d.id AND l.deleted_at IS NULL AND l.entity_type='employee_dependent' AND (child.id IS NULL OR NOT erp_private.ai_mod04_profile_employee_capability(g.id,child.employee_id,'hr.compliance.view'))))));
 $$;
 CREATE FUNCTION erp_private.mobile_dms_evidence(p jsonb,dt bigint,doc bigint,ver bigint) RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE src jsonb;
 BEGIN
  PERFORM erp_private.mobile_dms_lock(doc);
  src:=erp_private.mobile_dms_source(jsonb_build_object('documentId',doc,'versionId',ver),ARRAY['dms.documents.preview']);
- IF NOT EXISTS(SELECT 1 FROM public.dms_documents d JOIN public.dms_document_links l ON l.document_id=d.id WHERE d.id=doc AND d.document_type_id=dt AND NOT d.is_archived AND d.superseded_by_document_id IS NULL AND d.deleted_at IS NULL AND d.status IN ('active','approved') AND coalesce(d.approval_status,'') NOT IN('pending_approval','rejected') AND d.current_version_id=ver AND l.entity_type=p->>'entityType' AND l.entity_id=(p->>'entityId')::bigint AND l.deleted_at IS NULL) THEN RAISE EXCEPTION 'Evidence changed' USING ERRCODE='PT409'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.dms_documents d JOIN public.dms_document_links l ON l.document_id=d.id WHERE d.id=doc AND d.document_type_id=dt AND erp_private.mobile_dms_accepted(d) AND d.status IN ('active','approved') AND d.current_version_id=ver AND l.entity_type=p->>'entityType' AND l.entity_id=(p->>'entityId')::bigint AND l.deleted_at IS NULL) THEN RAISE EXCEPTION 'Evidence changed' USING ERRCODE='PT409'; END IF;
  RETURN src->>'sourceHash';
 END $$;
 CREATE FUNCTION erp_private.mobile_dms_request_row(kind text,target bigint,p_filter jsonb DEFAULT NULL) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
@@ -298,7 +346,7 @@ BEGIN
  IF st IN ('requested','in_progress','submitted') THEN
   IF manage AND (officer IS NULL OR officer=who) AND requester IS DISTINCT FROM who THEN
    IF st='requested' THEN actions:=array_append(actions,'start'); END IF;
-   IF st='submitted' AND evidence IS NOT NULL THEN actions:=array_append(actions,'fulfil'); END IF;
+   IF st='submitted' AND evidence IS NOT NULL AND coalesce(m.evidence_submitter,c.evidence_submitter) IS NOT NULL AND who<>coalesce(m.evidence_submitter,c.evidence_submitter) THEN actions:=array_append(actions,'fulfil'); END IF;
    actions:=array_append(actions,'reject');
   END IF;
   IF st IN('requested','in_progress') AND (who=requester OR (manage AND (officer IS NULL OR officer=who))) THEN actions:=array_append(actions,'submit_document'); END IF;
@@ -328,7 +376,7 @@ BEGIN
  IF p_action='options' THEN
   PERFORM erp_private.mobile_dms_keys(p_data,ARRAY['kind','parent','page','search']||CASE WHEN kind='renewal' THEN ARRAY['documentId'] ELSE '{}'::text[] END);
   IF pg IS NULL OR pg NOT BETWEEN 1 AND 100000 OR length(p_data->>'search')>100 THEN RAISE EXCEPTION 'Invalid options' USING ERRCODE='22023'; END IF;
-  WITH choices AS MATERIALIZED(SELECT * FROM erp_private.mobile_dms_officers(p,kind) x WHERE x.id<>who AND strpos(lower(x.label),lower(p_data->>'search'))>0), selected AS(SELECT * FROM choices ORDER BY label,id LIMIT 25 OFFSET (pg-1)*25)
+  WITH choices AS MATERIALIZED(SELECT * FROM erp_private.mobile_dms_officers(p,kind,doc) x WHERE x.id<>who AND strpos(lower(x.label),lower(p_data->>'search'))>0), selected AS(SELECT * FROM choices ORDER BY label,id LIMIT 25 OFFSET (pg-1)*25)
   SELECT (SELECT count(*) FROM choices),coalesce(jsonb_agg(to_jsonb(s) ORDER BY label,id),'[]') INTO n,rows FROM selected s;
   RETURN jsonb_build_object('totalCount',n,'rows',rows,'canSubmit',allow_submit,'canManage',officer);
  ELSIF p_action='list' THEN
@@ -345,7 +393,7 @@ BEGIN
   IF msg IS NULL OR length(msg)>2000 THEN RAISE EXCEPTION 'Invalid notes' USING ERRCODE='22023'; END IF;
   r:=erp_private.mobile_dms_reserve('request/create/'||kind,p_data);
   IF r IS NOT NULL THEN row_data:=erp_private.mobile_dms_request_row(kind,(r->'request'->>'id')::bigint,p); IF row_data IS NULL THEN RAISE EXCEPTION 'Request unavailable' USING ERRCODE='42501'; END IF; RETURN jsonb_set(r,'{request}',row_data); END IF;
-  IF assignee IS NOT NULL AND (assignee=who OR NOT EXISTS(SELECT 1 FROM erp_private.mobile_dms_officers(p,kind) x WHERE x.id=assignee)) THEN RAISE EXCEPTION 'Officer unavailable' USING ERRCODE='42501'; END IF;
+  IF assignee IS NOT NULL AND (assignee=who OR NOT EXISTS(SELECT 1 FROM erp_private.mobile_dms_officers(p,kind,doc) x WHERE x.id=assignee)) THEN RAISE EXCEPTION 'Officer unavailable' USING ERRCODE='42501'; END IF;
   IF kind='missing' THEN
    PERFORM 1 FROM public.dms_required_document_rules WHERE id=rid FOR SHARE;
    SELECT v.row_data INTO row_data FROM erp_private.mobile_dms_rule_rows(p,rid) v;
@@ -373,22 +421,24 @@ BEGIN
    IF c.request_id IS NULL THEN INSERT INTO erp_private.mobile_dms_renewal_context(request_id,parent_type,parent_id,source_version,source_hash) VALUES(target,p->>'entityType',(p->>'entityId')::bigint,(src->>'documentVersionId')::bigint,src->>'sourceHash') RETURNING * INTO c; END IF;
   END IF;
   IF act IN ('fulfil','submit_document') THEN
+   IF act='fulfil' AND (coalesce(m.evidence_submitter,c.evidence_submitter) IS NULL OR who=coalesce(m.evidence_submitter,c.evidence_submitter)) THEN RAISE EXCEPTION 'Independent evidence reviewer required' USING ERRCODE='42501';END IF;
    IF act='fulfil' THEN doc:=coalesce(m.submitted_doc,c.submitted_doc);ver:=coalesce(m.submitted_version,c.submitted_version); END IF;
    IF doc IS NULL OR ver IS NULL THEN RAISE EXCEPTION 'Current evidence required' USING ERRCODE='PT409'; END IF;
    proof:=erp_private.mobile_dms_evidence(p,(row_data->>'documentTypeId')::bigint,doc,ver);
    IF act='fulfil' AND proof IS DISTINCT FROM coalesce(m.submitted_hash,c.submitted_hash) THEN RAISE EXCEPTION 'Evidence changed' USING ERRCODE='PT409'; END IF;
   END IF;
   IF kind='missing' THEN
-   UPDATE erp_private.mobile_dms_missing_requests SET status=CASE act WHEN 'start' THEN 'in_progress' WHEN 'submit_document' THEN 'submitted' WHEN 'fulfil' THEN 'fulfilled' WHEN 'cancel' THEN 'cancelled' ELSE 'rejected' END,revision=revision+1,updated_at=clock_timestamp(),notes=CASE WHEN msg<>'' THEN msg ELSE notes END,
+   UPDATE erp_private.mobile_dms_missing_requests AS dest SET status=CASE act WHEN 'start' THEN 'in_progress' WHEN 'submit_document' THEN 'submitted' WHEN 'fulfil' THEN 'fulfilled' WHEN 'cancel' THEN 'cancelled' ELSE 'rejected' END,revision=revision+1,updated_at=clock_timestamp(),notes=CASE WHEN msg<>'' THEN msg ELSE notes END,
+    assignee=CASE WHEN act='submit_document' AND dest.assignee=who THEN NULL WHEN act='fulfil' AND dest.assignee IS NULL THEN who ELSE dest.assignee END,evidence_submitter=CASE WHEN act='submit_document' THEN who ELSE evidence_submitter END,
     submitted_doc=CASE WHEN act='submit_document' THEN doc ELSE submitted_doc END,submitted_version=CASE WHEN act='submit_document' THEN ver ELSE submitted_version END,submitted_hash=CASE WHEN act='submit_document' THEN proof ELSE submitted_hash END WHERE id=target;
-  ELSIF act='fulfil' THEN PERFORM public.f07_complete_document_renewal(target,doc,ver,(SELECT expiry_date FROM public.dms_documents WHERE id=doc),msg);
+  ELSIF act='fulfil' THEN IF renewal.assigned_to IS NULL THEN UPDATE public.dms_renewal_requests SET assigned_to=who WHERE id=target; END IF; PERFORM public.f07_complete_document_renewal(target,doc,ver,(SELECT expiry_date FROM public.dms_documents WHERE id=doc),msg);
   ELSE
    IF act='submit_document' THEN
     IF doc=renewal.document_id THEN RAISE EXCEPTION 'Replacement required' USING ERRCODE='PT409'; END IF;
-    UPDATE erp_private.mobile_dms_renewal_context SET submitted_doc=doc,submitted_version=ver,submitted_hash=proof WHERE request_id=target;
+    UPDATE erp_private.mobile_dms_renewal_context SET submitted_doc=doc,submitted_version=ver,submitted_hash=proof,evidence_submitter=who WHERE request_id=target;
    END IF;
    UPDATE public.dms_renewal_requests SET status=CASE act WHEN 'start' THEN 'in_progress' WHEN 'submit_document' THEN 'waiting_for_document' WHEN 'cancel' THEN 'cancelled' ELSE 'rejected' END,
-   notes=CASE WHEN msg<>'' THEN msg ELSE notes END,cancelled_at=CASE WHEN act='cancel' THEN clock_timestamp() ELSE cancelled_at END,updated_by=who,updated_at=clock_timestamp() WHERE id=target;
+   assigned_to=CASE WHEN act='submit_document' AND assigned_to=who THEN NULL ELSE assigned_to END,notes=CASE WHEN msg<>'' THEN msg ELSE notes END,cancelled_at=CASE WHEN act='cancel' THEN clock_timestamp() ELSE cancelled_at END,updated_by=who,updated_at=clock_timestamp() WHERE id=target;
   END IF;
  ELSE RAISE EXCEPTION 'Invalid request action' USING ERRCODE='22023'; END IF;
  PERFORM erp_private.mobile_dms_audit(CASE WHEN kind='renewal' THEN coalesce(renewal.document_id,doc) ELSE NULL END,CASE WHEN kind='missing' THEN 'mobile_dms_missing_requests' ELSE 'dms_renewal_requests' END,target,CASE WHEN p_action='create' THEN 'create' ELSE 'update' END,CASE WHEN p_action='create' THEN 'renewal_request_created' ELSE 'document_request_'||act END);
@@ -399,25 +449,40 @@ CREATE FUNCTION public.mobile_dms_requests(p_action text,p_data jsonb) RETURNS j
 CREATE FUNCTION public.mobile_dms_renewal_request(p_data jsonb) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $$BEGIN IF p_data->>'kind' IS DISTINCT FROM 'renewal' THEN RAISE EXCEPTION 'Renewal required' USING ERRCODE='22023'; END IF; RETURN erp_private.mobile_dms_requests('create',p_data);END$$;
 
 CREATE TABLE erp_private.mobile_dms_retries(actor bigint NOT NULL,operation uuid NOT NULL,job_id bigint NOT NULL REFERENCES public.dms_ai_job_queue,session_id bigint NOT NULL REFERENCES public.dms_upload_sessions,document_id bigint NOT NULL REFERENCES public.dms_documents,source_hash text NOT NULL,step text NOT NULL,prior_steps jsonb NOT NULL,claims jsonb NOT NULL,settled boolean NOT NULL DEFAULT false,PRIMARY KEY(actor,operation),FOREIGN KEY(actor,operation) REFERENCES erp_private.mobile_dms_receipts);
-CREATE UNIQUE INDEX mobile_dms_one_pending_step ON erp_private.mobile_dms_retries(job_id,step) WHERE NOT settled;
+CREATE UNIQUE INDEX mobile_dms_one_pending_step ON erp_private.mobile_dms_retries(session_id,step) WHERE NOT settled;
 ALTER TABLE erp_private.mobile_dms_retries ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON erp_private.mobile_dms_retries FROM PUBLIC,anon,authenticated,service_role;
 -- A canonical web retry and a mobile retry may refer to the same paid step.
-CREATE TABLE erp_private.mobile_dms_web_retries(session_id bigint NOT NULL REFERENCES public.dms_upload_sessions,step text NOT NULL,lease uuid NOT NULL,PRIMARY KEY(session_id,step));
+CREATE TABLE erp_private.mobile_dms_web_retries(session_id bigint NOT NULL REFERENCES public.dms_upload_sessions,step text NOT NULL,lease uuid NOT NULL,prior_step jsonb,PRIMARY KEY(session_id,step));
 ALTER TABLE erp_private.mobile_dms_web_retries ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON erp_private.mobile_dms_web_retries FROM PUBLIC,anon,authenticated,service_role;
+CREATE FUNCTION erp_private.mobile_dms_merge_step(p_session bigint,p_step text,prior jsonb,result jsonb) RETURNS void LANGUAGE plpgsql SET search_path='' AS $$
+DECLARE rows jsonb; current_step jsonb; matched int; safe jsonb; overall text;
+BEGIN
+ SELECT coalesce(orchestration_steps_json,'[]') INTO STRICT rows FROM public.dms_upload_sessions WHERE id=p_session AND deleted_at IS NULL FOR UPDATE;
+ SELECT count(*),jsonb_agg(x)->0 INTO matched,current_step FROM jsonb_array_elements(rows)x WHERE x->>'step'=p_step;
+ IF matched>1 OR current_step IS DISTINCT FROM prior OR result->>'step' IS DISTINCT FROM p_step OR coalesce(result->>'status','') NOT IN('completed','failed','skipped') THEN RAISE EXCEPTION 'Retry step changed' USING ERRCODE='PT409'; END IF;
+ safe:=jsonb_strip_nulls(jsonb_build_object('step',p_step,'status',result->'status','startedAt',result->'startedAt','completedAt',result->'completedAt','durationMs',result->'durationMs','errorCode',CASE WHEN (result->>'errorCode')~'^[a-z0-9_]{1,80}$' THEN result->>'errorCode' END));
+ IF matched=0 THEN rows:=rows||jsonb_build_array(safe); ELSE SELECT jsonb_agg(CASE WHEN x->>'step'=p_step THEN safe ELSE x END ORDER BY ord) INTO rows FROM jsonb_array_elements(rows) WITH ORDINALITY e(x,ord); END IF;
+ SELECT CASE WHEN bool_and(x->>'status' IN ('completed','skipped')) THEN 'complete' WHEN bool_or(x->>'status'='failed') AND NOT bool_or(x->>'status'='completed') THEN 'failed' ELSE 'complete_with_warnings' END INTO overall FROM jsonb_array_elements(rows)x;
+ UPDATE public.dms_upload_sessions SET orchestration_steps_json=rows,orchestration_status=overall,updated_at=clock_timestamp() WHERE id=p_session;
+END $$;
+REVOKE ALL ON FUNCTION erp_private.mobile_dms_merge_step(bigint,text,jsonb,jsonb) FROM PUBLIC,anon,authenticated,service_role;
 CREATE FUNCTION erp_private.mobile_dms_web_retry(p_session bigint,p_step text,p_lease uuid,p_result jsonb) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-DECLARE doc bigint; code text; saved_steps jsonb;
+DECLARE doc bigint; code text; saved_steps jsonb; prior jsonb;
 BEGIN
  IF auth.role() IS DISTINCT FROM 'service_role' OR p_step NOT IN ('content_sync','ai_summary','intelligence','embedding','tag_suggestions','link_suggestions') OR p_lease IS NULL THEN RAISE EXCEPTION 'Trusted retry required' USING ERRCODE='42501'; END IF;
  SELECT document_id,session_code,orchestration_steps_json INTO STRICT doc,code,saved_steps FROM public.dms_upload_sessions WHERE id=p_session AND deleted_at IS NULL FOR UPDATE;
  IF p_result IS NULL THEN
-  IF NOT EXISTS(SELECT 1 FROM public.dms_ai_job_queue q WHERE q.job_type='post_approve_orchestration' AND q.related_document_id=doc AND q.related_upload_session_id=p_session AND q.payload_json->>'sessionCode'=code) THEN RETURN false; END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(saved_steps)x WHERE x->>'step'=p_step AND x->>'status'='completed') THEN RAISE EXCEPTION 'Retry step already completed' USING ERRCODE='PT409'; END IF;
   IF EXISTS(SELECT 1 FROM erp_private.mobile_dms_retries t WHERE t.session_id=p_session AND t.step=p_step AND NOT t.settled) THEN RAISE EXCEPTION 'Original retry awaits confirmation' USING ERRCODE='55000'; END IF;
-  INSERT INTO erp_private.mobile_dms_web_retries(session_id,step,lease) VALUES(p_session,p_step,p_lease);
+  INSERT INTO erp_private.mobile_dms_web_retries(session_id,step,lease,prior_step) VALUES(p_session,p_step,p_lease,(SELECT x FROM jsonb_array_elements(saved_steps)x WHERE x->>'step'=p_step));
   RETURN true;
  END IF;
- IF p_result->>'step' IS DISTINCT FROM p_step OR saved_steps IS NULL OR NOT (saved_steps @> jsonb_build_array(p_result)) OR (p_step IN ('ai_summary','embedding','tag_suggestions','link_suggestions') AND p_result->>'status' IS DISTINCT FROM 'completed') THEN RAISE EXCEPTION 'Original retry awaits confirmation' USING ERRCODE='55000'; END IF;
+ SELECT w.prior_step INTO prior FROM erp_private.mobile_dms_web_retries w WHERE w.session_id=p_session AND w.step=p_step AND w.lease=p_lease FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Unknown retry' USING ERRCODE='PT409'; END IF;
+ IF p_result->>'step' IS DISTINCT FROM p_step OR (p_step IN ('ai_summary','embedding','tag_suggestions','link_suggestions') AND p_result->>'status' IS DISTINCT FROM 'completed' AND p_result->>'providerEffect' IS DISTINCT FROM 'never_started') THEN RAISE EXCEPTION 'Original retry awaits confirmation' USING ERRCODE='55000'; END IF;
+ PERFORM erp_private.mobile_dms_merge_step(p_session,p_step,prior,p_result);
  DELETE FROM erp_private.mobile_dms_web_retries WHERE session_id=p_session AND step=p_step AND lease=p_lease;
  IF NOT FOUND THEN RAISE EXCEPTION 'Unknown retry' USING ERRCODE='PT409'; END IF;
  RETURN true;
@@ -434,7 +499,7 @@ BEGIN
  IF erp_private.dms_file_pipeline_manager(doc) AND (public.f03_has_document_permission(doc,'dms.documents.ai.run') OR erp_private.mobile_dms_can(doc,'dms.documents.review_ai') OR erp_private.mobile_dms_can(doc,'dms.admin')) THEN
   BEGIN
    snap:=public.ai_mod04_preparation('snapshot',jsonb_build_object('documentId',doc));
-   SELECT coalesce(jsonb_agg(jsonb_build_object('id',f->'id','versionId',f->'versionId','name',f->'name','size',f->'size','mime',f->'mime','sha256',f->'sha256') ORDER BY (f->>'id')::bigint),'[]') INTO choices FROM jsonb_array_elements(snap->'files') f WHERE (f->>'versionId')::bigint=(src->>'documentVersionId')::bigint AND f->>'sha256'~'^[a-f0-9]{64}$' AND coalesce((f->>'size')::bigint,0) BETWEEN 1 AND 52428800 AND length(f->>'name') BETWEEN 1 AND 1000 AND length(f->>'mime') BETWEEN 1 AND 200;
+   SELECT coalesce(jsonb_agg(jsonb_build_object('id',f->'id','versionId',f->'versionId','name',f->'name','size',f->'size','mime',lower(btrim(split_part(f->>'mime',';',1))),'sha256',f->'sha256') ORDER BY (f->>'id')::bigint),'[]') INTO choices FROM jsonb_array_elements(snap->'files') f WHERE (f->>'versionId')::bigint=(src->>'documentVersionId')::bigint AND f->>'sha256'~'^[a-f0-9]{64}$' AND coalesce((f->>'size')::bigint,0) BETWEEN 1 AND 52428800 AND length(f->>'name') BETWEEN 1 AND 1000 AND lower(btrim(split_part(f->>'mime',';',1))) IN ('application/pdf','image/jpeg','image/jpg','image/png','image/webp','image/gif','image/tiff','image/tif','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/msword','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.ms-excel');
    IF jsonb_array_length(choices) BETWEEN 1 AND 100 AND coalesce(snap->>'typeCode','') NOT IN ('EMPLOYEE_PHOTO','DEPENDENT_PHOTO') AND snap->>'profileState' IN ('active','not_configured') AND erp_private.dms_file_pipeline_manager(doc) AND coalesce(erp_private.ai_mod04_profile((snap->>'documentTypeId')::bigint,true)->>'applicability','document') NOT IN ('mixed_bundle','portrait') AND erp_private.ai_mod05_work_open((SELECT owning_company_id FROM public.dms_documents WHERE id=doc),true) AND erp_private.ai_mod05_job_allowed((SELECT owning_company_id FROM public.dms_documents WHERE id=doc)) THEN prep:=jsonb_build_object('snapshot',snap->'snapshot','files',choices); END IF;
   EXCEPTION WHEN insufficient_privilege OR SQLSTATE 'PT409' THEN prep:=NULL; END;
  END IF;
@@ -452,14 +517,14 @@ BEGIN
    IF result->>'sourceCurrent' IS DISTINCT FROM 'true' THEN hold:='source_changed';stage:='held'; END IF;
    IF (queue='failed' OR j.last_error_code IN ('preparation_outcome_unconfirmed','quality_evaluation_held')) AND EXISTS(SELECT 1 FROM jsonb_each(c.preparation_stages)e WHERE e.value->>'state'='started') THEN hold:='reconciliation_required';stage:='held';END IF;
    IF hold IS NULL AND c.preparation_context->>'state'='queued' AND queue IN ('queued','retry_scheduled') AND erp_private.dms_file_pipeline_manager(doc) THEN actions:=actions||jsonb_build_array(jsonb_build_object('action','resume'));END IF;
-   IF hold IS NULL AND c.preparation_context->>'state' NOT IN ('cancelled','applied') AND queue<>'running' AND NOT EXISTS(SELECT 1 FROM jsonb_each(c.preparation_stages)e WHERE e.value->>'state'='started') THEN actions:=actions||jsonb_build_array(jsonb_build_object('action','cancel')); END IF;
+   IF (hold IS NULL OR hold='source_changed') AND c.preparation_context->>'state' NOT IN ('cancelled','applied') AND queue<>'running' AND NOT EXISTS(SELECT 1 FROM jsonb_each(c.preparation_stages)e WHERE e.value->>'state'='started') THEN actions:=actions||jsonb_build_array(jsonb_build_object('action','cancel')); END IF;
    IF c.preparation_context->>'state' NOT IN ('applied','cancelled') THEN prep:=NULL; END IF;
   ELSE
    SELECT * INTO STRICT u FROM public.dms_upload_sessions WHERE id=j.related_upload_session_id AND document_id=doc;
    IF coalesce(jsonb_typeof(u.orchestration_steps_json),'array')<>'array' OR jsonb_array_length(u.orchestration_steps_json)>12 THEN RAISE EXCEPTION 'Incomplete stages' USING ERRCODE='54000'; END IF;
    stage:=CASE queue WHEN 'running' THEN 'analysing' WHEN 'completed' THEN 'ready' WHEN 'queued' THEN 'waiting' WHEN 'retry_scheduled' THEN 'retry_wait' WHEN 'cancelled' THEN 'cancelled' ELSE 'held' END;
    IF NOT erp_private.ai_mod05_work_open((SELECT owning_company_id FROM public.dms_documents WHERE id=doc),true) THEN hold:='paused'; ELSIF NOT erp_private.ai_mod05_job_allowed((SELECT owning_company_id FROM public.dms_documents WHERE id=doc)) THEN hold:='daily_limit';END IF;
-   IF EXISTS(SELECT 1 FROM erp_private.mobile_dms_retries t WHERE t.job_id=j.id AND NOT t.settled) OR EXISTS(SELECT 1 FROM erp_private.mobile_dms_web_retries w WHERE w.session_id=u.id) THEN hold:='reconciliation_required'; END IF;
+
    IF hold IS NOT NULL THEN stage:='held'; END IF;
    allowed:=hold IS NULL AND queue IN ('completed','failed') AND EXISTS(SELECT 1 FROM public.erp_ai_feature_flags WHERE feature_code='DMS_AI_ORCHESTRATION' AND is_enabled)
    AND (public.f03_has_document_permission(doc,'dms.documents.ai.run') OR public.f03_has_document_permission(doc,'dms.documents.upload') OR erp_private.mobile_dms_can(doc,'dms.admin'));
@@ -467,11 +532,15 @@ BEGIN
     IF item->>'step' NOT IN('upload_received','ocr_and_extraction','draft_ready','content_sync','ai_summary','intelligence','embedding','tag_suggestions','link_suggestions','ready_for_review') OR item->>'status' NOT IN ('completed','pending','running','skipped','failed') THEN RAISE EXCEPTION 'Unavailable stage' USING ERRCODE='22023'; END IF;
     steps:=steps||jsonb_build_array(jsonb_build_object('code',item->'step','label',replace(item->>'step','_',' '),'state',CASE WHEN item->>'status'='completed' THEN 'complete' ELSE item->>'status' END,'message',NULL));
     flag:=CASE item->>'step' WHEN 'content_sync' THEN 'DMS_CONTENT_TEXT_SYNC' WHEN 'ai_summary' THEN 'DMS_AI_SUMMARY' WHEN 'intelligence' THEN 'DMS_COMPLETENESS' WHEN 'embedding' THEN 'DMS_SEMANTIC_SEARCH' WHEN 'tag_suggestions' THEN 'DMS_AUTO_TAGS' WHEN 'link_suggestions' THEN 'DMS_SMART_LINKS' END;
-    IF allowed AND item->>'status' IN ('failed','skipped') AND (EXISTS(SELECT 1 FROM public.erp_ai_feature_flags WHERE feature_code=flag AND is_enabled) OR (item->>'step'='intelligence' AND EXISTS(SELECT 1 FROM public.erp_ai_feature_flags WHERE feature_code='DMS_RISK_SCORE' AND is_enabled)))
+    IF allowed AND NOT EXISTS(SELECT 1 FROM erp_private.mobile_dms_retries t WHERE t.session_id=u.id AND t.step=item->>'step' AND NOT t.settled) AND NOT EXISTS(SELECT 1 FROM erp_private.mobile_dms_web_retries w WHERE w.session_id=u.id AND w.step=item->>'step') AND item->>'status' IN ('failed','skipped') AND (EXISTS(SELECT 1 FROM public.erp_ai_feature_flags WHERE feature_code=flag AND is_enabled) OR (item->>'step'='intelligence' AND EXISTS(SELECT 1 FROM public.erp_ai_feature_flags WHERE feature_code='DMS_RISK_SCORE' AND is_enabled)))
      AND (item->>'step' NOT IN('ai_summary','embedding') OR public.f03_has_document_permission(doc,'dms.documents.ai.run') OR erp_private.mobile_dms_can(doc,'dms.admin'))
      AND (item->>'step' NOT IN('intelligence','tag_suggestions','link_suggestions') OR erp_private.mobile_dms_can(doc,'dms.documents.edit') OR erp_private.mobile_dms_can(doc,'dms.admin'))
+     AND (item->>'step'<>'ai_summary' OR EXISTS(SELECT 1 FROM public.dms_document_content dc WHERE dc.document_id=doc AND nullif(btrim(dc.content_text),'') IS NOT NULL))
+     AND (item->>'step' NOT IN ('ai_summary','link_suggestions','tag_suggestions') OR EXISTS(SELECT 1 FROM public.erp_ai_provider_configs cfg WHERE cfg.config_code IN ('DEFAULT_DMS_CLASSIFIER','DEFAULT_DMS_EXTRACTOR','DEFAULT_CHAT') AND cfg.is_active AND cfg.is_enabled AND cfg.deleted_at IS NULL))
+     AND (item->>'step'<>'embedding' OR EXISTS(SELECT 1 FROM public.erp_ai_provider_configs cfg WHERE cfg.config_code IN ('DEFAULT_EMBEDDING','DEFAULT_CHAT') AND cfg.is_active AND cfg.is_enabled AND cfg.deleted_at IS NULL))
      AND (item->>'step'<>'ai_summary' OR NOT EXISTS(SELECT 1 FROM public.dms_documents d WHERE d.id=doc AND (d.ai_summary_status='complete' OR (d.confidentiality_level IN('hr','legal','executive') AND NOT erp_private.mobile_dms_can(doc,'dms.admin'))))) THEN actions:=actions||jsonb_build_array(jsonb_build_object('action','retry_step','step',item->>'step')); END IF;
    END LOOP;
+   IF EXISTS(SELECT 1 FROM erp_private.mobile_dms_retries t WHERE t.session_id=u.id AND NOT t.settled) OR EXISTS(SELECT 1 FROM erp_private.mobile_dms_web_retries w WHERE w.session_id=u.id) THEN IF jsonb_array_length(actions)=0 AND hold IS NULL THEN stage:='held';hold:='reconciliation_required'; END IF; END IF;
   END IF;
  END IF;
  RETURN jsonb_build_object('documentId',doc,'sourceHash',src->'sourceHash','jobId',j.id,'requestId',req,'stage',stage,'queueStatus',queue,'workerHealthy',healthy,'createdAt',created,'startedAt',started,'updatedAt',updated,'errorCode',err,'holdReason',hold,'steps',steps,'actions',actions,'preparation',prep);
@@ -508,16 +577,22 @@ DECLARE t erp_private.mobile_dms_retries;u public.dms_upload_sessions;original t
 BEGIN
  IF auth.role() IS DISTINCT FROM 'service_role' THEN RAISE EXCEPTION 'Canonical writer required' USING ERRCODE='42501'; END IF;
  SELECT * INTO STRICT t FROM erp_private.mobile_dms_retries WHERE actor=p_actor AND operation=p_operation AND NOT settled FOR UPDATE;
+ -- A trusted pre-invocation failure releases only this reservation. Leave business state untouched even if the caller lost access.
+ IF p_result->>'step'=t.step AND p_result->>'status' IN ('failed','skipped') AND p_result->>'providerEffect'='never_started' THEN
+  receipt:=jsonb_build_object('documentId',t.document_id,'jobId',t.job_id,'operationId',p_operation,'state',p_result->'status','replayed',false);
+  UPDATE erp_private.mobile_dms_receipts SET result=receipt,state='settled' WHERE actor=t.actor AND operation=t.operation AND state='admitted';
+  IF NOT FOUND THEN RAISE EXCEPTION 'Retry receipt changed' USING ERRCODE='PT409'; END IF;
+  UPDATE erp_private.mobile_dms_retries SET settled=true WHERE actor=t.actor AND operation=t.operation;
+  RETURN receipt;
+ END IF;
  PERFORM set_config('request.jwt.claims',t.claims::text,true);
  IF erp_private.mobile_dms_actor()<>t.actor THEN RAISE EXCEPTION 'Session changed' USING ERRCODE='42501'; END IF;
  PERFORM erp_private.mobile_dms_lock(t.document_id);PERFORM erp_private.mobile_dms_source(jsonb_build_object('documentId',t.document_id,'sourceHash',t.source_hash),ARRAY['dms.documents.preview']);
  SELECT * INTO STRICT u FROM public.dms_upload_sessions WHERE id=t.session_id AND document_id=t.document_id AND deleted_at IS NULL FOR UPDATE;
- IF NOT(public.f03_has_document_permission(t.document_id,'dms.documents.ai.run') OR public.f03_has_document_permission(t.document_id,'dms.documents.upload') OR erp_private.mobile_dms_can(t.document_id,'dms.admin')) OR (t.step IN('ai_summary','embedding','tag_suggestions','link_suggestions') AND p_result->>'status'<>'completed') OR u.orchestration_steps_json IS DISTINCT FROM t.prior_steps OR (u.uploaded_by IS DISTINCT FROM t.actor AND NOT erp_private.mobile_dms_can(t.document_id,'dms.admin')) OR p_result->>'step' IS DISTINCT FROM t.step OR coalesce(p_result->>'status','') NOT IN('failed','skipped','completed') OR p_status NOT IN ('complete','complete_with_warnings','failed','running','pending','queued','skipped_feature_disabled') OR NOT EXISTS(SELECT 1 FROM public.dms_ai_job_queue q WHERE q.id=t.job_id AND q.related_document_id=t.document_id AND q.related_upload_session_id=u.id) THEN RAISE EXCEPTION 'Retry receipt changed' USING ERRCODE='PT409'; END IF;
- safe:=jsonb_strip_nulls(jsonb_build_object('step',t.step,'status',p_result->'status','startedAt',p_result->'startedAt','completedAt',p_result->'completedAt','durationMs',p_result->'durationMs','errorCode',CASE WHEN (p_result->>'errorCode')~'^[a-z0-9_]{1,80}$' THEN p_result->>'errorCode' END));
- SELECT jsonb_agg(CASE WHEN x->>'step'=t.step THEN safe ELSE x END ORDER BY ord) INTO rows FROM jsonb_array_elements(u.orchestration_steps_json) WITH ORDINALITY e(x,ord);
- UPDATE public.dms_upload_sessions SET orchestration_steps_json=rows,orchestration_status=p_status,updated_at=clock_timestamp() WHERE id=u.id;
+ IF NOT(public.f03_has_document_permission(t.document_id,'dms.documents.ai.run') OR public.f03_has_document_permission(t.document_id,'dms.documents.upload') OR erp_private.mobile_dms_can(t.document_id,'dms.admin')) OR (t.step IN('ai_summary','embedding','tag_suggestions','link_suggestions') AND p_result->>'status'<>'completed' AND p_result->>'providerEffect' IS DISTINCT FROM 'never_started') OR (u.uploaded_by IS DISTINCT FROM t.actor AND NOT erp_private.mobile_dms_can(t.document_id,'dms.admin')) OR p_result->>'step' IS DISTINCT FROM t.step OR coalesce(p_result->>'status','') NOT IN('failed','skipped','completed') OR p_status NOT IN ('complete','complete_with_warnings','failed','running','pending','queued','skipped_feature_disabled') OR NOT EXISTS(SELECT 1 FROM public.dms_ai_job_queue q WHERE q.id=t.job_id AND q.related_document_id=t.document_id AND q.related_upload_session_id=u.id) THEN RAISE EXCEPTION 'Retry receipt changed' USING ERRCODE='PT409'; END IF;
+ PERFORM erp_private.mobile_dms_merge_step(t.session_id,t.step,(SELECT x FROM jsonb_array_elements(t.prior_steps)x WHERE x->>'step'=t.step),p_result);
  UPDATE erp_private.mobile_dms_retries SET settled=true WHERE actor=p_actor AND operation=p_operation;
- receipt:=erp_private.mobile_dms_settle(p_operation,jsonb_build_object('documentId',t.document_id,'jobId',t.job_id,'operationId',p_operation,'state',safe->'status','replayed',false));
+ receipt:=erp_private.mobile_dms_settle(p_operation,jsonb_build_object('documentId',t.document_id,'jobId',t.job_id,'operationId',p_operation,'state',p_result->'status','replayed',false));
  PERFORM set_config('request.jwt.claims',original,true);RETURN receipt;
 END $$;
 CREATE FUNCTION public.mobile_dms_finish_retry(p_actor bigint,p_operation uuid,p_result jsonb,p_status text) RETURNS jsonb LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$SELECT erp_private.mobile_dms_finish_retry(p_actor,p_operation,p_result,p_status)$$;
@@ -551,7 +626,7 @@ REVOKE ALL ON FUNCTION erp_private.mobile_dms_checklist(jsonb) FROM PUBLIC,anon,
 REVOKE ALL ON FUNCTION public.mobile_dms_checklist(jsonb) FROM PUBLIC,anon,authenticated,service_role;
 GRANT EXECUTE ON FUNCTION erp_private.mobile_dms_checklist(jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.mobile_dms_checklist(jsonb) TO authenticated;
-REVOKE ALL ON FUNCTION erp_private.mobile_dms_officers(jsonb,text) FROM PUBLIC,anon,authenticated,service_role;
+REVOKE ALL ON FUNCTION erp_private.mobile_dms_officers(jsonb,text,bigint) FROM PUBLIC,anon,authenticated,service_role;
 REVOKE ALL ON FUNCTION erp_private.mobile_dms_evidence(jsonb,bigint,bigint,bigint) FROM PUBLIC,anon,authenticated,service_role;
 REVOKE ALL ON FUNCTION erp_private.mobile_dms_request_row(text,bigint,jsonb) FROM PUBLIC,anon,authenticated,service_role;
 REVOKE ALL ON FUNCTION erp_private.mobile_dms_requests(text,jsonb) FROM PUBLIC,anon,authenticated,service_role;

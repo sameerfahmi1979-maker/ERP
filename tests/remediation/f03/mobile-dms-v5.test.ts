@@ -51,3 +51,12 @@ describe("Mobile DMS canonical surface",()=>{
   }
  });
 });
+it("limits transitive grounding and publication helpers to their fixed receipt boundary",()=>{
+ const read=(path:string)=>readFileSync(join(process.cwd(),path),"utf8");
+ const publication=read("src/server/dms-question-publication.ts"),context=read("src/server/dms-question-context.ts");
+ expect(publication).not.toMatch(/\.from\(|\.select\(|writer_parent/);
+ expect([...publication.matchAll(/\.rpc\("([^"]+)"/g)].map(m=>m[1])).toEqual(["dms_question_publish","dms_question_publish"]);
+ expect(context).toContain('createAdminClient().rpc("dms_question_authorize"');expect(context).not.toContain('createAdminClient().rpc("mobile_dms_question_context"');
+ expect(migrations[3]).not.toContain("dms_question_writer_parent");
+ for(const caller of ["src/server/actions/dms/ai-summary.ts","src/server/actions/dms/document-content.ts","src/lib/dms/semantic/semantic-indexer.ts","src/lib/dms/ocr/persist-file-ocr-result.ts"])expect(read(caller)).toContain("captureQuestionParents");
+});

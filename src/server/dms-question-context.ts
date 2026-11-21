@@ -1,12 +1,15 @@
 import "server-only";
-import {createHash} from "node:crypto";
+import {createHash,randomUUID} from "node:crypto";
+import {createAdminClient} from "@/lib/supabase/admin";
+import {createClient} from "@/lib/supabase/server";
+import {mobileAccessToken} from "@/lib/supabase/mobile-request";
 import {z} from "zod";
 import type {AuthContext} from "@/lib/rbac/check";
 import {hash,id,source,type Source} from "@/server/mobile/dms-v5/contracts";
 import {admitMobileDmsSource,conflict,DmsError,rpc,verifySession} from "@/server/mobile/dms-v5/access";
 
 export const artifactKind=z.enum(["prepared_text","file_ocr","content_text","chunk_text","ai_summary"]);
-const artifact=z.strictObject({kind:artifactKind,artifactId:z.string().min(1).max(100),documentId:id,versionId:id,artifactContentHash:hash,proofHash:hash,fileBindings:z.array(z.strictObject({fileId:id,versionId:id,sha256:hash})).min(1).max(100),derivationHashes:z.array(hash).max(100),text:z.string().max(16000),truncated:z.boolean()});
+const artifact=z.strictObject({kind:artifactKind,artifactId:z.string().min(1).max(100),documentId:id,versionId:id,artifactContentHash:hash,proofHash:hash,fileBindings:z.array(z.strictObject({fileId:id,versionId:id,sha256:hash})).min(1).max(100),derivationHashes:z.array(hash).max(100),text:z.string().max(16000),truncated:z.boolean(),chunkIndex:z.number().int().nonnegative().safe().optional()});
 const envelope=z.strictObject({source,metadata:z.record(z.string(),z.json()),artifacts:z.array(artifact).max(250)});
 type ContextMode="verified_text"|"metadata_only";
 type Material=Pick<z.infer<typeof envelope>,"metadata"|"artifacts">;
@@ -22,12 +25,19 @@ export function groundQuestion(bound:Source,material:Material,mode:ContextMode){
   return [{...a,text}];
  });
  const prompt=JSON.stringify({metadata:material.metadata,passages:selected.map((v,i)=>({index:i,kind:v.kind,text:v.text}))});
- const groundingHash=createHash("sha256").update(JSON.stringify(["dms-grounding/1",bound.sourceHash,mode,prompt,artifacts.map(a=>[a.proofHash,a.artifactContentHash,a.fileBindings,a.derivationHashes]),selected.map(s=>[s.artifactId,s.text.length])])).digest("hex");
+ const groundingHash=createHash("sha256").update(JSON.stringify(["dms-grounding/1",bound.sourceHash,mode,prompt,artifacts.map(a=>[a.proofHash,a.artifactContentHash,a.chunkIndex??null,a.fileBindings,a.derivationHashes]),selected.map(s=>[s.artifactId,s.text.length])])).digest("hex");
  return {prompt,groundingHash,sourceKinds:[...new Set<z.infer<typeof artifactKind>|"metadata">(["metadata",...selected.map(s=>s.kind)])],contentTruncated,selected};
 }
 export async function readVerifiedDmsQuestionContext(ctx:AuthContext,input:{documentId:number;sourceHash:string;contextMode:ContextMode}){
  const bound=await admitMobileDmsSource(ctx,{documentId:input.documentId,sourceHash:input.sourceHash},["dms.documents.view","dms.documents.preview"]);
- const data=await rpc("mobile_dms_question_context",{p_data:input},envelope);
+ const db=await createClient(),token=mobileAccessToken();
+ const claims=token?await db.auth.getClaims(token):await db.auth.getClaims();
+ const verified=claims.data?.claims;
+ if(claims.error||!verified?.sub||verified.sub!==ctx.profile?.auth_user_id||!z.uuid().safeParse(verified.session_id).success)throw new DmsError(403,"session_changed","The current session could not be verified.");
+ const ticket=randomUUID();
+ const gate=await createAdminClient().rpc("dms_question_authorize",{p_ticket:ticket,p_subject:verified.sub,p_session:verified.session_id,p_data:input});
+ if(gate.error||gate.data!==true)throw new DmsError(503,"question_unavailable","The question could not be admitted.");
+ const data=await rpc("mobile_dms_question_context",{p_data:{...input,ticket}},envelope);
  if(data.source.sourceHash!==bound.sourceHash||data.source.documentId!==bound.documentId||data.source.documentVersionId!==bound.documentVersionId)conflict();
  return {source:bound,...groundQuestion(bound,data,input.contextMode)};
 }

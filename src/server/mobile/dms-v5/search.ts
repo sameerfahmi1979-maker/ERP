@@ -40,7 +40,7 @@ export async function search(input:CommandFor<"documentQrLookup"|"documentNatura
   case "documentNaturalSearch":{
    const parentCheck=async()=>{if(input.subject)await rpc("mobile_dms_document",{p_action:"search_parent",p_data:{parent:input.subject}},z.literal(true));};
    await parentCheck();
-   const r=await askDmsDocumentsQuestion(input.query,{},{page:input.page,pageSize:25},input.subject?{type:input.subject.entityType,id:input.subject.entityId}:undefined);
+   const r=await askDmsDocumentsQuestion(input.query,{},{page:input.page,pageSize:25},input.subject?{type:input.subject.entityType,id:input.subject.entityId}:undefined,true);
    if(!r.success||!r.data){
     if(r.error?.startsWith("Choose the exact person or business record"))return {outcome:"clarification_required",rows:[],totalCount:null,hasMore:false,asOf:new Date().toISOString(),message:"Choose the exact person or site to continue."};
     throw new DmsError(503,"natural_search_unavailable","Natural-language document search is unavailable.");
@@ -48,18 +48,27 @@ export async function search(input:CommandFor<"documentQrLookup"|"documentNatura
    const bounds=await Promise.all(r.data.results.map(hit=>admitMobileDmsSource(ctx,{documentId:hit.documentId})));
    const result=bounds.length?await db.from("dms_documents").select(fields).in("id",bounds.map(s=>s.documentId)).is("deleted_at",null):{data:[],error:null};
    if(result.error||result.data?.length!==bounds.length)unavailable();const summaries=result.data.map(documentSummary);
-   const rows=bounds.map(s=>{const doc=summaries.find(d=>d.id===s.documentId);if(!doc)unavailable();return {...doc,sourceHash:s.sourceHash,matchSource:"metadata",snippet:null};});
+   const rows=bounds.map((s,i)=>{const doc=summaries.find(d=>d.id===s.documentId);const origin=r.data!.results[i].matchSource;if(!doc||!origin)unavailable();return {...doc,sourceHash:s.sourceHash,matchSource:origin,snippet:null};});
    const page=completePage(rows,input.page,25,r.data.totalCount,row=>row.id);
    await Promise.all(bounds.map(s=>verifyMobileDmsDelivery(ctx,s)));await parentCheck();
    return {outcome:page.totalCount?"available":"no_matches",rows,totalCount:page.totalCount,hasMore:page.hasMore,asOf:page.asOf};
   }
   case "documentNotifications":{
    const r=await readDmsNotifications({audience:"my",page:input.page,pageSize:25,unreadOnly:input.unreadOnly},ctx);if(!r.success)unavailable();
-   const rows=await Promise.all(r.data.rows.map(async n=>{
-    let visible=false;
-    if(n.visible_document_id!==null){try{await admitMobileDmsSource(ctx,{documentId:n.visible_document_id});visible=true;}catch(e){if(!(e instanceof DmsError)||![403,404,409].includes(e.status))throw e;}}
-    return {id:n.id,title:visible?n.subject:"Document notification",message:visible?n.message:"Open your current document workspace for details.",status:n.status,readAt:n.read_at,target:visible?{kind:"document",documentId:n.visible_document_id,section:"overview"}:null};
-   }));await verifySession(ctx);return completePage(rows,input.page,25,r.data.totalCount,row=>row.id);
+   const bindings=await Promise.all(r.data.rows.map(async n=>{
+    if(n.visible_document_id===null)return null;
+    try{return await admitMobileDmsSource(ctx,{documentId:n.visible_document_id});}
+    catch(e){if(e instanceof DmsError&&[403,404,409].includes(e.status))return null;throw e;}
+   }));
+   await verifySession(ctx);
+   const sources=bindings.filter(b=>b!==null).map(b=>({documentId:b.documentId,versionId:b.documentVersionId,sourceHash:b.sourceHash}));
+   const visible=await rpc("mobile_dms_document",{p_action:"notification_targets",p_data:{sources}},z.array(z.boolean()).length(sources.length));
+   let position=0;
+   const rows=r.data.rows.map((n,i)=>{
+    const allowed=bindings[i]!==null&&visible[position++];
+    return {id:n.id,title:allowed?n.subject:"Document notification",message:allowed?n.message:"Open your current document workspace for details.",status:n.status,readAt:n.read_at,target:allowed?{kind:"document",documentId:n.visible_document_id,section:"overview"}:null};
+   });
+   return completePage(rows,input.page,25,r.data.totalCount,row=>row.id);
   }
   case "documentNotificationAction":{
    const r=input.action==="read"?await markDmsNotificationRead(input.notificationId):await dismissDmsNotification(input.notificationId);

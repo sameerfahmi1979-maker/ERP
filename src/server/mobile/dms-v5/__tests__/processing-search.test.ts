@@ -2,9 +2,10 @@ import {expect,it,vi,beforeEach} from "vitest";
 import {getAuthContext,type AuthContext} from "@/lib/rbac/check";
 import {createClient} from "@/lib/supabase/server";
 import {getDmsAiProvider} from "@/lib/dms/ai/factory";
-import {askVerifiedDmsQuestion} from "@/server/actions/dms/document-qa";
+import {askDmsDocumentQuestion,askVerifiedDmsQuestion} from "@/server/actions/dms/document-qa";
 import {parseQr} from "../search";
 import {processing} from "../processing";
+vi.mock("@/lib/supabase/admin",()=>({createAdminClient:()=>({rpc:async()=>({data:true,error:null})})}));
 vi.mock("@/lib/supabase/server",()=>({createClient:vi.fn()}));
 vi.mock("@/lib/rbac/check",async o=>({...await o<typeof import("@/lib/rbac/check")>(),getAuthContext:vi.fn()}));
 vi.mock("@/lib/dms/ai/factory",()=>({getDmsAiProvider:vi.fn()}));
@@ -23,13 +24,28 @@ const model=vi.fn();const rpc=vi.fn(async(name:string)=>{
 beforeEach(()=>{
  vi.clearAllMocks();store.flag=true;store.title="Header";store.artifacts=[artifact(1,"V1 stale content")];
  vi.mocked(getAuthContext).mockResolvedValue(actor);
- vi.mocked(createClient).mockResolvedValue({rpc,from:()=>({select:()=>({eq:()=>({single:async()=>({data:{is_enabled:store.flag},error:null})})})})} as unknown as Awaited<ReturnType<typeof createClient>>);
+ vi.mocked(createClient).mockResolvedValue({rpc,auth:{getClaims:async()=>({data:{claims:{sub:actor.profile!.auth_user_id,session_id:"624028b6-e928-4e97-9058-68dcb72e4974"}}})},from:()=>({select:()=>({eq:()=>({single:async()=>({data:{is_enabled:store.flag},error:null})})})})} as unknown as Awaited<ReturnType<typeof createClient>>);
  vi.mocked(getDmsAiProvider).mockResolvedValue({provider:{isConfigured:()=>true,callStructuredCompletion:model}} as unknown as Awaited<ReturnType<typeof getDmsAiProvider>>);
 });
 it("calls no provider for an unproven current version, then answers from newly published current preparation",async()=>{
  await expect(askVerifiedDmsQuestion(question)).rejects.toMatchObject({code:"question_source_preparation_required"});expect(model).not.toHaveBeenCalled();expect(getDmsAiProvider).not.toHaveBeenCalled();
  store.artifacts.push(artifact(2,"Verified V2 ABC-9"));model.mockResolvedValue({rawJson:JSON.stringify({answer:"ABC-9",sourceUsed:"prepared_text",confidence:"high",passageIndices:[0]})});
  const r=await askVerifiedDmsQuestion(question);expect(r.citations[0]).toMatchObject({documentId:9,versionId:2,fileId:21,snippet:"Verified V2 ABC-9",groundingHash:r.grounding.groundingHash});expect(model.mock.calls[0][1]).not.toContain("V1 stale content");
+});
+it("withholds the original prompt when provider configuration lookup changes grounding",async()=>{
+ store.artifacts=[artifact(2,"Private current V2")];
+ vi.mocked(getDmsAiProvider).mockImplementationOnce(async()=>{
+  store.title="Changed during lookup";
+  return {provider:{isConfigured:()=>true,callStructuredCompletion:model}} as unknown as Awaited<ReturnType<typeof getDmsAiProvider>>;
+ });
+ await expect(askVerifiedDmsQuestion(question)).rejects.toMatchObject({code:"source_changed"});
+ expect(model).not.toHaveBeenCalled();
+});
+it("returns the canonical chunk index and snippet through the existing web action",async()=>{
+ store.artifacts=[{...artifact(2,"Quoted registered chunk"),kind:"chunk_text",chunkIndex:7} as ReturnType<typeof artifact>];
+ model.mockResolvedValue({rawJson:JSON.stringify({answer:"Registered",confidence:"high",sourceUsed:"chunk_text",passageIndices:[0]})});
+ const result=await askDmsDocumentQuestion(9,"Which reference appears?");
+ expect(result.data?.chunkCitations).toEqual([{chunkIndex:7,snippet:"Quoted registered chunk"}]);
 });
 it("withholds an answer when verified grounding changes during the call on the same version",async()=>{
  store.artifacts=[artifact(2,"Verified V2 ABC-9")];

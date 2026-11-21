@@ -38,7 +38,7 @@ beforeEach(() => {
   diagnostic.mockClear();
   state.client = withDocumentReadPolicy(createSupabaseClient("http://127.0.0.1:1", "synthetic-not-a-key", {
     auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false},
-    global:{fetch:async input => {
+    global:{fetch:async (input, init) => {
       const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
       state.requests.push(url);
       const table = url.pathname.split("/").at(-1);
@@ -51,6 +51,11 @@ beforeEach(() => {
         return new Response(JSON.stringify(slice),{
           headers:{"Content-Type":"application/json","Content-Range":from+"-"+Math.max(from,from+slice.length-1)+"/"+rows.length},
         });
+      }
+      if(table==="mobile_dms_document"){
+        const body=JSON.parse(String(init?.body));
+        expect(body.p_action).toBe("search_origins");expect(body.p_data.ids).toEqual([901]);
+        return new Response(JSON.stringify([{id:901,matchSource:body.p_data.structured?"both":"content"}]),{headers:{"Content-Type":"application/json"}});
       }
       if(table==="ai_mod02_resolve_subject")return new Response(JSON.stringify(state.resolvedSubject?[{entity_type:"employee",entity_id:901,label:"Synthetic Person",code:"EMP-SYN-901"}]:[]),{headers:{"Content-Type":"application/json"}});
       if(table !== "ai_mod02_search_documents") throw new Error("Unexpected test request: "+table);
@@ -269,4 +274,11 @@ describe("AI document search server action with real PostgREST request construct
     expect(documentRequest()?.searchParams.getAll("issue_date")).toEqual(["gte.2026-01-01","lte.2026-12-31"]);
     expect(documentRequest()?.searchParams.has("content_tsv")).toBe(false);
   });
+});
+
+it("carries verified origin into the natural search result without treating the default lifecycle as a metadata hit",async()=>{
+ const common=await searchDmsDocumentsByIntent(intent(),undefined,{},undefined,true);
+ expect(common.data?.[0].matchSource).toBe("content");
+ const scoped=await searchDmsDocumentsByIntent(intent({risk_hint:"high"}),undefined,{},undefined,true);
+ expect(scoped.data?.[0].matchSource).toBe("both");
 });

@@ -1,4 +1,5 @@
 "use server";
+import {markRetryProviderStarted} from "@/server/mobile/dms-v5/orchestration-receipt";
 import {captureQuestionParents,publishQuestionArtifact,questionTextHash} from "@/server/dms-question-publication";
 
 /**
@@ -251,6 +252,7 @@ async function runSummaryForDocument(params: {
 
   // 8. Call AI
   try {
+    markRetryProviderStarted();
     summaryResult = await provider.summarize(systemPrompt, userMessage);
     if (!summaryResult.summary || summaryResult.summary.trim().length === 0) {
       throw new Error("AI returned an empty summary.");

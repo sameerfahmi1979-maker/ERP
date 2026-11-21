@@ -1,4 +1,5 @@
 "use server";
+import {markRetryProviderStarted} from "@/server/mobile/dms-v5/orchestration-receipt";
 import {readAllPages} from "@/server/reads/all-pages";
 
 /**
@@ -229,6 +230,7 @@ export async function suggestDmsDocumentTags(
 
     // Call AI
     const tagStartMs = Date.now();
+    markRetryProviderStarted();
     const result = await provider.callStructuredCompletion(
       buildTagSystemPrompt(availableTags),
       buildTagUserMessage({

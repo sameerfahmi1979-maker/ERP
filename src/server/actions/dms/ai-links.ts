@@ -1,4 +1,5 @@
 "use server";
+import {markRetryProviderStarted} from "@/server/mobile/dms-v5/orchestration-receipt";
 import {readAllPages} from "@/server/reads/all-pages";
 
 /**
@@ -311,6 +312,7 @@ export async function suggestDmsDocumentLinks(
 
     // Call AI
     const linkStartMs = Date.now();
+    markRetryProviderStarted();
     const result = await provider.callStructuredCompletion(
       buildLinkSystemPrompt(partyList),
       buildLinkUserMessage({

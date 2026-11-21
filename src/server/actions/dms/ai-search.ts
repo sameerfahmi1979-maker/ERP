@@ -255,7 +255,7 @@ async function readSearchLookups(
 // ── searchDmsDocumentsByIntent ─────────────────────────────────────────────────
 
 export async function searchDmsDocumentsByIntent(
-  intent: DmsSearchIntent,paging:unknown={page:1,pageSize:MAX_RESULTS},scope:unknown={},subjectInput?:unknown
+  intent: DmsSearchIntent,paging:unknown={page:1,pageSize:MAX_RESULTS},scope:unknown={},subjectInput?:unknown,withOrigins=false
 ): Promise<ActionResult<DmsAiSearchResult[]>> {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "dms.documents.view")) {
@@ -416,6 +416,14 @@ export async function searchDmsDocumentsByIntent(
     });
 
     if(count===null||!Number.isSafeInteger(count)||results.length!==Math.min(parsedPage.data.pageSize,Math.max(0,count-(parsedPage.data.page-1)*parsedPage.data.pageSize)))return {success:false,error:"Search count or page could not be verified."};
+    if(withOrigins && results.length){
+      const ids=results.map(hit=>hit.documentId);
+      const structured=Boolean(hasMetaFilters||planned.subject||typeIds.length||categoryIds.length||intent.expiry_state||intent.risk_hint||intent.date_from||intent.date_to||Object.entries(parsedScope.data).some(([key,value])=>key==="lifecycle"?value!=="current":Array.isArray(value)?value.length>0:Boolean(value)));
+      const origins=await supabase.rpc("mobile_dms_document",{p_action:"search_origins",p_data:{ids,textQuery:tsQuery??"",structured}});
+      const checked=z.array(z.strictObject({id:z.number().int().positive(),matchSource:z.enum(["metadata","content","both"])})).safeParse(origins.data);
+      if(origins.error||!checked.success||checked.data.length!==ids.length||checked.data.some((hit,i)=>hit.id!==ids[i]))throw Error("Search source changed");
+      results.forEach((hit,i)=>{hit.matchSource=checked.data[i].matchSource;});
+    }
     await verifySearchDelivery(ctx);
     return { success: true, data: results,totalCount:count };
   } catch (err) {
@@ -428,7 +436,7 @@ export async function searchDmsDocumentsByIntent(
 
 // ── askDmsDocumentsQuestion ───────────────────────────────────────────────────
 
-export async function askDmsDocumentsQuestion(question: string,scope:unknown={},paging?:unknown,subject?:unknown): Promise<
+export async function askDmsDocumentsQuestion(question: string,scope:unknown={},paging?:unknown,subject?:unknown,withOrigins=false): Promise<
   ActionResult<{
     intent: DmsSearchIntent;
     results: DmsAiSearchResult[];
@@ -455,7 +463,7 @@ export async function askDmsDocumentsQuestion(question: string,scope:unknown={},
   }
 
   const intent = intentResult.data;
-  const searchResult = await searchDmsDocumentsByIntent(intent,paging,scope,subject);
+  const searchResult = await searchDmsDocumentsByIntent(intent,paging,scope,subject,withOrigins);
   if (!searchResult.success) {
     return { success: false, error: searchResult.error ?? "Search failed." };
   }

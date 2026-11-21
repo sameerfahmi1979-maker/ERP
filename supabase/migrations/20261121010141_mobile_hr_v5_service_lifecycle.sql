@@ -470,6 +470,12 @@ BEGIN
    doc_id:=(r.proposal#>>'{evidence,documentId}')::bigint;
    verified:=dep.request_hash=encode(sha256(convert_to(jsonb_build_array('f11_dependent',NEW.employee_id,(r.proposal#>>'{source,id}')::bigint,before_revision,'save',dep_input->'data',dep_input->'add',dep_input->'remove')::text,'UTF8')),'hex')
     AND dep_input->'remove'='[]' AND (dep_input->'add'='[]' OR (doc_id IS NOT NULL AND dep_input->'add'=jsonb_build_array(doc_id)))
+    -- A later DMS link cannot retrospectively prove a create carried evidence.
+    -- An existing dependent may already have the admitted link before its F11 save.
+    AND (doc_id IS NULL OR dep_input->'add'=jsonb_build_array(doc_id) OR dep_input#>'{data,dms_document_id}'=to_jsonb(doc_id)
+      OR (TG_OP='UPDATE' AND EXISTS(SELECT FROM public.dms_document_links l WHERE l.document_id=doc_id AND l.entity_type='employee_dependent'
+        AND l.entity_id=NEW.id AND l.deleted_at IS NULL)))
+
     AND dep_input->'data' @> changes AND NOT EXISTS(SELECT FROM jsonb_each(dep_input->'data') input
      WHERE NOT (changes?input.key OR input.value IS NOT DISTINCT FROM coalesce(oldrow->input.key,CASE input.key WHEN 'is_active' THEN 'true'::jsonb ELSE 'null'::jsonb END)
        OR (input.key='dms_document_id' AND doc_id IS NOT NULL AND input.value=to_jsonb(doc_id))))

@@ -82,6 +82,48 @@ SELECT pg_temp.check_it(public.mobile_hr_v5_tasks(998810,998810,1)#>>'{0,id}'='9
 SELECT pg_temp.check_it(public.mobile_hr_v5_directory_choices('branch',998810,NULL,'',0)@>'[{"label":"A"}]'::jsonb,'scoped branch filter returns permitted canonical choice');
 SELECT pg_temp.check_it(public.mobile_hr_staff_capabilities(true,NULL,false)#>>'{expanded,work}'='true','expanded home capabilities available');
 SELECT pg_temp.check_it(public.mobile_hr_staff_capabilities(true,998810,false)#>>'{expanded,services}'='true','expanded selected profile capabilities available');
+-- Each branch starts from the same employee, evidence file and canonical records.
+SAVEPOINT dependent_evidence_cases;
+RESET ROLE;
+INSERT INTO public.role_permissions(role_id,permission_id) SELECT 998810,id FROM public.permissions WHERE permission_code='dms.documents.edit' ON CONFLICT DO NOTHING;
+CREATE FUNCTION pg_temp.dependent_evidence_case(path text) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE src jsonb; target bigint; prior bigint; approved jsonb; saved jsonb; command jsonb; result jsonb;
+ data jsonb:='{"dependent_name_en":"Evidence case","relationship_type_id":998810}';
+ additions bigint[]:='{}';
+BEGIN
+ PERFORM pg_temp.actor(2);
+ IF path='already-linked' THEN
+  target:=998810;prior:=1;src:=jsonb_build_object('kind','dependent','id',target,'revision',prior::text);
+  INSERT INTO public.dms_document_links(document_id,entity_type,entity_id,link_role) VALUES(998810,'employee_dependent',target,'dependent');
+ ELSIF path='added' THEN additions:=ARRAY[998810];
+ ELSIF path='primary' THEN data:=data||'{"dms_document_id":998810}';
+ END IF;
+ approved:=pg_temp.reviewed(jsonb_build_object('kind','dependent-change','source',src,'employeeRevision',(SELECT workspace_revision::text FROM public.employees WHERE id=998810),
+  'changes','{"nameEn":"Evidence case","relationshipId":998810}'::jsonb,'evidence','{"documentId":998810,"documentVersionId":998810}'::jsonb));
+ saved:=public.f11_save_dependent(gen_random_uuid(),998810,target,prior,'save',data,additions,'{}');
+ command:=pg_temp.fulfil(approved,jsonb_build_object('kind','save-dependent','source',src,'canonicalOperationId',saved->'operation_id'));
+ IF path='later-link' THEN
+  INSERT INTO public.dms_document_links(document_id,entity_type,entity_id,link_role) VALUES(998810,'employee_dependent',(saved->>'id')::bigint,'dependent');
+  BEGIN
+   PERFORM public.mobile_hr_service_v5(command);
+  EXCEPTION WHEN insufficient_privilege OR SQLSTATE 'PT409' THEN
+   PERFORM pg_temp.check_it(true,'independent later DMS link cannot qualify the original document-free create receipt');RETURN;
+  END;
+  RAISE EXCEPTION 'Document-free F11 creation must not qualify after later DMS linkage';
+ END IF;
+ result:=public.mobile_hr_service_v5(command);
+ PERFORM pg_temp.check_it(result->>'effect'='fulfilled' AND result#>>'{canonical,id}'=saved->>'id','exact F11 dependent evidence accepted for '||path);
+END $$;
+SET LOCAL ROLE authenticated;
+SAVEPOINT original_dependent;
+SELECT pg_temp.dependent_evidence_case('added');
+ROLLBACK TO original_dependent;
+SELECT pg_temp.dependent_evidence_case('primary');
+ROLLBACK TO original_dependent;
+SELECT pg_temp.dependent_evidence_case('already-linked');
+ROLLBACK TO original_dependent;
+SELECT pg_temp.dependent_evidence_case('later-link');
+ROLLBACK TO dependent_evidence_cases;
 INSERT INTO v5 SELECT 'pro-approved',pg_temp.reviewed('{"kind":"pro-follow-up","source":{"kind":"pro-process","id":998810,"revision":"1"},"message":"Requested update","evidence":{"documentId":998810,"documentVersionId":998810}}');
 INSERT INTO v5 SELECT 'pro-done',public.mobile_hr_service_v5(pg_temp.fulfil(v,'{"kind":"record-pro-follow-up","source":{"kind":"pro-process","id":998810,"revision":"1"}}')) FROM v5 WHERE k='pro-approved';
 SELECT pg_temp.check_it((SELECT notes=E'Historical entry\nRequested update' FROM public.employee_pro_processes WHERE id=998810),'canonical PRO preserves prior notes');
@@ -137,7 +179,7 @@ SET LOCAL session_replication_role=replica;
 INSERT INTO public.erp_generated_pdf_documents(id,template_key,source_record_type,source_record_id,owner_company_id,storage_path,file_name,checksum,file_size_bytes,renderer,generated_by,lifecycle_state,output_code,data_snapshot_json)
  OVERRIDING SYSTEM VALUE SELECT 998880+n,'m5_embassy','employee',998810,998810,'synthetic/'||n,'synthetic.pdf',repeat('a',64),32,'synthetic',u.id,
  CASE WHEN n=3 THEN 'failed_retryable' ELSE 'issued' END,'HR_EMBASSY_LETTER',jsonb_build_object('language','en','inputs',jsonb_build_object('addressee','Synthetic consulate','purpose',CASE WHEN n=2 THEN 'Different purpose' ELSE 'Synthetic visa' END,'addressee_ar','Synthetic consulate','purpose_ar','Synthetic visa'))
- FROM public.user_profiles u CROSS JOIN generate_series(1,3)n WHERE u.auth_user_id=CASE n WHEN 1 THEN 'cccccccc-1111-4000-8000-000000000001'::uuid ELSE 'cccccccc-1111-4000-8000-000000000002'::uuid END;
+ FROM public.user_profiles u CROSS JOIN generate_series(1,4)n WHERE u.auth_user_id=CASE n WHEN 1 THEN 'cccccccc-1111-4000-8000-000000000001'::uuid ELSE 'cccccccc-1111-4000-8000-000000000002'::uuid END;
 SET LOCAL session_replication_role=origin;
 SELECT pg_temp.check_it(erp_private.mobile_hr_v5_particulars('{"outputCode":"HR_EMBASSY_LETTER","language":"bilingual","recipient":"English office","recipientAr":"Arabic office","purpose":"English purpose","purposeAr":"Arabic purpose"}','{"addressee":"English office","addressee_ar":"Arabic office","purpose":"English purpose","purpose_ar":"Arabic purpose"}',false)
  AND NOT erp_private.mobile_hr_v5_particulars('{"outputCode":"HR_EMBASSY_LETTER","language":"bilingual","recipient":"English office","recipientAr":"Arabic office","purpose":"English purpose","purposeAr":"Arabic purpose"}','{"addressee":"English office","addressee_ar":"Arabic office","purpose":"English purpose","purpose_ar":"Different purpose"}',true),'bilingual originals require both effective language sides even with matching origin');
@@ -227,6 +269,16 @@ RESET ROLE;
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.actor(2);
 SELECT pg_temp.v5_deny(v,'22023','closed token cannot start an issuance later') FROM v5 WHERE k='issue-before';
+SAVEPOINT independent_original;
+SELECT pg_temp.check_it(public.mobile_hr_service_v5(jsonb_build_object('op','serviceAttempt','employeeId',998810,'id',v->'id','revision','2'))->'attempt'='null','recovery shows no active generation after confirmed no-effect') FROM v5 WHERE k='letter-two';
+INSERT INTO v5 SELECT 'fresh-letter-choices',public.mobile_hr_service_v5(jsonb_build_object('op','serviceActionChoices','employeeId',998810,'id',v->'id','revision','2','kind','issuance','search','','after',0)) FROM v5 WHERE k='letter-two';
+INSERT INTO v5 SELECT 'fresh-link',pg_temp.fulfil(a.v,jsonb_build_object('kind','link-issued-letter','issuanceId',choice->'issuanceId','checksum',choice->'checksum')) FROM v5 a,v5 b,jsonb_array_elements(b.v) choice WHERE a.k='letter-two' AND b.k='fresh-letter-choices' AND choice->>'issuanceId'='998884';
+SELECT pg_temp.check_it((SELECT public.mobile_hr_service_v5(v)->>'pending'='true' FROM v5 WHERE k='fresh-link'),'fresh operation reserves independently selected eligible original');
+RESET ROLE;
+SET LOCAL ROLE service_role;
+SELECT set_config('request.jwt.claims','{"role":"service_role"}',true);
+SELECT pg_temp.check_it((SELECT public.mobile_hr_v5_attest_output('{"sub":"cccccccc-1111-4000-8000-000000000002","session_id":"dddddddd-1111-4000-8000-000000000002"}',v,998884,repeat('a',64))#>>'{canonical,issuanceId}'='998884' FROM v5 WHERE k='fresh-link'),'fresh verified link completes the approved request without reissue');
+ROLLBACK TO independent_original;
 INSERT INTO v5 SELECT 'issue-after',v||jsonb_build_object('operationId',gen_random_uuid()) FROM v5 WHERE k='issue-before';
 SELECT pg_temp.check_it(public.mobile_hr_service_v5(v)->>'pending'='true','new authorized operation allowed after proven no-effect') FROM v5 WHERE k='issue-after';
 RESET ROLE;

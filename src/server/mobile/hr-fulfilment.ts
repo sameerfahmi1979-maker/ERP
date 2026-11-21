@@ -22,9 +22,11 @@ async function actorClaims(db:Db) {
   if(error || !data?.claims.sub || !data.claims.session_id)throw new HrError(401,"Current issuer session required.");
   return {sub:data.claims.sub,session_id:data.claims.session_id};
 }
-async function closeUnissued(db:Db,input:Input):Promise<never> {
+async function closeUnissued(db:Db,input:Input,duplicate=false):Promise<never> {
   const {data,error}=await createAdminClient().rpc("mobile_hr_v5_close_unissued",{p_claims:await actorClaims(db),p_data:input});
-  if(!error && data===true)throw new HrError(422,"The official workflow confirmed no issuance. Reopen the request with corrected particulars or an authorized issuer.");
+  if(!error && data===true)throw new HrError(422,duplicate
+    ? "An identical document exists. Reopen the request to select and verify an eligible issued original."
+    : "The official workflow confirmed no issuance. Reopen the request with corrected particulars or an authorized issuer.");
   throw new HrError(503,"Official issuance is pending. Reconcile the original attempt.",true);
 }
 export async function fulfilService(db:Db,i:Input) {
@@ -48,8 +50,8 @@ export async function fulfilService(db:Db,i:Input) {
       clientRequestToken:i.operationId,language:p.language,inputs,...(c.templateId?{templateId:c.templateId}:{})});
     if(!outcome.success || outcome.lifecycleState!=="issued"){
       if(c.kind==="issue-letter" && !outcome.success && !outcome.issuanceId &&
-        ["approval_required","permission_denied","not_registered","validation_failed","company_isolation_violation"].includes(outcome.blocked)) {
-        return closeUnissued(db,i);
+        ["approval_required","permission_denied","not_registered","validation_failed","company_isolation_violation","duplicate_content_warning"].includes(outcome.blocked)) {
+        return closeUnissued(db,i,outcome.blocked==="duplicate_content_warning");
       }
       throw new HrError(503,"Official issuance is pending. Reconcile the original attempt.",true);
     }

@@ -67,3 +67,25 @@ it("passes the approved bilingual recipient to the actual issuer call",async()=>
   recipient_mode:"specific",recipient_organization_en:bilingual.recipient,recipient_organization_ar:bilingual.recipientAr
  })}));
 });
+
+it("closes a confirmed duplicate warning and verifies a separately chosen original",async()=>{
+ const command={kind:"issue-letter" as const,outputCode:"HR_EMBASSY_LETTER",language:"en" as const,sourceId:null,sourceReviewId:null,templateId:null};
+ dep.generate.mockResolvedValue({success:false,blocked:"duplicate_content_warning",existingIssuanceId:71});
+ dep.finalise.mockResolvedValueOnce({data:true});
+ await expect(fulfilService(db,{...context,command})).rejects.toMatchObject({status:422,uncertain:false});
+ expect(dep.finalise).toHaveBeenCalledExactlyOnceWith("mobile_hr_v5_close_unissued",expect.objectContaining({p_data:{...context,command}}));
+ expect(dep.verify).not.toHaveBeenCalled();
+ rpc.mockResolvedValueOnce({data:{employeeId:8,id:3,revision:"2",attempt:null}});
+ expect(await serviceReadWrite(db,{op:"serviceAttempt",employeeId:8,id:3,revision:"2"})).toMatchObject({attempt:null});
+ rpc.mockResolvedValueOnce({data:[{id:5,kind:"issuance",issuanceId:5,checksum,label:"Eligible original"}]});
+ const choices=await serviceReadWrite(db,{op:"serviceActionChoices",employeeId:8,id:3,revision:"2",kind:"issuance",after:0,search:""});
+ expect(choices).toMatchObject({rows:[{issuanceId:5,checksum}]});
+ const operationId="bdba0292-6664-40e3-a595-941c6d11f890";
+ dep.finalise.mockResolvedValueOnce({data:{...done,operationId}});
+ const linked=await fulfilService(db,{...context,operationId,command:{kind:"link-issued-letter",issuanceId:5,checksum}});
+ expect(linked.operationId).toBe(operationId);
+ expect(dep.verify).toHaveBeenCalledExactlyOnceWith(5,{employeeId:8,checksum,mode:"download"});
+ expect(dep.generate).toHaveBeenCalledOnce();
+ expect(dep.generate.mock.calls[0][2]).not.toHaveProperty("authorizeReissue");
+ expect(dep.recover).not.toHaveBeenCalled();
+});

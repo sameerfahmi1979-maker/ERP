@@ -12,7 +12,13 @@ vi.mock("@/lib/rbac/check", async original => ({...await original<typeof import(
 vi.mock("@/server/reads/hr-action-inquiries", () => ({readHrActionInquiry: state.read}));
 vi.mock("next/navigation", () => ({redirect: state.redirect}));
 const context = {profile: {id: 6, auth_user_id: "owned-synthetic", must_change_password: false}, accountStatus: "active", isAccountActive: true, permissionCodes: [], roleCodes: ["system_admin"], roleAssignments: [{roleId: 880101, roleCode: "system_admin", ownerCompanyId: null, branchId: null, permissionCodes: []}]} as unknown as AuthContext;
-const pages: Record<HrActionInquiryKind, () => Promise<React.ReactElement<Record<string, unknown>>>> = {pro: ProPage, disciplinary: DisciplinaryPage, approvals: ApprovalsPage, eos: EosPage};
+const signedOut: AuthContext = {profile: null, email: null, roleCodes: [], permissionCodes: [], accountStatus: "none", isAccountActive: false};
+const pages: Record<HrActionInquiryKind, () => Promise<React.ReactElement<Record<string, unknown>>>> = {
+  pro: () => ProPage({searchParams: Promise.resolve({})}),
+  disciplinary: DisciplinaryPage,
+  approvals: ApprovalsPage,
+  eos: EosPage,
+};
 const payload = (kind: HrActionInquiryKind) => ({success: true, data: {kind, rows: [], totalCount: 0, page: 1, pageSize: 25}, updatedAt: 1791127000000});
 afterEach(() => {state.auth.mockReset(); state.read.mockReset(); state.redirect.mockClear();});
 it.each(HR_ACTION_INQUIRY_KINDS)("%s initial server read reuses the validated context and exact seed identity", async kind => {
@@ -27,7 +33,7 @@ it.each(HR_ACTION_INQUIRY_KINDS)("%s failed or wrong-kind initial data renders a
   }
 });
 for (const mode of ["no-role", "signed-out", "suspended", "forced-password"] as const) it.each(HR_ACTION_INQUIRY_KINDS)("%s refuses " + mode + " before business reads", async kind => {
-  state.auth.mockResolvedValue(mode === "signed-out" ? null : mode === "no-role" ? {...context, permissionCodes: [], roleCodes: [], roleAssignments: []} : mode === "suspended" ? {...context, isAccountActive: false} : {...context, profile: {...context.profile!, must_change_password: true}});
+  state.auth.mockResolvedValue(mode === "signed-out" ? signedOut : mode === "no-role" ? {...context, permissionCodes: [], roleCodes: [], roleAssignments: []} : mode === "suspended" ? {...context, isAccountActive: false} : {...context, profile: {...context.profile!, must_change_password: true}});
   await expect(pages[kind]()).rejects.toThrow("REDIRECT:/access-denied"); expect(state.read).not.toHaveBeenCalled();
 });
 it("EOS-only viewer receives EOS inquiry but no ordinary or confidential business data", async () => {

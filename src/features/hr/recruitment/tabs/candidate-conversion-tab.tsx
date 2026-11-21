@@ -2,7 +2,6 @@
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import {CandidateChildReadPause, useCandidateChildReadAdmission, type CandidateChildAdmissionProps} from "../candidate-child-read-admission";
 
-import { ERPCombobox } from "@/components/erp/combobox";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { Button } from "@/components/ui/button";
@@ -61,7 +60,7 @@ const EMPTY_FORM: ConversionForm = {
   employment_type_id: null,
   employee_category_id: null,
   joining_date: "",
-  employee_status: "active",
+  employee_status: "inactive",
   conversion_notes: "",
   offer_id: null,
   offer_revision:'',
@@ -70,11 +69,6 @@ const EMPTY_FORM: ConversionForm = {
   emergency_contact_name:'',
   emergency_contact_mobile:'',
 };
-
-const EMPLOYEE_STATUS_OPTIONS = [
-  { value: "active", label: "Active" },
-  { value: "probation", label: "Probation" },
-];
 
 export function CandidateConversionTab({ candidate, authContext, canManage, canCreateEmployee, onChildOpen, mutationAdmitted = true, onRetryMutationAdmission }: Props) {
   const queryClient = useQueryClient();
@@ -282,12 +276,7 @@ export function CandidateConversionTab({ candidate, authContext, canManage, canC
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Employee Status</Label>
-            <ERPCombobox ariaLabel="Employee Status"
-              value={form.employee_status || null}
-              onValueChange={(v) => set("employee_status", String(v ?? "active"))}
-              options={EMPLOYEE_STATUS_OPTIONS}
-              placeholder="Select status"
-            />
+            <Input aria-label="Employee Status" value={session.pending && form.employee_status !== "inactive" ? form.employee_status : "Pending joining"} readOnly />
           </div>
           <div className="col-span-12 md:col-span-6">
             <Label>Branch ID (optional)</Label>

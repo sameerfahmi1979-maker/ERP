@@ -1,6 +1,6 @@
 import {afterEach,expect,it,vi} from "vitest";
-const s=vi.hoisted(()=>({permissions:["notifications.admin","reports.history.view","dms.admin"],active:true,calls:[] as unknown[][],results:[] as unknown[],auth:0}));
-vi.mock("@/lib/rbac/check",async()=>({...await import("@/lib/rbac/scope"),getAuthContext:async()=>{s.auth++;return {profile:{id:6,must_change_password:false},permissionCodes:s.permissions,roleCodes:[],roleAssignments:[],isAccountActive:s.active};}}));
+const s=vi.hoisted(()=>({permissions:["notifications.admin","reports.history.view","dms.admin"],scopedOnly:false,active:true,calls:[] as unknown[][],results:[] as unknown[],auth:0}));
+vi.mock("@/lib/rbac/check",async()=>({...await import("@/lib/rbac/scope"),getAuthContext:async()=>{s.auth++;return {profile:{id:6,must_change_password:false},permissionCodes:s.permissions,globalPermissionCodes:s.scopedOnly?[]:s.permissions,roleCodes:[],roleAssignments:[],isAccountActive:s.active};}}));
 vi.mock("@/lib/supabase/server",()=>({createClient:async()=>({from:(...args:unknown[])=>{s.calls.push(["from",...args]);const value=s.results.shift();const q:Record<string,unknown>={then:(f:(value:unknown)=>unknown)=>Promise.resolve(value).then(f)};
  for(const key of ["select","or","eq","neq","ilike","is","order","range","abortSignal"])q[key]=(...args:unknown[])=>{s.calls.push([key,...args]);return q;};return q;}})}));
 import {readNotificationDeliveries} from "@/server/reads/notification-deliveries";
@@ -17,12 +17,12 @@ const dms={id:1,document_id:2,visible_document_id:2,recipient_user_id:6,document
 const delivery={id:1,run_id:1,delivery_type:"email",recipient_to:["test@example.invalid"],subject:"Synthetic",attachment_format:"pdf",attachment_filename:"test.pdf",provider:null,delivery_status:"failed",sent_at:null,created_at:"2026-10-14T00:00:00Z",error_message:"PRIVATE_PROVIDER_ERROR"};
 const families=[
  {name:"logs",reader:readNotificationDeliveries,route:logsRoute,row:log,table:"perf_notification_delivery_read",columns:"id,notification_id,email_queue_id,delivery_channel,status,message,duration_ms,attempt_number,error_message,created_at"},
- {name:"templates",reader:readNotificationTemplates,route:templatesRoute,row:template,table:"erp_notification_templates",columns:"id,template_code,template_name,source_module,notification_type,default_severity,default_channel_in_app,default_channel_email,is_active"},
+ {name:"templates",reader:readNotificationTemplates,route:templatesRoute,row:template,table:"notification_template_metadata_read",columns:"id,template_code,template_name,source_module,notification_type,default_severity,default_channel_in_app,default_channel_email,is_active"},
  {name:"dms",reader:readDmsNotifications,route:dmsRoute,row:dms,table:"f10_dms_personal_notification_read",columns:"id,document_id,recipient_user_id,subject,message,channel,status,scheduled_for,read_at,bridge_status,global_notification_id,global_email_queue_id,visible_document_id,document_no"},
  {name:"report-deliveries",reader:readReportDeliveries,route:reportsRoute,row:delivery,table:"erp_report_delivery_logs",columns:"id,run_id,delivery_type,recipient_to,subject,attachment_format,attachment_filename,provider,delivery_status,sent_at,created_at,error_message"},
 ];
 const result=(rows:unknown[],count=rows.length)=>({data:rows,count,error:null});
-afterEach(()=>Object.assign(s,{permissions:["notifications.admin","reports.history.view","dms.admin"],active:true,calls:[],results:[],auth:0}));
+afterEach(()=>Object.assign(s,{permissions:["notifications.admin","reports.history.view","dms.admin"],scopedOnly:false,active:true,calls:[],results:[],auth:0}));
 for(const f of families){
  it(f.name+" reads bounded exact complete pages beyond the previous cap and strips unknown private fields",async()=>{
   s.results=[result([{...f.row,metadata_json:{secret:"PRIVATE_METADATA"},html_template:"PRIVATE_HTML"}],1101)];
@@ -50,6 +50,18 @@ it('DMS admin operational view retains producer/bridge history, separate from pe
 it("template list does not load wording and detail requires view AND management",async()=>{
  s.permissions=["notifications.templates.view"];expect(await readNotificationTemplateDetail({id:1})).toMatchObject({success:false,error:"Permission denied"});expect(s.calls).toEqual([]);
  s.permissions=["notifications.templates.manage"];expect((await readNotificationTemplateDetail({id:1})).success).toBe(false);
+});
+it("scope-only administrative grants do not reach global delivery or template reads",async()=>{
+ s.scopedOnly=true;s.permissions=["notifications.logs.view","notifications.templates.view","notifications.templates.manage"];
+ const results=await Promise.all([readNotificationDeliveries({}),readNotificationTemplates({}),readNotificationTemplateDetail({id:1})]);
+ expect(results.every(result=>!result.success)).toBe(true);expect(s.calls).toEqual([]);
+});
+it("global delivery and template viewers read only their permitted projections",async()=>{
+ s.permissions=["notifications.logs.view","notifications.templates.view"];s.results=[result([log]),result([template])];
+ expect((await readNotificationDeliveries({})).success).toBe(true);
+ expect((await readNotificationTemplates({})).success).toBe(true);
+ expect(s.calls).toContainEqual(["from","perf_notification_delivery_read"]);
+ expect(s.calls).toContainEqual(["from","notification_template_metadata_read"]);
 });
 it("template detail loads only the selected undeleted template",async()=>{
  s.results=[result([{...template,subject_template:"Subject",html_template:"HTML",text_template:"Text",is_system:false,created_at:"2026-10-14T00:00:00Z",updated_at:"2026-10-14T00:00:00Z"}])];

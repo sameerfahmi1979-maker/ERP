@@ -31,11 +31,15 @@ export default async function AppBrandingSettingsPage() {
     loadRuntimeAppBranding(),
   ]);
 
-  if (!settingsResult.success || !settingsResult.data) {
+  if (settingsResult.state !== "configured") {
     return (
       <div className="p-6 space-y-6">
         <ERPPageHeader title="App Branding" description="Configure your application identity and assets." />
-        <LoadError title="App branding settings" retryHref="/admin/settings/branding" />
+        {settingsResult.state === "unavailable" ? <LoadError title="App branding settings" retryHref="/admin/settings/branding" /> :
+          <section role="status" className="space-y-2 rounded-md border bg-card p-5">
+            <h2 className="font-semibold">{settingsResult.state === "inactive" ? "App branding is inactive" : "App branding setup required"}</h2>
+            <p className="text-sm text-muted-foreground">The ERP uses its built-in branding. An administrator can review the default branding configuration.</p>
+          </section>}
       </div>
     );
   }

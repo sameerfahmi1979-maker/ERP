@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "@/lib/rbac/check";
 import { dispatchHr } from "../hr";
-import { employeeContext, timeRead, type Db } from "../hr-reads";
+import { employeeContext, leaveRead, timeRead, type Db } from "../hr-reads";
 const { createClient,rpc,auth }=vi.hoisted(()=>({createClient:vi.fn(),rpc:vi.fn(),auth:vi.fn()}));
 vi.mock("@/lib/rbac/check",async original=>({...await original<typeof import("@/lib/rbac/check")>(),getAuthContext:auth}));
 vi.mock("@/lib/rbac/employee-access",async original=>({...await original<typeof import("@/lib/rbac/employee-access")>(),getLinkedEmployeeId:async()=>12}));
@@ -14,6 +14,24 @@ function source(row:Record<string,unknown>|null,error:unknown=null):Db {
   return {from:()=>q} as unknown as Db;
 }
 describe("exact subject reads",()=>{
+  it("uses T04's verified available balance and shows overlap review without amounts",async()=>{
+    const start="2026-02-28",end="2027-02-27";
+    const shared={leave_year:2026,period_start:start,period_end:end,label:"Annual leave"};
+    rpc.mockResolvedValue({error:null,data:[
+      {...shared,id:72,source:"t04",known:true,entitled_days:30,earned_days:13.5,used_days:4,
+        reserved_days:2,carry_forward_days:1.25,available_days:8.75},
+      {...shared,id:73,source:"legacy",known:false,entitled_days:null,used_days:null,reserved_days:null,
+        review_reason:"Ask HR to reconcile this legacy period with the managed leave balance."},
+    ]});
+    const page=await leaveRead({rpc} as unknown as Db,{allows:()=>true} as never,{op:"leaveBalances",employeeId:12,after:71});
+    expect(page).toEqual({more:false,rows:[
+      {id:72,label:"Annual leave",startDate:start,endDate:end,year:2026,source:"t04",known:true,entitled:30,
+        earned:13.5,used:4,reserved:2,carryForward:1.25,available:8.75},
+      {id:73,label:"Annual leave",startDate:start,endDate:end,year:2026,source:"legacy",known:false,entitled:null,
+        used:null,reserved:null,available:null,reviewReason:"Ask HR to reconcile this legacy period with the managed leave balance."},
+    ]});
+    expect(rpc).toHaveBeenCalledWith("mobile_hr_leave_read",{p_kind:"balances",p_employee:12,p_cursor:71});
+  });
   it("shows Dubai dates for midnight punches and overnight daily in/out without changing daily dates",async()=>{
     const q={select:()=>q,eq:()=>q,order:()=>q,range:async()=>({error:null,data:[{id:3,workspace_revision:"1",attendance_date:"2026-11-20",attendance_type:"office",approval_status:"pending",first_in_at:"2026-11-19T20:30:00+00:00",last_out_at:"2026-11-20T21:15:00+00:00",total_hours:24.75}]})};
     const r=await timeRead({from:()=>q} as unknown as Db,{allows:()=>true} as never,{op:"time",kind:"attendance",employeeId:12,page:1});
@@ -40,6 +58,12 @@ describe("exact subject reads",()=>{
   });
 });
 describe("binding native operations to original records",()=>{
+  it("tells employees when a managed leave request needs HR review",async()=>{
+    rpc.mockResolvedValue({data:null,error:{code:"23514",message:"Managed leave requires PRO review before it can be submitted"}});
+    await expect(dispatchHr({op:"leaveSubmit",employeeId:9,operationId:uid,leaveTypeId:2,
+      startDate:"2026-11-21",endDate:"2026-11-21",reason:"Synthetic leave",documentId:null,documentVersionId:null},ctx))
+      .rejects.toMatchObject({status:422,message:"Ask HR to review this leave request before submitting it."});
+  });
   it("confirms an evidence-free renewal as a proposal with a distinct request ID",async()=>{
     rpc.mockResolvedValue({data:{id:600,employeeId:9,operationId:uid,revision:1,replayed:false},error:null});
     const input={op:"renewalSubmit",operationId:uid,employeeId:9,id:2,revision:"8",kind:"identity-document",reason:"Expires shortly",documentId:null,documentVersionId:null} as const;

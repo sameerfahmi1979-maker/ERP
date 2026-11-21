@@ -1,23 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { CheckCircle2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { ERPCombobox } from "@/components/erp/combobox";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
 import { DmsLoadError } from "@/features/dms/dms-load-error";
+import { useReadCacheOwner } from "@/components/layout/read-cache-boundary";
+import { RENEWAL_REPLACEMENT_SEARCH_LIMIT } from "@/lib/dms/renewal-completion";
 import {
   completeDmsRenewalRequest,
   searchDmsDocumentsForRenewalReplacement,
-  type RenewalReplacementCandidate,
 } from "@/server/actions/dms/renewals";
-import { getDmsDocumentLinks } from "@/server/actions/dms/document-links";
 import {
   invalidateAuthorizedRead,
   invalidateDmsRenewals,
@@ -32,8 +33,6 @@ interface DmsCompleteRenewalDialogProps {
   renewalId: number;
   renewalNo: string;
   documentId: number;
-  /** DMS RENEWAL.2 — scopes the replacement-document search to the same document type. */
-  documentTypeId: number | null;
   onSuccess?: () => void;
 }
 
@@ -43,51 +42,52 @@ export function DmsCompleteRenewalDialog({
   renewalId,
   renewalNo,
   documentId,
-  documentTypeId,
   onSuccess,
 }: DmsCompleteRenewalDialogProps) {
   const queryClient = useQueryClient();
+  const owner = useReadCacheOwner();
+  const admitted = owner?.identity != null && owner.isLive();
+  const ownerKey = [owner?.identity?.authUserId, owner?.identity?.scopeVersion, owner?.generation];
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [replacementDocumentId, setReplacementDocumentId] = useState<number | null>(null);
-  const [newExpiryDate, setNewExpiryDate] = useState("");
+  const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
+  const [cursors, setCursors] = useState<(number | null)[]>([null]);
   const [notes, setNotes] = useState("");
+  const updatingSearch = search.trim() !== query;
+  const before = cursors.at(-1) ?? null;
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(search.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const {
-    data: candidates = [],
+    data: page,
     isLoading: loadingCandidates,
     isError: candidatesError,
     isFetching: candidatesFetching,
     refetch: retryCandidates,
   } = useQuery({
-    queryKey: ["dms", "renewals", "replacement-candidates", documentTypeId, documentId],
+    queryKey: ["dms", "renewals", "replacement-candidates", ...ownerKey, renewalId, query, before],
     queryFn: async () => {
-      if (!documentTypeId) return [];
-      const result = await searchDmsDocumentsForRenewalReplacement(documentTypeId, documentId);
-      if (!result.success) throw new Error(result.error);
-      return result.data ?? [];
+      const result = await searchDmsDocumentsForRenewalReplacement(renewalId, query, before);
+      if (!owner?.isLive() || !result.success || !result.data) throw new Error(result.error);
+      return result.data;
     },
-    enabled: open && !!documentTypeId,
-    staleTime: 30_000,
+    enabled: open && admitted && !updatingSearch,
+    gcTime: 0,
+    retry: false,
   });
-
-  // Shows who/what the search is scoped to (e.g. "Employee — John Doe"), so it's
-  // clear the replacement list is limited to the same owner as the original doc.
-  const { data: ownerLinks = [] } = useQuery({
-    queryKey: ["dms", "documents", "links", documentId],
-    queryFn: async () => {
-      const result = await getDmsDocumentLinks(documentId);
-      if (!result.success) return [];
-      return result.data ?? [];
-    },
-    enabled: open,
-    staleTime: 30_000,
-  });
-  const scopeOwner = ownerLinks.find((l) => l.is_primary) ?? ownerLinks[0];
-  const canSubmit = !candidatesError && candidates.some((candidate) => candidate.id === replacementDocumentId);
+  const loading = updatingSearch || loadingCandidates || candidatesFetching;
+  const candidates = !admitted || loading || candidatesError ? [] : page?.rows ?? [];
+  const nextBefore = admitted && !loading && !candidatesError ? page?.nextBefore : null;
+  const replacement = candidates.find((candidate) => candidate.id === replacementDocumentId);
 
   const reset = () => {
     setReplacementDocumentId(null);
-    setNewExpiryDate("");
+    setSearch("");
+    setQuery("");
+    setCursors([null]);
     setNotes("");
   };
 
@@ -98,24 +98,16 @@ export function DmsCompleteRenewalDialog({
     }
   };
 
-  // Auto-fill the new expiry date from the picked replacement document (still editable).
-  const handleReplacementChange = (value: string | number | null) => {
-    const id = value == null ? null : Number(value);
-    setReplacementDocumentId(id);
-    const picked = id != null ? candidates.find((c) => c.id === id) : null;
-    if (picked?.expiry_date) setNewExpiryDate(picked.expiry_date);
-  };
-
   const handleSubmit = async () => {
-    if (!canSubmit || replacementDocumentId === null) {
+    if (!owner?.isLive() || !replacement) {
       toast.error("Select the replacement document that was uploaded for this renewal");
       return;
     }
     setIsSubmitting(true);
     try {
       const result = await completeDmsRenewalRequest(renewalId, {
-        new_expiry_date: newExpiryDate || undefined,
-        replacement_document_id: replacementDocumentId,
+        new_expiry_date: replacement.expiry_date ?? undefined,
+        replacement_document_id: replacement.id,
         notes: notes || undefined,
       });
 
@@ -137,7 +129,7 @@ export function DmsCompleteRenewalDialog({
     }
   };
 
-  const options: ERPComboboxOption[] = candidates.map((c: RenewalReplacementCandidate) => ({
+  const options: ERPComboboxOption[] = candidates.map((c) => ({
     value: c.id,
     label: c.title,
     code: c.document_no,
@@ -154,7 +146,7 @@ export function DmsCompleteRenewalDialog({
       mode="edit"
       size="md"
       isSubmitting={isSubmitting}
-      submitDisabled={!canSubmit}
+      submitDisabled={!replacement}
       onSubmit={handleSubmit}
       submitLabel="Complete Renewal"
     >
@@ -170,49 +162,76 @@ export function DmsCompleteRenewalDialog({
         </div>
 
         <div>
+          <Label htmlFor="replacement-search" className="mb-1.5 block">Search replacement documents</Label>
+          <Input
+            id="replacement-search"
+            type="search"
+            value={search}
+            maxLength={RENEWAL_REPLACEMENT_SEARCH_LIMIT}
+            placeholder="Search by document no. or title"
+            onChange={(event) => {
+              const value = event.target.value;
+              if (value.trim() !== search.trim()) {
+                setCursors([null]);
+                setReplacementDocumentId(null);
+              }
+              setSearch(value);
+            }}
+          />
+        </div>
+
+        <div>
           <RequiredLabel required className="mb-1.5 block">
             Replacement Document
           </RequiredLabel>
-          {candidatesError ? (
+          {!updatingSearch && candidatesError ? (
             <DmsLoadError subject="replacement documents" retry={retryCandidates} pending={candidatesFetching} />
           ) : (
             <>
               <ERPCombobox
                 ariaLabel="Replacement Document"
                 value={replacementDocumentId}
-                onValueChange={handleReplacementChange}
+                onValueChange={(value) => setReplacementDocumentId(value == null ? null : Number(value))}
                 options={options}
-                placeholder="Search for the document already uploaded to replace this one..."
-                searchPlaceholder="Search by document no. or title..."
+                placeholder="Select the uploaded replacement"
+                searchPlaceholder="Filter this page"
                 showCode
-                loading={loadingCandidates}
+                loading={loading}
                 required
-                emptyText={
-                  documentTypeId
-                    ? scopeOwner
-                      ? `No matching documents found for ${scopeOwner.entity_type_label} — ${scopeOwner.entity_display_name}.`
-                      : "No matching documents found."
-                    : "Unknown document type"
-                }
+                emptyText="No matching documents found."
               />
-              <p className="text-[10px] text-muted-foreground mt-1">
-                {scopeOwner
-                  ? `Showing documents linked to ${scopeOwner.entity_type_label} — ${scopeOwner.entity_display_name}.`
-                  : "Select an existing document of the same type."}
-              </p>
             </>
+          )}
+          {admitted && (cursors.length > 1 || nextBefore) && (
+            <div className="mt-2 flex items-center gap-2">
+              <Button type="button" size="sm" variant="outline" disabled={cursors.length === 1 || loading}
+                onClick={() => {
+                  setCursors((current) => current.slice(0, -1));
+                  setReplacementDocumentId(null);
+                }}>
+                Previous results
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={nextBefore == null}
+                onClick={() => {
+                  if (nextBefore == null) return;
+                  setCursors([...cursors, nextBefore]);
+                  setReplacementDocumentId(null);
+                }}>
+                Next results
+              </Button>
+            </div>
           )}
         </div>
 
         <div>
           <Label htmlFor="new-expiry" className="mb-1.5 block">
-            New Expiry Date <span className="text-xs text-muted-foreground">(auto-filled from replacement, editable)</span>
+            New Expiry Date <span className="text-xs text-muted-foreground">(from replacement document)</span>
           </Label>
           <Input
             id="new-expiry"
             type="date"
-            value={newExpiryDate}
-            onChange={(e) => setNewExpiryDate(e.target.value)}
+            value={replacement?.expiry_date ?? ""}
+            readOnly
           />
         </div>
 

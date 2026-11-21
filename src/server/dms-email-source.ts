@@ -8,7 +8,7 @@ import {withDeadline} from '@/lib/email/queue/delivery-contract';
 import {F09_LIMITS,queryWithin,type AbortableQuery} from '@/lib/email/queue/runtime-limits';
 import {queueEmail} from '@/server/actions/notifications/email-queue';
 import {createNotification} from '@/server/actions/notifications/notifications';
-import {renderNotificationTemplate} from '@/server/actions/notifications/templates';
+import {renderDmsNotificationWording} from '@/server/dms-notification-wording';
 import {notificationDocumentSubjectsAllowed} from '@/server/notification-document-authority';
 const positive=z.number().int().positive().refine(Number.isSafeInteger);
 const docSchema=z.object({id:positive,document_no:z.string(),title:z.string(),owner_user_id:positive.nullable(),created_by:positive.nullable(),expiry_date:z.string().nullable(),owning_company_id:positive,owning_branch_id:positive.nullable(),confidentiality_level:z.string(),status:z.string(),is_archived:z.boolean(),expiry_tracking_override:z.string().nullable()}).strip();
@@ -51,7 +51,7 @@ async function bridgeSource(dmsNotificationId:number,options:{forceEmail?:boolea
   signal.throwIfAborted();
   const [flag,settings]=await Promise.all([
    query(db.from('erp_email_feature_flags').select('is_enabled').eq('feature_code','DMS_EXPIRY_EMAILS').maybeSingle()),
-   query(db.from('dms_notification_settings').select('is_enabled,email_enabled,in_app_enabled').eq('id',1).maybeSingle()),
+   query(createAdminClient().from('dms_notification_settings').select('is_enabled,email_enabled,in_app_enabled').eq('id',1).maybeSingle()),
   ]);
   if(flag.error||settings.error||!settings.data)return {success:false,error:'Delivery settings could not be verified.'};
   if(!settings.data.is_enabled||settings.data.in_app_enabled!==true&&settings.data.email_enabled!==true)return {success:true,data:{dmsNotificationId,bridgeStatus:dmsEmailBridgeState(row.bridge_status),skipped:true,reason:'DMS notification channels are disabled. No records changed.'}};
@@ -76,10 +76,10 @@ async function bridgeSource(dmsNotificationId:number,options:{forceEmail?:boolea
   }
   if(!notificationId){
    const templateCode=expired?'DMS_DOCUMENT_EXPIRED':'DMS_EXPIRY_REMINDER';
-   const rendered=await renderNotificationTemplate(templateCode,variables);
+   const rendered=await renderDmsNotificationWording(templateCode,variables,signal);
    signal.throwIfAborted();
-   if(!rendered.success||!rendered.data)return {success:false,error:'Notification wording is unavailable; existing records are unchanged.'};
-   const created=await createNotification({notification_code:code,source_module:'DMS',source_entity_type:'dms_documents',source_entity_id:doc.id,notification_type:String(row.notification_type),severity:expired?'urgent':'warning',title:rendered.data.subject,message:rendered.data.textBody,recipient_user_id:recipientId.data,recipient_email:email,channel_in_app:settings.data.in_app_enabled===true,channel_email:emailEnabled,scheduled_for:typeof row.scheduled_for==='string'?row.scheduled_for:undefined,action_url:`/dms/documents/record/${doc.id}`,action_label:'View document',metadata_json:{dms_notification_id:dmsNotificationId}});
+   if(!rendered)return {success:false,error:'Notification wording is unavailable; existing records are unchanged.'};
+   const created=await createNotification({notification_code:code,source_module:'DMS',source_entity_type:'dms_documents',source_entity_id:doc.id,notification_type:String(row.notification_type),severity:expired?'urgent':'warning',title:rendered.subject,message:rendered.textBody,recipient_user_id:recipientId.data,recipient_email:email,channel_in_app:settings.data.in_app_enabled===true,channel_email:emailEnabled,scheduled_for:typeof row.scheduled_for==='string'?row.scheduled_for:undefined,action_url:`/dms/documents/record/${doc.id}`,action_label:'View document',metadata_json:{dms_notification_id:dmsNotificationId}});
    signal.throwIfAborted();
    if(created.success&&created.data)notificationId=created.data.id;
    else{const retry=await query(db.from('erp_notifications').select('id').eq('notification_code',code).is('deleted_at',null).maybeSingle());if(retry.error||!retry.data)return {success:false,error:'Notification creation unconfirmed. Retry the same source; no new email identity is used.'};notificationId=retry.data.id;}

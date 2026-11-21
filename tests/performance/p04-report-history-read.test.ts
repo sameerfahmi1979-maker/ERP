@@ -99,7 +99,7 @@ it("loads exactly one selected complete detail without filters or unrelated stor
   expect(state.calls).toContainEqual(["eq", "id", 3]); expect(state.calls).toContainEqual(["maybeSingle"]); expect(JSON.stringify(result)).not.toContain("PRIVATE_");
   expect(state.calls.filter(c => c[0] === "from")).toEqual([["from", "erp_report_runs"]]);
 });
-it.each([null, {...detail, id: 4}, {...detail, redaction_summary_json: {wasRedacted: "false"}}, {...detail, completed_at: "not-a-date"}])("unavailable or malformed detail does not masquerade as complete: %j", async data => {
+it.each([{...detail, id: 4}, {...detail, redaction_summary_json: {wasRedacted: "false"}}, {...detail, completed_at: "not-a-date"}])("malformed detail does not masquerade as complete: %j", async data => {
   state.result = {data, error: null}; expect((await readReportHistory({mode: "detail", recordId: 3})).success).toBe(false);
 });
 it("the route keeps reads uncached/correlated and error details opaque", async () => {
@@ -107,6 +107,31 @@ it("the route keeps reads uncached/correlated and error details opaque", async (
   const response = await POST(new Request("http://localhost/api/reads/report-history", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"}));
   expect(response.status).toBe(503); expect(response.headers.get("Cache-Control")).toContain("no-store"); expect(response.headers.get("Vary")).toContain("Cookie"); expect(response.headers.get("X-ERP-Correlation")).toBeTruthy(); expect(await response.text()).not.toContain("PRIVATE_DATABASE_ERROR");
   const large = await POST(new Request("http://localhost/api/reads/report-history", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({search: "x".repeat(5000)})})); expect(large.status).toBe(400);
+});
+it("a scoped run that is missing or hidden is distinct from history read failure and explicit denial", async () => {
+  const request = (body: object) => new Request("http://localhost/api/reads/report-history", {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body),
+  });
+  const selected = {mode: "detail", recordId: 3};
+  state.result = {data: null, error: null};
+  const missing = await POST(request(selected));
+  expect(missing.status).toBe(200);
+  expect(await missing.json()).toMatchObject({success: true, data: {mode: "detail", record: null}});
+  expect(state.calls.filter(c => c[0] === "from")).toEqual([["from", "erp_report_runs"]]);
+  state.result = {data: null, status: 503, error: {message: "PRIVATE_HISTORY_ERROR"}};
+  const failed = await POST(request(selected));
+  expect(failed.status).toBe(503);
+  expect(await failed.text()).not.toContain("PRIVATE_HISTORY_ERROR");
+  state.result = {data: null, status: 403, error: {code: "42501", message: "PRIVATE_PERMISSION_ERROR"}};
+  for (const criteria of [selected, {}]) {
+    const denied = await POST(request(criteria));
+    expect(denied.status).toBe(403);
+    expect(await denied.text()).not.toContain("PRIVATE_PERMISSION_ERROR");
+  }
+  state.result = {data: [], count: 0, error: null};
+  const empty = await POST(request({}));
+  expect(empty.status).toBe(200);
+  expect(await empty.json()).toMatchObject({success: true, data: {mode: "list", rows: [], totalCount: 0}});
 });
 it("schema defaults and row completeness are explicit contracts", () => {
   expect(REPORT_HISTORY_ORDER_CONTRACT).toBe("RH-NATURAL-ICU-UTF8-V1");

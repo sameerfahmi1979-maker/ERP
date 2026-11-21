@@ -282,7 +282,13 @@ export function renderOfficialDocumentHtml(
   definition: OfficialDocumentDefinition,
   ctx: OfficialDocumentRenderContext
 ): string {
-  const model = definition.build(ctx);
+  return renderOfficialDocumentModelHtml(definition.build(ctx), ctx);
+}
+
+export function renderOfficialDocumentModelHtml(
+  model: OfficialDocumentModel,
+  ctx: OfficialDocumentRenderContext,
+): string {
   const language = ctx.language;
   const branding = ctx.branding;
   const needsArabic = language !== "en" || /[\u0600-\u06ff]/.test(JSON.stringify([model, branding]));

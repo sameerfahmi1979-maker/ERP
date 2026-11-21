@@ -753,7 +753,7 @@ export function getWorkspaceRouteConfig(
   const pathname = route.split(/[?#]/)[0];
 
   // 1. Exact match
-  const exact = REGISTRY.find((r) => r.route === pathname);
+  const exact = REGISTRY.find((r) => !r.pattern && r.route === pathname);
   if (exact) return exact;
 
   // 2. RegExp pattern match (for record routes like /record/123)
@@ -778,7 +778,7 @@ export function safePersistedWorkspaceRoute(route: string): string | null {
   if (!isWorkspaceRoute(route) || route.length > 2048) return null;
   const pathname = route.split(/[?#]/)[0];
   const config = getWorkspaceRouteConfig(pathname);
-  if (!config || (config.route !== pathname && config.pattern?.exec(pathname)?.[0] !== pathname)) return null;
+  if (!config || (config.pattern ? config.pattern.exec(pathname)?.[0] !== pathname : config.route !== pathname)) return null;
   const mode = new URLSearchParams(route.split("?")[1]?.split("#")[0]).get("mode");
   return pathname + (mode === "view" || mode === "edit" ? `?mode=${mode}` : "");
 }

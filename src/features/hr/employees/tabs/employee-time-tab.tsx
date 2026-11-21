@@ -1,8 +1,10 @@
 "use client";
+import { attendanceWorkedFacts } from "@/lib/hr/time/worked-facts";
 import { HrIconButton } from "@/features/hr/employees/hr-icon-button";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
 import{LeavePeriodBalances}from'../leave-period-balances';
+import { AssistedLeavePanel, assistedLeaveCapabilities } from '@/features/hr/time/leave/assisted-leave-panel';
 
 /**
  * ERP HR.4 — Employee Time Tab
@@ -110,8 +112,9 @@ function TimeSession({employeeId, authContext, onChildOpen}: Props) {
   const canManageAttendance = checkPerm(authContext, "hr.attendance.manage");
   const canViewLeave = ["hr.leave.view", "hr.leave.view.self", "hr.leave.view.team", "hr.leave.manage"].some(code => checkPerm(authContext, code));
   const canManageLeave = checkPerm(authContext, "hr.leave.manage");
+  const canUseAssistedLeave = assistedLeaveCapabilities.some(code => authContext.permissionCodes.includes(code));
 
-  if (!active || subjectDenied || !canViewAttendance && !canViewLeave) {
+  if (!active || subjectDenied || !canViewAttendance && !canViewLeave && !canUseAssistedLeave) {
     return (
       <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
         <AlertTriangle className="h-4 w-4 mr-2" />
@@ -122,6 +125,7 @@ function TimeSession({employeeId, authContext, onChildOpen}: Props) {
 
   return (
     <div className="space-y-6 p-6"><HrChildRecoveryPanel authContext={authContext}/>{canViewLeave&&<LeavePeriodBalances employee={employeeId}identity={identity}/>}
+      {canUseAssistedLeave && <AssistedLeavePanel employee={employeeId} identity={JSON.stringify(identity)} authContext={authContext} />}
       {canViewAttendance && (
         <>
           <AttendanceSection
@@ -200,11 +204,13 @@ function AttendanceSection({employeeId,authContext,canManage,onChildOpen,onSubje
         <div className="border rounded-md divide-y">
           <RecordCollection presentation="embedded" id="hr.employee-time-tab.AttendanceSection.summaries" rows={summaries} serverRead={dailyRead.serverRead} isLoading={dailyRead.busy} fields={[{"id":"attendance_date","path":"attendance_date","label":"Attendance Date"},{"id":"approval_status","path":"approval_status","label":"Approval Status"}]} renderRecord={(row) => {
             const badge = getAttendanceStatusBadge(row.approval_status);
+            const worked = attendanceWorkedFacts(row.total_hours, row.worked_minutes);
             return (
               <div key={row.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">
                 <span className="w-24 text-muted-foreground shrink-0">{fmtDate(row.attendance_date)}</span>
                 <span className="w-20 font-medium shrink-0">{getAttendanceTypeLabel(row.attendance_type)}</span>
-                <span className="text-muted-foreground shrink-0">{formatHours(row.total_hours)}</span>
+                <span className="text-muted-foreground shrink-0">{worked.state === "Unknown" ? "Work hours unknown" : formatHours(worked.hours)}
+                  {worked.state === "Recorded only" && " (recorded)"}</span>
                 {row.is_missing_punch && <Badge variant="destructive" className="text-xs">Missing Punch</Badge>}
                 <Badge variant={badge.variant} className="text-xs">{badge.label}</Badge>
                 <div className="ml-auto flex gap-1 shrink-0">

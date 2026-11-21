@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { canViewDmsAiObservability } from "@/lib/ai/observability/access";
 import { getDmsIntelligenceAdminStats } from "@/server/actions/dms/intelligence-admin";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { DmsIntelligenceAdminPageClient } from "@/features/dms/admin/dms-intelligence-admin-page-client";
@@ -52,6 +53,7 @@ export default async function DmsIntelligencePage() {
 
       <DmsIntelligenceAdminPageClient
         stats={statsResult.data ?? defaultStats}
+        canOpenAiObservability={canViewDmsAiObservability(ctx)}
       />
     </div>
   );

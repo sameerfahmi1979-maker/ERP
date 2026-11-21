@@ -26,7 +26,7 @@ export default async function PartyNewPage({ searchParams }: Props) {
   const authContext = await getAuthContext();
 
   if (!hasPermission(authContext, "master_data.parties.view")) {
-    redirect("/admin");
+    redirect("/access-denied");
   }
 
   if (!hasPermission(authContext, "master_data.parties.create") || !hasGlobalPermission(authContext,"numbering.rules.generate")) {

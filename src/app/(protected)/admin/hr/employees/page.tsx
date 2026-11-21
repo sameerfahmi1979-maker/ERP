@@ -5,6 +5,7 @@ import { readScopeVersion } from "@/lib/reads/scope-version";
 import { canBrowseEmployees } from "@/lib/rbac/employee-access";
 import { readEmployees } from "@/server/reads/employees";
 import { EmployeesTable } from "@/features/hr/employees/employees-table";
+import { EmploymentChangeReview } from "@/features/hr/employees/employment-change-controls";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { HrReportsMenu } from "@/components/erp/hr-reports-menu";
 import { isHrAiFeatureEnabled } from "@/lib/hr/ai/feature-flags";
@@ -51,6 +52,7 @@ export default async function EmployeesPage({searchParams}:{searchParams?:Promis
         }
       />
 
+      <EmploymentChangeReview authContext={authContext} />
       <EmployeesTable
         key={initialStatus??'all'}
         initialStatus={initialStatus}

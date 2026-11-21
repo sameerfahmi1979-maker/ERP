@@ -1,10 +1,11 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext } from "@/lib/rbac/check";
+import { canManageDmsNotifications, canViewDmsNotifications } from "@/lib/notifications/access";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
-import { getDmsNotificationSettingsForScheduler } from "@/server/actions/dms/notification-settings";
+import { getDmsNotificationSettingsForScheduler } from "@/server/dms-notification-policy";
 import {changePersonalDmsNotification} from '@/server/notification-personal-state';
 
 export type ActionResult<T = unknown> = {
@@ -52,18 +53,6 @@ export type DmsNotificationRow = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function canViewNotifications(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
-  return (
-    hasPermission(ctx, "dms.notifications.view") ||
-    hasPermission(ctx, "dms.notifications.manage") ||
-    hasPermission(ctx, "dms.admin")
-  );
-}
-
-function canManageNotifications(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
-  return hasPermission(ctx, "dms.notifications.manage") || hasPermission(ctx, "dms.admin");
-}
-
 const NOTIFICATION_SELECT = `
   id, document_id, reminder_id, renewal_request_id, notification_type, channel,
   status, recipient_user_id, recipient_email, subject, message,
@@ -93,7 +82,7 @@ export async function getDmsNotifications(
     const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canViewNotifications(ctx)) return { success: false, error: "Permission denied" };
+    if (!canViewDmsNotifications(ctx)) return { success: false, error: "Permission denied" };
 
     let query = supabase
       .from("dms_notification_queue")
@@ -101,7 +90,7 @@ export async function getDmsNotifications(
       .order("scheduled_for", { ascending: false })
       .limit(filter.limit ?? 200);
 
-    if (filter.myOnly && ctx.profile?.id) {
+    if (filter.myOnly || !canManageDmsNotifications(ctx)) {
       query = query.eq("recipient_user_id", ctx.profile.id);
     }
     if (filter.status) query = query.eq("status", filter.status);
@@ -128,7 +117,7 @@ export async function generateDmsExpiryNotifications(
     const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canManageNotifications(ctx)) return { success: false, error: "Permission denied" };
+    if (!canManageDmsNotifications(ctx)) return { success: false, error: "Permission denied" };
 
     const today = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Dubai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 

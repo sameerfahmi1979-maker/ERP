@@ -7,9 +7,8 @@ import {operationsRealDate} from "@/lib/reads/hr-operations-schema";
 import {checkWpsReadiness} from "@/lib/hr/payroll/wps-readiness";
 import {payrollToday,payrollEmploymentEligible,salaryDisplayNumber} from "@/lib/hr/payroll/salary-as-of";
 import {readSalarySnapshot} from "@/server/reads/salary-snapshot";
-import {redactWpsProfile} from "@/lib/hr/payroll/redaction";
 import {z} from "zod";
-import {PAYROLL_RECORD_FIELDS, payrollRecordCriteriaSchema, payrollRecordPageSchema, payrollRecordRows, payrollPointCriteriaSchema, payrollProfileSchema, payrollWpsRawSchema, payrollPointSchemas, type PayrollRecordKind} from "@/lib/reads/hr-payroll-records-schema";
+import {PAYROLL_RECORD_FIELDS, payrollRecordCriteriaSchema, payrollRecordPageSchema, payrollRecordRows, payrollPointCriteriaSchema, payrollProfileSchema, payrollWpsProjectionSchema, payrollPointSchemas, type PayrollRecordKind} from "@/lib/reads/hr-payroll-records-schema";
 import {payrollChoiceCriteriaSchema, payrollChoicePageSchema, payrollComponentSchema, hasPayrollReadCapability} from "@/lib/reads/hr-payroll-records-schema";
 
 const tables = {"salary-components": "employee_salary_components", "salary-revisions": "employee_salary_revisions", holds: "employee_payroll_holds"} as const;
@@ -124,7 +123,7 @@ export async function readPayrollPoint(input: unknown) {
       const result = await db.from("employee_payroll_profiles").select(columns).eq("employee_id", p.employeeId).is("deleted_at", null).maybeSingle();
       if (result.error) throw Error("Payroll profile unavailable"); data = result.data;
     } else {
-      const columns = Object.keys(payrollWpsRawSchema.shape).filter(k => !["bank", "mohre_establishment"].includes(k)).join(",") + ",bank:banks!employee_wps_profiles_bank_id_fkey(id,bank_name_en,bank_code),mohre_establishment:hr_mohre_establishments!employee_wps_profiles_mohre_establishment_id_fkey(id,establishment_name,establishment_number)";
+      const columns = Object.keys(payrollWpsProjectionSchema.shape).filter(k => !["bank", "mohre_establishment"].includes(k)).join(",") + ",bank:banks!employee_wps_profiles_bank_id_fkey(id,bank_name_en,bank_code),mohre_establishment:hr_mohre_establishments!employee_wps_profiles_mohre_establishment_id_fkey(id,establishment_name,establishment_number)";
       const [profile, holds, salary, employment] = await Promise.all([
         db.from("employee_wps_profiles").select(columns).eq("employee_id", p.employeeId).is("deleted_at", null).maybeSingle(),
         db.from("employee_payroll_holds").select("id", {count: "exact", head: true}).eq("employee_id", p.employeeId).eq("is_active", true).is("deleted_at", null),
@@ -134,8 +133,8 @@ export async function readPayrollPoint(input: unknown) {
       if (profile.error || holds.error || typeof holds.count !== "number" || !Number.isSafeInteger(holds.count) || holds.count < 0) throw Error("Incomplete WPS readiness");
       if(employment.error)throw Error("Employment context unavailable");
       const current=z.object({id:z.literal(p.employeeId),employee_status:z.string(),joining_date:z.string()}).parse(employment.data);
-      const raw = payrollWpsRawSchema.nullable().parse(profile.data);
-      data = {profile: raw ? redactWpsProfile(raw, true) : null, readiness: checkWpsReadiness({wpsProfile: raw, hasActivePayrollHold: holds.count > 0, hasSalaryComponents: salary.activeCount > 0, grossSalary: salaryDisplayNumber(salary.gross), payrollStatus: salary.payrollStatus,employmentEligible:payrollEmploymentEligible(current,payrollToday())})};
+      const projected = payrollWpsProjectionSchema.nullable().parse(profile.data);
+      data = {profile: projected ? {...projected, iban: null, account_number: null} : null, readiness: checkWpsReadiness({wpsProfile: projected, hasActivePayrollHold: holds.count > 0, hasSalaryComponents: salary.activeCount > 0, grossSalary: salaryDisplayNumber(salary.gross), payrollStatus: salary.payrollStatus,employmentEligible:payrollEmploymentEligible(current,payrollToday())})};
     }
     const safe = payrollPointSchemas[p.kind].safeParse(data);
     if (!safe.success || safe.data && "employee_id" in safe.data && safe.data.employee_id !== p.employeeId || p.kind === "component-detail" && safe.data && "id" in safe.data && safe.data.id !== p.recordId) throw Error("Invalid payroll detail");

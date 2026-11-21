@@ -6,12 +6,11 @@ function fixture(n=1){
  for(let employee_id=1;employee_id<=n;employee_id++){
   tables.employees.push({id:employee_id,employee_code:`SYN-${employee_id}`,full_name_en:'Synthetic only',employee_status:'active',joining_date:'2020-01-01',owner_company_id:1,owner_company:{legal_name_en:'Synthetic'}});
   tables.employee_payroll_profiles.push({employee_id,effective_date:'2020-01-01',currency:'USD',payroll_status:'active'});
-  tables.employee_wps_profiles.push({employee_id,wps_applicable:true,wps_status:'active',salary_payment_method:'bank_transfer',labour_card_number:'PRIVATE_LABOUR',mohre_person_code:'PRIVATE_MOHRE',bank_id:1,iban:'PRIVATE_IBAN',account_number:'0000000123',exchange_house:null,bank:{bank_name_en:'Synthetic bank'}});
+  tables.employee_wps_profiles.push({employee_id,wps_applicable:true,wps_status:'active',salary_payment_method:'bank_transfer',labour_card_number:'PRIVATE_LABOUR',mohre_person_code:'PRIVATE_MOHRE',bank_id:1,iban_state:'valid',exchange_house:null,bank:{bank_name_en:'Synthetic bank'}});
   tables.employee_salary_components.push({id:employee_id,employee_id,component_type_id:1,amount:'0.10',effective_from:'2020-01-01',effective_to:null,is_active:true,deleted_at:null,component_type:{component_kind:'earning',is_basic:true}});
  }
  for(const rows of Object.values(tables))for(const row of rows){const value=row as Record<string,unknown>;value.workspace_revision=1;if(value.component_type)(value.component_type as Record<string,unknown>).workspace_revision=1;}
  const calls:unknown[][]=[],errors=new Set<string>(),reads=new Map<string,number>();
- for (const row of tables.employee_wps_profiles as {iban:string}[]) row.iban = 'AE070331234567890123456';
  const hooks={onRead:(_table:string,_count:number)=>{void _table;void _count;}};
  const db={from:(table:string)=>{
   calls.push(['from',table]);const q:Record<string,unknown>={then:(resolve:(v:unknown)=>unknown)=>{const count=(reads.get(table)??0)+1;reads.set(table,count);hooks.onRead(table,count);return Promise.resolve({data:structuredClone(tables[table]),error:errors.has(table)?{message:'PRIVATE_PROVIDER_ERROR'}:null}).then(resolve);}};
@@ -24,6 +23,7 @@ it('complete scoped internal readiness uses dated salary without exposing accoun
  const f=fixture();const result=await run(f.db);expect(result.rows[0]).toMatchObject({readiness_status:'ready',employee_code:'SYN-1'});expect(result.meta?.total).toBe(1);
  const text=JSON.stringify(result);for(const secret of ['PRIVATE_','0000000123','AE070331234567890123456','gross_salary','basic_salary','paid','bankAccepted'])expect(text).not.toContain(secret);
  expect(f.calls.filter(c=>c[0]==='from')).toHaveLength(12);
+ for (const [, , projection] of f.calls.filter(c=>c[0]==='employee_wps_profiles'&&c[1]==='select')) expect(String(projection).split(',')).not.toContain('iban');
  expect(result.meta).toMatchObject({reviewOnly:true,asOf:expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),sourceFingerprint:expect.stringMatching(/^[a-f0-9]{64}$/)});
 });
 it('admits active, leave and probation while excluding future and terminated employment',async()=>{
@@ -33,7 +33,7 @@ it('admits active, leave and probation while excluding future and terminated emp
  for(const table of Object.keys(f.tables).filter(table=>table!=='employees')){
   f.tables[table]=f.tables[table].filter(row=>(row as {employee_id:number}).employee_id<=3);
  }
- (f.tables.employee_wps_profiles[2] as {iban:string}).iban='AE080331234567890123456';
+ (f.tables.employee_wps_profiles[2] as {iban_state:string}).iban_state='invalid';
  expect((await run(f.db)).rows.map(row=>[row.employee_code,row.readiness_status])).toEqual([['SYN-1','ready'],['SYN-2','ready'],['SYN-3','incomplete']]);
 });
 it('no per-employee queries or first-N export cap for 1107 permitted subjects',async()=>{
@@ -79,6 +79,6 @@ it.each(['selection','type','effect','hold'])('reconciles changed %s and never h
  await expect(run(f.db)).rejects.toThrow('sources changed');expect(f.calls.filter(c=>c[0]==='from'&&c[1]==='employees')).toHaveLength(2);
 });
 it('sanitizes malformed confidential facts instead of exposing values through schema errors',async()=>{
- const f=fixture();(f.tables.employee_wps_profiles[0] as Record<string,unknown>).iban={private:'PRIVATE_ACCOUNT'};
+ const f=fixture();(f.tables.employee_wps_profiles[0] as Record<string,unknown>).iban_state={private:'PRIVATE_ACCOUNT'};
  await expect(run(f.db)).rejects.toThrow(/^Complete payroll review sources unavailable$/);
 });

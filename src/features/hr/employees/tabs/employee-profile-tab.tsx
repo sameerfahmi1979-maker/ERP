@@ -311,7 +311,7 @@ export function EmployeeProfileTab({
         <div className="grid grid-cols-12 gap-4">
           <div className="col-span-12 sm:col-span-6 space-y-1.5">
             <RequiredLabel htmlFor="owner_company_id">Employer Company</RequiredLabel>
-            {disabled?<Input aria-label="Employer Company" readOnly disabled value={employee?.owner_company?.legal_name_en ?? (form.owner_company_id?`Saved reference #${form.owner_company_id}`:'—')}/>:<OwnerCompanySelect name="owner_company_id" ariaLabel="Employer Company"
+            {disabled||employee?<Input aria-label="Employer Company" readOnly disabled value={employee?.owner_company?.legal_name_en ?? (form.owner_company_id?`Saved reference #${form.owner_company_id}`:'—')}/>:<OwnerCompanySelect name="owner_company_id" ariaLabel="Employer Company"
               value={form.owner_company_id}
               onValueChange={(v) =>
                 setForm((p) => ({
@@ -327,13 +327,14 @@ export function EmployeeProfileTab({
           </div>
           <div className="col-span-12 sm:col-span-6 space-y-1.5">
             <Label htmlFor="branch_id">Branch</Label>
-            {disabled?<Input aria-label="Branch" readOnly disabled value={employee?.branch?.branch_name_en ?? (form.branch_id?`Saved reference #${form.branch_id}`:'—')}/>:<BranchSelect ownerCompanyId={form.owner_company_id} name="branch_id"
+            {disabled||employee?<Input aria-label="Branch" readOnly disabled value={employee?.branch?.branch_name_en ?? (form.branch_id?`Saved reference #${form.branch_id}`:'—')}/>:<BranchSelect ownerCompanyId={form.owner_company_id} name="branch_id"
               value={form.branch_id}
               onValueChange={(v) => setForm((p) => p.branch_id===v?p:({ ...p, branch_id: v,department_id:null,designation_id:null,primary_work_site_id:null }))}
               disabled={disabled}
               allowClear
             />}
           </div>
+          {employee&&!disabled&&<p className="col-span-12 text-sm text-muted-foreground">Use Prepare an employment change in Audit to transfer this employee.</p>}
           <div className="col-span-12 sm:col-span-6 xl:col-span-4 space-y-1.5">
             <Label>Department</Label>
             <ERPCombobox ariaLabel="Department" name="department_id"

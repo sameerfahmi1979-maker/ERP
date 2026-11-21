@@ -51,9 +51,8 @@ export async function readEmployeeOverview(input: unknown, context?: AuthContext
       return permissions.get(code)!;
     };
     const either = async (a: string, b: string) => {const results = await Promise.all([permitted(a), permitted(b)]); return results.some(Boolean);};
-    const now = new Date(), today = now.toISOString().slice(0, 10), soon = new Date(now.getTime() + 60 * 86400000).toISOString().slice(0, 10);
-    // Preserve the existing server-local month/year contract, not a new timezone.
-    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    const now = new Date(), today = payrollToday(now), soon = payrollToday(new Date(now.getTime() + 60 * 86400000));
+    const monthStart = today.slice(0, 7) + "-01";
     const base = (table: string) => db.from(table);
     const expiryCounts = (rows: z.infer<typeof expiryRow>[]) => {
       let active = 0, expiringSoon = 0, expired = 0;
@@ -87,22 +86,22 @@ export async function readEmployeeOverview(input: unknown, context?: AuthContext
       },
       time: async () => {
         const leave = await either("hr.leave.view", "hr.leave.manage");
-        const [shift, attendance, balances, pending, overtime] = await Promise.all([
-          point(base("employee_shift_assignments").select("work_calendar:work_calendars!employee_shift_assignments_work_calendar_id_fkey(calendar_name),work_shift:work_shifts!employee_shift_assignments_work_shift_id_fkey(shift_name)").eq("employee_id", employeeId).is("deleted_at", null).is("effective_to", null).order("effective_from", {ascending: false}).order("id").limit(1).maybeSingle(), employeeOverviewDataSchemas.time.shape.currentShiftAssignment),
-          count(base("employee_attendance_daily_summary").select("id", {count: "exact", head: true}).eq("employee_id", employeeId).gte("attendance_date", monthStart)),
-          leave ? count(base("employee_leave_balances").select("id", {count: "exact", head: true}).eq("employee_id", employeeId).eq("leave_year", now.getFullYear())) : null,
+        const [shifts, attendance, balances, pending, overtime] = await Promise.all([
+          point(base("employee_shift_assignments").select("work_calendar:work_calendars!employee_shift_assignments_work_calendar_id_fkey(calendar_name),work_shift:work_shifts!employee_shift_assignments_work_shift_id_fkey(shift_name)").eq("employee_id", employeeId).is("deleted_at", null).lte("effective_from", today).or(`effective_to.is.null,effective_to.gte.${today}`).order("effective_from", {ascending: false}).order("id").limit(2), z.array(employeeOverviewDataSchemas.time.shape.currentShiftAssignment.unwrap()).max(2)),
+          count(base("employee_attendance_daily_summary").select("id", {count: "exact", head: true}).eq("employee_id", employeeId).gte("attendance_date", monthStart).lte("attendance_date", today)),
+          leave ? count(base("employee_leave_balances").select("id", {count: "exact", head: true}).eq("employee_id", employeeId).eq("leave_year", Number(today.slice(0, 4)))) : null,
           leave ? count(tally("employee_leave_requests").eq("approval_status", "pending")) : null,
-          complete(() => base("employee_overtime_records").select("id,hours", {count: "exact"}).eq("employee_id", employeeId).is("deleted_at", null).eq("approval_status", "approved").gte("overtime_date", monthStart).order("id"), z.object({id: rowId, hours: z.number().finite().nullable()}).strip()),
+          complete(() => base("employee_overtime_records").select("id,hours", {count: "exact"}).eq("employee_id", employeeId).is("deleted_at", null).eq("approval_status", "approved").gte("overtime_date", monthStart).lte("overtime_date", today).order("id"), z.object({id: rowId, hours: z.number().finite().nullable()}).strip()),
         ]);
-        return {currentShiftAssignment: shift, attendanceThisMonthCount: attendance, leaveBalanceCount: balances, pendingLeaveCount: pending, overtimeHoursThisMonth: overtime.reduce((sum, row) => sum + (row.hours ?? 0), 0)};
+        return {currentShiftAssignment: shifts.length === 1 ? shifts[0] : null, ...(shifts.length > 1 ? {currentShiftAmbiguous: true} : {}), attendanceThisMonthCount: attendance, leaveBalanceCount: balances, pendingLeaveCount: pending, overtimeHoursThisMonth: overtime.reduce((sum, row) => sum + (row.hours ?? 0), 0)};
       },
       payroll: async () => {
         const banking = await permitted("hr.banking.view");
-        const wpsSchema = z.object({wps_applicable: z.boolean(), wps_status: z.string(), bank_id: rowId.nullable(), account_number: z.string().nullable(), iban: z.string().nullable(), exchange_house: z.string().nullable(), salary_payment_method: z.string(), labour_card_number: z.string().nullable(), mohre_person_code: z.string().nullable()}).strip().nullable();
+        const wpsSchema = z.object({wps_applicable: z.boolean(), wps_status: z.string(), bank_id: rowId.nullable(), iban_state: z.enum(["missing", "invalid", "valid"]), exchange_house: z.string().nullable(), salary_payment_method: z.string(), labour_card_number: z.string().nullable(), mohre_person_code: z.string().nullable()}).strip().nullable();
         const asOf = payrollToday();
         const [salary, wps, holds] = await Promise.all([
           point(db.rpc("f12_salary_as_of", {p_employee: employeeId, p_as_of: asOf}), z.object({asOf: z.literal(asOf), currency: z.string().regex(/^[A-Z]{3}$/), gross: z.string().regex(/^\d+\.\d{2}$/), activeCount: z.number().int().nonnegative(), payrollStatus: z.enum(["active", "hold", "inactive", "not_configured"])})),
-          banking ? point(base("employee_wps_profiles").select("wps_applicable,wps_status,bank_id,account_number,iban,exchange_house,salary_payment_method,labour_card_number,mohre_person_code").eq("employee_id", employeeId).is("deleted_at", null).maybeSingle(), wpsSchema) : null,
+          banking ? point(base("employee_wps_profiles").select("wps_applicable,wps_status,bank_id,iban_state,exchange_house,salary_payment_method,labour_card_number,mohre_person_code").eq("employee_id", employeeId).is("deleted_at", null).maybeSingle(), wpsSchema) : null,
           count(tally("employee_payroll_holds").eq("is_active", true)),
         ]);
         const gross = salaryDisplayNumber(salary.gross), hasActiveHold = holds > 0;

@@ -48,6 +48,7 @@ import { toast } from "sonner";
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 type Props = {
+  canOpenAiObservability: boolean;
   stats: DmsIntelligenceAdminStats;
 };
 
@@ -304,7 +305,7 @@ function AdminBulkCard({
 
 // ── Main client page ─────────────────────────────────────────────────────────
 
-export function DmsIntelligenceAdminPageClient({ stats }: Props) {
+export function DmsIntelligenceAdminPageClient({ stats, canOpenAiObservability }: Props) {
   const healthCards: HealthCard[] = [
     {
       label: "Total Documents",
@@ -643,19 +644,20 @@ export function DmsIntelligenceAdminPageClient({ stats }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* ── Observability Link ────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/30 px-4 py-3">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Compass className="h-4 w-4" />
-          <span>View token usage, cost estimates, and AI pipeline health</span>
+      {canOpenAiObservability && (
+        <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/30 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Compass className="h-4 w-4" />
+            <span>View token usage, cost estimates, and AI pipeline health</span>
+          </div>
+          <a
+            href="/admin/dms/ai-observability"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
+          >
+            AI Observability Dashboard
+          </a>
         </div>
-        <a
-          href="/admin/dms/ai-observability"
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
-        >
-          AI Observability Dashboard
-        </a>
-      </div>
+      )}
 
       {/* ── Health / Status Cards ──────────────────────────────────────── */}
       <section>

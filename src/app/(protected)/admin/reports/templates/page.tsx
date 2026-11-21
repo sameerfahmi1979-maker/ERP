@@ -3,7 +3,7 @@
  * Phase REPORT.3 — Template / Branding / Output Adapter Engine
  *
  * Lists both branding profiles and report templates.
- * Permission-gated by reports.view (read) and reports.manage (edit).
+ * Read access follows the template and branding catalogues.
  */
 
 import { redirect } from "next/navigation";
@@ -15,8 +15,8 @@ import {canEditPublishedTemplate} from '@/lib/report-center/template-amendment';
 
 export default async function ReportTemplatesPage() {
   const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "reports.view")) {
-    redirect("/admin");
+  if (!hasPermission(ctx, "reports.view") && !hasPermission(ctx, "reports.manage")) {
+    redirect("/access-denied");
   }
 
   const [profilesResult, templatesResult] = await Promise.all([

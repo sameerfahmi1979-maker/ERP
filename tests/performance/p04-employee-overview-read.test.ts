@@ -132,7 +132,7 @@ it.each(["ready", "incomplete", "on_hold", "exempt", "not_enrolled"] as const)("
     {id: 3, amount: 999, is_active: false, deleted_at: null, component_type: {component_kind: "earning"}},
     {id: 4, amount: 999, is_active: true, deleted_at: "2026-01-01", component_type: {component_kind: "earning"}},
   ];
-  state.points.employee_wps_profiles = status === "not_enrolled" ? null : {wps_applicable: status !== "exempt", wps_status: "active", bank_id: 1, account_number: "PRIVATE_BANK_ACCOUNT", iban: status === "incomplete" ? null : syntheticIban, exchange_house: null, salary_payment_method: "bank_transfer", labour_card_number: "PRIVATE_LABOUR_CARD", mohre_person_code: "PRIVATE_MOHRE"};
+  state.points.employee_wps_profiles = status === "not_enrolled" ? null : {wps_applicable: status !== "exempt", wps_status: "active", bank_id: 1, account_number: "PRIVATE_BANK_ACCOUNT", iban: syntheticIban, iban_state: status === "incomplete" ? "missing" : "valid", exchange_house: null, salary_payment_method: "bank_transfer", labour_card_number: "PRIVATE_LABOUR_CARD", mohre_person_code: "PRIVATE_MOHRE"};
   if (status === "on_hold") state.counts.employee_payroll_holds = 1;
   const result = await read(["payroll"]);
   expect(result.data!.sections.payroll).toMatchObject({status: "ready", data: {grossSalary: 6000, bankingRestricted: false, wpsReadiness: {status}}});
@@ -148,4 +148,27 @@ it("overview routes are private, uncached, strictly validated and hide internal 
   const response = await POST(request({employeeId: 7})); expect(response.status).toBe(200); expect(response.headers.get("Cache-Control")).toContain("no-store");
   expect((await POST(request({employeeId: 7, context: {}}))).status).toBe(400);
   state.fault = "employees"; const failed = await POST(request({employeeId: 7})); expect(failed.status).toBe(503); expect(await failed.text()).not.toContain("PRIVATE_NATIVE_FAILURE");
+});
+
+it("selects a shift spanning the Dubai work date and excludes future time from month totals", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-10-31T21:00:00Z"));
+  expect((await read(["time"])).data!.sections.time.status).toBe("ready");
+  const shift = state.calls.find(c => c.table === "employee_shift_assignments")!;
+  expect(shift.methods).toContainEqual(["lte", "effective_from", "2026-11-01"]);
+  expect(shift.methods).toContainEqual(["or", "effective_to.is.null,effective_to.gte.2026-11-01"]);
+  for (const [table, column] of [["employee_attendance_daily_summary", "attendance_date"], ["employee_overtime_records", "overtime_date"]]) {
+    const call = state.calls.find(c => c.table === table)!;
+    expect(call.methods).toContainEqual(["gte", column, "2026-11-01"]);
+    expect(call.methods).toContainEqual(["lte", column, "2026-11-01"]);
+  }
+});
+
+it("flags conflicting active shifts instead of choosing one", async () => {
+  state.rows.employee_shift_assignments = [
+    {work_calendar:{calendar_name:"Synthetic calendar"}, work_shift:{shift_name:"Early"}},
+    {work_calendar:{calendar_name:"Synthetic calendar"}, work_shift:{shift_name:"Late"}},
+  ];
+  const result = await read(["time"]);
+  expect(result.data!.sections.time).toMatchObject({status:"ready", data:{currentShiftAssignment:null,currentShiftAmbiguous:true}});
 });

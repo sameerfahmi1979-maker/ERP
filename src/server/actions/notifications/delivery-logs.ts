@@ -1,7 +1,8 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext } from "@/lib/rbac/check";
+import { canViewNotificationDeliveryLogs } from "@/lib/notifications/access";
 
 export type ActionResult<T = undefined> = T extends undefined
   ? { success: boolean; error?: string }
@@ -27,11 +28,11 @@ function rowToLog(r: Record<string, unknown>): DeliveryLogRow {
     id: r.id as number,
     notificationId: r.notification_id as number | null,
     emailQueueId: r.email_queue_id as number | null,
-    providerConfigId: r.provider_config_id as number | null,
+    providerConfigId: null,
     deliveryChannel: r.delivery_channel as string,
     status: r.status as string,
     message: r.message as string | null,
-    externalMessageId: r.external_message_id as string | null,
+    externalMessageId: null,
     durationMs: r.duration_ms as number | null,
     attemptNumber: r.attempt_number as number | null,
     errorMessage: r.error_message as string | null,
@@ -43,16 +44,15 @@ export async function getNotificationDeliveryLogs(
   filters?: { limit?: number; status?: string; delivery_channel?: string }
 ): Promise<ActionResult<DeliveryLogRow[]>> {
   try {
-    const supabase = await createClient();
     const ctx = await getAuthContext();
-    if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!hasPermission(ctx, "notifications.logs.view") && !hasPermission(ctx, "notifications.admin")) {
+    if (!canViewNotificationDeliveryLogs(ctx)) {
       return { success: false, error: "Permission denied" };
     }
+    const supabase = await createClient();
 
     let q = supabase
-      .from("erp_notification_delivery_logs")
-      .select("*")
+      .from("perf_notification_delivery_read")
+      .select("id,notification_id,email_queue_id,delivery_channel,status,message,duration_ms,attempt_number,error_message,created_at")
       .order("created_at", { ascending: false })
       .limit(filters?.limit ?? 200);
 

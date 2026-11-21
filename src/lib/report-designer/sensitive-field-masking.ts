@@ -214,7 +214,7 @@ export async function resolveEmployeeWpsProfile(
   try {
     const { data, error } = await supabase
       .from("employee_wps_profiles")
-      .select("iban, account_number")
+      .select("iban_masked, account_number_masked")
       .eq("employee_id", employeeId)
       .is("deleted_at", null)
       .limit(1)
@@ -222,9 +222,9 @@ export async function resolveEmployeeWpsProfile(
 
     if (error || !data) return result;
 
-    const row = data as unknown as { iban: string | null; account_number: string | null };
-    result.iban = row.iban?.trim() ?? null;
-    result.bank_account_number = row.account_number?.trim() ?? null;
+    const row = data as unknown as { iban_masked: string | null; account_number_masked: string | null };
+    result.iban = row.iban_masked?.trim() ?? null;
+    result.bank_account_number = row.account_number_masked?.trim() ?? null;
   } catch {
     // Fail silently
   }
@@ -391,6 +391,7 @@ export async function resolveOfficialSensitiveFields(opts: {
 
   // Resolve WPS / banking
   if (needsWps) {
+    warnings.push("Banking identifiers are masked in report output.");
     const wps = await resolveEmployeeWpsProfile(employeeId, supabase);
     const wpsMap: Record<string, string | null | undefined> = {
       "employee.iban": wps.iban,

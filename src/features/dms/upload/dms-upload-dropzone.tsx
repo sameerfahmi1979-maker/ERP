@@ -13,7 +13,7 @@ import { checkDmsDuplicateBeforeUpload } from "@/server/actions/dms/document-pre
 import type { DuplicateAdvisory } from "@/lib/dms/preparation/contracts";
 import Link from "next/link";
 
-export type SelectedDmsFile = CreateUploadSessionInput & { file: File };
+export type SelectedDmsFile = CreateUploadSessionInput & { file: File; resumeSessionCode?: string };
 
 interface DmsUploadDropzoneProps {
   /** Single-file callback (existing behaviour). */
@@ -28,6 +28,7 @@ interface DmsUploadDropzoneProps {
   /** Controlled selection; Files remain only in the mounted inbox. */
   files?: SelectedDmsFile[];
   ownerGeneration?: unknown;
+  recoverVerified?: boolean;
 }
 
 async function computeSha256(file: File, current: () => boolean): Promise<string> {
@@ -71,6 +72,7 @@ export function DmsUploadDropzone({
   disabled,
   files: controlledFiles,
   ownerGeneration,
+  recoverVerified = false,
 }: DmsUploadDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -95,6 +97,11 @@ export function DmsUploadDropzone({
   const [localFiles, setSelectedFiles] = useState<SelectedDmsFile[]>([]);
   const [pendingAdvisory, setPendingAdvisory] = useState<{ owner: unknown; files: SelectedDmsFile[]; matches: DuplicateAdvisory[]; multiple: boolean } | null>(null);
   const advisory = pendingAdvisory?.owner === ownerGeneration ? pendingAdvisory : null;
+  const pendingTransfer = advisory?.matches.some(match => match.status === "transfer_pending");
+  const hasResumableTransfer = advisory?.matches.some(match => match.status === "transfer_pending" && match.resumable);
+  const resumable = advisory?.multiple === false ? advisory.matches.find(match =>
+    (match.status === "transfer_pending" && match.resumable) || (match.status === "retained_upload" && recoverVerified)
+  ) : undefined;
   // Mirrors `selectedFiles` so we can compute merges without a state-updater
   // side effect (which would call the parent's setState during render).
   const selectedFiles = controlledFiles ?? localFiles;
@@ -334,13 +341,22 @@ export function DmsUploadDropzone({
       )}
 
       {advisory && <div role="status" className="rounded-md border border-border bg-muted/20 p-3 space-y-2 text-sm">
-        <p>{advisory.multiple ? "Some selected files already exist in the system. Open the matching document or intake below to continue." :
+        <p>{pendingTransfer ? (advisory.multiple
+          ? "A matching transfer still needs verification. Check its original intake or resume an interrupted single upload in single-upload mode."
+          : hasResumableTransfer
+            ? "Upload verification is pending for this file. Use the exact original file and owning scope to resume the same intake."
+            : "Upload verification is pending for this file. Check its original intake below.") :
+          advisory.multiple ? "Some selected files already exist in the system. Open the matching document or intake below to continue." :
           advisory.matches.some(m => m.status === "retained_upload") ? "This file has already been uploaded. Open its existing intake below to continue reviewing it." :
           "This file already exists in the system. Open the existing document below."} No new file has been uploaded.</p>
         <ul className="space-y-1">{advisory.matches.map((match, i) => <li key={i}>{match.status === "existing_document" ?
-          <Link className="text-primary underline" href={`/dms/documents/record/${match.documentId}`}>{match.documentNo} — {match.title}</Link> : match.status === "retained_upload" ?
+          <Link className="text-primary underline" href={`/dms/documents/record/${match.documentId}`}>{match.documentNo} — {match.title}</Link> : match.status === "retained_upload" || match.status === "transfer_pending" ?
           <Link className="text-primary underline" href={`/dms/intake/${encodeURIComponent(match.sessionCode)}`}>Open existing intake</Link> : null}</li>)}</ul>
-        {!advisory.matches.some(m => m.status === "retained_upload") && <Button type="button" size="sm" variant="outline" disabled={disabled || isHashing} onClick={() => {
+        {resumable && "sessionCode" in resumable && <Button type="button" size="sm" variant="outline" disabled={disabled || isHashing} onClick={() => {
+          setPendingAdvisory(null);
+          onFileSelected?.({...advisory.files[0], resumeSessionCode: resumable.sessionCode});
+        }}>Resume upload with this file</Button>}
+        {advisory.matches.every(m => m.status === "existing_document") && <Button type="button" size="sm" variant="outline" disabled={disabled || isHashing} onClick={() => {
           if (advisory.owner !== ownerGeneration) return;
           const retained = advisory; setPendingAdvisory(null);
           if (retained.multiple) { selectedFilesRef.current = retained.files; setSelectedFiles(retained.files); onFilesSelected?.(retained.files); }

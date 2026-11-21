@@ -24,8 +24,9 @@ export type WpsReadinessInput = {
     wps_applicable: boolean;
     wps_status: string; // 'active' | 'hold' | 'exempt' | 'not_enrolled'
     bank_id: number | null;
-    account_number: string | null;
-    iban: string | null;
+    account_number?: string | null;
+    iban?: string | null;
+    iban_state?: "missing" | "invalid" | "valid";
     exchange_house: string | null;
     salary_payment_method: string; // 'bank_transfer' | 'exchange_house' | 'cheque'
     labour_card_number: string | null;
@@ -80,8 +81,9 @@ export function checkWpsReadiness(input: WpsReadinessInput): WpsReadinessResult 
   if (!["bank_transfer", "exchange_house", "cheque"].includes(method)) missing.push("Payment method is not recognized");
   if (method === "bank_transfer") {
     if (!wpsProfile.bank_id) missing.push("Bank not selected");
-    if (!wpsProfile.iban || wpsProfile.iban.trim() === "") missing.push("IBAN not provided");
-    else if (!isValidUaeIban(wpsProfile.iban)) missing.push("IBAN format or check digits are invalid");
+    const ibanState = wpsProfile.iban_state ?? (!wpsProfile.iban?.trim() ? "missing" : isValidUaeIban(wpsProfile.iban) ? "valid" : "invalid");
+    if (ibanState === "missing") missing.push("IBAN not provided");
+    else if (ibanState === "invalid") missing.push("IBAN format or check digits are invalid");
   } else if (method === "exchange_house") {
     if (!wpsProfile.exchange_house || wpsProfile.exchange_house.trim() === "") {
       missing.push("Exchange house not specified");

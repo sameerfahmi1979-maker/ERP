@@ -39,22 +39,24 @@ export default async function HrActionsPage() {
           </Card>
         </Link>
 
-        <Link href="/admin/hr/actions/disciplinary">
-          <Card className="hover:border-primary/50 transition-colors cursor-pointer">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <AlertTriangle className="h-5 w-5 text-primary" />
-                Disciplinary & Warnings
-              </CardTitle>
-              <CardDescription>
-                View and manage all employee disciplinary records and warning notices.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-xs text-muted-foreground">Verbal warnings Â· Written warnings Â· Final warnings Â· Incidents</p>
-            </CardContent>
-          </Card>
-        </Link>
+        {hasPermission(ctx, "hr.confidential.view") && (
+          <Link href="/admin/hr/actions/disciplinary">
+            <Card className="hover:border-primary/50 transition-colors cursor-pointer">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <AlertTriangle className="h-5 w-5 text-primary" />
+                  Disciplinary & Warnings
+                </CardTitle>
+                <CardDescription>
+                  View and manage all employee disciplinary records and warning notices.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-muted-foreground">Verbal warnings Â· Written warnings Â· Final warnings Â· Incidents</p>
+              </CardContent>
+            </Card>
+          </Link>
+        )}
 
         <Link href="/admin/hr/actions/approvals">
           <Card className="hover:border-primary/50 transition-colors cursor-pointer">

@@ -13,11 +13,15 @@ vi.mock('@/features/notifications/admin/admin-notifications-page-client',()=>({A
 vi.mock('@/features/notifications/admin/email-queue-page-client',()=>({EmailQueuePageClient:()=>null}));
 vi.mock('@/features/notifications/admin/delivery-logs-page-client',()=>({DeliveryLogsPageClient:()=>null}));
 vi.mock('@/features/notifications/admin/notification-templates-page-client',()=>({NotificationTemplatesPageClient:()=>null}));
+vi.mock('@/server/actions/dms/notification-settings',()=>({getDmsNotificationSettings:state.read}));
+vi.mock('@/server/actions/reports/templates',()=>({listBrandingProfiles:state.read,listReportTemplates:state.read}));
 import Own from '@/app/(protected)/notifications/page';
 import Admin from '@/app/(protected)/admin/notifications/page';
 import Queue from '@/app/(protected)/admin/notifications/email-queue/page';
 import Logs from '@/app/(protected)/admin/notifications/logs/page';
 import Templates from '@/app/(protected)/admin/notifications/templates/page';
+import DmsSettings from '@/app/(protected)/admin/dms/notification-settings/page';
+import ReportTemplates from '@/app/(protected)/admin/reports/templates/page';
 const pages=[['own',Own],['admin',Admin],['queue',Queue],['logs',Logs],['templates',Templates]] as const;
 const ctx=syntheticAuthContext(['notifications.admin']);
 function seededClient(result:React.ReactElement<{children:React.ReactNode}>){
@@ -43,3 +47,17 @@ for(const [name,Page]of pages){
   expect(state.read).not.toHaveBeenCalled();
  });
 }
+
+it.each([[Logs,"notifications.logs.view"],[Templates,"notifications.templates.view"],[DmsSettings,"dms.notifications.settings.manage"]] as const)(
+ "rejects a scoped assignment for an ERP-wide administration page",async(Page,capability)=>{
+  state.auth.mockResolvedValue({...syntheticAuthContext([capability]),globalPermissionCodes:[],roleAssignments:[{roleId:9,roleCode:"ordinary",ownerCompanyId:1,branchId:2,permissionCodes:[capability]}]});
+  await expect(Page()).rejects.toThrow("REDIRECT:/access-denied");
+  expect(state.read).not.toHaveBeenCalled();
+ });
+
+it("lets a report manager open the report templates catalogue",async()=>{
+ state.auth.mockResolvedValue(syntheticAuthContext(["reports.manage"]));
+ state.read.mockResolvedValue({success:true,data:[]});
+ expect(await ReportTemplates()).toBeTruthy();
+ expect(state.read).toHaveBeenCalledTimes(2);
+});

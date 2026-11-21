@@ -6,6 +6,12 @@ import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {completeRenewalSchema, dmsLifecycleId, renewalCompletionReceiptSchema, renewalCompletionFailure} from "@/lib/dms/renewal-completion";
+import {
+  RENEWAL_REPLACEMENT_PAGE_SIZE,
+  renewalReplacementPageSchema,
+  renewalReplacementSearchSchema,
+  type RenewalReplacementPage,
+} from "@/lib/dms/renewal-completion";
 import { readAllPages } from "@/server/reads/all-pages";
 import { renewalFilterSchema } from "@/server/reads/dms-renewal-contract";
 import { renewalBaseSelect, renewalBaseRowsSchema, hydrateRenewalReferences } from "@/server/reads/dms-renewal-references";
@@ -276,119 +282,29 @@ export async function completeDmsRenewalRequest(id: number,input: CompleteRenewa
 
 // ── searchDmsDocumentsForRenewalReplacement ───────────────────────────────────
 
-export type RenewalReplacementCandidate = {
-  id: number;
-  document_no: string;
-  title: string;
-  expiry_date: string | null;
-  status: string;
-};
-
-/**
- * DMS RENEWAL.2 — Search for a document to link as the replacement for a
- * renewal completion. Scoped to the same document type AND the same owning
- * entity (employee, party, vehicle, etc. via dms_document_links) as the
- * original document, excludes the original document itself, excludes
- * documents already deleted, and excludes documents already linked as
- * someone else's replacement (prevents double-linking the same new doc to
- * two renewals).
- *
- * DMS RENEWAL.2 BUGFIX — previously this only scoped by document_type_id,
- * so e.g. every employee's Passport Copy showed up as a valid replacement
- * for one specific employee's renewal. Now it also requires the candidate
- * document to be linked to the same entity as the original document.
- */
 export async function searchDmsDocumentsForRenewalReplacement(
-  documentTypeId: number,
-  excludeDocumentId: number,
-  query?: string
-): Promise<ActionResult<RenewalReplacementCandidate[]>> {
+  renewalId: number,
+  query = "",
+  before: number | null = null,
+): Promise<ActionResult<RenewalReplacementPage>> {
   const loadError = { success: false, error: "Could not load replacement documents." };
+  const criteria = renewalReplacementSearchSchema.safeParse({ renewalId, query, before });
+  if (!criteria.success) return loadError;
   try {
-    const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
     if (!canManageRenewals(ctx)) return { success: false, error: "Permission denied" };
 
-    if (!documentTypeId) return { success: true, data: [] };
-
-    // Find who/what the original document belongs to (employee, party, vehicle, etc.).
-    const { data: originalLinks, error: originalLinksError } = await supabase
-      .from("dms_document_links")
-      .select("entity_type, entity_id, is_primary")
-      .eq("document_id", excludeDocumentId)
-      .is("deleted_at", null);
-    if (originalLinksError) return loadError;
-
-    const links = (originalLinks ?? []) as { entity_type: string; entity_id: number; is_primary: boolean }[];
-
-    // If the original document is linked to an entity, restrict candidates to
-    // documents linked to that SAME entity. Documents with no entity link at
-    // all (generic/company-wide documents) fall back to type-only scoping.
-    let scopedDocumentIds: number[] | null = null;
-    if (links.length > 0) {
-      const primary = links.find((l) => l.is_primary) ?? links[0];
-      const { data: entityLinked, error: entityLinksError } = await supabase
-        .from("dms_document_links")
-        .select("document_id")
-        .eq("entity_type", primary.entity_type)
-        .eq("entity_id", primary.entity_id)
-        .is("deleted_at", null);
-      if (entityLinksError) return loadError;
-
-      scopedDocumentIds = Array.from(
-        new Set(
-          (entityLinked ?? []).map((r) => (r as Record<string, unknown>).document_id as number)
-        )
-      );
-
-      // Nothing else is linked to this entity — no valid candidate can exist.
-      if (scopedDocumentIds.length === 0) return { success: true, data: [] };
-    }
-
-    // Documents already claimed as a replacement on a completed renewal must be excluded.
-    const { data: alreadyLinked, error: alreadyLinkedError } = await supabase
-      .from("dms_renewal_requests")
-      .select("replacement_document_id")
-      .eq("status", "renewed")
-      .not("replacement_document_id", "is", null);
-    if (alreadyLinkedError) return loadError;
-
-    const excludedIds = new Set<number>([excludeDocumentId]);
-    for (const r of alreadyLinked ?? []) {
-      const rid = (r as Record<string, unknown>).replacement_document_id as number | null;
-      if (rid) excludedIds.add(rid);
-    }
-
-    let q = supabase
-      .from("dms_documents")
-      // The protected document read requires the sort field in its projection.
-      .select("id, document_no, title, expiry_date, status, created_at")
-      .eq("document_type_id", documentTypeId)
-      .is("deleted_at", null)
-      .not("id", "in", `(${Array.from(excludedIds).join(",")})`)
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .limit(50);
-
-    if (scopedDocumentIds) {
-      q = q.in("id", scopedDocumentIds);
-    }
-
-    if (query?.trim()) {
-      const term = query.trim();
-      q = q.or(`document_no.ilike.%${term}%,title.ilike.%${term}%`);
-    }
-
-    const { data, error } = await q;
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("fa08_renewal_replacement_page", {
+      p_request: criteria.data.renewalId,
+      p_query: criteria.data.query,
+      p_before: criteria.data.before,
+      p_limit: RENEWAL_REPLACEMENT_PAGE_SIZE,
+    });
     if (error) return loadError;
-    const candidates = (data ?? []) as unknown as RenewalReplacementCandidate[];
-    return {
-      success: true,
-      data: candidates.map(({ id, document_no, title, expiry_date, status }) => ({
-        id, document_no, title, expiry_date, status,
-      })),
-    };
+    const parsed = renewalReplacementPageSchema.safeParse(data);
+    return parsed.success ? { success: true, data: parsed.data } : loadError;
   } catch {
     return loadError;
   }

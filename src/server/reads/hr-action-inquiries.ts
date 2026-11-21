@@ -18,9 +18,12 @@ function permitted(ctx: AuthContext, kind: HrActionInquiryKind) {
 
 /** Reads use the caller's native business/employee policies. Search joins never
  * collect a capped intermediary employee-ID list or reveal a protected label. */
-export async function readHrActionInquiry(input: unknown, context?: AuthContext): Promise<{success: boolean; data?: HrActionInquiryPage; updatedAt?: number; error?: string}> {
+export async function readHrActionInquiry(input: unknown, context?: AuthContext, selectedProRecord?: number): Promise<{success: boolean; data?: HrActionInquiryPage; updatedAt?: number; error?: string}> {
   const parsed = hrActionInquiryCriteriaSchema.safeParse(input);
-  if (!parsed.success) return {success: false, error: "Invalid HR inquiry criteria"};
+  if (!parsed.success || (selectedProRecord !== undefined
+    && (parsed.data.kind !== "pro" || !Number.isSafeInteger(selectedProRecord) || selectedProRecord < 1))) {
+    return {success: false, error: "Invalid HR inquiry criteria"};
+  }
   try {
     const p = parsed.data, ctx = context ?? await getAuthContext();
     if (!permitted(ctx, p.kind)) return {success: false, error: "Permission denied"};
@@ -34,6 +37,7 @@ export async function readHrActionInquiry(input: unknown, context?: AuthContext)
     }
     const query = (head = false) => {
       const q = db.from(config.table).select(projection, {count: "exact", head}).is("deleted_at", null);
+      if (selectedProRecord !== undefined) q.eq("id", selectedProRecord);
       if (p.search) {
         const clauses = [...config.bodySearch].map(column => `${column}.ilike.${literalContains(p.search)}`);
         for (const f of fields) {

@@ -1,8 +1,10 @@
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { redirect, notFound } from "next/navigation";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { LoadError } from "@/components/erp/load-error";
 import { ReportRunPage } from "@/features/report-center/report-run-page";
-import type { ReportRegistryEntry } from "@/lib/report-center/types";
+import { PayrollFinanceReport } from "@/features/report-center/payroll-finance-report";
+import { PAYROLL_FINANCE_REPORT } from "@/lib/report-center/payroll-finance-contract";
+import { readActiveReportRegistryEntry } from "@/server/reads/report-registry-entry";
 
 type Props = {
   params: Promise<{ reportCode: string }>;
@@ -18,19 +20,25 @@ export default async function ReportRunRoutePage({ params, searchParams }: Props
     redirect("/admin/reports");
   }
 
-  // Load registry entry
-  const db = createAdminClient();
-  const { data: entry } = await db
-    .from("erp_report_registry")
-    .select("*")
-    .eq("report_code", reportCode.toUpperCase())
-    .eq("is_active", true)
-    .is("deleted_at", null)
-    .maybeSingle();
+  const registry = await readActiveReportRegistryEntry(reportCode.toUpperCase());
+  if (registry.state === "failed") {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(sp)) {
+      if (typeof value === "string") query.append(key, value);
+    }
+    const params = query.toString();
+    const retryHref = `/admin/reports/run/${encodeURIComponent(reportCode)}${params ? `?${params}` : ""}`;
+    return <LoadError title="Report configuration" retryHref={retryHref} />;
+  }
+  if (registry.state === "missing") notFound();
+  const registryEntry = registry.entry;
 
-  if (!entry) notFound();
-
-  const registryEntry = entry as ReportRegistryEntry;
+  if (registryEntry.report_code === PAYROLL_FINANCE_REPORT) {
+    if (!["reports.view", "reports.run", "hr.payroll.finance.reconcile"].every(code => hasPermission(ctx, code))) {
+      redirect("/admin/reports");
+    }
+    return <PayrollFinanceReport actor={ctx} params={sp} />;
+  }
 
   // Check that the user has at least one required permission
   const hasReportPermission = registryEntry.required_permissions.length === 0

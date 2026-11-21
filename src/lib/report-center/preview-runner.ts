@@ -18,12 +18,12 @@
  * SERVER-SIDE ONLY. Do NOT import in client components.
  */
 
-import { createAdminClient } from "@/lib/supabase/admin";
+import { readActiveReportRegistryEntry, REPORT_CONFIGURATION_LOAD_ERROR } from "@/server/reads/report-registry-entry";
 import { logger } from "@/lib/logger";
 import { applyRedaction } from "./redaction-engine";
 import type { ApplyRedactionOptions } from "./redaction-engine";
 import { REPORT_FETCHERS } from "./report-fetchers";
-import type { ReportDataResult, ReportRegistryEntry } from "./types";
+import type { ReportDataResult } from "./types";
 import { getAuthContext, assertAccountActive, hasPermission } from "@/lib/rbac/check";
 import { createScopedReportReadClient,revalidateScopedReportReadClient } from "./scoped-read-client";
 import {getEmployeeAccess} from "@/lib/rbac/employee-access";
@@ -69,24 +69,6 @@ export interface PreviewRunResult {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Registry loader (shared with report-runner.ts)
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function loadRegistryEntry(
-  reportCode: string
-): Promise<ReportRegistryEntry | null> {
-  const db = createAdminClient();
-  const { data } = await db
-    .from("erp_report_registry")
-    .select("*")
-    .eq("report_code", reportCode)
-    .eq("is_active", true)
-    .is("deleted_at", null)
-    .maybeSingle();
-  return data as ReportRegistryEntry | null;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Main preview runner
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -112,13 +94,15 @@ export async function runReportFetcherPreview(
     let permissionCodes=actor.permissionCodes; // Ignore any caller-supplied capability list.
     if(!Number.isSafeInteger(maxRows)||maxRows<1||maxRows>PREVIEW_ROW_LIMIT)return{success:false,error:"Preview row limit must be between 1 and 50."};
     // ── 1. Load registry ──────────────────────────────────────────────────
-    const registryEntry = await loadRegistryEntry(reportCode);
-    if (!registryEntry) {
+    const registry = await readActiveReportRegistryEntry(reportCode);
+    if (registry.state === "failed") return { success: false, error: REPORT_CONFIGURATION_LOAD_ERROR };
+    if (registry.state === "missing") {
       return {
         success: false,
         error: `Report '${reportCode}' not found in registry or is inactive.`,
       };
     }
+    const registryEntry = registry.entry;
 
     // ── 2. Permission check ───────────────────────────────────────────────
     const missingPerms = (registryEntry.required_permissions ?? []).filter(

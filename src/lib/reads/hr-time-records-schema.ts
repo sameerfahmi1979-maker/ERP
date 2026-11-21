@@ -19,7 +19,7 @@ const id = z.number().int().positive().refine(Number.isSafeInteger), text = z.st
 const base = {id, employee_id: id};
 const leaveType = z.object({name_en: z.string(), code: z.string()}).strip().nullable();
 export const timeRecordRowSchemas = {
-  daily: z.object({...base, attendance_date: date, attendance_type: z.string(), total_hours: z.number().nullable(), overtime_hours: z.number(), is_missing_punch: z.boolean(), approval_status: z.string()}).strip(),
+  daily: z.object({...base, attendance_date: date, attendance_type: z.string(), total_hours: z.number().nullable(), worked_minutes: z.number().int().min(0).max(1440).nullable().optional(), overtime_hours: z.number(), is_missing_punch: z.boolean(), approval_status: z.string()}).strip(),
   punches: z.object({...base, punch_datetime: timestamp, punch_type: z.string(), punch_source: text}).strip(),
   corrections: z.object({...base, summary_id: id, created_at: timestamp, correction_reason: z.string()}).strip(),
   shifts: z.object({...base, effective_from: date, effective_to: date.nullable(), overtime_eligible: z.boolean(), attendance_required: z.boolean(),

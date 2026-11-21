@@ -44,6 +44,9 @@ export const recruitmentLifecycleRequest=z.object({
   if(!parsed.success)ctx.addIssue({code:'custom',path:['values'],message:'Check the supported fields, dates, score and required facts.'});
  }else if(r.kind==='interview'&&['complete','reschedule'].includes(r.action)){
   if(!interviewValues.partial().safeParse(r.values).success)ctx.addIssue({code:'custom',path:['values'],message:'Invalid interview action values.'});
+ }else if(r.kind==='joining'&&r.action==='finish'){
+  if(!z.object({actual_joining_date:employeeDate}).strict().safeParse(r.values).success)
+   ctx.addIssue({code:'custom',path:['values'],message:'Enter the verified actual joining date.'});
  }else if(Object.keys(r.values).length)ctx.addIssue({code:'custom',path:['values'],message:'This decision does not edit material fields.'});
 });
 export type RecruitmentLifecycleRequest=z.infer<typeof recruitmentLifecycleRequest>;

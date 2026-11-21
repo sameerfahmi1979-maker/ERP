@@ -37,6 +37,17 @@ it.each([{id:0},{temp_storage_path:'sessions/other/secret.pdf'},{sha256_hash:'b'
 it('changed session identity on the second read prevents signing',async()=>{m.rpc.mockResolvedValueOnce({data:{operationId,authUserId,session,replayed:false},error:null}).mockResolvedValueOnce({data:{operationId,authUserId,session:{...session,id:7999},replayed:true},error:null});expect(await admitSingleUpload(metadata,contract)).toMatchObject({success:false});expect(m.sign).not.toHaveBeenCalled();});
 it('duplicate-read failure is visible and retains the original operation',async()=>{m.duplicate.mockResolvedValue({data:null,error:{code:'42501'}});expect(await admitSingleUpload(metadata,contract)).toMatchObject({success:false,uncertain:true});});
 it('a reload discovers the exact original unacknowledged request before signing',async()=>{const recovery={version:1,...contract,operationId:'d7000000-0000-4000-8000-000000000002',metadata,context:null};m.rpc.mockResolvedValue({data:{recovery},error:null});expect(await admitSingleUpload(metadata,contract)).toMatchObject({success:false,uncertain:true,recovery});expect(m.admin).not.toHaveBeenCalled();});
+it('an explicit resume can only replay the selected intake and cannot run regular admission',async()=>{
+ const resumeSessionCode=session.session_code;
+ expect(await admitSingleUpload(metadata,{...contract,resumeSessionCode})).toMatchObject({success:true,data:{session:{id:session.id},uploadRequired:true}});
+ expect(m.rpc.mock.calls.every(([method])=>method==='f07_resume_single_upload')).toBe(true);
+ expect(m.rpc).toHaveBeenCalledWith('f07_resume_single_upload',{p_request:{version:1,...contract,metadata,context:null},p_session_code:resumeSessionCode});
+ expect(m.sign).toHaveBeenCalledWith(session.temp_storage_path,{upsert:false});
+});
+it('a resume response must describe the selected original intake',async()=>{
+ expect(await admitSingleUpload(metadata,{...contract,resumeSessionCode:'DIFFERENT'})).toMatchObject({success:false});
+ expect(m.admin).not.toHaveBeenCalled();expect(m.sign).not.toHaveBeenCalled();
+});
 it('recovery cannot substitute another owner, file or subject',async()=>{m.rpc.mockResolvedValue({data:{recovery:{version:1,...contract,metadata:{...metadata,sha256_hash:'b'.repeat(64)},context:null}},error:null});expect(await admitSingleUpload(metadata,contract)).toMatchObject({success:false});expect(m.admin).not.toHaveBeenCalled();});
 it('acknowledgment checks the exact native receipt',async()=>{m.rpc.mockResolvedValue({data:{operationId,sessionId:session.id,acknowledged:true},error:null});expect(await acknowledgeSingleUpload({version:1,...contract,metadata,context:null},session.id)).toMatchObject({success:true});expect(m.rpc).toHaveBeenCalledWith('f07_acknowledge_single_upload',expect.objectContaining({p_session:session.id}));});
 it('lost acknowledgment retains original recovery',async()=>{m.rpc.mockRejectedValue(Error('lost'));expect(await acknowledgeSingleUpload({version:1,...contract,metadata,context:null},session.id)).toMatchObject({success:false,uncertain:true});});

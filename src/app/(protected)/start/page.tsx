@@ -16,6 +16,6 @@ export default async function StartPage() {
     redirect("/login");
   }
 
-  const firstRoute = getFirstPermittedRoute(ctx.permissionCodes, isGlobalAdmin(ctx));
+  const firstRoute = getFirstPermittedRoute(ctx.permissionCodes, isGlobalAdmin(ctx), ctx.globalPermissionCodes);
   redirect(firstRoute);
 }

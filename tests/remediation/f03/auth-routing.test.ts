@@ -38,3 +38,28 @@ it('normalizes email without changing the password', () => {
   expect(loginSchema.parse({ email: 'name@example.invalid', password: ' old ' }).password).toBe(' old ');
 });
 it('uses the shared new-password policy for signup', () => expect(signupSchema.safeParse({ email: 'name@example.invalid', password: 'weakpass', fullName: 'Test' }).success).toBe(false));
+it.each([
+  '/modules/fleet/42?custodyBefore=17',
+  '/modules/fleet/operations/23',
+  '/modules/fleet/allowances?order=23',
+  '/modules/workshop/job-work/18',
+  '/modules/inventory?branch=5',
+  '/modules/procurement?branch=5',
+])('retains and restores signed-out module destination %s', async path => {
+  const response = await updateSession(new NextRequest('https://erp.invalid' + path));
+  const location = response.headers.get('location');
+  expect(location).toBeTruthy();
+  const login = new URL(location!);
+  expect(login.pathname).toBe('/login');
+  expect(login.searchParams.get('redirectTo')).toBe(path);
+
+  state.user = { id: 'synthetic' };
+  const signedIn = await updateSession(new NextRequest(login));
+  const destination = new URL(signedIn.headers.get('location')!);
+  expect(destination.pathname + destination.search).toBe(path);
+});
+
+it.each(['/modules/hse', '/modules/finance', '/modules/fleet/relative-path/extra', '/modules/fleet/%2f%2fexample.invalid'])
+('rejects an unimplemented module return target %s', path => {
+  expect(safeAuthDestination(path)).toBe('/start');
+});

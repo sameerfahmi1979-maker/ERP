@@ -1,5 +1,5 @@
 import { ShieldOff, LogOut, LayoutDashboard } from "lucide-react";
-import { getAuthContext } from "@/lib/rbac/check";
+import { getAuthContext, isGlobalAdmin } from "@/lib/rbac/check";
 import { getFirstPermittedRoute } from "@/lib/rbac/route-access-registry";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -12,7 +12,7 @@ import Link from "next/link";
 export default async function NoAccessPage() {
   const ctx = await getAuthContext();
   if (ctx.isAccountActive && ctx.permissionCodes.length > 0) {
-    const firstRoute = getFirstPermittedRoute(ctx.permissionCodes, ctx.roleCodes.some((r) => r === "system_admin" || r === "group_admin"));
+    const firstRoute = getFirstPermittedRoute(ctx.permissionCodes, isGlobalAdmin(ctx), ctx.globalPermissionCodes);
     redirect(firstRoute);
   }
 

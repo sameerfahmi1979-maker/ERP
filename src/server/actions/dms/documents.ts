@@ -14,7 +14,7 @@ import {
   generateDmsExpiryRemindersForDocument,
   rebuildDmsExpiryReminders,
 } from "@/server/actions/dms/expiry-reminders";
-import { getDmsNotificationSettingsForScheduler } from "@/server/actions/dms/notification-settings";
+import { getDmsNotificationSettingsForScheduler } from "@/server/dms-notification-policy";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 

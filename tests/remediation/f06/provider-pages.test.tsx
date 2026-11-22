@@ -35,18 +35,21 @@ for(const [kind,page,reads,flagPermission,logPermission] of [
  });
  it(`${kind}: global administrator works without fabricated explicit permission rows`,async()=>{
   permissions([]);mock.ctx.roleAssignments=[{roleCode:'system_admin',ownerCompanyId:null,branchId:null,permissionCodes:[]}];
-  const element=await page();const props=element.props.children.props;expect((kind==='ai'?props.permissions:props).canManage).toBe(true);reads.forEach(read=>expect(read).toHaveBeenCalledOnce());
+  const element=await page();const props=element.props.children.props;expect((kind==='ai'?props.permissions:props).canManage).toBe(true);
+  expect(reads[0]).toHaveBeenCalledOnce();expect(reads[1]).toHaveBeenCalledOnce();expect(reads[2]).not.toHaveBeenCalled();
  });
  for(const index of [0,1,2])it(`${kind}: failed section ${index} is not silently presented as empty`,async()=>{
   permissions(['manage',logPermission].map(grant=>`settings.${kind}.${grant}`));
   reads.forEach((read,i)=>read.mockResolvedValue({success:true,data:[{id:i+1,providerName:'COMPANION_ROW',featureName:'COMPANION_ROW'}]}));
   reads[index].mockResolvedValue({success:false,error:'SYNTHETIC_TRANSPORT_DETAIL'});
-  const element=await page();const html=renderToStaticMarkup(element);
-  expect(element.type).toBe(LoadError);expect(html).toContain('role="alert"');
-  expect(html).toContain(`${kind==='ai'?'AI':'Email'} settings could not be loaded`);
-  expect(html).toContain(`href="/admin/settings/${kind}"`);expect(html).toContain('Try loading again');
-  for(const text of ['SYNTHETIC_TRANSPORT_DETAIL','COMPANION_ROW','No records found','No feature flags found','No send logs yet','Add Provider'])expect(html).not.toContain(text);
-  expect(mock.aiClient).not.toHaveBeenCalled();expect(mock.emailClient).not.toHaveBeenCalled();
+  const element=await page({searchParams:Promise.resolve({panel:'logs'})});const html=renderToStaticMarkup(element);
+  expect(element.type).not.toBe(LoadError);
+  const props=element.props.children.props;
+  const data=[props.configs,props.featureFlags,props[kind==='ai'?'usageLogs':'sendLogs']];
+  expect(Object.values(props.failedPanels)).toEqual([0,1,2].map(i=>i===index));
+  data.forEach((section,i)=>expect(section).toEqual(i===index?[]:[expect.objectContaining({id:i+1})]));
+  expect(html).not.toContain('SYNTHETIC_TRANSPORT_DETAIL');
+  expect(kind==='ai'?mock.aiClient:mock.emailClient).toHaveBeenCalledOnce();
   reads.forEach(read=>expect(read).toHaveBeenCalledOnce());
  });
  it(`${kind}: unrequested reads cannot force a failure outcome`,async()=>{
@@ -57,16 +60,31 @@ for(const [kind,page,reads,flagPermission,logPermission] of [
  it(`${kind}: confirmed empty results render the existing permitted client`,async()=>{
   permissions(['manage',logPermission].map(grant=>`settings.${kind}.${grant}`));const element=await page();expect(element.type).not.toBe(LoadError);
   const props=element.props.children.props;expect(props.configs).toEqual([]);expect(props.featureFlags).toEqual([]);expect(props[kind==='ai'?'usageLogs':'sendLogs']).toEqual([]);
-  if(kind==='email')expect(props.initialError).toBe(false);
+  expect(props.failedPanels).toEqual({providers:false,flags:false,logs:false});
   renderToStaticMarkup(element);expect(kind==='ai'?mock.aiClient:mock.emailClient).toHaveBeenCalledOnce();
  });
  it(`${kind}: a later successful read recovers without altering rows or authority`,async()=>{
   permissions(['manage',logPermission].map(grant=>`settings.${kind}.${grant}`));reads[0].mockResolvedValueOnce({success:false,error:'SYNTHETIC_TRANSPORT_DETAIL'});
-  const unavailable=await page();renderToStaticMarkup(unavailable);expect(unavailable.type).toBe(LoadError);expect(kind==='ai'?mock.aiClient:mock.emailClient).not.toHaveBeenCalled();
+  const unavailable=await page({searchParams:Promise.resolve({panel:'logs'})});renderToStaticMarkup(unavailable);expect(unavailable.type).not.toBe(LoadError);
+  expect(unavailable.props.children.props.failedPanels.providers).toBe(true);
   const rows=[[{id:41,workspaceRevision:'4',isEnabled:false,isActive:false,isDefault:false,confidenceThreshold:0}],[{id:42,workspaceRevision:'5',isEnabled:false,requiresHumanReview:false,minConfidenceThreshold:0}],[{id:43,durationMs:0,estimatedCost:0,attemptCount:0,errorMessage:'STORED_HISTORY',lastError:'STORED_HISTORY'}]];
-  reads.forEach((read,i)=>read.mockResolvedValue({success:true,data:rows[i]}));const recovered=await page();expect(recovered.type).not.toBe(LoadError);
+  reads.forEach((read,i)=>read.mockResolvedValue({success:true,data:rows[i]}));const recovered=await page({searchParams:Promise.resolve({panel:'logs'})});expect(recovered.type).not.toBe(LoadError);
   const props=recovered.props.children.props;expect(props.configs).toBe(rows[0]);expect(props.featureFlags).toBe(rows[1]);expect(props[kind==='ai'?'usageLogs':'sendLogs']).toBe(rows[2]);
-  expect((kind==='ai'?props.permissions:props).canManage).toBe(true);if(kind==='email')expect(props.initialError).toBe(false);
-  renderToStaticMarkup(recovered);expect(kind==='ai'?mock.aiClient:mock.emailClient).toHaveBeenCalledOnce();reads.forEach(read=>expect(read).toHaveBeenCalledTimes(2));
+  expect((kind==='ai'?props.permissions:props).canManage).toBe(true);expect(props.failedPanels).toEqual({providers:false,flags:false,logs:false});
+  renderToStaticMarkup(recovered);expect(kind==='ai'?mock.aiClient:mock.emailClient).toHaveBeenCalledTimes(2);reads.forEach(read=>expect(read).toHaveBeenCalledTimes(2));
  });
 }
+it.each([['ai', AiPage, mock.ai, 'usage.view'], ['email', EmailPage, mock.email, 'logs.view']] as const)(
+  '%s manager opens provider settings without reading hidden logs, then reads them once on tab entry',
+  async (kind, page, reads, logPermission) => {
+    permissions([`settings.${kind}.manage`, `settings.${kind}.${logPermission}`]);
+    await page();
+    expect(reads[0]).toHaveBeenCalledOnce();
+    expect(reads[1]).toHaveBeenCalledOnce();
+    expect(reads[2]).not.toHaveBeenCalled();
+
+    const logs = await page({ searchParams: Promise.resolve({ panel: 'logs' }) });
+    expect(logs.props.children.props.activePanel).toBe('logs');
+    expect(reads[2]).toHaveBeenCalledOnce();
+  },
+);

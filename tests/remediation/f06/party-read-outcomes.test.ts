@@ -8,15 +8,15 @@ import {getParties,getPartiesByTypeCode,getPartyById} from '@/server/actions/mas
 const privateError={message:'private database host or SQL detail',code:'XX000'};
 beforeEach(()=>{
  vi.clearAllMocks();const codes=['master_data.parties.view'];m.ctx={profile:{id:1},isAccountActive:true,roleCodes:[],permissionCodes:codes,globalPermissionCodes:codes,roleAssignments:[{roleCode:'test',ownerCompanyId:null,branchId:null,permissionCodes:codes}]} as unknown as AuthContext;
- m.responses=[];m.from.mockImplementation(()=>{const result=m.responses.shift();const q={select:()=>q,eq:()=>q,in:()=>q,order:()=>Promise.resolve(result),single:()=>Promise.resolve(result),maybeSingle:()=>Promise.resolve(result),then:(resolve:(v:unknown)=>unknown)=>Promise.resolve(result).then(resolve)};return q;});
+ m.responses=[];m.from.mockImplementation(()=>{const result=m.responses.shift();const q={select:()=>q,eq:()=>q,in:()=>q,order:()=>q,range:()=>q,single:()=>Promise.resolve(result),maybeSingle:()=>Promise.resolve(result),then:(resolve:(v:unknown)=>unknown)=>Promise.resolve(result).then(resolve)};return q;});
  m.labels.mockImplementation(async(_entity,rows)=>rows);
 });
 it.each(['all','filtered','detail'])('%s database failures are safe and explicit',async kind=>{
- m.responses=kind==='filtered'?[{data:{id:8},error:null},{data:[{party_id:1}],error:null},{data:null,error:privateError}]:[{data:null,error:privateError}];
+ m.responses=kind==='filtered'?[{data:{id:8},error:null},{data:null,count:null,error:privateError}]:[{data:null,error:privateError}];
  const r=kind==='all'?await getParties():kind==='detail'?await getPartyById(1):await getPartiesByTypeCode('CUSTOMER');
  expect(r).toMatchObject({success:false,kind:'failed'});expect(JSON.stringify(r)).not.toContain(privateError.message);
 });
-it.each(['type','assignment'])('filtered %s query failure is not an empty success',async step=>{
+it.each(['type','matched Party list'])('filtered %s query failure is not an empty success',async step=>{
  m.responses=step==='type'?[{data:null,error:privateError}]:[{data:{id:8},error:null},{data:null,error:privateError}];
  expect(await getPartiesByTypeCode('CUSTOMER')).toMatchObject({success:false,kind:'failed'});
 });
@@ -24,7 +24,8 @@ it('unconfigured party type is not advertised as zero matching business records'
  m.responses=[{data:null,error:null}];expect(await getPartiesByTypeCode('CUSTOMER')).toMatchObject({success:false,kind:'not_found'});
 });
 it('a configured type with zero assignments is a true empty success',async()=>{
- m.responses=[{data:{id:8},error:null},{data:[],error:null}];expect(await getPartiesByTypeCode('CUSTOMER')).toEqual({success:true,data:[]});
+ m.responses=[{data:{id:8},error:null},{data:[],count:0,error:null}];expect(await getPartiesByTypeCode('CUSTOMER')).toEqual({success:true,data:[]});
+ expect(m.from.mock.calls.map(([table])=>table)).toEqual(['party_types','parties']);
 });
 it('a missing permitted detail has a distinct not-found result',async()=>{
  m.responses=[{data:null,error:null}];expect(await getPartyById(1)).toMatchObject({success:false,kind:'not_found'});
@@ -38,10 +39,10 @@ it('company-scoped view is not global party authority',async()=>{
  expect(m.from).not.toHaveBeenCalled();
 });
 it('reference-label failure remains a failure without exposing its details',async()=>{
- m.responses=[{data:[{id:1}],error:null}];m.labels.mockRejectedValue(new Error(privateError.message));
- const r=await getParties();expect(r).toMatchObject({success:false,kind:'failed'});expect(JSON.stringify(r)).not.toContain(privateError.message);
+ m.responses=[{data:[{id:1}],count:1,error:null}];m.labels.mockRejectedValue(new Error(privateError.message));
+ const r=await getParties();expect(r).toMatchObject({success:false,kind:'failed'});expect(m.labels).toHaveBeenCalledOnce();expect(JSON.stringify(r)).not.toContain(privateError.message);
 });
 it('legacy global read permission remains supported',async()=>{
  const codes=['master_data.party_master.view'];m.ctx={...m.ctx,permissionCodes:codes,globalPermissionCodes:codes,roleAssignments:[{roleCode:'test',ownerCompanyId:null,branchId:null,permissionCodes:codes}]};
- m.responses=[{data:[],error:null}];expect(await getParties()).toEqual({success:true,data:[]});
+ m.responses=[{data:[],count:0,error:null}];expect(await getParties()).toEqual({success:true,data:[]});
 });

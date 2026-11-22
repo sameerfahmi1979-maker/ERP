@@ -214,9 +214,11 @@ export async function getAssistantSession(
 
   if (messagesRes.error || draftsRes.error || !Array.isArray(messagesRes.data) || !Array.isArray(draftsRes.data)) return { success: false, error: "Conversation history could not be verified", code: "DB_ERROR" };
   await verifyAssistantSessionNow();
-  const context = session.context_entity_type && session.context_entity_id ? await readAuthorizedAssistantEntity(session.context_entity_type as string, session.context_entity_id as number) : null;
+  const context = session.context_entity_type && session.context_entity_id
+    ? await readAuthorizedAssistantEntity(session.context_entity_type, session.context_entity_id, { context: ctx, db: supabase })
+    : null;
   if ((session.context_entity_type || session.context_entity_id) && !context) return { success: false, error: "Record context is unavailable", code: "FORBIDDEN" };
-  const verifyHistory = createAssistantHistoryVerifier(ctx, sessionId);
+  const verifyHistory = createAssistantHistoryVerifier(ctx, sessionId, supabase);
   const messages: AssistantMessageRow[] = [];
   for (const row of messagesRes.data ?? []) {
     const mapped = mapMessageRow(row as Record<string, unknown>);
@@ -276,7 +278,9 @@ export async function getAssistantSessions(
   await verifyAssistantSessionNow();
   const sessions: AssistantSessionRow[] = [];
   for (const row of data ?? []) {
-    const context = row.context_entity_type && row.context_entity_id ? await readAuthorizedAssistantEntity(row.context_entity_type, row.context_entity_id) : null;
+    const context = row.context_entity_type && row.context_entity_id
+      ? await readAuthorizedAssistantEntity(row.context_entity_type, row.context_entity_id, { context: ctx, db: supabase })
+      : null;
     if ((row.context_entity_type || row.context_entity_id) && !context) continue;
     sessions.push({ ...mapSessionRow(row as Record<string, unknown>), title: context?.label ?? null });
   }

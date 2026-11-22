@@ -396,11 +396,11 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
 
     // ── Update status: processing ───────────────────────────────────────────
 
-
+    const claimTimestamp = new Date().toISOString();
     if(modern){
       try{
         const response=await supabase.from("dms_upload_sessions")
-          .update({intake_status:"ocr_processing",updated_at:new Date().toISOString()})
+          .update({intake_status:"ocr_processing",updated_at:claimTimestamp})
           .eq("id",uploadSessionId).eq("batch_draft_operation_id",marker)
           .eq("batch_id",typedSession.batch_id).eq("admission_position",typedSession.admission_position)
           .eq("uploaded_by",ctx.profile.id).eq("intake_status","uploaded").eq("status",typedSession.status)
@@ -416,7 +416,7 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
     }else{
       const claimed = await supabase
         .from("dms_upload_sessions")
-        .update({ intake_status: "ocr_processing", updated_at: new Date().toISOString() })
+        .update({ intake_status: "ocr_processing", updated_at: claimTimestamp })
         .eq("id", uploadSessionId)
         .eq("status", session.status)
         .eq("intake_status", session.intake_status)
@@ -516,10 +516,24 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
 
     // ── Update status: AI processing ────────────────────────────────────────
 
-    await supabase
+    const publicationUnconfirmed = () => ({
+      success: false as const,
+      uncertain: true as const,
+      error: "AI review publication is unconfirmed. Check this upload for progress before retrying.",
+    });
+    const processing = await supabase
       .from("dms_upload_sessions")
       .update({ intake_status: "ai_processing", updated_at: new Date().toISOString() })
-      .eq("id", uploadSessionId);
+      .eq("id", uploadSessionId)
+      .eq("intake_status", "ocr_processing")
+      .eq("updated_at", claimTimestamp)
+      .is("deleted_at", null)
+      .select("id, updated_at")
+      .retry(false)
+      .maybeSingle();
+    if (processing.error || processing.data?.id !== uploadSessionId || typeof processing.data.updated_at !== "string") {
+      return publicationUnconfirmed();
+    }
 
     // ── Create AI job record ────────────────────────────────────────────────
 
@@ -879,10 +893,20 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
 
     // ── Complete job + update session ──────────────────────────────────────
 
-    await supabase
+    const completedJob = await supabase
       .from("dms_ai_extraction_jobs")
       .update({ status: "complete", completed_at: completedAt, duration_ms: durationMs })
-      .eq("id", jobId);
+      .eq("id", jobId)
+      .eq("upload_session_id", uploadSessionId)
+      .eq("created_by", ctx.profile.id)
+      .eq("status", "processing")
+      .select("id, upload_session_id, status")
+      .retry(false)
+      .maybeSingle();
+    if (completedJob.error || completedJob.data?.id !== jobId ||
+        completedJob.data.upload_session_id !== uploadSessionId || completedJob.data.status !== "complete") {
+      return publicationUnconfirmed();
+    }
 
     if(!verifiedSource)return {success:false,error:'The exact original-file proof is missing. Retain this intake for reconciliation.'};
     const attestedAnalysis=await traceSpan('dms.publish', () => adminClient.rpc('f07_attest_intake_analysis',{
@@ -891,7 +915,7 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
     }));
     if(attestedAnalysis.error)return {success:false,error:'The AI result could not be verified against its exact original file. Retain this intake; no approval was submitted.'};
 
-    await supabase
+    let publish = supabase
       .from("dms_upload_sessions")
       .update({
         intake_status: "review_pending",
@@ -900,7 +924,25 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
         ai_result_id: resultId,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", uploadSessionId);
+      .eq("id", uploadSessionId)
+      .eq("session_code", sessionCode)
+      .eq("intake_status", "ai_processing")
+      .eq("updated_at", processing.data.updated_at)
+      .eq("temp_storage_path", verifiedSource.plan.source.path)
+      .is("ai_result_id", null)
+      .is("document_id", null)
+      .is("temp_cleaned_at", null)
+      .is("deleted_at", null);
+    const publishedSource = verifiedSource.plan.source;
+    publish = publishedSource.owner === null ? publish.is("uploaded_by", null) : publish.eq("uploaded_by", publishedSource.owner);
+    publish = publishedSource.company === null ? publish.is("owning_company_id", null) : publish.eq("owning_company_id", publishedSource.company);
+    publish = publishedSource.branch === null ? publish.is("owning_branch_id", null) : publish.eq("owning_branch_id", publishedSource.branch);
+    const published = await publish.select("id, session_code, intake_status, review_status, ai_job_id, ai_result_id").retry(false).maybeSingle();
+    if (published.error || published.data?.id !== uploadSessionId || published.data.session_code !== sessionCode ||
+        published.data.intake_status !== "review_pending" || published.data.review_status !== "pending" ||
+        published.data.ai_job_id !== jobId || published.data.ai_result_id !== resultId) {
+      return publicationUnconfirmed();
+    }
 
     await logAudit({
       module_code: "DMS",

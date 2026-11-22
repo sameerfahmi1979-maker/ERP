@@ -3,13 +3,20 @@ import { LoadError } from "@/components/erp/load-error";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PermissionCommandCenter } from "@/features/permissions/permission-command-center";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { traceRequest } from "@/lib/performance/request";
+import { traceSpan } from "@/lib/performance/trace";
+import { hasPermission } from "@/lib/rbac/check";
 import { getAllRolePermissions, listPermissions } from "@/server/queries/permissions";
 import { listRoles } from "@/server/queries/roles";
+import { getRenderAuthContext } from "@/server/reads/render-auth-context";
 import { Shield } from "lucide-react";
 
-export default async function AdminPermissionsPage() {
-  const ctx = await getAuthContext();
+export default function AdminPermissionsPage() {
+  return traceRequest("permissions.page", renderPermissionsPage);
+}
+
+async function renderPermissionsPage() {
+  const ctx = await getRenderAuthContext();
 
   if (!hasPermission(ctx, "permissions.view")) {
     return (
@@ -34,23 +41,22 @@ export default async function AdminPermissionsPage() {
   }
 
   const [permissions, roles, rolePermissions] = await Promise.all([
-    listPermissions(),
-    listRoles(),
-    getAllRolePermissions(),
+    traceSpan("permissions.list", () => listPermissions(ctx)),
+    traceSpan("permissions.roles", () => listRoles(ctx)).catch(() => null),
+    traceSpan("permissions.grants", () => getAllRolePermissions(ctx)),
   ]);
 
-  if (!permissions || !rolePermissions) {
+  if (!permissions || !roles || !rolePermissions) {
     return <LoadError title="Role permissions" retryHref="/admin/permissions" />;
   }
 
   const canManage = hasPermission(ctx, "roles.manage");
 
-  // Prepare export-friendly data
-  const exportData = permissions.map(perm => ({
+  const exportData = await traceSpan("permissions.export", async () => permissions.map(perm => ({
     ...perm,
     is_visible_text: perm.is_visible ? "Yes" : "No",
     is_system_permission_text: perm.is_system_permission ? "Yes" : "No",
-  }));
+  })));
 
   return (
     <div className="p-6 space-y-4">

@@ -55,6 +55,28 @@ it('binds outgoing draft to source while active navigation changes',()=>{const h
 it('cannot recreate a cleared draft with a pending snapshot',()=>{const ui=render(<Form/>);fireEvent.input(ui.getByLabelText('Name'),{target:{value:'discarded'}});context.store?.clearDraftsForTab('a');act(()=>vi.runAllTimers());expect(context.store?.hasDraft('draft:tab:a:test-form')).toBe(false);});
 it('marks only the originating tab dirty during navigation',()=>{const hook=renderHook(()=>useWorkspaceTabDirty({isDirty:true}));context.dispatch.mockClear();context.active='b';hook.rerender();expect(context.dispatch.mock.calls.some(([action])=>action.tabId==='b')).toBe(false);});
 it('captures unchecked named checkboxes explicitly',()=>{render(<form id="test-form"><input type="checkbox" name="active" defaultChecked={false}/></form>);expect(snapshotFormData('test-form')).toEqual({active:'false'});});
+it('distinguishes blank and unchecked values from disabled or absent controls', () => {
+  render(<form id="test-form">
+    <input name="label" defaultValue="" />
+    <input type="checkbox" name="available" defaultChecked={false} />
+    <input type="checkbox" name="locked" defaultChecked disabled />
+    <fieldset disabled><input type="checkbox" name="retired" defaultChecked /></fieldset>
+  </form>);
+  expect(snapshotFormData('test-form')).toEqual({ label: '', available: 'false' });
+});
+it('does not notify unrelated listeners for an identical snapshot or denied field', () => {
+  const store = createWorkspaceDraftStore();
+  store.setDraft('record', { active: 'false', name: '' });
+  const listener = vi.fn();
+  const unsubscribe = store.subscribe(listener);
+  store.patchDraft('record', { name: '', active: 'false', access_token: 'synthetic-denied' });
+  store.writeField('record', 'active', 'false');
+  expect(listener).not.toHaveBeenCalled();
+  store.patchDraft('record', { name: 'Edited', active: 'true' });
+  expect(listener).toHaveBeenCalledOnce();
+  expect(store.getDraft('record')).toEqual({ active: 'true', name: 'Edited' });
+  unsubscribe();
+});
 it('excludes a password input even under an innocent field name',()=>{render(<form id="test-form"><input name="value" type="password" defaultValue="synthetic-never-store"/></form>);expect(snapshotFormData('test-form')).toEqual({});});
 it('retains controlled fields absent from the mounted section',()=>{context.store?.writeField('draft:tab:a:test-form','cb_company','1');const ui=render(<Form/>);fireEvent.input(ui.getByLabelText('Name'),{target:{value:'safe'}});act(()=>vi.runAllTimers());expect(context.store?.getDraft('draft:tab:a:test-form')).toEqual({cb_company:'1',full_name:'safe'});});
 it('keeps different provider stores isolated',()=>{const other=createWorkspaceDraftStore();context.store?.writeField('same','full_name','A');expect(other.getDraft('same')).toBeUndefined();});

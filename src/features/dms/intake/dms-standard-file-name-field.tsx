@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useReadCacheOwner } from "@/components/layout/read-cache-boundary";
 import { Loader2 } from "lucide-react";
 import { previewDmsStandardFileName } from "@/server/actions/dms/standard-file-name";
 import { stripFilenameExtension } from "@/lib/dms/standard-file-name";
@@ -20,14 +21,18 @@ type Props = {
 
 export function DmsStandardFileNameField({ session, values, docTypes, onChange, savedDocument }: Props) {
   const [isPending, startTransition] = useTransition();
+  const owner = useReadCacheOwner();
   const [missingParts, setMissingParts] = useState<string[]>([]);
   const userEditedRef = useRef(false);
   const selectedType = docTypes.find((t) => t.id === values.documentTypeId) ?? null;
 
   useEffect(() => {
-    if (!values.documentTypeId || !selectedType) return;
+    const identity = owner?.identity;
+    if (!values.documentTypeId || !selectedType || (owner && !owner.admits(identity))) return;
     let cancelled = false;
+    const isCurrent = () => !cancelled && (!owner || owner.admits(identity));
     const timer = setTimeout(() => {
+      if (!isCurrent()) return;
       startTransition(async () => {
         const metadataValues = Object.entries(values.metadataValues).map(([id, v]) => ({
           definitionId: parseInt(id, 10),
@@ -45,9 +50,9 @@ export function DmsStandardFileNameField({ session, values, docTypes, onChange, 
           standardFileNameOverride: userEditedRef.current ? values.standardFileName : null,
           suggestedDescription: values.description || session.ai_result?.suggested_description || null,
           suggestedTitle: values.title || session.ai_result?.suggested_title || null,
-        });
+        }).catch(() => null);
 
-        if (cancelled || !res.success || !res.data) return;
+        if (!isCurrent() || !res?.success || !res.data) return;
 
         // Fresh intake adds the extension in its upload writer. Saved-document
         // updates instead require the complete filename, bound to the original.
@@ -71,6 +76,9 @@ export function DmsStandardFileNameField({ session, values, docTypes, onChange, 
     savedDocument,
     session.original_filename,
     session.ai_result?.extracted_fields_json,
+    session.ai_result?.suggested_description,
+    session.ai_result?.suggested_title,
+    owner,
     selectedType?.type_code,
     selectedType?.requires_expiry_tracking,
     onChange,

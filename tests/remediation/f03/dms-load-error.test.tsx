@@ -34,7 +34,7 @@ it.each([DocumentsPage, ArchivePage])("shows safe failure, not an empty list, an
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
   expect(state.refresh).toHaveBeenCalledOnce();
 });
-it.each([DocumentsPage, ArchivePage, Inbox])("does not hide failed lookup loading", async (Page) => {
+it.each([ArchivePage, Inbox])("does not hide failed required lookup loading", async (Page) => {
   state.defaults.success = false; render(await Page()); expect(screen.getByRole("alert")).toBeTruthy();
 });
 it.each([DocumentsPage, ArchivePage, Inbox])("keeps legitimate empty results separate from failures", async (Page) => {

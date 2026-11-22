@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { SupplyForm } from "@/features/supply/action-form";
-import { readWorkshopMaterial } from "@/server/actions/workshop/material";
+import type { readWorkshopMaterial } from "@/server/actions/workshop/material";
 
 type MaterialWorkspace = NonNullable<Awaited<ReturnType<typeof readWorkshopMaterial>>>;
 type Demand = MaterialWorkspace["demands"][number];
@@ -86,10 +86,8 @@ function MaterialDemand({ demand }: { demand: Demand }) {
   </section>;
 }
 
-export async function WorkshopMaterial({ job }: { job: number }) {
-  const workspace = await readWorkshopMaterial(job);
-  if (!workspace) return null;
-  const { branch, can_request, demands, items, owners, units } = workspace;
+export function WorkshopMaterial({ workspace }: { workspace: MaterialWorkspace }) {
+  const { job, branch, can_request, demands, items, owners, units } = workspace;
   const unitLabels = new Map(units.map(unit => [unit.id, unit.label]));
   const parts = items.map(item => ({ id: item.id, label: item.label + " · " + unitLabels.get(item.unit_id) }));
   const links = [

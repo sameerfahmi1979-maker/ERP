@@ -29,7 +29,7 @@ import type {
   AuditTimelineItem
 } from "@/lib/ai/common/audit-explainer/types";
 import { AUDIT_EXPLAINER_PROMPT_VERSION } from "@/lib/ai/common/audit-explainer/types";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission } from "@/lib/rbac/check";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { z } from "zod";
@@ -60,27 +60,24 @@ type AuthCtx = Awaited<ReturnType<typeof getAuthContext>>;
 
 function canViewExplainer(ctx: AuthCtx): boolean {
   return (
-    hasPermission(ctx, "ai.audit_explainer.view") ||
-    hasPermission(ctx, "ai.audit_explainer.use") ||
-    hasPermission(ctx, "ai.audit_explainer.admin") ||
-    hasPermission(ctx, "ai.common.view") ||
-    hasPermission(ctx, "ai.common.admin") ||
-    ctx.roleCodes.includes("system_admin")
+    hasGlobalPermission(ctx, "ai.audit_explainer.view") ||
+    hasGlobalPermission(ctx, "ai.audit_explainer.use") ||
+    hasGlobalPermission(ctx, "ai.audit_explainer.admin") ||
+    hasGlobalPermission(ctx, "ai.common.view") ||
+    hasGlobalPermission(ctx, "ai.common.admin")
   );
 }
 
 function canUseAi(ctx: AuthCtx): boolean {
   return (
-    hasPermission(ctx, "ai.audit_explainer.use") ||
-    hasPermission(ctx, "ai.common.admin") ||
-    ctx.roleCodes.includes("system_admin")
+    hasGlobalPermission(ctx, "ai.audit_explainer.use") ||
+    hasGlobalPermission(ctx, "ai.common.admin")
   );
 }
 
 function canAdmin(ctx: AuthCtx): boolean {
   return (
-    hasPermission(ctx, "ai.audit_explainer.admin") ||
-    ctx.roleCodes.includes("system_admin")
+    hasGlobalPermission(ctx, "ai.audit_explainer.admin")
   );
 }
 
@@ -155,9 +152,8 @@ export async function getAuditExplainerOverview(input?: {
     }
 
     const parsed = OverviewInputSchema.safeParse(input ?? {});
-    const scope: AuditExplainerScope = parsed.success ? (parsed.data.scope ?? "today") : "today";
-    const entityType = parsed.success ? parsed.data.entityType : undefined;
-    const entityId = parsed.success ? parsed.data.entityId : undefined;
+    if (!parsed.success) return { success: false, error: "Choose valid audit filters." };
+    const { scope = "today", entityType, entityId } = parsed.data;
 
     const overview = await collectAuditExplainerOverview(scope, entityType, entityId);
 
@@ -169,8 +165,8 @@ export async function getAuditExplainerOverview(input?: {
         ...overview,
       },
     };
-  } catch (err) {
-    return { success: false, error: `Failed to load overview: ${String(err)}` };
+  } catch {
+    return { success: false, error: "Audit events could not be loaded." };
   }
 }
 
@@ -212,7 +208,7 @@ export async function explainAuditLogEntry(input: {
     const aiEnabled = await isAuditExplainerEnabled();
     const userId = ctx.profile?.id ?? 0;
 
-    const supabase = createAdminClient();
+    const supabase = await createClient();
     const { data: logRow } = await supabase
       .from("audit_logs")
       .select("id, module_code, entity_name, entity_id, entity_reference, action, old_values, new_values, created_at")
@@ -477,7 +473,8 @@ export async function explainAiEventGroup(input: {
     const aiEnabled = await isAuditExplainerEnabled();
     const userId = ctx.profile?.id ?? 0;
 
-    const items = await collectAiEventTimeline(scope, input.entityType, input.entityId, 30);
+    const { items, unavailableSources } = await collectAiEventTimeline(scope, input.entityType, input.entityId, 30);
+    if (unavailableSources.length > 0) return { success: false, error: "Some AI audit events could not be loaded. Try again." };
     const deterministicSummary = buildDeterministicAuditSummary(items, {
       entityType: input.entityType,
       scope,

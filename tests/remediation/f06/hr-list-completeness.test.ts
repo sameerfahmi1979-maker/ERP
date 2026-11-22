@@ -3,13 +3,14 @@ import {createClient} from '@supabase/supabase-js';
 import {beforeEach,expect,it,vi} from 'vitest';
 import {literalContains} from '@/lib/reads/search';
 
-const port=vi.hoisted(()=>({allow:true,client:vi.fn()}));
-vi.mock('@/lib/rbac/check',()=>({getAuthContext:async()=>({}),hasPermission:()=>port.allow,hasGlobalPermission:()=>false}));
+const port=vi.hoisted(()=>({allow:true,global:false,client:vi.fn()}));
+vi.mock('@/lib/rbac/check',()=>({getAuthContext:async()=>({}),hasPermission:()=>port.allow,hasGlobalPermission:()=>port.global}));
 vi.mock('@/lib/supabase/server',()=>({createClient:port.client}));
 import * as actions from '@/server/actions/hr/settings';
+import {getHrRuleChoices} from '@/server/actions/hr/settings-references';
 
 type Row={id:number;[key:string]:unknown};
-type Mode='ok'|'later-error'|'later-denied'|'changed-count'|'missing-count'|'duplicate'|'short';
+type Mode='ok'|'later-error'|'later-denied'|'changed-count'|'missing-count'|'duplicate'|'short'|'early-timeout'|'empty-page'|'range-error'|'invalid-reference';
 let rows:Row[]=[],calls:URL[]=[],mode:Mode='ok';
 const common=[
  ['employee-categories','listHrEmployeeCategories'],['employment-types','listHrEmploymentTypes'],['grades','listHrGrades'],
@@ -19,16 +20,19 @@ const common=[
 ] as const;
 const list=(name:typeof common[number][1],params:Record<string,unknown>)=>actions[name](params);
 beforeEach(()=>{
- vi.clearAllMocks();port.allow=true;calls=[];mode='ok';rows=Array.from({length:501},(_,i)=>({id:i+1,code:`CODE_${i+1}`,name_en:'Same name',name_ar:'اسم',is_active:false,sort_order:0,workspace_revision:7,grade_level:0}));
+ vi.clearAllMocks();port.allow=true;port.global=false;calls=[];mode='ok';rows=Array.from({length:501},(_,i)=>({id:i+1,code:`CODE_${i+1}`,name_en:'Same name',name_ar:'اسم',is_active:false,sort_order:0,workspace_revision:7,grade_level:0}));
  const db=createClient('http://127.0.0.1:1','synthetic-offline-key',{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false},global:{fetch:async(input,init)=>{
   const url=new URL(String(input));calls.push(url);const from=Number(url.searchParams.get('offset')??0),size=Number(url.searchParams.get('limit')??rows.length);
+  if(mode==='early-timeout')return new Response(JSON.stringify({message:'PRIVATE DATABASE DETAIL'}),{status:408,headers:{'Content-Type':'application/json'}});
+  if(mode==='range-error'&&from>=rows.length)return new Response(JSON.stringify({code:'PGRST103',message:'PRIVATE DATABASE DETAIL'}),{status:416,headers:{'Content-Type':'application/json'}});
   if(from>0&&(mode==='later-error'||mode==='later-denied'))return new Response(JSON.stringify({message:'PRIVATE DATABASE DETAIL'}),{status:mode==='later-denied'?403:503,headers:{'Content-Type':'application/json'}});
-  let found=rows;
+  const after=url.searchParams.get("id");
+  let found=after?.startsWith("gt.")?rows.filter(row=>row.id>Number(after.slice(3))):rows;
   const search=url.searchParams.get('or')??url.searchParams.get('name_en')??url.searchParams.get('establishment_name');
   if(search?.includes('501'))found=search.includes('code.ilike')?rows.filter(r=>r.code==='CODE_501'):[];
   const count=found.length+(from>0&&mode==='changed-count'?1:0);
-  let data=found.slice(from,from+size);if(mode==='short')data=data.slice(0,10);if(from>0&&mode==='duplicate')data=data.map(r=>({...r,id:1}));
-  const head=(init?.method??'GET')==='HEAD';return new Response(head?null:JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json',...(mode==='missing-count'?{}:{'Content-Range':`${from}-${from+data.length-1}/${count}`})}});
+  let data=found.slice(from,from+size);if(mode==='empty-page')data=[];if(mode==='short')data=data.slice(0,10);if(from>0&&mode==='duplicate')data=data.map(r=>({...r,id:1}));
+  const head=(init?.method??'GET')==='HEAD';return new Response(head?null:JSON.stringify(mode==="invalid-reference"?{rows:data}:data),{status:200,headers:{'Content-Type':'application/json',...(mode==='missing-count'?{}:{'Content-Range':`${from}-${from+data.length-1}/${count}`})}});
  }}});
  port.client.mockResolvedValue(db);
 });
@@ -58,9 +62,9 @@ it.each(['later-error','later-denied','changed-count','missing-count','duplicate
 it('empty complete data is verified by exact zero count',async()=>{rows=[];expect(await list('listHrGrades',{complete:true})).toMatchObject({success:true,data:{data:[],total:0}});});
 it('current read denial makes no database request',async()=>{port.allow=false;expect((await list('listHrGrades',{complete:true})).success).toBe(false);expect(port.client).not.toHaveBeenCalled();});
 it('code search reaches the whole catalogue, not only English names',async()=>{expect((await list('listHrGrades',{complete:true,search:'CODE_501'})).data?.data).toEqual([rows[500]]);});
-it('uses only fixed escaped displayed fields and identical paged count predicates',async()=>{
+it('uses fixed escaped displayed fields on the counted page',async()=>{
  const value='a%,_"\\)';await actions.listHrGrades({search:value});const expected=`(code.ilike.${literalContains(value)},name_en.ilike.${literalContains(value)},name_ar.ilike.${literalContains(value)})`;
- expect(calls).toHaveLength(2);for(const url of calls)expect(url.searchParams.get('or')).toBe(expected);
+ expect(calls).toHaveLength(1);expect(calls[0].searchParams.get('or')).toBe(expected);
  calls=[];await actions.listHrMohreEstablishments({search:value});for(const url of calls)expect(url.searchParams.get('or')).toBe(`(establishment_number.ilike.${literalContains(value)},establishment_name.ilike.${literalContains(value)})`);
 });
 it('all14 routes opt in without replacing management or mutation contracts',()=>{
@@ -68,4 +72,53 @@ it('all14 routes opt in without replacing management or mutation contracts',()=>
   const source=fs.readFileSync(`src/app/(protected)/admin/hr/settings/${route}/page.tsx`,'utf8');expect(source).toMatch(/listHr\w+\(\{\s*complete:\s*true\s*\}\)/);expect(source).toContain('hasGlobalPermission');expect(source).toContain('principalId={ctx.profile?.id}');
  }
  const grades=fs.readFileSync('src/app/(protected)/admin/hr/settings/grades/page.tsx','utf8');expect(grades).toContain('createHrGrade({ grade_level: null, ...input }, contract)');
+});
+
+const countedActions = [
+ ...common.map(([, name]) => name), 'listHrMohreEstablishments', 'listHrReadinessRuleTemplates',
+ 'listHrRoleRequirementMatrix', 'listHrSiteRequirementMatrix', 'listHrApprovalWorkflows',
+] as const;
+
+it.each(countedActions)('%s rejects missing counts, undersized pages and both timeout positions', async (name) => {
+ const action = actions[name];
+ for (const failure of ['missing-count', 'short', 'early-timeout', 'later-error'] as const) {
+  mode=failure;
+  const result=await action({page:failure==='later-error'?2:1,page_size:20});
+  expect(result, failure).toEqual({success:false,error:'HR records could not be completely loaded. Please retry.'});
+ }
+});
+
+it.each(countedActions)('%s proves authorized zero rows and a partial final page', async (name) => {
+ const action = actions[name];
+ const final=await action({page:26,page_size:20});
+ expect(final).toEqual({success:true,data:{data:[rows[500]],total:501}});
+ rows=[];
+ expect(await action({page:1,page_size:20})).toEqual({success:true,data:{data:[],total:0}});
+});
+
+it('verifies an out-of-range page before returning the exact total',async()=>{
+ mode='range-error';
+ expect(await actions.listHrApprovalWorkflows({page:27,page_size:20})).toEqual({success:true,data:{data:[],total:501}});
+ expect(calls).toHaveLength(2);
+});
+
+it('fails safely on unavailable or malformed configuration choices',async()=>{
+ port.global=true;
+ for(const failure of ['invalid-reference','early-timeout'] as const){
+  mode=failure;
+  const result=await getHrRuleChoices('hr_approval_workflows');
+  expect(result).toEqual({success:false,error:'Reference choices could not load. Retry before saving; your entries are retained.'});
+ }
+});
+it('parallel approval and escalation reference fields share one authorized read',async()=>{
+ port.global=true;
+ rows=[{id:24,role_name:'Synthetic approver',role_code:'SYNTHETIC',owner_company_id:null}];
+ expect(await getHrRuleChoices('hr_approval_workflows')).toMatchObject({
+  success:true,data:{
+   approval_role_id:[{id:24,label:'Synthetic approver · SYNTHETIC — Shared across companies'}],
+   escalation_role_id:[{id:24,label:'Synthetic approver · SYNTHETIC — Shared across companies'}],
+  },
+ });
+ expect(calls).toHaveLength(2);
+ expect(calls.map(url=>url.searchParams.get("id"))).toEqual(["gt.0","gt.24"]);
 });

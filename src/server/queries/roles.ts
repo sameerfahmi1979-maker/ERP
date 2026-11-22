@@ -1,14 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, type AuthContext } from "@/lib/rbac/check";
+import { readAllPages } from "@/server/reads/all-pages";
 import type { Role } from "@/types/domain";
 
 /**
  * List all roles.
  * USERS.1 — Explicit permission guard; defense-in-depth on top of RLS.
  */
-export async function listRoles(): Promise<Role[]> {
-  const ctx = await getAuthContext();
+export async function listRoles(context?: AuthContext): Promise<Role[]> {
+  const ctx = context ?? await getAuthContext();
   if (!hasPermission(ctx, "roles.view")) {
     logger.warn("listRoles: access denied — missing roles.view");
     return [];
@@ -16,17 +17,14 @@ export async function listRoles(): Promise<Role[]> {
 
   const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from("roles")
-    .select("*")
-    .order("role_name", { ascending: true });
-
-  if (error) {
-    logger.error("listRoles error", error.message);
-    return [];
-  }
-
-  return data ?? [];
+  return readAllPages<Role>(
+    async (from, to) => supabase.from("roles")
+      .select("*", { count: "exact" })
+      .order("role_name")
+      .order("id")
+      .range(from, to),
+    { identity: row => row.id },
+  );
 }
 
 /**
@@ -61,8 +59,8 @@ export async function listAssignableRoles(): Promise<Role[]> {
  * Get a single role by ID.
  * USERS.3: explicit roles.view guard added (defense-in-depth).
  */
-export async function getRoleById(id: number): Promise<Role | null> {
-  const ctx = await getAuthContext();
+export async function getRoleById(id: number, context?: AuthContext): Promise<Role | null> {
+  const ctx = context ?? await getAuthContext();
   if (!hasPermission(ctx, "roles.view")) {
     logger.warn("getRoleById: access denied — missing roles.view");
     return null;
@@ -74,11 +72,11 @@ export async function getRoleById(id: number): Promise<Role | null> {
     .from("roles")
     .select("*")
     .eq("id", id)
-    .single();
+    .maybeSingle();
 
   if (error) {
     logger.error("getRoleById error", error.message);
-    return null;
+    throw Error("Role could not be loaded.");
   }
 
   return data;

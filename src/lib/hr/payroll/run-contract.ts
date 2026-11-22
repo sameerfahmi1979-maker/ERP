@@ -146,6 +146,23 @@ const rules = {
 } as const;
 
 export type PayrollAction = keyof typeof rules;
+const receiptDigest = version.shape.digest;
+export const payrollCalculationReceipt = z.object({
+  action: z.literal("calculate"),
+  run: versionId,
+  version: versionId,
+  number: id,
+  digest: receiptDigest,
+  source_digest: receiptDigest,
+  rule_digest: receiptDigest,
+  totals: z.array(currencyTotals),
+  exception_count: count,
+});
+export const payrollChangeReceipt = z.object({
+  action: z.enum(["prepare-rule", "approve-rule", "prepare-adjustment", "verify-adjustment", "reject-adjustment"]),
+  id,
+});
+
 export const payrollCommandHeader = z.object({
   company: id, branch: id, operation: z.uuid(),
 });

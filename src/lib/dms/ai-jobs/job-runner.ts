@@ -53,7 +53,15 @@ export async function runDmsAiJob(job: ClaimedJob, claim: JobClaim): Promise<str
     return receipt.data.status;
   } catch { return null; } // Leave the claim for bounded recovery; never pretend success.
 }
-export async function processNextDmsAiJobs(input: { limit: number; workerId: string; preparationOnly?: boolean; runtimeSecret?: string }): Promise<ProcessResult> {
+export type PreparationRecoveryPass = { runtimeId: string; result?: Promise<void> };
+
+export async function processNextDmsAiJobs(input: {
+  limit: number;
+  workerId: string;
+  preparationOnly?: boolean;
+  runtimeSecret?: string;
+  preparationRecovery?: PreparationRecoveryPass;
+}): Promise<ProcessResult> {
   const at = Date.now();
   const totals: ProcessResult = { processed: 0, completed: 0, failed: 0, retryScheduled: 0, durationMs: 0 };
   if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 50 || !input.workerId.trim() || input.workerId.length > 64) return totals;
@@ -62,8 +70,13 @@ export async function processNextDmsAiJobs(input: { limit: number; workerId: str
   const dispatchRpc = input.preparationOnly ? 'dms_preparation_dispatch_worker' : 'f07_ai_worker';
   const runtime = input.preparationOnly ? {runtimeId:input.workerId,runtimeSecret:input.runtimeSecret} : {};
   try {
-    const recovered = await db.rpc(dispatchRpc, { p_action: "recover", p_data: runtime });
-    if (recovered.error || recovered.data?.success !== true) throw new Error("Recovery unavailable");
+    const recover = async () => {
+      const recovered = await db.rpc(dispatchRpc, { p_action: "recover", p_data: runtime });
+      if (recovered.error || recovered.data?.success !== true) throw new Error("Recovery unavailable");
+    };
+    const pass = input.preparationRecovery;
+    if (input.preparationOnly && pass?.runtimeId === input.workerId) await (pass.result ??= recover());
+    else await recover();
     // Claim just in time, not a batch whose leases expire while earlier jobs run.
     for (let i = 0; i < input.limit; i++) {
       const { data, error } = await db.rpc(dispatchRpc, { p_action: "claim", p_data: { ...runtime,workerId: input.workerId, limit: 1, preparationVersion:1 } });

@@ -98,6 +98,7 @@ const updateSchema = createSchema.partial().extend({
 });
 const saveReceiptSchema = z.object({
   id: z.number().int().positive(), revision: z.string().regex(/^[1-9]\d*$/), replayed: z.boolean(),
+  changed: z.boolean().optional(),
   owner_company_id: z.number().int().positive(), branch_id: z.number().int().positive().nullable(), available_to_all_organizations: z.boolean(),
 });
 const contractSchema = z.object({ operationId: z.uuid(), revision: z.string().regex(/^[1-9]\d*$/).max(19).nullable() });
@@ -187,11 +188,13 @@ async function saveWorkSite(id: number | null, input: Partial<CreateInput>, cont
     }
     const receipt = saveReceiptSchema.safeParse(data);
     if (error || !receipt.success || (id !== null && receipt.data.id !== id) ||
+      (receipt.data.changed === false && (id === null || archive || receipt.data.revision !== parsedContract.data.revision)) ||
       (input.owner_company_id !== undefined && input.owner_company_id !== receipt.data.owner_company_id) ||
       (input.branch_id !== undefined && input.branch_id !== receipt.data.branch_id) ||
       (input.available_to_all_organizations !== undefined && input.available_to_all_organizations !== receipt.data.available_to_all_organizations)) {
       return { success: false, uncertain: true, error: "Save unconfirmed. Retry with the same values to recover its result." };
     }
+    if (receipt.data.changed === false) return { success: true, data: receipt.data };
     revalidatePath("/admin/common-master-data/work-sites");
     revalidatePath(`/admin/common-master-data/work-sites/record/${receipt.data.id}`);
     return { success: true, data: receipt.data };

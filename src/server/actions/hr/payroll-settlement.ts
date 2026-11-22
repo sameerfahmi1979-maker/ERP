@@ -1,16 +1,16 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import type { z } from "zod";
-import { payrollApprovalsPath } from "@/lib/hr/payroll/approval-contract";
 import {
-  payrollEvidenceOptions, payrollEvidenceQuery, payrollSettlementPath, payrollSettlementQuery, payrollSettlementReceipt,
+  payrollBankHistoryPage, payrollBankHistoryQuery, payrollEvidenceOptions, payrollEvidenceQuery,
+  payrollSettlementQuery, payrollSettlementReceipt,
   payrollSettlementRequest, payrollSettlementScopes, payrollSettlementWorkspace, type PayrollSettlementAction,
   type PayrollSettlementCommandResult,
 } from "@/lib/hr/payroll/settlement-contract";
 import { logger } from "@/lib/logger";
 import { canUseApplication, getAuthContext } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
+import { invalidatePayrollWorkspace } from "@/server/payroll-workspace-refresh";
 
 const unconfirmed: PayrollSettlementCommandResult = {
   ok: false, error: "The outcome could not be confirmed. Retry the same request.", uncertain: true,
@@ -43,11 +43,21 @@ export async function readPayrollSettlement(input: unknown) {
   const parsed = payrollSettlementQuery.safeParse(input);
   if (!parsed.success) return null;
   const { company, branch, month, after, review } = parsed.data;
-  return read("t16_payroll_workspace", {
+  return read("t16_payroll_workspace_summary", {
     p_company: company, p_branch: branch, p_month: month,
     ...(after !== undefined && { p_after: after }),
     ...(review !== undefined && { p_selected_review: review }),
   }, payrollSettlementWorkspace);
+}
+
+export async function readPayrollBankHistory(input: unknown) {
+  const parsed = payrollBankHistoryQuery.safeParse(input);
+  if (!parsed.success) return null;
+  const { company, branch, month, review, after } = parsed.data;
+  return read("t16_payroll_bank_history", {
+    p_company: company, p_branch: branch, p_month: month, p_review: review,
+    ...(after !== undefined && { p_after: after }),
+  }, payrollBankHistoryPage);
 }
 
 export async function listPayrollEvidenceOptions(input: unknown) {
@@ -102,9 +112,7 @@ export async function savePayrollSettlementCommand(input: unknown): Promise<Payr
       logger.warn("Payroll settlement receipt could not be confirmed", { action });
       return unconfirmed;
     }
-    revalidatePath(payrollSettlementPath);
-    revalidatePath(payrollApprovalsPath);
-    return { ok: true };
+    return { ok: true, receipt: receipt.data, ...invalidatePayrollWorkspace("settlement") };
   } catch {
     return unconfirmed;
   }

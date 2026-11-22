@@ -29,3 +29,27 @@ it('dirty review entries can refuse dismissal without losing their content',asyn
 it('read-only review details have no business mutation controls',async()=>{page(false);fireEvent.click(screen.getByRole('button',{name:'View review item 17'}));await screen.findByText(/view-only access/);expect(screen.queryByRole('button',{name:'Resolve',exact:true})).toBeNull();expect(screen.queryByRole('button',{name:'Assign to Me'})).toBeNull();expect(mocks.action).not.toHaveBeenCalled();});
 it('review action rejection preserves entries, announces a safe error and releases busy state',async()=>{mocks.action.mockRejectedValue(new Error('private provider detail'));const mutated=vi.fn(),busy=vi.fn();render(<DmsReviewQueueItemDrawer item={item} canManage onClose={vi.fn()} onMutated={mutated} onBusyChange={busy}/>);fireEvent.click(screen.getByRole('button',{name:'Resolve',exact:true}));fireEvent.change(screen.getByLabelText('Resolution notes'),{target:{value:'Synthetic review note'}});fireEvent.click(screen.getByRole('button',{name:'Confirm Resolve'}));await screen.findByRole('alert');expect(screen.getByRole('alert').textContent).toContain('could not be confirmed');expect(screen.queryByText('private provider detail')).toBeNull();expect((screen.getByLabelText('Resolution notes') as HTMLTextAreaElement).value).toBe('Synthetic review note');expect(mutated).not.toHaveBeenCalled();await waitFor(()=>expect(busy).toHaveBeenLastCalledWith(false));expect(screen.getByRole('button',{name:'Confirm Resolve'}).hasAttribute('disabled')).toBe(false);});
 it('empty dismissal cannot call the action and the reason is announced',async()=>{render(<DmsReviewQueueItemDrawer item={item} canManage onClose={vi.fn()} onMutated={vi.fn()}/>);fireEvent.click(screen.getByRole('button',{name:'Dismiss',exact:true}));fireEvent.click(screen.getByRole('button',{name:'Confirm Dismiss'}));expect(screen.getByRole('alert').textContent).toContain('dismissal reason');expect(mocks.action).not.toHaveBeenCalled();});
+
+it("keeps summary reads independent of list filters", async () => {
+  page();
+  fireEvent.click(screen.getByRole("button", {name: "Edit filters"}));
+  fireEvent.click(screen.getByRole("checkbox", {name: "Open", exact: true}));
+  fireEvent.click(screen.getByRole("button", {name: "Apply", exact: true}));
+  await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(1));
+  expect(mocks.counts).not.toHaveBeenCalled();
+});
+
+it("renders refreshed rows even while the summary is still pending", async () => {
+  let finish!: (value: unknown) => void;
+  mocks.counts.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  mocks.list.mockResolvedValueOnce({success:true, data:{items:[{...item, reasonMessage:"Refreshed review"}], total:1}});
+  page();
+  fireEvent.click(screen.getByRole("button", {name: "Refresh", exact:true}));
+  try {
+    await screen.findByText("Refreshed review");
+    expect(mocks.counts).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Refreshing review summary…")).toBeTruthy();
+  } finally {
+    await act(async () => finish({success:false}));
+  }
+});

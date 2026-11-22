@@ -15,3 +15,11 @@ it('revoked access cannot inspect data quality',async()=>{m.auth.mockResolvedVal
 it('failed count/data is never a confirmed empty quality list',async()=>{m.reply.count=null;expect((await readEmployees({quality:'legacy-category'})).success).toBe(false);});
 it('a partial response is not presented as a complete quality page',async()=>{m.reply.count=2;m.reply.data=[{id:1}];expect((await readEmployees({quality:'legacy-category'})).success).toBe(false);});
 it('actual SDK serializes one AND logic tree and separate scope filters, with no network',async()=>{let url!:URL;const fetch=vi.fn(async(input:RequestInfo|URL)=>{url=new URL(String(input));return new Response('[]',{status:200,headers:{'content-type':'application/json','content-range':'*/0'}});});m.client.mockResolvedValue(createSdk('http://synthetic.invalid','synthetic-public-key',{global:{fetch},auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}));const result=await readEmployees({search:'Synthetic',quality:'missing-emergency',ownerCompanyId:3,branchId:4});expect(result.success).toBe(true);expect(fetch).toHaveBeenCalledOnce();expect(url.searchParams.getAll('or')).toHaveLength(1);expect(url.searchParams.get('or')).toMatch(/^\(and\(or\(/);expect(url.searchParams.get('owner_company_id')).toBe('eq.3');expect(url.searchParams.get('branch_id')).toBe('eq.4');expect(url.searchParams.get('select')).not.toContain('blood_group');});
+
+it('limits the web register projection to the displayed cells and archive revision',async()=>{
+ await readEmployees({search:'Synthetic',quality:'missing-emergency'});
+ const [projection] = q.select.mock.calls[0];
+ expect(projection).toBe('id,employee_code,full_name_en,full_name_ar,employee_status,workspace_revision,nationality:countries(name_en),owner_company:owner_companies!employees_owner_company_id_fkey(company_code),department:departments(department_name_en),designation:designations(designation_name_en)');
+ expect(q.or.mock.calls[0][0]).toContain('personal_email.ilike.');
+ expect(q.or.mock.calls[0][0]).toContain('emergency_contact_name.is.null');
+});

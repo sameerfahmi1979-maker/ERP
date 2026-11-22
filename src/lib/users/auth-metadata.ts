@@ -73,13 +73,13 @@ export async function findAuthUserIdsByEmailSearch(search: string): Promise<stri
     const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
     if (error || !data.users) {
       if (error) logger.warn("findAuthUserIdsByEmailSearch", error.message);
-      return [];
+      throw Error("Email search could not be loaded.");
     }
     return data.users
       .filter((u) => u.email?.toLowerCase().includes(term))
       .map((u) => u.id);
   } catch (err) {
     logger.error("findAuthUserIdsByEmailSearch exception", err);
-    return [];
+    throw Error("Email search could not be loaded.");
   }
 }

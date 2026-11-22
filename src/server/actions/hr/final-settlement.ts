@@ -1,11 +1,11 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { exitPath, type ExitScope, type ExitWorkspace } from "@/features/hr/exit-settlement/exit-settlement-contract";
+import type { ExitScope, ExitWorkspace } from "@/features/hr/exit-settlement/exit-settlement-contract";
 import { logger } from "@/lib/logger";
 import { canUseApplication, getAuthContext } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
+import { invalidatePayrollWorkspace } from "@/server/payroll-workspace-refresh";
 
 const positive = z.number().int().positive().safe();
 const scope = z.object({ company: positive, branch: positive });
@@ -19,7 +19,18 @@ const command = mutation.extend({ eos: positive, action: z.enum([
 const configuration = mutation.extend({ domain: z.enum(["policy", "adjustment"]), eos: positive.optional(),
   action: z.enum(["propose", "approve", "verify", "reject"]),
 });
-type Result = { ok: boolean; error?: string; uncertain?: boolean };
+const state = z.string().min(1);
+const digest = z.string().regex(/^[a-f0-9]{64}$/);
+const caseReceipt = z.object({ id: positive, state });
+const recoveryReceipt = caseReceipt.extend({ decision: positive });
+const versionReceipt = caseReceipt.extend({ version: z.uuid(), digest });
+const paymentReceipt = z.object({
+  version: z.uuid(), payment: z.uuid().nullable(), state, revision: z.number().int().nonnegative(),
+});
+const configurationReceipt = z.object({ id: positive, digest, status: state });
+type Receipt = z.infer<typeof caseReceipt> | z.infer<typeof recoveryReceipt> |
+  z.infer<typeof versionReceipt> | z.infer<typeof paymentReceipt> | z.infer<typeof configurationReceipt>;
+type Result = { ok: true; receipt: Receipt; refreshRequired?: true } | { ok: false; error: string; uncertain?: boolean };
 const unconfirmed: Result = { ok: false, uncertain: true, error: "The outcome could not be confirmed. Retry the same request." };
 
 async function read(rpc: string, parameters: Record<string, unknown>): Promise<unknown> {
@@ -59,7 +70,46 @@ export async function readExitWorkspace(input: unknown): Promise<ExitWorkspace |
     : null;
 }
 
-async function execute(rpc: string, parameters: Record<string, unknown>): Promise<Result> {
+type CommandParameters = {
+  p_operation: string; p_company: number; p_branch: number; p_action: string; p_data: Record<string, unknown>;
+  p_eos?: number; p_domain?: "payment" | "adjustment";
+};
+
+function parseReceipt(parameters: CommandParameters, raw: unknown): Receipt | undefined {
+  const { p_action: action, p_data: data, p_eos: eos, p_domain: domain } = parameters;
+  if (domain === "payment") {
+    const parsed = paymentReceipt.safeParse(raw);
+    if (parsed.success && parsed.data.version === data.settlement_version &&
+        (action === "start" ? parsed.data.payment === null : parsed.data.payment !== null) &&
+        (data.payment === undefined || parsed.data.payment === data.payment)) return parsed.data;
+    return;
+  }
+  if (domain === "adjustment" || eos === undefined) {
+    const parsed = configurationReceipt.safeParse(raw);
+    const target = domain === "adjustment" ? data.adjustment : data.policy;
+    const expectedStatus = { propose: "proposed", approve: "approved", verify: "verified", reject: "rejected" }[
+      action as "propose" | "approve" | "verify" | "reject"];
+    if (parsed.success && parsed.data.status === expectedStatus &&
+        (action === "propose" || (parsed.data.id === target && parsed.data.digest === data.digest))) return parsed.data;
+    return;
+  }
+  if (action === "activate") {
+    const parsed = caseReceipt.safeParse(raw);
+    if (parsed.success && parsed.data.id === eos && parsed.data.state === "activated") return parsed.data;
+    return;
+  }
+  if (action === "recommend-case" || action === "accept-case") {
+    const parsed = recoveryReceipt.safeParse(raw);
+    const expectedState = action === "recommend-case" ? "recommended" : "accepted";
+    if (parsed.success && parsed.data.id === eos && parsed.data.state === expectedState) return parsed.data;
+    return;
+  }
+  const parsed = versionReceipt.safeParse(raw);
+  if (parsed.success && parsed.data.id === eos && (action === "calculate" ? parsed.data.state === "draft" :
+    parsed.data.version === data.version && parsed.data.digest === data.digest)) return parsed.data;
+}
+
+async function execute(rpc: string, parameters: CommandParameters): Promise<Result> {
   try {
     if (!canUseApplication(await getAuthContext())) return { ok: false, error: "Sign in again to continue." };
     if (JSON.stringify(parameters).length > 32_000) return { ok: false, error: "Check the size of the information supplied." };
@@ -78,10 +128,12 @@ async function execute(rpc: string, parameters: Record<string, unknown>): Promis
       logger.warn("Exit settlement outcome could not be confirmed", { rpc, code: error.code });
       return unconfirmed;
     }
-    if (!data || typeof data !== "object" || Array.isArray(data)) return unconfirmed;
-    revalidatePath(exitPath);
-    revalidatePath("/admin/hr/actions/eos");
-    return { ok: true };
+    const receipt = parseReceipt(parameters, data);
+    if (!receipt) {
+      logger.warn("Exit settlement receipt could not be confirmed", { rpc, action: parameters.p_action });
+      return unconfirmed;
+    }
+    return { ok: true, receipt, ...invalidatePayrollWorkspace("exit") };
   } catch {
     return unconfirmed;
   }

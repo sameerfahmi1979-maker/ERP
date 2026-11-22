@@ -114,11 +114,11 @@ function admit(request: Extract<Command, { op: "admit" }>["request"]) {
     { operationId: request.operationId, authUserId: request.authUserId });
 }
 
-async function dispatch(input: Exclude<Command, { op: "login" | "refresh" }>, token: string) {
+async function dispatch(input: Exclude<Command, { op: "login" | "refresh" }>, token: string, signal: AbortSignal) {
   const ctx = await getAuthContext();
   if (!ctx.profile) return fail("Your ERP session ended. Sign in again.", 401);
   if (!canUseApplication(ctx)) return fail("ERP access is unavailable for this account.", 403);
-  if(isV5(input))return dispatchMobileDmsV5(input,ctx);
+  if(isV5(input))return dispatchMobileDmsV5(input,ctx,signal);
   const allowed = (p: string) => hasPermission(ctx, p) || hasPermission(ctx, "dms.admin");
   const capabilities = {
     view: allowed("dms.documents.view"), upload: allowed("dms.documents.upload"),
@@ -292,7 +292,7 @@ export async function POST(request: Request) {
     const token = bearer(request);
     if (!token) return fail("Sign in with your ERP account.", 401);
     const data = parsed.data;
-    return await withMobileToken(token, () => dispatch(data, token));
+    return await withMobileToken(token, () => dispatch(data, token, request.signal));
   } catch (error) { if(error instanceof DmsError)return dmsErrorResponse(error);return error instanceof MobileDmsError ? fail(error.message,error.status) : fail("Mobile DMS is temporarily unavailable. Retry the same request.", 503); }
 }
 

@@ -754,12 +754,24 @@ export async function listDmsUploadBatches(
     if (!ctx.isAccountActive || ctx.profile.must_change_password || !canView(ctx)) return { success: false, error: "Permission denied" };
 
     if(limit!==undefined&&(!Number.isInteger(limit)||limit<1||limit>200))return {success:false,error:"Invalid batch limit"};
-    const batches=await readAllPages(async(from,to)=>await supabase
+    const readBatchPage = async (from: number, to: number) => supabase
       .from("dms_upload_batches")
-      .select("id, batch_code, status, total_files, processed_files, approved_files, failed_files, entity_type, entity_id, created_at",{count:"exact"})
+      .select("id, batch_code, status, total_files, processed_files, approved_files, failed_files, entity_type, entity_id, created_at", { count: "exact" })
       .is("deleted_at", null)
-      .order("created_at", { ascending: false }).order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
-    const batchRows = (limit===undefined?batches:batches.slice(0,limit)) as DmsUploadBatchRow[];
+      .order("created_at", { ascending: false }).order("id").range(from, to);
+
+    let batchRows: DmsUploadBatchRow[];
+    if (limit === undefined) {
+      batchRows = await readAllPages(readBatchPage, { identity: row => row.id, maxRows: 10_000 });
+    } else {
+      const page = await readBatchPage(0, limit - 1);
+      if (page.error || page.count === null || !Number.isSafeInteger(page.count) || page.count < 0 ||
+          !Array.isArray(page.data) || page.data.length !== Math.min(limit, page.count) ||
+          new Set(page.data.map(row => row.id)).size !== page.data.length) {
+        return { success: false, error: "Upload batches changed or could not be loaded. Please retry." };
+      }
+      batchRows = page.data;
+    }
     if (batchRows.length === 0) return { success: true, data: [] };
 
     // Aggregate live per-draft counts (one query for all listed batches).

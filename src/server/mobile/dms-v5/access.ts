@@ -35,8 +35,11 @@ export async function readDmsFeatureAvailability() {
  }catch{return unavailable;}
 }
 type RpcName="mobile_dms_receipt"|"mobile_dms_source"|"mobile_dms_comment"|"mobile_dms_document"|"mobile_dms_checklist"|"mobile_dms_requests"|"mobile_dms_renewal_request"|"mobile_dms_operation"|"mobile_dms_shares"|"mobile_dms_collections"|"mobile_dms_question_context"|"mobile_dms_progress";
-export async function rpc<T>(name:RpcName,args:Record<string,unknown>,schema:z.ZodType<T>,mutation=false):Promise<T> {
- const db=await createClient();const r=await db.rpc(name,args);
+export async function rpc<T>(name:RpcName,args:Record<string,unknown>,schema:z.ZodType<T>,mutation=false,signal?:AbortSignal):Promise<T> {
+ signal?.throwIfAborted();
+ const db=await createClient();signal?.throwIfAborted();
+ const query=db.rpc(name,args),r=await (signal?query.abortSignal(signal):query);
+ signal?.throwIfAborted();
  if(r.error){
   switch(r.error.code){
    case "PT404":throw new DmsError(404,"unavailable","The record is unavailable.");
@@ -59,15 +62,21 @@ export async function verifySession(ctx:AuthContext) {
  const current=await getAuthContext();
  if(!canUseApplication(current)||!current.profile||!ctx.profile||current.profile.id!==ctx.profile.id||current.profile.auth_user_id!==ctx.profile.auth_user_id)denied();
 }
-export async function admitMobileDmsSource(ctx:AuthContext,selection:Selection,capabilities:Capability[]=["dms.documents.view"]){
+export async function admitMobileDmsSource(ctx:AuthContext,selection:Selection,capabilities:Capability[]=["dms.documents.view"],signal?:AbortSignal){
  if(!canUseApplication(ctx))denied();
- const binding=await rpc("mobile_dms_source",{p_data:selection,p_caps:capabilities},source);
+ const binding=await rpc("mobile_dms_source",{p_data:selection,p_caps:capabilities},source,false,signal);
  if(binding.documentId!==selection.documentId||selection.versionId!==undefined&&binding.documentVersionId!==selection.versionId||binding.fileId!==(selection.fileId??null)||selection.sourceHash!==undefined&&selection.sourceHash!==binding.sourceHash)conflict();
  return binding;
 }
 export async function verifyMobileDmsDelivery(ctx:AuthContext,binding:Source,capabilities:Capability[]=["dms.documents.view"],historical=false){
  await verifySession(ctx);
- await admitMobileDmsSource(ctx,{documentId:binding.documentId,versionId:binding.documentVersionId,...(binding.fileId!==null?{fileId:binding.fileId}:{}),sourceHash:binding.sourceHash,historical},capabilities);
+ await recheckMobileDmsSource(ctx,binding,capabilities,historical);
+}
+
+// A pack checks actor identity at its phase boundaries. The source RPC still
+// verifies the current session, exact scope and binding independently every time.
+export async function recheckMobileDmsSource(ctx:AuthContext,binding:Source,capabilities:Capability[],historical=false,signal?:AbortSignal){
+ await admitMobileDmsSource(ctx,{documentId:binding.documentId,versionId:binding.documentVersionId,...(binding.fileId!==null?{fileId:binding.fileId}:{}),sourceHash:binding.sourceHash,historical},capabilities,signal);
 }
 
 export async function verifyEmployeeDocument(employeeId:number,documentId:number){

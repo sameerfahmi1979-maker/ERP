@@ -13,7 +13,7 @@ import type {AuthContext} from '@/lib/rbac/check';
 import type {CostCenterWithRelations,ProfitCenterWithRelations} from '@/features/master-data/finance-basics/types';
 
 type Center=CostCenterWithRelations|ProfitCenterWithRelations;
-type ExportProps={data:Center[];subtitle:string;disabled:boolean};
+type ExportProps={localRows:{load:()=>Center[]};subtitle:string;disabled:boolean};
 const dom=await vi.hoisted(async()=>{
  const {builtinEnvironments}=await import('vitest/runtime');
  return await builtinEnvironments.jsdom.setup(globalThis,{jsdom:{url:'http://localhost:3000'}});
@@ -84,7 +84,7 @@ async function content(page:Awaited<ReturnType<typeof CostPage>>):Promise<ReactN
  if(!isValidElement<Record<string,unknown>>(child)||typeof child.type!=='function'||!['CostCentersContent','ProfitCentersContent'].includes(child.type.name))throw Error('Unexpected route content');
  return await Reflect.apply(child.type,null,[child.props]) as ReactNode;
 }
-const exportedIds=()=>port.exportProps?.data.map(row=>row.id)??[];
+const exportedIds=()=>port.exportProps?.localRows.load().map(row=>row.id)??[];
 function selectCode(code:string){const row=screen.getByText(code).closest('tr');if(!row)throw Error('Missing row');fireEvent.click(within(row).getByRole('checkbox',{name:'Select row'}));}
 beforeEach(()=>{
  vi.clearAllMocks();port.ctx=context();port.exportProps=null;calls=[];mode='ok';

@@ -4,15 +4,19 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, canUseApplication } from "@/lib/rbac/check";
 import { canAccessIssuedFile } from "@/lib/output/issued-file-access";
 import { createHash } from "node:crypto";
+import { OriginalSizeMismatchError, readBoundedOriginal, validOriginalSize } from "@/lib/output/bounded-original";
 
 
 const noStore = { "Cache-Control": "private, no-store" };
+const cancelled = () => NextResponse.json({ error: "Download cancelled." }, { status: 400, headers: noStore });
 const unavailable = () => NextResponse.json({ error: "Document unavailable or access denied." }, { status: 404, headers: noStore });
 
 export type IssuedBinding = {employeeId:number;checksum:string;mode:"preview"|"download"};
-export async function deliverIssuedFile(id:number,binding?:IssuedBinding,checkOnly=false): Promise<NextResponse> {
+export async function deliverIssuedFile(id:number,binding?:IssuedBinding,checkOnly=false, signal?:AbortSignal): Promise<NextResponse> {
   try {
+    signal?.throwIfAborted();
     const ctx = await getAuthContext();
+    signal?.throwIfAborted();
     if (!canUseApplication(ctx)) return NextResponse.json({ error: "Sign in required." }, { status: 401, headers: noStore });
     if (!(await canAccessIssuedFile(id, "download"))) return unavailable();
     const { data: doc, error } = await (await createClient()).from("erp_generated_pdf_documents")
@@ -38,25 +42,35 @@ export async function deliverIssuedFile(id:number,binding?:IssuedBinding,checkOn
     };
     if(checkOnly && binding){
       const changed=await verifyCurrent();
+      signal?.throwIfAborted();
       if(changed)return changed;
-      if(!Number.isSafeInteger(doc.file_size_bytes) || Number(doc.file_size_bytes)<=0)return unavailable();
+      if(!validOriginalSize(doc.file_size_bytes))return unavailable();
       return new NextResponse(null,{headers:{...noStore,"X-HR-Employee-Id":String(binding.employeeId),
         "X-HR-Issuance-Id":String(id),"X-HR-Issued-Checksum":binding.checksum,"X-HR-Issued-Bytes":String(doc.file_size_bytes)}});
     }
+    const integrityFailure = () => NextResponse.json({
+      error: "The retained original failed its integrity check. Reconciliation is required.",
+    }, { status: 409, headers: noStore });
+    if (!validOriginalSize(doc.file_size_bytes) || !/^[a-f0-9]{64}$/i.test(doc.checksum ?? "")) return integrityFailure();
+
     const admin = createAdminClient();
-    const file = await admin.storage.from("erp-generated-pdfs").download(doc.storage_path);
-    if (file.error || !file.data) return NextResponse.json({ error: "File storage is unavailable." }, { status: binding ? 503 : 502, headers: noStore });
-    const bytes = Buffer.from(await file.data.arrayBuffer());
-    if (!/^[a-f0-9]{64}$/i.test(doc.checksum ?? "") ||
-        bytes.length !== doc.file_size_bytes || createHash("sha256").update(bytes).digest("hex") !== doc.checksum) {
-      return NextResponse.json({ error: "The retained original failed its integrity check. Reconciliation is required." }, { status: 409, headers: noStore });
+    let bytes: Buffer;
+    try {
+      bytes = await readBoundedOriginal(admin.storage.from("erp-generated-pdfs"), doc.storage_path, doc.file_size_bytes, signal);
+      signal?.throwIfAborted();
+    } catch (readError) {
+      if (signal?.aborted) return cancelled();
+      if (readError instanceof OriginalSizeMismatchError) return integrityFailure();
+      return NextResponse.json({error: "File storage is unavailable."}, {status: binding ? 503 : 502, headers: noStore});
     }
+    if (createHash("sha256").update(bytes).digest("hex") !== doc.checksum) return integrityFailure();
     const changed=await verifyCurrent();
+    signal?.throwIfAborted();
     if(changed)return changed;
     const audit = await admin.from("audit_logs").insert({
       actor_user_profile_id: ctx.profile!.id, owner_company_id: doc.owner_company_id,
       module_code: "reports", entity_name: "erp_generated_pdf_documents", entity_id: id,
-      entity_reference: String(id), action: "view", new_values: { event: "output_bytes_served", bytes: file.data.size },
+      entity_reference: String(id), action: "view", new_values: { event: "output_bytes_served", bytes: bytes.length },
     });
     if (audit.error) return NextResponse.json({ error: "Download audit is unavailable." }, { status: 503, headers: noStore });
     const name = doc.file_name.replace(/[\r\n\u0000-\u001f\u007f]/g, "_");
@@ -67,6 +81,7 @@ export async function deliverIssuedFile(id:number,binding?:IssuedBinding,checkOn
       "Content-Security-Policy": "sandbox; default-src 'none'; frame-ancestors 'self'", "Referrer-Policy": "no-referrer",
     } });
   } catch {
+    if (signal?.aborted) return cancelled();
     return NextResponse.json({ error: "Unable to deliver the document." }, { status: binding ? 503 : 500, headers: noStore });
   }
 }

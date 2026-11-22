@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission } from "@/lib/rbac/check";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { DuplicateCandidatesPageClient } from "@/features/ai/common/duplicate-detection";
 import { getDuplicateCandidateSummary } from "@/server/actions/ai/common/duplicate-detection";
@@ -20,9 +20,8 @@ type PageProps = {
 export default async function AiDuplicatesPage({ searchParams }: PageProps) {
   const ctx = await getAuthContext();
   const canView =
-    hasPermission(ctx, "ai.duplicates.view") ||
-    hasPermission(ctx, "ai.common.admin") ||
-    ctx.roleCodes.includes("system_admin");
+    hasGlobalPermission(ctx, "ai.duplicates.view") ||
+    hasGlobalPermission(ctx, "ai.common.admin");
 
   if (!canView) {
     redirect("/access-denied");
@@ -31,11 +30,11 @@ export default async function AiDuplicatesPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const summaryResult = await getDuplicateCandidateSummary();
   const defaultSummary = {
-    pending: 0,
-    highConfidence: 0,
-    confirmed: 0,
-    ignoredResolved: 0,
-    featureEnabled: false,
+    pending: null,
+    highConfidence: null,
+    confirmed: null,
+    ignoredResolved: null,
+    featureEnabled: null,
   };
 
   const entityId = params.entityId ? Number(params.entityId) : undefined;

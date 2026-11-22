@@ -56,8 +56,15 @@ for(const entity of ['banks','payment_terms','tax_types'] as const)describe(enti
  it('keeps corrupted retained witnesses fail-closed without a fresh save',()=>{const store=m.store as ReturnType<typeof createWorkspaceDraftStore>;store.setViewState(`draft:tab:${m.owner}:${names[entity].form}-workspace-form:save`,'{');render(ui(entity));expect(screen.getByRole('alert').textContent).toContain('could not be verified');expect(submitControl(entity).disabled).toBe(true);expect(m.save).not.toHaveBeenCalled();});
  it('blocks native resubmission after verified commit but failed local display work',async()=>{m.success.mockImplementationOnce(()=>{throw Error('Synthetic feedback failure');});render(ui(entity));await fill(entity);footer();await screen.findByText(/Record saved, but its display could not refresh/);expect(submitControl(entity).disabled).toBe(true);expect(m.save).toHaveBeenCalledOnce();});
 });
-describe('real lookup accessible labels, unchanged choice/read semantics',()=>{
- it('forwards an additive human ariaLabel through the real LookupSelect/ERPCombobox',()=>{const props={categoryCode:'TAX_TREATMENT_TYPES',name:'tax_treatment_code',ariaLabel:'Tax Treatment',value:null};render(<LookupSelect {...props}/>);expect(screen.getByRole('combobox',{name:'Tax Treatment'})).toBeTruthy();expect(m.lookup.mock.calls[0]).toEqual(['TAX_TREATMENT_TYPES',{parentValueCode:undefined,includeInactive:false,enabled:true,selected:null,valueField:'id'}]);});
+describe('real lookup accessible labels and scoped choice loading',()=>{
+ it('retains the human label and requests choices only after the lookup is opened',()=>{
+  render(<LookupSelect categoryCode="TAX_TREATMENT_TYPES" name="tax_treatment_code" ariaLabel="Tax Treatment" value={null}/>);
+  const input=screen.getByRole('combobox',{name:'Tax Treatment'});
+  const choiceOptions={parentValueCode:undefined,includeInactive:false,enabled:true,selected:null,valueField:'id'};
+  expect(m.lookup).toHaveBeenLastCalledWith('TAX_TREATMENT_TYPES',{...choiceOptions,choicesEnabled:false});
+  fireEvent.click(input);
+  expect(m.lookup).toHaveBeenLastCalledWith('TAX_TREATMENT_TYPES',{...choiceOptions,choicesEnabled:true});
+ });
  it('preserves legacy name-derived label when no explicit ariaLabel is supplied',()=>{render(<LookupSelect categoryCode="TAX_TREATMENT_TYPES" name="tax_treatment_code"/>);expect(screen.getByRole('combobox',{name:'tax treatment code'})).toBeTruthy();});
  it('keeps failed reads blocked rather than changing selection or cache behavior',()=>{m.lookup.mockReturnValueOnce({data:[],isLoading:false,error:Error('Synthetic unavailable choices'),refetch:vi.fn()});render(<LookupSelect categoryCode="TAX_TREATMENT_TYPES" name="tax_treatment_code"/>);expect((screen.getByRole('combobox') as HTMLButtonElement).disabled).toBe(true);expect(screen.getByRole('alert').textContent).toContain('This is not an empty result');});
  it('uses the visible Tax Treatment label in actual form field-error resolution',async()=>{render(ui('tax_types'));const listener=vi.fn();form('tax_types').addEventListener('workspace-field-errors',listener);fireEvent.submit(form('tax_types'));await waitFor(()=>expect(listener).toHaveBeenCalledOnce());const issue=resolveWorkspaceFieldIssues(form('tax_types'),listener.mock.calls[0][0].detail).find(i=>i.control?.getAttribute('data-workspace-field')==='tax_treatment_code');expect(issue?.label).toBe('Tax Treatment');expect(issue?.control?.getAttribute('role')).toBe('combobox');expect(m.save).not.toHaveBeenCalled();});

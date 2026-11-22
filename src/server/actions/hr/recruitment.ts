@@ -13,7 +13,11 @@ import { logAudit } from "@/server/actions/audit";
 import { readRecruitmentSummary } from "@/server/reads/hr-recruitment-summary";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import{offerValues}from'@/lib/hr/recruitment-lifecycle-contract';
+import { isDefiniteRecruitmentRejection, offerValues } from "@/lib/hr/recruitment-lifecycle-contract";
+import {
+  candidateDocumentLinkInput, candidateDocumentLinkReceipt, candidateLinkId, candidateLinkOperation, matchesCandidateDocumentLink,
+  type CandidateDocumentLinkInput, type CandidateDocumentLinkReceipt,
+} from "@/lib/hr/candidate-document-link-contract";
 
 // ============================================================================
 // Shared result type
@@ -152,12 +156,6 @@ const candidateUpdateSchema = candidateCreateSchema.partial();
 const candidateStatusSchema = z.object({
   candidate_status: z.enum(["new", "screening", "shortlisted", "interview", "selected", "offered", "accepted", "rejected", "withdrawn", "hired", "blacklisted"]),
   pipeline_stage: z.enum(["new", "screening", "shortlisted", "interview", "offer", "onboarding", "hired", "closed"]).optional(),
-  notes: z.string().optional().nullable(),
-});
-
-const candidateDocumentLinkSchema = z.object({
-  dms_document_id: z.number(),
-  document_purpose: z.enum(["cv", "passport", "certificate", "offer", "photo", "other"]).optional().nullable(),
   notes: z.string().optional().nullable(),
 });
 
@@ -728,33 +726,51 @@ export async function listCandidateDocuments(candidateId: number): Promise<Actio
 
 export async function linkCandidateDmsDocument(
   candidateId: number,
-  input: z.infer<typeof candidateDocumentLinkSchema>
-): Promise<ActionResult<{ id: number }>> {
+  input: CandidateDocumentLinkInput,
+  operationId: string,
+): Promise<ActionResult<CandidateDocumentLinkReceipt> & { uncertain?: boolean; refreshPending?: true; superseded?: true }> {
+  const candidate = candidateLinkId.safeParse(candidateId);
+  const request = candidateDocumentLinkInput.safeParse(input);
+  const operation = candidateLinkOperation.safeParse(operationId);
+  if (!candidate.success || !request.success || !operation.success) {
+    return { success: false, error: "Enter a valid document ID and purpose." };
+  }
+
+  let dispatched = false;
+  const unconfirmed = { success: false, uncertain: true, error: "Document link unconfirmed. Retry the same request." };
   try {
     const ctx = await getAuthContext();
-    if (!hasPermission(ctx, "hr.recruitment.manage") && !ctx.roleCodes?.includes("system_admin")) {
-      return { success: false, error: "Permission denied" };
+    if (!hasPermission(ctx, "hr.recruitment.manage")) {
+      return { success: false, uncertain: false, error: "Current recruitment access is unavailable." };
     }
-    const parsed = candidateDocumentLinkSchema.safeParse(input);
-    if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
-
-    const supabase = await createClient();
-    const { data: candidate } = await supabase.from("hr_candidates").select("candidate_code, full_name_en").eq("id", candidateId).is("deleted_at", null).single();
-    if (!candidate) return { success: false, error: "Candidate not found" };
-
-    const { data: rec, error } = await supabase
-      .from("hr_candidate_documents")
-      .insert({ candidate_id: candidateId, ...parsed.data, created_by: ctx.profile?.id ?? null })
-      .select("id")
-      .single();
-    if (error) return { success: false, error: error.message };
-
-    await recruitmentAuditLog({ action: "create", entity_name: "hr_candidate_documents", entity_id: rec!.id, candidate_id: candidateId, candidate_code: candidate.candidate_code ?? undefined, candidate_name: candidate.full_name_en, extra: { action_type: "candidate_document_linked", dms_document_id: parsed.data.dms_document_id } });
-    revalidatePath(`/admin/hr/recruitment/candidates/record/${candidateId}`);
-    return { success: true, data: { id: rec!.id } };
-  } catch (err) {
-    logger.error("linkCandidateDmsDocument error", err);
-    return { success: false, error: "Failed to link document" };
+    const db = await createClient();
+    dispatched = true;
+    const { data, error } = await db.rpc("link_hr_candidate_document", {
+      p_candidate: candidate.data,
+      p_document: request.data.dms_document_id,
+      p_operation: operation.data,
+      p_purpose: request.data.document_purpose ?? null,
+      p_notes: request.data.notes ?? null,
+    });
+    if (error) {
+      if (!isDefiniteRecruitmentRejection(error.code)) return unconfirmed;
+      const message = error.code === "PT409"
+        ? "The original link request no longer matches the active link. Refresh the record before linking again."
+        : "The candidate or document could not be linked. Check current access and document details.";
+      return { success: false, uncertain: false, error: message, ...(error.code === "PT409" && { superseded: true as const }) };
+    }
+    const receipt = candidateDocumentLinkReceipt.safeParse(data);
+    if (!receipt.success || !matchesCandidateDocumentLink(receipt.data, candidate.data, request.data.dms_document_id, operation.data)) {
+      return unconfirmed;
+    }
+    try {
+      revalidatePath(`/admin/hr/recruitment/candidates/record/${candidate.data}`);
+    } catch {
+      return { success: true, data: receipt.data, refreshPending: true };
+    }
+    return { success: true, data: receipt.data };
+  } catch {
+    return dispatched ? unconfirmed : { success: false, uncertain: false, error: "Document linking is temporarily unavailable." };
   }
 }
 

@@ -26,7 +26,7 @@ import type { AuthContext } from "@/lib/rbac/check";
 import { canRunDmsFilePipeline } from '@/lib/dms/file-pipeline-access';
 import { hasPermission } from "@/lib/rbac/scope";
 import type { DmsDocumentRecordData, CreateDmsDocumentInput } from "@/server/actions/dms/documents";
-import { createDmsDocument, updateDmsDocument } from "@/server/actions/dms/documents";
+import { createDmsDocument, updateDmsDocument, type DmsReminderInputs } from "@/server/actions/dms/documents";
 import {saveDocumentTypeChange} from '@/server/actions/dms/document-type-change';
 import {restoreTypeChangeRequest,type DocumentTypeChangeRequest} from '@/lib/dms/document-type-change';
 import {DmsDocumentTypeChange,type TypeChangeHandle} from './sections/dms-document-type-change';
@@ -131,6 +131,11 @@ function DmsDocumentRecordFormInner({
   const { closeTab, activeTab, renameTab, updateTabRoute, markDirty } = useWorkspace();
   const creation = useDmsCreationSession(activeTab?.id, authContext.profile?.id);
   const submitFlight = useRef(false);
+  const [savedReminderInputs, setSavedReminderInputs] = useState<{
+    documentId: number;
+    loadedAt: string;
+    inputs: DmsReminderInputs;
+  } | null>(null);
 
   const [currentMode, setCurrentMode] = useState<"add" | "edit" | "view">(() => mode === "add" && creation.receipt ? "view" : mode);
   const isViewing = currentMode === "view";
@@ -315,7 +320,26 @@ function DmsDocumentRecordFormInner({
           result=await saveDocumentTypeChange(request);
           if(!creation.isCurrent())return false;
           if(result.success||!result.uncertain){setTypeChangeRecovery({pending:null,invalid:false});writeDraftField('type_change_request','');}
-        }else result = await updateDmsDocument({ id, ...payload });
+        } else {
+          // Reuse the record already loaded for this form. The write verifies
+          // those values before reporting a commit or skipping reminders.
+          const expectedReminderInputs = doc && doc.document_type_id === savedDocumentTypeId
+            ? (savedReminderInputs?.documentId === id && savedReminderInputs.loadedAt === doc.updated_at
+                ? savedReminderInputs.inputs
+                : {
+                    expiry_date: doc.expiry_date ?? null,
+                    document_type_id: doc.document_type_id,
+                    owning_company_id: doc.owning_company_id ?? null,
+                    owning_branch_id: doc.owning_branch_id ?? null,
+                    status: doc.status,
+                    reminder_policy_id: doc.reminder_policy_id ?? null,
+                  })
+            : undefined;
+          result = await updateDmsDocument({ id, ...payload, expectedReminderInputs });
+          if (creation.isCurrent() && doc && result.success && result.data?.reminderInputs) {
+            setSavedReminderInputs({ documentId: id, loadedAt: doc.updated_at, inputs: result.data.reminderInputs });
+          }
+        }
       } else {
         result = await creation.create(payload, createDmsDocument);
       }

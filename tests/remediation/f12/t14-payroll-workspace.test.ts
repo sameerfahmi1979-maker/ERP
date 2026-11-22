@@ -31,6 +31,11 @@ const draft = {
   totals: [{ currency: "AED", gross: "335000.29", deductions: "2.72", net: "334997.57", employees: 26 }],
 };
 
+const calculationReceipt = {
+  action: "calculate", run, version: versionTwo, number: 2, digest: draft.digest,
+  source_digest: "a".repeat(64), rule_digest: "b".repeat(64), totals: draft.totals, exception_count: draft.exception_count,
+};
+
 function calculation(cutoff = "2026-11-30T19:45") {
   const data = new FormData();
   data.set("month", "2026-11");
@@ -163,10 +168,10 @@ describe("monthly payroll workspace", () => {
 
   it("uses the same operation ID after transport loss and confirms a replay", async () => {
     mock.rpc.mockRejectedValueOnce(new Error("test transport loss"))
-      .mockResolvedValueOnce({ error: null, data: { id: version, replayed: true } });
+      .mockResolvedValueOnce({ error: null, data: { ...calculationReceipt, replayed: true } });
     const input = calculation();
     await expect(savePayrollCommand("calculate", 9, 2, operation, input)).resolves.toMatchObject({ ok: false, uncertain: true });
-    await expect(savePayrollCommand("calculate", 9, 2, operation, input)).resolves.toEqual({ ok: true });
+    await expect(savePayrollCommand("calculate", 9, 2, operation, input)).resolves.toEqual({ ok: true, receipt: calculationReceipt });
     expect(mock.rpc.mock.calls[0]).toEqual(mock.rpc.mock.calls[1]);
     expect(mock.rpc.mock.calls[0][1].p_operation).toBe(operation);
     expect(mock.revalidate).toHaveBeenCalledWith("/admin/hr/payroll/runs");

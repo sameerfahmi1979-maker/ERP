@@ -19,6 +19,8 @@ const HOME_ROUTE_PRIORITY = [
   "/dms",
   "/admin/reports",
   "/admin/users",
+  "/admin/roles",
+  "/admin/roles/record/new",
   "/admin/master-data/parties",
   "/notifications",
 ];

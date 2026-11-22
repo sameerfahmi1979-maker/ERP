@@ -117,7 +117,7 @@ it('retains responsive employee toolbar and the F06 document-creation authority 
   const source = readFileSync('src/features/hr/employees/employees-table.tsx', 'utf8');
   expect(source).toContain('flex w-full min-w-0 flex-wrap items-center gap-2 md:ml-auto md:w-auto md:flex-nowrap');
   expect(source).toContain('documentWizardEnabled && canStartDocumentEmployee(authContext)');
-  expect(source).toContain('useServerPage<EmployeeListRow>');
+  expect(source).toContain('useServerPage<EmployeeRegisterRow>');
 });
 it('uses semantic recruitment headings and paired warning surfaces in the final HR and assistant cohorts', () => {
   const conversion = readFileSync('src/features/hr/recruitment/tabs/candidate-conversion-tab.tsx', 'utf8');

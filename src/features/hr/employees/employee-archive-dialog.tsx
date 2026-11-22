@@ -13,7 +13,7 @@ import {hasPermission}from '@/lib/rbac/scope';
 import {EmployeeSaveRecovery}from './employee-save-recovery';
 type Values={reason:string;effective:string};
 const codec:WorkspaceDraftCodec<Values>={encode:v=>v,restore:(v,read)=>({reason:read('reason',v.reason),effective:read('effective',v.effective)})};
-type Props={employee:EmployeeListRow;authContext:AuthContext;onClose:()=>void;onArchived:()=>void};
+type Props={employee:Pick<EmployeeListRow,"id"|"employee_code"|"full_name_en"|"workspace_revision">;authContext:AuthContext;onClose:()=>void;onArchived:()=>void};
 export function EmployeeArchiveDialog(props:Props){return <EmployeeArchiveDialogInstance key={`${props.authContext.profile?.id??'none'}:${props.authContext.profile?.auth_user_id??'none'}:${props.employee.id}`} {...props}/>;}
 function EmployeeArchiveDialogInstance({employee,authContext,onClose,onArchived}:Props){
  const actor=`${authContext.profile?.id??'none'}:${authContext.profile?.auth_user_id??'none'}`;

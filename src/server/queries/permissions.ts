@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasPermission, type AuthContext } from "@/lib/rbac/check";
 import { readAllPages } from "@/server/reads/all-pages";
 import type { Permission } from "@/types/domain";
 
@@ -8,8 +8,8 @@ import type { Permission } from "@/types/domain";
  * List all permissions
  * RLS-protected query with explicit USERS.1 permission guard.
  */
-export async function listPermissions(): Promise<Permission[] | null> {
-  const ctx = await getAuthContext();
+export async function listPermissions(context?: AuthContext): Promise<Permission[] | null> {
+  const ctx = context ?? await getAuthContext();
   if (!hasPermission(ctx, "permissions.view")) {
     logger.warn("listPermissions: access denied without permissions.view");
     return null;
@@ -55,8 +55,8 @@ export async function getRolePermissions(roleId: number): Promise<number[]> {
 /**
  * Get all role-permission mappings
  */
-export async function getAllRolePermissions(): Promise<Array<{ role_id: number; permission_id: number }> | null> {
-  const ctx = await getAuthContext();
+export async function getAllRolePermissions(context?: AuthContext): Promise<Array<{ role_id: number; permission_id: number }> | null> {
+  const ctx = context ?? await getAuthContext();
   if (!hasPermission(ctx, "permissions.view")) {
     logger.warn("getAllRolePermissions: access denied without permissions.view");
     return null;

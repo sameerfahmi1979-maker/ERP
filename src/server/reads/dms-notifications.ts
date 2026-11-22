@@ -1,5 +1,6 @@
 import "server-only";
 import {getAuthContext,type AuthContext} from "@/lib/rbac/check";
+import {isGlobalAdmin} from "@/lib/rbac/scope";
 import {canManageDmsNotifications,canViewDmsNotifications} from "@/lib/notifications/access";
 import {createClient} from "@/lib/supabase/server";
 import {literalContains,literalLike} from "@/lib/reads/search";
@@ -12,7 +13,9 @@ export async function readDmsNotifications(input:unknown,context?:AuthContext,si
   if(!ctx.profile||!canViewDmsNotifications(ctx))return {success:false as const,error:"Permission denied"};
   if(p.audience==="all"&&!canManageDmsNotifications(ctx))return {success:false as const,error:"Permission denied"};
   const db=await createClient();signal?.throwIfAborted();
-  const base=(head=false)=>{const q=db.from(p.audience==="my"?"f10_dms_personal_notification_read":"perf_dms_notification_read").select(columns,{count:"exact",head});if(signal)q.abortSignal(signal);
+  const projection = p.audience === "all" ? "perf_dms_notification_read"
+    : isGlobalAdmin(ctx) ? "perf_dms_my_notification_read" : "f10_dms_personal_notification_read";
+  const base=(head=false)=>{const q=db.from(projection).select(columns,{count:"exact",head});if(signal)q.abortSignal(signal);
    if(p.audience==="my")q.eq("recipient_user_id",ctx.profile!.id);if(p.unreadOnly)q.eq('status','pending');
    if(p.status)q.ilike("status",literalLike(p.status));if(p.channel)q.eq("channel",p.channel);if(p.bridgeStatus)q.ilike("bridge_status",literalLike(p.bridgeStatus));
    if(p.search)q.or(["subject","message","document_no","channel","status","bridge_status"].map(f=>`${f}.ilike.${literalContains(p.search)}`).join(","));

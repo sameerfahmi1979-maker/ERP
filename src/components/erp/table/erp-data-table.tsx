@@ -30,6 +30,7 @@ import {
   type ColumnFiltersState,
   type Table as TanStackTable,
   type Column,
+  type Row,
 } from "@tanstack/react-table";
 import {
   TableBody,
@@ -85,27 +86,11 @@ function getColumnHeaderText<TData>(column: Column<TData, unknown>): string {
  * Helper: Extract export data from table state
  * Priority: selected rows > filtered rows > all rows
  */
-function getExportData<TData>(
-  table: TanStackTable<TData>
-): { data: TData[]; mode: "selected" | "filtered" | "all"; count: number } {
-  const selectedRows = table.getSortedRowModel().rows.filter(row => row.getIsSelected());
-  
-  // Priority 1: Export selected rows if any
-  if (selectedRows.length > 0) {
-    return {
-      data: selectedRows.map(row => row.original),
-      mode: "selected",
-      count: selectedRows.length,
-    };
-  }
-  
-  // Priority 2: Export filtered rows (respects search/filter)
-  const filteredRows = table.getSortedRowModel().rows;
-  return {
-    data: filteredRows.map(row => row.original),
-    mode: "filtered",
-    count: filteredRows.length,
-  };
+function getExportRows<TData>(sortedRows: Row<TData>[], hasSelection: boolean) {
+  const selectedRows = hasSelection ? sortedRows.filter(row => row.getIsSelected()) : [];
+  const mode = selectedRows.length ? "selected" : "filtered";
+  const rows = selectedRows.length ? selectedRows : sortedRows;
+  return { mode, count: rows.length, load: () => rows.map(row => row.original) };
 }
 
 /**
@@ -289,13 +274,30 @@ export function ERPDataTable<TData>({
     },
   });
 
-  const filterDefinitions: ListFilter[] = serverRead?.filters ?? (serverPaged ? [] : table.getAllLeafColumns().filter(column => column.accessorFn && column.getCanFilter()).flatMap(column => {
-    const sample = table.getCoreRowModel().flatRows.map(row => row.getValue(column.id)).find(value => value != null);
-    if (typeof sample === "object") return []; // A nested object needs an explicit, permitted scalar accessor.
-    const type = column.columnDef.meta?.filter?.type ?? (typeof sample === "boolean" ? "select" : typeof sample === "number" ? "number" : "text");
-    const label = typeof column.columnDef.header === "string" ? column.columnDef.header : column.id.replaceAll("_", " ");
-    return [{ id: column.id, label, type, options: column.columnDef.meta?.filter?.options ?? (typeof sample === "boolean" ? [{ value:"true", label:column.id === "is_active" ? "Active" : "Yes" }, { value:"false", label:column.id === "is_active" ? "Inactive" : "No" }] : undefined) }];
-  }));
+  const localFilters = !embedded && !serverRead && !serverPaged;
+  const filterColumns = localFilters ? table.getAllLeafColumns() : undefined;
+  const filterRows = localFilters ? table.getCoreRowModel().flatRows : undefined;
+  const serverFilters = serverRead?.filters;
+  const filterDefinitions = useMemo<ListFilter[]>(() => {
+    if (serverFilters) return serverFilters;
+    if (!filterColumns || !filterRows) return [];
+    return filterColumns.filter(column => column.accessorFn && column.getCanFilter()).flatMap(column => {
+      let sample: unknown;
+      for (const row of filterRows) {
+        sample = row.getValue(column.id);
+        if (sample != null) break;
+      }
+      if (sample != null && typeof sample === "object") return [];
+      const isBoolean = typeof sample === "boolean";
+      const type = column.columnDef.meta?.filter?.type ?? (isBoolean ? "select" : typeof sample === "number" ? "number" : "text");
+      const label = typeof column.columnDef.header === "string" ? column.columnDef.header : column.id.replaceAll("_", " ");
+      const booleanOptions = [
+        { value: "true", label: column.id === "is_active" ? "Active" : "Yes" },
+        { value: "false", label: column.id === "is_active" ? "Inactive" : "No" },
+      ];
+      return [{ id: column.id, label, type, options: column.columnDef.meta?.filter?.options ?? (isBoolean ? booleanOptions : undefined) }];
+    });
+  }, [filterColumns, filterRows, serverFilters]);
   const filteredCount = table.getFilteredRowModel().rows.length;
   useEffect(() => {
     if (!remote) setPagination(previous => {
@@ -305,11 +307,11 @@ export function ERPDataTable<TData>({
   }, [filteredCount, remote, setPagination]);
   const selectedRowCount = table.getFilteredSelectedRowModel().rows.length;
 
-  // Prepare export data and columns from table state
-  // CRITICAL: Must depend on rowSelection, columnVisibility, globalFilter, sorting
-  // so that export updates when user selects rows or changes table state
-  const exportData = exportConfig ? getExportData(table) : null;
-  const exportColumns = exportConfig ? getExportColumns(table) : [];
+  const exportSortRows = exportConfig && !embedded ? table.getSortedRowModel().rows : null;
+  const exportData = useMemo(() => exportSortRows
+    ? getExportRows(exportSortRows, Object.keys(rowSelection).length > 0) : null,
+  [exportSortRows, rowSelection]);
+  const exportColumns = exportData ? getExportColumns(table) : [];
 
   // Build dynamic subtitle for export
   const exportSubtitle = useMemo(() => {
@@ -317,9 +319,7 @@ export function ERPDataTable<TData>({
     
     const baseSubtitle = exportConfig.subtitle || "";
     const modeText = 
-      exportData.mode === "selected" ? `${exportData.count} selected record${exportData.count > 1 ? "s" : ""}` :
-      exportData.mode === "filtered" ? `${exportData.count} filtered record${exportData.count > 1 ? "s" : ""}` :
-      `all ${exportData.count} record${exportData.count > 1 ? "s" : ""}`;
+      `${exportData.count} ${exportData.mode} record${exportData.count > 1 ? "s" : ""}`;
     
     const scope = serverRead && exportData.mode !== "selected"
       ? unavailable ? "Matching total is not yet available"
@@ -356,7 +356,7 @@ export function ERPDataTable<TData>({
               <ERPExportMenu
                 title={exportConfig.title}
                 filename={exportConfig.filename}
-                data={exportData.data}
+                localRows={exportData}
                 loadData={serverRead && exportData.mode !== "selected" ? serverRead.loadExportData : undefined}
                 columns={exportColumns}
                 subtitle={exportSubtitle}

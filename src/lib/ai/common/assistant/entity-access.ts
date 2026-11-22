@@ -28,14 +28,18 @@ export type AuthorizedAssistantEntity = {
 };
 
 /** Minimal row read through the user client and current RLS; never a service key. */
-export async function readAuthorizedAssistantEntity(entityType: string, entityId: number): Promise<AuthorizedAssistantEntity | null> {
+export async function readAuthorizedAssistantEntity(
+  entityType: string,
+  entityId: number,
+  request?: { context: Awaited<ReturnType<typeof getAuthContext>>; db: Awaited<ReturnType<typeof createClient>> },
+): Promise<AuthorizedAssistantEntity | null> {
   const reference = normalizeAssistantReference(entityType, entityId);
   if (!reference || !(reference.entityType in sources)) return null;
-  const ctx = await getAuthContext();
+  const ctx = request?.context ?? await getAuthContext();
   if (!canUseApplication(ctx)) return null;
   const source = sources[reference.entityType as keyof typeof sources];
   if (!source.permissions.some(code => hasPermission(ctx, code))) return null;
-  const db = await createClient();
+  const db = request?.db ?? await createClient();
   if (reference.entityType === "dms_document") {
     const allowed = await db.rpc("f03_has_document_permission", { document_id: entityId, permission_code: "dms.documents.view" });
     if (allowed.error) throw new Error("Document authority unavailable");

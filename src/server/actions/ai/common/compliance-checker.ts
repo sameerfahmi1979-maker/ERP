@@ -9,6 +9,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { readAiSummaryCount, readAiSummaryFeature } from "@/server/reads/ai-summary";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission, hasGlobalPermission, isGlobalAdmin } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
@@ -683,53 +684,31 @@ export async function isComplianceCheckerEnabled(): Promise<boolean> {
 
 export async function getComplianceFindingSummary(): Promise<
   ActionResult<{
-    open: number;
-    critical: number;
-    high: number;
-    waivedResolved: number;
-    featureEnabled: boolean;
+    open: number | null;
+    critical: number | null;
+    high: number | null;
+    waivedResolved: number | null;
+    featureEnabled: boolean | null;
   }>
 > {
   try {
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated." };
-    if (!canViewCompliance(ctx)) return { success: false, error: "Permission denied." };
+    if (!hasGlobalPermission(ctx, "ai.compliance.view") && !hasGlobalPermission(ctx, "ai.common.admin")) {
+      return { success: false, error: "Permission denied." };
+    }
 
-    const supabase = await createClient();
-    const featureEnabled = await isComplianceEnabled();
-
-    const countOpen = async (extra?: { severity?: string }) => {
-      let q = supabase
-        .from("erp_ai_compliance_findings")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "open")
-        .is("deleted_at", null);
-      if (extra?.severity) q = q.eq("severity", extra.severity);
-      const { count } = await q;
-      return count ?? 0;
-    };
-
-    const open = await countOpen();
-    const critical = await countOpen({ severity: "critical" });
-    const high = await countOpen({ severity: "high" });
-
-    const { count: waivedResolved } = await supabase
-      .from("erp_ai_compliance_findings")
-      .select("id", { count: "exact", head: true })
-      .in("status", ["waived", "resolved", "false_positive"])
-      .is("deleted_at", null);
-
-    return {
-      success: true,
-      data: {
-        open,
-        critical,
-        high,
-        waivedResolved: waivedResolved ?? 0,
-        featureEnabled,
-      },
-    };
-  } catch (err) {
-    return { success: false, error: String(err).slice(0, 200) };
+    const db = await createClient();
+    const query = () => db.from("erp_ai_compliance_findings").select("id", { count: "exact", head: true }).is("deleted_at", null);
+    const [featureEnabled, open, critical, high, waivedResolved] = await Promise.all([
+      readAiSummaryFeature(db, "ERP_AI_COMPLIANCE"),
+      readAiSummaryCount(query().eq("status", "open")),
+      readAiSummaryCount(query().eq("status", "open").eq("severity", "critical")),
+      readAiSummaryCount(query().eq("status", "open").eq("severity", "high")),
+      readAiSummaryCount(query().in("status", ["waived", "resolved", "false_positive"])),
+    ]);
+    return { success: true, data: { open, critical, high, waivedResolved, featureEnabled } };
+  } catch {
+    return { success: false, error: "Compliance findings summary could not be loaded." };
   }
 }

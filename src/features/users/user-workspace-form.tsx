@@ -110,6 +110,8 @@ export function UserWorkspaceForm({
   const [assignRoleOpen, setAssignRoleOpen] = useState(false);
   const [roleToRemove, setRoleToRemove] = useState<UserRoleAssignment | null>(null);
   const [isRemovingRole, setIsRemovingRole] = useState(false);
+  const [confirmedRoleChange, setConfirmedRoleChange] = useState(false);
+  const [profileCancelOpen, setProfileCancelOpen] = useState(false);
   const [showTechDetails, setShowTechDetails] = useState(false);
 
   const isEditing = mode === "edit";
@@ -145,6 +147,18 @@ export function UserWorkspaceForm({
 
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
+  const handleProfileCancel = () => {
+    if (isEditing && isDirty && confirmedRoleChange) setProfileCancelOpen(true);
+    else handleRequestClose();
+  };
+
+  const refreshProfileDisplay = (message: string) => {
+    try {
+      router.refresh();
+    } catch {
+      toast.warning(message);
+    }
+  };
 
   const handleSave = async (): Promise<boolean> => {
     if (isViewing) return false;
@@ -157,6 +171,7 @@ export function UserWorkspaceForm({
       if (isEditing && user) {
         const data = {
           id: user.id,
+          expected_updated_at: user.updated_at,
           full_name: (formData.get("full_name") as string) || null,
           display_name: (formData.get("display_name") as string) || null,
           phone: (formData.get("phone") as string) || null,
@@ -170,11 +185,16 @@ export function UserWorkspaceForm({
         };
         const result = await adminUpdateUserProfile(data);
         if (result.success) {
-          toast.success("User profile updated");
           clearDraft();
           resetDirty();
           if (activeTab?.id) markDirty(activeTab.id, false);
-          router.refresh();
+          if (result.data?.changed) {
+            toast.success("User profile saved.");
+            if (result.warning) toast.warning(result.warning);
+            refreshProfileDisplay("Profile saved. Reload this user to see the changes.");
+          } else {
+            toast.info("No profile changes to save.");
+          }
           return true;
         }
         toast.error(result.error || "Failed to update user profile");
@@ -242,16 +262,29 @@ export function UserWorkspaceForm({
     try {
       const result = await removeRoleFromUser({ user_role_id: roleToRemove.user_role_id });
       if (result.success) {
-        toast.success("Role removed");
+        toast.success(`Removed ${roleToRemoveLabel} · ${roleToRemoveScope}`);
+        if (result.warning) toast.warning(result.warning);
+        setConfirmedRoleChange(true);
         setRoleToRemove(null);
-        router.refresh();
+        refreshProfileDisplay("Role removed. Reload this user to see the updated assignments.");
       } else {
         toast.error(result.error || "Failed to remove role");
       }
+    } catch {
+      toast.error("Role removal could not be confirmed. Reload this user before retrying.");
     } finally {
       setIsRemovingRole(false);
     }
   };
+
+  const roleToRemoveLabel = roleToRemove && administratorRoleLabel(roleToRemove.role_code, roleToRemove.role_name);
+  const roleToRemoveCompany = roleToRemove?.owner_company_id == null ? null : roleToRemove.scope_company_name
+    || companies.find(company => company.id === roleToRemove.owner_company_id)?.legal_name_en
+    || `Company #${roleToRemove.owner_company_id}`;
+  const roleToRemoveBranch = roleToRemove?.branch_id == null ? null : roleToRemove.scope_branch_name
+    || branches.find(branch => branch.id === roleToRemove.branch_id)?.branch_name_en
+    || `Branch #${roleToRemove.branch_id}`;
+  const roleToRemoveScope = [roleToRemoveCompany, roleToRemoveBranch].filter(Boolean).join(" / ") || "Global System";
 
   const assignableRoles = filterAssignableRoles(roles).filter(r => isGlobalAdmin(authContext) || !["system_admin","group_admin","company_admin"].includes(r.role_code));
   const selectClass =
@@ -283,6 +316,7 @@ export function UserWorkspaceForm({
         onSave={isViewing ? undefined : handleSave}
         onSaveAndClose={isViewing ? undefined : handleSaveAndClose}
         onRequestClose={handleRequestClose}
+        onCancel={isEditing ? handleProfileCancel : undefined}
         isSubmitting={isSubmitting}
         isChildDialogOpen={assignRoleOpen}
       >
@@ -648,6 +682,7 @@ export function UserWorkspaceForm({
           user={user}
           open={assignRoleOpen}
           onOpenChange={setAssignRoleOpen}
+          onSaved={() => setConfirmedRoleChange(true)}
           canAssignGlobal={isGlobalAdmin(authContext)}
           roles={roles}
           companies={companies}
@@ -660,11 +695,7 @@ export function UserWorkspaceForm({
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Role</AlertDialogTitle>
             <AlertDialogDescription>
-              Remove role{" "}
-              <span className="font-semibold text-foreground">
-                {roleToRemove?.role_name} ({roleToRemove?.role_code})
-              </span>{" "}
-              from this user? This action is audited and cannot be undone without re-assigning the role.
+              Remove Role immediately removes {roleToRemoveLabel} from this user for {roleToRemoveScope}.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -676,6 +707,24 @@ export function UserWorkspaceForm({
             >
               {isRemovingRole ? "Removing..." : "Remove Role"}
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={profileCancelOpen} onOpenChange={setProfileCancelOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard Profile Edits?</AlertDialogTitle>
+            <AlertDialogDescription>Cancel discards the unsaved profile edits. The confirmed role changes remain saved.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Editing</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              setProfileCancelOpen(false);
+              clearDraft();
+              resetDirty();
+              forceCloseActiveTab();
+            }}>Discard Profile Edits</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

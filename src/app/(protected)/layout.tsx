@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
 import { ErpShell } from "@/components/layout/erp-shell";
-import { getAuthContext, isGlobalAdmin } from "@/lib/rbac/check";
+import { isGlobalAdmin } from "@/lib/rbac/check";
 import { loadRuntimeAppBranding } from "@/lib/branding/load-runtime-app-branding";
 import { SessionBoundary } from "@/components/layout/session-boundary";
 import { ReadCacheBoundary } from "@/components/layout/read-cache-boundary";
 import { readScopeVersion } from "@/lib/reads/scope-version";
+import { getRenderAuthContext } from "@/server/reads/render-auth-context";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export default async function ProtectedLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const ctx = await getAuthContext();
+  const ctx = await getRenderAuthContext();
 
   if (!ctx.profile) {
     redirect("/login");

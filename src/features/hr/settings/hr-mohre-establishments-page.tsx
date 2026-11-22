@@ -84,10 +84,13 @@ function MohreSession({ initialData, canManage, onCreate, onUpdate }: Props) {
   const pending=useRef<{id:number|null;payload:Parameters<typeof createHrMohreEstablishment>[0];contract:WorkspaceSaveContract;hadUnknown:boolean}|null>(null),activation=useRef({retired:false});
   useEffect(()=>{const current={retired:false};activation.current=current;return()=>{current.retired=true;};},[]);
 
-  const companies = useOwnerCompaniesQuery();
-  const emirates = useEmiratesQuery();
+  const editingReferences = canManage && dialogOpen;
+  const choosingCompany = editingReferences && !editing;
+  const companies = useOwnerCompaniesQuery({ enabled: choosingCompany });
+  const emirates = useEmiratesQuery({ enabled: editingReferences });
   const companyOptions=companies.options,emirateOptions=emirates.options;
-  const lookupFailed=!!(companies.error||emirates.error);
+  const lookupFailed=!!((choosingCompany && companies.error) || (editingReferences && emirates.error));
+  const lookupLoading=(choosingCompany && companies.isLoading) || (editingReferences && emirates.isLoading);
   const currentCompanies=editing&&!companyOptions.some(o=>o.value===editing.owner_company_id)?[...companyOptions,{value:editing.owner_company_id,label:editing.owner_company?.legal_name_en??editing.establishment_name}]:companyOptions;
   const currentEmirates=editing?.emirate_id&&!emirateOptions.some(o=>o.value===editing.emirate_id)?[...emirateOptions,{value:editing.emirate_id,label:editing.emirate?.name_en??'Existing emirate (details unavailable)'}]:emirateOptions;
 
@@ -152,7 +155,7 @@ function MohreSession({ initialData, canManage, onCreate, onUpdate }: Props) {
   }
   async function handleSubmit(){
     if(uncertain){await retry.current?.();return;}
-    if(lookupFailed)return;
+    if(lookupFailed||lookupLoading)return;
     const parsed=hrSpecializedSchemas.hr_mohre_establishments.safeParse({...form,notes:form.notes.trim()||null});
     if(!parsed.success){setSaveError('Check the company, establishment number and required details. Your entries are retained.');return;}
     await run(parsed.data);
@@ -237,12 +240,12 @@ function MohreSession({ initialData, canManage, onCreate, onUpdate }: Props) {
         size="md"
         isSubmitting={isSubmitting}
         closeDisabled={uncertain}
-        submitDisabled={lookupFailed&&!uncertain}
+        submitDisabled={(lookupFailed||lookupLoading)&&!uncertain}
         submitLabel={uncertain?'Retry same save':undefined}
         onSubmit={handleSubmit}
       >
         {saveError&&<p role="alert" className="rounded-sm border border-destructive p-3 text-sm text-destructive">{saveError}</p>}
-        {lookupFailed&&<div role="alert" className="text-sm text-destructive">Reference choices could not load. Your entries are retained. <Button variant="outline" size="sm" onClick={()=>{companies.refetch();emirates.refetch();}}>Retry choices</Button></div>}
+        {lookupFailed&&<div role="alert" className="text-sm text-destructive">Reference choices could not load. Your entries are retained. <Button variant="outline" size="sm" onClick={()=>{if(choosingCompany)void companies.refetch();if(editingReferences)void emirates.refetch();}}>Retry choices</Button></div>}
         <fieldset disabled={isSubmitting||uncertain} className="grid min-w-0 grid-cols-12 gap-4">
 
           {/* Company — establishment name follows company legal name */}

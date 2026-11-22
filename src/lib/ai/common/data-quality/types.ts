@@ -103,6 +103,8 @@ export interface DataQualityScanResult {
 }
 
 export interface DataQualitySummary {
+  sample_count: number;
+  matching_count: number;
   total_open: number;
   total_reviewed: number;
   total_by_severity: Record<DataQualitySeverity, number>;

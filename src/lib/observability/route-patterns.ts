@@ -232,6 +232,7 @@ export const APPLICATION_ROUTE_PATTERNS = [
   "/api/reads/dms-expiry-page",
   "/api/reads/dms-expiry-summary",
   "/api/reads/dms-inbox",
+  "/api/reads/dms-list-choices",
   "/api/reads/dms-link-entities",
   "/api/reads/dms-notifications",
   "/api/reads/dms-renewal-page",

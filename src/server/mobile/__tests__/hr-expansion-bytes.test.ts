@@ -10,6 +10,7 @@ vi.mock("@/lib/supabase/server",()=>({createClient:async()=>({from:()=>({select:
 vi.mock("@/lib/supabase/admin",()=>({createAdminClient:()=>({storage:{from:()=>({download:m.download})},from:()=>({insert:m.audit})})}));
 vi.mock("@/server/hr-photo-source",async orig=>({...await orig<typeof import("@/server/hr-photo-source")>(),currentPhotoState:m.state,loadPhotoSource:m.load}));
 const bytes=Buffer.from("%PDF-1.4 synthetic");
+const storageStream=(blob:Blob)=>({asStream:async()=>({data:blob.stream(),error:null})});
 const checksum=createHash("sha256").update(bytes).digest("hex");
 const doc={id:2,file_name:"original.pdf",storage_path:"fixtures/2",file_size_bytes:bytes.length,checksum,source_record_type:"employee",source_record_id:9,lifecycle_state:"issued",owner_company_id:8,revoked_at:null,archived_at:null,expires_at:null,superseded_by_id:null};
 const state={documentId:3,photo:{document_id:3,version_id:4,file_id:5,label:"photo"},canDownload:true,framing:null};
@@ -20,7 +21,7 @@ const photo=(overrides:Record<string,string>={})=>"photo?"+new URLSearchParams({
 beforeEach(()=>{
  vi.resetAllMocks();
  m.auth.mockImplementation(async()=>({profile:mobileAccessToken()==="a.b.c"?{id:8}:null,isAccountActive:true}));
- m.allowed.mockResolvedValue(true);m.row.mockResolvedValue({data:doc});m.download.mockResolvedValue({data:new Blob([bytes])});m.audit.mockResolvedValue({error:null});
+ m.allowed.mockResolvedValue(true);m.row.mockResolvedValue({data:doc});m.download.mockImplementation(()=>storageStream(new Blob([bytes])));m.audit.mockResolvedValue({error:null});
  const chain={eq:()=>chain,is:()=>chain,maybeSingle:m.hash};m.hash.mockResolvedValue({data:{sha256_hash:checksum}});
  m.state.mockResolvedValue({state,client:{from:()=>({select:()=>chain})}});
  m.load.mockResolvedValue({file,source:{documentId:3,versionId:4,fileId:5},bytes,ctx:{profile:{auth_user_id:"a"}},label:"photo",client:{auth:{getClaims:async()=>({data:{claims:{sub:"a",session_id:"s"}}})}},admin:{rpc:m.attest}});
@@ -57,11 +58,11 @@ describe("scoped mobile byte delivery",()=>{
    expect(m.download).not.toHaveBeenCalled();
  });
  it("denies an original when authority changes during download",async()=>{
-   m.download.mockImplementation(async()=>{m.allowed.mockResolvedValue(false);return {data:new Blob([bytes])};});
+   m.download.mockReturnValue({asStream:async()=>{m.allowed.mockResolvedValue(false);return {data:new Blob([bytes]).stream(),error:null};}});
    const r=await mobileBytes(request(query),"issued-file");expect(r.status).toBe(404);expect(m.audit).not.toHaveBeenCalled();
  });
  it("checks returned bytes, retained lifecycle and employee after storage",async()=>{
-   m.download.mockResolvedValueOnce({data:new Blob(["different"])});
+   m.download.mockReturnValueOnce(storageStream(new Blob(["different"])));
    expect((await mobileBytes(request(query),"issued-file")).status).toBe(409);
    m.row.mockResolvedValueOnce({data:doc}).mockResolvedValueOnce({data:{...doc,source_record_id:8}});
    expect((await mobileBytes(request(query),"issued-file")).status).toBe(404);

@@ -47,3 +47,24 @@ describe("retained history source checks", () => {
   });
   it.each([{ data: false, error: null }, { data: null, error: { message: "unavailable" } }])("denies invalid/unavailable current sessions", async result => { state.rpc.mockResolvedValue(result); await expect(verifyAssistantSessionNow()).rejects.toThrow(); });
 });
+it("reuses the admitted session client for all 50 unique retained bindings and withholds the next", async () => {
+  const ctx = context();
+  const db = { rpc: state.rpc } as unknown as Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>;
+  const verify = createAssistantHistoryVerifier(ctx, 7, db);
+  function binding(entityId: number) {
+    return {
+      version: 1,
+      ownerProfileId: ctx.profile!.id,
+      sessionId: 7,
+      authorityFingerprint: assistantAuthorityFingerprint(ctx),
+      sources: [{ reference: { ...ref, entityId }, sourceVersion: "source-v1" }],
+    };
+  }
+  for (let entityId = 1; entityId <= 50; entityId++) {
+    expect(await verify(binding(entityId))).toBe(true);
+  }
+  expect(await verify(binding(51))).toBe(false);
+  expect(await verify(binding(50))).toBe(true);
+  expect(state.read).toHaveBeenCalledTimes(50);
+  expect(state.read).toHaveBeenLastCalledWith("company", 50, { context: ctx, db });
+});

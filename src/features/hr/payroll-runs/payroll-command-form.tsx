@@ -1,8 +1,10 @@
 "use client";
 
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { PayrollRefreshNotice } from "@/features/hr/payroll/payroll-refresh-notice";
+import { usePayrollCommand } from "@/hooks/use-payroll-command";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { PayrollAction, PayrollEvidence, PayrollLine } from "@/lib/hr/payroll/run-contract";
@@ -22,50 +24,42 @@ type FormProps = {
 
 export function PayrollCommandForm({ action, company, branch, label, children, returnTo, variant = "default" }: FormProps) {
   const router = useRouter();
-  const inFlight = useRef(false);
-  const receipt = useRef<{ operation: string; inputs: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const mutation = usePayrollCommand(
+    (request: { action: PayrollAction; company: number; branch: number; operation: string; data: FormData; form: HTMLFormElement }) =>
+      savePayrollCommand(request.action, request.company, request.branch, request.operation, request.data),
+    {
+      target: "runs",
+      onSuccess(request) {
+        request.form.reset();
+        return request.action === "calculate" ? "Payroll draft saved." : "Saved.";
+      },
+      updateView: returnTo ? () => {
+        const { pathname, search, hash } = window.location;
+        if (returnTo !== pathname + search + hash) router.push(returnTo);
+      } : undefined,
+      unconfirmed: "The save could not be confirmed. Retry the same request.",
+    },
+  );
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (inFlight.current) return;
     const form = event.currentTarget;
-    const payload = new FormData(form);
-    const inputs = JSON.stringify([...payload]);
-    if (!receipt.current || receipt.current.inputs !== inputs) {
-      receipt.current = { operation: crypto.randomUUID(), inputs };
-    }
-    inFlight.current = true;
-    setBusy(true);
-    setMessage(null);
-    try {
-      const result = await savePayrollCommand(action, company, branch, receipt.current.operation, payload);
-      if (!result.ok) {
-        setMessage({ text: result.error, error: true });
-        return;
-      }
-      receipt.current = null;
-      form.reset();
-      setMessage({ text: action === "calculate" ? "Payroll draft saved." : "Saved.", error: false });
-      if (returnTo) router.push(returnTo);
-      else router.refresh();
-    } catch {
-      setMessage({ text: "The save could not be confirmed. Try again with the same details.", error: true });
-    } finally {
-      inFlight.current = false;
-      setBusy(false);
-    }
+    return mutation.submit(() => ({ action, company, branch, operation: crypto.randomUUID(), data: new FormData(form), form }));
   }
 
+  const { busy, locked, retry, refreshError, message } = mutation;
   return <form onSubmit={submit} className="space-y-3">
-    <fieldset disabled={busy} className="min-w-0 space-y-3">
+    <fieldset disabled={locked} className="min-w-0 space-y-3">
       {children}
       <label className="grid gap-1.5 text-sm font-medium">Reason
         <Textarea name="reason" required maxLength={2000} rows={2} />
       </label>
       <Button type="submit" variant={variant} size="sm">{busy ? "Saving…" : label}</Button>
     </fieldset>
+    {retry && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void mutation.submit()}>
+      Retry same request
+    </Button>}
+    {refreshError && <PayrollRefreshNotice busy={busy} retry={() => void mutation.retryRefresh()} />}
     {message && <p role={message.error ? "alert" : "status"} className={message.error ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
       {message.text}
     </p>}

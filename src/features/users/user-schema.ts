@@ -8,6 +8,7 @@ import { authEmailSchema, passwordPolicySchema } from "@/lib/validation/auth";
 
 export const adminUpdateUserProfileSchema = z.object({
   id: z.number().int().positive(),
+  expected_updated_at: z.string().datetime({ offset: true }).optional(),
   full_name: z.string().max(255).optional().nullable(),
   display_name: z.string().max(255).optional().nullable(),
   phone: z.string().max(50).optional().nullable(),

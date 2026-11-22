@@ -13,6 +13,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { invalidateRecruitmentCandidateReadModels } from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
+import { createWorkspaceSaveAttempt } from "@/lib/workspace/save-contract";
+import { candidateDocumentLinkInput, candidateDocumentLinkReceipt, matchesCandidateDocumentLink } from "@/lib/hr/candidate-document-link-contract";
 import { archiveCandidateDocument, linkCandidateDmsDocument, verifyCandidateDocument } from "@/server/actions/hr/recruitment";
 import { useQueryClient } from "@tanstack/react-query";
 import {useHrCandidateChildren, type CandidateChildReadProps} from "@/hooks/use-hr-candidate-children";
@@ -50,6 +52,12 @@ export function CandidateDocumentsTab({ candidateId, canManage, authContext, onR
   const [isPending, startTransition] = useTransition();
   const [retryingReads, setRetryingReads] = useState(false);
   const retryFlight = useRef(false);
+  const [linkUncertain, setLinkUncertain] = useState(false);
+  const [linkRefreshPending, setLinkRefreshPending] = useState(false);
+  const linkAttempt = useRef(createWorkspaceSaveAttempt());
+  const linkFlight = useRef(false);
+  const linkHadUnknown = useRef(false);
+  const linkLifetime = useRef(false);
 
   const [dmsDocId, setDmsDocId] = useState("");
   const [purpose, setPurpose] = useState<string | null>(null);
@@ -66,21 +74,32 @@ export function CandidateDocumentsTab({ candidateId, canManage, authContext, onR
     mutationAdmission.current = mutationReady;
     return () => { mutationAdmission.current = false; };
   }, [mutationReady]);
+  useLayoutEffect(() => {
+    linkLifetime.current = true;
+    return () => { linkLifetime.current = false; };
+  }, []);
 
   async function retryReads() {
     if (retryFlight.current) return;
     retryFlight.current = true;
     setRetryingReads(true);
     try {
-      await Promise.allSettled([
+      const checks = await Promise.allSettled([
         Promise.resolve().then(() => onRetryMutationAdmission?.()),
         uiRead1.refetch({cancelRefetch: false}),
-      ]);
+      ] as const);
+      const refreshed = checks[1].status === "fulfilled" ? checks[1].value : null;
+      if (checks[0].status === "fulfilled" && refreshed && refreshed.data?.success && !refreshed.isError) {
+        setLinkRefreshPending(false);
+      }
     } finally { retryFlight.current = false; setRetryingReads(false); }
   }
 
   function openDialog() {
     if (!mutationAdmission.current) return;
+    linkAttempt.current.resolved();
+    linkHadUnknown.current = false;
+    setLinkUncertain(false);
     setDmsDocId("");
     setPurpose(null);
     setNotes("");
@@ -94,24 +113,57 @@ export function CandidateDocumentsTab({ candidateId, canManage, authContext, onR
   }
 
   function handleLink() {
-    if (!mutationAdmission.current) return;
-    const docId = parseInt(dmsDocId);
-    if (!docId) { toast.error("Enter a valid DMS document ID"); return; }
+    if (!mutationAdmission.current || linkFlight.current) return;
+    const request = candidateDocumentLinkInput.safeParse({
+      dms_document_id: Number(dmsDocId),
+      document_purpose: purpose,
+      notes: notes || null,
+    });
+    if (!request.success) { toast.error("Enter a valid DMS document ID"); return; }
+    let operationId: string;
+    try {
+      operationId = linkAttempt.current.begin([candidateId, request.data], null).operationId;
+    } catch {
+      toast.error("Retry the original document link with its original values.");
+      return;
+    }
+    linkFlight.current = true;
     startTransition(async () => {
-      if (!mutationAdmission.current) return;
-      const res = await linkCandidateDmsDocument(candidateId, {
-        dms_document_id: docId,
-        document_purpose: purpose as "cv" | "passport" | "certificate" | "offer" | "photo" | "other" | null | undefined,
-        notes: notes || null,
-      });
-      if (res.success) {
-        toast.success("Document linked");
-        void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateDocuments(candidateId) });
-        invalidateRecruitmentCandidateReadModels(queryClient, candidateId, "documents");
-        closeDialog();
-      } else {
-        toast.error(res.error ?? "Failed to link document");
+      let result: Awaited<ReturnType<typeof linkCandidateDmsDocument>>;
+      try {
+        if (!mutationAdmission.current) return;
+        result = await linkCandidateDmsDocument(candidateId, request.data, operationId);
+      } catch {
+        result = { success: false, uncertain: true };
+      } finally {
+        linkFlight.current = false;
       }
+      const receipt = candidateDocumentLinkReceipt.safeParse(result.data);
+      const confirmed = result.success && receipt.success &&
+        matchesCandidateDocumentLink(receipt.data, candidateId, request.data.dms_document_id, operationId);
+      if (!confirmed) {
+        const uncertain = result.uncertain === true || result.success || (linkHadUnknown.current && !result.superseded);
+        if (linkLifetime.current) {
+          linkHadUnknown.current = uncertain;
+          setLinkUncertain(uncertain);
+          if (!uncertain) linkAttempt.current.resolved();
+        }
+        toast.error(uncertain ? "The operation could not be confirmed. Retry the original link." : result.error ?? "Failed to link document");
+        return;
+      }
+
+      const messages = { linked: "Document linked", reactivated: "Document relinked", already_linked: "Document already linked" };
+      try { toast.success(messages[receipt.data.outcome]); } catch { /* The receipt is already confirmed. */ }
+      if (!linkLifetime.current) return;
+      linkAttempt.current.resolved();
+      linkHadUnknown.current = false;
+      setLinkUncertain(false);
+      setLinkRefreshPending(result.refreshPending === true);
+      closeDialog();
+      if (!mutationAdmission.current) return;
+      void queryClient.invalidateQueries({ queryKey: queryKeys.recruitment.candidateDocuments(candidateId) }, { throwOnError: true })
+        .catch(() => { if (linkLifetime.current) setLinkRefreshPending(true); });
+      invalidateRecruitmentCandidateReadModels(queryClient, candidateId, "documents");
     });
   }
 
@@ -157,6 +209,10 @@ export function CandidateDocumentsTab({ candidateId, canManage, authContext, onR
         )}
       </div>
 
+      {linkRefreshPending && <div role="status" className="mb-4 rounded-sm border p-3 text-sm">
+        Document link confirmed. The record could not refresh.
+        <Button type="button" variant="outline" disabled={retryingReads} onClick={() => void retryReads()}>Retry document checks</Button>
+      </div>}
       {
         <div className="divide-y border rounded-lg">
 <RecordCollection presentation="embedded" id="hr.candidate-documents-tab.CandidateDocumentsTab.docs" rows={docs} serverRead={read.serverRead} isLoading={read.busy} message={read.validationMessage} userProfileId={String(authContext.profile?.id ?? "")} fields={[{"id":"dms_document_document_title","path":"dms_document.document_title","label":"Document Title"},{"id":"document_purpose","path":"document_purpose","label":"Document Purpose"}]} renderRecord={(doc) => (
@@ -192,7 +248,7 @@ export function CandidateDocumentsTab({ candidateId, canManage, authContext, onR
 
       <ERPChildDialogForm
         open={dialogOpen}
-        onOpenChange={closeDialog}
+        onOpenChange={open => { if (!open && !linkUncertain) closeDialog(); }}
         title="Link DMS Document"
         subtitle="Link an existing DMS document to this candidate"
         icon={<Link2 className="h-5 w-5" />}
@@ -201,7 +257,8 @@ export function CandidateDocumentsTab({ candidateId, canManage, authContext, onR
         isSubmitting={isPending}
         submitDisabled={!mutationReady}
         onSubmit={handleLink}
-        submitLabel="Link Document"
+        closeDisabled={linkUncertain}
+        submitLabel={linkUncertain ? "Retry link" : "Link Document"}
       >
         {!mutationReady && <div role="alert" className="mb-4 rounded-sm border border-destructive p-3 text-sm" aria-busy={retryingReads || undefined}>
           <p>{canManage
@@ -210,7 +267,8 @@ export function CandidateDocumentsTab({ candidateId, canManage, authContext, onR
           {canManage && <Button type="button" variant="outline" className="mt-2" disabled={retryingReads}
             onClick={() => void retryReads()}>{retryingReads ? "Retrying document checks…" : "Retry document checks"}</Button>}
         </div>}
-        <div className="grid grid-cols-12 gap-4">
+        {linkUncertain && mutationReady && <p role="alert" className="mb-4 text-sm">Document link unconfirmed. Retry to check the original request.</p>}
+        <fieldset disabled={isPending || linkUncertain} className="grid grid-cols-12 gap-4">
           <div className="col-span-12">
             <RequiredLabel required>DMS Document ID</RequiredLabel>
             <Input aria-label="DMS Document ID" required
@@ -225,6 +283,7 @@ export function CandidateDocumentsTab({ candidateId, canManage, authContext, onR
             <Label>Document Purpose</Label>
             <ERPCombobox ariaLabel="Document Purpose"
               value={purpose}
+              disabled={isPending || linkUncertain}
               onValueChange={(v) => setPurpose(v ? String(v) : null)}
               options={PURPOSE_OPTIONS}
               placeholder="Select purpose..."
@@ -234,7 +293,7 @@ export function CandidateDocumentsTab({ candidateId, canManage, authContext, onR
             <Label>Notes</Label>
             <Textarea aria-label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Optional notes..." />
           </div>
-        </div>
+        </fieldset>
       </ERPChildDialogForm>
     </div></QueryReadBoundary>
   );

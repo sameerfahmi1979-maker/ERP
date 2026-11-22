@@ -13,6 +13,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
+import { readAllPages } from "@/server/reads/all-pages";
+import { literalContains } from "@/lib/reads/search";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import {hasGlobalPermission} from '@/lib/rbac/scope';
 import {saveLookupMutation} from '@/server/lookup-save';
@@ -207,62 +209,45 @@ export async function toggleLookupCategoryLock(id:number,is_locked:boolean,contr
 export async function listLookupValues(
   filters?: LookupValueFilters
 ): Promise<ActionResult<LookupValueWithCategory[]>> {
+  const forbidden = { success: false, kind: "forbidden", error: "Global lookup catalogue access is required." } as const;
+  const failed = { success: false, kind: "failed", error: "The lookup values could not be loaded. Try again." } as const;
+  let authorizationLost = false;
   try {
     const ctx = await getAuthContext();
-    if (!lookupCapabilities(ctx).read) {
-      return { success: false, kind: "forbidden", error: "Global lookup catalogue access is required." };
-    }
+    if (!lookupCapabilities(ctx).read) return forbidden;
 
     const supabase = await createClient();
-    let query = supabase.from("global_lookup_values").select(`
-      *,
-      category:global_lookup_categories!inner(id, category_code, category_name_en, category_name_ar, workspace_revision, is_locked, is_active),
-      parent_value:global_lookup_values!parent_value_id(value_code, value_label_en, value_label_ar)
-    `);
-
-    // Apply filters
-    if (filters?.search) {
-      query = query.or(`value_code.ilike.%${filters.search}%,value_label_en.ilike.%${filters.search}%`);
-    }
-    if (filters?.category_id) {
-      query = query.eq("category_id", filters.category_id);
-    }
-    if (filters?.category_code) {
-      query = query.eq("category.category_code", filters.category_code);
-    }
-    if (filters?.is_active !== undefined) {
-      query = query.eq("is_active", filters.is_active);
-    }
-    if (filters?.is_system !== undefined) {
-      query = query.eq("is_system", filters.is_system);
-    }
-    if (filters?.is_locked !== undefined) {
-      query = query.eq("is_locked", filters.is_locked);
-    }
-    if (filters?.is_default !== undefined) {
-      query = query.eq("is_default", filters.is_default);
-    }
-    if (filters?.parent_value_id !== undefined) {
-      if (filters.parent_value_id === null) {
-        query = query.is("parent_value_id", null);
-      } else {
-        query = query.eq("parent_value_id", filters.parent_value_id);
+    const data = await readAllPages<LookupValueWithCategory>(async (from, to) => {
+      let query = supabase.from("global_lookup_values").select(`
+        *,
+        category:global_lookup_categories!inner(id, category_code, category_name_en, category_name_ar, workspace_revision, is_locked, is_active),
+        parent_value:global_lookup_values!parent_value_id(value_code, value_label_en, value_label_ar)
+      `, { count: "exact" });
+      if (filters?.search) {
+        const pattern = literalContains(filters.search);
+        query = query.or(`value_code.ilike.${pattern},value_label_en.ilike.${pattern}`);
       }
-    }
+      if (filters?.category_id) query = query.eq("category_id", filters.category_id);
+      if (filters?.category_code) query = query.eq("category.category_code", filters.category_code);
+      if (filters?.is_active !== undefined) query = query.eq("is_active", filters.is_active);
+      if (filters?.is_system !== undefined) query = query.eq("is_system", filters.is_system);
+      if (filters?.is_locked !== undefined) query = query.eq("is_locked", filters.is_locked);
+      if (filters?.is_default !== undefined) query = query.eq("is_default", filters.is_default);
+      if (filters?.parent_value_id !== undefined) {
+        query = filters.parent_value_id === null
+          ? query.is("parent_value_id", null)
+          : query.eq("parent_value_id", filters.parent_value_id);
+      }
+      const result = await query.order("sort_order").order("value_label_en").order("id").range(from, to);
+      if (result.error?.code === "42501") authorizationLost = true;
+      if (!Array.isArray(result.data)) throw Error("Lookup value response could not be verified.");
+      return { data: result.data as LookupValueWithCategory[], count: result.count, error: result.error };
+    }, { identity: row => row.id, maxRows: 50000 });
 
-    query = query.order("sort_order", { ascending: true }).order("value_label_en", { ascending: true });
-
-    const { data, error } = await query;
-
-    if (error || !Array.isArray(data)) {
-      logger.error("listLookupValues error", error);
-      return { success: false, kind: error?.code === "42501" ? "forbidden" : "failed", error: error?.code === "42501" ? "Global lookup catalogue access is required." : "The lookup values could not be loaded. Try again." };
-    }
-
-    return { success: true, data: data as LookupValueWithCategory[] };
+    return { success: true, data };
   } catch (error) {
     logger.error("listLookupValues exception", error);
-    return { success: false, kind: "failed", error: "The lookup values could not be loaded. Try again." };
+    return authorizationLost ? forbidden : failed;
   }
 }
 

@@ -10,7 +10,6 @@ import { revalidatePath } from "next/cache";
 import { logAudit, createAuditDiff } from "@/server/actions/audit";
 import { sanitizeServerActionError } from "@/lib/audit/sanitizers";
 import { randomBytes, randomUUID, createHash } from "node:crypto";
-import { resolveRoleScope } from "@/lib/users/role-scope";
 import { assignmentScopeError } from "@/lib/rbac/administrator-policy";
 import { issueAccountInvitation } from "@/lib/auth/invitations";
 import { sendSecurityTemplate } from "@/lib/auth/security-email";
@@ -29,6 +28,7 @@ export type ActionResult<T = unknown> = {
   success: boolean;
   data?: T;
   error?: string;
+  warning?: string;
 };
 
 // ── USERS.1 — Last system-admin protection ────────────────────────────────────
@@ -218,11 +218,11 @@ export async function createUser(input: CreateUserInput): Promise<ActionResult<{
  */
 export async function adminUpdateUserProfile(
   input: AdminUpdateUserProfileInput,
-): Promise<ActionResult> {
+): Promise<ActionResult<{ changed: boolean }>> {
   try {
     // 1. Validate input
     const validated = adminUpdateUserProfileSchema.parse(input);
-    const { id, ...updates } = validated;
+    const { id, expected_updated_at, ...updates } = validated;
 
     // 2. Check permissions
     const ctx = await getAuthContext();
@@ -238,60 +238,89 @@ export async function adminUpdateUserProfile(
 
     // 3. Get old values for audit
     const supabase = await createClient();
-    const { data: oldData } = await supabase
+    const { data: oldData, error: readError } = await supabase
       .from("user_profiles")
       .select("*")
       .eq("id", id)
       .single();
 
-    if (!oldData) {
+    if (readError || !oldData) {
       return { success: false, error: "User profile not found" };
-    }
-
-    // USERS.1 — Last-admin guard: block deactivation of sole system_admin
-    if (updates.status && updates.status !== "active" && oldData.status === "active") {
-      const adminGuard = await assertNotLastSystemAdmin(id, ctx, "deactivate_user");
-      if (adminGuard) return { success: false, error: adminGuard };
     }
 
     const authority = await supabase.rpc('administrator_can_manage_identity', {target_profile:id,capability:'users.update'});
     if (authority.error || authority.data !== true) return {success:false,error:'This account has authority outside your administrative scope.'};
-    // USERS.2 — Auto-set last admin update timestamp
+
+    // An empty optional field and a legacy blank string both represent a cleared value.
+    const changes = Object.fromEntries(
+      Object.entries(updates).flatMap(([field, value]) => {
+        if (value === undefined) return [];
+        const next = value === "" ? null : value;
+        const saved = oldData[field];
+        return next === (saved === "" ? null : saved ?? null) ? [] : [[field, next]];
+      }),
+    );
+    if (Object.keys(changes).length === 0) return { success: true, data: { changed: false } };
+
+    const staleMessage = "This profile changed since it was opened. Reload it before saving your edits.";
+    if (expected_updated_at !== undefined && expected_updated_at !== oldData.updated_at) {
+      return { success: false, error: staleMessage };
+    }
+
+    // USERS.1 — Last-admin guard: block deactivation of sole system_admin
+    if (changes.status && changes.status !== "active" && oldData.status === "active") {
+      const adminGuard = await assertNotLastSystemAdmin(id, ctx, "deactivate_user");
+      if (adminGuard) return { success: false, error: adminGuard };
+    }
+
     const updatePayload = {
-      ...updates,
+      ...changes,
       last_admin_updated_at: new Date().toISOString(),
     };
 
-    // 4. Update profile
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from("user_profiles")
       .update(updatePayload)
-      .eq("id", id);
+      .eq("id", id)
+      .eq("updated_at", oldData.updated_at)
+      .select("id")
+      .maybeSingle();
 
     if (error) {
       logger.error("adminUpdateUserProfile error", error);
       return { success: false, error: error.message };
     }
+    if (updated?.id !== id) return { success: false, error: staleMessage };
 
     // 5. Log audit
     const { old_values, new_values } = createAuditDiff(oldData, { ...oldData, ...updatePayload });
     
-    await logAudit({
+    const audit = await logAudit({
       module_code: "users",
       entity_name: "user_profiles",
       entity_id: id,
       entity_reference: oldData.user_code || `user-${id}`,
-      action: updates.status && updates.status !== oldData.status ? "USER_STATUS_CHANGED" : "USER_UPDATED",
+      action: changes.status ? "USER_STATUS_CHANGED" : "USER_UPDATED",
       old_values,
       new_values,
       owner_company_id: oldData.owner_company_id ?? undefined,
       branch_id: oldData.branch_id ?? undefined,
-    });
+    }).catch(() => ({ success: false }));
 
-    // 6. Revalidate
-    revalidatePath("/admin/users");
+    const warnings: string[] = [];
+    if (!audit.success) warnings.push("The profile saved. The audit entry needs review.");
+    try {
+      revalidatePath("/admin/users");
+    } catch (refreshError) {
+      logger.error("adminUpdateUserProfile refresh error", refreshError);
+      warnings.push("The profile saved. Refresh the Users list to see the changes.");
+    }
 
-    return { success: true };
+    return {
+      success: true,
+      data: { changed: true },
+      ...(warnings.length > 0 ? { warning: warnings.join(" ") } : {}),
+    };
   } catch (error) {
     logger.error("adminUpdateUserProfile exception", error);
     return { success: false, error: sanitizeServerActionError(error) };
@@ -299,109 +328,50 @@ export async function adminUpdateUserProfile(
 }
 
 /**
- * Assign role to user
- * Server action with RLS and audit logging
+ * Assign a role and record the exact assignment in one database transaction.
  */
 export async function assignRoleToUser(
   input: UserRoleAssignmentInput,
 ): Promise<ActionResult<{ id: number }>> {
   try {
-    // 1. Validate input
     const validated = userRoleAssignmentSchema.parse(input);
-
-    // 2. Check permissions
     const ctx = await getAuthContext();
     assertAccountActive(ctx);
     if (!hasPermission(ctx, "users.roles.assign")) {
       await logAudit({
         module_code: "users", entity_name: "user_roles", entity_id: 0,
-        entity_reference: `role-assign`, action: "UNAUTHORIZED_ACCESS_ATTEMPT",
+        entity_reference: "role-assign", action: "UNAUTHORIZED_ACCESS_ATTEMPT",
         new_values: { attempted_action: "assignRoleToUser", required_permission: "users.roles.assign" },
       }).catch(() => {});
       return { success: false, error: "You do not have permission to perform this action." };
     }
 
-    // 3. Get user and role info for audit
     const supabase = await createClient();
-    const { data: userProfile } = await supabase
-      .from("user_profiles")
-      .select("user_code, owner_company_id, branch_id")
-      .eq("id", validated.user_profile_id)
-      .single();
-
-    const { data: role } = await supabase
-      .from("roles")
-      .select("role_code, role_name, is_active, is_assignable")
-      .eq("id", validated.role_id)
-      .single();
-
-    if (!userProfile || !role) {
-      return { success: false, error: "User or role not found" };
-    }
-
-    const shapeError = assignmentScopeError(role.role_code, validated.owner_company_id ?? null, validated.branch_id ?? null);
-    if (shapeError) return { success: false, error: shapeError };
-    // USERS.3 — server-side enforcement: only active + assignable roles may be assigned
-    if (!role.is_active) {
-      return { success: false, error: `Role "${role.role_name}" is inactive and cannot be assigned` };
-    }
-    if (role.is_assignable === false) {
-      return { success: false, error: `Role "${role.role_name}" is not assignable` };
-    }
-
-    const { data: mayAssign, error: scopeError } = await supabase.rpc("current_user_can_manage_user_role_assignment", {
-      target_user_profile_id: validated.user_profile_id,
+    const { data: id, error } = await supabase.rpc("erp_assign_user_role", {
+      target_profile_id: validated.user_profile_id,
       target_role_id: validated.role_id,
-      target_owner_company_id: validated.owner_company_id ?? null,
-      target_branch_id: validated.branch_id ?? null,
-    });
-    if (scopeError || mayAssign !== true) return { success: false, error: "You cannot grant this role in the requested scope." };
-
-    // 4. Assign role
-    const dataToInsert = {
-      user_profile_id: validated.user_profile_id,
-      role_id: validated.role_id,
-      owner_company_id: validated.owner_company_id ?? null,
+      company_id: validated.owner_company_id ?? null,
       branch_id: validated.branch_id ?? null,
-      is_active: validated.is_active,
-      assigned_by: ctx.profile?.id ?? null,
-    };
-
-    const { data, error } = await supabase
-      .from("user_roles")
-      .insert(dataToInsert)
-      .select("id")
-      .single();
-
+      assignment_active: validated.is_active,
+    });
     if (error) {
       logger.error("assignRoleToUser error", error);
-      // Check for unique constraint violation
-      if (error.message.includes("user_roles_scope_unique")) {
-        return { success: false, error: "This role assignment already exists for this user with the same scope" };
+      if (error.code === "23505" && error.message.includes("user_roles_scope_unique")) {
+        return { success: false, error: "This role assignment already exists for this user with the same scope." };
       }
-      return { success: false, error: error.message };
+      if (error.code === "42501") {
+        return { success: false, error: "You cannot grant this role to the selected user in the requested scope." };
+      }
+      if (error.code === "23514") {
+        return { success: false, error: "The role is unavailable for this assignment." };
+      }
+    }
+    if (error || typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0) {
+      return { success: false, error: "The role assignment could not be confirmed. Reload this user before retrying." };
     }
 
-    // 5. Log audit
-    await logAudit({
-      module_code: "users",
-      entity_name: "user_roles",
-      entity_id: data.id,
-      entity_reference: `${userProfile.user_code || `user-${validated.user_profile_id}`} → ${role.role_code}`,
-      action: "USER_ROLE_ASSIGNED",
-      new_values: {
-        user_profile_id: validated.user_profile_id,
-        role: role.role_name,
-        scope: resolveRoleScope(validated.owner_company_id, validated.branch_id),
-      },
-      owner_company_id: validated.owner_company_id ?? userProfile.owner_company_id ?? undefined,
-      branch_id: validated.branch_id ?? userProfile.branch_id ?? undefined,
-    });
-
-    // 6. Revalidate
-    revalidatePath("/admin/users");
-
-    return { success: true, data: { id: data.id } };
+    const warning = refreshUserListAfterRoleChange();
+    return { success: true, data: { id }, ...(warning ? { warning } : {}) };
   } catch (error) {
     logger.error("assignRoleToUser exception", error);
     return { success: false, error: sanitizeServerActionError(error) };
@@ -409,88 +379,60 @@ export async function assignRoleToUser(
 }
 
 /**
- * Remove role from user
- * Server action with RLS and audit logging
+ * Remove only the selected role assignment and record its exact scope.
  */
 export async function removeRoleFromUser(
   input: UserRoleRemovalInput,
 ): Promise<ActionResult> {
   try {
-    // 1. Validate input
     const validated = userRoleRemovalSchema.parse(input);
-
-    // 2. Check permissions
     const ctx = await getAuthContext();
     assertAccountActive(ctx);
     if (!hasPermission(ctx, "users.roles.assign")) {
       await logAudit({
         module_code: "users", entity_name: "user_roles", entity_id: 0,
         entity_reference: "role-remove", action: "UNAUTHORIZED_ACCESS_ATTEMPT",
-        new_values: { attempted_action: "removeRoleFromUser", required_permission: "users.update" },
+        new_values: { attempted_action: "removeRoleFromUser", required_permission: "users.roles.assign" },
       }).catch(() => {});
       return { success: false, error: "You do not have permission to perform this action." };
     }
 
-    // 3. Get role assignment info for audit
     const supabase = await createClient();
-    const { data: oldData } = await supabase
-      .from("user_roles")
-      .select(`
-        *,
-        user_profiles!user_profile_id ( user_code, owner_company_id, branch_id ),
-        roles ( role_code, role_name )
-      `)
-      .eq("id", validated.user_role_id)
-      .single();
-
-    if (!oldData) {
-      return { success: false, error: "Role assignment not found" };
-    }
-
-    const role = oldData.roles as { role_code: string; role_name: string } | null;
-
-    // USERS.2 — Last-admin guard: block removal of sole system_admin role assignment
-    if (role?.role_code === "system_admin") {
-      const adminGuard = await assertNotLastSystemAdmin(oldData.user_profile_id as number, ctx, "remove_role");
-      if (adminGuard) return { success: false, error: adminGuard };
-    }
-
-    // 4. Remove role assignment
-    const { error } = await supabase
-      .from("user_roles")
-      .delete()
-      .eq("id", validated.user_role_id);
-
+    const { data: removedId, error } = await supabase.rpc("erp_remove_user_role", {
+      assignment_id: validated.user_role_id,
+    });
     if (error) {
       logger.error("removeRoleFromUser error", error);
-      return { success: false, error: error.message };
+      if (error.code === "42501" && error.message.includes("last active system administrator")) {
+        await logAudit({
+          module_code: "users", entity_name: "user_roles", entity_id: validated.user_role_id,
+          entity_reference: "role-remove", action: "LAST_ADMIN_GUARD_TRIGGERED",
+          new_values: { attempted_action: "remove_role", reason: "last_active_system_admin" },
+        }).catch(() => {});
+        return { success: false, error: "The last active system administrator must retain this role." };
+      }
+      if (error.code === "42501") {
+        return { success: false, error: "This role assignment is unavailable. Reload this user to check their current roles." };
+      }
+    }
+    if (error || removedId !== validated.user_role_id) {
+      return { success: false, error: "Role removal could not be confirmed. Reload this user before retrying." };
     }
 
-    // 5. Log audit
-    const userProfile = oldData.user_profiles as { user_code: string | null; owner_company_id: number | null; branch_id: number | null } | null;
-
-    await logAudit({
-      module_code: "users",
-      entity_name: "user_roles",
-      entity_id: validated.user_role_id,
-      entity_reference: `${userProfile?.user_code || `user-${oldData.user_profile_id}`} → ${role?.role_code || "unknown"}`,
-      action: "USER_ROLE_REMOVED",
-      old_values: {
-        user_profile_id: oldData.user_profile_id,
-        role: role?.role_name,
-        scope: resolveRoleScope(oldData.owner_company_id, oldData.branch_id),
-      },
-      owner_company_id: oldData.owner_company_id ?? userProfile?.owner_company_id ?? undefined,
-      branch_id: oldData.branch_id ?? userProfile?.branch_id ?? undefined,
-    });
-
-    // 6. Revalidate
-    revalidatePath("/admin/users");
-
-    return { success: true };
+    const warning = refreshUserListAfterRoleChange();
+    return { success: true, ...(warning ? { warning } : {}) };
   } catch (error) {
     logger.error("removeRoleFromUser exception", error);
     return { success: false, error: sanitizeServerActionError(error) };
+  }
+}
+
+function refreshUserListAfterRoleChange(): string | undefined {
+  try {
+    revalidatePath("/admin/users");
+  } catch (error) {
+    logger.error("User role change refresh error", error);
+    return "The role change saved. Refresh the Users list to see the changes.";
   }
 }
 

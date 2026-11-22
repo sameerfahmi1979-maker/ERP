@@ -35,9 +35,11 @@ function getAllowedConfidentialityLevels(
   return allowed;
 }
 
-export async function readDmsDocumentPage(input:unknown, context?:AuthContext):Promise<ActionResult<DmsReadPage>> {
+export async function readDmsDocumentPage(input:unknown, context?:AuthContext, signal?:AbortSignal):Promise<ActionResult<DmsReadPage>> {
   try {
+    signal?.throwIfAborted();
     const ctx = context ?? await getReadAuthContext();
+    signal?.throwIfAborted();
     if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
       return { success: false, error: "Permission denied" };
     }
@@ -47,6 +49,7 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
     const {filters,...page}=parsed.data;
     const asOf = Date.now();
     const supabase = await createClient();
+    signal?.throwIfAborted();
     const isAdmin = hasPermission(ctx, "dms.admin") || ctx.roleCodes.includes("system_admin");
     const profileId = ctx.profile?.id ?? null;
 
@@ -70,8 +73,9 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
         category:dms_document_categories(category_code, name_en)${tagCount}
       `;
     const prepared = await prepareDocumentQuery(supabase,filters.search?.trim()??"",ctx,{
-      content:contentSearch,hasFiles:filters.has_files,hasExtractedText:filters.hasExtractedText,sortByTags,
+      content:contentSearch,hasFiles:filters.has_files,hasExtractedText:filters.hasExtractedText,sortByTags,signal,
     });
+    signal?.throwIfAborted();
     let query = prepared.query.select(projection).is("deleted_at", null);
 
     // DMS.3C — enforce confidentiality: show only allowed levels OR docs the user owns/created
@@ -159,9 +163,12 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
     const sortColumns={created_at:"created_at",document_no:"document_no",title:"title",document_type:"document_type(name_en)",status:"status",expiry_date:"expiry_date",tags:"visible_tag_count"};
     const from=(page.page-1)*page.pageSize;
     const ordered = query.order(sortColumns[page.sortKey],{ascending:page.sortDir==="asc",nullsFirst:false}).order("id",{ascending:true});
-    let result = await ordered.range(from,from+page.pageSize-1).returns<DmsDocumentRow[]>();
+    const cancellable = signal ? ordered.abortSignal(signal) : ordered;
+    let result = await cancellable.range(from,from+page.pageSize-1).returns<DmsDocumentRow[]>();
+    signal?.throwIfAborted();
     if (from > 0 && result.status === 416 && result.error?.code === "PGRST103") {
-      const first = await ordered.range(0,0).returns<DmsDocumentRow[]>();
+      const first = await cancellable.range(0,0).returns<DmsDocumentRow[]>();
+      signal?.throwIfAborted();
       if (!first.error && first.count !== null && first.count <= from && first.data?.length === Math.min(1,first.count)) {
         result = {...first,data:[]};
       }
@@ -172,7 +179,8 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
       return { success: false, error: "Documents could not be loaded. Please try again." };
     }
 
-    const tags = await readDmsPageTags(supabase, data.map(row => row.id));
+    const tags = await readDmsPageTags(supabase, data.map(row => row.id), signal);
+    signal?.throwIfAborted();
     // Redact ai_summary for confidential documents when user is not admin
     const CONFIDENTIAL_LEVELS = ["hr", "legal", "executive"];
 
@@ -189,6 +197,7 @@ export async function readDmsDocumentPage(input:unknown, context?:AuthContext):P
 
     return { success: true, data: {rows:processed,totalCount:count,page:page.page,pageSize:page.pageSize,updatedAt:Date.now()} };
   } catch {
+    signal?.throwIfAborted();
     logger.error("readDmsDocumentPage failed", {code:"READ_UNAVAILABLE"});
     return { success: false, error: "Failed to load documents" };
   }

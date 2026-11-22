@@ -6,7 +6,8 @@ import {Checkbox} from '@/components/ui/checkbox';
 import {useDmsSelectedDownload} from '@/hooks/use-dms-selected-download';
 import {getSelectedDmsDownloadFiles} from '@/server/actions/dms/selected-download';
 
-import { useEffect, useMemo, useState, useTransition,useRef } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useState, useTransition,useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
@@ -51,6 +52,8 @@ import { ConfiguredRow, EditColumns, EditFilters, useListColumns, type ListColum
 import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
 import { usePersistentUiState } from "@/hooks/use-persistent-ui-state";
 import {documentLifecycle} from "@/lib/dms/lifecycle";
+import { readJson, retryAuthorizedRead } from "@/lib/reads/client";
+import { dmsListChoicesSchema, type DmsListChoice } from "@/lib/reads/dms-list-choices-schema";
 
 type DocColKey =
   | "docNo"
@@ -101,13 +104,19 @@ const DMS_EXPIRY_FILTER_OPTIONS: ERPComboboxOption[] = [
   { value: "no_expiry", label: "No Expiry" },
 ];
 
+function taxonomyOptions(choices: DmsListChoice[], selectedId: number | null, label?: string) {
+  const options = choices.map(choice => ({ value: String(choice.id), label: choice.name_en }));
+  if (selectedId !== null && !choices.some(choice => choice.id === selectedId)) {
+    options.push({ value: String(selectedId), label: label ?? `#${selectedId}` });
+  }
+  return options;
+}
+
 interface DmsDocumentsTableProps {
   initialSeed?: ServerPageSeed<DmsDocumentRow>;
   initialDocuments: DmsDocumentRow[];
   initialTotal: number;
   initialUpdatedAt: number;
-  categories: { id: number; name_en: string }[];
-  documentTypes: { id: number; name_en: string }[];
   /** Display capabilities only; server actions and row policies remain authoritative. */
   canCreate?: boolean;
   canEdit?: boolean;
@@ -126,8 +135,6 @@ function DmsDocumentsTableSession({
   initialDocuments,
   initialTotal,
   initialUpdatedAt,
-  categories,
-  documentTypes,
   canCreate = false,
   canEdit = false,
   canArchive = false,
@@ -290,14 +297,34 @@ function DmsDocumentsTableSession({
 
 
   // ── Filter combobox options ──────────────────────────────────────────────
-  const typeOptions: ERPComboboxOption[] = useMemo(
-    () => documentTypes.map((t) => ({ value: t.id, label: t.name_en })),
-    [documentTypes]
-  );
-  const categoryOptions: ERPComboboxOption[] = useMemo(
-    () => categories.map((c) => ({ value: c.id, label: c.name_en })),
-    [categories]
-  );
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const choiceInstance = useId();
+  const choicesKey = useMemo(() => ["read", "dms-list-choices", owner?.identity, owner?.generation, choiceInstance], [owner, choiceInstance]);
+  const choicesAdmitted = !!owner?.identity && owner.isLive() && (!initialSeed || owner.admits(initialSeed.identity));
+  const showMetadataFilters = searchMode !== "ai" && searchMode !== "semantic";
+  const choicesActive = choicesAdmitted && filtersOpen && showMetadataFilters;
+  const choiceRead = useQuery({
+    queryKey: choicesKey,
+    enabled: choicesActive,
+    retry: retryAuthorizedRead,
+    staleTime: 60_000,
+    queryFn: async ({ signal }) => {
+      if (!owner?.isLive()) throw new DOMException("Read retired", "AbortError");
+      const result = await readJson<{ success: true; data: unknown }>("dms-list-choices", {}, signal);
+      if (!owner.isLive()) throw new DOMException("Read retired", "AbortError");
+      return dmsListChoicesSchema.parse(result.data);
+    },
+  });
+  useLayoutEffect(() => {
+    if (!choicesActive || !owner) return;
+    return () => { void owner.client.cancelQueries({ queryKey: choicesKey, exact: true }); };
+  }, [choicesActive, owner, choicesKey]);
+  const choices = choicesAdmitted && !choiceRead.isError ? choiceRead.data : undefined;
+  // The counted page can supply a selected label before the catalogue opens.
+  const activeTypeLabel = table.rows.find(row => row.document_type_id === filterType)?.document_type?.name_en;
+  const activeCategoryLabel = table.rows.find(row => row.category_id === filterCategory)?.category?.name_en;
+  const typeOptions = useMemo(() => taxonomyOptions(choices?.documentTypes ?? [], filterType, activeTypeLabel), [choices, filterType, activeTypeLabel]);
+  const categoryOptions = useMemo(() => taxonomyOptions(choices?.categories ?? [], filterCategory, activeCategoryLabel), [choices, filterCategory, activeCategoryLabel]);
   const statusOptions: ERPComboboxOption[] = useMemo(
     () => DMS_STATUS_FILTER_VALUES.map((s) => ({ value: s, label: dmsStatusFilterLabel(s) })),
     []
@@ -320,6 +347,7 @@ function DmsDocumentsTableSession({
         {/* Search mode selector */}
         <Select value={searchMode} onValueChange={(v) => {
           searchEpoch.current++;
+          setFiltersOpen(false);
           setSearchMode(v as SearchMode);
           setAiLoading(false);
           setSemanticLoading(false);
@@ -429,19 +457,26 @@ function DmsDocumentsTableSession({
         </div>
       </div>
 
-      {searchMode !== "ai" && searchMode !== "semantic" && <div className="flex flex-wrap gap-2 items-center">
+      {showMetadataFilters && <div className="flex flex-wrap gap-2 items-center">
         <EditColumns columns={columnState.columns} defaults={columnState.defaults} onApply={columnState.setColumns} />
         <WorklistFitControl viewport={viewport} />
         <EditFilters scopeLabel="Filters apply to permitted document records before pagination. Retained filters also constrain AI and semantic results."
+          onOpenChange={setFiltersOpen}
           definitions={[
-            {id:"type",label:"Type",type:"select",options:typeOptions.map(o=>({value:String(o.value),label:o.label}))},
-            {id:"category",label:"Category",type:"select",options:categoryOptions.map(o=>({value:String(o.value),label:o.label}))},
+            {id:"type",label:"Type",type:"select",options:typeOptions,disabled:!choices},
+            {id:"category",label:"Category",type:"select",options:categoryOptions,disabled:!choices},
             {id:"status",label:"Status",type:"select",options:statusOptions.map(o=>({value:String(o.value),label:o.label}))},
             {id:"confidentiality",label:"Confidentiality",type:"select",options:confidentialityOptions.map(o=>({value:String(o.value),label:o.label}))},
             {id:"expiry",label:"Expiry",type:"select",options:DMS_EXPIRY_FILTER_OPTIONS.map(o=>({value:String(o.value),label:o.label}))}
           ]}
           values={{type:filterType == null ? "" : String(filterType),category:filterCategory == null ? "" : String(filterCategory),status:filterStatus ?? "",confidentiality:filterConfidentiality ?? "",expiry:filterExpiry ?? ""}}
-          onApply={values=>{setFilterType(values.type ? Number(values.type):null);setFilterCategory(values.category ? Number(values.category):null);setFilterStatus(values.status || null);setFilterConfidentiality(values.confidentiality || null);setFilterExpiry(values.expiry || null);table.setPage(1);}} />
+          onApply={values=>{setFilterType(values.type ? Number(values.type):null);setFilterCategory(values.category ? Number(values.category):null);setFilterStatus(values.status || null);setFilterConfidentiality(values.confidentiality || null);setFilterExpiry(values.expiry || null);table.setPage(1);}}>
+          {choiceRead.isFetching && !choices && <p role="status" className="mb-3 text-sm text-muted-foreground">Loading document types and categories…</p>}
+          {!choiceRead.isFetching && choiceRead.isError && <div className="mb-3 flex flex-wrap items-center gap-2 text-sm" role="alert">
+            <p>Document types and categories could not be loaded.</p>
+            <Button type="button" size="sm" variant="outline" onClick={() => { if (choicesActive) void choiceRead.refetch(); }}>Retry filter choices</Button>
+          </div>}
+        </EditFilters>
       </div>}
 
       {/* Search mode helper text */}

@@ -12,7 +12,6 @@
 
 import {
   gotenbergConvertHtml,
-  isGotenbergHealthy,
   getGotenbergVersion,
 } from "@/lib/pdf/gotenberg";
 
@@ -63,8 +62,8 @@ export async function renderOfficialHtmlToPdf(input: {
   headerHtml?: string;
   footerHtml?: string;
 }): Promise<OfficialHtmlRenderResult> {
-  const healthy = await isGotenbergHealthy();
-  if (!healthy) {
+  const rendererVersion = await getGotenbergVersion();
+  if (rendererVersion === "unknown") {
     throw new OutputRenderError("Gotenberg renderer is unavailable (health check failed).", true);
   }
 
@@ -83,7 +82,6 @@ export async function renderOfficialHtmlToPdf(input: {
       headerHtml: input.headerHtml,
       footerHtml: input.footerHtml,
     });
-    const rendererVersion = await getGotenbergVersion();
     return { buffer, sha256: checksum, fileSizeBytes, rendererVersion };
   } catch (err) {
     if (err instanceof OutputRenderError) throw err;

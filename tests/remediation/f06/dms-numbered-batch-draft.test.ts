@@ -124,6 +124,7 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
  let prepareCount:number;
  let hidden=false;
  let resultWriteError=false;
+ let publicationFault: "job"|"session"|"stale"|null = null;
  const real=()=>vi.importActual<typeof import("@/server/actions/dms/ai-intake")>("@/server/actions/dms/ai-intake");
  function query(table:string){
   const op:Operation={table,action:"read",payload:undefined,filters:{},selection:undefined,retry:undefined};
@@ -140,7 +141,20 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
     return {data:matches?[{id:17,batch_draft_operation_id:row.batch_draft_operation_id,intake_status:"ocr_processing"}]:[],error:null};
    }
    if(op.action==="insert")return table==="dms_ai_extraction_results"&&resultWriteError?{data:null,error:{code:"08007",message:"W22_PRIVATE_RESULT",details:"W22_PRIVATE_DETAILS",hint:"W22_PRIVATE_HINT"}}:{data:{id:table==="dms_ai_extraction_jobs"?71:72},error:null};
-   if(table==="dms_upload_sessions"&&op.payload)Object.assign(row,op.payload);
+   if(table==="dms_ai_extraction_jobs"&&op.payload?.status==="complete"){
+    if(publicationFault==="job")return {data:null,error:{code:"42501",message:"PRIVATE_JOB"}};
+    return {data:{id:71,upload_session_id:17,status:"complete"},error:null};
+   }
+   if(op.payload?.intake_status==="review_pending"){
+    if(publicationFault==="session")return {data:null,error:{code:"42501",message:"PRIVATE_SESSION"}};
+    if(publicationFault==="stale")row.owning_branch_id=22;
+   }
+   if(table==="dms_upload_sessions"&&op.payload){
+    const matches=Object.entries(op.filters).every(([key,value])=>row[key]===value);
+    if(!matches)return {data:null,error:null};
+    Object.assign(row,op.payload);
+    if(op.selection)return {data:structuredClone(row),error:null};
+   }
    return {data:null,error:null};
   };
   const q={select:vi.fn((value:string)=>{op.selection=value;return q;}),eq:vi.fn((key:string,value:unknown)=>{op.filters[key]=value;return q;}),is:vi.fn((key:string,value:unknown)=>{op.filters[key]=value;return q;}),in:vi.fn(()=>q),retry:vi.fn((value:unknown)=>{op.retry=value;return q;}),update:vi.fn((value:Record<string,unknown>)=>{op.action="update";op.payload=value;return q;}),insert:vi.fn((value:Record<string,unknown>)=>{op.action="insert";op.payload=value;return q;}),single:vi.fn(execute),maybeSingle:vi.fn(execute),then:(ok:(v:unknown)=>unknown,bad:(e:unknown)=>unknown)=>execute().then(ok,bad)};
@@ -149,7 +163,7 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
  beforeEach(()=>{
   row={id:17,session_code:"D".repeat(32),batch_id:6,admission_position:0,batch_draft_operation_id:durableOperation,uploaded_by:5,owning_company_id:20,owning_branch_id:21,status:"uploaded",intake_status:"uploaded",updated_at:"2026-10-05T00:00:00.000Z",deleted_at:null,document_id:null,ai_result_id:null,temp_cleaned_at:null,temp_storage_path:"sessions/"+"D".repeat(32)+"/a.pdf",original_filename:"a.pdf",mime_type:"application/pdf"};
   Object.assign(row,{file_size_bytes:actualPdf.length,sha256_hash:createHash('sha256').update(actualPdf).digest('hex'),expires_at:'2027-01-01T00:00:00Z'});
-  operations=[];claimResult=undefined;postGuard=undefined;prepareCount=0;hidden=false;resultWriteError=false;
+  operations=[];claimResult=undefined;postGuard=undefined;prepareCount=0;hidden=false;resultWriteError=false;publicationFault=null;
   m.auth.mockResolvedValue({profile:{id:5,auth_user_id:durableAuth},isAccountActive:true});m.usable.mockReturnValue(true);
   m.from.mockImplementation(query);
   m.rpc.mockImplementation(async(name:string)=>{
@@ -311,6 +325,15 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
   expect(result).toMatchObject({success:false,code:"unconfirmed",uncertain:true});expect(result).not.toHaveProperty("receipt");expect(m.analysis).toHaveBeenCalledExactlyOnceWith(input);
   expect(row.intake_status).toBe("ocr_processing");expect(ai.analyze).not.toHaveBeenCalled();expect(m.audit).not.toHaveBeenCalled();expect(m.download).toHaveBeenCalledOnce();
   expect(m.rpc.mock.calls.some(([name])=>name==="create_numbered_dms_batch_draft")).toBe(false);
+ });
+ it.each(["job","session","stale"] as const)("holds review acknowledgement after a %s publication fault",async fault=>{
+  publicationFault=fault;
+  const result=await (await real()).startAiIntakeFromUploadSession(input);
+  expect(result).toMatchObject({success:false,uncertain:true});
+  expect(JSON.stringify(result)).not.toContain("PRIVATE_");
+  expect(ai.analyze).toHaveBeenCalledOnce();
+  expect(row.ai_result_id).toBeNull();
+  expect(m.audit.mock.calls.some(([entry])=>entry.new_values?.event==="classification_completed")).toBe(false);
  });
  it.each(["provider","result-write","extraction","empty-extraction"])("modern %s diagnostics never leak to response/log/persisted error",async boundary=>{
   if(boundary==="provider")ai.analyze.mockRejectedValue(Error("W22_PRIVATE_PROVIDER"));

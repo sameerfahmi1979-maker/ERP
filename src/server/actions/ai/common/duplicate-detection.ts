@@ -9,8 +9,9 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { readAiSummaryCount, readAiSummaryFeature } from "@/server/reads/ai-summary";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import {
   runDuplicateScan,
@@ -663,52 +664,31 @@ export async function isDuplicateDetectionFeatureEnabled(): Promise<boolean> {
 
 export async function getDuplicateCandidateSummary(): Promise<
   ActionResult<{
-    pending: number;
-    highConfidence: number;
-    confirmed: number;
-    ignoredResolved: number;
-    featureEnabled: boolean;
+    pending: number | null;
+    highConfidence: number | null;
+    confirmed: number | null;
+    ignoredResolved: number | null;
+    featureEnabled: boolean | null;
   }>
 > {
   try {
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated." };
-    if (!canViewDuplicates(ctx)) return { success: false, error: "Permission denied." };
+    if (!hasGlobalPermission(ctx, "ai.duplicates.view") && !hasGlobalPermission(ctx, "ai.common.admin")) {
+      return { success: false, error: "Permission denied." };
+    }
 
-    const supabase = await createClient();
-    const featureEnabled = await isDuplicateDetectEnabled();
-
-    const countStatus = async (statusFilter: string | string[]) => {
-      let q = supabase
-        .from("erp_ai_duplicate_candidates")
-        .select("id", { count: "exact", head: true })
-        .is("deleted_at", null);
-      if (Array.isArray(statusFilter)) {
-        q = q.in("status", statusFilter);
-      } else {
-        q = q.eq("status", statusFilter);
-      }
-      const { count } = await q;
-      return count ?? 0;
-    };
-
-    const pending = await countStatus("pending");
-    const highConfidence = await supabase
-      .from("erp_ai_duplicate_candidates")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "pending")
-      .gte("confidence_score", 0.9)
-      .is("deleted_at", null)
-      .then((r) => r.count ?? 0);
-
-    const confirmed = await countStatus(["confirmed_duplicate", "confirmed_conflict"]);
-    const ignoredResolved = await countStatus(["ignored", "resolved"]);
-
-    return {
-      success: true,
-      data: { pending, highConfidence, confirmed, ignoredResolved, featureEnabled },
-    };
-  } catch (err) {
-    return { success: false, error: String(err).slice(0, 200) };
+    const db = await createClient();
+    const query = () => db.from("erp_ai_duplicate_candidates").select("id", { count: "exact", head: true }).is("deleted_at", null);
+    const [featureEnabled, pending, highConfidence, confirmed, ignoredResolved] = await Promise.all([
+      readAiSummaryFeature(db, "ERP_AI_DUPLICATE_DETECT"),
+      readAiSummaryCount(query().eq("status", "pending")),
+      readAiSummaryCount(query().eq("status", "pending").gte("confidence_score", 0.9)),
+      readAiSummaryCount(query().in("status", ["confirmed_duplicate", "confirmed_conflict"])),
+      readAiSummaryCount(query().in("status", ["ignored", "resolved"])),
+    ]);
+    return { success: true, data: { pending, highConfidence, confirmed, ignoredResolved, featureEnabled } };
+  } catch {
+    return { success: false, error: "Duplicate candidates summary could not be loaded." };
   }
 }

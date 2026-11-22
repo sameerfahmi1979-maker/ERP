@@ -132,20 +132,10 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
   // ── SPEED.2L: AI progress tracking + status polling ────────────────────────
   const [aiElapsedSec, setAiElapsedSec] = useState(0);
   const aiStartedAtRef = useRef<number | null>(null);
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const redirectedRef = useRef(false);
-  // Navigating while the server action is still in flight makes Next.js revert
-  // the router.push when the action resolves ("flash back to Upload Inbox").
-  // Redirects are therefore deferred until the action settles; the grace timer
-  // covers the lost-response case (dev recompile, dropped connection).
-  const actionSettledRef = useRef(true);
-  const pendingRedirectRef = useRef<string | null>(null);
-
+  const aiAttempt = useRef<AbortController | null>(null);
   const stopAiPolling = useCallback(() => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
+    aiAttempt.current?.abort();
+    aiAttempt.current = null;
   }, []);
 
   // Elapsed-seconds ticker while AI is running
@@ -159,60 +149,66 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
     return () => clearInterval(timer);
   }, [uploadState.phase]);
 
-  // Cleanup polling on unmount
-  useEffect(() => () => stopAiPolling(), [stopAiPolling]);
+  useLayoutEffect(() => () => stopAiPolling(), [
+    stopAiPolling, readOwner, entityContext?.entityType, entityContext?.entityId,
+  ]);
 
   const handleAiFill = useCallback(async (session: DmsUploadSessionRow) => {
+    const identity = readOwner?.identity;
+    if (!readOwner?.admits(identity)) return;
+    stopAiPolling();
+    const attempt = new AbortController();
+    aiAttempt.current = attempt;
+    const isCurrent = () => !attempt.signal.aborted && readOwner.admits(identity);
+
     setUploadState({ phase: "ai_processing", session });
     aiStartedAtRef.current = Date.now();
     setAiElapsedSec(0);
-    redirectedRef.current = false;
-    actionSettledRef.current = false;
-    pendingRedirectRef.current = null;
-    stopAiPolling();
 
-    const goToReview = (sessionCode: string, msg: string) => {
-      if (redirectedRef.current) return;
-      redirectedRef.current = true;
+    let pollRead: AbortController | null = null;
+    let redirectTimer: ReturnType<typeof setTimeout> | undefined;
+    let actionSettled = false;
+    let reviewReady = false;
+
+    const stopReads = () => {
+      clearInterval(pollTimer);
+      pollRead?.abort();
+    };
+    attempt.signal.addEventListener("abort", () => {
+      stopReads();
+      clearTimeout(redirectTimer);
+    }, { once: true });
+
+    const goToReview = (message: string) => {
+      if (!isCurrent()) return;
       stopAiPolling();
-      toast.success(msg);
-      router.push(`/dms/intake/${sessionCode}`);
+      toast.success(message);
+      router.push(`/dms/intake/${session.session_code}`);
     };
 
-    // Defer navigation while the server action is in flight — pushing earlier
-    // gets reverted by Next.js when the action resolves (inbox tab flash bug).
-    // If the action response never arrives (lost connection, dev recompile),
-    // the grace timer redirects anyway after 10s.
-    const requestRedirect = (sessionCode: string, msg: string) => {
-      if (redirectedRef.current) return;
-      if (actionSettledRef.current) {
-        goToReview(sessionCode, msg);
-        return;
-      }
-      if (pendingRedirectRef.current) return; // grace timer already armed
-      pendingRedirectRef.current = sessionCode;
-      setTimeout(() => {
-        if (!redirectedRef.current && !actionSettledRef.current) {
-          goToReview(sessionCode, msg);
-        }
-      }, 10_000);
-    };
+    const readyMessage = "AI review is ready. Opening review screen…";
 
-    // SPEED.2L: poll session status via a plain GET route (NOT a server action —
-    // server actions are serialized client-side and would queue behind the
-    // long-running intake action; a plain fetch also never touches the router).
-    pollTimerRef.current = setInterval(async () => {
+    // An independent GET sees progress while the server action is in flight.
+    // Wait for the action to settle before navigating, or use a grace period
+    // when the ready receipt is visible and the action response has been lost.
+    const pollTimer = setInterval(async () => {
+      if (!isCurrent() || pollRead || document.visibilityState === "hidden") return;
+      pollRead = new AbortController();
       try {
         const res = await fetch(`/api/dms/intake-status?sessionId=${session.id}`, {
           cache: "no-store",
+          signal: pollRead.signal,
         });
-        if (!res.ok) return;
+        if (!res.ok || !isCurrent()) return;
         const data = (await res.json()) as { intakeStatus?: string; sessionCode?: string };
-        if (!data.sessionCode) return;
+        if (!isCurrent() || data.sessionCode !== session.session_code) return;
         if (data.intakeStatus === "review_pending" || data.intakeStatus === "review_in_progress") {
-          requestRedirect(data.sessionCode, "AI review is ready — opening review screen…");
+          reviewReady = true;
+          stopReads();
+          if (actionSettled) goToReview(readyMessage);
+          else redirectTimer = setTimeout(() => goToReview(readyMessage), 10_000);
         } else if (data.intakeStatus === "failed") {
-          stopAiPolling();
+          stopReads();
           setUploadState({
             phase: "ai_error",
             session,
@@ -220,57 +216,44 @@ export function DmsUploadInboxPageClient({ initialSessions, documents, documentT
           });
         }
       } catch {
-        // transient poll failure — keep polling
+        // A failed GET leaves the current attempt available for the next poll.
+      } finally {
+        pollRead = null;
       }
-    }, 4000);
+    }, 4_000);
 
     let result: Awaited<ReturnType<typeof startAiIntakeFromUploadSession>>;
     try {
       result = await startAiIntakeFromUploadSession({ uploadSessionId: session.id });
     } catch {
-      // Action fetch rejected (connection dropped). The poll owns recovery now;
-      // if it already found the session ready, redirect immediately.
-      actionSettledRef.current = true;
-      if (pendingRedirectRef.current && !redirectedRef.current) {
-        goToReview(pendingRedirectRef.current, "AI review is ready — opening review screen…");
-      }
+      actionSettled = true;
+      if (reviewReady) goToReview(readyMessage);
       return;
     }
-    actionSettledRef.current = true;
-    if (redirectedRef.current) return;
-
-    // The poll detected completion while the action was still in flight —
-    // navigate now that it has settled (safe from the router revert).
-    if (pendingRedirectRef.current) {
-      goToReview(pendingRedirectRef.current, "AI review is ready — opening review screen…");
+    actionSettled = true;
+    if (!isCurrent()) return;
+    if (reviewReady) {
+      goToReview(readyMessage);
       return;
     }
 
-    if (result.success && result.data) {
+    if (result.success && result.data?.sessionCode === session.session_code) {
       if (result.data.status === "already_processing") {
-        // SPEED.2K: another run is already in flight — keep banner + polling active.
-        toast.info(result.data.message ?? "AI is already analyzing this file — please wait…");
+        toast.info(result.data.message ?? "AI is already analyzing this file. Please wait…");
         return;
       }
-      goToReview(
-        result.data.sessionCode,
-        result.data.status === "review_pending"
-          ? "AI review is ready — opening review screen…"
-          : "AI analysis complete — opening review screen…"
-      );
+      goToReview(readyMessage);
+    } else if (result.uncertain) {
+      toast.info(result.error ?? "AI analysis is unconfirmed. Checking the original upload for progress.");
     } else if (!result.success && result.data?.status === "provider_not_configured") {
       stopAiPolling();
       toast.error("No AI provider configured. Create the document manually instead.", { duration: 6000 });
       setUploadState({ phase: "ready", session });
     } else {
       stopAiPolling();
-      setUploadState({
-        phase: "ai_error",
-        session,
-        message: result.error ?? "AI analysis failed. You can retry or create the document manually.",
-      });
+      setUploadState({ phase: "ai_error", session, message: result.error ?? "AI analysis failed" });
     }
-  }, [router, stopAiPolling]);
+  }, [router, readOwner, stopAiPolling]);
 
   const handleFileSelected = useCallback(async (
     input: SelectedDmsFile

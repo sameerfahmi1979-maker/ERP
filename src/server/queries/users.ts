@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
+import { literalContains } from "@/lib/reads/search";
+import { readAllPages } from "@/server/reads/all-pages";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import {
   batchSafeAuthMetadata,
@@ -79,20 +81,15 @@ async function fetchRolesForProfiles(profileIds: number[]): Promise<Map<number, 
   if (profileIds.length === 0) return rolesByProfile;
 
   const supabase = await createClient();
-  const { data: userRoles, error } = await supabase
-    .from("user_roles")
-    .select(USER_ROLES_SELECT)
-    .in("user_profile_id", profileIds)
-    .eq("is_active", true);
+  const userRoles = await readAllPages(
+    async (from, to) => supabase.from("user_roles").select(USER_ROLES_SELECT, { count: "exact" })
+      .in("user_profile_id", profileIds).eq("is_active", true).order("id").range(from, to),
+    { identity: row => row.id },
+  );
 
-  if (error) {
-    logger.error("fetchRolesForProfiles error", error.message);
-    return rolesByProfile;
-  }
-
-  for (const ur of userRoles ?? []) {
+  for (const ur of userRoles) {
     const mapped = mapUserRoleRow(ur as Record<string, unknown>);
-    if (!mapped) continue;
+    if (!mapped) throw Error("User role assignments could not be verified.");
     const profileId = ur.user_profile_id as number;
     if (!rolesByProfile.has(profileId)) rolesByProfile.set(profileId, []);
     rolesByProfile.get(profileId)!.push(mapped);
@@ -129,9 +126,13 @@ export async function getUserById(id: number): Promise<UserWithRoles | null> {
     .from("user_profiles")
     .select(PROFILE_SELECT)
     .eq("id", id)
-    .single();
+    .maybeSingle();
 
-  if (error || !profile) return null;
+  if (error) {
+    logger.error("getUserById error", error.message);
+    throw Error("User profile could not be loaded.");
+  }
+  if (!profile) return null;
 
   const rolesMap = await fetchRolesForProfiles([id]);
   const roles = rolesMap.get(id) ?? [];
@@ -162,6 +163,9 @@ export async function listUsersPaginated(
   const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 25));
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
+  if (!Number.isSafeInteger(page) || !Number.isSafeInteger(pageSize) || !Number.isSafeInteger(to)) {
+    throw Error("The Users page number or size is invalid.");
+  }
   const search = params.search?.trim() ?? "";
 
   const supabase = await createClient();
@@ -169,12 +173,13 @@ export async function listUsersPaginated(
   // Role filter — resolve matching profile IDs first
   let roleFilterProfileIds: number[] | null = null;
   if (params.roleId) {
-    const { data: roleRows } = await supabase
-      .from("user_roles")
-      .select("user_profile_id")
-      .eq("role_id", params.roleId)
-      .eq("is_active", true);
-    roleFilterProfileIds = [...new Set((roleRows ?? []).map((r) => r.user_profile_id as number))];
+    const roleId = params.roleId;
+    const roleRows = await readAllPages(
+      async (start, end) => supabase.from("user_roles").select("id, user_profile_id", { count: "exact" })
+        .eq("role_id", roleId).eq("is_active", true).order("id").range(start, end),
+      { identity: row => row.id },
+    );
+    roleFilterProfileIds = [...new Set(roleRows.map(row => row.user_profile_id))];
     if (roleFilterProfileIds.length === 0) {
       return { rows: [], totalCount: 0, page, pageSize };
     }
@@ -187,44 +192,51 @@ export async function listUsersPaginated(
     if (authIds.length === 0) {
       return { rows: [], totalCount: 0, page, pageSize };
     }
-    const { data: emailProfiles } = await supabase
-      .from("user_profiles")
-      .select("id")
-      .in("auth_user_id", authIds);
-    emailSearchProfileIds = (emailProfiles ?? []).map((p) => p.id as number);
+    const emailProfiles = await readAllPages(
+      async (start, end) => supabase.from("user_profiles").select("id", { count: "exact" })
+        .in("auth_user_id", authIds).order("id").range(start, end),
+      { identity: row => row.id },
+    );
+    emailSearchProfileIds = emailProfiles.map(profile => profile.id);
     if (emailSearchProfileIds.length === 0) {
       return { rows: [], totalCount: 0, page, pageSize };
     }
   }
 
-  let query = supabase
-    .from("user_profiles")
-    .select(PROFILE_SELECT, { count: "exact" });
+  const buildQuery = (head = false) => {
+    let query = supabase.from("user_profiles").select(PROFILE_SELECT, { count: "exact", head });
+    if (params.status) query = query.eq("status", params.status);
+    if (params.ownerCompanyId) query = query.eq("owner_company_id", params.ownerCompanyId);
+    if (params.branchId) query = query.eq("branch_id", params.branchId);
+    if (params.mustChangePassword) query = query.eq("must_change_password", true);
+    if (roleFilterProfileIds) query = query.in("id", roleFilterProfileIds);
+    if (emailSearchProfileIds) query = query.in("id", emailSearchProfileIds);
+    if (search && !search.includes("@")) {
+      const term = literalContains(search);
+      query = query.or(
+        `full_name.ilike.${term},display_name.ilike.${term},user_code.ilike.${term}`,
+      );
+    }
+    return query;
+  };
 
-  if (params.status) query = query.eq("status", params.status);
-  if (params.ownerCompanyId) query = query.eq("owner_company_id", params.ownerCompanyId);
-  if (params.branchId) query = query.eq("branch_id", params.branchId);
-  if (params.mustChangePassword) query = query.eq("must_change_password", true);
-  if (roleFilterProfileIds) query = query.in("id", roleFilterProfileIds);
-  if (emailSearchProfileIds) query = query.in("id", emailSearchProfileIds);
-
-  if (search && !search.includes("@")) {
-    const term = `%${search}%`;
-    query = query.or(
-      `full_name.ilike.${term},display_name.ilike.${term},user_code.ilike.${term}`,
-    );
-  }
-
-  const { data: profiles, error, count } = await query
-    .order("id", { ascending: true })
-    .range(from, to);
+  const result = await buildQuery().order("id").range(from, to);
+  const fallback = from > 0 && result.status === 416 ? await buildQuery(true) : null;
+  const count = fallback ? fallback.count : result.count;
+  const error = fallback ? fallback.error : result.error;
+  const profiles = fallback ? [] : result.data;
 
   if (error) {
     logger.error("listUsersPaginated error", error.message);
-    return { rows: [], totalCount: 0, page, pageSize };
+    throw Error("Users could not be loaded.");
+  }
+  if (count === null || !Number.isSafeInteger(count) || count < 0 ||
+      !Array.isArray(profiles) || profiles.length !== Math.min(pageSize, Math.max(0, count - from)) ||
+      new Set(profiles.map(profile => profile.id)).size !== profiles.length) {
+    throw Error("Users could not be loaded completely.");
   }
 
-  const profileList = profiles ?? [];
+  const profileList = profiles;
   const profileIds = profileList.map((p) => p.id as number);
   const rolesMap = await fetchRolesForProfiles(profileIds);
 
@@ -245,7 +257,7 @@ export async function listUsersPaginated(
 
   return {
     rows,
-    totalCount: count ?? 0,
+    totalCount: count,
     page,
     pageSize,
   };

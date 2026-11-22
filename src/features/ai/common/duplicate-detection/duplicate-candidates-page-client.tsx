@@ -39,11 +39,11 @@ import {
 
 interface DuplicateCandidatesPageClientProps {
   summary: {
-    pending: number;
-    highConfidence: number;
-    confirmed: number;
-    ignoredResolved: number;
-    featureEnabled: boolean;
+    pending: number | null;
+    highConfidence: number | null;
+    confirmed: number | null;
+    ignoredResolved: number | null;
+    featureEnabled: boolean | null;
   };
   initialEntityType?: string;
   initialEntityId?: number;
@@ -175,7 +175,10 @@ export function DuplicateCandidatesPageClient({
 
   return (
     <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="space-y-6">
-      {!summary.featureEnabled && (
+      {summary.featureEnabled === null && <p role="status" className="text-sm text-muted-foreground">
+        The AI feature status is unavailable. Reload before running the tool.
+      </p>}
+      {summary.featureEnabled === false && (
         <Alert className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
           <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-300" />
           <AlertDescription className="text-amber-900 dark:text-amber-200">
@@ -300,7 +303,7 @@ function SummaryCard({
   tone,
 }: {
   title: string;
-  value: number;
+  value: number | null;
   icon: React.ComponentType<{ className?: string }>;
   tone: "amber" | "red" | "orange" | "emerald";
 }) {
@@ -315,7 +318,7 @@ function SummaryCard({
       <CardContent className="pt-4 flex items-center justify-between">
         <div>
           <p className="text-xs font-medium opacity-80">{title}</p>
-          <p className="text-2xl font-bold">{value}</p>
+          <p className="text-2xl font-bold">{value ?? "Unavailable"}</p>
         </div>
         <Icon className="h-8 w-8 opacity-60" />
       </CardContent>

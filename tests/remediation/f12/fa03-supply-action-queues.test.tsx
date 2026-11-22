@@ -4,10 +4,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SupplyActions } from "@/features/supply/supply-actions";
 import type { SupplyWorkspace } from "@/lib/supply/contracts";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+const navigation = vi.hoisted(() => ({ push: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: navigation.push }) }));
 vi.mock("next/form", () => ({ default: "form" }));
 vi.mock("@/server/actions/inventory/stock-movements", () => ({ saveSupplyAction: vi.fn() }));
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  navigation.push.mockReset();
+});
 
 const workspace: SupplyWorkspace = {
   branch: 920011, name: "Synthetic branch", rights: ["supply.purchase", "supply.approve"], company_setup: false,
@@ -48,4 +52,19 @@ describe("FA03 Supply actions", () => {
     expect(screen.getByRole("alert").textContent).toContain("Actionable records could not be loaded");
     expect((screen.getByRole("button", { name: "Decide stock review" }) as HTMLButtonElement).disabled).toBe(true);
   });
+});
+
+
+it("opens a closed queue through its scoped route without showing stale choices", () => {
+  render(<SupplyActions workspace="procurement" data={workspace} queueView={{
+    search: "", page: 1, open: false, scope: "9.920011", result: null,
+  }} />);
+  expect(navigation.push).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText("Choose an action"), { target: { value: "purchase:receive" } });
+  const destination = new URL(navigation.push.mock.calls[0][0], "http://127.0.0.1");
+  expect(destination.pathname).toBe("/modules/procurement");
+  expect(Object.fromEntries(destination.searchParams)).toEqual({
+    branch: "920011", scope: "9.920011", queueSearch: "", queuePage: "1",
+  });
+  expect(screen.queryByLabelText("Approved purchase line")).toBeNull();
 });

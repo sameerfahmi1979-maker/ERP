@@ -55,7 +55,7 @@ export function DesignationWorkspaceForm({ designation, mode, authContext, compa
 
   const { isDirty, resetDirty } = useFormDirty({ formId: FORM_ID, enabled: !isViewing });
   useEffect(() => { if (activeTab?.id) markDirty(activeTab.id, isDirty); }, [isDirty, activeTab?.id, markDirty]);
-  const { getDraftDefault, syncDraft, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
+  const { getDraftDefault, getDraftBoolean, syncDraft, clearDraft } = useWorkspaceFormDraft({ formId: FORM_ID, enabled: !isViewing });
 
 
   const handleRequestClose = () => closeTab(activeTab?.id ?? "");
@@ -90,7 +90,16 @@ export function DesignationWorkspaceForm({ designation, mode, authContext, compa
       const result = savedId !== null
         ? await updateDesignation({ ...data, management_level: data.management_level as "staff" | "supervisor" | "manager" | "senior_manager" | "director" | "executive" | "c_level" | null | undefined, id: savedId }, contract)
         : await createDesignation({ ...data, management_level: data.management_level as "staff" | "supervisor" | "manager" | "senior_manager" | "director" | "executive" | "c_level" | null | undefined }, contract);
-      if (result.success && result.data) { saveAttempt.current.resolved(); setSavedId(result.data.id); setRevision(result.data.revision); toast.success(savedId !== null ? "Designation updated" : "Designation created"); clearDraft(); resetDirty(); if (activeTab?.id) markDirty(activeTab.id, false); return true; }
+      if (result.success && result.data) {
+        saveAttempt.current.resolved();
+        setSavedId(result.data.id);
+        setRevision(result.data.revision);
+        toast.success(result.data.changed === false ? "No changes to save" : savedId !== null ? "Designation updated" : "Designation created");
+        clearDraft();
+        resetDirty();
+        if (activeTab?.id) markDirty(activeTab.id, false);
+        return true;
+      }
       if (!result.success && !result.uncertain) saveAttempt.current.resolved();
       toast.error(result.error ?? "Failed to save"); return false;
     } catch (error) { toast.error(error instanceof Error ? error.message : "Save unconfirmed. Retry with the same values."); return false; }
@@ -162,7 +171,7 @@ export function DesignationWorkspaceForm({ designation, mode, authContext, compa
                 { id: "is_active", label: "Active", checked: designation?.is_active ?? true },
               ].map(f => (
                 <div key={f.id} className="flex items-center space-x-2">
-                  <Checkbox id={f.id} name={f.id} defaultChecked={f.checked} disabled={disabled} />
+                  <Checkbox id={f.id} name={f.id} defaultChecked={getDraftBoolean(f.id, f.checked)} disabled={disabled} />
                   <Label htmlFor={f.id} className="text-xs cursor-pointer">{f.label}</Label>
                 </div>
               ))}

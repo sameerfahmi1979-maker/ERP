@@ -38,10 +38,10 @@ it("delegates next-page and page-size controls while preserving the remote total
 });
 it("preserves column controls and supplies a complete on-demand export instead of just the current page",async()=>{
  render(<Wrap><Driver/></Wrap>);fireEvent.click(screen.getByRole("button",{name:"Edit columns"}));fireEvent.click(screen.getByRole("checkbox",{name:"Amount"}));fireEvent.click(screen.getByRole("button",{name:"Apply"}));expect(screen.queryByRole("columnheader",{name:/Amount/})).toBeNull();
- const p=exportProps();expect(p.subtitle).toContain("all 1108 matching authorized records");expect(p.columns.map(c=>c.header)).toEqual(["Name"]);expect(mocks.load).not.toHaveBeenCalled();expect((await p.loadData!()).length).toBe(1108);expect(p.data.length).toBe(2);
+ const p=exportProps();expect(p.subtitle).toContain("all 1108 matching authorized records");expect(p.columns.map(c=>c.header)).toEqual(["Name"]);expect(mocks.load).not.toHaveBeenCalled();expect((await p.loadData!()).length).toBe(1108);expect(p.localRows?.count).toBe(2);
 });
 it("explicit selected-row exports remain selected loaded records rather than silently expanding to all matches",()=>{
- render(<Wrap><Driver selection/></Wrap>);fireEvent.click(screen.getAllByRole("checkbox",{name:"Select row"})[0]);const p=exportProps();expect(p.data).toEqual([rows[0]]);expect(p.loadData).toBeUndefined();expect(p.subtitle).toContain("1 selected record from the current loaded page only");expect(mocks.load).not.toHaveBeenCalled();
+ render(<Wrap><Driver selection/></Wrap>);fireEvent.click(screen.getAllByRole("checkbox",{name:"Select row"})[0]);const p=exportProps();expect(p.localRows?.load()).toEqual([rows[0]]);expect(p.loadData).toBeUndefined();expect(p.subtitle).toContain("1 selected record from the current loaded page only");expect(mocks.load).not.toHaveBeenCalled();
 });
 it("unknown totals mask stale rows and block pagination/export without claiming an empty successful result",()=>{
  render(<Wrap><Driver totalCount={null}/></Wrap>);expect(screen.queryByText("Zulu")).toBeNull();expect(screen.queryByText("Alpha")).toBeNull();expect(screen.getByText("Matching total is not yet available")).toBeDefined();expect(screen.getByText(/Records could not yet be verified/)).toBeDefined();expect(screen.queryByText(/No records match/)).toBeNull();expect(screen.getByRole("button",{name:"Next"}).hasAttribute("disabled")).toBe(true);expect(screen.getByRole("button",{name:"Previous"}).hasAttribute("disabled")).toBe(true);expect(exportProps().disabled).toBe(true);

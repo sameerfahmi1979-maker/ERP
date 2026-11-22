@@ -105,11 +105,13 @@ it("denied selected refresh masks warm active and selected rows without losing t
   const qc=cache(),changed=vi.fn();
   const view=render(<QueryClientProvider client={qc}><LookupSelect categoryCode="TEST" value={2} name="retained-id" onValueChange={changed}/></QueryClientProvider>);
   await waitFor(()=>expect(view.getByRole("combobox").textContent).toContain("Historical"));
+  fireEvent.click(view.getByRole("combobox"));
+  await view.findByRole("option",{name:"Synthetic one"});
   denied=true;
   await act(async()=>{await qc.invalidateQueries({queryKey:[...queryKeys.lookup.values("TEST"),"selected","id",2]});});
   await waitFor(()=>expect(view.getByRole("alert").textContent).toContain("not an empty result"));
   expect((view.container.querySelector('input[name="retained-id"]') as HTMLInputElement).value).toBe("2");
-  expect(view.getByRole("combobox").closest("[inert]")).not.toBeNull();
+  expect(view.getByRole("combobox",{name:"retained-id"}).closest("[inert]")).not.toBeNull();
   expect(changed).not.toHaveBeenCalled();expect(fetcher).toHaveBeenCalledTimes(3);
 });
 it("selected-only inactive data is display context, not an enabled new active choice",async()=>{
@@ -117,7 +119,7 @@ it("selected-only inactive data is display context, not an enabled new active ch
   const changed=vi.fn(),view=render(<QueryClientProvider client={cache()}><LookupSelect categoryCode="TEST" value={2} onValueChange={changed}/></QueryClientProvider>);
   await waitFor(()=>expect(view.getByRole("combobox").textContent).toContain("Historical"));
   fireEvent.click(view.getByRole("combobox"));
-  expect(view.getByRole("option",{name:"Historical"}).getAttribute("aria-disabled")).toBe("true");
+  expect((await view.findByRole("option",{name:"Historical"})).getAttribute("aria-disabled")).toBe("true");
   expect(changed).not.toHaveBeenCalled();
 });
 it("code-valued historical drafts and Arabic labels survive failure/retry without numeric conversion",async()=>{
@@ -235,7 +237,7 @@ it.each(["id","code"] as const)("already-open portaled %s choices cannot change 
   await waitFor(()=>expect(view.getByRole("combobox",{name:"retained-choice"}).textContent).toContain("Synthetic one"));
   view.container.addEventListener("change",dirty);
   fireEvent.click(view.getByRole("combobox",{name:"retained-choice"}));
-  const openOption=view.getByRole("option",{name:"Synthetic two"});
+  const openOption=await view.findByRole("option",{name:"Synthetic two"});
   expect(view.container.contains(openOption)).toBe(false); // Actual Radix portal, not a mocked select.
   failed=true;
   await act(async()=>{await qc.invalidateQueries({queryKey:queryKeys.lookup.values("TEST"),exact:true});});

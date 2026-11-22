@@ -1,18 +1,17 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import type { z } from "zod";
 import {
-  payrollApprovalsPath, payrollReviewCommandHeader, payrollReviewQuery, payrollReviewReceipt, payrollReviewScopes,
+  payrollReviewCommandHeader, payrollReviewQuery, payrollReviewReceipt, payrollReviewScopes,
   payrollReviewWorkspace, parsePayrollReviewCommand, type PayrollReviewQuery,
 } from "@/lib/hr/payroll/approval-contract";
-import { payrollRunsPath } from "@/lib/hr/payroll/run-contract";
 import { logger } from "@/lib/logger";
 import { canUseApplication, getAuthContext } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
+import { invalidatePayrollWorkspace } from "@/server/payroll-workspace-refresh";
 
 type Failure = { ok: false; error: string; uncertain: boolean };
-type CommandResult = { ok: true } & z.infer<typeof payrollReviewReceipt> | Failure;
+type CommandResult = { ok: true; refreshRequired?: true } & z.infer<typeof payrollReviewReceipt> | Failure;
 const uncertain: Failure = {
   ok: false, error: "The decision could not be confirmed. Retry with the same details.", uncertain: true,
 };
@@ -92,13 +91,13 @@ export async function savePayrollReviewCommand(
       return uncertain;
     }
     const receipt = payrollReviewReceipt.safeParse(data);
-    if (!receipt.success || ("review" in fields && receipt.data.review !== fields.review)) {
+    if (!receipt.success || receipt.data.action !== action || receipt.data.version !== fields.version ||
+        receipt.data.digest !== fields.digest || ("review" in fields && receipt.data.review !== fields.review) ||
+        ("run" in fields && receipt.data.run !== fields.run)) {
       logger.warn("Payroll approval receipt could not be read", { action });
       return uncertain;
     }
-    revalidatePath(payrollApprovalsPath);
-    revalidatePath(payrollRunsPath);
-    return { ok: true, ...receipt.data };
+    return { ok: true, ...receipt.data, ...invalidatePayrollWorkspace("approvals") };
   } catch {
     return uncertain;
   }

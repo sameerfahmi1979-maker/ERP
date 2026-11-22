@@ -8,7 +8,7 @@
  *  - localStorage restore on mount
  *  - Ensuring dashboard tab always exists
  *  - Syncing active tab on pathname change (browser back/forward)
- *  - Persisting tabs after every state change
+ *  - Persisting changes to allowed tab metadata
  *  - Max-tab toast enforcement (4A)
  *  - Dirty tab close confirmation dialog (4B)
  *  - Browser beforeunload warning when any tab is dirty (4B)
@@ -71,7 +71,9 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
   const stateRef = useRef(state);
   // Event-time state is authoritative even for callbacks captured before an await.
   const dispatch = useCallback((action: WorkspaceAction) => {
-    const next = workspaceReducer(stateRef.current, action);
+    const current = stateRef.current;
+    const next = workspaceReducer(current, action);
+    if (next === current) return;
     stateRef.current = next;
     setState(next);
   }, []);
@@ -166,7 +168,7 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
     }
   }, [route, pathname, state.isHydrated, dispatch, router, canRestoreRoute, defaultRoute]);
 
-  // ── Persist to localStorage after every state change ──────────────────────
+  // ── Persist allowed workspace metadata ────────────────────────────────────
   useEffect(() => {
     if (!state.isHydrated) return;
     persistToStorage(state.tabs, state.activeTabId, principalId);
@@ -237,6 +239,7 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
         ? current.tabs.find((t) => t.entityType === config.entityType && t.entityId === config.entityId)
         : current.tabs.find((t) => t.route.split("?")[0] === configPath);
       if (existingForRoute) {
+        if (existingForRoute.id === current.activeTabId && existingForRoute.route === route && config.route === route) return;
         dispatch({ type: "SYNC_ROUTE", route: config.route });
         router.push(config.route);
         return;
@@ -262,7 +265,7 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
       dispatch({ type: "OPEN_TAB", tab: newTab });
       router.push(config.route);
     },
-    [dispatch, router, navigationBlocked, canRestoreRoute]
+    [dispatch, router, navigationBlocked, canRestoreRoute, route]
   );
 
   // ── closeTab — dirty-safe (4B) ─────────────────────────────────────────────
@@ -288,11 +291,12 @@ export function WorkspaceProvider({ children, defaultRoute, principalId, canRest
       const tab = stateRef.current.tabs.find((t) => t.id === tabId);
       if (!tab) return;
       if (canRestoreRoute && !canRestoreRoute(tab.route)) return;
+      if (tabId === stateRef.current.activeTabId && tab.route === route) return;
       if (tabId !== stateRef.current.activeTabId && navigationBlocked()) return;
       dispatch({ type: "SET_ACTIVE_TAB", tabId });
       router.push(tab.route);
     },
-    [dispatch, router, navigationBlocked, canRestoreRoute]
+    [dispatch, router, navigationBlocked, canRestoreRoute, route]
   );
 
   // ── Dirty close dialog handlers ────────────────────────────────────────────

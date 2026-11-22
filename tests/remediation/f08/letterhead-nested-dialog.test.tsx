@@ -20,11 +20,18 @@ beforeEach(()=>{vi.clearAllMocks();m.preview.mockResolvedValue({success:false,er
 afterEach(cleanup);
 it('keeps the actual warning workbench open while the inline letterhead popup selects an option',async()=>{
  render(page());const parent=await screen.findByRole('dialog',{name:'Official Warning Letter'});
- expect(parent.className).toContain('sm:max-w-[85vw]');fireEvent.click(within(parent).getByRole('combobox',{name:'Company letterhead'}));
+ expect(parent.className).toContain('sm:max-w-[85vw]');
+ await waitFor(()=>expect(m.preview).toHaveBeenCalledTimes(1));
+ const [{previewSessionId}]=m.preview.mock.calls[0];
+ expect(previewSessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+ const draft={outputCode:item.outputCode,employeeId:1,language:'en',inputs:{},previewSessionId};
+ expect(m.preview).toHaveBeenNthCalledWith(1,draft);
+ fireEvent.click(within(parent).getByRole('combobox',{name:'Company letterhead'}));
  fireEvent.click(await screen.findByRole('option',{name:/Synthetic company letterhead/}));
  expect(screen.getAllByRole('dialog')).toHaveLength(1);expect(screen.getByRole('dialog')).toBe(parent);
  expect(within(parent).getByRole('combobox',{name:'Company letterhead'}).textContent).toContain('Synthetic company letterhead');
- await waitFor(()=>expect(m.preview).toHaveBeenCalledWith({outputCode:item.outputCode,employeeId:1,language:'en',inputs:{},templateId:3}));
+ await waitFor(()=>expect(m.preview).toHaveBeenNthCalledWith(2,{...draft,templateId:3}));
+ expect(m.preview).toHaveBeenCalledTimes(2);
 });
 it('Escape closes only the letterhead options and retains company default in the workbench',async()=>{
  render(page());const parent=await screen.findByRole('dialog',{name:'Official Warning Letter'}),control=within(parent).getByRole('combobox',{name:'Company letterhead'});

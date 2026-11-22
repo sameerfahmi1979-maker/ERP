@@ -76,4 +76,5 @@ export interface AuditExplainerOverview {
   totalEvents: number;
   entityBreakdown: Record<string, number>;
   actionBreakdown: Record<string, number>;
+  unavailableSources: string[];
 }

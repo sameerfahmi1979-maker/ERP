@@ -6,6 +6,14 @@ import { processOneEmail } from "@/lib/email/queue/worker";
 import { renderPayslipPdf } from "@/lib/official-documents/payslip-pdf";
 import { createEmailQueueStore } from "@/lib/email/queue/rpc-store";
 
+import { changePayslipDelivery, issuePayslip } from "@/server/actions/hr/payslips";
+import { refreshPayrollWorkspace } from "@/server/actions/hr/payroll-workspace-refresh";
+
+const actions = vi.hoisted(() => ({ auth: vi.fn(), rpc: vi.fn(), revalidate: vi.fn() }));
+vi.mock("@/lib/rbac/check", async () => ({ ...await import("@/lib/rbac/scope"), getAuthContext: actions.auth }));
+vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ rpc: actions.rpc }) }));
+vi.mock("next/cache", () => ({ revalidatePath: actions.revalidate }));
+
 const bytes = renderPayslipPdf({
   sequence: 22, report_on: "2026-11-20", company: "Synthetic ERP Employer", branch: "Synthetic Branch",
   employee: "Synthetic Employee", employee_code: "TEST-22", month: "2026-11-01", currency: "AED",
@@ -88,4 +96,35 @@ describe("T17 retained payslip delivery", () => {
     })).rejects.toThrow();
     expect(load).not.toHaveBeenCalled();
   });
+});
+
+it("preserves confirmed issuance and delivery when the payslip invalidation fails", async () => {
+  actions.auth.mockReset().mockResolvedValue({ isAccountActive: true, profile: {}, roleAssignments: [] });
+  actions.rpc.mockReset();
+  actions.revalidate.mockReset().mockImplementationOnce(() => { throw new Error("Payslip refresh failed"); })
+    .mockImplementationOnce(() => { throw new Error("Payslip refresh failed"); });
+  const operation = "f032161d-3bee-4c28-bc18-5e66e017edda";
+  const batch = "6371156a-70da-4044-a9c2-d17f1287678a";
+  const delivery = { id: 92, slip: 73, channel: "print", state: "print_ready" };
+  actions.rpc.mockResolvedValueOnce({ data: {
+    id: 73, finalized: true, can_deliver: true, snapshot: null, renderer: "retained", proof: null, path: null,
+  }, error: null }).mockResolvedValue({ data: delivery, error: null });
+
+  const issued = await issuePayslip({ operation, batch, employee: 41 });
+  const printOperation = "cbf37a14-a1ce-45d3-9e6a-b8ed3915dbb7";
+  const routed = await changePayslipDelivery({
+    operation: printOperation, slip: 73, action: "print", data: { reason: "Route to verified print." },
+  });
+  expect(issued).toEqual({ ok: true, receipt: { id: 73, routed: true }, refreshRequired: true });
+  expect(routed).toEqual({ ok: true, receipt: delivery, refreshRequired: true });
+  expect(actions.rpc.mock.calls.map(([rpc]) => rpc)).toEqual([
+    "t17_issue_prepare", "t17_delivery_command", "t17_delivery_command",
+  ]);
+
+  expect(actions.rpc.mock.calls[1][1]).toEqual({ p_operation: operation, p_slip: 73, p_action: "initial", p_data: {} });
+  expect(actions.rpc.mock.calls[2][1]).toMatchObject({ p_operation: printOperation, p_slip: 73, p_action: "print" });
+
+  await expect(refreshPayrollWorkspace("payslips")).resolves.toBe(true);
+  expect(actions.rpc).toHaveBeenCalledTimes(3);
+  expect(actions.revalidate.mock.calls).toEqual(Array.from({ length: 3 }, () => ["/admin/hr/payroll/payslips"]));
 });

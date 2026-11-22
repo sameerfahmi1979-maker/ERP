@@ -82,3 +82,26 @@ it.each([true, false])("explains renderer failure safely (retryable=%s) without 
   expect(m.brand).toHaveBeenCalledTimes(1);
 });
 it("bounds serialized draft bytes", async () => { m.renderer.mockResolvedValue({ buffer: Buffer.alloc(8 * 1024 * 1024 + 1), sha256: "a".repeat(64) }); expect(await previewOfficialDocument(request)).toMatchObject({ success: false, error: expect.stringContaining("too large") }); });
+it("reuses a rendered draft only after the same workbench recollects current source and letterhead", async () => {
+  const preview = { ...request, previewSessionId: "88727262-9308-45b5-aa4a-7237c53d6fc3" };
+  const first = await previewOfficialDocument(preview);
+  const repeat = await previewOfficialDocument(preview);
+  expect(first.success && repeat.success).toBe(true);
+  expect(m.runner).toHaveBeenCalledTimes(2);
+  expect(m.renderer).toHaveBeenCalledOnce();
+  expect(m.brand).toHaveBeenCalledTimes(4);
+
+  const changed = data();
+  changed.data.rows[0].employee_name = "UPDATED SYNTHETIC EMPLOYEE";
+  m.runner.mockResolvedValue(changed);
+  expect((await previewOfficialDocument(preview)).success).toBe(true);
+  expect(m.renderer).toHaveBeenCalledTimes(2);
+  expect(m.renderer.mock.calls[1][0].html).toContain("UPDATED SYNTHETIC EMPLOYEE");
+});
+it("retains fresh checks before delivering prepared bytes and after denial", async () => {
+  const preview = { ...request, previewSessionId: "d5a6581b-5c9c-454e-bff9-1818560faba3" };
+  expect((await previewOfficialDocument(preview)).success).toBe(true);
+  m.scope = false;
+  expect(await previewOfficialDocument(preview)).not.toHaveProperty("pdfBase64");
+  expect(m.renderer).toHaveBeenCalledOnce();
+});

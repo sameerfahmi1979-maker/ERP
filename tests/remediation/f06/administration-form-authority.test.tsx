@@ -104,12 +104,12 @@ for (const manage of [false, true]) {
     await expect(NewBranchPage()).rejects.toThrow('Redirect'); expect(m.organizationList).not.toHaveBeenCalled();
   });
 }
-it('BranchesPage: a failed company-choice read is a visible load error, not empty authority', async () => {
+it('BranchesPage: a failed company-choice read stays visible independent of the authorized branch list', async () => {
   m.ctx = branchOnlyContext(81, null); m.choiceRead.mockRejectedValue(Error('Company choices unavailable'));
   render(await BranchesPage());
   expect(screen.getByRole('alert').textContent).toContain('Branch company choices could not be loaded');
   expect(screen.queryByRole('button', { name: 'Add Branch' })).toBeNull();
-  expect(screen.queryByText('Branches table')).toBeNull(); expect(m.tableAuth).toBeNull();
+  expect(screen.getByText('Branches table')).toBeTruthy(); expect(m.tableAuth).toBe(m.ctx);
 });
 it('NewBranchPage: a failed company-choice read is not an empty authorized choice list', async () => {
   m.ctx = branchOnlyContext(81, null); m.choiceRead.mockRejectedValue(Error('Company choices unavailable'));

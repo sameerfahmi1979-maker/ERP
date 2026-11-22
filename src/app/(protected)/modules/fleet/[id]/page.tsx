@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ERPPageHeader } from "@/components/erp/page-header";
@@ -74,6 +75,23 @@ function AssetHistory({ item }: { item: FleetAsset["history"][number] }) {
   </li>;
 }
 
+type FleetChoicesRead = ReturnType<typeof getFleetChoices>;
+
+async function FleetHomeScope({ branch, fallback, choices }: { branch: number; fallback: string; choices: FleetChoicesRead }) {
+  return (await choices)?.scopes.find(scope => scope.branch === branch)?.label ?? fallback;
+}
+
+async function FleetEditor({ asset, choices, today }: { asset: FleetAsset; choices: FleetChoicesRead; today: string }) {
+  return <FleetAssetEditor asset={asset} scopes={(await choices)?.scopes ?? []} today={today} />;
+}
+
+async function FleetCustody({ asset, read }: { asset: number; read: ReturnType<typeof getFleetCustody> }) {
+  const custody = await read;
+  if (!custody) return null;
+  const choices = custody.can_manage || custody.can_plan ? await getCustodyChoices(asset, "").catch(() => null) : null;
+  return <FleetCustodyPanel workspace={custody} choices={choices ?? { workers: [], sites: [] }} />;
+}
+
 export default async function FleetAssetPage({ params,searchParams }: {
   params: Promise<{ id: string }>; searchParams: Promise<{ custodyBefore?:string; f10_open?:string }>;
 }) {
@@ -83,23 +101,29 @@ export default async function FleetAssetPage({ params,searchParams }: {
   if (!id.success) notFound();
   const query=await searchParams;
   const before=fleetId.safeParse(Number(query.custodyBefore));
-  const [asset,custody]=await Promise.all([getFleetAsset(id.data),getFleetCustody(id.data,before.success?before.data:undefined)]);
-  if (!asset&&!custody) notFound();
-  const custodyChoices=custody&&(custody.can_manage||custody.can_plan)?await getCustodyChoices(id.data,""):null;
+  const assetRead = getFleetAsset(id.data);
+  const custodyRead = getFleetCustody(id.data, before.success ? before.data : undefined).catch(() => null);
+  const asset = await assetRead;
   const workshopLink = workshopPermissions.some(code => actor.permissionCodes.includes(code)) &&
     <Link href={`/modules/workshop?asset=${id.data}`} className="text-sm font-medium text-primary hover:underline">Workshop and maintenance</Link>;
   const fuelLink = ROUTE_ACCESS_REGISTRY["/modules/fleet/fuel"].requiredAnyPermissions?.some(code => actor.permissionCodes.includes(code)) &&
     <Link href={`/modules/fleet/fuel?asset=${id.data}`} className="text-sm font-medium text-primary hover:underline">Manual fuel vouchers</Link>;
-  const custodyPanel=custody&&<FleetCustodyPanel workspace={custody} choices={custodyChoices??{workers:[],sites:[]}} />;
-  if (!asset&&custody) return <main className="space-y-6">
-    <ERPPageHeader title={custody.asset_name} description={custody.asset_no}
-      breadcrumbs={[{label:"Fleet assets",href:"/modules/fleet"},{label:custody.asset_no}]} />
-    {workshopLink}
-    {fuelLink}
-    {custodyPanel}
-  </main>;
-  if (!asset) notFound();
-  const choices = asset.can_manage ? await getFleetChoices() : null;
+  const custodyPanel = <Suspense fallback={<p role="status" className="text-sm">Loading custody…</p>}>
+    <FleetCustody asset={id.data} read={custodyRead} />
+  </Suspense>;
+  if (!asset) {
+    const custody = await custodyRead;
+    if (!custody) notFound();
+    return <main className="space-y-6">
+      <ERPPageHeader title={custody.asset_name} description={custody.asset_no}
+        breadcrumbs={[{ label: "Fleet assets", href: "/modules/fleet" }, { label: custody.asset_no }]} />
+      {workshopLink}
+      {fuelLink}
+      {custodyPanel}
+    </main>;
+  }
+  const choices = asset.can_manage ? getFleetChoices().catch(() => null) : Promise.resolve(null);
+  const homeScope = `Company #${asset.company} · Branch #${asset.branch}`;
   const today = dubaiBusinessDate();
   const canReadDms = asset.can_see_documents && (hasPermission(actor, "dms.documents.view") || hasPermission(actor, "dms.admin"));
   const canEditLinks = asset.can_link && asset.status !== "retired" && hasPermission(actor, "dms.documents.edit");
@@ -109,15 +133,17 @@ export default async function FleetAssetPage({ params,searchParams }: {
     <ERPPageHeader title={asset.name} description={asset.asset_no}
       breadcrumbs={[{ label: "Fleet assets", href: "/modules/fleet" }, { label: asset.asset_no }]} />
     <dl className="grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-2 lg:grid-cols-3">
-      {[
+      {([
         ["Category", fleetCategories[asset.category]], ["Register status", asset.status], ["Current plate", currentPlate?.plate_number],
-        ["VIN", asset.vin], ["Serial number", asset.serial], ["Home scope", choices?.scopes.find(scope => scope.branch === asset.branch)?.label
-          ?? `Company #${asset.company} Â· Branch #${asset.branch}`],
-      ].map(([label, value]) => <div key={label} className="min-w-0">
+        ["VIN", asset.vin], ["Serial number", asset.serial],
+        ["Home scope", <Suspense key="home-scope" fallback={homeScope}>
+          <FleetHomeScope branch={asset.branch} fallback={homeScope} choices={choices} />
+        </Suspense>],
+      ] as const).map(([label, value]) => <div key={label} className="min-w-0">
         <dt className="text-sm text-muted-foreground">{label}</dt><dd className="break-words font-medium">{value ?? "Unknown"}</dd>
       </div>)}
     </dl>
-    <FleetAssetEditor asset={asset} scopes={choices?.scopes ?? []} today={today} />
+    <Suspense fallback={null}><FleetEditor asset={asset} choices={choices} today={today} /></Suspense>
     {workshopLink}
     {fuelLink}
     {custodyPanel}

@@ -106,7 +106,8 @@ export async function SupplyPage({ kind, branch, scope, queueSearch, queuePage }
     ? supplyActionQueuePage.safeParse(Number(queuePage)).data ?? 1 : 1;
   const queueKind = kind === "inventory" ? "stock-review" : "receiving";
   const capability = kind === "inventory" ? "supply.approve" : "supply.purchase";
-  const queue = data?.rights.includes(capability) ? await getSupplyActionQueue(data.branch, queueKind, search, page) : null;
+  const queueOpen = queueSearch !== undefined || queuePage !== undefined;
+  const queue = queueOpen && data?.rights.includes(capability) ? await getSupplyActionQueue(data.branch, queueKind, search, page) : null;
   return <main className="space-y-4">
     <ERPPageHeader title={name} description={selected ? selected.company + " · " + selected.name : undefined}
       breadcrumbs={[{ label: "Finance & Supply" }, { label: name }]} />
@@ -126,8 +127,8 @@ export async function SupplyPage({ kind, branch, scope, queueSearch, queuePage }
           return <p key={domain} className="text-sm capitalize">{domain} · {policy ? policy.decision + " · " + policy.name : "Awaiting named owner acceptance"}</p>;
         })}
       </section>
-      <SupplyActions key={data.branch} workspace={kind} data={data} queueView={{
-        search, page, result: queue, open: queueSearch !== undefined || queuePage !== undefined,
+      <SupplyActions key={data.branch + ":" + queueOpen} workspace={kind} data={data} queueView={{
+        search, page, result: queue, open: queueOpen,
         scope: typeof scope === "string" ? scope : undefined,
       }} />
       <SupplyHistory data={data} kind={kind} />

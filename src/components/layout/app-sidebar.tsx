@@ -376,6 +376,7 @@ const navSections: NavSection[] = [
         items: [
           { label: "Users",       icon: UsersRound,    path: "/admin/users" },
           { label: "Roles",       icon: Shield,        path: "/admin/roles" },
+          { label: "New Role",    icon: Shield,        path: "/admin/roles/record/new" },
           { label: "Permissions", icon: Lock,          path: "/admin/permissions" },
           { label: "Activity Log",icon: ClipboardList, path: "/admin/audit" },
         ],

@@ -8,7 +8,7 @@ import {dmsDashboardCriteriaSchema,dmsDashboardSchema,dmsDashboardInboxRow,type 
 const id=z.number().int().positive().refine(Number.isSafeInteger),count=z.number().int().nonnegative().refine(Number.isSafeInteger);
 type Native={data:unknown;count:number|null;error:unknown};
 interface Query extends PromiseLike<Native>{
-  is(k:string,v:null):Query;neq(k:string,v:string):Query;not(k:string,op:string,v:unknown):Query;in(k:string,v:readonly string[]):Query;
+  is(k:string,v:null):Query;neq(k:string,v:string):Query;not(k:string,op:string,v:unknown):Query;in(k:string,v:readonly (string|number)[]):Query;
   gte(k:string,v:string):Query;gt(k:string,v:string):Query;lte(k:string,v:string):Query;lt(k:string,v:string):Query;
   order(k:string,v?:{ascending:boolean}):Query;range(a:number,b:number):Query;
 }
@@ -82,11 +82,45 @@ export async function readDmsDashboard(input:unknown={},context?:AuthContext,cal
       ai,buckets,inboxPanel,
       safe(true,async()=>{const r=await panel(expiry(7,"id,document_no,title,expiry_date,document_type:dms_document_types(name_en)").order("expiry_date",{ascending:true}).order("id",{ascending:true}),z.object({id,document_no:z.string(),title:z.string(),expiry_date:z.iso.date(),document_type:z.object({name_en:z.string().nullable()}).strip().nullable()}).strip());return{...r,items:r.items.map(({document_type,...row})=>({...row,document_type_name:document_type?.name_en??null}))};}),
       safe(canRenewals,async()=>{
-        // Reuse the existing invoker read model, including original subject and
-        // profile RLS, rather than the old nonexistent `profiles` relationship.
-        const q=db.rpc("perf_read_renewal_list",{include_completed:true},{get:true,count:"exact"}).select("id,created_at,renewal_no,status,priority,document,assignee").abortSignal(signal) as unknown as Query;
-        const r=await panel(q.in("status",["draft","requested","in_progress","waiting_for_document"]).order("created_at",{ascending:false}).order("id",{ascending:false}),z.object({id,renewal_no:z.string().nullable(),status:z.string(),priority:z.string().nullable(),document:z.object({title:z.string()}).strip(),assignee:z.object({full_name:z.string().nullable()}).strip().nullable()}).strip());
-        return{...r,items:r.items.map(({document,assignee,...row})=>({...row,renewal_no:row.renewal_no??"",document_title:document.title,assigned_to_name:assignee?.full_name??null}))};
+        const query = select("dms_renewal_requests", "id,document_id,renewal_no,status,priority,assigned_to")
+          .is("deleted_at", null)
+          .in("status", ["draft", "requested", "in_progress", "waiting_for_document"])
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false });
+        const page = await panel(query, z.object({
+          id,
+          document_id: id,
+          renewal_no: z.string().nullable(),
+          status: z.string(),
+          priority: z.string().nullable(),
+          assigned_to: id.nullable(),
+        }).strip());
+
+        // The ordinary renewal policy admits the rows. Resolve only the page's
+        // references under the same caller so hidden titles and names stay masked.
+        const documentIds = [...new Set(page.items.map(row => row.document_id))];
+        const assigneeIds = [...new Set(page.items.flatMap(row => row.assigned_to === null ? [] : [row.assigned_to]))];
+        const readReferences = async <S extends z.ZodType<{ id: number }>>(query: () => Query, ids: number[], schema: S) => {
+          if (!ids.length) return [];
+          const { items } = await panel(query().in("id", ids).order("id", { ascending: true }), schema);
+          if (items.some(row => !ids.includes(row.id))) throw Error("Unexpected renewal reference");
+          return items;
+        };
+        const [documentRows, profileRows] = await Promise.all([
+          readReferences(() => documents("id,title"), documentIds, z.object({ id, title: z.string() }).strip()),
+          readReferences(() => select("user_profiles", "id,full_name"), assigneeIds, z.object({ id, full_name: z.string().nullable() }).strip()),
+        ]);
+        const documentTitles = new Map(documentRows.map(row => [row.id, row.title]));
+        const profileNames = new Map(profileRows.map(row => [row.id, row.full_name]));
+        return {
+          ...page,
+          items: page.items.map(({ document_id, assigned_to, ...row }) => ({
+            ...row,
+            renewal_no: row.renewal_no ?? "",
+            document_title: documentTitles.get(document_id) ?? "—",
+            assigned_to_name: assigned_to === null ? null : profileNames.get(assigned_to) ?? null,
+          })),
+        };
       }),
     ]);
     signal.throwIfAborted();return{success:true,data:dmsDashboardSchema.parse({criteria:parsed.data,asOf,scope:"permitted_records",total_documents:total,added_this_month:added,added_last_month:prior,

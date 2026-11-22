@@ -29,9 +29,10 @@ import {
   type RiskScoreRow,
   type RiskScoreStatus,
 } from "@/lib/ai/common/risk-scoring";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission, hasPermission } from "@/lib/rbac/check";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { readAiSummaryCount, readAiSummaryFeature } from "@/server/reads/ai-summary";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -1036,60 +1037,35 @@ export async function getRiskScoreCountForEntity(input: {
 
 export async function getRiskScoreSummary(): Promise<
   ActionResult<{
-    critical: number;
-    high: number;
-    stale: number;
-    unreviewed: number;
-    featureEnabled: boolean;
+    critical: number | null;
+    high: number | null;
+    stale: number | null;
+    unreviewed: number | null;
+    featureEnabled: boolean | null;
   }>
 > {
   try {
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated." };
-    if (!canViewRisk(ctx)) return { success: false, error: "Permission denied." };
+    if (!hasGlobalPermission(ctx, "ai.risk.view") && !hasGlobalPermission(ctx, "ai.common.admin")) {
+      return { success: false, error: "Permission denied." };
+    }
 
-    const supabase = await createClient();
-    const featureEnabled = await isRiskScoreEnabled();
-
-    const { count: criticalCount } = await supabase
-      .from("erp_ai_risk_scores")
-      .select("id", { count: "exact", head: true })
-      .is("deleted_at", null)
-      .eq("risk_level", "critical");
-
-    const { count: highCount } = await supabase
-      .from("erp_ai_risk_scores")
-      .select("id", { count: "exact", head: true })
-      .is("deleted_at", null)
-      .eq("risk_level", "high");
-
-    const { count: staleCount } = await supabase
-      .from("erp_ai_risk_scores")
-      .select("id", { count: "exact", head: true })
-      .is("deleted_at", null)
-      .or("status.eq.stale,stale_at.not.is.null");
-
-    const { count: unreviewedCount } = await supabase
-      .from("erp_ai_risk_scores")
-      .select("id", { count: "exact", head: true })
-      .is("deleted_at", null)
-      .is("reviewed_at", null)
-      .in("status", ["calculated", "stale"]);
-
-    return {
-      success: true,
-      data: {
-        critical: criticalCount ?? 0,
-        high: highCount ?? 0,
-        stale: staleCount ?? 0,
-        unreviewed: unreviewedCount ?? 0,
-        featureEnabled,
-      },
-    };
-  } catch (err) {
-    return { success: false, error: String(err).slice(0, 200) };
+    const db = await createClient();
+    const query = () => db.from("erp_ai_risk_scores").select("id", { count: "exact", head: true }).is("deleted_at", null);
+    const [featureEnabled, critical, high, stale, unreviewed] = await Promise.all([
+      readAiSummaryFeature(db, "ERP_AI_RISK_SCORE"),
+      readAiSummaryCount(query().eq("risk_level", "critical")),
+      readAiSummaryCount(query().eq("risk_level", "high")),
+      readAiSummaryCount(query().or("status.eq.stale,stale_at.not.is.null")),
+      readAiSummaryCount(query().is("reviewed_at", null).in("status", ["calculated", "stale"])),
+    ]);
+    return { success: true, data: { critical, high, stale, unreviewed, featureEnabled } };
+  } catch {
+    return { success: false, error: "Risk scores summary could not be loaded." };
   }
 }
+
 
 export async function isRiskScoringEnabled(): Promise<boolean> {
   return isRiskScoreEnabled();

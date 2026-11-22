@@ -3,7 +3,7 @@ import { ERPPageHeader } from "@/components/erp/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { dubaiBusinessDate } from "@/lib/dubai-calendar";
-import { listPayslipScopes, readPayslipWorkspace } from "@/server/actions/hr/payslips";
+import { listPayslipScopes, readPayslipDeliveryHistory, readPayslipWorkspace } from "@/server/actions/hr/payslips";
 import { PayslipCommand, type PayslipDeliveryOption } from "./payslip-command";
 
 type Params = Record<string, string | string[] | undefined>;
@@ -33,10 +33,11 @@ type Row = {
     issued_at: string | null;
     checksum: string | null;
     filename: string;
-    delivery?: { history: Delivery[]; actions?: readonly string[] } | null;
+    delivery?: { history: Delivery[]; history_count?: number; actions?: readonly string[] } | null;
   };
 };
 type Access = { view: boolean; issue: boolean; deliver: boolean };
+type SelectedHistory = { slip: number; page: Awaited<ReturnType<typeof readPayslipDeliveryHistory>> };
 
 const path = "/admin/hr/payroll/payslips";
 const displayDate = new Intl.DateTimeFormat("en-AE", { dateStyle: "medium", timeZone: "Asia/Dubai" });
@@ -69,12 +70,16 @@ function scopeKey(scope: Scope) {
   return scope.company_id + "." + scope.branch_id;
 }
 
-function linkTo(search: Search, after?: number) {
+function linkTo(search: Search, after?: number, history?: { slip: number; before?: number }) {
   const query = new URLSearchParams({
     company: String(search.company), branch: String(search.branch), month: search.month.slice(0, 7),
   });
   if (search.employee) query.set("employee", search.employee);
   if (after) query.set("after", String(after));
+  if (history) {
+    query.set("delivery_history", String(history.slip));
+    if (history.before) query.set("before_delivery", String(history.before));
+  }
   return path + "?" + query.toString();
 }
 
@@ -107,19 +112,34 @@ function ScopeForm({ scopes, scope, month, staffCode }: {
   </form>;
 }
 
-function DeliveryHistory({ history }: { history: Delivery[] }) {
-  if (!history.length) return <span className="text-sm text-muted-foreground">Delivery pending</span>;
+function DeliveryHistory({ history, count, slip, search, selected }: {
+  history: Delivery[]; count?: number; slip: number; search: Search; selected?: SelectedHistory;
+}) {
+  const linkClass = "text-primary underline underline-offset-2";
+  if (!history.length && !selected) return <span className="text-sm text-muted-foreground">Delivery pending</span>;
+  const page = selected?.page.ok ? selected.page.data : undefined;
+  const events = page?.rows ?? history;
   return <div className="space-y-1">
-    <p className="text-sm">{deliveryLabels[history[0].state] ?? "Delivery recorded"}</p>
-    <details className="text-xs">
-      <summary className="cursor-pointer text-primary underline underline-offset-2">Delivery history ({history.length})</summary>
+    {history[0] && <p className="text-sm">{deliveryLabels[history[0].state] ?? "Delivery recorded"}</p>}
+    {count !== undefined && !selected ? <Link prefetch={false} className={"text-xs " + linkClass}
+      href={linkTo(search, search.after, { slip }) + "#delivery-" + slip}>Delivery history ({count})</Link>
+    : <details id={"delivery-" + slip} open={selected ? true : undefined} className="text-xs">
+      <summary className={"cursor-pointer " + linkClass}>Delivery history ({page?.count ?? count ?? history.length})</summary>
+      {selected && !page && <p role="alert" className="mt-1">Delivery history could not be loaded. Reload the page to retry.</p>}
+      {page && !events.length && <p className="mt-1">No deliveries on this page.</p>}
       <ul className="mt-1 space-y-1 text-muted-foreground">
-        {history.map(event => <li key={event.id} className="rounded-md border px-2 py-1">
+        {events.map(event => <li key={event.id} className="rounded-md border px-2 py-1">
           <span>{event.channel === "email" ? "Email" : "Print"} · {deliveryLabels[event.state] ?? "Delivery recorded"}</span>
           <span className="ml-2">{dateLabel(event.completed_at ?? event.at)}</span>
         </li>)}
       </ul>
-    </details>
+      {page && <nav aria-label="Delivery history pages" className="mt-2 flex gap-2">
+        <Link prefetch={false} className={linkClass}
+          href={linkTo(search, search.after, { slip }) + "#delivery-" + slip}>First deliveries</Link>
+        {page.next_before && <Link prefetch={false} className={linkClass}
+          href={linkTo(search, search.after, { slip, before: page.next_before }) + "#delivery-" + slip}>Next deliveries</Link>}
+      </nav>}
+    </details>}
   </div>;
 }
 
@@ -142,14 +162,17 @@ function deliveryChoices(delivery: NonNullable<NonNullable<Row["slip"]>["deliver
   return choices;
 }
 
-function PayslipRow({ row, access }: { row: Row; access: Access }) {
+function PayslipRow({ row, access, search, selected }: {
+  row: Row; access: Access; search: Search; selected?: SelectedHistory;
+}) {
   const slip = row.slip;
   const original = slip?.issued_at && slip.checksum && /^[0-9a-f]{64}$/i.test(slip.checksum)
     && Number.isSafeInteger(slip.id) && slip.id > 0 ? slip : null;
   const history = original?.delivery?.history ?? [];
   const canIssue = access.issue && row.state === "reconciled" && row.can_issue && !original;
+  const visibleHistory = selected?.page.ok ? selected.page.data.rows : history;
   const delivery = access.deliver && original?.delivery
-    ? { slip: original.id, actions: deliveryChoices(original.delivery, row.state === "reconciled") }
+    ? { slip: original.id, actions: deliveryChoices({ ...original.delivery, history: visibleHistory }, row.state === "reconciled") }
     : undefined;
   const issuedDescription = slip ? "Issue pending" : row.state === "reconciled" ? "Ready to issue" : "Awaiting eligible payment";
   return <tr className="align-top">
@@ -168,7 +191,9 @@ function PayslipRow({ row, access }: { row: Row; access: Access }) {
       </div> : <span className="text-sm text-muted-foreground">{issuedDescription}</span>}
     </td>
     <td className="min-w-44 px-4 py-3">
-      {original?.delivery ? <DeliveryHistory history={history} /> : <span aria-hidden="true" className="text-muted-foreground">—</span>}
+      {original?.delivery ? <DeliveryHistory history={history} count={original.delivery.history_count}
+        slip={original.id} search={search} selected={selected} />
+        : <span aria-hidden="true" className="text-muted-foreground">—</span>}
     </td>
     <td className="min-w-40 px-4 py-3">
       <PayslipCommand employee={row.employee} batch={row.batch} canIssue={canIssue} delivery={delivery} compact />
@@ -198,6 +223,18 @@ export async function PayslipWorkspace({ params }: { params: Params }) {
     : undefined;
   const result = search ? await readPayslipWorkspace(search) : undefined;
   const data = result?.ok && result.data.access.view ? result.data : undefined;
+  const requestedSlip = typeof params.delivery_history === "string" && /^[1-9]\d*$/.test(params.delivery_history)
+    ? Number(params.delivery_history) : undefined;
+  const selectedSlip = data?.rows.find(row => row.slip?.id === requestedSlip && row.slip?.issued_at && row.slip.checksum)?.slip;
+  const rawHistoryCursor = params.before_delivery;
+  const historyBefore = rawHistoryCursor === undefined ? undefined :
+    typeof rawHistoryCursor === "string" && /^[1-9]\d*$/.test(rawHistoryCursor) ? Number(rawHistoryCursor) : NaN;
+  const selected = search && selectedSlip ? {
+    slip: selectedSlip.id,
+    page: await readPayslipDeliveryHistory({
+      company: search.company, branch: search.branch, month: search.month, slip: selectedSlip.id, before: historyBefore,
+    }),
+  } : undefined;
 
   return <div className="space-y-5">
     <ERPPageHeader title="Payslips" description="Find an employee’s original payslip by employer and payroll month." />
@@ -218,7 +255,8 @@ export async function PayslipWorkspace({ params }: { params: Params }) {
               <th key={label} scope="col" className="px-4 py-2.5 font-medium">{label}</th>)}</tr>
           </thead>
           <tbody className="divide-y">
-            {data.rows.map(row => <PayslipRow key={row.batch + ":" + row.employee} row={row} access={data.access} />)}
+            {data.rows.map(row => <PayslipRow key={row.batch + ":" + row.employee} row={row} access={data.access}
+              search={search} selected={selected && row.slip?.id === selected.slip ? selected : undefined} />)}
           </tbody>
         </table>
       </div>}

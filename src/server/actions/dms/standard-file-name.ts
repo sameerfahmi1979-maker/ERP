@@ -165,22 +165,24 @@ export async function resolveDmsStandardFileNameForContext(
   let batchEntityId: number | null = null;
 
   if (params.uploadSessionId) {
-    const { data: session } = await supabase
+    // The to-one embed applies the caller's ordinary RLS to both rows in the
+    // same statement. An unavailable batch contributes no naming context.
+    const { data: session, error } = await supabase
       .from("dms_upload_sessions")
-      .select("batch_id")
+      .select("batch:dms_upload_batches!dms_upload_sessions_batch_id_fkey(entity_type,entity_id)")
       .eq("id", params.uploadSessionId)
+      .is("deleted_at", null)
+      .is("batch.deleted_at", null)
       .maybeSingle();
-
-    const batchId = session?.batch_id as number | null;
-    if (batchId) {
-      const { data: batch } = await supabase
-        .from("dms_upload_batches")
-        .select("entity_type, entity_id")
-        .eq("id", batchId)
-        .maybeSingle();
-      batchEntityType = (batch?.entity_type as string | null) ?? null;
-      batchEntityId = (batch?.entity_id as number | null) ?? null;
+    const batch = z.object({
+      entity_type: z.string().nullable(),
+      entity_id: z.number().int().positive().nullable(),
+    }).strict().nullable().safeParse(session === null ? null : session?.batch);
+    if (error || !batch.success) {
+      throw new Error("The upload source for the filename preview could not be verified.");
     }
+    batchEntityType = batch.data?.entity_type ?? null;
+    batchEntityId = batch.data?.entity_id ?? null;
   }
 
   const metadataFieldMap =

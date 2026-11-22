@@ -47,6 +47,19 @@ it("DMS uses the current profile, masks wrong recipients and cannot accept calle
 it("view-only DMS users cannot request all notifications",async()=>{s.permissions=["dms.notifications.view"];expect(await readDmsNotifications({audience:"all"})).toMatchObject({success:false,error:"Permission denied"});expect(s.calls).toEqual([]);});
 it("DMS unread filters use canonical pending state, excluding archived/failed operational rows",async()=>{s.results=[result([])];await readDmsNotifications({unreadOnly:true,bridgeStatus:"not_bridged",channel:"email_ready"});expect(s.calls).toContainEqual(["eq","status","pending"]);expect(s.calls).toContainEqual(["eq","channel","email_ready"]);});
 it('DMS admin operational view retains producer/bridge history, separate from personal delivery',async()=>{s.results=[result([])];await readDmsNotifications({audience:'all'});expect(s.calls).toContainEqual(['from','perf_dms_notification_read']);});
+it("global administrator personal notifications use the recipient-bound view and exact current recipient", async () => {
+ const global = { profile:{id:6,must_change_password:false}, roleCodes:["system_admin"], permissionCodes:[],
+  roleAssignments:[{roleId:1,roleCode:"system_admin",ownerCompanyId:null,branchId:null,permissionCodes:[]}],
+  isAccountActive:true } as unknown as Parameters<typeof readDmsNotifications>[1];
+ s.results=[result([dms]),result([])];
+ expect(await readDmsNotifications({unreadOnly:true},global)).toMatchObject({success:true,data:{totalCount:1}});
+ expect(s.calls).toContainEqual(["from","perf_dms_my_notification_read"]);
+ expect(s.calls).toContainEqual(["eq","recipient_user_id",6]);
+ expect(s.calls).toContainEqual(["eq","status","pending"]);
+ s.calls=[];
+ expect((await readDmsNotifications({audience:"all"},global)).success).toBe(true);
+ expect(s.calls).toContainEqual(["from","perf_dms_notification_read"]);
+});
 it("template list does not load wording and detail requires view AND management",async()=>{
  s.permissions=["notifications.templates.view"];expect(await readNotificationTemplateDetail({id:1})).toMatchObject({success:false,error:"Permission denied"});expect(s.calls).toEqual([]);
  s.permissions=["notifications.templates.manage"];expect((await readNotificationTemplateDetail({id:1})).success).toBe(false);

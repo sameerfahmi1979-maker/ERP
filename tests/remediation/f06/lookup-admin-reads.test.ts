@@ -8,8 +8,10 @@ import {listLookupCategories,listLookupValues,getLookupCategoryById,getLookupVal
 const ctx={profile:{id:1,must_change_password:false},isAccountActive:true,roleAssignments:[],globalPermissionCodes:['master_data.lookups.view']};
 beforeEach(()=>{
  vi.clearAllMocks();m.auth.mockResolvedValue(ctx);m.result={data:[],error:null};
- const q:Record<string,unknown>={then:(resolve:(v:typeof m.result)=>unknown)=>Promise.resolve(m.result).then(resolve)};
- for(const method of ['select','eq','or','is','order'])q[method]=vi.fn(()=>q);
+ const q:Record<string,unknown>={then:(resolve:(v:typeof m.result)=>unknown)=>Promise.resolve({
+  ...m.result,count:Array.isArray(m.result.data)?m.result.data.length:null
+ }).then(resolve)};
+ for(const method of ['select','eq','or','is','order','range'])q[method]=vi.fn(()=>q);
  m.maybeSingle.mockImplementation(()=>Promise.resolve(m.result));q.maybeSingle=m.maybeSingle;
  m.from.mockReturnValue(q);m.client.mockResolvedValue({from:m.from});
 });

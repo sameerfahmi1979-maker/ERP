@@ -1,14 +1,17 @@
 import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { processNextDmsAiJobs } from '@/lib/dms/ai-jobs/job-runner';
+import { processNextDmsAiJobs, type PreparationRecoveryPass } from '@/lib/dms/ai-jobs/job-runner';
 import { logger } from '@/lib/logger';
 
 // One local pump per process; the database enforces three slots across ALL processes.
 const state = globalThis as typeof globalThis & { algtPreparationPump?: { timer: ReturnType<typeof setInterval>; active: number; checking: boolean; runtimeId: string; runtimeSecret: string } };
 
-function startSlot(pump: NonNullable<typeof state.algtPreparationPump>) {
+function startSlot(pump: NonNullable<typeof state.algtPreparationPump>, preparationRecovery?: PreparationRecoveryPass) {
   pump.active++;
-  void processNextDmsAiJobs({ limit: 1, workerId: pump.runtimeId, runtimeSecret: pump.runtimeSecret, preparationOnly: true })
+  void processNextDmsAiJobs({
+    limit: 1, workerId: pump.runtimeId, runtimeSecret: pump.runtimeSecret, preparationOnly: true,
+    ...(preparationRecovery && { preparationRecovery }),
+  })
     .then(result => {
       pump.active--;
       if (state.algtPreparationPump === pump && result.completed + result.failed + result.retryScheduled > 0) startSlot(pump);
@@ -25,9 +28,11 @@ export async function tickPreparationDispatcher() {
     const { runtimeId, runtimeSecret } = pump;
     const { data, error } = await createAdminClient().rpc('dms_preparation_dispatch_worker', { p_action: 'heartbeat', p_data: {runtimeId,runtimeSecret} });
     if (error || data?.success !== true || data.version !== 2) return;
+    // One recovery covers this runtime's starting slots for this tick. Claims
+    // still run independently and refill after each confirmed settlement.
+    const preparationRecovery: PreparationRecoveryPass = { runtimeId };
     while (pump.active < 3) {
-      // Requests only the explicitly admitted preparation lane. Never drains the old queue.
-      startSlot(pump);
+      startSlot(pump, preparationRecovery);
     }
   } catch { logger.warn('AI preparation service unavailable; saved requests retained'); }
   finally { pump.checking = false; }

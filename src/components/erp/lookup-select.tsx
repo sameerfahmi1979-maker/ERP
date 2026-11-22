@@ -16,6 +16,7 @@ import type { ERPComboboxOption } from "@/components/erp/combobox";
 import { Badge } from "@/components/ui/badge";
 import type { LookupChoice as LookupValue } from "@/lib/reads/lookup-contract";
 import { QueryReadBoundary } from "@/components/erp/query-read-boundary";
+import { useState } from "react";
 
 export function LookupSelect({
   categoryCode,
@@ -36,15 +37,18 @@ export function LookupSelect({
   ariaLabel,
   error,
 }: LookupSelectProps) {
+  const [open, setOpen] = useState(false);
   const {
     data: values,
     isLoading: loading,
+    isFetching,
     error: fetchError,
     refetch,
   } = useLookupValuesQuery(categoryCode, {
     parentValueCode,
     includeInactive,
     enabled: !!categoryCode,
+    choicesEnabled: open && !disabled,
     selected: value ?? null,
     valueField,
   });
@@ -133,7 +137,10 @@ export function LookupSelect({
       disabled={disabled || !!fetchError}
       readOnly={false}
       required={required}
-      loading={loading}
+      loading={loading && !open}
+      resultsPending={open && isFetching}
+      maxVisibleOptions={50}
+      onOpenChange={setOpen}
       error={error}
       allowClear={allowClear}
       emptyText="No options available"

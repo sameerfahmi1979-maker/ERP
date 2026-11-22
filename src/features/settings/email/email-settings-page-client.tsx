@@ -21,18 +21,21 @@ interface EmailSettingsPageClientProps {
   canTest?: boolean;
   canSecrets?: boolean;
   canFlags?: boolean;
-  initialError?: boolean;
+  failedPanels?: { providers: boolean; flags: boolean; logs: boolean };
   canViewProviders?: boolean;
   canViewFlags?: boolean;
   canViewLogs?: boolean;
+  activePanel?: string;
 }
 
 export function EmailSettingsPageClient({
   configs,
   featureFlags,
   sendLogs,
-  canManage = false, canTest = false, canSecrets = false, canFlags = false, initialError = false,
+  canManage = false, canTest = false, canSecrets = false, canFlags = false,
+  failedPanels = { providers: false, flags: false, logs: false },
   canViewProviders = true, canViewFlags = true, canViewLogs = true,
+  activePanel = canViewProviders ? "providers" : canViewFlags ? "flags" : "logs",
 }: EmailSettingsPageClientProps) {
   const [addOpen, setAddOpen] = useState(false);
   const router = useRouter();
@@ -70,7 +73,7 @@ export function EmailSettingsPageClient({
             <RefreshCw className={`h-4 w-4 ${isPending ? "motion-safe:animate-spin" : ""}`} />
             {isPending ? "Refreshing…" : "Refresh"}
           </Button>
-          {canManage && <Button disabled={initialError || isPending} size="sm" className="gap-1.5" onClick={() => setAddOpen(true)}>
+          {canManage && <Button disabled={failedPanels.providers || isPending} size="sm" className="gap-1.5" onClick={() => setAddOpen(true)}>
             <Plus className="h-4 w-4" />
             Add Provider
           </Button>}
@@ -81,32 +84,34 @@ export function EmailSettingsPageClient({
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="rounded-lg border border-border p-3">
-          <p className="text-2xl font-bold tabular-nums">{initialError ? "Unavailable" : canViewProviders ? configs.length : "Restricted"}</p>
+          <p className="text-2xl font-bold tabular-nums">{failedPanels.providers ? "Unavailable" : canViewProviders ? configs.length : "Restricted"}</p>
           <p className="text-xs text-muted-foreground">Providers Configured</p>
         </div>
         <div className={`rounded-lg border p-3 ${hasEnabledProvider ? "border-green-300 bg-green-50/30 dark:bg-green-950/10" : "border-border"}`}>
-          <p className="text-2xl font-bold tabular-nums">{initialError ? "Unavailable" : canViewProviders ? enabledProviders.length : "Restricted"}</p>
+          <p className="text-2xl font-bold tabular-nums">{failedPanels.providers ? "Unavailable" : canViewProviders ? enabledProviders.length : "Restricted"}</p>
           <p className="text-xs text-muted-foreground">Active / Enabled</p>
         </div>
         <div className="rounded-lg border border-border p-3">
-          <p className="text-2xl font-bold tabular-nums">{initialError ? "Unavailable" : canViewFlags ? featureFlags.filter((f) => f.isEnabled).length : "Restricted"}</p>
+          <p className="text-2xl font-bold tabular-nums">{failedPanels.flags ? "Unavailable" : canViewFlags ? featureFlags.filter((f) => f.isEnabled).length : "Restricted"}</p>
           <p className="text-xs text-muted-foreground">Feature Flags On</p>
         </div>
         <div className="rounded-lg border border-border p-3">
-          <p className="text-2xl font-bold tabular-nums">{initialError ? "Unavailable" : canViewLogs ? sendLogs.length : "Restricted"}</p>
-          <p className="text-xs text-muted-foreground">Send Log Entries</p>
+          <p className="text-2xl font-bold tabular-nums">{!canViewLogs ? "Restricted" : activePanel !== "logs" ? "Open logs" : failedPanels.logs ? "Unavailable" : sendLogs.length}</p>
+          <p className="text-xs text-muted-foreground">Recent Send Logs</p>
         </div>
       </div>
 
       {/* Security notice */}
-      {initialError && <div role="alert">Email settings could not be loaded completely. Refresh before making changes.</div>}
       <EmailSecurityNotice />
 
       {/* Not ready notice if no enabled provider */}
-      {!initialError && canViewProviders && !readyDefault && <EmailProviderNotReadyNotice message={readiness} />}
+      {!failedPanels.providers && canViewProviders && !readyDefault && <EmailProviderNotReadyNotice message={readiness} />}
 
       {/* Main tabs */}
-      <Tabs defaultValue={canViewProviders ? "providers" : canViewFlags ? "flags" : "logs"}>
+      <Tabs value={activePanel} onValueChange={panel => {
+        if (typeof panel !== "string" || panel === activePanel) return;
+        startTransition(() => router.replace(`/admin/settings/email?panel=${encodeURIComponent(panel)}`, { scroll: false }));
+      }}>
         <TabsList className="h-auto flex flex-wrap justify-start">
           {canViewProviders && <TabsTrigger value="providers" className="gap-1.5">
             <Mail className="h-3.5 w-3.5" />Providers
@@ -123,14 +128,16 @@ export function EmailSettingsPageClient({
         </TabsList>
 
         {canViewProviders && <TabsContent value="providers" className="mt-4">
-          <EmailProviderConfigList
-            configs={configs}
-            canManage={canManage && !initialError && !isPending}
-            canTest={canTest && !initialError && !isPending}
-            canSecrets={canSecrets && !initialError && !isPending}
-            onRefresh={handleRefresh}
-            onAdd={() => setAddOpen(true)}
-          />
+          {failedPanels.providers
+            ? <OperationStatus state="failed" retry={isPending ? undefined : handleRefresh}>Email providers could not be loaded.</OperationStatus>
+            : <EmailProviderConfigList
+                configs={configs}
+                canManage={canManage && !isPending}
+                canTest={canTest && !isPending}
+                canSecrets={canSecrets && !isPending}
+                onRefresh={handleRefresh}
+                onAdd={() => setAddOpen(true)}
+              />}
         </TabsContent>}
 
         {canViewFlags && <TabsContent value="flags" className="mt-4">
@@ -140,12 +147,16 @@ export function EmailSettingsPageClient({
               Control which ERP modules can send emails. All flags are disabled by default.
               Flags marked &quot;Requires approval&quot; prompt confirmation before enabling.
             </p>
-            <EmailFeatureFlagsPanel flags={featureFlags} onRefresh={handleRefresh} canManage={canFlags && !initialError && !isPending} />
+            {failedPanels.flags
+              ? <OperationStatus state="failed" retry={isPending ? undefined : handleRefresh}>Email feature flags could not be loaded.</OperationStatus>
+              : <EmailFeatureFlagsPanel flags={featureFlags} onRefresh={handleRefresh} canManage={canFlags && !isPending} />}
           </div>
         </TabsContent>}
 
         {canViewLogs && <TabsContent value="logs" className="mt-4">
-          <EmailSendLogTable logs={sendLogs} />
+          {failedPanels.logs
+            ? <OperationStatus state="failed" retry={isPending ? undefined : handleRefresh}>Email send logs could not be loaded.</OperationStatus>
+            : <EmailSendLogTable logs={sendLogs} />}
         </TabsContent>}
 
         <TabsContent value="guide" className="mt-4">
@@ -153,7 +164,7 @@ export function EmailSettingsPageClient({
         </TabsContent>
       </Tabs>
 
-      {addOpen && (
+      {addOpen && !failedPanels.providers && (
         <EmailProviderFormDialog
           open
           mode="add"

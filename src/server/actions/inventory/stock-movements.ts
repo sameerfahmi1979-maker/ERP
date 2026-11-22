@@ -1,6 +1,7 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import type { OperationsCommandResult } from "@/lib/operations/command-result";
+import { refreshOperationsPaths } from "@/server/operations/revalidate-command-paths";
 import { z } from "zod";
 import { canUseApplication, getAuthContext } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
@@ -60,29 +61,33 @@ export async function readFuelAsset(asset: number) {
   return read("t11_fuel_workspace", { p_asset: asset }, fuelWorkspace);
 }
 
-export async function saveSupplyAction(request: unknown) {
+export async function saveSupplyAction(request: unknown): Promise<OperationsCommandResult<z.infer<typeof supplyActionReceipt>>> {
   const validity = supplyRequest.safeParse(request);
-  if (!validity.success) return { ok: false as const, error: "Check the fields before saving." };
+  if (!validity.success) return { ok: false, uncertain: false, error: "Check the fields before saving." };
+  let dispatched = false;
   try {
-    if (!canUseApplication(await getAuthContext())) return { ok: false as const, error: "Sign in again to continue." };
+    if (!canUseApplication(await getAuthContext())) return { ok: false, uncertain: false, error: "Sign in again to continue." };
     const { nonce, parent, family, action, data } = validity.data;
     const args = { p_operation: nonce, p_action: action, p_data: data,
       ...(family === "fuel" ? { p_asset: parent } : { p_branch: parent }) };
-    const { data: raw, error } = await (await createClient()).rpc(command[family], args);
+    const client = await createClient();
+    dispatched = true;
+    const { data: raw, error } = await client.rpc(command[family], args);
     if (error) {
       logger.warn("Supply action failed", { family, action, code: error.code });
       const expected = ["42501", "PT409", "P0409", "22023"].includes(error.code);
       const validation = ["23505", "23514", "23502", "22P02", "22003", "22007", "22008"].includes(error.code);
-      return { ok: false as const, error: expected ? error.message :
+      return { ok: false, uncertain: !expected && !validation, error: expected ? error.message :
         validation ? "Check for invalid fields or an existing reference." : "The save could not be confirmed. Retry with the same details." };
     }
     const result = supplyActionReceipt.safeParse(raw);
-    if (!result.success) return { ok: false as const, error: "The save could not be confirmed. Retry with the same details." };
-    revalidatePath("/modules/inventory");
-    revalidatePath("/modules/procurement");
-    revalidatePath("/modules/fleet/fuel");
-    return { ok: true as const, receipt: result.data };
+    if (!result.success) return { ok: false, uncertain: true, error: "The save could not be confirmed. Retry with the same details." };
+    const job = fleetId.safeParse(data.job);
+    const refresh = refreshOperationsPaths({
+      kind: "supply", ...(family === "stock" || family === "purchase" ? { job: job.data ?? null } : {}),
+    });
+    return { ok: true, receipt: result.data, ...refresh };
   } catch {
-    return { ok: false as const, error: "The save could not be confirmed. Retry with the same details." };
+    return { ok: false, uncertain: dispatched, error: dispatched ? "The save could not be confirmed. Retry with the same details." : "The save could not start. Try again." };
   }
 }

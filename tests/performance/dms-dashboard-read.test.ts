@@ -26,7 +26,7 @@ vi.mock("@/lib/supabase/server",()=>({createClient:async()=>{s.clients++;const f
     if(s.short===table)rows=rows.slice(0,Math.max(0,rows.length-1));if(s.duplicates===table&&rows.length>1)rows[1]=rows[0];
     const result={data:c.head?null:rows,error:s.fault===table?{code:"XX001",message:"SYNTHETIC_PRIVATE"}:null,count:s.nullCount===table?null:count};s.afterRead?.(c);return result;
   }).finally(()=>{s.active--;}).then(resolve,reject);};return q;
-}});return{from,rpc:(name:string,args:unknown,opts:{head?:boolean})=>{if(name!=="perf_read_renewal_list")throw Error("Unexpected RPC");expect(args).toEqual({include_completed:true});return{select:(fields:string)=>from("dms_renewal_requests").select(fields,opts)};}};}}));
+}});return{from,rpc:()=>{throw Error("Dashboard RPC is unavailable in the migrated schema");}};}}));
 vi.mock("@/lib/supabase/admin",()=>({createAdminClient:()=>{throw Error("Admin reads forbidden");}}));
 import {getDmsDashboardStats} from "@/server/actions/dms/dashboard";
 import {readDmsDashboard,DMS_DASHBOARD_AGGREGATE_LIMIT,DMS_DASHBOARD_TIMEOUT_MS} from "@/server/reads/dms-dashboard";
@@ -54,7 +54,35 @@ it("original SQL not-equal discarded semantics exclude null intake statuses",asy
 it("AI stages retain overlapping archive-inclusive predicates without fabricated remainder",async()=>{s.rows.dms_documents=[doc(1,{status:"archived",ocr_status:"complete",ai_status:"complete",review_status:"pending"}),doc(2,{ocr_status:"skipped",ai_status:"not_applicable"}),doc(3,{ocr_status:"queued"})];const r=(await readDmsDashboard()).data!;expect(r.total_documents).toEqual({status:"ready",value:2});expect(r.ai_pipeline).toEqual({status:"ready",items:[{status:"ocr_pending",label:"OCR Pending",count:1},{status:"ocr_done",label:"OCR Done / AI Pending",count:1},{status:"ai_complete",label:"AI Complete",count:1},{status:"pending_review",label:"Pending Review",count:1}]});expect(JSON.stringify(r.ai_pipeline)).not.toContain("not_processed");});
 it("expiry boundary bins preserve today, inclusivity and non-superseded archive rules",async()=>{const offsets=[-1,0,7,8,14,15,30,31,60,61,90,91];s.rows.dms_documents=offsets.map((n,i)=>doc(i+1,{status:n===7?"archived":"active",expiry_date:new Date(Date.now()+n*86400000).toISOString().slice(0,10)}));s.rows.dms_documents.push(doc(99,{status:"superseded"}),doc(100,{expiry_date:null}));const r=(await readDmsDashboard()).data!;expect(r.expiry_buckets).toMatchObject({status:"ready",items:[{count:2},{count:2},{count:2},{count:2},{count:2}]});expect(r.expiring_30_days).toEqual({status:"ready",value:6});});
 it("same-label categories still combine, with stable top-eight ties",async()=>{s.rows.dms_documents=[doc(1,{category_id:1,category:{name_en:"Same"}}),doc(2,{category_id:2,category:{name_en:"Same"}}),...Array.from({length:10},(_,i)=>doc(i+3,{category_id:i+3,category:{name_en:`C${String(i).padStart(2,"0")}`}}))];expect((await readDmsDashboard()).data?.documents_by_category).toMatchObject({status:"ready",items:[{name:"Same",count:2},...Array.from({length:7},(_,i)=>({name:`C0${i}`,count:1}))]});});
-it("renewals use existing protected invoker projection and exact original status set",async()=>{s.rows.dms_renewal_requests=Array.from({length:7},(_,i)=>({id:i+1,renewal_no:`R-${i}`,status:i===6?"completed":"requested",priority:"normal",created_at:"2026-01-01",document:{title:`Renew ${i}`},assignee:i===5?null:{full_name:"Synthetic assignee"}}));const r=(await readDmsDashboard()).data!;expect(r.renewal_items).toMatchObject({status:"ready",totalCount:6,limited:true,items:[{id:6,assigned_to_name:null},{id:5},{id:4},{id:3},{id:2}]});const q=s.calls.find(c=>c.table==="dms_renewal_requests")!;expect(q.fields).toBe("id,created_at,renewal_no,status,priority,document,assignee");expect(q.methods).toContainEqual(["in","status",["draft","requested","in_progress","waiting_for_document"]]);expect(q.methods).toContainEqual(["order","id",{ascending:false}]);});
+it("renewals use the existing scoped relation, then hydrate only the exact ordered page",async()=>{
+  s.rows.dms_documents=[doc(1),doc(2),doc(3),doc(4),doc(5)];
+  s.rows.user_profiles=[{id:1,full_name:"Synthetic assignee"}];
+  s.rows.dms_renewal_requests=Array.from({length:8},(_,i)=>({
+    id:i+1,document_id:i+1,renewal_no:i===5?null:`R-${i}`,status:i===6?"renewed":"requested",
+    priority:"normal",created_at:"2026-01-01",deleted_at:i===7?"2026-01-02":null,assigned_to:i===5?29:1,
+  }));
+  const r=(await readDmsDashboard()).data!;
+  expect(r.renewal_items).toMatchObject({status:"ready",totalCount:6,limited:true,items:[
+    {id:6,renewal_no:"",document_title:"—",assigned_to_name:null},
+    {id:5,document_title:"Synthetic 5",assigned_to_name:"Synthetic assignee"},{id:4},{id:3},{id:2},
+  ]});
+  expect(s.calls.find(c=>c.table==="dms_renewal_requests")?.methods).toEqual([
+    ["is","deleted_at",null],["in","status",["draft","requested","in_progress","waiting_for_document"]],
+    ["order","created_at",{ascending:false}],["order","id",{ascending:false}],["range",0,4],
+  ]);
+  expect(s.calls.find(c=>c.table==="dms_documents"&&c.fields==="id,title")?.methods).toContainEqual(["in","id",[6,5,4,3,2]]);
+  expect(s.calls.find(c=>c.table==="user_profiles")?.methods).toContainEqual(["in","id",[29,1]]);
+});
+it("a failed assignee lookup leaves the renewal panel failed and other panels available",async()=>{
+  s.rows.dms_renewal_requests=[{id:1,document_id:1,renewal_no:"R-1",status:"draft",priority:"normal",created_at:"2026-01-01",deleted_at:null,assigned_to:7}];
+  s.fault="user_profiles";
+  const response=await post({});
+  expect(response.status).toBe(200);
+  const result=await response.json();
+  expect(result.data.renewal_items).toEqual({status:"failed"});
+  expect(result.data.total_documents).toEqual({status:"ready",value:1});
+  expect(JSON.stringify(result)).not.toContain("SYNTHETIC_PRIVATE");
+});
 it("missing queue and renewal capability is restricted without reading those sources",async()=>{s.auth={...s.auth!,permissionCodes:["dms.documents.view"]};const r=(await readDmsDashboard()).data!;expect(r.review_queue_pending).toEqual({status:"restricted"});expect(r.renewal_items).toEqual({status:"restricted"});expect(s.calls.some(c=>["dms_review_queue","dms_renewal_requests"].includes(c.table))).toBe(false);expect(r.total_documents).toEqual({status:"ready",value:1});});
 it.each(["dms.review_queue.view","dms.review_queue.manage","dms.documents.review_ai"])("existing %s queue admission still uses ordinary protected rows",async(permission)=>{s.auth={...s.auth!,permissionCodes:["dms.documents.view",permission]};s.rows.dms_review_queue=[{id:1,status:"open",deleted_at:null},{id:2,status:"resolved",deleted_at:null}];expect((await readDmsDashboard()).data?.review_queue_pending).toEqual({status:"ready",value:1});});
 it.each(["inactive","no-profile","password-change","no-permission"])("%s caller never reaches data transport",async(mode)=>{s.auth={...s.auth!,...(mode==="inactive"?{isAccountActive:false}:mode==="no-profile"?{profile:null}:mode==="password-change"?{profile:{...s.auth!.profile!,must_change_password:true}}:{permissionCodes:[]})};expect(await readDmsDashboard()).toEqual({success:false,error:"Permission denied"});expect(s.clients).toBe(0);});

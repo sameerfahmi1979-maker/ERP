@@ -148,8 +148,8 @@ function metadata(raw: unknown, member: Member) {
   return parsed.data;
 }
 
-// Never await the SDK's Blob builder: the stream is counted before hashing and
-// no file body is accumulated. Cleanup never waits on an unresponsive source.
+// Count the stream before collecting bytes. Only structural verification holds
+// the body, and that verifier hashes the exact same bytes it parses.
 async function hashObject(storage: Storage, member: Member, deadline: Deadline,parse=false): Promise<void> {
   const controller = new AbortController();
   const end = Date.now() + 30_000;
@@ -169,7 +169,7 @@ async function hashObject(storage: Storage, member: Member, deadline: Deadline,p
     if (result.data instanceof ReadableStream) stream = result.data;
     if (result.error || !stream) throw new Error("object stream");
     reader = stream.getReader();
-    const hash = createHash("sha256");
+    const hash = parse ? null : createHash("sha256");
     const parts:Uint8Array<ArrayBuffer>[]=[];
     let count = 0;
     for (;;) {
@@ -178,10 +178,10 @@ async function hashObject(storage: Storage, member: Member, deadline: Deadline,p
       if (!(chunk.value instanceof Uint8Array)) throw new Error("object chunk");
       count += chunk.value.byteLength;
       if (count > member.size || count > BATCH_MAX_BYTES) throw new Error("object overflow");
-      hash.update(chunk.value);
+      hash?.update(chunk.value);
       if(parse)parts.push(Uint8Array.from(chunk.value));
     }
-    if (count !== member.size || hash.digest("hex") !== member.sha256) throw new Error("object digest");
+    if (count !== member.size || (hash && hash.digest("hex") !== member.sha256)) throw new Error("object digest");
     if(parse)await verifyDmsBlob(new Blob(parts),{name:member.name,mime:member.mime,size:member.size,sha256:member.sha256});
   } finally {
     controller.abort();

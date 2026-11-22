@@ -22,10 +22,10 @@ import {FluentProvider,webLightTheme} from '@fluentui/react-components';
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {WorkspaceUiMemoryProvider} from '@/hooks/use-persistent-ui-state';
 import {HrMohreEstablishmentsPage} from '@/features/hr/settings/hr-mohre-establishments-page';
-const m=vi.hoisted(()=>({create:vi.fn(),update:vi.fn(),refresh:vi.fn(),success:vi.fn(),lookupError:null as string|null}));
+const m=vi.hoisted(()=>({create:vi.fn(),update:vi.fn(),refresh:vi.fn(),success:vi.fn(),companies:vi.fn(),emirates:vi.fn(),lookupError:null as string|null}));
 vi.mock('next/navigation',()=>({usePathname:()=>'/admin/hr/settings/mohre-establishments',useRouter:()=>({refresh:m.refresh})}));
-vi.mock('@/hooks/lookups/use-org-queries',()=>({useOwnerCompaniesQuery:()=>({options:[{value:1,label:'Synthetic company',raw:{legal_name_en:'Synthetic company'}}],error:m.lookupError,refetch:vi.fn()})}));
-vi.mock('@/hooks/lookups/use-geography-queries',()=>({useEmiratesQuery:()=>({options:[]})}));
+vi.mock('@/hooks/lookups/use-org-queries',()=>({useOwnerCompaniesQuery:(options:unknown)=>{m.companies(options);return {options:[{value:1,label:'Synthetic company',raw:{legal_name_en:'Synthetic company'}}],error:m.lookupError,refetch:vi.fn()};}}));
+vi.mock('@/hooks/lookups/use-geography-queries',()=>({useEmiratesQuery:(options:unknown)=>{m.emirates(options);return {options:[],error:m.lookupError,refetch:vi.fn()};}}));
 vi.mock('@/components/erp/export/erp-export-menu',()=>({ERPExportMenu:()=>null}));
 vi.mock('sonner',()=>({toast:{success:m.success,error:vi.fn()}}));
 const row={id:24,workspace_revision:3,owner_company_id:1,establishment_number:'F06_MOHRE',establishment_name:'Original establishment',emirate_id:null,status:'inactive',notes:'Retained notes',created_at:'2026-01-01',updated_at:'2026-01-01',deleted_at:null,owner_company:{id:1,legal_name_en:'Synthetic company'}};
@@ -67,3 +67,16 @@ it('confirmed MOHRE refresh survives a notification failure',async()=>{m.success
 it('disposed pending MOHRE suppresses completion effects',async()=>{let resolve!:(v:unknown)=>void;m.update.mockImplementation(()=>new Promise(r=>{resolve=r;}));const v=view();edit();fireEvent.click(screen.getByRole('button',{name:'Save'}));v.unmount();await act(async()=>resolve({success:true,data:{id:24,entity:'hr_mohre_establishments',revision:'4',changed:true,replayed:false}}));expect(m.success).not.toHaveBeenCalled();expect(m.refresh).not.toHaveBeenCalled();});
 it('MOHRE create retains normalized full payload and null revision through known retry',async()=>{recovery.rpc.mockReset().mockResolvedValueOnce({error:{code:'08007'}}).mockResolvedValueOnce({error:{code:'40P01'}}).mockResolvedValueOnce({data:{id:25,entity:'hr_mohre_establishments',revision:'1',changed:true,replayed:true}});m.create.mockImplementation((data,contract)=>saveHrLookup('hr_mohre_establishments',null,data,contract));view();fireEvent.click(screen.getByRole('button',{name:'Add Establishment'}));fireEvent.click(screen.getByRole('combobox',{name:'Company'}));fireEvent.click(await screen.findByRole('option',{name:/Synthetic company/}));fireEvent.change(screen.getByLabelText('MOHRE Establishment Number'),{target:{value:'F06_NEW'}});fireEvent.click(screen.getByRole('button',{name:'Add'}));await screen.findByRole('button',{name:'Retry same save'});const first=recovery.rpc.mock.calls[0];for(const count of [2,3]){fireEvent.click(screen.getByRole('button',{name:'Retry same save'}));await waitFor(()=>expect(recovery.rpc).toHaveBeenCalledTimes(count));if(count===2)await waitFor(()=>expect(screen.getByRole('button',{name:'Retry same save'}).matches(':disabled')).toBe(false));}await waitFor(()=>expect(m.success).toHaveBeenCalledOnce());expect(recovery.rpc.mock.calls).toEqual([first,first,first]);expect(first[1]).toMatchObject({p_id:null,p_revision:null,p_data:{owner_company_id:1,establishment_name:'Synthetic company',establishment_number:'F06_NEW',status:'active',emirate_id:null,notes:null}});});
 it('first-known MOHRE rejection releases identity for correction',async()=>{m.update.mockResolvedValueOnce({success:false,error:'The change was rejected.'});view();edit();fireEvent.click(screen.getByRole('button',{name:'Save'}));await screen.findByText('The change was rejected.');const first=m.update.mock.calls[0][2];fireEvent.change(screen.getByLabelText('Notes'),{target:{value:'Correction'}});fireEvent.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(m.update).toHaveBeenCalledTimes(2));expect(m.update.mock.calls[1][2].operationId).not.toBe(first.operationId);});
+
+it('opens reference reads only where the current editor needs them',()=>{
+ view();
+ expect(m.companies).toHaveBeenLastCalledWith({enabled:false});
+ expect(m.emirates).toHaveBeenLastCalledWith({enabled:false});
+ edit();
+ expect(m.companies).toHaveBeenLastCalledWith({enabled:false});
+ expect(m.emirates).toHaveBeenLastCalledWith({enabled:true});
+ fireEvent.click(screen.getByRole('button',{name:'Cancel'}));
+ fireEvent.click(screen.getByRole('button',{name:'Add Establishment'}));
+ expect(m.companies).toHaveBeenLastCalledWith({enabled:true});
+ expect(m.emirates).toHaveBeenLastCalledWith({enabled:true});
+});

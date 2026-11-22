@@ -35,7 +35,12 @@ export async function createAssistantHistoryBinding(ctx: AuthContext, sessionId:
 }
 
 /** Legacy/unbound content is retained, but never treated as authorized history. */
-export function createAssistantHistoryVerifier(ctx: AuthContext, sessionId: number) {
+export function createAssistantHistoryVerifier(
+  ctx: AuthContext,
+  sessionId: number,
+  db?: Awaited<ReturnType<typeof createClient>>,
+) {
+  const readRequest = db ? { context: ctx, db } : undefined;
   const cache = new Map<string, ReturnType<typeof readAuthorizedAssistantEntity>>();
   let checked = 0;
   return async (raw: unknown) => {
@@ -48,7 +53,8 @@ export function createAssistantHistoryVerifier(ctx: AuthContext, sessionId: numb
       let lookup = cache.get(key);
       if (!lookup) {
         if (++checked > 50) return false;
-        lookup = readAuthorizedAssistantEntity(source.reference.entityType, source.reference.entityId); cache.set(key, lookup);
+        lookup = readAuthorizedAssistantEntity(source.reference.entityType, source.reference.entityId, readRequest);
+        cache.set(key, lookup);
       }
       const row = await lookup;
       if (!row || row.version !== source.sourceVersion) return false;

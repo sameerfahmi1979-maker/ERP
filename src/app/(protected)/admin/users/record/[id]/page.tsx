@@ -1,3 +1,4 @@
+import { LoadError } from "@/components/erp/load-error";
 import { notFound } from "next/navigation";
 import { getAuthContext, hasPermission, canManageUsers } from "@/lib/rbac/check";
 import { getUserById } from "@/server/queries/users";
@@ -28,16 +29,20 @@ export default async function UserRecordPage({ params, searchParams }: Props) {
   const userId = parseInt(id, 10);
   if (isNaN(userId)) notFound();
 
-  const [user, { companies, branches }, roles] = await Promise.all([
-    getUserById(userId),
-    listUserScopeOptions(),
-    listRoles(),
-  ]);
-
-  if (!user) notFound();
-
   const canManage = canManageUsers(authContext);
   const mode = modeParam === "edit" && canManage ? "edit" : "view";
+  const retryHref = `/admin/users/record/${userId}${mode === "edit" ? "?mode=edit" : ""}`;
+  const [user, scopeOptions, roles] = await Promise.all([
+    getUserById(userId).catch(() => undefined),
+    listUserScopeOptions().catch(() => null),
+    listRoles().catch(() => null),
+  ]);
+
+  if (user === undefined) return <LoadError title="User profile and role assignments" retryHref={retryHref} />;
+  if (!user) notFound();
+  if (!scopeOptions || !roles) return <LoadError title="User role and scope choices" retryHref={retryHref} />;
+
+  const { companies, branches } = scopeOptions;
 
   return (
     <UserWorkspaceForm

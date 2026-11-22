@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import "../remediation/f05/setup";
 import {afterEach,beforeEach,expect,it,vi} from "vitest";
-import {cleanup,fireEvent,render,screen,waitFor} from "@testing-library/react";
+import {act,cleanup,fireEvent,render,screen,waitFor,within} from "@testing-library/react";
 import {ReadCacheBoundary} from "@/components/layout/read-cache-boundary";
-import {WorkspaceUiMemoryProvider} from "@/hooks/use-persistent-ui-state";
+import {usePersistentUiState,WorkspaceUiMemoryProvider} from "@/hooks/use-persistent-ui-state";
 import { worklistColumnStorageKey } from "@/lib/ui/worklist-column-ids";
 import type {AuthContext} from "@/lib/rbac/check";
 const state=vi.hoisted(()=>({refresh:vi.fn(),event:undefined as (()=>void)|undefined}));
@@ -18,6 +18,7 @@ vi.mock("@/server/actions/dms/ai-search",()=>({aiSearchDmsDocuments:vi.fn()}));
 vi.mock("@/server/actions/dms/semantic-search",()=>({semanticSearchDmsDocuments:vi.fn()}));
 import {EmployeesTable} from "@/features/hr/employees/employees-table";
 import {DmsDocumentsTable} from "@/features/dms/documents/dms-documents-table";
+import type {DmsDocumentRow} from "@/server/actions/dms/documents";
 const identity={authUserId:"integration-synthetic-p03",scopeVersion:"integration-p03-v1"};
 const auth={profile:{id:1,auth_user_id:identity.authUserId,must_change_password:false},isAccountActive:true,roleCodes:[],roleAssignments:[],permissionCodes:[],globalPermissionCodes:[]} as unknown as AuthContext;
 const fetcher=vi.fn();
@@ -47,17 +48,87 @@ it("employee page denial never claims an empty successful result or invites firs
 });
 it("actual DMS component reuses SSR, refreshes just the read and never full-route refreshes",async()=>{
  fetcher.mockResolvedValue(Response.json({success:true,data:{rows:[],totalCount:0,page:1,pageSize:25}}));
- show(<DmsDocumentsTable initialSeed={{identity,params:{page:1,pageSize:25,sortKey:"created_at",sortDir:"desc",filters:{excludeArchived:true}},data:{rows:[],totalCount:0,page:1,pageSize:25},updatedAt:Date.now()}} initialDocuments={[]} initialTotal={0} initialUpdatedAt={Date.now()} categories={[]} documentTypes={[]}/>);
+ show(<DmsDocumentsTable initialSeed={{identity,params:{page:1,pageSize:25,sortKey:"created_at",sortDir:"desc",filters:{excludeArchived:true}},data:{rows:[],totalCount:0,page:1,pageSize:25},updatedAt:Date.now()}} initialDocuments={[]} initialTotal={0} initialUpdatedAt={Date.now()}/>);
  expect(fetcher).not.toHaveBeenCalled();fireEvent.click(screen.getByRole("button",{name:"Refresh documents"}));
  await waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());expect(state.refresh).not.toHaveBeenCalled();
  await waitFor(()=>expect(screen.getByRole("region",{name:"Scrollable documents"}).getAttribute("aria-busy")).toBe("false"));
 });
 it("DMS criteria change fetches server results with current search and the bounded page",async()=>{
  fetcher.mockResolvedValue(Response.json({success:true,data:{rows:[],totalCount:0,page:1,pageSize:25}}));
- show(<DmsDocumentsTable initialSeed={{identity,params:{page:1,pageSize:25,sortKey:"created_at",sortDir:"desc",filters:{excludeArchived:true}},data:{rows:[],totalCount:0,page:1,pageSize:25},updatedAt:Date.now()}} initialDocuments={[]} initialTotal={0} initialUpdatedAt={Date.now()} categories={[]} documentTypes={[]}/>);
+ show(<DmsDocumentsTable initialSeed={{identity,params:{page:1,pageSize:25,sortKey:"created_at",sortDir:"desc",filters:{excludeArchived:true}},data:{rows:[],totalCount:0,page:1,pageSize:25},updatedAt:Date.now()}} initialDocuments={[]} initialTotal={0} initialUpdatedAt={Date.now()}/>);
  fireEvent.change(screen.getByRole("textbox",{name:"Search documents"}),{target:{value:"مستند"}});
  await waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());
  const params=JSON.parse(fetcher.mock.calls[0][1].body);expect(params.pageSize).toBe(25);expect(params.filters.search).toBe("مستند");
+});
+
+it("All Documents loads taxonomy only when filters open and retries it without retiring the counted list", async () => {
+ const record={id:1,document_no:"SYN-1",title:"Permitted document",status:"active"} as DmsDocumentRow;
+ const data={rows:[record],totalCount:1,page:1,pageSize:25};
+ fetcher.mockResolvedValueOnce(Response.json({success:false},{status:403}));
+ fetcher.mockResolvedValueOnce(Response.json({success:true,data:{categories:[],documentTypes:[{id:4,name_en:"Policy"}]}}));
+ show(<DmsDocumentsTable initialSeed={{identity,params:{page:1,pageSize:25,sortKey:"created_at",sortDir:"desc",filters:{excludeArchived:true}},data,updatedAt:Date.now()}}
+  initialDocuments={[record]} initialTotal={1} initialUpdatedAt={Date.now()}/>);
+ expect(screen.getByText("Permitted document")).toBeTruthy();
+ expect(screen.getByText(/1 permitted document;/)).toBeTruthy();
+ expect(fetcher).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole("button",{name:"Edit filters"}));
+ await screen.findByText("Document types and categories could not be loaded.");
+ expect(fetcher).toHaveBeenCalledTimes(1);
+ expect(fetcher.mock.calls[0][0]).toBe("/api/reads/dms-list-choices");
+ expect(fetcher.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+ expect(screen.getByText("Permitted document")).toBeTruthy();
+ expect(screen.getByText(/1 permitted document;/)).toBeTruthy();
+ fireEvent.click(screen.getByRole("button",{name:"Retry filter choices"}));
+ await screen.findByRole("option",{name:"Policy"});
+ expect(fetcher).toHaveBeenCalledTimes(2);
+ fireEvent.click(screen.getByRole("button",{name:"Cancel"}));
+ expect(screen.getByText("Permitted document")).toBeTruthy();
+});
+
+it("retained type and category labels use the admitted counted rows without opening filters", () => {
+ const record={id:2,document_no:"SYN-2",title:"Retained document",status:"active",document_type_id:4,category_id:8,
+  document_type:{name_en:"Retired type"},category:{name_en:"Retired category"}} as DmsDocumentRow;
+ const data={rows:[record],totalCount:1,page:1,pageSize:25};
+ function RestoredTable() {
+  usePersistentUiState("dms-documents:type",4);
+  usePersistentUiState("dms-documents:category",8);
+  return <DmsDocumentsTable initialSeed={{identity,params:{page:1,pageSize:25,sortKey:"created_at",sortDir:"desc",
+   filters:{excludeArchived:true,document_type_id:4,category_id:8}},data,updatedAt:Date.now()}}
+   initialDocuments={[record]} initialTotal={1} initialUpdatedAt={Date.now()}/>;
+ }
+ show(<RestoredTable/>);
+ expect(screen.getByRole("button",{name:"Remove Type filter"}).textContent).toContain("Retired type");
+ expect(screen.getByRole("button",{name:"Remove Category filter"}).textContent).toContain("Retired category");
+ expect(fetcher).not.toHaveBeenCalled();
+});
+
+it("closing filters aborts the pending taxonomy read and discards a late response", async () => {
+ const data={rows:[],totalCount:0,page:1,pageSize:25};
+ const former=Promise.withResolvers<Response>(),current=Promise.withResolvers<Response>();
+ fetcher.mockReturnValueOnce(former.promise).mockReturnValueOnce(current.promise);
+ show(<DmsDocumentsTable initialSeed={{identity,params:{page:1,pageSize:25,sortKey:"created_at",sortDir:"desc",filters:{excludeArchived:true}},data,updatedAt:Date.now()}}
+  initialDocuments={[]} initialTotal={0} initialUpdatedAt={Date.now()}/>);
+ fireEvent.click(screen.getByRole("button",{name:"Edit filters"}));
+ const dialog=await screen.findByRole("dialog",{name:"Edit filters"});
+ await waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());
+ const signal=fetcher.mock.calls[0][1].signal as AbortSignal;
+ fireEvent.click(within(dialog).getByRole("button",{name:"Cancel"}));
+ expect(signal.aborted).toBe(true);
+ await waitFor(()=>expect(screen.queryByRole("dialog",{name:"Edit filters"})).toBeNull());
+
+ fireEvent.click(await screen.findByRole("button",{name:"Edit filters"}));
+ await waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(2));
+ expect(fetcher.mock.calls.map(([url])=>url)).toEqual(["/api/reads/dms-list-choices","/api/reads/dms-list-choices"]);
+ const reopenedSignal=fetcher.mock.calls[1][1].signal as AbortSignal;
+ expect(reopenedSignal).not.toBe(signal);
+ expect(reopenedSignal.aborted).toBe(false);
+
+ await act(async()=>{former.resolve(Response.json({success:true,data:{categories:[],documentTypes:[{id:2,name_en:"Late type"}]}}));});
+ expect(screen.queryByRole("option",{name:"Late type"})).toBeNull();
+ await act(async()=>{current.resolve(Response.json({success:true,data:{categories:[],documentTypes:[{id:3,name_en:"Current type"}]}}));});
+ await screen.findByRole("option",{name:"Current type"});
+ expect(screen.queryByRole("option",{name:"Late type"})).toBeNull();
+ expect(fetcher).toHaveBeenCalledTimes(2);
 });
 
 it("All Documents restores its 44px ZIP column only for permitted users", () => {
@@ -76,7 +147,7 @@ it("All Documents restores its 44px ZIP column only for permitted users", () => 
           updatedAt: Date.now(),
         }}
         initialDocuments={[]} initialTotal={0} initialUpdatedAt={Date.now()}
-        categories={[]} documentTypes={[]} canDownload={canDownload}
+        canDownload={canDownload}
       />
     </WorkspaceUiMemoryProvider>
   </ReadCacheBoundary>;

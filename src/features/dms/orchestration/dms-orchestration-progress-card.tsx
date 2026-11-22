@@ -107,19 +107,16 @@ export function DmsOrchestrationProgressCard({
   const steps = statusData?.steps ?? [];
 
   const triggerPipeline = useCallback(async () => {
-    if (isRunning || !documentId) return;
+    if (isRunning || statusFailed || !documentId) return;
 
     try {
       const result = await runPipeline();
-      invalidateDmsOrchestrationStatus(queryClient, sessionCode);
-
       if (!result.success) {
-        // Controlled error — check if it's a flag-disabled message
-        if (result.error?.includes("not enabled")) {
-          // Flag disabled — no toast, just quiet failure
-        } else {
-          toast.error("AI pipeline: " + (result.error ?? "Failed.").slice(0, 150));
-        }
+        toast.error("AI pipeline: " + (result.error ?? "Failed.").slice(0, 150));
+      } else if (result.data?.orchestrationStatus === "skipped_feature_disabled") {
+        toast.info("Full AI pipeline orchestration is disabled.");
+      } else if (result.data?.orchestrationStatus === "running" || result.data?.orchestrationStatus === "queued") {
+        toast.info("The AI pipeline is already running or queued.");
       } else if (result.data?.failedStepCount && result.data.failedStepCount > 0) {
         toast.warning(`AI pipeline: ${result.data.completedStepCount} step(s) complete, ${result.data.failedStepCount} failed. You can retry failed steps.`);
       } else {
@@ -130,11 +127,11 @@ export function DmsOrchestrationProgressCard({
     } finally {
       invalidateDmsOrchestrationStatus(queryClient, sessionCode);
     }
-  }, [isRunning, documentId, runPipeline, queryClient, sessionCode]);
+  }, [isRunning, statusFailed, documentId, runPipeline, queryClient, sessionCode]);
 
   useEffect(() => {
     if (isLoading || statusFailed || !autoTrigger || !documentId || !sessionCode || autoStarted.current === sessionCode) return;
-    if (["complete", "complete_with_warnings", "running", "queued"].includes(orchestrationStatus)) return;
+    if (["complete", "complete_with_warnings", "running", "queued", "skipped_feature_disabled"].includes(orchestrationStatus)) return;
     autoStarted.current = sessionCode;
     void triggerPipeline();
   }, [isLoading, statusFailed, autoTrigger, documentId, sessionCode, orchestrationStatus, triggerPipeline]);
@@ -159,10 +156,19 @@ export function DmsOrchestrationProgressCard({
   // If flag disabled and nothing ran
   if (orchestrationStatus === "skipped_feature_disabled") {
     return (
-      <QueryReadBoundary queries={[uiRead1]}><div className="text-xs text-muted-foreground flex items-center gap-1.5 py-1">
-        <Sparkles className="h-3 w-3" />
-        Full AI pipeline orchestration is not enabled. Standard AI Fill is available.
-      </div></QueryReadBoundary>
+      <QueryReadBoundary queries={[uiRead1]}>
+        <div className="flex flex-wrap items-center gap-1.5 py-1 text-xs text-muted-foreground">
+          <Sparkles className="h-3 w-3" />
+          <span>Full AI pipeline orchestration is not enabled. Standard AI Fill is available.</span>
+          {documentId && <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={isRunning || statusFailed}
+            onClick={() => void triggerPipeline()}
+          >Run AI pipeline if enabled</Button>}
+        </div>
+      </QueryReadBoundary>
     );
   }
 

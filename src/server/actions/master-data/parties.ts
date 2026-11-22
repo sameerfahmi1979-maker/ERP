@@ -24,8 +24,10 @@ import type {
   PaymentMethod,
 } from "@/features/master-data/parties/party-types";
 import { logger } from "@/lib/logger";
+import { partyIbanCandidate } from "@/lib/master-data/party-iban";
 import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
+import { readAllPages } from "@/server/reads/all-pages";
 import { createNumberedParty } from "@/server/numbered-party-create";
 import { savePartyRecord, changePartyState } from "@/server/party-save";
 import { partyTypeState, type PartyTypeState, type PartySaveReceipt } from "@/lib/master-data/party-save-contract";
@@ -34,6 +36,43 @@ import type { WorkspaceSaveContract } from "@/lib/workspace/save-contract";
 
 // ─── List & Fetch ────────────────────────────────────────────────────────────
 
+const partyListProjection = `
+  *,
+  party_natures!party_nature_id(name_en),
+  party_statuses!party_status_id(name_en),
+  party_types!primary_party_type_id(type_name),
+  parent_party:erp_party_parent(display_name)
+`;
+
+type PartyCatalogueRow = Party & {
+  party_natures?: { name_en?: string } | null;
+  party_statuses?: { name_en?: string } | null;
+  party_types?: { type_name?: string } | null;
+  parent_party?: { display_name?: string } | null;
+};
+
+async function readPartyCatalogue(db: Awaited<ReturnType<typeof createClient>>, typeId?: number): Promise<Party[]> {
+  const selected = typeId === undefined
+    ? partyListProjection
+    : `${partyListProjection},type_scope:party_type_assignments!inner()`;
+  const data = await readAllPages<PartyCatalogueRow>(async (from, to) => {
+    let query = db.from("parties").select(selected, { count: "exact" });
+    if (typeId !== undefined) {
+      query = query.eq("type_scope.party_type_id", typeId).eq("type_scope.is_active", true);
+    }
+    const { data, count, error } = await query.order("display_name").order("id").range(from, to);
+    return { data: data as unknown as PartyCatalogueRow[] | null, count, error };
+  }, { identity: row => row.id, maxRows: 50000 });
+
+  return attachPartyReferenceLabels("parties", data.map((row) => ({
+    ...row,
+    party_nature_name: row.party_natures?.name_en ?? null,
+    party_status_name: row.party_statuses?.name_en ?? null,
+    primary_type_name: row.party_types?.type_name ?? null,
+    parent_party_name: row.parent_party?.display_name ?? null,
+  })));
+}
+
 export async function getParties(): Promise<ActionResult<Party[]>> {
   try {
     const ctx = await getAuthContext();
@@ -41,40 +80,7 @@ export async function getParties(): Promise<ActionResult<Party[]>> {
       return { success: false, kind: 'forbidden', error: "You do not have permission to view parties" };
     }
 
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("parties")
-      .select(`
-        *,
-        party_natures!party_nature_id(name_en),
-        party_statuses!party_status_id(name_en),
-        party_types!primary_party_type_id(type_name),
-        countries!country_id(name_en),
-        emirates!emirate_id(name_en),
-        cities!city_id(name_en),
-        areas_zones!area_zone_id(name_en),
-        parent_party:erp_party_parent(display_name)
-      `)
-      .order("display_name");
-
-    if (error || !Array.isArray(data)) {
-      logger.warn("Party list read failed.", {code:error?.code});
-      return { success: false, kind: 'failed', error: "Parties could not be loaded. Try again." };
-    }
-
-    const parties = (data ?? []).map((row: Record<string, unknown>) => ({
-      ...(row as Party),
-      party_nature_name: (row.party_natures as { name_en?: string } | null)?.name_en ?? null,
-      party_status_name: (row.party_statuses as { name_en?: string } | null)?.name_en ?? null,
-      primary_type_name: (row.party_types as { type_name?: string } | null)?.type_name ?? null,
-      country_name: (row.countries as { name_en?: string } | null)?.name_en ?? null,
-      emirate_name: (row.emirates as { name_en?: string } | null)?.name_en ?? null,
-      city_name: (row.cities as { name_en?: string } | null)?.name_en ?? null,
-      area_zone_name: (row.areas_zones as { name_en?: string } | null)?.name_en ?? null,
-      parent_party_name: (row.parent_party as { display_name?: string } | null)?.display_name ?? null,
-    }));
-
-    return { success: true, data: await attachPartyReferenceLabels('parties', parties as Party[]) };
+    return { success: true, data: await readPartyCatalogue(await createClient()) };
   } catch {
     logger.warn("Party list read could not complete.");
     return { success: false, kind: 'failed', error: "Parties could not be loaded. Try again." };
@@ -564,15 +570,20 @@ export async function getPartyAuditLogs(partyId: number): Promise<ActionResult<P
 
 // ─── IBAN Duplicate Check ─────────────────────────────────────────────────────
 
-export async function checkDuplicateIban(iban: string, excludeBankDetailId?: number | null): Promise<ActionResult<{ isDuplicate: boolean; existingParties: { party_code: string; display_name: string }[] }>> {
+export async function checkDuplicateIban(iban: string, excludeBankDetailId?: number | null, enteredValue = iban): Promise<ActionResult<{ isDuplicate: boolean; existingParties: { party_code: string; display_name: string }[] }>> {
   try {
+    const canonical = partyIbanCandidate(iban);
+    if (!canonical) return { success: false, error: "Enter an IBAN with valid check digits." };
+    // Keep the previous exact-input match for historical formatted records.
+    const candidates = new Set([canonical]);
+    if (partyIbanCandidate(enteredValue) === canonical) candidates.add(enteredValue.trim());
     const supabase = await createClient();
     let query = supabase
       .from("party_bank_details")
       .select("id, party_id, parties!party_id(party_code, display_name)")
-      .eq("iban", iban.trim())
       .eq("is_active", true);
 
+    query = candidates.size === 1 ? query.eq("iban", canonical) : query.in("iban", [...candidates]);
     if (excludeBankDetailId) query = query.neq("id", excludeBankDetailId);
 
     const { data, error } = await query;
@@ -603,38 +614,7 @@ export async function getPartiesByTypeCode(typeCode: string): Promise<ActionResu
     if (typeError) return {success:false,kind:'failed',error:'The party type could not be loaded. Try again.'};
     if (!typeRow) return {success:false,kind:'not_found',error:'This party type is not configured or available.'};
 
-    const { data: assignments, error: assignmentError } = await supabase
-      .from("party_type_assignments")
-      .select("party_id")
-      .eq("party_type_id", typeRow.id)
-      .eq("is_active", true);
-
-    if (assignmentError || !Array.isArray(assignments)) return {success:false,kind:'failed',error:'Party assignments could not be loaded. Try again.'};
-
-    const partyIds = (assignments ?? []).map((a: { party_id: number }) => a.party_id);
-    if (partyIds.length === 0) return { success: true, data: [] };
-
-    const { data, error } = await supabase
-      .from("parties")
-      .select(`*, party_natures!party_nature_id(name_en), party_statuses!party_status_id(name_en), party_types!primary_party_type_id(type_name), countries!country_id(name_en), emirates!emirate_id(name_en), cities!city_id(name_en), areas_zones!area_zone_id(name_en), parent_party:erp_party_parent(display_name)`)
-      .in("id", partyIds)
-      .order("display_name");
-
-    if (error || !Array.isArray(data)) return {success:false,kind:'failed',error:'Parties could not be loaded. Try again.'};
-
-    const parties = (data ?? []).map((row: Record<string, unknown>) => ({
-      ...(row as Party),
-      party_nature_name: (row.party_natures as { name_en?: string } | null)?.name_en ?? null,
-      party_status_name: (row.party_statuses as { name_en?: string } | null)?.name_en ?? null,
-      primary_type_name: (row.party_types as { type_name?: string } | null)?.type_name ?? null,
-      country_name: (row.countries as { name_en?: string } | null)?.name_en ?? null,
-      emirate_name: (row.emirates as { name_en?: string } | null)?.name_en ?? null,
-      city_name: (row.cities as { name_en?: string } | null)?.name_en ?? null,
-      area_zone_name: (row.areas_zones as { name_en?: string } | null)?.name_en ?? null,
-      parent_party_name: (row.parent_party as { display_name?: string } | null)?.display_name ?? null,
-    }));
-
-    return { success: true, data: await attachPartyReferenceLabels('parties', parties as Party[]) };
+    return { success: true, data: await readPartyCatalogue(supabase, typeRow.id) };
   } catch {
     return { success: false, kind:'failed', error: 'Parties could not be loaded. Try again.' };
   }

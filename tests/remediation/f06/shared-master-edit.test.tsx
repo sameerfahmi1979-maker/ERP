@@ -14,7 +14,13 @@ const mock = vi.hoisted(() => ({ save: vi.fn(), onSave: undefined as ERPRecordWo
 vi.mock("@/hooks/use-workspace-form-navigation", () => ({ useWorkspaceFormNavigation: () => ({ markDirty: vi.fn() }) }));
 vi.mock("@/hooks/use-workspace-form-section", () => ({ useWorkspaceFormSection: () => ["basic", vi.fn()] }));
 vi.mock("@/hooks/use-workspace-form-dirty", () => ({ useWorkspaceFormDirty: () => ({ isDirty: false, resetDirty: vi.fn() }) }));
-vi.mock("@/hooks/use-workspace-form-draft", () => ({ useWorkspaceFormDraft: () => ({ getDraftDefault: (_: string, value: unknown) => value, clearDraft: vi.fn() }) }));
+vi.mock("@/hooks/use-workspace-form-draft", () => ({
+  useWorkspaceFormDraft: () => ({
+    getDraftDefault: (_: string, value: unknown) => value,
+    getDraftBoolean: (_: string, value: boolean) => value,
+    clearDraft: vi.fn(),
+  }),
+}));
 vi.mock("@/server/actions/common-master-data/designations", () => ({ createDesignation: mock.save, updateDesignation: mock.save }));
 vi.mock("@/server/actions/common-master-data/approval-roles", () => ({ createApprovalRole: mock.save, updateApprovalRole: mock.save }));
 vi.mock("@/server/actions/common-master-data/dms-required-document-rules", () => ({ createDmsRequiredDocumentRule: mock.save, updateDmsRequiredDocumentRule: mock.save }));

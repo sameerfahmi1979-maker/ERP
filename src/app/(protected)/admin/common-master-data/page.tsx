@@ -3,36 +3,34 @@ import { ERPPageHeader } from "@/components/erp/page-header";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import Link from "next/link";
 import { Building2, Briefcase, MapPin, Calendar, ShieldCheck, FileCheck } from "lucide-react";
-import { listDepartments } from "@/server/actions/common-master-data/departments";
-import { listDesignations } from "@/server/actions/common-master-data/designations";
-import { listWorkSites } from "@/server/actions/common-master-data/work-sites";
-import { listWorkCalendars } from "@/server/actions/common-master-data/work-calendars";
-import { listApprovalRoles } from "@/server/actions/common-master-data/approval-roles";
-import { listDmsRequiredDocumentRules } from "@/server/actions/common-master-data/dms-required-document-rules";
+import { createClient } from "@/lib/supabase/server";
+import { verifiedHead } from "@/server/reads/verified-aggregate";
 
 const tiles = [
-  { href: "/admin/common-master-data/departments", icon: Building2, label: "Departments", desc: "Organizational units and reporting structure" },
-  { href: "/admin/common-master-data/designations", icon: Briefcase, label: "Designations", desc: "Job titles and authority levels" },
-  { href: "/admin/common-master-data/work-sites", icon: MapPin, label: "Work Sites", desc: "Operational locations and facilities" },
-  { href: "/admin/common-master-data/work-calendars", icon: Calendar, label: "Work Calendars", desc: "Shifts and working day configurations" },
-  { href: "/admin/common-master-data/approval-roles", icon: ShieldCheck, label: "Approval Roles", desc: "Authority levels and approval chains" },
-  { href: "/admin/common-master-data/dms-required-documents", icon: FileCheck, label: "Required Document Rules", desc: "DMS document compliance requirements" },
-];
+  { table: "departments", href: "/admin/common-master-data/departments", icon: Building2, label: "Departments", desc: "Organizational units and reporting structure" },
+  { table: "designations", href: "/admin/common-master-data/designations", icon: Briefcase, label: "Designations", desc: "Job titles and authority levels" },
+  { table: "work_sites", href: "/admin/common-master-data/work-sites", icon: MapPin, label: "Work Sites", desc: "Operational locations and facilities" },
+  { table: "work_calendars", href: "/admin/common-master-data/work-calendars", icon: Calendar, label: "Work Calendars", desc: "Shifts and working day configurations" },
+  { table: "approval_roles", href: "/admin/common-master-data/approval-roles", icon: ShieldCheck, label: "Approval Roles", desc: "Authority levels and approval chains" },
+  { table: "dms_required_document_rules", href: "/admin/common-master-data/dms-required-documents", icon: FileCheck, label: "Required Document Rules", desc: "DMS document compliance requirements" },
+] as const;
 
 export default async function CommonMasterDataPage() {
   const ctx = await getAuthContext();
   const canView = hasPermission(ctx, "common_md.view");
 
-  const [depts, desigs, sites, cals, roles, rules] = await Promise.all([
-    canView ? listDepartments({ is_active: true }) : Promise.resolve({ data: [] }),
-    canView ? listDesignations({ is_active: true }) : Promise.resolve({ data: [] }),
-    canView ? listWorkSites({ status: "active" }) : Promise.resolve({ data: [] }),
-    canView ? listWorkCalendars({ is_active: true }) : Promise.resolve({ data: [] }),
-    canView ? listApprovalRoles({ is_active: true }) : Promise.resolve({ data: [] }),
-    canView ? listDmsRequiredDocumentRules({ is_active: true }) : Promise.resolve({ data: [] }),
-  ]);
-
-  const counts = [depts.data?.length ?? 0, ("totalCount" in desigs ? desigs.totalCount : undefined) ?? "—", ("totalCount" in sites ? sites.totalCount : undefined) ?? "—", cals.data?.length ?? 0, ("totalCount" in roles ? roles.totalCount : undefined) ?? "—", ("totalCount" in rules ? rules.totalCount : undefined) ?? "—"];
+  const db = canView ? await createClient().catch(() => null) : null;
+  const counts = await Promise.all(tiles.map(async ({ table }) => {
+    if (!canView) return "Restricted";
+    if (!db) return "Unavailable";
+    try {
+      const query = db.from(table).select("id", { count: "exact", head: true }).is("deleted_at", null);
+      const result = await verifiedHead(table === "work_sites" ? query.eq("status", "active") : query.eq("is_active", true));
+      return result.count;
+    } catch {
+      return "Unavailable";
+    }
+  }));
 
   return (
     <div className="p-6 space-y-4">
@@ -45,6 +43,9 @@ export default async function CommonMasterDataPage() {
           { label: "Common Master Data" },
         ]}
       />
+      {counts.includes("Unavailable") && <p role="alert" className="text-sm text-muted-foreground">
+        Some catalogue totals could not be loaded. <a href="/admin/common-master-data" className="text-primary underline">Try loading totals again</a>
+      </p>}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {tiles.map((tile, i) => (
           <Link key={tile.href} href={tile.href}>

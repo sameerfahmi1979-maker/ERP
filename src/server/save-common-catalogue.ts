@@ -8,7 +8,10 @@ import type { Json } from "@/types/database";
 
 const paths = { designations: "designations", approval_roles: "approval-roles", dms_required_document_rules: "dms-required-documents" } as const;
 const opening = z.object({ operationId: z.uuid(), revision: z.string().regex(/^[1-9]\d*$/).max(19).nullable() });
-const receipt = z.object({ id: z.number().int().positive(), revision: z.string().regex(/^[1-9]\d*$/), replayed: z.boolean() });
+const receipt = z.object({
+  id: z.number().int().positive(), revision: z.string().regex(/^[1-9]\d*$/), replayed: z.boolean(),
+  changed: z.boolean().optional(),
+});
 
 export async function saveCommonCatalogue(relation: keyof typeof paths, id: number | null, values: object, contract: WorkspaceSaveContract | undefined, archive = false): Promise<WorkspaceSaveResult> {
   const parsed = opening.safeParse(contract);
@@ -23,6 +26,10 @@ export async function saveCommonCatalogue(relation: keyof typeof paths, id: numb
     if (/^(22|23)/.test(error?.code ?? "")) return { success: false, error: "The record was rejected. Review the entered values before retrying." };
     const saved = receipt.safeParse(data);
     if (error || !saved.success || (id !== null && saved.data.id !== id)) return unknown;
+    if (saved.data.changed === false) {
+      if (id === null || archive || saved.data.revision !== parsed.data.revision) return unknown;
+      return { success: true, data: saved.data };
+    }
     const base = `/admin/common-master-data/${paths[relation]}`;
     revalidatePath(base);
     revalidatePath(`${base}/record/${saved.data.id}`);

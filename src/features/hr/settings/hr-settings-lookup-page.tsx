@@ -95,7 +95,7 @@ function HrSettingsLookupSession({
       try {
       const res = await onList({ search: searchTerm || undefined, complete: true });
       if (request !== latestRead.current) return;
-      if (res.success && res.data) { setRows(res.data.data); setReadFailed(false); }
+      if (res.success && Array.isArray(res.data?.data) && res.data.total === res.data.data.length) { setRows(res.data.data); setReadFailed(false); }
       else setReadFailed(true);
       } catch { if (request === latestRead.current) setReadFailed(true); }
     });
@@ -212,11 +212,11 @@ function HrSettingsLookupSession({
         ) : null}
       />
 
-      {readFailed && <div role="alert" className="border border-destructive rounded-sm p-3 text-sm">Records could not be refreshed. Previous rows are retained; changes are paused. <Button type="button" variant="outline" onClick={() => refresh()}>Retry loading</Button></div>}
+      {readFailed && <div role="alert" className="border border-destructive rounded-sm p-3 text-sm">Records could not be loaded. {rows.length > 0 && "Previous rows are retained. "}Changes are paused. <Button type="button" variant="outline" onClick={() => refresh()}>Retry loading</Button></div>}
       {saveFailure&&!dialogOpen&&<div role="alert" className="rounded-sm border border-destructive p-3 text-sm">{saveFailure}{uncertain&&<Button variant="outline" disabled={isSubmitting} onClick={()=>retry.current?.()}>Retry same change</Button>}</div>}
       <div inert={archiveBusy || readFailed || isSubmitting || uncertain || undefined}><ERPSectionCard
         title="Records"
-        description={`${rows.length} item${rows.length !== 1 ? "s" : ""}`}
+        description={readFailed ? undefined : `${rows.length} item${rows.length !== 1 ? "s" : ""}`}
         noPadding
         actions={
           <div className="relative w-48">
@@ -231,7 +231,7 @@ function HrSettingsLookupSession({
         }
       >
         {rows.length === 0 ? (
-          <ERPEmptyState icon={Settings2} title={`No ${title.toLowerCase()} yet`} description={canManage ? "Click Add to create the first entry." : "No records found."} />
+          !readFailed && <ERPEmptyState icon={Settings2} title={`No ${title.toLowerCase()} yet`} description={canManage ? "Click Add to create the first entry." : "No records found."} />
         ) : (
           <div className="divide-y">
             <RecordCollection presentation="worklist" id="hr.hr-settings-lookup-page.HrSettingsLookupPage.rows" columnPreferenceId={`hr.lookup:${entity}`} rows={rows} fields={[{"id":"code","path":"code","label":"Code"},{"id":"name_en","path":"name_en","label":"Name En"},...(entity==='hr_training_types'?[{id:'training_category',path:'training_category.name_en',label:'Training Category'}]:[]),{"id":"is_active","path":"is_active","label":"Is Active"}]} renderRecord={row => (

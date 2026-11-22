@@ -18,11 +18,13 @@ import { Button } from "@/components/ui/button";
 
 interface Props {
   initialTimeline: AuditTimelineItem[];
+  initialUnavailableSources?: string[];
+  initialReadFailed?: boolean;
   canUseAi: boolean;
   isEnabled: boolean;
 }
 
-export function AuditExplainerPageClient({ initialTimeline, canUseAi, isEnabled }: Props) {
+export function AuditExplainerPageClient({ initialTimeline, initialUnavailableSources = [], initialReadFailed = false, canUseAi, isEnabled }: Props) {
   const [scope, setScope] = useState<AuditExplainerScope>("today");
   const [entityType, setEntityType] = useState<string | undefined>();
   const [entityId, setEntityId] = useState<number | undefined>();
@@ -30,7 +32,8 @@ export function AuditExplainerPageClient({ initialTimeline, canUseAi, isEnabled 
   const [loading, setLoading] = useState(false);
   const [explaining, setExplaining] = useState(false);
   const [groupExplanation, setGroupExplanation] = useState<AuditExplanationSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialReadFailed ? "Audit events could not be loaded. Use Refresh to retry." : null);
+  const [unavailableSources, setUnavailableSources] = useState(initialUnavailableSources);
   const latest = useRef(0);
   const explanationFlight = useRef(false);
   useEffect(() => () => { latest.current++; }, []);
@@ -40,12 +43,14 @@ export function AuditExplainerPageClient({ initialTimeline, canUseAi, isEnabled 
     setLoading(true);
     setTimeline([]);
     setError(null);
+    setUnavailableSources([]);
     setGroupExplanation(null);
     try {
       const result = await getAuditExplainerOverview({ scope: s, entityType: et, entityId: eid });
       if (request !== latest.current) return;
       if (result.success && result.data) {
         setTimeline(result.data.timeline);
+        setUnavailableSources(result.data.unavailableSources ?? []);
       } else {
         setError("Audit events could not be loaded. Use Refresh to retry.");
       }
@@ -134,6 +139,9 @@ export function AuditExplainerPageClient({ initialTimeline, canUseAi, isEnabled 
         disabled={loading}
       />
 
+      {unavailableSources.length > 0 && <p role="status" className="text-sm text-muted-foreground">
+        Could not load {unavailableSources.join(", ")}. Use Refresh to retry.
+      </p>}
       {/* Error */}
       {error && (
         <div role="alert" className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 p-3 text-sm text-red-700 dark:text-red-400">

@@ -10,17 +10,21 @@ DECLARE
 BEGIN
   IF current_user <> 'postgres' THEN RAISE EXCEPTION 'Reviewed notification view owner required'; END IF;
   FOR expected IN SELECT * FROM (VALUES
-    ('public.f10_dms_personal_notification_read', 'f689fe364b87edf7868cac705ec585b2', ARRAY['security_invoker=true']),
-    ('public.perf_dms_notification_read', 'cb898caca279d0c22ed727ed45b5869d', ARRAY['security_invoker=true','security_barrier=true'])
-  ) AS v(relation, definition_hash, options)
+    -- The retained Supabase defaults also granted authenticated CRUD/MAINTAIN on the old F10 join view.
+    ('public.f10_dms_personal_notification_read', 'f689fe364b87edf7868cac705ec585b2', ARRAY['security_invoker=true'], ARRAY['authenticated=r/postgres','authenticated=arwdm/postgres']),
+    ('public.perf_dms_notification_read', 'cb898caca279d0c22ed727ed45b5869d', ARRAY['security_invoker=true','security_barrier=true'], ARRAY['authenticated=r/postgres'])
+  ) AS v(relation, definition_hash, options, authenticated_acl)
   LOOP
     SELECT c.relkind, c.relowner, c.reloptions, c.relacl, md5(pg_get_viewdef(c.oid, false)) AS definition_hash
     INTO STRICT actual FROM pg_class c WHERE c.oid = to_regclass(expected.relation);
     IF actual.relkind <> 'v' OR actual.relowner <> 'postgres'::regrole
       OR actual.definition_hash IS DISTINCT FROM expected.definition_hash
       OR actual.reloptions IS DISTINCT FROM expected.options
-      OR ARRAY(SELECT acl::text FROM unnest(actual.relacl) AS acl ORDER BY acl::text)
-        IS DISTINCT FROM ARRAY['authenticated=r/postgres','postgres=arwdDxtm/postgres']
+      OR NOT EXISTS (
+        SELECT 1 FROM unnest(expected.authenticated_acl) AS acl_variant(entry)
+        WHERE ARRAY(SELECT acl::text FROM unnest(actual.relacl) AS acl ORDER BY acl::text)
+          = ARRAY[acl_variant.entry,'postgres=arwdDxtm/postgres']
+      )
     THEN RAISE EXCEPTION 'Reviewed notification projection drift: %', expected.relation; END IF;
   END LOOP;
 END $guard$;

@@ -860,7 +860,15 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
         review_action: null,
         reviewed_by: null,
         reviewed_at: null,
-        raw_response_json: {...sanitizedResponse,preparation:prepared},
+        raw_response_json: {
+          ...sanitizedResponse,
+          classification: {
+            ...sanitizedResponse.classification,
+            needs_human_review: aiOutput.classification.needsHumanReview ?? false,
+            review_reason: aiOutput.classification.reviewReason ?? null,
+          },
+          preparation: prepared,
+        },
         // For image-based docs (passports, Emirates IDs, certificates, scanned PDFs)
         // local OCR produces no text — use the AI's full_text_transcription instead.
         // For digital PDFs/DOCX, use the locally extracted text (more reliable).
@@ -915,71 +923,21 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
     }));
     if(attestedAnalysis.error)return {success:false,error:'The AI result could not be verified against its exact original file. Retain this intake; no approval was submitted.'};
 
-    let publish = supabase
-      .from("dms_upload_sessions")
-      .update({
-        intake_status: "review_pending",
-        review_status: "pending",
-        ai_job_id: jobId,
-        ai_result_id: resultId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", uploadSessionId)
-      .eq("session_code", sessionCode)
-      .eq("intake_status", "ai_processing")
-      .eq("updated_at", processing.data.updated_at)
-      .eq("temp_storage_path", verifiedSource.plan.source.path)
-      .is("ai_result_id", null)
-      .is("document_id", null)
-      .is("temp_cleaned_at", null)
-      .is("deleted_at", null);
-    const publishedSource = verifiedSource.plan.source;
-    publish = publishedSource.owner === null ? publish.is("uploaded_by", null) : publish.eq("uploaded_by", publishedSource.owner);
-    publish = publishedSource.company === null ? publish.is("owning_company_id", null) : publish.eq("owning_company_id", publishedSource.company);
-    publish = publishedSource.branch === null ? publish.is("owning_branch_id", null) : publish.eq("owning_branch_id", publishedSource.branch);
-    const published = await publish.select("id, session_code, intake_status, review_status, ai_job_id, ai_result_id").retry(false).maybeSingle();
-    if (published.error || published.data?.id !== uploadSessionId || published.data.session_code !== sessionCode ||
-        published.data.intake_status !== "review_pending" || published.data.review_status !== "pending" ||
-        published.data.ai_job_id !== jobId || published.data.ai_result_id !== resultId) {
+    const claimAt = processing.data.updated_at;
+    const publication = { p_session: uploadSessionId, p_code: sessionCode, p_claim_at: claimAt, p_job: jobId, p_result: resultId };
+    const publish = async () => {
+      try {
+        const { data, error } = await traceSpan("dms.publish.receipt", () =>
+          supabase.rpc("dms_publish_intake_classification", publication).retry(false));
+        return !error && data?.id === uploadSessionId && data.session_code === sessionCode &&
+          data.intake_status === "review_pending" && data.review_status === "pending" &&
+          data.ai_job_id === jobId && data.ai_result_id === resultId;
+      } catch {
+        return false;
+      }
+    };
+    if (!(await publish()) && !(await publish())) {
       return publicationUnconfirmed();
-    }
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_upload_sessions",
-      entity_id: uploadSessionId,
-      entity_reference: sessionCode,
-      action: "update",
-      new_values: {
-        event: "classification_completed",
-        job_id: jobId,
-        result_id: resultId,
-        duration_ms: durationMs,
-        suggested_type_code: suggestedTypeCode,
-        classification_score: aiOutput.classification.confidenceScore,
-        needs_human_review: aiOutput.classification.needsHumanReview ?? false,
-        prompt_version: PROMPT_VERSION,
-      },
-    });
-
-    if (
-      aiOutput.classification.needsHumanReview ||
-      (aiOutput.classification.confidenceScore != null &&
-        aiOutput.classification.confidenceScore < 0.6)
-    ) {
-      await logAudit({
-        module_code: "DMS",
-        entity_name: "dms_upload_sessions",
-        entity_id: uploadSessionId,
-        entity_reference: sessionCode,
-        action: "update",
-        new_values: {
-          event: "classification_low_confidence",
-          result_id: resultId,
-          classification_score: aiOutput.classification.confidenceScore,
-          review_reason: aiOutput.classification.reviewReason ?? null,
-        },
-      });
     }
 
     // NOTE (SPEED.2L flash fix, 2026-08-03): do NOT call revalidatePath here.

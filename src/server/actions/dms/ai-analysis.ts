@@ -265,16 +265,20 @@ const RunAnalysisSchema = z.object({
   documentId: z.number().int().positive(),
   jobType: z.enum(["classify", "extract", "classify_extract"]).optional().default("classify_extract"),
   forceRun: z.boolean().optional().default(false),
+  operationId: z.string().uuid().optional(),
 });
+
+type SavedAnalysisResult = { job_id: number; result_id: number | null; status: string; message: string; replayed?: boolean };
 
 export async function runDmsAiAnalysisForDocument(
   input: z.input<typeof RunAnalysisSchema>
-): Promise<ActionResult<{ job_id: number; result_id: number | null; status: string; message: string }>> {
+): Promise<ActionResult<SavedAnalysisResult>> {
   try {
     const parsed = RunAnalysisSchema.safeParse(input);
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message };
 
     const { documentId, jobType, forceRun } = parsed.data;
+    const operationId = parsed.data.operationId ?? crypto.randomUUID();
     const supabase = await createClient();
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
@@ -296,6 +300,27 @@ export async function runDmsAiAnalysisForDocument(
       }
     }
 
+    const recover = async (): Promise<ActionResult<SavedAnalysisResult> | null> => {
+      const args = { p_document: documentId, p_operation: operationId, p_job_type: jobType };
+      const existing = await Promise.resolve(supabase.rpc("dms_read_saved_classification", args)).catch(() => null);
+      if (!existing || existing.error) {
+        return { success: false, uncertain: true, error: "Current AI operation is unavailable. Retain the original request." };
+      }
+      if (!existing.data) return null;
+      const { job_id, result_id, status } = existing.data;
+      if (status === "completed" && Number.isSafeInteger(job_id) && Number.isSafeInteger(result_id)) {
+        return { success: true, data: {
+          job_id, result_id, status: "complete", replayed: true, message: "Original AI analysis recovered.",
+        } };
+      }
+      if (["failed", "provider_not_configured", "cancelled"].includes(status)) {
+        return { success: false, error: "The original AI analysis attempt did not complete." };
+      }
+      return { success: false, uncertain: true, error: "AI analysis is in progress or its publication is unconfirmed." };
+    };
+    const retained = await recover();
+    if (retained) return retained;
+
     // Guard existing pending job
     if (!forceRun) {
       const { count } = await supabase
@@ -313,8 +338,9 @@ export async function runDmsAiAnalysisForDocument(
     // never needs to run OCR separately. One click = AI analysis.
     const { data: allFiles } = await supabase
       .from("dms_document_files")
-      .select("id, created_at, file_name, mime_type, storage_bucket, storage_path, ocr_text, ocr_status")
+      .select("id, created_at, file_name, mime_type, storage_bucket, storage_path, ocr_text, ocr_status, version_id, sha256_hash")
       .eq("document_id", documentId)
+      .is("deleted_at", null)
       .order("created_at", { ascending: true });
 
     if (!allFiles || allFiles.length === 0) {
@@ -389,7 +415,7 @@ export async function runDmsAiAnalysisForDocument(
     const inputHash = hashOcrText(combinedOcr + `+images:${imageFiles.length}`);
 
     // Get AI provider
-    const { provider, configCode, configId } = await getDmsAiProvider();
+    const { provider, configId } = await getDmsAiProvider();
     const providerNotConfigured = !provider.isConfigured();
 
     // Create job record (always, even if provider not configured)
@@ -402,6 +428,7 @@ export async function runDmsAiAnalysisForDocument(
         model: provider.modelId ?? null,
         status: providerNotConfigured ? "provider_not_configured" : "pending",
         run_source: "manual",
+        manual_operation_id: operationId,
         input_text_hash: inputHash,
         prompt_version: PROMPT_VERSION,
         provider_config_id: configId ?? null,
@@ -410,7 +437,9 @@ export async function runDmsAiAnalysisForDocument(
       .select("id")
       .single();
 
-    if (jobErr || !job) return { success: false, error: "Failed to create AI job" };
+    if (jobErr || !job) {
+      return await recover() ?? { success: false, uncertain: true, error: "AI job admission is unconfirmed." };
+    }
     const jobId = job.id as number;
 
     if (providerNotConfigured) {
@@ -469,10 +498,14 @@ export async function runDmsAiAnalysisForDocument(
     });
 
     // Mark processing
-    await supabase
+    const processing = await supabase
       .from("dms_ai_extraction_jobs")
       .update({ status: "processing", started_at: new Date().toISOString() })
-      .eq("id", jobId);
+      .eq("id", jobId).eq("status", "pending")
+      .select("id, status").retry(false).maybeSingle();
+    if (processing.error || processing.data?.id !== jobId || processing.data.status !== "processing") {
+      return { success: false, uncertain: true, error: "The analysis claim is unconfirmed. Retain the original operation." };
+    }
 
     await supabase
       .from("dms_documents")
@@ -617,14 +650,19 @@ export async function runDmsAiAnalysisForDocument(
           ),
         };
 
-    // Store result
-    const { data: result, error: resultErr } = await supabase
-      .from("dms_ai_extraction_results")
-      .insert({
-        job_id: jobId,
-        document_id: documentId,
-        result_type: "combined",
-        ai_status: "pending_review",
+    const sourceFiles = [...allFiles].sort((a, b) => Number(a.id) - Number(b.id)).map(file =>
+      [file.id, file.version_id, file.storage_bucket, file.storage_path, file.mime_type, file.sha256_hash]);
+    const hasTextAfterAnalysis = ocrParts.length > 0 ||
+      (imageOnlyFileIds.length > 0 && !!aiOutput.extraction.fullTextTranscription);
+    const publication = {
+      p_document: documentId,
+      p_job: jobId,
+      p_operation: operationId,
+      p_version: doc.current_version_id,
+      p_files: sourceFiles,
+      p_duration: durationMs,
+      p_has_text: hasTextAfterAnalysis,
+      p_result: {
         suggested_document_type_id: suggestedTypeId,
         classification_confidence: aiOutput.classification.confidenceLabel,
         classification_score: aiOutput.classification.confidenceScore,
@@ -636,23 +674,24 @@ export async function runDmsAiAnalysisForDocument(
         expiry_date_suggestion: aiOutput.extraction.expiryDateSuggestion ?? null,
         suggested_title: aiOutput.extraction.suggestedTitle,
         suggested_description: aiOutput.extraction.suggestedDescription,
-        raw_ocr_text: null, // never stored — already in dms_document_files
         raw_response_json: sanitizedResponse as Record<string, unknown> | null,
-      })
-      .select("id")
-      .single();
-
-    if (resultErr || !result) {
-      aiError = resultErr?.message ?? "Failed to save AI result";
+      },
+    };
+    const publish = async (): Promise<number | null> => {
+      try {
+        const { data, error } = await supabase.rpc("dms_publish_saved_classification", publication).retry(false);
+        return !error && data?.job_id === jobId && data.status === "completed" && Number.isSafeInteger(data.result_id)
+          ? data.result_id : null;
+      } catch {
+        return null;
+      }
+    };
+    const resultId = await publish() ?? await publish();
+    if (resultId === null) {
+      const recovered = await recover();
+      if (recovered?.success) return recovered;
+      return { success: false, uncertain: true, error: "AI review publication is unconfirmed. Retain the original operation." };
     }
-
-    const resultId = result?.id as number | null;
-
-    // Update job as completed
-    await supabase
-      .from("dms_ai_extraction_jobs")
-      .update({ status: "completed", completed_at: completedAt, duration_ms: durationMs, model: provider.modelId ?? null })
-      .eq("id", jobId);
 
     // ── Persist fullTextTranscription from vision to files/content (non-fatal) ──
     // When images were sent to vision (scanned PDFs, image files), the AI returns
@@ -691,42 +730,11 @@ export async function runDmsAiAnalysisForDocument(
       } catch { /* non-fatal */ }
     }
 
-    // Update document ai_status + ocr_text_available flag (side-effect of auto-extraction)
-    const hasTextAfterAnalysis = ocrParts.length > 0 || (imageOnlyFileIds.length > 0 && !!(aiOutput?.extraction?.fullTextTranscription));
-    await supabase
-      .from("dms_documents")
-      .update({
-        ai_status: "completed",
-        ocr_text_available: hasTextAfterAnalysis,
-        ocr_last_run_at: hasTextAfterAnalysis ? new Date().toISOString() : undefined,
-      })
-      .eq("id", documentId);
-
-    await insertDocumentEvent(supabase, documentId, "ai_classification_completed", ctx.profile.id, {
-      job_id: jobId,
-      result_id: resultId,
-      suggested_type_code: suggestedTypeCode,
-      confidence: aiOutput.classification.confidenceLabel,
-      field_count: aiOutput.extraction.fields.length,
-      duration_ms: durationMs,
-    });
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_ai_extraction_jobs",
-      entity_id: jobId,
-      entity_reference: `JOB-${jobId}`,
-      action: "update",
-      new_values: {
-        event: "ai_analysis_completed",
-        result_id: resultId,
-        provider: configCode,
-        duration_ms: durationMs,
-        confidence_label: aiOutput.classification.confidenceLabel,
-      },
-    });
-
-    revalidatePath(`/dms/documents/record/${documentId}`);
+    try {
+      revalidatePath(`/dms/documents/record/${documentId}`);
+    } catch {
+      // The confirmed publication receipt remains authoritative.
+    }
 
     // ── Phase 12: Non-fatal review queue generation hook ─────────────────────
     // Creates one result-level review queue item for AI analysis results
@@ -785,7 +793,8 @@ export async function runDmsAiAnalysisForDocument(
 // ── retryDmsAiAnalysisJob ─────────────────────────────────────────────────────
 
 export async function retryDmsAiAnalysisJob(
-  jobId: number
+  jobId: number,
+  operationId?: string,
 ): Promise<ActionResult<{ job_id: number; result_id: number | null; status: string; message: string }>> {
   try {
     const supabase = await createClient();
@@ -805,32 +814,35 @@ export async function retryDmsAiAnalysisJob(
     }
     if (!job.document_id) return { success: false, error: "Job has no document_id" };
 
-    await supabase
-      .from("dms_ai_extraction_jobs")
-      .update({ retry_count: ((job.retry_count as number) ?? 0) + 1 })
-      .eq("id", jobId);
-
     const result = await runDmsAiAnalysisForDocument({
       documentId: job.document_id as number,
       jobType: (job.job_type as "classify" | "extract" | "classify_extract") ?? "classify_extract",
       forceRun: true,
+      operationId,
     });
 
-    if (job.document_id) {
+    if (result.uncertain || result.data?.replayed) return result;
+
+    try {
+      await supabase
+        .from("dms_ai_extraction_jobs")
+        .update({ retry_count: ((job.retry_count as number) ?? 0) + 1 })
+        .eq("id", jobId);
       await insertDocumentEvent(supabase, job.document_id as number, "ai_analysis_retried", ctx.profile.id, {
         original_job_id: jobId,
         outcome: result.success ? "success" : "failed",
       });
+      await logAudit({
+        module_code: "DMS",
+        entity_name: "dms_ai_extraction_jobs",
+        entity_id: jobId,
+        entity_reference: `JOB-${jobId}`,
+        action: "update",
+        new_values: { event: "ai_analysis_retried", outcome: result.success ? "success" : "failed" },
+      });
+    } catch {
+      // Retry bookkeeping cannot change an already confirmed result.
     }
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_ai_extraction_jobs",
-      entity_id: jobId,
-      entity_reference: `JOB-${jobId}`,
-      action: "update",
-      new_values: { event: "ai_analysis_retried", outcome: result.success ? "success" : "failed" },
-    });
 
     return result.data
       ? { success: result.success, data: result.data }

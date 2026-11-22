@@ -24,7 +24,7 @@ export function performanceReadOperation(pathname: string): PerfOperation {
 const operations = ["proxy", "auth.context", "auth.session", "auth.permissions", "employees.list", "departments.list", "departments.lookup", "documents.list", "session.route", "response.json", "read.route", "read.execute", ...Object.values(readOperations),
   "permissions.page", "permissions.list", "permissions.grants", "permissions.roles", "permissions.export",
   "dms.intake", "dms.intake.admit", "dms.intake.verify", "dms.batch", "dms.rerun", "dms.rerun.admit", "dms.rerun.status", "dms.batch.member", "dms.batch.verify", "dms.batch.prepare", "dms.admit", "dms.receipt", "dms.eligibility",
-  "dms.fetch", "dms.verify", "dms.pdf.text", "dms.pdf.render", "dms.ocr", "dms.ocr.provider", "dms.model.first", "dms.model.second", "dms.publish", "dms.queue.wait", "dms.result.discovery", "dms.transfer.client"] as const;
+  "dms.fetch", "dms.verify", "dms.pdf.text", "dms.pdf.render", "dms.ocr", "dms.ocr.provider", "dms.model.first", "dms.model.second", "dms.publish", "dms.publish.receipt", "dms.queue.wait", "dms.result.discovery", "dms.transfer.client"] as const;
 export type PerfOperation = typeof operations[number];
 type Span = { name: string; ms: number; offsetMs: number; outcome: "ok" | "error"; status?: number; retry?: number; contentLength?: number | null };
 type Trace = { id: string; operation: PerfOperation; started: number; spans: Span[]; dropped: number; closed: boolean };

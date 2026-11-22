@@ -31,7 +31,7 @@ import {
   AlertCircle, AlertTriangle, Brain, Check, CheckCircle2, ChevronDown, ChevronUp, History, Info, Loader2, MinusCircle, RefreshCw, RotateCcw, Wand2, XCircle, } from "lucide-react";
 import { AlertDialog } from "@/features/dms/documents/section-read-boundary";
 import {useWorkspaceSaveSession} from "@/hooks/use-workspace-save-session";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 // Phase 16 — Apply-to-ERP history (DMS document field runs)
 import { DmsAiConfidenceBadge } from "@/features/dms/ai/dms-ai-confidence-badge";
@@ -85,6 +85,7 @@ export function DmsDocumentAiSection({
  const { data: correctionAccess } = uiRead1;
   const correctionEnabled = canProposeCorrection && (correctionAccess?.proposalsEnabled ?? false);
   const [expandedResult, setExpandedResult] = useState<number | null>(null);
+  const retryOperations = useRef(new Map<number, string>());
 
   const uiRead2 = useQuery({
     queryKey: queryKeys.dms.documentAiStatus(documentId),
@@ -110,11 +111,28 @@ export function DmsDocumentAiSection({
  const { data: results = [], isLoading: resultsLoading } = uiRead3;
 
   const handleRetry = async (jobId: number) => {
-    const r = await retryDmsAiAnalysisJob(jobId);
-    if (r.success) {
-      toast.success(r.data?.message ?? "AI analysis retried");
-    } else {
-      toast.error(r.error ?? "Retry failed");
+    const storageKey = `dms-analysis-retry:${documentId}:${jobId}`;
+    let operationId = retryOperations.current.get(jobId);
+    try {
+      const retained = sessionStorage.getItem(storageKey);
+      if (!operationId && retained) operationId = retained;
+    } catch { /* The open record still retains the operation. */ }
+    operationId ??= crypto.randomUUID();
+    retryOperations.current.set(jobId, operationId);
+    try { sessionStorage.setItem(storageKey, operationId); } catch { /* Keep the in-memory operation. */ }
+    try {
+      const r = await retryDmsAiAnalysisJob(jobId, operationId);
+      if (!r.uncertain) {
+        retryOperations.current.delete(jobId);
+        try { sessionStorage.removeItem(storageKey); } catch { /* Storage may be disabled. */ }
+      }
+      if (r.success) {
+        toast.success(r.data?.message ?? "AI analysis retried");
+      } else {
+        toast.error(r.error ?? "Retry failed");
+      }
+    } catch {
+      toast.error("AI analysis outcome is unconfirmed. Retry to check this operation.");
     }
     invalidateDmsAiAnalysis(queryClient, documentId);
   };

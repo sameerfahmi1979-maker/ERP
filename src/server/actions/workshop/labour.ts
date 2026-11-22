@@ -8,7 +8,7 @@ import { logger } from "@/lib/logger";
 import { canUseApplication, getAuthContext } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
 import { jobWorkRequest, labourHrQueue, labourPayroll, labourPreview, labourReviewScopes, labourWorkspace,
-  outsideWorkspace, workshopJobIndex } from "@/lib/workshop/labour-contract";
+  outsideWorkspace, workshopJobIndexPage } from "@/lib/workshop/labour-contract";
 
 async function read<T>(rpc: string, params: Record<string, unknown>, shape: z.ZodType<T>) {
   try {
@@ -28,7 +28,9 @@ async function read<T>(rpc: string, params: Record<string, unknown>, shape: z.Zo
 
 export async function listWorkshopWork(before?: number) {
   if (!fleetId.optional().safeParse(before).success) return null;
-  return read("t12_job_work_index", { p_before: before }, workshopJobIndex);
+  const page = await read("fa_workshop_job_index_page", { p_before: before }, workshopJobIndexPage);
+  const first = page?.rows[0]?.id;
+  return first !== undefined && before !== undefined && first >= before ? null : page;
 }
 export async function readWorkshopLabour(job: number) {
   if (!fleetId.safeParse(job).success) return null;

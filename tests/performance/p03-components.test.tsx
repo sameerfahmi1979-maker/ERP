@@ -2,6 +2,7 @@
 import "../remediation/f05/setup";
 import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {act,cleanup,fireEvent,render,screen,waitFor,within} from "@testing-library/react";
+import {FluentProvider,webLightTheme} from "@fluentui/react-components";
 import {ReadCacheBoundary} from "@/components/layout/read-cache-boundary";
 import {usePersistentUiState,WorkspaceUiMemoryProvider} from "@/hooks/use-persistent-ui-state";
 import { worklistColumnStorageKey } from "@/lib/ui/worklist-column-ids";
@@ -106,27 +107,39 @@ it("closing filters aborts the pending taxonomy read and discards a late respons
  const data={rows:[],totalCount:0,page:1,pageSize:25};
  const former=Promise.withResolvers<Response>(),current=Promise.withResolvers<Response>();
  fetcher.mockReturnValueOnce(former.promise).mockReturnValueOnce(current.promise);
- show(<DmsDocumentsTable initialSeed={{identity,params:{page:1,pageSize:25,sortKey:"created_at",sortDir:"desc",filters:{excludeArchived:true}},data,updatedAt:Date.now()}}
-  initialDocuments={[]} initialTotal={0} initialUpdatedAt={Date.now()}/>);
- fireEvent.click(screen.getByRole("button",{name:"Edit filters"}));
+ show(<FluentProvider theme={webLightTheme}><DmsDocumentsTable initialSeed={{identity,params:{page:1,pageSize:25,sortKey:"created_at",sortDir:"desc",filters:{excludeArchived:true}},data,updatedAt:Date.now()}}
+  initialDocuments={[]} initialTotal={0} initialUpdatedAt={Date.now()}/></FluentProvider>);
+ const clickFocused=async(element:HTMLElement)=>act(async()=>{element.focus();fireEvent.click(element);});
+ await clickFocused(screen.getByRole("button",{name:"Edit filters"}));
  const dialog=await screen.findByRole("dialog",{name:"Edit filters"});
  await waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());
  const signal=fetcher.mock.calls[0][1].signal as AbortSignal;
- fireEvent.click(within(dialog).getByRole("button",{name:"Cancel"}));
+ await clickFocused(within(dialog).getByRole("button",{name:"Cancel"}));
  expect(signal.aborted).toBe(true);
- await waitFor(()=>expect(screen.queryByRole("dialog",{name:"Edit filters"})).toBeNull());
+ await waitFor(()=>expect(dialog.isConnected).toBe(false));
 
- fireEvent.click(await screen.findByRole("button",{name:"Edit filters"}));
+ await clickFocused(await screen.findByRole("button",{name:"Edit filters"}));
  await waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(2));
  expect(fetcher.mock.calls.map(([url])=>url)).toEqual(["/api/reads/dms-list-choices","/api/reads/dms-list-choices"]);
  const reopenedSignal=fetcher.mock.calls[1][1].signal as AbortSignal;
  expect(reopenedSignal).not.toBe(signal);
  expect(reopenedSignal.aborted).toBe(false);
+ // JSDOM does not perform the default Tab focus movement. Model that step
+ // on the newly mounted Fluent surface before asserting accessible roles.
+ const reopened=await waitFor(()=>{
+  const surface=document.querySelector<HTMLElement>('[role="dialog"]');
+  if(!surface)throw new Error("Reopened filter dialog did not mount");
+  return surface;
+ });
+ const firstControl=within(reopened).getByLabelText("Close Edit filters");
+ await act(async()=>{fireEvent.keyDown(reopened,{key:"Tab",code:"Tab"});firstControl.focus();});
+ expect(document.activeElement).toBe(firstControl);
+ expect(await screen.findByRole("dialog",{name:"Edit filters"})).toBe(reopened);
 
  await act(async()=>{former.resolve(Response.json({success:true,data:{categories:[],documentTypes:[{id:2,name_en:"Late type"}]}}));});
  expect(screen.queryByRole("option",{name:"Late type"})).toBeNull();
  await act(async()=>{current.resolve(Response.json({success:true,data:{categories:[],documentTypes:[{id:3,name_en:"Current type"}]}}));});
- await screen.findByRole("option",{name:"Current type"});
+ await within(reopened).findByRole("option",{name:"Current type"});
  expect(screen.queryByRole("option",{name:"Late type"})).toBeNull();
  expect(fetcher).toHaveBeenCalledTimes(2);
 });

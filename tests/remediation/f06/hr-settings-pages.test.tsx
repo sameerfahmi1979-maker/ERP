@@ -50,3 +50,22 @@ for(const [name,options]of optionCases)it(name+' forwards selected configuration
  await view.props.onCreate({code:'F06_OPTIONS',name_en:'F06 options',is_active:false,sort_order:0,...options},{operationId:crypto.randomUUID(),revision:null});
  expect(rpc).toHaveBeenCalledOnce();expect(rpc.mock.calls[0][1].p_data).toMatchObject(options);
 });
+
+it.each(pages.filter(([name])=>name!=='mohre-establishments'))('%s opens one counted window for 1,201 authorized catalogue rows',async(_name,load)=>{
+ const records=Array.from({length:1201},(_,i)=>({id:i+1}));
+ const calls:Array<[number,number]>=[];
+ let bounds:[number,number];
+ const query={
+  select:()=>query,retry:()=>query,is:()=>query,order:()=>query,
+  range:(start:number,end:number)=>{bounds=[start,end];calls.push(bounds);return query;},
+  then:(resolve:(value:unknown)=>unknown)=>Promise.resolve({
+   data:records.slice(bounds[0],bounds[1]+1),count:records.length,error:null,status:200,
+  }).then(resolve),
+ };
+ mock.client.mockResolvedValue({from:()=>query});
+ const route=await load();
+ const result=await route.default();
+ expect(result.props.initialData).toEqual(records.slice(0,25));
+ expect(result.props.initialTotal).toBe(1201);
+ expect(calls).toEqual([[0,24]]);
+});

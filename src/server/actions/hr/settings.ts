@@ -8,7 +8,8 @@ import {isHrLookupTable} from "@/lib/hr/settings-save-contract";
 import {isHrSpecializedTable,hrSpecializedSchemas} from "@/lib/hr/specialized-settings-contract";
 import {saveHrLookup} from "@/server/hr-lookup-save";
 import { readAllPages } from "@/server/reads/all-pages";
-import { literalContains } from "@/lib/reads/search";
+import { literalContains, literalLike } from "@/lib/reads/search";
+import { hrSettingsListOptions, type HrSettingsListOptions } from "@/lib/hr/settings-list";
 
 // ============================================================================
 // Shared result type
@@ -189,7 +190,7 @@ function canManage(ctx: AuthCtx): boolean {
 // List params
 // ============================================================================
 
-export type HrSettingsListParams = {
+export type HrSettingsListParams = HrSettingsListOptions & {
   /** Explicit complete catalogue; never combined with a paged request. */
   complete?: boolean;
   search?: string;
@@ -230,7 +231,9 @@ async function readSettingsPage<T extends { id: number }>(
   to: number,
 ): Promise<ActionResult<{ data: T[]; total: number }>> {
   const response = await result;
-  if (from > 0 && response.status === 416 && response.error?.code === "PGRST103") {
+  // URL-offset ranges may return 416 with an empty JSON array instead of PGRST103.
+  // A fresh identically filtered exact HEAD must prove the range is out of bounds.
+  if (from > 0 && response.status === 416 && (!response.error?.code || response.error.code === "PGRST103")) {
     const { count, error } = await readCount();
     if (error || count === null || !Number.isSafeInteger(count) || count < 0 || count > from) return settingsReadFailure;
     return { success: true, data: { data: [], total: count } };
@@ -337,32 +340,64 @@ async function hrl<T extends { id: number }>(
         (params.complete && (params.page !== undefined || params.page_size !== undefined))) {
       return { success: false, error: "Choose a complete list or a page, not both." };
     }
+    const options = hrSettingsListOptions.safeParse({
+      tableSearch:params.tableSearch, columnFilters:params.columnFilters, sorting:params.sorting,
+    });
+    const training = table === "hr_training_types";
+    if (!options.success || !training && (options.data.columnFilters?.training_category !== undefined ||
+        options.data.sorting?.some(column=>column.id==="training_category"))) return settingsReadFailure;
+
     const ctx = await getAuthContext();
     if (!canView(ctx)) return { success: false, error: "Permission denied" };
     const supabase = await createClient();
     const { from, to } = settingsPageWindow(params);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sb = supabase as any;
-    const sel = joinSelect ? `*, ${joinSelect}` : "*";
-    const search = params.search ? ["code", "name_en", "name_ar"].map(column => `${column}.ilike.${literalContains(params.search!)}`).join(",") : null;
-    const pageQuery = (start: number, end: number) => {
-      let query = sb.from(table).select(sel, { count: "exact" }).retry(false).is("deleted_at", null)
-        .order("sort_order", { ascending: true }).order("name_en", { ascending: true }).order("id", { ascending: true }).range(start, end);
+    const {columnFilters = {},sorting=[],tableSearch} = options.data;
+    const categoryFilter = training && columnFilters.training_category;
+    const categorySearch = training && tableSearch;
+    const join = categoryFilter ? joinSelect?.replace("hr_training_categories(", "hr_training_categories!inner(") : joinSelect;
+
+    const catalogueSearch = params.search ? ["code", "name_en", "name_ar"].map(column => `${column}.ilike.${literalContains(params.search!)}`) : [];
+    const activeTextMatches = (value:string) => ["false","true"].filter(label=>label.includes(value.toLowerCase()));
+    const tableTerms = tableSearch ? [
+      ...["code","name_en"].map(column=>`${column}.ilike.${literalContains(tableSearch)}`),
+      ...activeTextMatches(tableSearch).map(label=>`is_active.eq.${label}`),
+      ...(categorySearch ? ["training_category_match.not.is.null"] : []),
+    ] : [];
+    const search = catalogueSearch.length && tableTerms.length
+      ? `and(or(${catalogueSearch.join(",")}),or(${tableTerms.join(",")}))`
+      : [...catalogueSearch,...tableTerms].join(",");
+    const activeFilter = columnFilters.is_active ? activeTextMatches(columnFilters.is_active) : undefined;
+    const base = (head=false) => {
+      const projection = [head?"id":"*",join,...(categorySearch?["training_category_match:hr_training_categories()"]:[])].filter(Boolean).join(",");
+      let query = sb.from(table).select(projection,{count:"exact",head}).retry(false).is("deleted_at",null);
       if (search) query = query.or(search);
-      if (params.is_active !== undefined) query = query.eq("is_active", params.is_active);
+      if (params.is_active !== undefined) query = query.eq("is_active",params.is_active);
+      if (activeFilter?.length===1) query = query.eq("is_active",activeFilter[0]==="true");
+      if (activeFilter?.length===0) query = query.eq("id",0);
+      if (columnFilters.code) query = query.ilike("code",literalLike(columnFilters.code));
+      if (columnFilters.name_en) query = query.ilike("name_en",literalLike(columnFilters.name_en));
+      if (categoryFilter) query = query.ilike("training_category.name_en",literalLike(categoryFilter));
+      if (categorySearch) query = query.ilike("training_category_match.name_en",literalLike(categorySearch));
       return query;
     };
+    const pageQuery = (start:number,end:number) => {
+      let query = base();
+      if (sorting.length) {
+        for (const {id,desc} of sorting) {
+          query = query.order(id==="training_category"?"training_category(name_en)":id,{ascending:!desc,nullsFirst:!desc});
+        }
+      } else {
+        query = query.order("sort_order",{ascending:true}).order("name_en",{ascending:true});
+      }
+      return query.order("id",{ascending:true}).range(start,end);
+    };
     if (params.complete) {
-      const rows = await readAllPages<T>(async (start, end) => pageQuery(start, end), { identity: settingsRowId });
-      return { success: true, data: { data: rows, total: rows.length } };
+      const rows = await readAllPages<T>(async (start,end)=>pageQuery(start,end),{identity:settingsRowId});
+      return {success:true,data:{data:rows,total:rows.length}};
     }
-    const q = pageQuery(from, to);
-    return await readSettingsPage<T>(q, () => {
-      let cq = sb.from(table).select("id", { count: "exact", head: true }).retry(false).is("deleted_at", null);
-      if (search) cq = cq.or(search);
-      if (params.is_active !== undefined) cq = cq.eq("is_active", params.is_active);
-      return cq;
-    }, from, to);
+    return await readSettingsPage<T>(pageQuery(from,to),()=>base(true),from,to);
   } catch {
     return settingsReadFailure;
   }

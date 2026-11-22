@@ -8,6 +8,8 @@ type Props = Omit<HrSettingsLookupProps,'title'|'description'|'breadcrumbs'>;
 export function HrLeaveTypesSettingsPageClient({
   entity,principalId,
   initialData,
+  initialTotal,
+  readIdentity,
   canManage,
   onList,
   onCreate,
@@ -27,6 +29,8 @@ export function HrLeaveTypesSettingsPageClient({
         { label: "Leave Types" },
       ]}
       initialData={initialData}
+      initialTotal={initialTotal}
+      readIdentity={readIdentity}
       canManage={canManage}
       onList={onList}
       onCreate={onCreate}

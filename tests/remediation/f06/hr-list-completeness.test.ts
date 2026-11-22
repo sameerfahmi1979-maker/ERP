@@ -10,7 +10,7 @@ import * as actions from '@/server/actions/hr/settings';
 import {getHrRuleChoices} from '@/server/actions/hr/settings-references';
 
 type Row={id:number;[key:string]:unknown};
-type Mode='ok'|'later-error'|'later-denied'|'changed-count'|'missing-count'|'duplicate'|'short'|'early-timeout'|'empty-page'|'range-error'|'invalid-reference';
+type Mode='ok'|'later-error'|'later-denied'|'changed-count'|'missing-count'|'duplicate'|'short'|'early-timeout'|'empty-page'|'range-error'|'range-empty'|'invalid-reference';
 let rows:Row[]=[],calls:URL[]=[],mode:Mode='ok';
 const common=[
  ['employee-categories','listHrEmployeeCategories'],['employment-types','listHrEmploymentTypes'],['grades','listHrGrades'],
@@ -24,6 +24,7 @@ beforeEach(()=>{
  const db=createClient('http://127.0.0.1:1','synthetic-offline-key',{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false},global:{fetch:async(input,init)=>{
   const url=new URL(String(input));calls.push(url);const from=Number(url.searchParams.get('offset')??0),size=Number(url.searchParams.get('limit')??rows.length);
   if(mode==='early-timeout')return new Response(JSON.stringify({message:'PRIVATE DATABASE DETAIL'}),{status:408,headers:{'Content-Type':'application/json'}});
+  if(mode==='range-empty'&&from>=rows.length)return new Response('[]',{status:416,headers:{'Content-Type':'application/json','Content-Range':'*/'+rows.length}});
   if(mode==='range-error'&&from>=rows.length)return new Response(JSON.stringify({code:'PGRST103',message:'PRIVATE DATABASE DETAIL'}),{status:416,headers:{'Content-Type':'application/json'}});
   if(from>0&&(mode==='later-error'||mode==='later-denied'))return new Response(JSON.stringify({message:'PRIVATE DATABASE DETAIL'}),{status:mode==='later-denied'?403:503,headers:{'Content-Type':'application/json'}});
   const after=url.searchParams.get("id");
@@ -67,10 +68,11 @@ it('uses fixed escaped displayed fields on the counted page',async()=>{
  expect(calls).toHaveLength(1);expect(calls[0].searchParams.get('or')).toBe(expected);
  calls=[];await actions.listHrMohreEstablishments({search:value});for(const url of calls)expect(url.searchParams.get('or')).toBe(`(establishment_number.ilike.${literalContains(value)},establishment_name.ilike.${literalContains(value)})`);
 });
-it('all14 routes opt in without replacing management or mutation contracts',()=>{
- for(const route of [...common.map(([name])=>name),'mohre-establishments']){
-  const source=fs.readFileSync(`src/app/(protected)/admin/hr/settings/${route}/page.tsx`,'utf8');expect(source).toMatch(/listHr\w+\(\{\s*complete:\s*true\s*\}\)/);expect(source).toContain('hasGlobalPermission');expect(source).toContain('principalId={ctx.profile?.id}');
+it('shared catalogue routes opt into exact first pages and retain the management contract',()=>{
+ for(const [route] of common){
+  const source=fs.readFileSync(`src/app/(protected)/admin/hr/settings/${route}/page.tsx`,'utf8');expect(source).toMatch(/listHr\w+\(HR_SETTINGS_FIRST_PAGE\)/);expect(source).toContain('initialTotal={total}');expect(source).toContain('readIdentity={hrReadIdentity(ctx)}');expect(source).toContain('hasGlobalPermission');expect(source).toContain('principalId={ctx.profile?.id}');
  }
+ const mohre=fs.readFileSync('src/app/(protected)/admin/hr/settings/mohre-establishments/page.tsx','utf8');expect(mohre).toContain('listHrMohreEstablishments({complete:true})');
  const grades=fs.readFileSync('src/app/(protected)/admin/hr/settings/grades/page.tsx','utf8');expect(grades).toContain('createHrGrade({ grade_level: null, ...input }, contract)');
 });
 
@@ -96,8 +98,8 @@ it.each(countedActions)('%s proves authorized zero rows and a partial final page
  expect(await action({page:1,page_size:20})).toEqual({success:true,data:{data:[],total:0}});
 });
 
-it('verifies an out-of-range page before returning the exact total',async()=>{
- mode='range-error';
+it.each(['range-error','range-empty'] as const)('verifies out-of-range %s before returning the exact total',async failure=>{
+ mode=failure;
  expect(await actions.listHrApprovalWorkflows({page:27,page_size:20})).toEqual({success:true,data:{data:[],total:501}});
  expect(calls).toHaveLength(2);
 });
@@ -121,4 +123,28 @@ it('parallel approval and escalation reference fields share one authorized read'
  });
  expect(calls).toHaveLength(2);
  expect(calls.map(url=>url.searchParams.get("id"))).toEqual(["gt.0","gt.24"]);
+});
+it('uses actual remote table predicates and deterministic sorting for Training Types',async()=>{
+ rows=[];
+ await actions.listHrTrainingTypes({
+  search:'Outer%',tableSearch:'Course',columnFilters:{code:'T_',training_category:'Security',is_active:'tru'},
+  sorting:[{id:'training_category',desc:true},{id:'code',desc:false}],page:5,page_size:25,
+ } as never);
+ expect(calls).toHaveLength(1);
+ const params=calls[0].searchParams;
+ expect(params.get('or')).toContain('and(or(code.ilike.');
+ expect(params.get('or')).toContain('training_category_match.not.is.null');
+ expect(params.get('training_category_match.name_en')).toBe('ilike.%Course%');
+ expect(params.get('training_category.name_en')).toBe('ilike.%Security%');
+ expect(params.get('code')).toBe('ilike.%T\\_%');
+ expect(params.get('is_active')).toBe('eq.true');
+ expect(params.get('order')).toBe('training_category(name_en).desc.nullslast,code.asc.nullsfirst,id.asc');
+ expect(params.get('offset')).toBe('100');
+ expect(params.get('limit')).toBe('25');
+});
+
+it('rejects related category sorts and filters on catalogues without that relation',async()=>{
+ expect((await actions.listHrGrades({sorting:[{id:'training_category',desc:false}]} as never)).success).toBe(false);
+ expect((await actions.listHrGrades({columnFilters:{training_category:'private'}} as never)).success).toBe(false);
+ expect(port.client).not.toHaveBeenCalled();
 });

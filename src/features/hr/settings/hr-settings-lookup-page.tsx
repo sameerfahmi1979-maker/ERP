@@ -1,7 +1,7 @@
 "use client";
 import { RecordCollection } from "@/components/erp/table/record-collection";
 
-import { useState, useCallback, useRef, useTransition, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { ERPSectionCard } from "@/components/erp/section-card";
 import { ERPEmptyState } from "@/components/erp/empty-state";
@@ -12,7 +12,10 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Plus, Search, Pencil, ToggleLeft, Settings2 } from "lucide-react";
-import type { HrSettingsRow } from "@/server/actions/hr/settings";
+import type { HrSettingsListParams, HrSettingsRow } from "@/server/actions/hr/settings";
+import type { ColumnFiltersState, PaginationState, SortingState, Updater } from "@tanstack/react-table";
+import type { ERPTableServerRead } from "@/components/erp/table/erp-table-types";
+import { hrSettingsColumn, HR_SETTINGS_FIRST_PAGE } from "@/lib/hr/settings-list";
 import type { ActionResult } from "@/server/actions/hr/settings";
 import { toast } from "sonner";
 import {createWorkspaceSaveAttempt,type WorkspaceSaveContract} from "@/lib/workspace/save-contract";
@@ -31,8 +34,10 @@ export type HrSettingsLookupProps = {
   description: string;
   breadcrumbs: Array<{ label: string; href?: string }>;
   initialData: LookupRecord[];
+  initialTotal?: number;
+  readIdentity?: string;
   canManage: boolean;
-  onList: (params: { search?: string; is_active?: boolean; complete?: boolean }) => Promise<ActionResult<{ data: LookupRecord[]; total: number }>>;
+  onList: (params: HrSettingsListParams) => Promise<ActionResult<{ data: LookupRecord[]; total: number }>>;
   onCreate: (input: HrLookupFormInput, contract?: WorkspaceSaveContract) => Promise<ActionResult<{ id: number }>>;
   onUpdate: (id: number, input: Partial<HrLookupFormInput>, contract?: WorkspaceSaveContract) => Promise<ActionResult>;
   onToggle?: (id: number, is_active: boolean, contract?: WorkspaceSaveContract) => Promise<ActionResult>;
@@ -51,8 +56,12 @@ type FormState = {
 
 const blank: FormState = { code: "", name_en: "", name_ar: "", description: "", is_active: true, sort_order: "0" };
 
+type ListCriteria = {search:string; tableSearch:string; pagination:PaginationState; sorting:SortingState; filters:ColumnFiltersState};
+function nextValue<T>(update:Updater<T>,value:T):T { return typeof update==="function" ? (update as (previous:T)=>T)(value) : update; }
+const firstCriteria:ListCriteria = {search:"",tableSearch:"",pagination:{pageIndex:0,pageSize:HR_SETTINGS_FIRST_PAGE.page_size},sorting:[],filters:[]};
+
 export function HrSettingsLookupPage(props:HrSettingsLookupProps) {
-  return <HrSettingsLookupSession key={`${props.principalId??'unknown'}:${props.entity}:${props.canManage}`} {...props}/>;
+  return <HrSettingsLookupSession key={`${props.readIdentity??props.principalId??'unknown'}:${props.entity}:${props.canManage}`} {...props}/>;
 }
 function HrSettingsLookupSession({
   entity,
@@ -60,6 +69,7 @@ function HrSettingsLookupSession({
   description,
   breadcrumbs,
   initialData,
+  initialTotal = initialData.length,
   canManage,
   onList,
   onCreate,
@@ -68,13 +78,16 @@ function HrSettingsLookupSession({
   onAfterMutate,
 }: HrSettingsLookupProps) {
   const [rows, setRows] = useState<LookupRecord[]>(initialData);
-  const [search, setSearch] = useState("");
+  const [total, setTotal] = useState(initialTotal);
+  const [criteria,setCriteria] = useState(firstCriteria);
+  const activeCriteria = useRef(firstCriteria);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isPending, setIsPending] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<LookupRecord | null>(null);
   const [form, setForm] = useState<FormState>(blank);
   const [options,setOptions]=useState<HrLookupOptionState>({});
   const [referenceReady,setReferenceReady]=useState(entity!=='hr_training_types');
-  const [isPending, startTransition] = useTransition();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [readFailed, setReadFailed] = useState(false);
   const [saveFailure, setSaveFailure] = useState<string | null>(null);
@@ -86,25 +99,99 @@ function HrSettingsLookupSession({
   const latestRead = useRef(0), mutation = useRef(false);
   const pending=useRef<{id:number|null;payload:HrLookupFormInput;toggle:boolean;contract:WorkspaceSaveContract;hadUnknown:boolean}|null>(null);
   const activation=useRef({retired:false});
-  useEffect(()=>{const current={retired:false};activation.current=current;return()=>{current.retired=true;};},[]);
+  useEffect(()=>{
+    const current={retired:false};
+    activation.current=current;
+    return ()=>{
+      current.retired=true;
+      if(searchTimer.current!==null)clearTimeout(searchTimer.current);
+    };
+  },[]);
 
-  const refresh = useCallback((s?: string) => {
+  function refresh(next = activeCriteria.current, debounce = false) {
+    const actor = activation.current;
+    if (actor.retired) return;
+    if (searchTimer.current !== null) clearTimeout(searchTimer.current);
+    activeCriteria.current=next;
+    setCriteria(next);
+    setIsPending(true);
     const request = ++latestRead.current;
-    startTransition(async () => {
-      const searchTerm = s !== undefined ? s : search;
+    const current = () => !actor.retired && request === latestRead.current;
+    const load = async () => {
+      searchTimer.current=null;
+      if(!current())return;
+      const {pageIndex,pageSize} = next.pagination;
+      const sorting = next.sorting.flatMap(({id,desc})=>{
+        const key=hrSettingsColumn.safeParse(id);
+        return key.success?[{id:key.data,desc}]:[];
+      });
+      const columnFilters = Object.fromEntries(next.filters.map(({id,value})=>[id,String(value)]));
       try {
-      const res = await onList({ search: searchTerm || undefined, complete: true });
-      if (request !== latestRead.current) return;
-      if (res.success && Array.isArray(res.data?.data) && res.data.total === res.data.data.length) { setRows(res.data.data); setReadFailed(false); }
-      else setReadFailed(true);
-      } catch { if (request === latestRead.current) setReadFailed(true); }
-    });
-  }, [onList, search]);
+        const result = await onList({
+          page:pageIndex+1,page_size:pageSize,search:next.search||undefined,tableSearch:next.tableSearch||undefined,
+          ...(sorting.length>0&&{sorting}),...(next.filters.length>0&&{columnFilters}),
+        });
+        if (!current()) return;
+        const data=result.data;
+        const expected=data ? Math.min(pageSize,Math.max(0,data.total-pageIndex*pageSize)) : -1;
+        if (!result.success || !data || !Array.isArray(data.data) || !Number.isSafeInteger(data.total) || data.total<0 ||
+            data.data.length!==expected || new Set(data.data.map(row=>row.id)).size!==data.data.length) {
+          setReadFailed(true);
+          return;
+        }
+        const lastPageIndex = Math.max(0,Math.ceil(data.total/pageSize)-1);
+        if (pageIndex>lastPageIndex) {
+          refresh({...next,pagination:{...next.pagination,pageIndex:lastPageIndex}});
+          return;
+        }
+        setRows(data.data);
+        setTotal(data.total);
+        setReadFailed(false);
+      } catch {
+        if (current()) setReadFailed(true);
+      } finally {
+        if (current()) setIsPending(false);
+      }
+    };
+    if (debounce) searchTimer.current=setTimeout(()=>void load(),250);
+    else void load();
+  }
 
-  const handleSearch = (v: string) => {
-    setSearch(v);
-    refresh(v);
+  function handleSearch(search:string) {
+    const current=activeCriteria.current;
+    refresh({...current,search,pagination:{...current.pagination,pageIndex:0}},true);
+  }
+
+  const tableFields = [
+    {id:"code",path:"code",label:"Code"},
+    {id:"name_en",path:"name_en",label:"Name En"},
+    ...(entity==="hr_training_types"?[{id:"training_category",path:"training_category.name_en",label:"Training Category"}]:[]),
+    {id:"is_active",path:"is_active",label:"Is Active"},
+  ];
+  const serverRead:ERPTableServerRead<LookupRecord> = {
+    pagination:criteria.pagination, sorting:criteria.sorting, globalFilter:criteria.tableSearch,
+    columnFilters:criteria.filters, totalCount:total,
+    filters:tableFields.map(({id,label})=>({id,label,type:"text"})),
+    onPaginationChange:update=>{
+      const current=activeCriteria.current;
+      const proposed=nextValue(update,current.pagination);
+      const pagination = proposed.pageSize===current.pagination.pageSize ? proposed : {...proposed,pageIndex:0};
+      if(pagination.pageIndex!==current.pagination.pageIndex||pagination.pageSize!==current.pagination.pageSize)refresh({...current,pagination});
+    },
+    onSortingChange:update=>{
+      const current=activeCriteria.current;
+      refresh({...current,sorting:nextValue(update,current.sorting),pagination:{...current.pagination,pageIndex:0}});
+    },
+    onColumnFiltersChange:update=>{
+      const current=activeCriteria.current;
+      refresh({...current,filters:nextValue(update,current.filters),pagination:{...current.pagination,pageIndex:0}});
+    },
+    onGlobalFilterChange:update=>{
+      const current=activeCriteria.current;
+      refresh({...current,tableSearch:nextValue(update,current.tableSearch),pagination:{...current.pagination,pageIndex:0}},true);
+    },
   };
+  const hasTableCriteria = criteria.tableSearch!=="" || criteria.filters.length>0 || criteria.sorting.length>0;
 
   const openAdd = () => {
     if (uncertain || mutation.current) return;
@@ -162,6 +249,7 @@ function HrSettingsLookupSession({
         try{toast.success(!receipt.data.changed?'No changes to save':request.toggle?(request.payload.is_active?'Activated':'Deactivated'):request.id!==null?'Updated successfully':'Created successfully');}catch{setSaveFailure('Saved. The confirmation message could not be displayed.');}
         if(active.retired)return;
         if(!request.toggle)setDialogOpen(false);
+        if(!receipt.data.changed)return;
         try{refresh();}catch{setSaveFailure('Saved. The list could not refresh; reopen it when the connection returns.');}
         if(active.retired)return;
         try{onAfterMutate?.();}catch{setSaveFailure('Saved. A related view could not refresh; reload that view when the connection returns.');}
@@ -216,13 +304,13 @@ function HrSettingsLookupSession({
       {saveFailure&&!dialogOpen&&<div role="alert" className="rounded-sm border border-destructive p-3 text-sm">{saveFailure}{uncertain&&<Button variant="outline" disabled={isSubmitting} onClick={()=>retry.current?.()}>Retry same change</Button>}</div>}
       <div inert={archiveBusy || readFailed || isSubmitting || uncertain || undefined}><ERPSectionCard
         title="Records"
-        description={readFailed ? undefined : `${rows.length} item${rows.length !== 1 ? "s" : ""}`}
+        description={readFailed ? undefined : `${total} item${total !== 1 ? "s" : ""}`}
         noPadding
         actions={
           <div className="relative w-48">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input aria-label="Search"
-              value={search}
+              value={criteria.search}
               onChange={e => handleSearch(e.target.value)}
               placeholder="Search..."
               className="h-8 pl-7 text-xs"
@@ -230,11 +318,11 @@ function HrSettingsLookupSession({
           </div>
         }
       >
-        {rows.length === 0 ? (
-          !readFailed && <ERPEmptyState icon={Settings2} title={`No ${title.toLowerCase()} yet`} description={canManage ? "Click Add to create the first entry." : "No records found."} />
+        {rows.length===0 && (!hasTableCriteria || readFailed) ? (
+          !readFailed && !isPending && <ERPEmptyState icon={Settings2} title={`No ${title.toLowerCase()} yet`} description={canManage ? "Click Add to create the first entry." : "No records found."} />
         ) : (
           <div className="divide-y">
-            <RecordCollection presentation="worklist" id="hr.hr-settings-lookup-page.HrSettingsLookupPage.rows" columnPreferenceId={`hr.lookup:${entity}`} rows={rows} fields={[{"id":"code","path":"code","label":"Code"},{"id":"name_en","path":"name_en","label":"Name En"},...(entity==='hr_training_types'?[{id:'training_category',path:'training_category.name_en',label:'Training Category'}]:[]),{"id":"is_active","path":"is_active","label":"Is Active"}]} renderRecord={row => (
+            <RecordCollection presentation="worklist" id="hr.hr-settings-lookup-page.HrSettingsLookupPage.rows" columnPreferenceId={`hr.lookup:${entity}`} rows={rows} fields={tableFields} serverRead={serverRead} isLoading={isPending} renderRecord={row => (
               <div key={row.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">

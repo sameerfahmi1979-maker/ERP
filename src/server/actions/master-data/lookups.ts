@@ -14,6 +14,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { readAllPages } from "@/server/reads/all-pages";
+import { verifiedHead } from "@/server/reads/verified-aggregate";
 import { literalContains } from "@/lib/reads/search";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import {hasGlobalPermission} from '@/lib/rbac/scope';
@@ -569,39 +570,31 @@ export async function getLookupDashboardStats(): Promise<LookupDashboardResult> 
 
     const supabase = await createClient();
 
-    // Get category stats
-    const { data: categories, error: categoriesError } = await supabase
-      .from("global_lookup_categories")
-      .select("id, is_active, is_locked");
-    if (categoriesError || !Array.isArray(categories)) return failed;
+    async function readCounts(table: "global_lookup_categories" | "global_lookup_values") {
+      const countQuery = () => supabase.from(table).select("id", { count: "exact", head: true });
+      const [{ count: total }, { count: active }, { count: locked }] = await Promise.all([
+        verifiedHead(countQuery()),
+        verifiedHead(countQuery().eq("is_active", true)),
+        verifiedHead(countQuery().eq("is_locked", true)),
+      ]);
+      if (active > total || locked > total) throw new Error("Inconsistent lookup counts");
+      return { total, active, inactive: total - active, locked };
+    }
 
-    // Get value stats
-    const { data: values, error: valuesError } = await supabase
-      .from("global_lookup_values")
-      .select("id, is_active, is_locked");
-    if (valuesError || !Array.isArray(values)) return failed;
-
-    // Get recently updated values
-    const { data: recent, error: recentError } = await supabase
-      .from("global_lookup_values")
-      .select(`
-        value_label_en,
-        updated_at,
-        category:global_lookup_categories!inner(category_name_en)
-      `)
-      .order("updated_at", { ascending: false })
-      .limit(10);
+    const [categories, values, { data: recent, error: recentError }] = await Promise.all([
+      readCounts("global_lookup_categories"),
+      readCounts("global_lookup_values"),
+      supabase
+        .from("global_lookup_values")
+        .select(`
+          value_label_en,
+          updated_at,
+          category:global_lookup_categories!inner(category_name_en)
+        `)
+        .order("updated_at", { ascending: false })
+        .limit(10),
+    ]);
     if (recentError || !Array.isArray(recent)) return failed;
-
-    const total_categories = categories.length;
-    const active_categories = categories.filter(c => c.is_active).length;
-    const inactive_categories = total_categories - active_categories;
-    const locked_categories = categories.filter(c => c.is_locked).length;
-
-    const total_values = values.length;
-    const active_values = values.filter(v => v.is_active).length;
-    const inactive_values = total_values - active_values;
-    const locked_values = values.filter(v => v.is_locked).length;
 
     const recently_updated = recent.map((r) => ({
       category_name: (Array.isArray(r.category) ? r.category[0] : r.category)?.category_name_en || "Unknown",
@@ -611,14 +604,14 @@ export async function getLookupDashboardStats(): Promise<LookupDashboardResult> 
     }));
 
     const stats: LookupDashboardStats = {
-      total_categories,
-      active_categories,
-      inactive_categories,
-      locked_categories,
-      total_values,
-      active_values,
-      inactive_values,
-      locked_values,
+      total_categories: categories.total,
+      active_categories: categories.active,
+      inactive_categories: categories.inactive,
+      locked_categories: categories.locked,
+      total_values: values.total,
+      active_values: values.active,
+      inactive_values: values.inactive,
+      locked_values: values.locked,
       recently_updated,
     };
 

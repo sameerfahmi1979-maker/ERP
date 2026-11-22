@@ -10,6 +10,12 @@ const evidence = z.object({ document: id, version: id, file: id });
 const proofChoice = evidence.extend({ label: text });
 const segment = z.object({ from: text, until: text });
 export const workshopJobIndex = z.array(z.object({ id, assessment_id: id, cycle: id, state: text, asset_no: text, asset_name: text, title: text }));
+export const workshopJobIndexPage = z.object({
+  rows: workshopJobIndex.max(40),
+  next_before: id.nullable(),
+}).refine(({ rows, next_before }) =>
+  rows.every((row, index) => index === 0 || row.id < rows[index - 1].id) &&
+  (next_before === null || (rows.length === 40 && rows.at(-1)?.id === next_before)));
 export const labourPreview = z.object({ digest: text, minutes: z.number(), cost_status: text, amount, currency: nilText });
 export const labourWorkspace = z.object({
   job: id, assessment: id, cycle: id, branch: id, asset: id, asset_name: text, asset_number: text, state: text,

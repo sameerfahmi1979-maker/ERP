@@ -16,6 +16,16 @@ interface MetadataValue {
   rawValue: string;
 }
 
+export function resolveIntakeMetadataValue(
+  fieldType: string,
+  reviewedValue: MetadataValue | undefined,
+  extractedValue: unknown,
+): MetadataValue | undefined {
+  if (reviewedValue !== undefined) return reviewedValue;
+  if (extractedValue == null) return undefined;
+  return { fieldType, rawValue: String(extractedValue) };
+}
+
 interface FieldConfidenceEntry {
   score: number;
   label: string;
@@ -227,7 +237,7 @@ export function DmsAiIntakeMetadataSection({
             const extracted = extractedFieldsJson?.[def.field_code];
             const aiValue = extracted == null ? null : String(extracted);
             const confEntry = fieldConfidenceJson?.[def.field_code] as FieldConfidenceEntry | undefined;
-            const currentValue = values[def.id]?.rawValue ?? aiValue ?? "";
+            const currentValue = resolveIntakeMetadataValue(def.field_type, values[def.id], aiValue)?.rawValue ?? "";
             const reviewWarning = buildReviewWarning(def, currentValue, confEntry);
             const label = def.field_label_ar
               ? `${def.field_label_en} / ${def.field_label_ar}`

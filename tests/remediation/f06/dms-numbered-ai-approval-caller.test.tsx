@@ -7,6 +7,7 @@ import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {createWorkspaceDraftStore} from '@/lib/workspace/workspace-draft-store';
 import {input,prepared,receipt} from './dms-ai-approval-fixtures';
 const m=vi.hoisted(()=>({store:null as unknown,owner:'owner',approve:vi.fn(),batch:vi.fn(),recover:vi.fn(),definitions:vi.fn(),prepareReview:vi.fn(),confirmReview:vi.fn(),cacheOwner:{identity:{authUserId:'synthetic',scopeVersion:'one'},generation:1,isLive:()=>true,admits:()=>true},replace:vi.fn(),update:vi.fn(),rename:vi.fn(),success:vi.fn(),error:vi.fn(),rerun:vi.fn(),refreshIntake:vi.fn(),save:vi.fn(),discard:vi.fn()}));
+const metadataFixture = vi.hoisted(() => ({ renderActual: false }));
 vi.mock('@/components/layout/read-cache-boundary',()=>({useReadCacheOwner:()=>m.cacheOwner}));
 vi.mock('@/components/workspace/workspace-draft-provider',()=>({useWorkspaceDraftStoreContext:()=>m.store}));
 vi.mock('@/hooks/use-workspace-form-owner',()=>({useWorkspaceFormOwner:()=>({id:m.owner})}));
@@ -21,11 +22,15 @@ vi.mock('@/server/actions/dms/document-types',()=>({getDmsDocumentTypes:vi.fn()}
 vi.mock('@/server/actions/dms/document-metadata-values',()=>({getMetadataDefinitionsForType:m.definitions}));
 vi.mock('@/features/dms/orchestration',()=>({DmsOrchestrationProgressCard:()=>null}));
 vi.mock('@/features/dms/intake/dms-intake-link-panel',()=>({DmsIntakeLinkPanel:()=>null}));
-vi.mock('@/features/dms/intake/dms-ai-intake-metadata-section',()=>({DmsAiIntakeMetadataSection:({values,onChange}:any)=><input
- id="intake-metadata-10" aria-label="Access location" placeholder="Access location"
- value={values[10]?.rawValue??''} onChange={e=>onChange(10,'text',e.target.value)}/>}));
+vi.mock('@/features/dms/intake/dms-ai-intake-metadata-section',async importOriginal => {
+ const actual = await importOriginal<typeof import('@/features/dms/intake/dms-ai-intake-metadata-section')>();
+ return {...actual,DmsAiIntakeMetadataSection:(props:React.ComponentProps<typeof actual.DmsAiIntakeMetadataSection>) => metadataFixture.renderActual
+  ? <actual.DmsAiIntakeMetadataSection {...props}/>
+  : <input id="intake-metadata-10" aria-label="Access location" placeholder="Access location"
+      value={props.values[10]?.rawValue??''} onChange={e=>props.onChange(10,'text',e.target.value)}/>};
+});
 vi.mock('@/features/dms/intake/dms-ai-intake-classification-card',()=>({DmsAiIntakeClassificationCard:()=>null}));
-vi.mock('@/features/dms/intake/dms-ai-intake-field-row',()=>({DmsAiIntakeFieldRow:({label,children}:any)=><div data-testid={label}>{children}</div>}));
+vi.mock('@/features/dms/intake/dms-ai-intake-field-row',()=>({DmsAiIntakeFieldRow:({label,htmlFor,children}:any)=><div data-testid={label}>{htmlFor && <label htmlFor={htmlFor}>{label}</label>}{children}</div>}));
 vi.mock('@/features/dms/intake/dms-standard-file-name-field',()=>({DmsStandardFileNameField:({values,onChange}:any)=><input aria-label="Standard file name" value={values.standardFileName} onChange={e=>onChange({standardFileName:e.target.value})}/>}));
 vi.mock('@/components/erp/organizations/owner-company-select',()=>({OwnerCompanySelect:({value,onValueChange}:any)=><select aria-label="Owning Company" value={value??''} onChange={e=>onValueChange(Number(e.target.value))}><option value=""/><option value="2">Source company</option><option value="4">Destination company</option></select>}));
 vi.mock('@/components/erp/organizations/branch-select',()=>({BranchSelect:({value,onValueChange,disabled,ownerCompanyId}:any)=><select aria-label="Owning Branch" disabled={disabled} value={value??''} onChange={e=>onValueChange(Number(e.target.value))}><option value=""/>{ownerCompanyId===2?<option value="3">Source branch</option>:<option value="5">Destination branch</option>}</select>}));
@@ -44,7 +49,7 @@ async function submit(){
  fireEvent.click(screen.getAllByRole('button',{name:'Approve & Save'})[0]);
 }
 beforeEach(()=>{vi.resetAllMocks();m.store=createWorkspaceDraftStore();m.owner='owner';m.definitions.mockResolvedValue({success:true,data:[]});m.approve.mockImplementation(async(i,c)=>i.prepared?{success:true,data:receipt(c)}:{success:false,prepared:{operation_id:c.operationId,snapshot:{...prepared,source:{...prepared.source,ai_result_id:19},analysis_result_id:19,analysis_fingerprint:'d'.repeat(64)}}});m.recover.mockResolvedValue({success:true,data:null});m.prepareReview.mockImplementation(async i=>({success:true,data:{actorId:1,sessionId:i.sessionId,typeId:i.typeId,expiryDate:i.expiryDate??null,fingerprint:'a'.repeat(64),requiresOverride:false,canOverride:false,reason:null}}));m.confirmReview.mockResolvedValue({success:true});m.batch.mockResolvedValue({success:true,data:{documentId:77,documentNo:'DMS-77'}});});
-afterEach(cleanup);
+afterEach(() => { cleanup(); metadataFixture.renderActual = false; });
 it('names a missing required field after file verification and ignores prior-type metadata on approval',async()=>{
  m.definitions.mockResolvedValue({success:true,data:[{id:10,field_label_en:'Access location',field_type:'text',is_required:true}]});
  render(page({...session,draft_values:[{field_scope:'metadata',field_code:'99',field_type:'text',reviewed_value_json:'Previous type value'}]}));
@@ -83,6 +88,43 @@ async function retryFromReview() {
   await waitFor(() => expect(retry.disabled).toBe(false));
   await act(async () => fireEvent.click(retry));
 }
+
+it('approves the displayed metadata after a same-type CICPA AI rerun', async () => {
+  metadataFixture.renderActual = true;
+  const fields = [
+    {id:10, field_code:'pass_number', field_label_en:'Pass Number', field_type:'text', rawValue:'00001234'},
+    {id:11, field_code:'holder_name', field_label_en:'Holder Name', field_type:'text', rawValue:'Example Holder'},
+    {id:12, field_code:'company_name', field_label_en:'Company Name', field_type:'text', rawValue:'Example Company'},
+    {id:13, field_code:'expiry_date', field_label_en:'Pass Expiry Date', field_type:'date', rawValue:'2027-05-30'},
+  ] as const;
+  m.definitions.mockResolvedValue({success:true,data:fields.map(field => ({...field,is_required:true}))});
+  m.rerun.mockResolvedValue({success:true,data:{sessionCode:retrySession.session_code,status:'review_pending'}});
+  m.refreshIntake.mockResolvedValue({
+    success:true,
+    data:{
+      ...refreshedIntake,
+      ai_result:{
+        ...refreshedIntake.ai_result,
+        suggested_type:{type_code:'CICPA_PASS'},
+        extracted_fields_json:Object.fromEntries(fields.map(field => [field.field_code, field.rawValue])),
+      },
+    },
+  });
+  render(page({...retrySession, ai_result:{...retrySession.ai_result, suggested_type:{type_code:'CICPA_PASS'}}}));
+  await screen.findByLabelText('Pass Number');
+
+  await retryFromReview();
+  for (const field of fields) {
+    expect(screen.getByLabelText<HTMLInputElement>(field.field_label_en).value).toBe(field.rawValue);
+  }
+  fill();
+  await submit();
+
+  await waitFor(() => expect(m.approve).toHaveBeenCalled());
+  expect(m.approve.mock.calls[0][0].metadataValues).toEqual(fields.map(field => ({
+    definitionId:field.id, fieldType:field.field_type, rawValue:field.rawValue,
+  })));
+});
 
 it('reloads the confirmed same-intake retry and retains saved officer values', async () => {
   m.rerun.mockResolvedValue({success:true,data:{sessionCode:retrySession.session_code,status:'review_pending'}});

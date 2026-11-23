@@ -8,6 +8,7 @@ import { useNumberedAiApproval } from "@/hooks/use-numbered-ai-approval";
 import {useRetainedBatchFinalization} from '@/hooks/use-retained-batch-finalization';
 import { toast } from "sonner";
 import {DmsAiIntakeView} from "./dms-ai-intake-view";
+import { resolveIntakeMetadataValue } from "./dms-ai-intake-metadata-section";
 import { buildInitialReviewValues } from "./dms-ai-intake-review-form";
 import type { ReviewFormValues } from "./dms-ai-intake-review-form";
 import type { IntakeSessionData, IntakeAiResultRow } from "@/server/actions/dms/ai-intake";
@@ -127,23 +128,27 @@ export function DmsAiIntakePageClient({
     if (!definitions.success || !definitions.data) {
       return { error: "The metadata requirements could not be checked. Keep this review and try approving again." };
     }
-    // Metadata from a previous type may still be in the draft. Submit only fields
-    // defined for the selected type and check the required values before approval.
-    const missing = definitions.data.filter(field => field.is_required && !formValues.metadataValues[field.id]?.rawValue.trim());
+    // Use the same values as the review inputs, including freshly displayed AI
+    // suggestions, while retaining explicit reviewer edits and cleared values.
+    const fields = definitions.data.map(field => ({
+      field,
+      value: resolveIntakeMetadataValue(
+        field.field_type,
+        formValues.metadataValues[field.id],
+        aiResult?.extracted_fields_json?.[field.field_code],
+      ),
+    }));
+    const missing = fields.filter(({ field, value }) => field.is_required && !value?.rawValue.trim());
     if (missing.length) return {
-      error: `Complete required metadata before approving: ${missing.map(field => field.field_label_en).join(", ")}.`,
-      fieldId: missing[0].id,
+      error: `Complete required metadata before approving: ${missing.map(({ field }) => field.field_label_en).join(", ")}.`,
+      fieldId: missing[0].field.id,
     };
-    const changedField = definitions.data.find(field => {
-      const value = formValues.metadataValues[field.id];
-      return value?.rawValue.trim() && value.fieldType !== field.field_type;
-    });
+    const changedField = fields.find(({ field, value }) => value?.rawValue.trim() && value.fieldType !== field.field_type)?.field;
     if (changedField) return {
       error: `The configuration for ${changedField.field_label_en} changed. Review and re-enter its value before approving.`,
       fieldId: changedField.id,
     };
-    const metadata = aiApprovalInputSchema.shape.metadataValues.safeParse(definitions.data.flatMap(field => {
-      const value = formValues.metadataValues[field.id];
+    const metadata = aiApprovalInputSchema.shape.metadataValues.safeParse(fields.flatMap(({ field, value }) => {
       if (!value?.rawValue.trim()) return [];
       return [{ definitionId: field.id, fieldType: field.field_type, rawValue: value.rawValue }];
     }));

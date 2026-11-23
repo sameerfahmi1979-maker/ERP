@@ -475,7 +475,6 @@ export function ERPDataTable<TData>({
                     <TableCell
                       key={cell.id}
                       data-worklist-actions={!embedded && ["actions", "record_details"].includes(cell.column.id) ? "" : undefined}
-                      style={{ width: embedded ? undefined : cell.column.getSize() }}
                       className={cn("h-12 text-sm", embedded ? "whitespace-normal break-words [overflow-wrap:anywhere]" : "overflow-hidden")}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

@@ -1,0 +1,12 @@
+{
+  "version": "3.5.4",
+  "source": "https://repo.maven.apache.org/maven2/com/google/zxing/core/3.5.4/core-3.5.4.jar",
+  "sha256": "71de5d89341b5fcf5dd89da7f44e84d825d0e084cdf3ec77c9abe26b0f0ceb13",
+  "publishedChecksumAlgorithm": "SHA1",
+  "publishedChecksum": "955fcd6bcd0723ddfb8ee6ed502d5fdf0e9676a9",
+  "checksumSource": "https://repo.maven.apache.org/maven2/com/google/zxing/core/3.5.4/core-3.5.4.jar.sha1",
+  "sha256Endpoint": "not published (HTTP404); local SHA256 recorded separately",
+  "path": "C:\\dev\\mobile_app\\build\\dependency-research\\zxing-core-3.5.4.jar",
+  "installed": false,
+  "checkedAt": "2026-11-21T01:12:07.3267643Z"
+}

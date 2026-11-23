@@ -4,6 +4,7 @@ import json
 import os
 import pathlib
 import subprocess
+import threading
 import time
 import uuid
 
@@ -27,10 +28,40 @@ def main():
     docker("run", "--pull=never", "--network", "none", "--name", name, "--detach",
            "--tmpfs", "/var/lib/postgresql/data", "-e", "POSTGRES_HOST_AUTH_METHOD=trust", image)
 
+    # One independent PostgreSQL connection per test thread. Keep the real race while avoiding
+    # a new Docker CLI/daemon/psql process for each individual fixture assertion.
+    clients = []
+    local = threading.local()
     def sql(query, check=True):
-        return docker("exec", "-i", name, "psql", "-U", "postgres", "-XqAt", "-v", "ON_ERROR_STOP=1",
-                      data=query, check=check)
-
+        client = getattr(local, "client", None)
+        if client is None or client.poll() is not None:
+            client = subprocess.Popen(["docker","exec","-i",name,"sh","-c","exec stdbuf -oL -eL psql -U postgres -XqAt -v ON_ERROR_STOP=0 2>&1"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            local.client = client
+            clients.append(client)
+        marker = "BUDGET_END_"+uuid.uuid4().hex
+        # The migration and some race/fencing cases supply their own transaction.
+        own_transaction = query.lstrip().lower().startswith("begin;") or query.lstrip().startswith("-- Communications-only")
+        block = query if own_transaction else "begin;\n"+query+"\ncommit;"
+        try:
+            client.stdin.write("rollback;\ndiscard all;\nset client_min_messages=error;\n\\set LAST_ERROR_SQLSTATE 00000\n"+block+"\n\\echo "+marker+" :LAST_ERROR_SQLSTATE :SQLSTATE\n")
+            client.stdin.flush()
+        except BrokenPipeError:
+            return subprocess.CompletedProcess([],1,"","PostgreSQL process unavailable")
+        lines = []
+        while True:
+            line = client.stdout.readline()
+            if not line:
+                break
+            if line.startswith(marker+" "):
+                break
+            lines.append(line)
+        errors = [line for line in lines if line.startswith(("ERROR:","FATAL:","psql: error:"))]
+        output = "".join(line for line in lines if not line.startswith(("WARNING:","NOTICE:","ERROR:","FATAL:","psql: error:")))
+        result = subprocess.CompletedProcess([], int(not line or line.strip().split()[1:] != ["00000","00000"]), output, "".join(errors))
+        if check and result.returncode:
+            raise RuntimeError(result.stderr or output or "PostgreSQL connection closed")
+        return result
     def command(cmd, data):
         encoded = json.dumps(data).replace("'", "''")
         return json.loads(sql(f"set role service_role; select public.erp_comm_budget_command('{cmd}','{encoded}');").stdout)
@@ -61,21 +92,49 @@ def main():
     def proof(op, cost=0, feature="ptt_live", authority=False, retention=True):
         funding = f"'{APPROVAL}'" if authority else "null"
         retained = "'proof-of-zero-cost-retention'" if retention else "null"
+        statements = []
         dims = ["railway", "database"]
         if feature == "ptt_live":
             dims.append("sfu_turn")
-        if feature == "push":
+        if feature=="realtime":
+            dims.append("realtime")
+        if feature in ("media_upload","media_download","export"):
+            dims.append("storage")
+        if feature in ("sos","push"):
             dims.append("fcm")
-        sql(f"""insert into erp_comm_cost.proof values ('{op}','communications','{ADMIN}','{feature}',null,
+        statements.append(f"""insert into erp_comm_cost.proof values ('{op}','communications','{ADMIN}','{feature}',null,
           now()+interval '20 minutes',now()+interval '10 minutes',interval '30 seconds',{retained},'shutdown',0,{funding});""")
         if feature in ("ptt_live","media_upload"):
             endpoint = "close_sfu_tracks" if feature == "ptt_live" else "discard_partial_upload"
-            sql(f"insert into erp_comm_cost.cleanup_limit values ('{op}','{endpoint}',1,2);")
+            statements.append(f"insert into erp_comm_cost.cleanup_limit values ('{op}','{endpoint}',1,2);")
         for dim in dims:
-            sql(f"""insert into erp_comm_cost.meter values ('{op}','{dim}','proof',true,now(),
+            statements.append(f"""insert into erp_comm_cost.meter values ('{op}','{dim}','proof',true,now(),
              now()+interval '10 minutes',now()+interval '30 minutes',{cost if dim == 'railway' else 0},
-             (select id from erp_comm_cost.capacity where dimension='{dim}'),1);""")
+             (select id from erp_comm_cost.capacity where dimension='{dim}' and unit='units'),1);""")
 
+        statements.append(f"""insert into erp_comm_cost.meter select '{op}','database','ledger size and continuing funding',true,now(),
+            now()+interval '10 minutes',now()+interval '30 minutes',0,id,10000000 from erp_comm_cost.capacity where unit='permanent_ledger_bytes';""")
+        sql("\n".join(statements))
+
+    def fund_pool(label, kind, subject, limit, feature, horizon_hours=1):
+        proof(label, feature=feature)
+        dimension = "railway"
+        unit = "funded_"+kind+"_actions"
+        sql(f"""insert into erp_comm_cost.capacity(billing_account,dimension,unit,valid_from,valid_until,available_units,enabled)
+          values('test','{dimension}','{unit}',now()-interval '1 hour',now()+interval '3 days',999999,true)
+          on conflict do nothing;
+          insert into erp_comm_cost.meter select '{label}','{dimension}','funded controls',true,now(),
+          now()+interval '10 minutes',now()+interval '30 minutes',0,id,{limit} from erp_comm_cost.capacity where unit='{unit}';
+          update erp_comm_cost.meter set upper_units=greatest(upper_units,{65536+limit*32768}) where operation_id='{label}' and
+            capacity_id in(select id from erp_comm_cost.capacity where unit='permanent_ledger_bytes');""")
+        epoch = int(sql(f"select extract(epoch from now()+interval '{horizon_hours} hours')::bigint;").stdout.strip())
+        seal = {"op":"budget.fundControl","kind":kind,"subject":subject,"maxActions":limit,"endEpoch":epoch}
+        issued = command("reserve",{"feature":feature,"scope":"communications","operationId":label,"actorId":ADMIN,"upperBoundMicros":"0",
+            "liabilityEndsAt":None,"binding":{"actorSessionId":session,"command":seal}})
+        assert issued["ok"], issued
+        sql(f"""insert into erp_comm_cost.control_pool(permit_id,kind,subject,max_actions,valid_until,continuing_zero_evidence,enabled)
+            values('{issued["permitId"]}','{kind}','{subject}',{limit},to_timestamp({epoch}),'bounded post-expiry controls',true);""")
+        return issued["permitId"]
     try:
         for _ in range(60):
             status = sql("select current_setting('server_version_num');", check=False)
@@ -103,7 +162,9 @@ def main():
         deadline = sql("select to_char(timezone('UTC',now()+interval '2 hours'),'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"');").stdout.strip()
         sql("""insert into erp_comm_cost.capacity(billing_account,dimension,unit,valid_from,valid_until,available_units,enabled)
             select 'test',d,'units',now()-interval '1 hour',now()+interval '1 day',1000,true
-            from unnest(array['railway','database','sfu_turn','fcm']) d;""")
+            from unnest(array['railway','database','sfu_turn','fcm','storage','realtime']) d;
+            insert into erp_comm_cost.capacity(billing_account,dimension,unit,valid_from,valid_until,available_units,enabled)
+            values('test','database','permanent_ledger_bytes',now()-interval '1 hour',now()+interval '1 day',10000000000,true);""")
         assert json.loads(operator(ADMIN,"status",{"scope":"communications"}).stdout)["canApprove"] is False
         reason(reserve("missing"), "owner_binding_unverified")
         assert approve(OWNER).returncode != 0
@@ -114,7 +175,8 @@ def main():
         sql(f"update erp_comm_cost.authority set owner_auth_id='{OWNER}',owner_binding_evidence='verified enrollment';")
         reason(reserve("no-proof"), "billing_evidence_unavailable")
         assert approve(ADMIN).returncode != 0
-        assert approve(OWNER, age=3600).returncode != 0
+        old_auth=approve(OWNER, age=3600)
+        assert old_auth.returncode != 0, (old_auth.stdout,old_auth.stderr)
         response = approve(OWNER)
         assert response.returncode == 0, response.stderr
         assert approve(OWNER, scope="another scope").returncode != 0
@@ -128,6 +190,10 @@ def main():
         assert approve(ADMIN).returncode != 0
         assert operator(OWNER,"monitor",{**roster,"recipientProfileIds":[]}).returncode != 0
         assert operator(OWNER,"status",{"scope":"invented"}).returncode != 0
+        proof("unfunded-alerts")
+        reason(reserve("unfunded-alerts"),"owner_alert_capacity_unavailable")
+        fund_pool("owner-baseline","budget_alert","1",500,"push",72)
+        fund_pool("admin-baseline","budget_alert","2",500,"push",72)
         proof("unfunded", 1)
         reason(reserve("unfunded"), "owner_approval_required")
         proof("hold", retention=False, feature="chat")
@@ -135,6 +201,14 @@ def main():
         proof("stale")
         sql("update erp_comm_cost.meter set observed_at=now()-interval '1 hour' where operation_id='stale';")
         reason(reserve("stale"), "meter_stale_or_incomplete")
+        proof("pulse-no-durable",feature="realtime",retention=False)
+        sql("update erp_comm_cost.proof set liability_ends_at='2035-01-01' where operation_id='pulse-no-durable';")
+        no_durable=command("reserve",{"feature":"realtime","scope":"communications","operationId":"pulse-no-durable","actorId":ADMIN,
+            "upperBoundMicros":"0","liabilityEndsAt":"2035-01-01"})
+        reason(no_durable,"continuing_retention_unproven")
+        proof("pulse-no-bytes",feature="realtime")
+        sql("delete from erp_comm_cost.meter where operation_id='pulse-no-bytes' and capacity_id in (select id from erp_comm_cost.capacity where unit='permanent_ledger_bytes');")
+        reason(reserve("pulse-no-bytes",feature="realtime"), "ledger_retention_capacity_unproven")
         proof("missing-dimension")
         sql("delete from erp_comm_cost.meter where operation_id='missing-dimension' and dimension='sfu_turn';")
         reason(reserve("missing-dimension"), "meter_stale_or_incomplete")
@@ -200,7 +274,8 @@ def main():
         assert take(wire,as_role="authenticated").returncode != 0
         assert take({"op":"chat.send","args":{"text":"changed"}}).returncode != 0
         assert take(wire,as_actor=OWNER).returncode != 0
-        assert take(wire).returncode == 0
+        validated=take(wire)
+        assert validated.returncode == 0,(validated.stdout,validated.stderr)
         assert take(wire).returncode != 0
         proof("sos-model",feature="sos")
         sql("insert into erp_comm_cost.standing_envelope values('communications','sos','sos-model',true);")
@@ -215,11 +290,24 @@ def main():
         admission=f"select erp_comm_cost.require_sos_envelope('{sos['permitId']}',"
         assert sql(origin+admission+"5,8); commit;",False).returncode != 0
         assert sql(origin+admission+"4,9); commit;",False).returncode != 0
-        assert sql(origin+admission+"4,8); commit;",False).returncode == 0
+        source=str(uuid.uuid4())
+        cancelled=str(uuid.uuid4())
+        valid_origin=origin+admission+f"4,8); select erp_comm_cost.bind_sos_notice('{sos['permitId']}','{source}','original',2); commit;"
+        assert sql(valid_origin,False).returncode==0
+        sql(f"select erp_comm_cost.bind_sos_notice('{sos['permitId']}','{cancelled}','cancelled',2);")
+        assert sql(f"select erp_comm_cost.bind_sos_notice('{sos['permitId']}','{cancelled}','cancelled',99);",False).returncode!=0
+        sql("create function erp_private.notification_sos_target(uuid,bigint) returns jsonb language sql as $$select jsonb_build_object('pushEligible',true) where $2=2$$;")
+        device, job, lease = [str(uuid.uuid4()) for _ in range(3)]
+        bound_args=f"'sos','{cancelled}',2,'{device}','{job}','{lease}'"
+        sql("insert into erp_comm_cost.pause values('communications','sos','paused',now());")
+        assert sql(f"select erp_comm_cost.take_notice_attempt({bound_args});").stdout.strip()=="t"
+        assert sql(f"select erp_comm_cost.take_notice_attempt({bound_args});").stdout.strip()=="f"
+        assert sql(f"select erp_comm_cost.notice_attempt_valid({bound_args});").stdout.strip()=="t"
+        assert sql(f"select erp_comm_cost.take_control_read('sos','{cancelled}',2,'{session}',gen_random_uuid());").stdout.strip()=="t"
         assert sql(admission+"1,1);",False).returncode != 0
         proof("model",feature="push")
         sql("insert into erp_comm_cost.standing_envelope values('communications','push','model',true);"
-            "update erp_comm_cost.capacity set available_units=2 where dimension='fcm';")
+            "update erp_comm_cost.capacity set available_units=1+(select coalesce(sum(h.units),0) from erp_comm_cost.unit_hold h where h.capacity_id=erp_comm_cost.capacity.id) where dimension='fcm';")
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
             results = list(pool.map(lambda op:reserve(op,feature="push"),["unit-a","unit-b"]))
         assert sum(r["ok"] for r in results)==1, results
@@ -227,6 +315,86 @@ def main():
         pauseResult=operator(ADMIN,"pause",{"scope":"communications","feature":"push","reason":"maintenance","clientMutationId":str(uuid.uuid4())})
         assert pauseResult.returncode==0, pauseResult.stderr
         reason(reserve("future",feature="push"),"feature_paused")
+        # An approved, finite budget alert transport keeps working after the ordinary push gate pauses.
+        sql("delete from erp_comm_cost.pause where feature='push'; update erp_comm_cost.capacity set available_units=1000 where dimension='fcm';")
+        sql("update erp_comm_cost.control_pool set enabled=false where kind='budget_alert' and subject='2';")
+        fund_pool("owner-notices","budget_alert","2",3,"push")
+        sql("insert into erp_comm_cost.pause values('communications','push','paused',now());")
+        monitor_source=sql(f"select source_uuid from erp_comm_cost.alert where recipient_auth_id='{ADMIN}' limit 1;").stdout.strip()
+        notice=[str(uuid.uuid4()) for _ in range(3)]
+        args=f"'budget','{monitor_source}',2,'{notice[0]}','{notice[1]}','{notice[2]}'"
+        assert sql(f"select erp_comm_cost.take_notice_attempt({args});").stdout.strip()=="t"
+        assert sql(f"select erp_comm_cost.notice_attempt_valid({args});").stdout.strip()=="t"
+        assert sql(f"select erp_comm_cost.take_notice_attempt({args});").stdout.strip()=="f"
+        assert sql(f"select erp_comm_cost.take_control_read('budget',null,2,'{session}',gen_random_uuid());").stdout.strip()=="t"
+        assert sql(f"select erp_comm_cost.take_control_read('control',null,2,'{session}',gen_random_uuid());").stdout.strip()=="t"
+        assert sql(f"select erp_comm_cost.take_control_read('budget',null,2,'{session}',gen_random_uuid());").stdout.strip()=="f"
+        sql("update erp_comm_cost.control_pool set enabled=false where kind='budget_alert' and subject='2';"
+            "update erp_comm_cost.control_pool set enabled=true where permit_id=(select permit_id from erp_comm_cost.reservation where operation_id='admin-baseline');")
+        fund_pool("safety-block","block","2",1,"chat")
+        assert sql("select erp_comm_cost.take_policy_control(3,'block');",False).returncode!=0
+        assert sql("select erp_comm_cost.take_policy_control(2,'block');",False).returncode==0
+        assert sql("select erp_comm_cost.take_policy_control(2,'block');",False).returncode!=0
+        assert sql("select erp_comm_cost.take_policy_control(2,'report');",False).returncode!=0
+
+        worker=str(uuid.uuid4())
+        fund_pool("worker-plan","chat_stage_poll",worker,10000,"media_upload",28)
+        poll=str(uuid.uuid4())
+        assert sql(f"select erp_comm_cost.take_chat_stage_poll('{worker}','{poll}') is not null;").stdout.strip()=="t"
+        assert sql(f"select erp_comm_cost.take_chat_stage_poll('{worker}','{poll}') is not null;").stdout.strip()=="f"
+        assert sql(f"select erp_comm_cost.chat_stage_worker_covers('{worker}',now()+interval '25 hours');").stdout.strip()=="t"
+        proof("chat-object",feature="media_upload")
+        sql("""update erp_comm_cost.capacity set valid_until=now()+interval '3 days';
+          update erp_comm_cost.proof set actor_id='2',operational_stop_by=now()+interval '26 hours' where operation_id='chat-object';
+          update erp_comm_cost.meter set covered_until=now()+interval '26.5 hours' where operation_id='chat-object';
+          update erp_comm_cost.cleanup_limit set max_attempts=3 where operation_id='chat-object';""")
+        stage_wire={"op":"chat.stageOpen","args":{}}
+        stage=command("reserve",{"feature":"media_upload","scope":"communications","operationId":"chat-object","actorId":"2","upperBoundMicros":"0",
+                "liabilityEndsAt":None,"binding":{"actorSessionId":session,"command":stage_wire}})
+        assert stage["ok"],stage
+        stage_permit=stage["permitId"]
+        upload=str(uuid.uuid4())
+        stage_origin=f"""begin; set test.actor='{ADMIN}'; set test.age='0';
+           select erp_comm_cost.take_permit('{stage_permit}','media_upload','communications','2','{json.dumps(stage_wire)}');
+           select erp_comm_cost.bind_chat_stage('{stage_permit}','{upload}',now()+interval '25 hours');
+           select erp_comm_cost.claim_chat_stage_window('{worker}','{stage_permit}',now()+interval '25 hours'); commit;"""
+        sql(stage_origin)
+        sql(f"select erp_comm_cost.release_attached_chat_stage('{stage_permit}','{upload}');")
+        attempt={"permitId":stage_permit,"endpoint":"discard_partial_upload","resourceId":"erp-chat-media/"+upload,"attemptId":"late-delete"}
+        reason(command("authorize_cleanup",attempt),"retained_object_protected")
+        sql("update erp_comm_cost.capacity set valid_until=now()+interval '3 days';")
+        proof("spool-held",feature="export")
+        reason(reserve("spool-held",feature="export"),"export_spool_lifetime_unproven")
+        sql("""insert into erp_comm_cost.export_spool_limit values('spool-held',1048576,2,1,60,'independent volume bounds');
+           insert into erp_comm_cost.capacity(billing_account,dimension,unit,valid_from,valid_until,available_units,enabled)
+           values('test','railway','encrypted_spool_byte_hours',now()-interval '1 hour',now()+interval '2 days',1000000,true);
+           insert into erp_comm_cost.meter select 'spool-held','railway','spool timed volume',true,now(),now()+interval '10 minutes',
+           now()+interval '30 minutes',0,id,35000 from erp_comm_cost.capacity where unit='encrypted_spool_byte_hours';""")
+        assert reserve("spool-held",feature="export")["spool"]=={"bytesPerSlot":"1048576","slotsPerVolume":2,"maxVolumes":1,"cleanupTailSeconds":60}
+        # Model one registered replica, one boot and finite poll cadence/byte and monetary holds.
+        ptt_worker, boot, pulse=[str(uuid.uuid4()) for _ in range(3)]
+        sql("delete from erp_comm_cost.pause where feature='ptt_live'; insert into erp_comm_cost.ptt_worker_fleet values(true,1,1,45,30,now()+interval '2 days',true,'bounded local boot budget');")
+        fund_pool("ptt-worker","ptt_worker_poll",ptt_worker,10000,"ptt_live",27)
+        start=f"select erp_comm_cost.start_ptt_worker('{ptt_worker}','{boot}',now()+interval '3 hours',1000) is not null;"
+        assert sql(start).stdout.strip()=="t"
+        assert sql(start).stdout.strip()=="f"
+        assert sql(f"select erp_comm_cost.take_ptt_worker_poll('{ptt_worker}','{boot}','{pulse}') is not null;").stdout.strip()=="t"
+        assert sql(f"select erp_comm_cost.take_ptt_worker_poll('{ptt_worker}','{boot}','{pulse}') is not null;").stdout.strip()=="f"
+        assert sql(f"select erp_comm_cost.ptt_worker_covers('{ptt_worker}',now()+interval '25 minutes');").stdout.strip()=="t"
+        proof("drain",feature="ptt_live")
+        live=reserve("drain",feature="ptt_live")
+        assert live["ok"],live
+        assert sql(f"select erp_comm_cost.claim_ptt_drain('{ptt_worker}','{live['permitId']}',now()+interval '19 minutes');",False).returncode!=0
+        assert sql(f"select erp_comm_cost.claim_ptt_drain('{ptt_worker}','{live['permitId']}',now()+interval '3 minutes');",False).returncode==0
+        assert sql(f"select erp_comm_cost.claim_ptt_drain('{ptt_worker}','{live['permitId']}',now()+interval '2 days');",False).returncode!=0
+        sql("delete from erp_comm_cost.pause where feature='push';")
+        fund_pool("scheduled-notifications","notification_tick","mobile-notifications",2,"push")
+        first_tick = str(uuid.uuid4())
+        assert sql(f"select erp_comm_cost.debit_control('notification_tick','mobile-notifications','{first_tick}')>clock_timestamp();").stdout.strip()=="t"
+        assert sql(f"select erp_comm_cost.debit_control('notification_tick','mobile-notifications','{first_tick}') is null;").stdout.strip()=="t"
+        sql("update erp_comm_cost.control_pool set last_poll=now()-interval '1 hour' where kind='notification_tick';")
+        assert sql("select erp_comm_cost.debit_control('notification_tick','mobile-notifications',gen_random_uuid())<=clock_timestamp();").stdout.strip()=="t"
+        assert sql("select erp_comm_cost.debit_control('notification_tick','mobile-notifications',gen_random_uuid()) is null;").stdout.strip()=="t"
         later_approval=str(uuid.uuid4())
         mutation={"scope":"communications","clientMutationId":later_approval,"currency":"USD",
                   "maxMicros":"10","endsAt":deadline,"features":["chat"]}
@@ -242,6 +410,10 @@ def main():
         assert "approval_expired" in expired_events
         print("PostgreSQL 17 budget migration, owner checks, evidence gates, atomic cap race, idempotency, scoped pause, reconciliation and alerts passed.")
     finally:
+        for client in clients:
+            if client.poll() is None:
+                client.stdin.close()
+                client.wait(timeout=15)
         docker("rm", "--force", name)
 
 

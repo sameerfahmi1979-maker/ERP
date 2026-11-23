@@ -22,7 +22,15 @@ export type SettlementRequest = Pick<ReservationRequest, 'scope' | 'feature' | '
   evidenceId: string;
 };
 type Denied = { ok: false; status: 503; reason: string };
-export type BudgetResult = Denied | { ok: true; permitId: string; expiresAt: Date; newReservation: boolean };
+const exportSpool = z.strictObject({
+  bytesPerSlot: z.string().regex(/^[1-9][0-9]{0,18}$/),
+  slotsPerVolume: z.number().int().positive(), maxVolumes: z.number().int().positive(),
+  cleanupTailSeconds: z.number().int().positive(),
+});
+export type BudgetResult = Denied | {
+  ok: true; permitId: string; expiresAt: Date; newReservation: boolean;
+  spool?: z.infer<typeof exportSpool>;
+};
 type UpdateResult = Denied | { ok: true };
 const denied = (reason: string): Denied => ({ ok: false, status: 503, reason });
 type Command = 'reserve' | 'settle' | 'pause' | 'bind_cleanup' | 'authorize_cleanup' | 'confirm_cleanup';
@@ -83,7 +91,12 @@ export async function reserveCommunicationBudget(
       typeof data.newReservation !== 'boolean') return denied('invalid_budget_response');
   const expiresAt = new Date(data.expiresAt);
   if (!Number.isFinite(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) return denied('permit_expired');
-  return { ok: true, permitId: data.permitId, expiresAt, newReservation: data.newReservation };
+  const permit = { ok: true as const, permitId: data.permitId, expiresAt, newReservation: data.newReservation };
+  if (request.feature === 'export') {
+    const spool = exportSpool.safeParse('spool' in data ? data.spool : null);
+    return spool.success ? { ...permit, spool: spool.data } : denied('export_spool_lifetime_unproven');
+  }
+  return permit;
 }
 
 /** Final provider evidence is recorded independently and matched by the persistent transaction. */

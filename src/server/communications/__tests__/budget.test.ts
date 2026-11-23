@@ -43,6 +43,14 @@ describe('communications budget boundary', () => {
     expect(await reserveCommunicationBudget(request, deps)).toMatchObject({ reason: 'invalid_budget_response' });
     expect(await reserveCommunicationBudget(request, deps)).toMatchObject({ reason: 'permit_expired' });
   });
+  it('requires exact protected spool limits for every accepted export', async () => {
+    const receipt = { ok: true, permitId: 'p', expiresAt: new Date(Date.now()+60000).toISOString(), newReservation: true };
+    const spool = { bytesPerSlot: '9007199254740993', slotsPerVolume: 2, maxVolumes: 1, cleanupTailSeconds: 60 };
+    const store = { transact: vi.fn().mockResolvedValueOnce(receipt).mockResolvedValueOnce({ ...receipt, spool }) };
+    const deps = { store, env: { ERP_COMM_EXPORT_ENABLED: 'true' } };
+    expect(await reserveCommunicationBudget({ ...request, feature: 'export' }, deps)).toMatchObject({ reason: 'export_spool_lifetime_unproven' });
+    expect(await reserveCommunicationBudget({ ...request, feature: 'export' }, deps)).toMatchObject({ ok: true, spool });
+  });
   it('continues reconciliation after the feature has been paused', async () => {
     const store = { transact: vi.fn().mockResolvedValue({ ok: false, reason: 'settlement_unconfirmed' }) };
     expect(await reconcileCommunicationBudget({ ...request, permitId: 'p', actualMicros: BigInt(0), evidenceId: 'receipt' }, { env: {}, store }))

@@ -49,15 +49,15 @@ import { toast } from "sonner";
 
 type Props = {
   canOpenAiObservability: boolean;
-  stats: DmsIntelligenceAdminStats;
+  stats: DmsIntelligenceAdminStats | null;
 };
 
 // ── Health stat card ──────────────────────────────────────────────────────────
 
 type HealthCard = {
   label: string;
-  value: number;
-  total?: number;
+  value: number | null;
+  total?: number | null;
   icon: React.ElementType;
   color: string;
   warn?: boolean;
@@ -66,7 +66,7 @@ type HealthCard = {
 function HealthStatCard({ card }: { card: HealthCard }) {
   const Icon = card.icon;
   const pct =
-    card.total != null && card.total > 0
+    card.value !== null && card.total != null && card.total > 0
       ? Math.round((card.value / card.total) * 100)
       : null;
 
@@ -86,7 +86,7 @@ function HealthStatCard({ card }: { card: HealthCard }) {
       </div>
       <div className="mt-3">
         <div className="text-2xl font-bold text-foreground">
-          {card.value.toLocaleString()}
+          {card.value?.toLocaleString() ?? "Unavailable"}
         </div>
         <div className="text-xs font-medium text-foreground mt-0.5">
           {card.label}
@@ -306,7 +306,7 @@ function AdminBulkCard({
 // ── Main client page ─────────────────────────────────────────────────────────
 
 export function DmsIntelligenceAdminPageClient({ stats, canOpenAiObservability }: Props) {
-  const healthCards: HealthCard[] = [
+  const healthCards: HealthCard[] = stats ? [
     {
       label: "Total Documents",
       value: stats.totalDocuments,
@@ -326,7 +326,7 @@ export function DmsIntelligenceAdminPageClient({ stats, canOpenAiObservability }
       total: stats.totalDocuments,
       icon: FileText,
       color: "text-amber-600 bg-amber-50 dark:bg-amber-950/30",
-      warn: stats.documentsMissingExtractedText > 0,
+      warn: (stats.documentsMissingExtractedText ?? 0) > 0,
     },
     {
       label: "With AI Summary",
@@ -341,7 +341,7 @@ export function DmsIntelligenceAdminPageClient({ stats, canOpenAiObservability }
       total: stats.totalDocuments,
       icon: Sparkles,
       color: "text-rose-600 bg-rose-50 dark:bg-rose-950/30",
-      warn: stats.documentsMissingAiSummary > 0,
+      warn: (stats.documentsMissingAiSummary ?? 0) > 0,
     },
     {
       label: "With Completeness Score",
@@ -355,14 +355,14 @@ export function DmsIntelligenceAdminPageClient({ stats, canOpenAiObservability }
       value: stats.highRiskDocuments,
       icon: AlertTriangle,
       color: "text-orange-600 bg-orange-50 dark:bg-orange-950/30",
-      warn: stats.highRiskDocuments > 0,
+      warn: (stats.highRiskDocuments ?? 0) > 0,
     },
     {
       label: "Critical Risk Docs",
       value: stats.criticalRiskDocuments,
       icon: AlertTriangle,
       color: "text-red-600 bg-red-50 dark:bg-red-950/30",
-      warn: stats.criticalRiskDocuments > 0,
+      warn: (stats.criticalRiskDocuments ?? 0) > 0,
     },
     {
       label: "Pending Tag Suggestions",
@@ -389,16 +389,16 @@ export function DmsIntelligenceAdminPageClient({ stats, canOpenAiObservability }
       total: stats.totalDocuments,
       icon: Compass,
       color: "text-amber-600 bg-amber-50 dark:bg-amber-950/30",
-      warn: stats.documentsMissingEmbedding > 0,
+      warn: (stats.documentsMissingEmbedding ?? 0) > 0,
     },
     {
       label: "Failed Embeddings",
       value: stats.failedEmbeddings,
       icon: AlertTriangle,
       color: "text-red-600 bg-red-50 dark:bg-red-950/30",
-      warn: stats.failedEmbeddings > 0,
+      warn: (stats.failedEmbeddings ?? 0) > 0,
     },
-  ];
+  ] : [];
 
   // ── Backfill card handler ────────────────────────────────────────────────────
 

@@ -77,3 +77,27 @@ it("uses a new correlation rather than echoing an invalid input header", async (
   expect(response.headers.get("X-ERP-Correlation")).toMatch(/^[a-f0-9-]{36}$/);
   expect(JSON.stringify(sink.mock.calls)).not.toContain(privateInput);
 });
+
+it.each([
+  ["hr-search", "hr.search.read"],
+  ["hr-document-browser", "hr.document-browser.read"],
+  ["hr-time", "hr.time.read"],
+  ["report-history", "reports.history.read"],
+  ["report-deliveries", "reports.deliveries.read"],
+  ["lookup-search", "lookup.search.read"],
+  ["dms-approvals", "dms.approvals.read"],
+  ["dms-expiry-page", "dms.expiry.read"],
+])("attributes the %s handler without retaining search parameters", async (entry, operation) => {
+  const sink = vi.spyOn(console, "info").mockImplementation(() => {});
+  const route = `/api/reads/${entry}`;
+  const tracedRequest = new Request(`https://synthetic.invalid${route}?q=${privateInput}`, {
+    headers: { [PERF_HEADER]: correlationId },
+  });
+  await traceOperation("proxy", async () => new Response(null), correlationId, route);
+  await readRoute(tracedRequest, async () => ({ success: true, data: [] }));
+  expect(sink.mock.calls.map(call => JSON.parse(String(call[0])))).toMatchObject([
+    { id: correlationId, operation: "proxy", route },
+    { id: correlationId, operation, route, outcome: "ok" },
+  ]);
+  expect(JSON.stringify(sink.mock.calls)).not.toContain(privateInput);
+});

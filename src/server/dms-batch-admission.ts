@@ -23,6 +23,7 @@ const UNAVAILABLE = "This batch cannot currently continue. Retain its identity f
 const OBJECT_UNAVAILABLE = "The uploaded object could not be verified. Retain the original file and retry verification.";
 const rpcEnvelope = z.object({receipt: batchReceiptSchema, replayed: z.boolean()}).strict();
 const eligibilitySchema = z.object({eligible: z.boolean(), positions: z.array(z.number().int().min(0).max(9)).max(10)}).strict();
+const readinessSchema = z.object({receipt: batchReceiptSchema, eligibility: eligibilitySchema}).strict();
 const signedSchema = z.object({path: z.string(), token: z.string().min(1), signedUrl: z.string().url()}).strict();
 const metadataSchema = z.object({id: batchUuid, version: z.string().min(1), name: z.string(),
   bucketId: z.literal("dms-temp"), size: z.number().int().positive().max(BATCH_MAX_BYTES)});
@@ -63,7 +64,7 @@ export async function bootstrapBatchOrigin(): Promise<BatchBootstrapResult> {
   } catch { return {success: false, error: DENIED}; }
 }
 
-type Bound = {client: SupabaseClient; deadline: Deadline; origin: BatchOrigin; request: BatchRequest; receipt: BatchReceipt};
+type Bound = {client: SupabaseClient; deadline: Deadline; origin: BatchOrigin; request: BatchRequest; receipt: BatchReceipt; legacyReadiness?: boolean};
 
 /** Read-only binding; never admission, eligibility or Storage. */
 export async function bindBatchAdmission(input:BatchRequest):Promise<Bound>{
@@ -113,13 +114,35 @@ async function selectedFresh(bound:Bound,position:number):Promise<void>{
 async function fresh(bound: Bound): Promise<number[]> {
   try {
     const {deadline, client, origin, request, receipt} = bound;
-    const read = await traceSpan('dms.receipt', () => deadline.wait(() => client.rpc("read_dms_upload_batch_admission", {p_operation: request.contract.operationId})));
-    if (read.error) throw new AccessUnavailable();
-    const current = await verifyBatchReceipt(read.data, request, origin);
+    const args = {p_operation: request.contract.operationId};
+    let currentReceipt: unknown;
+    let eligibility: unknown;
+    if (!bound.legacyReadiness) {
+      const ready = await traceSpan('dms.eligibility', () => deadline.wait(() => client.rpc('dms_upload_batch_readiness', args)));
+      if (ready.error?.code === 'PGRST202') {
+        // The preceding schema exposes only the two original reads.
+        bound.legacyReadiness = true;
+      } else {
+        const parsed = readinessSchema.safeParse(ready.data);
+        if (ready.error || !parsed.success) throw new AccessUnavailable();
+        currentReceipt = parsed.data.receipt;
+        eligibility = parsed.data.eligibility;
+      }
+    }
+    if (bound.legacyReadiness) {
+      const read = await traceSpan('dms.receipt', () => deadline.wait(() => client.rpc('read_dms_upload_batch_admission', args)));
+      if (read.error) throw new AccessUnavailable();
+      currentReceipt = read.data;
+    }
+    const current = await verifyBatchReceipt(currentReceipt, request, origin);
     if (!current || JSON.stringify(current) !== JSON.stringify(receipt)) throw new AccessUnavailable();
-    const result = await traceSpan('dms.eligibility', () => deadline.wait(() => client.rpc("dms_upload_batch_eligibility", {p_operation: request.contract.operationId})));
-    const eligible = eligibilitySchema.safeParse(result.data);
-    if (result.error || !eligible.success) throw new AccessUnavailable();
+    if (bound.legacyReadiness) {
+      const result = await traceSpan('dms.eligibility', () => deadline.wait(() => client.rpc('dms_upload_batch_eligibility', args)));
+      if (result.error) throw new AccessUnavailable();
+      eligibility = result.data;
+    }
+    const eligible = eligibilitySchema.safeParse(eligibility);
+    if (!eligible.success) throw new AccessUnavailable();
     const {positions} = eligible.data;
     if (new Set(positions).size !== positions.length || positions.some(p => p >= receipt.members.length) ||
       (!eligible.data.eligible && positions.length > 0)) throw new AccessUnavailable();

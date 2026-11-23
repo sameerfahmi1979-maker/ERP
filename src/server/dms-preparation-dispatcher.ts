@@ -4,7 +4,7 @@ import { processNextDmsAiJobs, type PreparationRecoveryPass } from '@/lib/dms/ai
 import { logger } from '@/lib/logger';
 
 // One local pump per process; the database enforces three slots across ALL processes.
-const state = globalThis as typeof globalThis & { algtPreparationPump?: { timer: ReturnType<typeof setInterval>; active: number; checking: boolean; runtimeId: string; runtimeSecret: string } };
+const state = globalThis as typeof globalThis & { algtPreparationPump?: { timer: ReturnType<typeof setInterval>; active: number; checking: boolean; wakePending: boolean; runtimeId: string; runtimeSecret: string } };
 
 function startSlot(pump: NonNullable<typeof state.algtPreparationPump>, preparationRecovery?: PreparationRecoveryPass) {
   pump.active++;
@@ -27,7 +27,7 @@ export async function tickPreparationDispatcher() {
   try {
     const { runtimeId, runtimeSecret } = pump;
     const { data, error } = await createAdminClient().rpc('dms_preparation_dispatch_worker', { p_action: 'heartbeat', p_data: {runtimeId,runtimeSecret} });
-    if (error || data?.success !== true || data.version !== 2) return;
+    if (error || data?.success !== true || data.version !== 2 || data.hasWork === false) return;
     // One recovery covers this runtime's starting slots for this tick. Claims
     // still run independently and refill after each confirmed settlement.
     const preparationRecovery: PreparationRecoveryPass = { runtimeId };
@@ -35,12 +35,24 @@ export async function tickPreparationDispatcher() {
       startSlot(pump, preparationRecovery);
     }
   } catch { logger.warn('AI preparation service unavailable; saved requests retained'); }
-  finally { pump.checking = false; }
+  finally {
+    pump.checking = false;
+    if (pump.wakePending) {
+      pump.wakePending = false;
+      if (state.algtPreparationPump === pump && pump.active < 3) void tickPreparationDispatcher();
+    }
+  }
 }
 
 export function wakePreparationDispatcher() {
   const pump = state.algtPreparationPump;
-  if (pump && pump.active < 3 && !pump.checking) void tickPreparationDispatcher();
+  if (!pump || pump.active >= 3) return;
+  // A local admission may commit just after an in-flight heartbeat observes no work.
+  if (pump.checking) {
+    pump.wakePending = true;
+    return;
+  }
+  void tickPreparationDispatcher();
 }
 
 export function startPreparationDispatcher() {
@@ -51,6 +63,6 @@ export function startPreparationDispatcher() {
   if (!/^[a-z0-9][a-z0-9-]{0,47}$/.test(runtimeId) || runtimeSecret.length < 32 || runtimeSecret.length > 256) return;
   const timer = setInterval(() => { void tickPreparationDispatcher(); }, 10_000);
   timer.unref();
-  state.algtPreparationPump = { timer, active: 0, checking: false,runtimeId,runtimeSecret };
+  state.algtPreparationPump = { timer, active: 0, checking: false, wakePending: false, runtimeId, runtimeSecret };
   void tickPreparationDispatcher();
 }

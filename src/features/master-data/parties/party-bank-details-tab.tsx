@@ -46,7 +46,6 @@ type PartyBankDetailsTabProps = {
 
 type IbanAdvisoryRequest = {
   iban: string;
-  enteredValue: string;
   partyId: number;
   profileId: number | undefined;
   detailId: number | null;
@@ -116,9 +115,9 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
   useEffect(() => {
     if (!activeIbanRequest) return;
     let retired = false;
-    const { iban, enteredValue, detailId } = activeIbanRequest;
+    const { iban, detailId } = activeIbanRequest;
     const timer = setTimeout(() => {
-      void checkDuplicateIban(iban, detailId, enteredValue).then(result => {
+      void checkDuplicateIban(iban, detailId).then(result => {
         if (retired || !result.success || !result.data?.isDuplicate) return;
         const names = result.data.existingParties.map(party => `${party.party_code} – ${party.display_name}`).join(", ");
         setIbanAdvisory({
@@ -142,7 +141,7 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
   const handleIbanChange = (value: string) => {
     setForm((f) => ({ ...f, iban: value }));
     const iban = partyIbanCandidate(value);
-    setIbanRequest(iban ? { iban, enteredValue: value, partyId, profileId: authContext.profile?.id, detailId: editing?.id ?? null } : null);
+    setIbanRequest(iban ? { iban, partyId, profileId: authContext.profile?.id, detailId: editing?.id ?? null } : null);
   };
 
   const openAdd = () => {

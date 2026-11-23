@@ -1,6 +1,7 @@
 import {createHash} from "node:crypto";
 import {beforeEach,describe,expect,it,vi} from "vitest";
 import {runDocumentPreparationJob} from "@/server/dms-preparation-worker";
+import {preparationTraceId,traceOperation} from "@/lib/performance/trace";
 const m=vi.hoisted(()=>({db:vi.fn(),claim:vi.fn(),complete:vi.fn(),ocr:vi.fn(),bytes:vi.fn(),provider:vi.fn()}));
 vi.mock("@/lib/supabase/admin",()=>({createAdminClient:m.db}));vi.mock("@/lib/dms/ai-jobs/claim-scope",()=>({currentJobClaim:m.claim}));
 vi.mock("@/lib/ai/common/provider-bridge",()=>({callCommonAiStructuredCompletion:m.complete}));vi.mock("@/server/dms-verified-intake-source",()=>({readVerifiedIntakeSource:m.bytes}));vi.mock("@/lib/dms/ocr/ocr-router",()=>({routeOcr:m.ocr}));vi.mock("@/lib/dms/ai/factory",()=>({getDmsAiProvider:m.provider}));
@@ -15,6 +16,36 @@ beforeEach(()=>{vi.resetAllMocks();stage.clear();published=null;failPublication=
  m.complete.mockResolvedValue(response());m.provider.mockResolvedValue({provider:{providerCode:"SYNTHETIC",modelId:"SYNTHETIC"}});m.bytes.mockResolvedValue({bytes:Buffer.from("synthetic"),proof:{sha256:hash}});m.ocr.mockResolvedValue({success:true,text:"SYNTHETIC ABC fresh text",providerCode:"SYNTHETIC",model:"SYNTHETIC",method:"synthetic",pageCount:1});
 });
 describe("document preparation worker adoption",()=>{
+ it('emits a separate redacted preparation trace when the admission trace has closed',async()=>{
+  vi.stubEnv('ALGT_PERF_ENABLED','true');
+  vi.stubEnv('ALGT_PERF_LOG_RETENTION_DAYS','1');
+  vi.stubEnv('ALGT_PERF_SAMPLE_PERCENT','100');
+  const logged=vi.spyOn(console,'info').mockImplementation(()=>undefined);
+  const prior=rpc.getMockImplementation()!;
+  let release!:()=>void;
+  const admitted=new Promise<void>(resolve=>{release=resolve;});
+  rpc.mockImplementation(async(name,args)=>{
+   if(args.p_action==='context')await admitted;
+   return prior(name,args);
+  });
+  context.mode='reread_files';
+  m.complete.mockResolvedValue(response('OTHER'));
+  try {
+   let pending:ReturnType<typeof runDocumentPreparationJob> | undefined;
+   await traceOperation('dms.rerun.admit',async()=>{pending=runDocumentPreparationJob(1);});
+   release();
+   expect(await pending).toMatchObject({success:true});
+   const logs=logged.mock.calls.flatMap(([message])=>typeof message==='string'?[JSON.parse(message)]:[]);
+   expect(logs.map(log=>log.operation).sort()).toEqual(['dms.rerun','dms.rerun.admit']);
+   const worker=logs.find(log=>log.operation==='dms.rerun');
+   expect(worker).toMatchObject({id:preparationTraceId(10),route:'other',outcome:'ok'});
+   expect(worker.spans).toEqual(expect.arrayContaining(['dms.ocr','dms.model.first','dms.model.second','dms.publish'].map(name=>expect.objectContaining({name,outcome:'ok'}))));
+   expect(JSON.stringify(logs)).not.toMatch(/SYN-DOC|SYNTHETIC|ABC|synthetic\/SYN|00000000-0000-4000-8000-000000000001/);
+  } finally {
+   logged.mockRestore();
+   vi.unstubAllEnvs();
+  }
+ });
  it("retains a received malformed result and its usage before validation; recovery never repeats the paid call",async()=>{
   m.complete.mockResolvedValue({...response(),rawJson:'{"fields":"invalid"}'});
   expect(await runDocumentPreparationJob(1)).toMatchObject({success:false,errorCode:"provider_output_invalid",retryable:false});

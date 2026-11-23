@@ -5,11 +5,14 @@ import FleetAssetPage from "@/app/(protected)/modules/fleet/[id]/page";
 
 const mock = vi.hoisted(() => ({
   auth: vi.fn(), assets: vi.fn(), choices: vi.fn(), asset: vi.fn(), hosted: vi.fn(),
-  scopes: vi.fn(), exitTasks: vi.fn(), board: vi.fn(), custody: vi.fn(), custodyChoices: vi.fn(),
+  scopes: vi.fn(), exitTasks: vi.fn(), board: vi.fn(), custody: vi.fn(), custodyChoices: vi.fn(), assetPage: vi.fn(),
 }));
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("notFound"); } }));
-vi.mock("@/lib/rbac/check", () => ({ getAuthContext: mock.auth, hasPermission: () => false }));
+vi.mock("@/lib/rbac/check", () => ({
+  getAuthContext: mock.auth,
+  hasPermission: (actor: { permissionCodes: string[] }, code: string) => actor.permissionCodes.includes(code),
+}));
 vi.mock("@/features/fleet/asset-form", () => ({ NewFleetAsset: () => <p>New asset form</p> }));
 vi.mock("@/features/fleet/asset-editor", () => ({ FleetAssetEditor: () => <p>Asset editor</p>, FleetEvidenceForm: () => null }));
 vi.mock("@/features/fleet/custody-panel", () => ({ CustodyOccurrenceLookup: () => null, FleetCustodyPanel: () => <p>Authorized custody</p> }));
@@ -17,7 +20,9 @@ vi.mock("@/features/fleet/exit-checks", () => ({ FleetExitChecks: () => <p>Autho
 vi.mock("@/features/dms/entity-documents/dms-entity-documents-tab", () => ({ DmsEntityDocumentsTab: () => null }));
 vi.mock("@/features/notifications/notification-open", () => ({ NotificationArrival: () => null }));
 vi.mock("@/features/operations/admin-overview", () => ({ OperationsAdminOverview: () => null }));
-vi.mock("@/server/actions/fleet/assets", () => ({ listFleetAssets: mock.assets, getFleetChoices: mock.choices, getFleetAsset: mock.asset }));
+vi.mock("@/server/actions/fleet/assets", () => ({
+  listFleetAssets: mock.assets, getFleetChoices: mock.choices, getFleetAsset: mock.asset, getFleetAssetPage: mock.assetPage,
+}));
 vi.mock("@/server/actions/fleet/custody", () => ({
   listHostedAssets: mock.hosted, getFleetExitScopes: mock.scopes, getFleetExitTasks: mock.exitTasks,
   getFleetBoard: mock.board, getFleetCustody: mock.custody, getCustodyChoices: mock.custodyChoices,
@@ -137,6 +142,58 @@ it("does not render detail for an unrelated record or start an editor lookup", a
   await expect(FleetAssetPage({ params: Promise.resolve({ id: "99" }), searchParams: Promise.resolve({}) })).rejects.toThrow("notFound");
   expect(mock.choices).not.toHaveBeenCalled();
   expect(mock.custodyChoices).not.toHaveBeenCalled();
+});
+
+it("loads only the Fleet identity and current configuration on first open", async () => {
+  mock.asset.mockResolvedValueOnce({
+    ...detailAsset, can_see_documents: true,
+    history: [{ id: 8, kind: "configuration", effective_on: "2026-04-01", reason: "Initial configuration", facts: {} }],
+  });
+  mock.auth.mockResolvedValueOnce({ profile: { id: 1 }, permissionCodes: [...allowed, "dms.documents.view"] });
+  const markup = await new Response(await renderToReadableStream(await FleetAssetPage({
+    params: Promise.resolve({ id: "7" }), searchParams: Promise.resolve({}),
+  }))).text();
+
+  expect(markup).toContain("SYNTHETICVIN");
+  expect(markup).toContain("Asset history");
+  expect(markup).toContain("Documents and verification");
+  expect(markup).not.toContain("Initial configuration");
+  expect(mock.assetPage).not.toHaveBeenCalled();
+});
+
+it("streams the selected history page without blocking identity and retains the custody cursor", async () => {
+  const release = deferredRead(mock.assetPage, { section: "history", has_more: true, rows: [
+    { id: 8, kind: "ownership", effective_on: "2026-04-01", reason: "Original owner", facts: {} },
+  ] });
+  const { beforeRelease, markup } = await primaryAndFinal(FleetAssetPage({
+    params: Promise.resolve({ id: "7" }),
+    searchParams: Promise.resolve({ custodyBefore: "18", assetPanel: "history", assetPage: "2" }),
+  }), "SYNTHETICVIN", release);
+
+  expect(beforeRelease).toBe(true);
+  expect(markup).toContain("Original owner");
+  expect(markup).toContain("custodyBefore=18&amp;assetPanel=history&amp;assetPage=3");
+  expect(mock.assetPage.mock.calls).toEqual([[7, "history", 2]]);
+});
+
+it("distinguishes a failed history read from an empty page", async () => {
+  mock.assetPage.mockResolvedValueOnce(null);
+  const markup = await new Response(await renderToReadableStream(await FleetAssetPage({
+    params: Promise.resolve({ id: "7" }), searchParams: Promise.resolve({ assetPanel: "history" }),
+  }))).text();
+  expect(markup).toContain("This history page could not be loaded.");
+  expect(markup).not.toContain("No matching records");
+});
+
+it("does not request proof choices when the actor lacks permission to link", async () => {
+  mock.asset.mockResolvedValueOnce({ ...detailAsset, can_see_documents: true, can_link: false });
+  mock.auth.mockResolvedValueOnce({ profile: { id: 1 }, permissionCodes: [...allowed, "dms.documents.view"] });
+  const markup = await new Response(await renderToReadableStream(await FleetAssetPage({
+    params: Promise.resolve({ id: "7" }), searchParams: Promise.resolve({ assetPanel: "proof" }),
+  }))).text();
+  expect(markup).toContain("Documents and verification");
+  expect(markup).not.toContain("Verify registration or insurance");
+  expect(mock.assetPage).not.toHaveBeenCalled();
 });
 
 it("does not read exit tasks for an unrecognized or repeated branch selection", async () => {

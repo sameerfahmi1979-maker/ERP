@@ -13,7 +13,7 @@ import { routeOcr } from "@/lib/dms/ocr/ocr-router";
 import { preparationResponseSchema } from "@/lib/dms/preparation/response-schema";
 import { StructuredAiFailure, structuredFailureCodes } from "@/lib/dms/ai/structured-failure";
 import type { DmsAiJobHandlerResult } from "@/lib/dms/ai-jobs/job-types";
-import { preparationTraceId, traceOperation, traceSpan } from '@/lib/performance/trace';
+import { preparationTraceId, traceDetachedOperation, traceSpan } from '@/lib/performance/trace';
 const analysisReceipt = z.strictObject({ output: modelPreparationSchema, provider: z.string(), model: z.string().nullable(), configId: z.number().int().positive().nullable(),
   promptVersion: z.literal("dms-preparation/1"), schemaVersion: z.literal("dms-preparation/1"), inputHash: z.string().regex(/^[a-f0-9]{64}$/), promptTokens: z.number().int().nonnegative().nullable(), completionTokens: z.number().int().nonnegative().nullable(), durationMs: z.number().nonnegative() });
 // Preserve received output before parsing or quality validation. Legacy validated receipts remain replayable.
@@ -31,7 +31,7 @@ const targetSchema = z.strictObject({ documentTypeId: z.number().int().positive(
 export async function runDocumentPreparationJob(documentId: number): Promise<DmsAiJobHandlerResult | null> {
   const claim = currentJobClaim();
   if (!claim) return { success: false, errorCode: "auth_error", retryable: false };
-  return traceOperation('dms.rerun', () => prepareDocument(documentId,claim), preparationTraceId(claim.jobId));
+  return traceDetachedOperation('dms.rerun', () => prepareDocument(documentId,claim), preparationTraceId(claim.jobId));
 }
 
 async function prepareDocument(documentId: number, claim: NonNullable<ReturnType<typeof currentJobClaim>>): Promise<DmsAiJobHandlerResult | null> {

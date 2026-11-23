@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach,beforeEach,expect,it,vi } from 'vitest';
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
-const ctx=vi.hoisted(()=>({attach:vi.fn(),create:vi.fn(),link:vi.fn(),push:vi.fn(),warning:vi.fn(),dirty:false,store:undefined as ReturnType<typeof createWorkspaceDraftStore>|undefined}));
+const ctx=vi.hoisted(()=>({attach:vi.fn(),create:vi.fn(),link:vi.fn(),types:vi.fn(),push:vi.fn(),warning:vi.fn(),dirty:false,store:undefined as ReturnType<typeof createWorkspaceDraftStore>|undefined}));
 const review=vi.hoisted(()=>({prepare:vi.fn(),confirm:vi.fn(),read:vi.fn(),owner:{identity:{authUserId:'synthetic',scopeVersion:'one'},generation:1,isLive:()=>true,admits:()=>true}}));
 vi.mock('@/components/layout/read-cache-boundary',()=>({useReadCacheOwner:()=>review.owner}));
 vi.mock('@/server/actions/dms/intake-review',()=>({prepareExactIntakeReview:review.prepare,confirmExactIntakeReview:review.confirm}));
@@ -14,7 +14,8 @@ vi.mock('next/navigation',()=>({useRouter:()=>({push:ctx.push,refresh:vi.fn()})}
 vi.mock('sonner',()=>({toast:{error:vi.fn(),success:vi.fn(),warning:ctx.warning}}));
 vi.mock('@/server/actions/dms/document-upload-attach',()=>({attachUploadToExistingDocument:ctx.attach,createDocumentFromUpload:ctx.create,readOriginalAttachmentRequests:review.read}));
 vi.mock('@/server/actions/dms/entity-documents',()=>({linkDmsDocumentToEntity:ctx.link}));
-vi.mock('@/components/erp/erp-child-dialog-form',()=>({ERPChildDialogForm:({children,onSubmit,isDirty}:any)=>{ctx.dirty=isDirty;return <div>{children}<button onClick={onSubmit}>Test save</button></div>;}}));
+vi.mock('@/server/actions/dms/document-types',()=>({getDmsDocumentTypeChoices:ctx.types}));
+vi.mock('@/components/erp/erp-child-dialog-form',()=>({ERPChildDialogForm:({children,onSubmit,isDirty,submitDisabled}:any)=>{ctx.dirty=isDirty;return <div>{children}<button onClick={onSubmit} disabled={submitDisabled}>Test save</button></div>;}}));
 vi.mock('@/components/erp/combobox/erp-combobox',()=>({ERPCombobox:({value,onValueChange,options}:any)=><select aria-label="Choice" value={value??''} onChange={e=>onValueChange(e.target.value?Number(e.target.value):null)}><option value=""/>{options.map((o:any)=><option key={o.value} value={o.value}>{o.label}</option>)}</select>}));
 import { DmsUploadAttachDialog } from '@/features/dms/upload/dms-upload-attach-dialog';
 import { DmsCreateDocumentFromUploadDialog } from '@/features/dms/upload/dms-create-document-from-upload-dialog';
@@ -25,6 +26,25 @@ afterEach(cleanup);
 it('controlled document choice is dirty and a revert becomes clean',async()=>{const ui=render(attach());await ui.findByText('SYN — Synthetic');fireEvent.change(ui.getByLabelText('Choice'),{target:{value:'1'}});expect(ctx.dirty).toBe(true);fireEvent.change(ui.getByLabelText('Choice'),{target:{value:''}});expect(ctx.dirty).toBe(false);});
 it('changing upload identity or closing and reopening never inherits another dialog choice',async()=>{const ui=render(attach());await ui.findByText('SYN — Synthetic');fireEvent.change(ui.getByLabelText('Choice'),{target:{value:'1'}});ui.rerender(attach(101));expect((ui.getByLabelText('Choice') as HTMLSelectElement).value).toBe('');ui.rerender(attach(101,false));ui.rerender(attach(101));expect(ctx.dirty).toBe(false);});
 it('rejected attach retains the chosen document and notes after exact review and recovery check',async()=>{const ui=render(attach());await ui.findByText('SYN — Synthetic');await ui.findByText(/No original attachment request/);fireEvent.change(ui.getByLabelText('Choice'),{target:{value:'1'}});fireEvent.change(ui.getByLabelText(/Change Notes/),{target:{value:'Synthetic note'}});fireEvent.click(ui.getByRole('button',{name:'Verify original for review'}));fireEvent.click(await ui.findByRole('checkbox',{name:/I checked the original file/}));fireEvent.click(ui.getByText('Test save'));await waitFor(()=>expect(ctx.attach).toHaveBeenCalledTimes(1));expect(review.confirm).toHaveBeenCalledOnce();expect((ui.getByLabelText(/Change Notes/) as HTMLTextAreaElement).value).toBe('Synthetic note');});
+it('loads creation choices only on open and retries an unavailable list without clearing the draft', async () => {
+  ctx.store = createWorkspaceDraftStore();
+  ctx.types.mockResolvedValueOnce({ success: false });
+  ctx.types.mockResolvedValueOnce({ success: true, data: [{ id: 6, type_code: 'QA', name_en: 'Synthetic type', is_active: true }] });
+  const onClose = vi.fn();
+  const form = (open: boolean) => <DmsCreateDocumentFromUploadDialog open={open} session={session} onOpenChange={onClose} />;
+  const ui = render(form(false));
+  expect(ctx.types).not.toHaveBeenCalled();
+  ui.rerender(form(true));
+  const retry = await ui.findByRole('button', { name: 'Retry document types' });
+  expect((ui.getByText('Test save') as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(ui.getByLabelText(/Document Title/), { target: { value: 'Keep synthetic draft' } });
+  fireEvent.click(retry);
+  await ui.findByRole('option', { name: 'QA — Synthetic type' });
+  expect((ui.getByLabelText(/Document Title/) as HTMLInputElement).value).toBe('Keep synthetic draft');
+  expect((ui.getByText('Test save') as HTMLButtonElement).disabled).toBe(false);
+  expect(ctx.types.mock.calls).toEqual([[true], [true]]);
+  expect(ctx.create).not.toHaveBeenCalled();
+});
 it.each([false,true])('a committed document with a failed link is not offered as an unsaved create (throw=%s)',async throws=>{
  ctx.store=createWorkspaceDraftStore();
  // Preparation is read-only; only the second dispatch creates the document.

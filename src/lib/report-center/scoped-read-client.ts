@@ -49,6 +49,11 @@ const workforceRequestRow = workforceIdentity.extend({
 });
 const collectionGuards=new WeakMap<ReportReadClient,(fresh:AuthContext)=>Promise<void>>();
 const revisionsSchema = z.record(z.string(), z.string().regex(/^\d+$/));
+
+/** The report runners verify this client's private generation guard before returning any rows. */
+export function hasReportSourceGenerationGuard(client: ReportReadClient): boolean {
+ return collectionGuards.has(client);
+}
 /** Internal collection admission, not a callable HTTP authorization parameter. */
 export async function revalidateScopedReportReadClient(client:ReportReadClient,fresh:AuthContext){
  const verify=collectionGuards.get(client);if(!verify)throw Error('Report collection authority could not be verified.');await verify(fresh);

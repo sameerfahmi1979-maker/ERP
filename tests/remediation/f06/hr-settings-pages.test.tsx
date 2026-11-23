@@ -51,7 +51,7 @@ for(const [name,options]of optionCases)it(name+' forwards selected configuration
  expect(rpc).toHaveBeenCalledOnce();expect(rpc.mock.calls[0][1].p_data).toMatchObject(options);
 });
 
-it.each(pages.filter(([name])=>name!=='mohre-establishments'))('%s opens one counted window for 1,201 authorized catalogue rows',async(_name,load)=>{
+it.each(pages)('%s opens one counted window for 1,201 authorized catalogue rows',async(_name,load)=>{
  const records=Array.from({length:1201},(_,i)=>({id:i+1}));
  const calls:Array<[number,number]>=[];
  let bounds:[number,number];

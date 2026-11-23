@@ -7,10 +7,13 @@ import { FleetAssetEditor, FleetEvidenceForm } from "@/features/fleet/asset-edit
 import { FleetCustodyPanel } from "@/features/fleet/custody-panel";
 import { NotificationArrival } from "@/features/notifications/notification-open";
 import { dubaiBusinessDate } from "@/lib/dubai-calendar";
-import { fleetCategories, fleetId, type FleetAsset } from "@/lib/fleet/asset-contract";
+import {
+  fleetAssetPageNumber, fleetAssetSection, fleetCategories, fleetId,
+  type FleetAsset, type FleetAssetSection, type FleetAssetSummary,
+} from "@/lib/fleet/asset-contract";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { ROUTE_ACCESS_REGISTRY } from "@/lib/rbac/route-access-registry";
-import { getFleetAsset, getFleetChoices } from "@/server/actions/fleet/assets";
+import { getFleetAsset, getFleetAssetPage, getFleetChoices } from "@/server/actions/fleet/assets";
 import { getCustodyChoices, getFleetCustody } from "@/server/actions/fleet/custody";
 import { workshopPermissions } from "@/lib/workshop/workspace";
 import { z } from "zod";
@@ -81,7 +84,7 @@ async function FleetHomeScope({ branch, fallback, choices }: { branch: number; f
   return (await choices)?.scopes.find(scope => scope.branch === branch)?.label ?? fallback;
 }
 
-async function FleetEditor({ asset, choices, today }: { asset: FleetAsset; choices: FleetChoicesRead; today: string }) {
+async function FleetEditor({ asset, choices, today }: { asset: FleetAssetSummary; choices: FleetChoicesRead; today: string }) {
   return <FleetAssetEditor asset={asset} scopes={(await choices)?.scopes ?? []} today={today} />;
 }
 
@@ -92,8 +95,67 @@ async function FleetCustody({ asset, read }: { asset: number; read: ReturnType<t
   return <FleetCustodyPanel workspace={custody} choices={choices ?? { workers: [], sites: [] }} />;
 }
 
+const fleetPanels = {
+  history: "Asset history",
+  plates: "Plate history",
+  meters: "Opening meters",
+  documents: "Documents and verification",
+  evidence: "Verified evidence",
+  proof: "Verify registration or insurance",
+} as const;
+
+type FleetPanel = keyof typeof fleetPanels;
+
+async function AssetHistoryPage({ asset, section, page, today, href }: {
+  asset: FleetAssetSummary; section: FleetAssetSection; page: number; today: string;
+  href: (panel: FleetPanel, page?: number) => string;
+}) {
+  const result = await getFleetAssetPage(asset.id, section, page).catch(() => null);
+  if (!result) return <p id="asset-panel" role="alert">This history page could not be loaded.</p>;
+
+  const { id, revision, can_link, status } = asset;
+  return <section id="asset-panel" className="space-y-2">
+    <h2 className="text-lg font-semibold">{fleetPanels[result.section]}</h2>
+    {result.section === "proof" ? <FleetEvidenceForm
+      key={page} asset={{ id, revision, can_link, status }} choices={result.rows} /> :
+      result.rows.length === 0 && <p className="text-sm text-muted-foreground">No matching records.</p>}
+    {result.section === "history" && result.rows.length > 0 &&
+      <ul className="rounded-lg border px-4 text-sm">
+        {result.rows.map(item => <AssetHistory key={item.id} item={item} />)}
+      </ul>}
+    {result.section === "plates" && result.rows.length > 0 &&
+      <ul className="divide-y rounded-lg border px-4 text-sm">
+        {result.rows.map(plate => <li key={plate.id} className="py-2">
+          <strong>{plate.jurisdiction} {plate.plate_class} {plate.plate_number}</strong> · {plate.valid_from} to {plate.valid_until ?? "current"}
+        </li>)}
+      </ul>}
+    {result.section === "meters" && result.rows.length > 0 &&
+      <ul className="divide-y rounded-lg border px-4 text-sm">
+        {result.rows.map(meter => <li key={meter.id} className="py-2">
+          <strong>{meter.value} {meter.unit}</strong> · {meter.observed_on} · {meter.kind}<br />
+          <span className="text-muted-foreground">{meter.source_reference}</span>
+        </li>)}
+      </ul>}
+    {result.section === "evidence" && result.rows.length > 0 &&
+      <ul className="divide-y rounded-lg border px-4 text-sm">
+        {result.rows.map(proof => <li key={proof.id} className="py-2">
+          <span className="font-medium capitalize">{proof.kind}</span> · {proof.effective_on} to {proof.expires_on}
+          {proof.expires_on < today && " · Expired"} · DMS version {proof.version_id}
+          {!proof.source_current && " · Source changed, verification needed"}
+          <div className="text-muted-foreground">{Object.entries(proof.facts).map(([key, value]) =>
+            `${key.replaceAll("_", " ")} ${String(value)}`).join(" · ")}</div>
+        </li>)}
+      </ul>}
+    {(page > 1 || result.has_more) && <nav aria-label={`${fleetPanels[result.section]} pages`} className="flex gap-3">
+      {page > 1 && <Link prefetch={false} href={href(result.section, page - 1)}>Previous</Link>}
+      {result.has_more && <Link prefetch={false} href={href(result.section, page + 1)}>Next</Link>}
+    </nav>}
+  </section>;
+}
+
 export default async function FleetAssetPage({ params,searchParams }: {
-  params: Promise<{ id: string }>; searchParams: Promise<{ custodyBefore?:string; f10_open?:string }>;
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ custodyBefore?:string; f10_open?:string; assetPanel?: string; assetPage?: string }>;
 }) {
   const actor = await getAuthContext();
   if (!actor.permissionCodes.includes("fleet.assets.view")) notFound();
@@ -128,6 +190,21 @@ export default async function FleetAssetPage({ params,searchParams }: {
   const canReadDms = asset.can_see_documents && (hasPermission(actor, "dms.documents.view") || hasPermission(actor, "dms.admin"));
   const canEditLinks = asset.can_link && asset.status !== "retired" && hasPermission(actor, "dms.documents.edit");
   const currentPlate = asset.plates.find(plate => plate.valid_until === null);
+  const panels: FleetPanel[] = ["history", "plates", "meters"];
+  if (canReadDms) {
+    panels.push("documents", "evidence");
+    if (asset.can_link && asset.status !== "retired") panels.push("proof");
+  }
+  const activePanel = panels.find(panel => panel === query.assetPanel);
+  const selectedSection = fleetAssetSection.safeParse(activePanel);
+  const selectedPage = fleetAssetPageNumber.safeParse(typeof query.assetPage === "string" ? Number(query.assetPage) : 1);
+  const panelHref = (panel: FleetPanel, page = 1) => {
+    const search = new URLSearchParams();
+    if (before.success) search.set("custodyBefore", String(before.data));
+    search.set("assetPanel", panel);
+    if (page > 1) search.set("assetPage", String(page));
+    return `/modules/fleet/${id.data}?${search}#asset-panel`;
+  };
   return <main className="space-y-6">
     <NotificationArrival token={query.f10_open} path={`/modules/fleet/${id.data}`}/>
     <ERPPageHeader title={asset.name} description={asset.asset_no}
@@ -148,45 +225,21 @@ export default async function FleetAssetPage({ params,searchParams }: {
     {fuelLink}
     {custodyPanel}
     <AxleLayout facts={asset.history.find(item => item.kind === "configuration")?.facts} />
-    <section className="space-y-2">
-      <h2 className="text-lg font-semibold">Asset history</h2>
-      {asset.history.length === 0 ? <p className="text-sm text-muted-foreground">No dated asset history has been verified.</p> :
-        <ul className="rounded-lg border px-4 text-sm">{asset.history.map(item => <AssetHistory key={item.id} item={item} />)}</ul>}
-    </section>
-    <div className="grid gap-5 lg:grid-cols-2">
-      <section className="space-y-2">
-        <h2 className="text-lg font-semibold">Plate history</h2>
-        {asset.plates.length === 0 ? <p className="text-sm text-muted-foreground">No verified plate is recorded.</p> : <ul className="divide-y rounded-lg border px-4 text-sm">
-          {asset.plates.map(plate => <li key={plate.id} className="py-2">
-            <strong>{plate.jurisdiction} {plate.plate_class} {plate.plate_number}</strong> Â· {plate.valid_from} to {plate.valid_until ?? "current"}
-          </li>)}
-        </ul>}
-      </section>
-      <section className="space-y-2">
-        <h2 className="text-lg font-semibold">Opening meters</h2>
-        {asset.meters.length === 0 ? <p className="text-sm text-muted-foreground">No verified opening reading is recorded.</p> : <ul className="divide-y rounded-lg border px-4 text-sm">
-          {asset.meters.map(meter => <li key={meter.id} className="py-2">
-            <strong>{meter.value} {meter.unit}</strong> Â· {meter.observed_on} Â· {meter.kind}<br />
-            <span className="text-muted-foreground">{meter.source_reference}</span>
-          </li>)}
-        </ul>}
-      </section>
-    </div>
-    {canReadDms && <section className="space-y-4">
+    <nav aria-label="Fleet asset records" className="flex flex-wrap gap-3">
+      {panels.map(panel => <Link key={panel} href={panelHref(panel)} prefetch={false}
+        aria-current={panel === activePanel ? "page" : undefined} className="text-sm font-medium text-primary hover:underline">
+        {fleetPanels[panel]}
+      </Link>)}
+    </nav>
+    {selectedSection.success && <Suspense fallback={<p id="asset-panel" role="status" className="text-sm">Loading history…</p>}>
+      <AssetHistoryPage asset={asset} section={selectedSection.data} page={selectedPage.success ? selectedPage.data : 1}
+        today={today} href={panelHref} />
+    </Suspense>}
+    {activePanel === "documents" && <section id="asset-panel" className="space-y-4">
       <h2 className="text-lg font-semibold">Documents and verification</h2>
       {canEditLinks && <Link href="/dms/inbox" className="text-sm font-medium text-primary hover:underline">Upload a document in DMS</Link>}
       <DmsEntityDocumentsTab authContext={actor} entityType="fleet_asset" entityId={asset.id}
         entityLabel="asset" canLinkExisting={canEditLinks} canUnlink={canEditLinks} showComplianceCards={false} />
-      <FleetEvidenceForm asset={asset} />
-      {asset.evidence.length > 0 && <ul className="divide-y rounded-lg border px-4 text-sm">
-        {asset.evidence.map(proof => <li key={proof.id} className="py-2">
-          <span className="font-medium capitalize">{proof.kind}</span> Â· {proof.effective_on} to {proof.expires_on}
-          {proof.expires_on < today && " Â· Expired"} Â· DMS version {proof.version_id}
-          {!proof.source_current && " Â· Source changed, verification needed"}
-          <div className="text-muted-foreground">{Object.entries(proof.facts).map(([key, value]) =>
-            `${key.replaceAll("_", " ")} ${String(value)}`).join(" Â· ")}</div>
-        </li>)}
-      </ul>}
     </section>}
   </main>;
 }

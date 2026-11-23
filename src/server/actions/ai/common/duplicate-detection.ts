@@ -9,7 +9,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { readAiSummaryCount, readAiSummaryFeature } from "@/server/reads/ai-summary";
+import { readAiGroupedCounts, readAiSummaryFeature } from "@/server/reads/ai-summary";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasGlobalPermission, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
@@ -680,14 +680,16 @@ export async function getDuplicateCandidateSummary(): Promise<
 
     const db = await createClient();
     const query = () => db.from("erp_ai_duplicate_candidates").select("id", { count: "exact", head: true }).is("deleted_at", null);
-    const [featureEnabled, pending, highConfidence, confirmed, ignoredResolved] = await Promise.all([
+    const [featureEnabled, counts] = await Promise.all([
       readAiSummaryFeature(db, "ERP_AI_DUPLICATE_DETECT"),
-      readAiSummaryCount(query().eq("status", "pending")),
-      readAiSummaryCount(query().eq("status", "pending").gte("confidence_score", 0.9)),
-      readAiSummaryCount(query().in("status", ["confirmed_duplicate", "confirmed_conflict"])),
-      readAiSummaryCount(query().in("status", ["ignored", "resolved"])),
+      readAiGroupedCounts(db, "duplicate", {
+        pending: () => query().eq("status", "pending"),
+        highConfidence: () => query().eq("status", "pending").gte("confidence_score", 0.9),
+        confirmed: () => query().in("status", ["confirmed_duplicate", "confirmed_conflict"]),
+        ignoredResolved: () => query().in("status", ["ignored", "resolved"]),
+      }),
     ]);
-    return { success: true, data: { pending, highConfidence, confirmed, ignoredResolved, featureEnabled } };
+    return { success: true, data: { ...counts, featureEnabled } };
   } catch {
     return { success: false, error: "Duplicate candidates summary could not be loaded." };
   }

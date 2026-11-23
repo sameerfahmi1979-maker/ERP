@@ -72,7 +72,7 @@ it('shared catalogue routes opt into exact first pages and retain the management
  for(const [route] of common){
   const source=fs.readFileSync(`src/app/(protected)/admin/hr/settings/${route}/page.tsx`,'utf8');expect(source).toMatch(/listHr\w+\(HR_SETTINGS_FIRST_PAGE\)/);expect(source).toContain('initialTotal={total}');expect(source).toContain('readIdentity={hrReadIdentity(ctx)}');expect(source).toContain('hasGlobalPermission');expect(source).toContain('principalId={ctx.profile?.id}');
  }
- const mohre=fs.readFileSync('src/app/(protected)/admin/hr/settings/mohre-establishments/page.tsx','utf8');expect(mohre).toContain('listHrMohreEstablishments({complete:true})');
+ const mohre=fs.readFileSync('src/app/(protected)/admin/hr/settings/mohre-establishments/page.tsx','utf8');expect(mohre).toContain('listHrMohreEstablishments(HR_SETTINGS_FIRST_PAGE)');expect(mohre).toContain('initialTotal={total}');expect(mohre).toContain('readIdentity={hrReadIdentity(ctx)}');
  const grades=fs.readFileSync('src/app/(protected)/admin/hr/settings/grades/page.tsx','utf8');expect(grades).toContain('createHrGrade({ grade_level: null, ...input }, contract)');
 });
 
@@ -148,3 +148,12 @@ it('rejects related category sorts and filters on catalogues without that relati
  expect((await actions.listHrGrades({columnFilters:{training_category:'private'}} as never)).success).toBe(false);
  expect(port.client).not.toHaveBeenCalled();
 });
+
+ it('MOHRE keeps native next-page counts and fixed-column search and sort',async()=>{
+  const result=await actions.listHrMohreEstablishments({page:2,page_size:25,tableSearch:'Synthetic_%',sorting:[{id:'establishment_number',desc:true}],columnFilters:{establishment_name:'Company_%'}});
+  expect(result.data?.total).toBe(501);expect(result.data?.data).toHaveLength(25);expect(calls).toHaveLength(1);
+  expect(calls[0].searchParams.get('offset')).toBe('25');
+  expect(calls[0].searchParams.get('order')).toBe('establishment_number.desc,id.asc');
+  expect(calls[0].searchParams.get('or')).toBe(`(establishment_name.ilike.${literalContains('Synthetic_%')},establishment_number.ilike.${literalContains('Synthetic_%')})`);
+  expect(calls[0].searchParams.get('establishment_name')).toBe('ilike.%Company\\_\\%%');
+ });

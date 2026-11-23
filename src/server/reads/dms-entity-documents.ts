@@ -7,7 +7,7 @@ import {createClient} from "@/lib/supabase/server";
 import {collectCompletePages} from "@/lib/reads/complete-pages";
 import {countMissingRequiredDocuments,evaluateRequiredDocumentRulesForEntity} from "@/lib/ai/common/compliance-checker/rule-engine";
 import type {LinkedDocumentForCompliance,RequiredDocumentRuleForCompliance} from "@/lib/ai/common/compliance-checker/types";
-import {entityDocumentsCriteriaSchema,entityDocumentsResponseSchema,entityDocumentRowSchema,entityDocumentOptionSchema,entityDocumentSummarySchema,
+import {entityDocumentsCriteriaSchema,entityDocumentsResponseSchema,entityDocumentRowSchema,entityDocumentOptionSchema,entityDocumentSummarySchema,entityDocumentMissingRequirementSchema,
   type EntityDocumentsCriteria,type EntityDocumentsResponse,type DmsEntityDocumentRow,type AvailableDmsDocumentOption,type DmsEntityDocumentComplianceSummary} from "@/lib/reads/dms-entity-documents-schema";
 const id=z.number().int().positive().refine(Number.isSafeInteger),text=z.string().nullable();
 const linkSchema=z.object({id,document_id:id,is_primary:z.boolean(),link_role:text,linked_at:z.string()}).strip();
@@ -28,8 +28,10 @@ const DOC_FIELDS="id,document_no,title,status,is_archived,deleted_at,legacy_docu
 const batches=(ids:number[])=>Array.from({length:Math.ceil(ids.length/BATCH)},(_,i)=>ids.slice(i*BATCH,(i+1)*BATCH));
 export const ENTITY_DOCUMENT_PARENTS:Readonly<Record<string,{table:string;soft:boolean}>>={company:{table:"owner_companies",soft:false},branch:{table:"branches",soft:false},site:{table:"work_sites",soft:true},party:{table:"parties",soft:false},employee:{table:"employees",soft:true},employee_dependent:{table:"employee_dependents",soft:true}};
 type Collection={kind:"list";rows:DmsEntityDocumentRow[]}|{kind:"attach";rows:AvailableDmsDocumentOption[]}|{kind:"summary";summary:DmsEntityDocumentComplianceSummary};
+type MissingRequirement=z.infer<typeof entityDocumentMissingRequirementSchema>;
+type FolderOverview={summary:DmsEntityDocumentComplianceSummary;missing:MissingRequirement[]|null};
 
-async function execute(input:unknown,context:AuthContext|undefined,callerSignal:AbortSignal|undefined,legacy:boolean):Promise<{success:boolean;data?:EntityDocumentsResponse;collection?:Collection;error?:string}> {
+async function execute(input:unknown,context:AuthContext|undefined,callerSignal:AbortSignal|undefined,legacy:boolean,mobileFolder=false):Promise<{success:boolean;data?:EntityDocumentsResponse;collection?:Collection;folder?:FolderOverview;error?:string}> {
   const parsed=entityDocumentsCriteriaSchema.safeParse(input);
   if(!parsed.success)return {success:false,error:"Invalid entity document criteria"};
   const p=parsed.data,asOf=new Date().toISOString(),signal=AbortSignal.any([...(callerSignal?[callerSignal]:[]),AbortSignal.timeout(ENTITY_DOCUMENTS_TIMEOUT_MS)]);
@@ -128,28 +130,30 @@ async function execute(input:unknown,context:AuthContext|undefined,callerSignal:
     // Keep the complete protected read for coverage checks. Use the same
     // current-document set for the employee list and its compliance counts.
     const byId = new Map(docs.filter(d => !excludedEmployeeDocumentIds.has(d.id)).map(d => [d.id, d]));
-    if(p.operation==="summary"||p.operation==="checklist"){
+    const readCompliance=async(kind:"summary"|"checklist"|"folder")=>{
       const visible=links.flatMap(l=>{const d=byId.get(l.document_id);return d?[d]:[];});
       const global=await scalar("current_user_is_global_admin");let missingRequiredDocuments:number|null=null;
-      let missing:Array<{ruleId:number;label:string;typeCode:string|null;documentTypeId:number|null}>|null=null;
+      let missing:MissingRequirement[]|null=null;
+      const includeChecklist=kind!=="summary";
       if(global){
         if(docs.length!==linkedIds.length)throw Error("Complete compliance coverage unavailable");
         // Summary and checklist deliberately share this exact global-rule gate,
         // complete coverage check, rule loader and presence-only rule model.
         // Date/expiry findings remain separate from a missing required type.
-        const ruleFields="id,rule_code,rule_name,entity_type,document_type_id,is_required"+(p.operation==="checklist"?",document_type:dms_document_types(type_code)":"");
+        const ruleFields="id,rule_code,rule_name,entity_type,document_type_id,is_required"+(includeChecklist?",document_type:dms_document_types(type_code)":"");
         const rules=await complete(()=>select("dms_required_document_rules",ruleFields).eq("entity_type",p.entityType).eq("is_active",true).is("deleted_at",null).order("id",{ascending:true}),z.object({id,rule_code:z.string(),rule_name:z.string(),entity_type:z.string(),document_type_id:id.nullable(),is_required:z.boolean(),document_type:z.object({type_code:text}).nullable().optional()}).strip());
         const ruleModels:RequiredDocumentRuleForCompliance[]=rules.map(r=>({id:r.id,ruleCode:r.rule_code,ruleName:r.rule_name,entityType:r.entity_type,documentTypeId:r.document_type_id,typeCode:r.document_type?.type_code??null,isRequired:r.is_required,requiresExpiryDate:false,requiresIssueDate:false,blocksActivation:false,reminderDaysBeforeExpiry:null}));
         const linkedModels:LinkedDocumentForCompliance[]=visible.map(d=>({id:d.id,documentNo:d.document_no,title:d.title,documentTypeId:d.document_type_id,typeCode:d.document_type?.type_code??null,issueDate:d.issue_date,expiryDate:d.expiry_date,aiRiskLevel:d.ai_risk_level,completenessScore:d.completeness_score,ocrTextAvailable:false,aiSummaryStatus:null,summaryEmbeddingStatus:null,confidentialityLevel:d.confidentiality_level,status:d.status}));
         missingRequiredDocuments=countMissingRequiredDocuments({entityType:p.entityType,rules:ruleModels,linkedDocuments:linkedModels});
-        if(p.operation==="checklist"){
+        if(includeChecklist){
           const missingIds=new Set(evaluateRequiredDocumentRulesForEntity({entityType:p.entityType,entityId:p.entityId,rules:ruleModels,linkedDocuments:linkedModels})
             .filter(f=>f.findingType==="missing_required_document").map(f=>f.sourceRuleId));
-          missing=ruleModels.filter(r=>missingIds.has(r.id)).map(r=>({ruleId:r.id,label:r.ruleName,typeCode:r.typeCode,documentTypeId:r.documentTypeId}));
+          missing=z.array(entityDocumentMissingRequirementSchema).parse(ruleModels.filter(r=>missingIds.has(r.id))
+            .map(r=>({ruleId:r.id,label:r.ruleName,typeCode:r.typeCode,documentTypeId:r.documentTypeId})));
           if(missing.length!==missingRequiredDocuments)throw Error("Required document checklist could not be verified");
         }
       }
-      if(p.operation==="checklist")return output({criteria:p,asOf,availability:"available",missing});
+      if(kind==="checklist")return {summary:null,missing};
       let openComplianceFindings:number|null=null;
       // The retained findings RLS uses GLOBAL current_user_has_permission,
       // not the flattened client capability list. Reuse those exact predicates
@@ -173,17 +177,32 @@ async function execute(input:unknown,context:AuthContext|undefined,callerSignal:
       const summary:DmsEntityDocumentComplianceSummary={totalDocuments:visible.length,expiredDocuments:0,expiringSoonDocuments:0,missingRequiredDocuments,openComplianceFindings,highRiskDocuments:0,criticalRiskDocuments:0,latestExpiryDate:null,scope:"visible_documents"};
       for(const d of visible){if(d.expiry_date){if(d.expiry_date<now)summary.expiredDocuments++;else if(d.expiry_date<=soon)summary.expiringSoonDocuments++;if(!summary.latestExpiryDate||d.expiry_date>summary.latestExpiryDate)summary.latestExpiryDate=d.expiry_date;}
         if(d.ai_risk_level==="critical")summary.criticalRiskDocuments++;else if(d.ai_risk_level==="high")summary.highRiskDocuments++;}
-      const checked=entityDocumentSummarySchema.parse(summary);if(legacy)return {success:true,collection:{kind:"summary",summary:checked}};
-      return output({criteria:p,asOf,availability:"available",summary:checked});
+      return {summary:entityDocumentSummarySchema.parse(summary),missing};
+    };
+    if(p.operation==="summary"||p.operation==="checklist"){
+      const {summary,missing}=await readCompliance(p.operation);
+      if(p.operation==="checklist")return output({criteria:p,asOf,availability:"available",missing});
+      if(!summary)throw Error("Folder summary unavailable");
+      if(legacy)return {success:true,collection:{kind:"summary",summary}};
+      return output({criteria:p,asOf,availability:"available",summary});
     }
     const visible=links.filter(l=>{const d=byId.get(l.document_id);return d&&d.deleted_at===null&&d.status!=="deleted";}),totalCount=visible.length;
-    const window=legacy?visible:visible.slice(p.offset,p.offset+p.limit),counts=new Map<number,number>();
-    for(const batch of batches([...new Set(window.map(l=>l.document_id))])){
-      const files=await complete(()=>select("dms_document_files","id,document_id").in("document_id",batch).is("deleted_at",null).order("id",{ascending:true}),z.object({id,document_id:id}).strip());
-      for(const f of files){if(!batch.includes(f.document_id))throw Error("File mismatch");counts.set(f.document_id,(counts.get(f.document_id)??0)+1);}
-    }
+    const window=legacy?visible:visible.slice(p.offset,p.offset+p.limit);
+    const readFileCounts=async()=>{
+      const counts=new Map<number,number>();
+      for(const batch of batches([...new Set(window.map(l=>l.document_id))])){
+        const files=await complete(()=>select("dms_document_files","id,document_id").in("document_id",batch).is("deleted_at",null).order("id",{ascending:true}),z.object({id,document_id:id}).strip());
+        for(const f of files){if(!batch.includes(f.document_id))throw Error("File mismatch");counts.set(f.document_id,(counts.get(f.document_id)??0)+1);}
+      }
+      return counts;
+    };
+    const [counts,overview]=await Promise.all([readFileCounts(),mobileFolder?readCompliance("folder"):null]);
     const rows=window.map(l=>{const d=byId.get(l.document_id)!,n=counts.get(d.id)??0;return entityDocumentRowSchema.parse({link_id:l.id,link_is_primary:l.is_primary,link_role:l.link_role,linked_at:l.linked_at,document_id:d.id,document_no:d.document_no,legacy_document_code:d.legacy_document_code,title:d.title,description:d.description,status:d.status,confidentiality_level:d.confidentiality_level,issue_date:d.issue_date,expiry_date:d.expiry_date,migrated_from_table:d.migrated_from_table,document_type_name:d.document_type?.name_en??null,document_type_code:d.document_type?.type_code??null,has_files:n>0,files_count:n,ai_summary:null,ai_risk_level:d.ai_risk_level,ai_risk_score:d.ai_risk_score,completeness_score:d.completeness_score,created_at:d.created_at,updated_at:d.updated_at});});
     if(legacy)return {success:true,collection:{kind:"list",rows}};
+    if(mobileFolder){
+      if(!overview?.summary)throw Error("Folder summary unavailable");
+      return {...output({criteria:p,asOf,availability:"available",totalCount,rows}),folder:{summary:overview.summary,missing:overview.missing}};
+    }
     return output({criteria:p,asOf,availability:"available",totalCount,rows});
   }catch(error){
     if(!signal.aborted&&(error instanceof TooLarge||error instanceof ParentUnavailable))return {success:true,data:entityDocumentsResponseSchema.parse({criteria:p,asOf,availability:error instanceof TooLarge?"too_large":"unavailable"})};
@@ -191,6 +210,10 @@ async function execute(input:unknown,context:AuthContext|undefined,callerSignal:
   }
 }
 export async function readDmsEntityDocuments(input:unknown,context?:AuthContext,signal?:AbortSignal):Promise<{success:boolean;data?:EntityDocumentsResponse;error?:string}>{return execute(input,context,signal,false);}
+/** Reuse one checked parent, link set and compliance source for the Mobile folder DTO. */
+export async function readDmsEntityFolder(input:{entityType:"employee"|"site";entityId:number;offset:number},context:AuthContext){
+  return execute({...input,operation:"list",limit:25},context,undefined,false,true);
+}
 /** Compatibility for legacy callers: still complete-or-error and protected,
  * never a successful capped list. The adopted screen uses only paged DTOs. */
 export async function readLegacyEntityDocuments(input:EntityDocumentsCriteria):Promise<{success:boolean;collection?:Collection;error?:string}>{

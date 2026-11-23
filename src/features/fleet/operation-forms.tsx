@@ -32,6 +32,15 @@ export function FinishTripOrder({order,issue}:{order:number;issue:number}) {
   const router=useRouter();
   const [pending,setPending]=useState(false);
   const [error,setError]=useState(false);
+  const [refreshFailed,setRefreshFailed]=useState(false);
+  function refreshIssued() {
+    try {
+      router.refresh();
+      setRefreshFailed(false);
+    } catch {
+      setRefreshFailed(true);
+    }
+  }
   async function finalize() {
     setPending(true);
     setError(false);
@@ -39,16 +48,17 @@ export function FinishTripOrder({order,issue}:{order:number;issue:number}) {
       const response=await fetch(`/print/fleet-trip-order/${order}/${issue}`,{
         method:"POST",headers:{"X-Fleet-Action":"finalize"},
       });
-      if (response.status===204) router.refresh();
+      if (response.status===204) refreshIssued();
       else setError(true);
     } catch { setError(true); }
     finally { setPending(false); }
   }
   return <span className="inline-flex items-center gap-2">
-    <Button type="button" size="sm" variant="outline" disabled={pending} onClick={()=>void finalize()}>
-      {pending?"Preparing PDF…":"Finish issuing PDF"}
+    <Button type="button" size="sm" variant="outline" disabled={pending} onClick={refreshFailed?refreshIssued:()=>void finalize()}>
+      {pending?"Preparing PDF…":refreshFailed?"Retry refresh":"Finish issuing PDF"}
     </Button>
     {error&&<span role="status">PDF still pending. Refresh and retry.</span>}
+    {refreshFailed&&<span role="status">PDF issued. The view could not be refreshed.</span>}
   </span>;
 }
 
@@ -71,10 +81,22 @@ function CommandForm({order,action,fields,children}:{order:number|null;action:Ki
   const busy=useRef(false);
   const [pending,setPending]=useState(false);
   const [retry,setRetry]=useState<OperationCommand|null>(null);
+  const [refreshTarget,setRefreshTarget]=useState<{id:number;order_no:string}|null>(null);
   const [message,setMessage]=useState("");
+  function refreshSaved(saved:{id:number;order_no:string}) {
+    try {
+      if (order===null) router.push(`/modules/fleet/operations/${saved.id}`);
+      else router.refresh();
+      setRefreshTarget(null);
+      setMessage("Saved.");
+    } catch {
+      setRefreshTarget(saved);
+      setMessage(`Saved ${saved.order_no}. The view could not be refreshed.`);
+    }
+  }
   async function submit(e:FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (busy.current) return;
+    if (busy.current||refreshTarget) return;
     busy.current=true;
     setPending(true);
     setMessage("");
@@ -87,9 +109,10 @@ function CommandForm({order,action,fields,children}:{order:number|null;action:Ki
         return;
       }
       setRetry(null);
-      setMessage("Saved.");
-      if (order===null) router.push(`/modules/fleet/operations/${response.data.id}`);
-      else router.refresh();
+      if (response.refreshFailed) {
+        setRefreshTarget(response.data);
+        setMessage(`Saved ${response.data.order_no}. The view could not be refreshed.`);
+      } else refreshSaved(response.data);
     } catch {
       setRetry(command);
       setMessage("The result is unconfirmed. Retry the original request.");
@@ -99,9 +122,10 @@ function CommandForm({order,action,fields,children}:{order:number|null;action:Ki
     }
   }
   return <form className="space-y-4 rounded-md border bg-card p-4" onSubmit={submit}>
-    <fieldset className="grid gap-3 sm:grid-cols-2" disabled={pending||retry!==null}>{children}</fieldset>
+    <fieldset className="grid gap-3 sm:grid-cols-2" disabled={pending||retry!==null||refreshTarget!==null}>{children}</fieldset>
     <div className="flex flex-wrap items-center gap-3">
-      <Button type="submit" disabled={pending}>{pending?"Saving…":retry?"Retry original request":actions[action]}</Button>
+      {refreshTarget?<Button type="button" variant="outline" onClick={()=>refreshSaved(refreshTarget)}>Retry refresh</Button>:
+        <Button type="submit" disabled={pending}>{pending?"Saving…":retry?"Retry original request":actions[action]}</Button>}
       {message&&<p role="status" className="text-sm text-muted-foreground">{message}</p>}
     </div>
   </form>;

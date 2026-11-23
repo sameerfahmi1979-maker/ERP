@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { remainingDmsCount, verifiedDmsCount } from "@/server/reads/dms-admin-count";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -9,19 +10,19 @@ export type ActionResult<T = unknown> = {
 };
 
 export type DmsAdminOverviewStats = {
-  categories_total: number;
-  categories_active: number;
-  document_types_total: number;
-  document_types_active: number;
-  document_types_system: number;
-  document_types_custom: number;
-  metadata_definitions_total: number;
-  tags_total: number;
-  tags_active: number;
-  retention_policies_total: number;
-  retention_policies_active: number;
-  approval_workflows_total: number;
-  approval_workflows_active: number;
+  categories_total: number | null;
+  categories_active: number | null;
+  document_types_total: number | null;
+  document_types_active: number | null;
+  document_types_system: number | null;
+  document_types_custom: number | null;
+  metadata_definitions_total: number | null;
+  tags_total: number | null;
+  tags_active: number | null;
+  retention_policies_total: number | null;
+  retention_policies_active: number | null;
+  approval_workflows_total: number | null;
+  approval_workflows_active: number | null;
 };
 
 export async function getDmsAdminOverviewStats(): Promise<ActionResult<DmsAdminOverviewStats>> {
@@ -56,25 +57,25 @@ export async function getDmsAdminOverviewStats(): Promise<ActionResult<DmsAdminO
       supabase.from("dms_document_workflows").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("is_active", true),
     ]);
 
-    const typesTotal = typesAll.count ?? 0;
-    const typesSystemCount = typesSystem.count ?? 0;
+    const typesTotal = verifiedDmsCount(typesAll);
+    const typesSystemCount = verifiedDmsCount(typesSystem);
 
     return {
       success: true,
       data: {
-        categories_total: catAll.count ?? 0,
-        categories_active: catActive.count ?? 0,
+        categories_total: verifiedDmsCount(catAll),
+        categories_active: verifiedDmsCount(catActive),
         document_types_total: typesTotal,
-        document_types_active: typesActive.count ?? 0,
+        document_types_active: verifiedDmsCount(typesActive),
         document_types_system: typesSystemCount,
-        document_types_custom: typesTotal - typesSystemCount,
-        metadata_definitions_total: metaAll.count ?? 0,
-        tags_total: tagsAll.count ?? 0,
-        tags_active: tagsActive.count ?? 0,
-        retention_policies_total: retAll.count ?? 0,
-        retention_policies_active: retActive.count ?? 0,
-        approval_workflows_total: wfAll.count ?? 0,
-        approval_workflows_active: wfActive.count ?? 0,
+        document_types_custom: remainingDmsCount(typesTotal, typesSystemCount),
+        metadata_definitions_total: verifiedDmsCount(metaAll),
+        tags_total: verifiedDmsCount(tagsAll),
+        tags_active: verifiedDmsCount(tagsActive),
+        retention_policies_total: verifiedDmsCount(retAll),
+        retention_policies_active: verifiedDmsCount(retActive),
+        approval_workflows_total: verifiedDmsCount(wfAll),
+        approval_workflows_active: verifiedDmsCount(wfActive),
       },
     };
   } catch (err) {

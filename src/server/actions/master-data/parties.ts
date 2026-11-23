@@ -570,33 +570,24 @@ export async function getPartyAuditLogs(partyId: number): Promise<ActionResult<P
 
 // ─── IBAN Duplicate Check ─────────────────────────────────────────────────────
 
-export async function checkDuplicateIban(iban: string, excludeBankDetailId?: number | null, enteredValue = iban): Promise<ActionResult<{ isDuplicate: boolean; existingParties: { party_code: string; display_name: string }[] }>> {
+export async function checkDuplicateIban(iban: string, excludeBankDetailId?: number | null): Promise<ActionResult<{ isDuplicate: boolean; existingParties: { party_code: string; display_name: string }[] }>> {
   try {
     const canonical = partyIbanCandidate(iban);
     if (!canonical) return { success: false, error: "Enter an IBAN with valid check digits." };
-    // Keep the previous exact-input match for historical formatted records.
-    const candidates = new Set([canonical]);
-    if (partyIbanCandidate(enteredValue) === canonical) candidates.add(enteredValue.trim());
+    const ctx = await getAuthContext();
+    if (!hasGlobalPermission(ctx, "master_data.parties.manage_bank_details")) {
+      return { success: false, kind: "forbidden", error: "Permission denied" };
+    }
     const supabase = await createClient();
-    let query = supabase
-      .from("party_bank_details")
-      .select("id, party_id, parties!party_id(party_code, display_name)")
-      .eq("is_active", true);
-
-    query = candidates.size === 1 ? query.eq("iban", canonical) : query.in("iban", [...candidates]);
-    if (excludeBankDetailId) query = query.neq("id", excludeBankDetailId);
-
-    const { data, error } = await query;
-    if (error) return { success: false, error: error.message };
-
-    const rows = (data ?? []).map((row: Record<string, unknown>) => ({
-      party_code: (row.parties as { party_code?: string } | null)?.party_code ?? "Unknown",
-      display_name: (row.parties as { display_name?: string } | null)?.display_name ?? "Unknown",
-    }));
-
-    return { success: true, data: { isDuplicate: rows.length > 0, existingParties: rows } };
-  } catch (error) {
-    return { success: false, error: String(error) };
+    const { data, error } = await supabase.rpc("perf_party_iban_advisory", {
+      p_iban: canonical, p_exclude_bank_detail: excludeBankDetailId ?? null,
+    });
+    if (error || !Array.isArray(data)) {
+      return { success: false, kind: "failed", error: "The IBAN advisory could not be checked." };
+    }
+    return { success: true, data: { isDuplicate: data.length > 0, existingParties: data } };
+  } catch {
+    return { success: false, kind: "failed", error: "The IBAN advisory could not be checked." };
   }
 }
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { startPreparationDispatcher, wakePreparationDispatcher } from '@/server/dms-preparation-dispatcher';
 
-const mocks = vi.hoisted(() => ({ rpc: vi.fn(), handle: vi.fn(), available: false, recover: true }));
+const mocks = vi.hoisted(() => ({ rpc: vi.fn(), handle: vi.fn(), available: false, recover: true, idleHint: undefined as unknown }));
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ rpc: mocks.rpc }) }));
 vi.mock('@/lib/dms/ai-jobs/job-registry', () => ({ getDmsAiJobHandler: () => ({ handle: mocks.handle }) }));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn() } }));
@@ -18,9 +18,10 @@ beforeEach(() => {
   vi.stubEnv('DMS_PREPARATION_RUNTIME_SECRET', 'offline'.repeat(6));
   mocks.available = false;
   mocks.recover = true;
+  mocks.idleHint = undefined;
   mocks.handle.mockResolvedValue({ success: true });
   mocks.rpc.mockImplementation(async (_name, { p_action }) => {
-    if (p_action === 'heartbeat') return { data: { success: true, version: 2 }, error: null };
+    if (p_action === 'heartbeat') return { data: { success: true, version: 2, hasWork: mocks.idleHint }, error: null };
     if (p_action === 'recover') return { data: { success: mocks.recover }, error: null };
     if (p_action === 'claim') {
       const available = mocks.available;
@@ -74,3 +75,40 @@ it('preserves immediate wake, exclusive claim and refill after verified settleme
   expect(calls('claim')).toHaveLength(7);
   expect(calls('recover')).toHaveLength(3);
 });
+
+it('skips recovery and claims for an authenticated explicit idle heartbeat only', async () => {
+  mocks.idleHint = false;
+  startPreparationDispatcher();
+  await vi.advanceTimersByTimeAsync(20_001);
+  expect(calls('heartbeat')).toHaveLength(3);
+  expect(calls('recover')).toHaveLength(0);
+  expect(calls('claim')).toHaveLength(0);
+});
+
+it.each([null, 'false', 0])('retains the normal claim fence for unrecognized hint %j', async idleHint => {
+  mocks.idleHint = idleHint;
+  startPreparationDispatcher();
+  await vi.advanceTimersByTimeAsync(1);
+  expect(calls('recover')).toHaveLength(1);
+  expect(calls('claim')).toHaveLength(3);
+});
+
+it('retains a local wake that races an in-flight idle heartbeat', async () => {
+  vi.useRealTimers();
+  const original = mocks.rpc.getMockImplementation()!;
+  let release!: (value: { data: { success: true; version: 2; hasWork: false }; error: null }) => void;
+  mocks.rpc.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+  const processed = new Promise<void>(resolve => mocks.handle.mockImplementationOnce(async () => {
+    resolve();
+    return { success: true };
+  }));
+  startPreparationDispatcher();
+  mocks.available = true;
+  wakePreparationDispatcher();
+  expect(calls('heartbeat')).toHaveLength(1);
+  release({ data: { success: true, version: 2, hasWork: false }, error: null });
+  await expect(processed).resolves.toBeUndefined();
+  expect(calls('heartbeat')).toHaveLength(2);
+  expect(mocks.handle).toHaveBeenCalledOnce();
+  expect(mocks.rpc.getMockImplementation()).toBe(original);
+}, 2_000);

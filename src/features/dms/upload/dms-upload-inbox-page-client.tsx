@@ -38,7 +38,7 @@ import { DmsUploadSessionTable } from "./dms-upload-session-table";
 interface Props {
   initialSessions: DmsUploadSessionRow[];
   documents: DmsDocumentRow[];
-  documentTypes: DmsDocumentTypeOption[];
+  documentTypes?: DmsDocumentTypeOption[];
   entityContext?: DmsEntityContext | null;
   isAdmin?: boolean;
   batchEnabled?: boolean;

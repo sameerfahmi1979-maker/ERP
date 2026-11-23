@@ -9,7 +9,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { readAiSummaryCount, readAiSummaryFeature } from "@/server/reads/ai-summary";
+import { readAiGroupedCounts, readAiSummaryFeature } from "@/server/reads/ai-summary";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthContext, hasPermission, hasGlobalPermission, isGlobalAdmin } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
@@ -700,14 +700,16 @@ export async function getComplianceFindingSummary(): Promise<
 
     const db = await createClient();
     const query = () => db.from("erp_ai_compliance_findings").select("id", { count: "exact", head: true }).is("deleted_at", null);
-    const [featureEnabled, open, critical, high, waivedResolved] = await Promise.all([
+    const [featureEnabled, counts] = await Promise.all([
       readAiSummaryFeature(db, "ERP_AI_COMPLIANCE"),
-      readAiSummaryCount(query().eq("status", "open")),
-      readAiSummaryCount(query().eq("status", "open").eq("severity", "critical")),
-      readAiSummaryCount(query().eq("status", "open").eq("severity", "high")),
-      readAiSummaryCount(query().in("status", ["waived", "resolved", "false_positive"])),
+      readAiGroupedCounts(db, "compliance", {
+        open: () => query().eq("status", "open"),
+        critical: () => query().eq("status", "open").eq("severity", "critical"),
+        high: () => query().eq("status", "open").eq("severity", "high"),
+        waivedResolved: () => query().in("status", ["waived", "resolved", "false_positive"]),
+      }),
     ]);
-    return { success: true, data: { open, critical, high, waivedResolved, featureEnabled } };
+    return { success: true, data: { ...counts, featureEnabled } };
   } catch {
     return { success: false, error: "Compliance findings summary could not be loaded." };
   }

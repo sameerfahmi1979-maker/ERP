@@ -25,7 +25,7 @@ beforeEach(()=>{vi.resetAllMocks();for(const save of [m.email,m.ai])save.mockRes
 function mountEmail(patch:Partial<EmailFeatureFlag>={},canManage=true){render(<FluentProvider theme={webLightTheme}><EmailFeatureFlagsPanel flags={[{...email,...patch}]} onRefresh={m.refresh} canManage={canManage}/></FluentProvider>);}
 function mountAi(patch:Partial<AiFeatureFlag>={}){render(<FluentProvider theme={webLightTheme}><AiFeatureFlagsPanel flags={[{...ai,...patch}]} canManage/></FluentProvider>);}
 it('email enablement requires an accessible confirmation; cancellation does not write',async()=>{
- mountEmail();fireEvent.click(screen.getByRole('switch'));expect(await screen.findByRole('dialog',{name:'Enable email feature?'})).toBeTruthy();expect(m.email).not.toHaveBeenCalled();
+ mountEmail();expect(screen.getByText(/Switch changes save immediately/)).toBeTruthy();expect(m.email).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('switch'));expect(await screen.findByRole('dialog',{name:'Enable email feature?'})).toBeTruthy();expect(m.email).not.toHaveBeenCalled();
  fireEvent.click(screen.getByRole('button',{name:'Keep disabled'}));expect(m.email).not.toHaveBeenCalled();expect(screen.queryByRole('dialog')).toBeNull();
 });
 it('confirmed email enablement carries true and the loaded revision',async()=>{
@@ -42,7 +42,7 @@ it('read-only and missing-revision email flags do not offer a writable switch',(
  mountEmail({workspaceRevision:undefined});expect(screen.getByRole('switch').getAttribute('aria-disabled')).toBe('true');
 });
 it('AI review removal requires confirmation and cannot bypass DMS review',async()=>{
- mountAi();fireEvent.click(screen.getByRole('switch',{name:'Human review for Synthetic AI'}));fireEvent.click(await screen.findByRole('button',{name:'Confirm removal'}));await waitFor(()=>expect(m.ai).toHaveBeenCalledOnce());expect(m.ai.mock.calls[0][1]).toEqual({requires_human_review:false});cleanup();
+ mountAi();expect(screen.getByText(/Switch changes save immediately/)).toBeTruthy();fireEvent.click(screen.getByRole('switch',{name:'Human review for Synthetic AI'}));expect(m.ai).not.toHaveBeenCalled();fireEvent.click(await screen.findByRole('button',{name:'Confirm removal'}));await waitFor(()=>expect(m.ai).toHaveBeenCalledOnce());expect(m.ai.mock.calls[0][1]).toEqual({requires_human_review:false});cleanup();
  mountAi({featureCode:'DMS_F06'});expect(screen.getByRole('switch',{name:'Human review for Synthetic AI'}).getAttribute('aria-disabled')).toBe('true');
 });
 it('uncertain AI flag result retains its request for a safe replay',async()=>{

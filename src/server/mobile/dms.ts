@@ -7,7 +7,7 @@ import {getLinkedEmployeeId} from "@/lib/rbac/employee-access";
 import {createClient} from "@/lib/supabase/server";
 import {readAllPages} from "@/server/reads/all-pages";
 import {readDmsDocumentPage} from "@/server/reads/dms-documents";
-import {readDmsEntityDocuments} from "@/server/reads/dms-entity-documents";
+import {readDmsEntityFolder} from "@/server/reads/dms-entity-documents";
 import {getDmsDocumentRecordData} from "@/server/actions/dms/documents";
 import {readDmsApprovals} from "@/server/reads/dms-approvals";
 import {readDmsRenewalPage} from "@/server/reads/dms-renewal-page";
@@ -106,15 +106,13 @@ export async function readMobileRecords(entityType:"employee"|"site",search:stri
 }
 export async function readMobileFolder(input:{entityType:"employee"|"site";entityId:number;page:number},ctx:AuthContext){
  await admitFolder(ctx,input.entityType,input.entityId);
- const parent={entityType:input.entityType,entityId:input.entityId};
- const [list,summary,checklist]=await Promise.all([readDmsEntityDocuments({...parent,operation:"list",offset:(input.page-1)*25,limit:25},ctx),readDmsEntityDocuments({...parent,operation:"summary"},ctx),readDmsEntityDocuments({...parent,operation:"checklist"},ctx)]);
- if(!list.success||!list.data||list.data.availability!=="available"||!("rows" in list.data)||!("totalCount" in list.data)||list.data.criteria.operation!=="list")throw new MobileDmsError(list.error??"The folder could not be completely loaded.");
- if(!summary.success||!summary.data||summary.data.availability!=="available"||!("summary" in summary.data))throw new MobileDmsError(summary.error??"The folder summary is unavailable.");
- if(!checklist.success||!checklist.data||checklist.data.availability!=="available"||!("missing" in checklist.data))throw new MobileDmsError(checklist.error??"The required-document checklist is unavailable.");
- const missing=checklist.data.missing,missingCount=summary.data.summary.missingRequiredDocuments;
+ const result=await readDmsEntityFolder({entityType:input.entityType,entityId:input.entityId,offset:(input.page-1)*25},ctx);
+ const {data,folder}=result;
+ if(!result.success||!data||data.availability!=="available"||!("rows" in data)||!("totalCount" in data)||data.criteria.operation!=="list"||!folder)throw new MobileDmsError(result.error??"The folder could not be completely loaded.");
+ const {summary,missing}=folder,missingCount=summary.missingRequiredDocuments;
  if((missing===null)!==(missingCount===null)||(missing!==null&&missing.length!==missingCount))throw new MobileDmsError("Required documents changed while loading. Refresh this folder.",409);
- const rows=list.data.rows.map(r=>{if(!("document_id" in r))throw new MobileDmsError("Unexpected folder row.");return mobileDocumentRow({id:r.document_id,title:r.title,document_no:r.document_no,expiry_date:r.expiry_date,status:r.status,document_type:{name_en:r.document_type_name}});});
- return {rows,total:list.data.totalCount,summary:summary.data.summary,missing};
+ const rows=data.rows.map(r=>{if(!("document_id" in r))throw new MobileDmsError("Unexpected folder row.");return mobileDocumentRow({id:r.document_id,title:r.title,document_no:r.document_no,expiry_date:r.expiry_date,status:r.status,document_type:{name_en:r.document_type_name}});});
+ return {rows,total:data.totalCount,summary,missing};
 }
 
 export async function readMobileDocuments(raw:MobileDocumentsInput,ctx:AuthContext){

@@ -40,7 +40,15 @@ function officeZip(bytes:Buffer,required:string):boolean{
  }
  return cursor===end&&names.has('[Content_Types].xml')&&names.has(required);
 }
-export async function verifyDmsBlob(blob:Blob,source:{name:string;mime:string;size:number;sha256:string|null}){
+type DmsBlobSource = {name:string;mime:string;size:number;sha256:string|null};
+
+export async function verifyDmsBlob(blob:Blob,source:DmsBlobSource){
+ const {proof}=await verifyDmsBlobBytes(blob,source);
+ return proof;
+}
+
+/** Keep the validated byte array available only to callers processing this exact object. */
+export async function verifyDmsBlobBytes(blob:Blob,source:DmsBlobSource){
  const mime=effectiveDmsMime(source.name,source.mime);
  if(!mime||!Number.isSafeInteger(source.size)||source.size<1||source.size>BATCH_MAX_BYTES||blob.size!==source.size)throw Error('Upload size or file type does not match its metadata.');
  const bytes=Buffer.from(await blob.arrayBuffer());
@@ -48,7 +56,7 @@ export async function verifyDmsBlob(blob:Blob,source:{name:string;mime:string;si
  const sha256=createHash('sha256').update(bytes).digest('hex');
  if(source.sha256!==null&&source.sha256.toLowerCase()!==sha256)throw Error('The uploaded bytes do not match the original file fingerprint.');
  await validateDmsDocument(bytes,mime);
- return {sha256,size:bytes.length,mime};
+ return {bytes,proof:{sha256,size:bytes.length,mime}};
 }
 
 /** Count the response before accumulating it; never build an unbounded SDK Blob.

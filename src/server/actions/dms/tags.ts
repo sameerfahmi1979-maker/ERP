@@ -61,21 +61,28 @@ export async function getDmsTags(): Promise<ActionResult<DmsTagRow[]>> {
       .is("deleted_at", null)
       .order("tag_name", { ascending: true }).order("id").range(from,to),{identity:row=>row.id,maxRows:10000});
 
-    // Get document counts per tag
+    // The RPC accepts at most 100 IDs. Limit concurrent batches to three.
     const tagIds = (data ?? []).map((t) => t.id);
     const docCounts = new Map<number, number>();
-    for (let offset = 0; offset < tagIds.length; offset += 100) {
-      const batch = new Set(tagIds.slice(offset, offset + 100));
-      const counts = await supabase.rpc("dms_catalogue_tag_counts", {tag_ids: [...batch]}, {get: true, count: "exact"})
-        .order("tag_id").range(0, batch.size - 1);
-      if (counts.error || !counts.data || counts.count !== counts.data.length) {
-        return {success: false, error: "Document counts could not be loaded. Please retry."};
-      }
-      for (const {tag_id, document_count} of counts.data) {
-        if (!batch.has(tag_id) || docCounts.has(tag_id) || !Number.isSafeInteger(document_count) || document_count < 1) {
-          return {success: false, error: "Document counts could not be verified. Please retry."};
+    for (let offset = 0; offset < tagIds.length; offset += 300) {
+      const batches = [0, 100, 200]
+        .map(start => tagIds.slice(offset + start, offset + start + 100))
+        .filter(ids => ids.length > 0);
+      const results = await Promise.all(batches.map(async ids => {
+        const counts = await supabase.rpc("dms_catalogue_tag_counts", { tag_ids: ids }, { get: true, count: "exact" })
+          .order("tag_id").range(0, ids.length - 1);
+        return { batch: new Set(ids), counts };
+      }));
+      for (const { batch, counts } of results) {
+        if (counts.error || !counts.data || counts.count !== counts.data.length) {
+          return { success: false, error: "Document counts could not be loaded. Please retry." };
         }
-        docCounts.set(tag_id, document_count);
+        for (const { tag_id, document_count } of counts.data) {
+          if (!batch.has(tag_id) || docCounts.has(tag_id) || !Number.isSafeInteger(document_count) || document_count < 1) {
+            return { success: false, error: "Document counts could not be verified. Please retry." };
+          }
+          docCounts.set(tag_id, document_count);
+        }
       }
     }
 

@@ -19,8 +19,11 @@ const dubaiTimestamp=(value:string)=>{
 const choice=z.object({id,label:z.string()});
 export const pageRows=<T>(rows:T[])=>({rows:rows.slice(0,25),more:rows.length>25});
 export const choicePage=(raw:unknown)=>pageRows(z.array(choice).max(26).parse(raw));
-export async function rpc(db:Db,name:string,args:Record<string,unknown>,write=false){
-  const {data,error}=await db.rpc(name,args);
+export async function rpc(db:Db,name:string,args:Record<string,unknown>,write=false,signal?:AbortSignal){
+  signal?.throwIfAborted();
+  const query = db.rpc(name,args);
+  const {data,error}=await (signal ? query.abortSignal(signal) : query);
+  signal?.throwIfAborted();
   if(error) throw rpcFailure(error.code,write,error.message);
   return data as unknown;
 }

@@ -25,24 +25,25 @@ import { getDmsAiProvider } from "@/lib/dms/ai/factory";
 import { persistFileOcrResult } from "@/lib/dms/ocr/persist-file-ocr-result";
 import { enqueueUniqueDmsAiJob } from "@/lib/dms/ai-jobs/job-runner";
 import { DMS_AI_JOB_TYPE, DMS_AI_JOB_STATUS } from "@/lib/dms/ai-jobs/job-types";
+import { remainingDmsCount, verifiedDmsCount } from "@/server/reads/dms-admin-count";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type DmsIntelligenceAdminStats = {
-  totalDocuments: number;
-  documentsWithExtractedText: number;
-  documentsMissingExtractedText: number;
-  documentsWithAiSummary: number;
-  documentsMissingAiSummary: number;
-  documentsWithCompletenessScore: number;
-  highRiskDocuments: number;
-  criticalRiskDocuments: number;
-  pendingTagSuggestions: number;
-  pendingLinkSuggestions: number;
+  totalDocuments: number | null;
+  documentsWithExtractedText: number | null;
+  documentsMissingExtractedText: number | null;
+  documentsWithAiSummary: number | null;
+  documentsMissingAiSummary: number | null;
+  documentsWithCompletenessScore: number | null;
+  highRiskDocuments: number | null;
+  criticalRiskDocuments: number | null;
+  pendingTagSuggestions: number | null;
+  pendingLinkSuggestions: number | null;
   // DMS 12.5 — embeddings
-  documentsWithEmbedding: number;
-  documentsMissingEmbedding: number;
-  failedEmbeddings: number;
+  documentsWithEmbedding: number | null;
+  documentsMissingEmbedding: number | null;
+  failedEmbeddings: number | null;
 };
 
 export type ActionResult<T = unknown> = {
@@ -89,7 +90,8 @@ export async function getDmsIntelligenceAdminStats(): Promise<
       // Documents with extracted text
       supabase
         .from("dms_document_content")
-        .select("document_id", { count: "exact", head: true })
+        .select("document_id, document:dms_documents!inner(id)", { count: "exact", head: true })
+        .is("document.deleted_at", null)
         .not("content_text", "is", null),
 
       // Documents with AI summary complete
@@ -149,28 +151,27 @@ export async function getDmsIntelligenceAdminStats(): Promise<
         .eq("summary_embedding_status", "failed"),
     ]);
 
-    const totalDocuments = totalResult.count ?? 0;
-    const withText = contentResult.count ?? 0;
-    const withSummary = summaryResult.count ?? 0;
-    const withCompleteness = completenessResult.count ?? 0;
-    const withEmbedding = withEmbeddingResult.count ?? 0;
+    const totalDocuments = verifiedDmsCount(totalResult);
+    const withText = verifiedDmsCount(contentResult);
+    const withSummary = verifiedDmsCount(summaryResult);
+    const withEmbedding = verifiedDmsCount(withEmbeddingResult);
 
     return {
       success: true,
       data: {
         totalDocuments,
         documentsWithExtractedText: withText,
-        documentsMissingExtractedText: Math.max(0, totalDocuments - withText),
+        documentsMissingExtractedText: remainingDmsCount(totalDocuments, withText),
         documentsWithAiSummary: withSummary,
-        documentsMissingAiSummary: Math.max(0, totalDocuments - withSummary),
-        documentsWithCompletenessScore: withCompleteness,
-        highRiskDocuments: highRiskResult.count ?? 0,
-        criticalRiskDocuments: criticalRiskResult.count ?? 0,
-        pendingTagSuggestions: pendingTagsResult.count ?? 0,
-        pendingLinkSuggestions: pendingLinksResult.count ?? 0,
+        documentsMissingAiSummary: remainingDmsCount(totalDocuments, withSummary),
+        documentsWithCompletenessScore: verifiedDmsCount(completenessResult),
+        highRiskDocuments: verifiedDmsCount(highRiskResult),
+        criticalRiskDocuments: verifiedDmsCount(criticalRiskResult),
+        pendingTagSuggestions: verifiedDmsCount(pendingTagsResult),
+        pendingLinkSuggestions: verifiedDmsCount(pendingLinksResult),
         documentsWithEmbedding: withEmbedding,
-        documentsMissingEmbedding: Math.max(0, totalDocuments - withEmbedding),
-        failedEmbeddings: failedEmbeddingResult.count ?? 0,
+        documentsMissingEmbedding: remainingDmsCount(totalDocuments, withEmbedding),
+        failedEmbeddings: verifiedDmsCount(failedEmbeddingResult),
       },
     };
   } catch (err) {

@@ -118,16 +118,17 @@ type Props = {
   setForm: React.Dispatch<React.SetStateAction<MetadataDefinitionFormState>>;
   editing: boolean;
   documentTypes: Array<{ id: number; name_en: string }>;
+  retainedDocumentType?: string;
 };
 
-export function DmsMetadataDefinitionFormBody({ form, setForm, editing, documentTypes }: Props) {
+export function DmsMetadataDefinitionFormBody({ form, setForm, editing, documentTypes, retainedDocumentType }: Props) {
   return (
     <>
       {editing && (
         <div className="col-span-12 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
           <span className="mt-0.5">⚠</span>
           <span>
-            All fields are editable. Changing <strong>Document Type</strong> or <strong>Field Code</strong> on a
+            Changing <strong>Document Type</strong> or <strong>Field Code</strong> on a
             field that already has stored values may break AI extraction rules and existing data lookups — only do
             this if the field has no values yet.
           </span>
@@ -136,7 +137,9 @@ export function DmsMetadataDefinitionFormBody({ form, setForm, editing, document
       <Section title="Basic" defaultOpen>
         <div className="col-span-12 sm:col-span-6">
           <RequiredLabel required>Document Type</RequiredLabel>
-          <ERPCombobox ariaLabel="Document Type" required
+          {retainedDocumentType !== undefined ? (
+            <Input aria-label="Document Type" value={retainedDocumentType} readOnly />
+          ) : <ERPCombobox ariaLabel="Document Type" required
             options={documentTypes.map((dt) => ({ value: dt.id, label: dt.name_en }))}
             value={form.document_type_id ? Number(form.document_type_id) : null}
             onValueChange={(v) =>
@@ -144,7 +147,7 @@ export function DmsMetadataDefinitionFormBody({ form, setForm, editing, document
             }
             placeholder="Select document type"
             searchPlaceholder="Search types..."
-          />
+          />}
         </div>
         <div className="col-span-12 sm:col-span-3">
           <RequiredLabel required>Field Type</RequiredLabel>

@@ -59,27 +59,3 @@ export async function batchSafeAuthMetadata(
 
   return result;
 }
-
-/**
- * Find auth user IDs whose email matches a search substring (case-insensitive).
- * Used for server-side email search — acceptable at current scale; revisit if user count grows large.
- */
-export async function findAuthUserIdsByEmailSearch(search: string): Promise<string[]> {
-  const term = search.trim().toLowerCase();
-  if (!term.includes("@")) return [];
-
-  try {
-    const admin = createAdminClient();
-    const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-    if (error || !data.users) {
-      if (error) logger.warn("findAuthUserIdsByEmailSearch", error.message);
-      throw Error("Email search could not be loaded.");
-    }
-    return data.users
-      .filter((u) => u.email?.toLowerCase().includes(term))
-      .map((u) => u.id);
-  } catch (err) {
-    logger.error("findAuthUserIdsByEmailSearch exception", err);
-    throw Error("Email search could not be loaded.");
-  }
-}

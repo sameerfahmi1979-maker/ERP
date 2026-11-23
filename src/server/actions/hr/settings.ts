@@ -657,14 +657,30 @@ export async function updateHrPayrollGroup(id: number, input: Partial<z.infer<ty
 // 13. MOHRE Establishments
 // ============================================================================
 
-export async function listHrMohreEstablishments(params?: {
+const mohreListColumn = z.enum(["establishment_name", "establishment_number"]);
+const mohreListOptions = z.object({
+  tableSearch: z.string().max(200).optional(),
+  sorting: z.array(z.object({ id: mohreListColumn, desc: z.boolean() }).strict()).max(2)
+    .refine(items => new Set(items.map(item => item.id)).size === items.length).optional(),
+  columnFilters: z.partialRecord(mohreListColumn, z.string().max(200)).optional(),
+}).strict();
+
+type MohreListParams = HrSettingsWorklistParams & {
   complete?: boolean;
   owner_company_id?: number;
   status?: string;
   search?: string;
+};
+
+export type HrSettingsWorklistParams = {
   page?: number;
   page_size?: number;
-}): Promise<ActionResult<{ data: HrMohreEstablishmentRow[]; total: number }>> {
+  tableSearch?: string;
+  sorting?: Array<{ id: string; desc: boolean }>;
+  columnFilters?: Record<string, string>;
+};
+
+export async function listHrMohreEstablishments(params?: MohreListParams): Promise<ActionResult<{ data: HrMohreEstablishmentRow[]; total: number }>> {
   try {
     if ((params?.complete !== undefined && typeof params.complete !== "boolean") ||
         (params?.complete && (params.page !== undefined || params.page_size !== undefined))) {
@@ -672,32 +688,40 @@ export async function listHrMohreEstablishments(params?: {
     }
     const ctx = await getAuthContext();
     if (!canView(ctx)) return { success: false, error: "Permission denied" };
+    const parsed = mohreListOptions.safeParse({ tableSearch: params?.tableSearch, sorting: params?.sorting, columnFilters: params?.columnFilters });
+    if (!parsed.success) return settingsReadFailure;
     const supabase = await createClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sb = supabase as any;
     const { from, to } = settingsPageWindow(params);
     const search = params?.search ? ["establishment_number", "establishment_name"].map(column => `${column}.ilike.${literalContains(params.search!)}`).join(",") : null;
+    const { tableSearch, sorting, columnFilters } = parsed.data;
+    const tableClause = tableSearch?.trim() ? mohreListColumn.options.map(column => `${column}.ilike.${literalContains(tableSearch.trim())}`).join(",") : null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filtered = (query: any) => {
+      let q = query.is("deleted_at", null);
+      if (params?.owner_company_id) q = q.eq("owner_company_id", params.owner_company_id);
+      if (params?.status) q = q.eq("status", params.status);
+      if (search) q = q.or(search);
+      if (tableClause) q = q.or(tableClause);
+      for (const [column, value] of Object.entries(columnFilters ?? {})) {
+        if (value?.trim()) q = q.ilike(column, literalLike(value.trim()));
+      }
+      return q;
+    };
     const pageQuery = (start: number, end: number) => {
-      let query = sb.from("hr_mohre_establishments")
-        .select("*, owner_company:owner_companies(id,legal_name_en), emirate:emirates(id,name_en)", { count: "exact" }).retry(false)
-        .is("deleted_at", null).order("establishment_name").order("id").range(start, end);
-      if (params?.owner_company_id) query = query.eq("owner_company_id", params.owner_company_id);
-      if (params?.status) query = query.eq("status", params.status);
-      if (search) query = query.or(search);
-      return query;
+      let q = filtered(sb.from("hr_mohre_establishments")
+        .select("*, owner_company:owner_companies(id,legal_name_en), emirate:emirates(id,name_en)", { count: "exact" }).retry(false));
+      if (sorting?.length) for (const { id, desc } of sorting) q = q.order(id, { ascending: !desc });
+      else q = q.order("establishment_name");
+      return q.order("id").range(start, end);
     };
     if (params?.complete) {
       const rows = await readAllPages<HrMohreEstablishmentRow>(async (start, end) => pageQuery(start, end), { identity: settingsRowId });
       return { success: true, data: { data: rows, total: rows.length } };
     }
-    const q = pageQuery(from, to);
-    return await readSettingsPage<HrMohreEstablishmentRow>(q, () => {
-      let cq = sb.from("hr_mohre_establishments").select("id", { count: "exact", head: true }).retry(false).is("deleted_at", null);
-      if (params?.owner_company_id) cq = cq.eq("owner_company_id", params.owner_company_id);
-      if (params?.status) cq = cq.eq("status", params.status);
-      if (search) cq = cq.or(search);
-      return cq;
-    }, from, to);
+    return await readSettingsPage<HrMohreEstablishmentRow>(pageQuery(from, to), () =>
+      filtered(sb.from("hr_mohre_establishments").select("id", { count: "exact", head: true }).retry(false)), from, to);
   } catch {
     return settingsReadFailure;
   }

@@ -47,24 +47,31 @@ export async function getIssuedTripOrderPdf(order:number,issue:number) {
   return readOperation("t07_fleet_trip_order_pdf",{p_order:order,p_issue:issue},tripOrderPdf);
 }
 
-export async function finalizeTripOrder(order:number,issue:number) {
-  if (!fleetId.safeParse(order).success||!fleetId.safeParse(issue).success) return false;
+async function prepareTripOrder(order:number,issue:number):Promise<"ready"|"published"|"unavailable"> {
   const ctx=await getAuthContext();
-  if (!canUseApplication(ctx)||!ctx.profile) return false;
+  if (!canUseApplication(ctx)||!ctx.profile) return "unavailable";
   const paper=await readOperation("t07_fleet_trip_order",{p_order:order,p_issue:issue},tripOrder);
-  if (!paper) return false;
-  if (paper.ready) return true;
-  if (!paper.can_finalize) return false;
+  if (!paper) return "unavailable";
+  if (paper.ready) return "ready";
+  if (!paper.can_finalize) return "unavailable";
   const db=await createClient();
   const {data}=await db.auth.getClaims();
-  if (!data?.claims.sub||typeof data.claims.session_id!=="string") return false;
+  if (!data?.claims.sub||typeof data.claims.session_id!=="string") return "unavailable";
   const bytes=renderTripOrderPdf(paper);
   const published=await createAdminClient().rpc("t07_publish_trip_order",{
     p_order:order,p_issue:issue,p_claims:{sub:data.claims.sub,session_id:data.claims.session_id},p_pdf:bytes.toString("base64"),
   });
-  if (published.error||published.data!==true) return false;
-  revalidatePath(`/modules/fleet/operations/${order}`);
-  return true;
+  return published.error||published.data!==true?"unavailable":"published";
+}
+
+export async function finalizeTripOrder(order:number,issue:number) {
+  if (!fleetId.safeParse(order).success||!fleetId.safeParse(issue).success) return false;
+  const result=await prepareTripOrder(order,issue);
+  if (result==="published") {
+    try { revalidatePath(`/modules/fleet/operations/${order}`); }
+    catch { logger.warn("Issued Fleet Trip Order detail could not be revalidated"); }
+  }
+  return result!=="unavailable";
 }
 
 export async function saveFleetOperation(input:unknown) {
@@ -88,15 +95,16 @@ export async function saveFleetOperation(input:unknown) {
     if (response.error||!saved.success||(cmd.order!==null&&saved.data.id!==cmd.order)) {
       return {error:"The result is unconfirmed. Retry the original request.",uncertain:true} as const;
     }
-    if (cmd.action==="issue-paper"&&saved.data.event_id!==null&&!await finalizeTripOrder(saved.data.id,saved.data.event_id)) {
+    if (cmd.action==="issue-paper"&&saved.data.event_id!==null
+        && await prepareTripOrder(saved.data.id,saved.data.event_id)==="unavailable") {
       return {error:"The Trip Order PDF is pending. Retry the original request.",uncertain:true} as const;
     }
-    try {
-      revalidatePath("/modules/fleet/operations");
-      revalidatePath(`/modules/fleet/operations/${saved.data.id}`);
-      revalidatePath("/modules/fleet");
-    } catch { /* The transaction receipt is authoritative. */ }
-    return {data:saved.data} as const;
+    let refreshFailed=false;
+    for (const path of ["/modules/fleet/operations",`/modules/fleet/operations/${saved.data.id}`,"/modules/fleet"]) {
+      try { revalidatePath(path); }
+      catch { refreshFailed=true; }
+    }
+    return {data:saved.data,refreshFailed} as const;
   } catch {
     return {error:"The result is unconfirmed. Retry the original request.",uncertain:true} as const;
   }

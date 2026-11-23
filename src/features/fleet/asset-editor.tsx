@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FleetField, FleetForm, fleetSelectClass, readFleetOptional, readFleetText } from "./asset-form";
-import type { FleetAsset, FleetChoices, FleetCommand } from "@/lib/fleet/asset-contract";
+import type { FleetAsset, FleetAssetSummary, FleetChoices, FleetCommand } from "@/lib/fleet/asset-contract";
 import { getFleetChoices, searchFleetParties } from "@/server/actions/fleet/assets";
 
 const operations = {
@@ -26,13 +26,13 @@ const registrationFields = ["jurisdiction", "plate_class", "plate", "traffic_cod
 const insuranceFields = ["insurer", "policy_number", "coverage", "insured_party"] as const;
 const label = (value: string) => value.replaceAll("_", " ").replace(/^./, initial => initial.toUpperCase());
 const int = (form: FormData, name: string) => Number(form.get(name)) || undefined;
-const dateFields = (form: FormData, asset: FleetAsset) => ({
+const dateFields = (form: FormData, asset: FleetAssetSummary) => ({
   date: readFleetText(form, "date"), reason: readFleetText(form, "reason"), revision: asset.revision,
 });
 type Axle = { key: string; label: string; role: string; steering: boolean; driven: boolean; liftable: boolean; left: number; right: number };
 const axleRoles = ["steer", "drive", "tag", "lift", "trailer", "other"];
 
-function OwnershipFields({ asset, scopes }: { asset: FleetAsset; scopes: FleetChoices["scopes"] }) {
+function OwnershipFields({ asset, scopes }: { asset: FleetAssetSummary; scopes: FleetChoices["scopes"] }) {
   const [mode, setMode] = useState("owned");
   const [query, setQuery] = useState("");
   const [parties, setParties] = useState<{ id: number; label: string }[]>([]);
@@ -159,7 +159,7 @@ function configData(form: FormData) {
   return { ...readFleetOptional(form, textSpecs), ...measures, axles, spares: Number(form.get("spares") ?? 0) };
 }
 
-export function FleetAssetEditor({ asset, scopes, today }: { asset: FleetAsset; scopes: FleetChoices["scopes"]; today: string }) {
+export function FleetAssetEditor({ asset, scopes, today }: { asset: FleetAssetSummary; scopes: FleetChoices["scopes"]; today: string }) {
   const [action, setAction] = useState<EditAction>("identity");
   const [meterUnit, setMeterUnit] = useState<"km" | "hours">("km");
   const meter = asset.meters.find(item => item.unit === meterUnit);
@@ -238,14 +238,17 @@ export function FleetAssetEditor({ asset, scopes, today }: { asset: FleetAsset; 
   </details>;
 }
 
-export function FleetEvidenceForm({ asset }: { asset: FleetAsset }) {
+export function FleetEvidenceForm({ asset, choices }: {
+  asset: Pick<FleetAssetSummary, "id" | "revision" | "can_link" | "status">;
+  choices: FleetAsset["proof_choices"];
+}) {
   const router = useRouter();
   const [selected, setSelected] = useState("");
-  const proof = asset.proof_choices.find(item => String(item.file) === selected);
+  const proof = choices.find(item => String(item.file) === selected);
   if (!asset.can_link || asset.status === "retired") return null;
-  return <details className="space-y-3">
+  return <details open className="space-y-3">
     <summary className="cursor-pointer font-semibold">Verify registration or insurance</summary>
-    {asset.proof_choices.length === 0 ? <div className="flex flex-wrap items-center gap-3">
+    {choices.length === 0 ? <div className="flex flex-wrap items-center gap-3">
       <p className="text-sm text-muted-foreground">Link a reviewed DMS document with its dated original file, then reload.</p>
       <Button type="button" variant="outline" onClick={() => router.refresh()}>Reload proof choices</Button>
     </div> : <FleetForm asset={asset.id} action="verify-document" label="Verify evidence" fields={form => ({
@@ -257,7 +260,7 @@ export function FleetEvidenceForm({ asset }: { asset: FleetAsset }) {
       <FleetField label="Reviewed original"><select name="proof" required value={selected}
         onChange={event => setSelected(event.target.value)} className={fleetSelectClass}>
         <option value="">Select the DMS original</option>
-        {asset.proof_choices.map(item => <option key={item.file} value={item.file}>
+        {choices.map(item => <option key={item.file} value={item.file}>
           {item.label} · issued {item.date} · expires {item.expires}
         </option>)}
       </select></FleetField>

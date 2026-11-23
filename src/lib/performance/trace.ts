@@ -10,8 +10,16 @@ const readOperations = {
   "/api/reads/dms-documents": "documents.list",
   "/api/reads/dms-list-choices": "dms.filter.choices",
   "/api/reads/dms-renewal-page": "dms.renewals.read",
+  "/api/reads/dms-approvals": "dms.approvals.read",
+  "/api/reads/dms-expiry-page": "dms.expiry.read",
   "/api/reads/hr-dashboard": "hr.dashboard.read",
+  "/api/reads/hr-search": "hr.search.read",
+  "/api/reads/hr-document-browser": "hr.document-browser.read",
+  "/api/reads/hr-time": "hr.time.read",
   "/api/reads/employees": "employees.list",
+  "/api/reads/lookup-search": "lookup.search.read",
+  "/api/reads/report-history": "reports.history.read",
+  "/api/reads/report-deliveries": "reports.deliveries.read",
   "/api/notifications/bell": "notifications.bell.read",
   "/api/reads/notifications": "notifications.list.read",
 } as const;
@@ -80,6 +88,11 @@ export function preparationTraceId(jobId: number) {
 export function dmsTraceId(value: string) {
   const hash = createHash('sha256').update(`dms:${value}`).digest('hex');
   return `${hash.slice(0,8)}-${hash.slice(8,12)}-4${hash.slice(13,16)}-8${hash.slice(17,20)}-${hash.slice(20,32)}`;
+}
+
+/** A queued worker owns its trace even when a request woke its dispatcher. */
+export function traceDetachedOperation<T>(operation: PerfOperation, work: () => Promise<T>, correlation?: string | null): Promise<T> {
+  return scope.exit(() => traceOperation(operation, work, correlation));
 }
 
 /** Never logs result values, exception text, URLs, principal IDs, headers or bindings. */

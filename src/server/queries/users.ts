@@ -5,7 +5,6 @@ import { readAllPages } from "@/server/reads/all-pages";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import {
   batchSafeAuthMetadata,
-  findAuthUserIdsByEmailSearch,
   getSafeAuthMetadataByAuthUserId,
 } from "@/lib/users/auth-metadata";
 import { resolveRoleScope } from "@/lib/users/role-scope";
@@ -147,6 +146,86 @@ export async function getUserById(id: number): Promise<UserWithRoles | null> {
   );
 }
 
+type UsersClient = Awaited<ReturnType<typeof createClient>>;
+
+async function readEmailProfilePage(
+  supabase: UsersClient,
+  params: ListUsersParams,
+  search: string,
+  offset: number,
+  limit: number,
+) {
+  const { data, error } = await supabase.rpc("erp_users_search_email_page", {
+    p_search: search,
+    p_status: params.status || null,
+    p_company_id: params.ownerCompanyId || null,
+    p_branch_id: params.branchId || null,
+    p_role_id: params.roleId || null,
+    p_require_password_change: params.mustChangePassword === true,
+    p_offset: offset,
+    p_limit: limit,
+  }).single();
+  const match = data as { total_count?: unknown; profile_ids?: unknown } | null;
+  const count = match?.total_count;
+  const ids = match?.profile_ids;
+  if (error || typeof count !== "number" || !Number.isSafeInteger(count) || count < 0 ||
+      !Array.isArray(ids) || ids.length !== Math.min(limit, Math.max(0, count - offset)) ||
+      ids.some((id, index) => !Number.isSafeInteger(id) || id <= 0 || (index > 0 && id <= ids[index - 1]))) {
+    throw Error("Email search could not be loaded.");
+  }
+  if (ids.length === 0) return { data: [], count, error: null };
+
+  const page = await supabase.from("user_profiles").select(PROFILE_SELECT).in("id", ids).order("id");
+  if (page.error || !Array.isArray(page.data) || page.data.length !== ids.length ||
+      page.data.some((row, index) => row.id !== ids[index])) {
+    throw Error("Email search results could not be verified.");
+  }
+  return { ...page, count };
+}
+
+async function readProfilePage(
+  supabase: UsersClient,
+  params: ListUsersParams,
+  search: string,
+  from: number,
+  to: number,
+) {
+  // Role filter — resolve matching profile IDs first
+  let roleFilterProfileIds: number[] | null = null;
+  if (params.roleId) {
+    const roleId = params.roleId;
+    const roleRows = await readAllPages(
+      async (start, end) => supabase.from("user_roles").select("id, user_profile_id", { count: "exact" })
+        .eq("role_id", roleId).eq("is_active", true).order("id").range(start, end),
+      { identity: row => row.id },
+    );
+    roleFilterProfileIds = [...new Set(roleRows.map(row => row.user_profile_id))];
+    if (roleFilterProfileIds.length === 0) {
+      return { data: [], count: 0, error: null };
+    }
+  }
+
+  const buildQuery = (head = false) => {
+    let query = supabase.from("user_profiles").select(PROFILE_SELECT, { count: "exact", head });
+    if (params.status) query = query.eq("status", params.status);
+    if (params.ownerCompanyId) query = query.eq("owner_company_id", params.ownerCompanyId);
+    if (params.branchId) query = query.eq("branch_id", params.branchId);
+    if (params.mustChangePassword) query = query.eq("must_change_password", true);
+    if (roleFilterProfileIds) query = query.in("id", roleFilterProfileIds);
+    if (search) {
+      const term = literalContains(search);
+      query = query.or(
+        `full_name.ilike.${term},display_name.ilike.${term},user_code.ilike.${term}`,
+      );
+    }
+    return query;
+  };
+
+  const result = await buildQuery().order("id").range(from, to);
+  const fallback = from > 0 && result.status === 416 ? await buildQuery(true) : null;
+  return fallback ? { ...fallback, data: [] } : result;
+}
+
 /**
  * USERS.2 — Server-side paginated users list with search and filters.
  */
@@ -170,61 +249,9 @@ export async function listUsersPaginated(
 
   const supabase = await createClient();
 
-  // Role filter — resolve matching profile IDs first
-  let roleFilterProfileIds: number[] | null = null;
-  if (params.roleId) {
-    const roleId = params.roleId;
-    const roleRows = await readAllPages(
-      async (start, end) => supabase.from("user_roles").select("id, user_profile_id", { count: "exact" })
-        .eq("role_id", roleId).eq("is_active", true).order("id").range(start, end),
-      { identity: row => row.id },
-    );
-    roleFilterProfileIds = [...new Set(roleRows.map(row => row.user_profile_id))];
-    if (roleFilterProfileIds.length === 0) {
-      return { rows: [], totalCount: 0, page, pageSize };
-    }
-  }
-
-  // Email search — resolve auth IDs then profile IDs
-  let emailSearchProfileIds: number[] | null = null;
-  if (search.includes("@")) {
-    const authIds = await findAuthUserIdsByEmailSearch(search);
-    if (authIds.length === 0) {
-      return { rows: [], totalCount: 0, page, pageSize };
-    }
-    const emailProfiles = await readAllPages(
-      async (start, end) => supabase.from("user_profiles").select("id", { count: "exact" })
-        .in("auth_user_id", authIds).order("id").range(start, end),
-      { identity: row => row.id },
-    );
-    emailSearchProfileIds = emailProfiles.map(profile => profile.id);
-    if (emailSearchProfileIds.length === 0) {
-      return { rows: [], totalCount: 0, page, pageSize };
-    }
-  }
-
-  const buildQuery = (head = false) => {
-    let query = supabase.from("user_profiles").select(PROFILE_SELECT, { count: "exact", head });
-    if (params.status) query = query.eq("status", params.status);
-    if (params.ownerCompanyId) query = query.eq("owner_company_id", params.ownerCompanyId);
-    if (params.branchId) query = query.eq("branch_id", params.branchId);
-    if (params.mustChangePassword) query = query.eq("must_change_password", true);
-    if (roleFilterProfileIds) query = query.in("id", roleFilterProfileIds);
-    if (emailSearchProfileIds) query = query.in("id", emailSearchProfileIds);
-    if (search && !search.includes("@")) {
-      const term = literalContains(search);
-      query = query.or(
-        `full_name.ilike.${term},display_name.ilike.${term},user_code.ilike.${term}`,
-      );
-    }
-    return query;
-  };
-
-  const result = await buildQuery().order("id").range(from, to);
-  const fallback = from > 0 && result.status === 416 ? await buildQuery(true) : null;
-  const count = fallback ? fallback.count : result.count;
-  const error = fallback ? fallback.error : result.error;
-  const profiles = fallback ? [] : result.data;
+  const { count, error, data: profiles } = await (search.includes("@")
+    ? readEmailProfilePage(supabase, params, search, from, pageSize)
+    : readProfilePage(supabase, params, search, from, to));
 
   if (error) {
     logger.error("listUsersPaginated error", error.message);

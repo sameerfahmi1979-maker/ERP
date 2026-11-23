@@ -75,3 +75,51 @@ it("temporary verification outage remains masked until a valid reconnect check, 
  fireEvent(domWindow,new Event("focus"));await waitFor(()=>expect(view.getByText("Private synthetic rows")).toBeTruthy());
  expect(state.clear).not.toHaveBeenCalled();expect(localStorage.getItem("algt_erp_workspace_old-account")).toBe("tracked synthetic draft");
 });
+
+it.each(["SIGNED_OUT", "SIGNED_IN"])("%s retires a pending session verification and keeps protected content masked", async event => {
+  const { domWindow, location } = navigationProbe();
+  let complete!: (response: Response) => void;
+  const fetcher = vi.fn<typeof fetch>(() => new Promise(resolve => { complete = resolve; }));
+  vi.stubGlobal("fetch", fetcher);
+  const view = render(<SessionBoundary authUserId="same" scopeVersion="scope"><p>Private rows</p></SessionBoundary>);
+
+  fireEvent(domWindow, new Event("focus"));
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  const signal = fetcher.mock.calls[0][1]?.signal;
+  await act(async () => state.onAuth?.(event, event === "SIGNED_OUT" ? null : { user: { id: "new" } }));
+  await act(async () => complete(Response.json({ authUserId: "same", active: true, scopeVersion: "scope" })));
+  fireEvent(domWindow, new Event("focus"));
+
+  expect(view.queryByText("Private rows")).toBeNull();
+  expect(signal?.aborted).toBe(true);
+  expect(state.clear).toHaveBeenCalledTimes(1);
+  expect(location.replace).toHaveBeenCalledWith("/login");
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it("verifies foreground visibility and reconnect without overlapping a pending check", async () => {
+  let complete!: (response: Response) => void;
+  const fetcher = vi.fn<typeof fetch>(() => new Promise(resolve => { complete = resolve; }));
+  vi.stubGlobal("fetch", fetcher);
+  const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+  try {
+    render(<SessionBoundary authUserId="same"><p>Protected content</p></SessionBoundary>);
+
+    fireEvent(document, new Event("visibilitychange"));
+    fireEvent(window, new Event("online"));
+    expect(fetcher).toHaveBeenCalledTimes(0);
+
+    hidden.mockReturnValue(false);
+    fireEvent(document, new Event("visibilitychange"));
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    fireEvent(window, new Event("focus"));
+    fireEvent(window, new Event("online"));
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await act(async () => complete(Response.json({ authUserId: "same", active: true })));
+
+    fireEvent(window, new Event("online"));
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  } finally {
+    hidden.mockRestore();
+  }
+});

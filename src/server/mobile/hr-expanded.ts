@@ -9,9 +9,9 @@ import { issuedDocuments } from "./hr-wallet";
 import { serviceReadWrite } from "./hr-services";
 import { fulfilService } from "./hr-fulfilment";
 
-export function expandedHr(db:Db,ctx:AuthContext,i:ExpandedCommand) {
+export function expandedHr(db:Db,ctx:AuthContext,i:ExpandedCommand,signal?:AbortSignal) {
   switch(i.op){
-    case "directory":case "directoryChoices":return directory(db,i);
+    case "directory":case "directoryChoices":return directory(db,i,signal);
     case "employeeRecord":return employeeRecord(db,ctx,i.employeeId);
     case "work":case "operationRecords":case "operationDetail":case "teamReadiness":return workRead(db,i);
     case "dependents":case "dependent":case "onboarding":case "onboardingTask":case "offboarding":case "clearance":case "clearanceHistory":

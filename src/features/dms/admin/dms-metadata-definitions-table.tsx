@@ -30,8 +30,7 @@ import {
   type CreateDmsMetadataDefinitionInput,
 } from "@/server/actions/dms/metadata-definitions";
 import { ALLOWED_FIELD_TYPES } from "@/features/dms/admin/dms-constants";
-import type { DmsCategoryRow } from "@/server/actions/dms/categories";
-import type { DmsDocumentTypeRow } from "@/server/actions/dms/document-types";
+import type { DmsDocumentTypeChoice } from "@/server/actions/dms/document-types";
 import type { AuthContext } from "@/lib/rbac/check";
 import { linesToJsonStringArray } from "@/lib/dms/metadata/metadata-definition-shared";
 import {
@@ -50,8 +49,8 @@ import type { AiSuggestedField } from "@/lib/dms/metadata/ai-definition-builder"
 
 type Props = {
   rows: DmsMetadataDefinitionRow[];
-  categories: DmsCategoryRow[];
-  documentTypes: DmsDocumentTypeRow[];
+  documentTypes: DmsDocumentTypeChoice[];
+  typeChoicesFailed?: boolean;
   authContext: AuthContext;
 };
 
@@ -173,7 +172,7 @@ function formToPayload(form: MetadataDefinitionFormState): CreateDmsMetadataDefi
   };
 }
 
-export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }: Props) {
+export function DmsMetadataDefinitionsTable({ rows, documentTypes, typeChoicesFailed = false, authContext }: Props) {
   const router = useRouter();
   const manage = canManage(authContext);
   const allowDelete = canDelete(authContext);
@@ -263,15 +262,20 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
   };
 
   const handleSubmit = async () => {
-    if (!form.document_type_id || !form.field_code || !form.field_label_en || !form.field_type) {
+    if (typeChoicesFailed && !editing) {
+      toast.error("Reload document types before adding a field");
+      return;
+    }
+    if ((!typeChoicesFailed && !form.document_type_id) || !form.field_code || !form.field_label_en || !form.field_type) {
       toast.error("Document type, field code, label, and field type are required");
       return;
     }
     setIsSubmitting(true);
     try {
       const payload = formToPayload(form);
+      const { document_type_id, ...fieldValues } = payload;
       const result = editing
-        ? await updateDmsMetadataDefinition(editing.id, payload)
+        ? await updateDmsMetadataDefinition(editing.id, typeChoicesFailed ? fieldValues : { ...fieldValues, document_type_id })
         : await createDmsMetadataDefinition(payload);
       if (!result.success) {
         toast.error(result.error ?? "Failed to save");
@@ -515,7 +519,7 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
 
   const toolbarFilters = (
     <div className="flex flex-wrap items-center gap-2">
-      <Select value={filterTypeId} onValueChange={(v) => setFilterTypeId(v ?? "all")}>
+      <Select value={filterTypeId} disabled={typeChoicesFailed} onValueChange={(v) => setFilterTypeId(v ?? "all")}>
         <SelectTrigger className="h-8 w-48 text-xs">
           <SelectValue placeholder="Document type" />
         </SelectTrigger>
@@ -582,7 +586,7 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
         </SelectContent>
       </Select>
       {manage && (
-        <Button onClick={openAdd} size="sm">
+        <Button onClick={openAdd} size="sm" disabled={typeChoicesFailed}>
           <PlusCircle className="mr-2 h-4 w-4" />
           Add Field
         </Button>
@@ -616,6 +620,12 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
 
   return (
     <div className="space-y-4">
+      {typeChoicesFailed && (
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
+          Document type choices could not be loaded.
+          <Button type="button" size="sm" variant="outline" onClick={() => router.refresh()}>Retry choices</Button>
+        </div>
+      )}
       <p className="text-sm text-muted-foreground">
         {filteredRows.length} of {rows.length} metadata fields
         {(filterTypeId !== "all" ||
@@ -669,6 +679,9 @@ export function DmsMetadataDefinitionsTable({ rows, documentTypes, authContext }
             setForm={setForm}
             editing={!!editing}
             documentTypes={documentTypes}
+            retainedDocumentType={typeChoicesFailed && editing
+              ? editing.document_type?.name_en ?? "Current document type"
+              : undefined}
           />
         </div>
       </ERPChildDialogForm>

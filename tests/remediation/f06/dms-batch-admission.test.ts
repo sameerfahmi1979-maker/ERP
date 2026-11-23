@@ -1,7 +1,7 @@
 import { createHash, webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({client: vi.fn(), admin: vi.fn(), auth: vi.fn(), usable: vi.fn(), permission: vi.fn(),
-  rpc: vi.fn(), from: vi.fn(), bucket: vi.fn(), info: vi.fn(), download: vi.fn(), stream: vi.fn(), sign: vi.fn(),
+  rpc: vi.fn(), readiness: vi.fn(), from: vi.fn(), bucket: vi.fn(), info: vi.fn(), download: vi.fn(), stream: vi.fn(), sign: vi.fn(),
   audit: vi.fn(), analysis: vi.fn(), cache: vi.fn()}));
 vi.mock("@/lib/supabase/server", () => ({createClient: m.client}));
 vi.mock("@/lib/supabase/admin", () => ({createAdminClient: m.admin}));
@@ -224,7 +224,8 @@ describe("ordinary-auth atomic batch server adapter", () => {
     m.auth.mockImplementation(async () => ctx());
     m.usable.mockImplementation(value => value.isAccountActive === true && value.profile?.must_change_password !== true);
     m.permission.mockReturnValue(true);
-    m.client.mockResolvedValue({rpc: m.rpc, from: m.from});
+    m.readiness.mockResolvedValue({data: null, error: {code: 'PGRST202'}});
+    m.client.mockResolvedValue({rpc: (name: string, ...args: unknown[]) => name === 'dms_upload_batch_readiness' ? m.readiness(...args) : m.rpc(name, ...args), from: m.from});
     m.from.mockImplementation(() => {throw Error("forbidden business-table operation");});
     m.rpc.mockImplementation(rpc);
     m.admin.mockReturnValue({storage: {from: m.bucket}, from: () => {throw Error("forbidden admin business read");}, rpc: () => {throw Error("forbidden admin RPC");}});
@@ -240,6 +241,28 @@ describe("ordinary-auth atomic batch server adapter", () => {
   afterEach(() => {vi.useRealTimers();});
   const verify = () => verifyDmsBatchUpload({request: currentRequest, position: 0});
 
+  it('uses one combined scoped readiness response for each gate', async () => {
+    m.readiness.mockResolvedValue({data: {receipt: currentReceipt, eligibility: {eligible: true, positions: [0]}},error: null});
+    present();
+    expect(await verify()).toMatchObject({state: 'present'});
+    expect(m.readiness).toHaveBeenCalledTimes(4);
+    expect(m.readiness.mock.calls.every(([value])=>JSON.stringify(value)===JSON.stringify({p_operation: operation}))).toBe(true);
+    expect(m.rpc).toHaveBeenCalledExactlyOnceWith('read_dms_upload_batch_admission', {p_operation: operation});
+    expect(m.download).toHaveBeenCalledOnce();
+  });
+
+  it.each(['scope-denied', 'stale-receipt', 'invalid-positions'])('withholds storage and legacy fallback on combined %s', async validation => {
+    const readiness = {receipt: {...currentReceipt}, eligibility: {eligible: true, positions: [0]}};
+    if (validation === 'stale-receipt') readiness.receipt.batch_id += 1;
+    if (validation === 'invalid-positions') readiness.eligibility.positions = [0,0];
+    m.readiness.mockResolvedValue(validation === 'scope-denied' ? {data: null,error: {code:'42501'}} : {data: readiness,error: null});
+    present();
+    expect(await verify()).toMatchObject({state: 'unavailable'});
+    expect(m.rpc).toHaveBeenCalledExactlyOnceWith('read_dms_upload_batch_admission', {p_operation: operation});
+    expect(m.info).not.toHaveBeenCalled();
+    expect(m.download).not.toHaveBeenCalled();
+  });
+
   it('admits nine files without preparing unused whole-batch capabilities',async()=>{
     fixture(9);
     const result=await createDmsUploadBatchForContinuation(currentRequest);
@@ -252,7 +275,7 @@ describe("ordinary-auth atomic batch server adapter", () => {
     expect(m.sign).not.toHaveBeenCalled();
   });
   it('finds the exact original admission without mutation or signing',async()=>{
-    const chain:any={select:vi.fn(),eq:vi.fn(),is:vi.fn(),single:vi.fn().mockResolvedValue({data:{admission_operation_id:operation},error:null})};
+    const chain={select:vi.fn(),eq:vi.fn(),is:vi.fn(),single:vi.fn().mockResolvedValue({data:{admission_operation_id:operation},error:null})};
     chain.select.mockReturnValue(chain);chain.eq.mockReturnValue(chain);chain.is.mockReturnValue(chain);m.from.mockReturnValue(chain);
     expect(await findDmsBatchAdmission(currentReceipt.batch_code)).toEqual({success:true,receipts:[currentReceipt]});
     expect(m.rpc.mock.calls.every(c=>c[0]==='read_dms_upload_batch_admission')).toBe(true);
@@ -260,7 +283,8 @@ describe("ordinary-auth atomic batch server adapter", () => {
     expect(await findDmsBatchAdmission('OTHER')).toMatchObject({success:false});
   });
   it('withholds recovery if receipt belongs to a different owner',async()=>{
-    const chain:any={select:()=>chain,eq:()=>chain,is:()=>chain,single:async()=>({data:{admission_operation_id:operation},error:null})};m.from.mockReturnValue(chain);
+    const chain={select:vi.fn(),eq:vi.fn(),is:vi.fn(),single:vi.fn().mockResolvedValue({data:{admission_operation_id:operation},error:null})};
+    chain.select.mockReturnValue(chain);chain.eq.mockReturnValue(chain);chain.is.mockReturnValue(chain);m.from.mockReturnValue(chain);
     m.rpc.mockResolvedValue({data:{...currentReceipt,auth_user_id:'ffffffff-ffff-4fff-8fff-ffffffffffff'},error:null});
     expect(await findDmsBatchAdmission(currentReceipt.batch_code)).toMatchObject({success:false});expect(m.sign).not.toHaveBeenCalled();
   });

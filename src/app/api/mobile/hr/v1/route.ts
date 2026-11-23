@@ -39,7 +39,11 @@ export async function POST(request:Request) {
       const ctx=await getAuthContext();
       if(!ctx.profile) throw new HrError(401,"Your ERP session ended. Sign in again.");
       if(!canUseApplication(ctx)) throw new HrError(403,"ERP access is unavailable for this account.");
-      return result({success:true,data:await dispatchHr(parsed.data,ctx)},200);
+      const command = parsed.data;
+      const data = command.op === "directory" || command.op === "directoryChoices"
+        ? await dispatchHr(command, ctx, request.signal)
+        : await dispatchHr(command, ctx);
+      return result({success:true,data},200);
     });
   } catch(e) {
     if(e instanceof HrError) return result({success:false,error:e.message,...(e.uncertain?{uncertain:true}:{})},e.status);

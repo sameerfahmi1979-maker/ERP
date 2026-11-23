@@ -111,6 +111,7 @@ function BrandingAssetUploadSession({label,description,assetType,scope="app",app
    <Button type="button" size="sm" variant="outline" className="gap-1.5 flex-1" disabled={!enabled} aria-label={`${asset?"Replace":"Upload"} ${label}`} onClick={()=>input.current?.click()}><Upload className="h-3.5 w-3.5"/>{asset?"Replace":"Upload"}</Button>
    {asset&&canUpload&&<Button type="button" size="sm" variant="ghost" disabled={!enabled} aria-label={`Deactivate ${label}`} onClick={()=>setConfirmRemove(true)}><Trash2 className="h-3.5 w-3.5"/></Button>}
   </div>
+  {enabled&&<p className="text-xs text-muted-foreground">Choosing a valid file uploads and saves the asset immediately.</p>}
   {isPending&&<p role="status" className="text-sm">Saving asset…</p>}
   {awaitingRefresh&&<p role="status" className="text-sm">Saved. Refreshing the current asset; reopen this profile if the preview does not update.</p>}
   {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}

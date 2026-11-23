@@ -5,39 +5,54 @@ import { EMPLOYEE_PUBLIC_FIELDS } from "@/lib/hr/employee-public-fields";
 import { hrSubjectPermission } from "@/server/reads/hr-subject-access";
 import { rpc, readProfileAccess, type Db, pageRows } from "./hr-reads";
 import { subjectPhoto } from "./hr-photo";
+import { id } from "./hr-contracts";
 import { checkedRows, fields, pageOf, requireDomain, rid, related } from "./hr-page";
 import { denied, unavailable } from "./hr-shapes";
 import type { ExpandedInput } from "./hr-services-contracts";
 const nullable=z.string().nullable();
-const display=z.object({id:z.number(),full_name_en:z.string(),employee_code:z.string(),employee_status:z.string(),owner_company:nullable,branch:nullable,
-  department:nullable,designation:nullable,site:nullable,manager:nullable,workspace_revision:z.union([z.number(),z.string()]).transform(String),
-  own:z.boolean(),contacts:z.object({mobile_number:nullable,personal_email:nullable,emergency_contact_name:nullable,emergency_contact_mobile:nullable}).nullable()});
-async function identity(db:Db,id:number){
-  const raw=await rpc(db,"mobile_hr_profile",{p_employee:id});
-  if(!raw)throw denied();
-  const p=display.parse(raw);
-  if(p.id!==id)throw denied();
-  return p;
-}
-export async function directory(db:Db,i:ExpandedInput<"directoryChoices"|"directory">) {
+const directoryDetails = z.array(z.strictObject({
+  employeeId: id, employeeCode: z.string(), name: z.string(), status: z.string(), company: nullable, branch: nullable,
+  department: nullable, designation: nullable, site: nullable, phone: nullable,
+})).max(25);
+export async function directory(db:Db,i:ExpandedInput<"directoryChoices"|"directory">,signal?:AbortSignal) {
+  signal?.throwIfAborted();
   if(i.op==="directoryChoices"){
     const rows=z.array(z.strictObject({value:z.string(),label:z.string()})).parse(await rpc(db,"mobile_hr_v5_directory_choices",{
-      p_kind:i.kind,p_company:i.companyId,p_branch:i.branchId,p_search:i.search,p_after:i.after}));
+      p_kind:i.kind,p_company:i.companyId,p_branch:i.branchId,p_search:i.search,p_after:i.after},false,signal));
     if(i.kind==="status")return {rows,more:false,nextAfterId:null};
     const p=pageRows(rows);return {...p,nextAfterId:p.more?Number(p.rows.at(-1)!.value):null};
   }
-  let q=db.from("employees").select("id,employee_code").is("deleted_at",null);
+  let q=db.from("employees").select("id,photo_dms_document_id").is("deleted_at",null);
   for(const [column,value] of Object.entries({owner_company_id:i.companyId,branch_id:i.branchId,department_id:i.departmentId,designation_id:i.designationId,primary_work_site_id:i.siteId,employee_status:i.status}))
     if(value!==null)q=q.eq(column,value);
   if(i.search){const term=literalContains(i.search);q=q.or(`full_name_en.ilike.${term},employee_code.ilike.${term}`);}
-  const start=(i.page-1)*25,all=checkedRows(await q.order("employee_code").order("id").range(start,start+25));
-  const p=pageRows(all);
-  const rows=await Promise.all(p.rows.map(async r=>{
-    const employeeId=rid(r),[record,photo]=await Promise.all([identity(db,employeeId),subjectPhoto(employeeId)]);
-    return {employeeId,employeeCode:record.employee_code,name:record.full_name_en,company:record.owner_company,branch:record.branch,
-      department:record.department,designation:record.designation,site:record.site,status:record.employee_status,phone:record.contacts?.mobile_number??null,photo};
+  const start=(i.page-1)*25;
+  const query=q.order("employee_code").order("id").range(start,start+25);
+  const result=await (signal ? query.abortSignal(signal) : query);
+  signal?.throwIfAborted();
+  const all=checkedRows(result);
+  const p = pageRows(all);
+  const employeeIds = p.rows.map(row => rid(row));
+  if (!employeeIds.length) return pageOf(null, i.page, []);
+
+  const details = directoryDetails.safeParse(await rpc(db, "mobile_hr_v5_directory_details", { p_employees: employeeIds }, false, signal));
+  if (!details.success || details.data.length !== employeeIds.length ||
+      details.data.some((row, index) => row.employeeId !== employeeIds[index])) throw unavailable();
+  // Keep each authorized photo check independent. The saved pointer only
+  // avoids a lookup for empty slots and is never published in the response.
+  const photos = await Promise.all(p.rows.map(async (row, index) => {
+    if (row.photo_dms_document_id == null) return { value: null, incomplete: false };
+    try {
+      return { value: await subjectPhoto(employeeIds[index], null, db, signal), incomplete: false };
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") throw error;
+      return { value: null, incomplete: true };
+    }
   }));
-  return {...pageOf(null,i.page,rows),more:p.more};
+  signal?.throwIfAborted();
+  const rows = details.data.map((row, index) => ({ ...row, photo: photos[index].value }));
+  return { ...pageOf(null, i.page, rows), more: p.more,
+    ...(photos.some(photo => photo.incomplete) && { photoReadIncomplete: true }) };
 }
 export async function employeeRecord(db:Db,ctx:AuthContext,employeeId:number) {
   await requireDomain(db,employeeId,"hr.employees.view","hr.employee_profile.view");

@@ -1,7 +1,8 @@
 /** Canonical candidate for the duplicate advisory. Party accounts may be international. */
 export function partyIbanCandidate(value: string): string | null {
-  const iban = value.toUpperCase().replace(/[\t\n\v\f\r ]/g, "");
-  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(iban)) return null;
+  const compact = value.replace(/[\t\n\v\f\r ]/g, "");
+  if (!/^[A-Za-z]{2}\d{2}[A-Za-z0-9]{11,30}$/.test(compact)) return null;
+  const iban = compact.toUpperCase();
   if (iban.startsWith("AE") && !/^AE\d{21}$/.test(iban)) return null;
 
   let remainder = 0;

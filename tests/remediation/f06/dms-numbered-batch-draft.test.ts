@@ -57,7 +57,7 @@ const call=startAiIntakeAndCreateDraft as (...args:unknown[])=>Promise<{success:
 function read(data:unknown){const chain={select:vi.fn(),eq:vi.fn(),is:vi.fn(),single:vi.fn(),maybeSingle:vi.fn()};for(const name of ['select','eq','is'] as const)chain[name].mockReturnValue(chain);chain.single.mockResolvedValue({data,error:null});chain.maybeSingle.mockResolvedValue({data,error:null});return chain;}
 beforeEach(()=>{
  vi.resetAllMocks();m.auth.mockResolvedValue({profile:{id:5},roleCodes:[],permissionCodes:[]});m.permission.mockReturnValue(true);
- m.client.mockResolvedValue({from:m.from,rpc:(...args:unknown[])=>{const result=Promise.resolve(m.rpc(...args));return Object.assign(result,{retry:(value:boolean)=>{expect(value).toBe(false);return result;}});}});m.admin.mockReturnValue({from:m.from});
+ m.client.mockResolvedValue({from:m.from,rpc:(...args:unknown[])=>{const result=Promise.resolve(args[0]==='dms_upload_batch_readiness'?{data:null,error:{code:'PGRST202'}}:m.rpc(...args));return Object.assign(result,{retry:(value:boolean)=>{expect(value).toBe(false);return result;}});}});m.admin.mockReturnValue({from:m.from});
  m.from.mockImplementation((table:string)=>read(table==='erp_ai_feature_flags'?{is_enabled:true}:table==='dms_upload_sessions'?{id:17,session_code:'S17',document_id:42,intake_status:'review_pending',batch_id:null,batch_draft_operation_id:null,original_filename:'Synthetic.pdf'}:{id:42,document_no:'DMS-42',status:'pending_ai_review'}));
  m.analysis.mockResolvedValue({success:true,data:{sessionCode:'S17',status:'review_pending'}});
 });

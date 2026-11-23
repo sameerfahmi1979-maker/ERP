@@ -2,8 +2,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission, type AuthContext } from "@/lib/rbac/check";
 import { getDmsMetadataDefinitions } from "@/server/actions/dms/metadata-definitions";
-import { getDmsDocumentTypes } from "@/server/actions/dms/document-types";
-import { getDmsCategories } from "@/server/actions/dms/categories";
+import { getDmsDocumentTypeChoices } from "@/server/actions/dms/document-types";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { DmsMetadataDefinitionsTable } from "@/features/dms/admin/dms-metadata-definitions-table";
 
@@ -13,10 +12,9 @@ export const metadata = {
 };
 
 async function MetadataDefinitionsContent({ authContext }: { authContext: AuthContext }) {
-  const [metaResult, typesResult, categoriesResult] = await Promise.all([
+  const [metaResult, typesResult] = await Promise.all([
     getDmsMetadataDefinitions(),
-    getDmsDocumentTypes(),
-    getDmsCategories(),
+    getDmsDocumentTypeChoices(),
   ]);
   if (!metaResult.success || !metaResult.data) {
     return (
@@ -29,8 +27,8 @@ async function MetadataDefinitionsContent({ authContext }: { authContext: AuthCo
   return (
     <DmsMetadataDefinitionsTable
       rows={metaResult.data}
-      categories={categoriesResult.data ?? []}
       documentTypes={typesResult.data ?? []}
+      typeChoicesFailed={!typesResult.success || !typesResult.data}
       authContext={authContext}
     />
   );

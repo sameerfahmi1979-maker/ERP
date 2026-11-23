@@ -58,6 +58,18 @@ it('retries the ALS approver lookup with the exact scope and keeps the selected 
   expect(mocks.assignees).toHaveBeenLastCalledWith({companyId: 2, branchId: null, requiredRole: 'synthetic_reviewer'});
   expect((screen.getByLabelText('Step 1 assigned approvers') as HTMLSelectElement).value).toBe('2');
 });
+it('shares simultaneous same-scope approver reads and reads again for a new form session', async () => {
+  const review = { ...workflow.steps[0], isFinal: false, requiresRole: 'synthetic_reviewer' };
+  const final = { ...review, id: 2, stepCode: 'FINAL', isInitial: false, isFinal: true, sortOrder: 1 };
+  const editing = { ...workflow, branchId: 5, steps: [review, final] };
+  const view = form(editing);
+  await waitFor(() => expect(screen.getAllByRole('option', { name: 'Synthetic approver' })).toHaveLength(2));
+  expect(mocks.assignees).toHaveBeenCalledExactlyOnceWith({ companyId: 1, branchId: 5, requiredRole: 'synthetic_reviewer' });
+  view.unmount();
+  form(editing);
+  await waitFor(() => expect(screen.getAllByRole('option', { name: 'Synthetic approver' })).toHaveLength(2));
+  expect(mocks.assignees).toHaveBeenCalledTimes(2);
+});
 it('opening an edit after a closed empty dialog initializes the selected workflow',()=>{const props={onOpenChange:vi.fn(),onSuccess:vi.fn(),documentTypes:[]};const view=render(<DmsApprovalWorkflowFormDialog open={false} editing={null} {...props}/>,{wrapper:Wrap});view.rerender(<DmsApprovalWorkflowFormDialog open editing={workflow} {...props}/>);expect((screen.getByLabelText('Workflow Name (EN)') as HTMLInputElement).value).toBe(workflow.nameEn);expect((screen.getByLabelText('Step 1 code') as HTMLInputElement).value).toBe('REVIEW');});
 it('changing the selected workflow starts a separate form session',()=>{const props={open:true,onOpenChange:vi.fn(),onSuccess:vi.fn(),documentTypes:[]};const view=render(<DmsApprovalWorkflowFormDialog editing={workflow} {...props}/>,{wrapper:Wrap});fireEvent.change(screen.getByLabelText('Workflow Name (EN)'),{target:{value:'Unsaved A'}});view.rerender(<DmsApprovalWorkflowFormDialog editing={{...workflow,id:42,nameEn:'Synthetic B'}} {...props}/>);expect((screen.getByLabelText('Workflow Name (EN)') as HTMLInputElement).value).toBe('Synthetic B');});
 it('workflow required fields use the global linked summary before any action',()=>{form();fireEvent.click(screen.getByRole('button',{name:'Add',exact:true}));expect(screen.getByRole('alert').textContent).toContain('Check 6 fields');expect(mocks.create).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:/Step 2 name:/}));expect(document.activeElement).toBe(screen.getByLabelText('Step 2 name'));});

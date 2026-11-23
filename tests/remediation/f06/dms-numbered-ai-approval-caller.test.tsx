@@ -126,6 +126,92 @@ it('approves the displayed metadata after a same-type CICPA AI rerun', async () 
   })));
 });
 
+const cicpaFields = [
+  {id:10, field_code:'pass_number', field_label_en:'Pass Number', field_type:'text', is_required:true},
+  {id:11, field_code:'cicpa_locations_arabic', field_label_en:'CICPA Location', field_type:'text', is_required:false},
+  {id:12, field_code:'expiry_date', field_label_en:'Pass Expiry Date', field_type:'date', is_required:true},
+];
+const cicpaLocations = 'جزيرة داس\nأبو ظبي';
+function renderCicpaReview(drafts: {
+  field_scope: string;
+  field_code: string;
+  field_type: string;
+  reviewed_value_json: string;
+}[] = []) {
+  metadataFixture.renderActual = true;
+  m.definitions.mockResolvedValue({success:true,data:cicpaFields});
+  const testSession={...session,draft_snapshot:'1'.repeat(64),draft_values:drafts,ai_result:{...session.ai_result,
+    suggested_type:{type_code:'CICPA_PASS'}, extracted_fields_json:{pass_number:'00001234',cicpa_locations_arabic:cicpaLocations, expiry_date:'2027-05-30'}}};
+  const cicpaTypes=[{...types[0],type_code:'CICPA_PASS',name_en:'CICPA Pass'}];
+  return render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><DmsAiIntakePageClient session={testSession} documentTypes={cicpaTypes}/></QueryClientProvider>);
+}
+
+it('CICPA: fresh extracted values reach approval exactly without rerun', async () => {
+  renderCicpaReview();
+  expect((await screen.findByLabelText<HTMLInputElement>('Pass Number')).value).toBe('00001234');
+  expect(screen.getByLabelText<HTMLTextAreaElement>('CICPA Location').value).toBe(cicpaLocations);
+  m.save.mockResolvedValue({ success: true, data: { snapshot: '2'.repeat(64) } });
+  const save = screen.getAllByRole<HTMLButtonElement>('button', { name: 'Save Draft' })[0];
+  await waitFor(() => expect(save.disabled).toBe(false));
+  fireEvent.click(save);
+  await waitFor(() => expect(m.success).toHaveBeenCalledWith('Draft saved'));
+  expect(m.save.mock.calls[0][1].filter((row: {fieldScope: string}) => row.fieldScope === 'metadata')).toEqual([
+    {fieldScope:'metadata',fieldCode:'10',fieldType:'text',reviewedValueJson:'00001234',reviewStatus:'edited'},
+    {fieldScope:'metadata',fieldCode:'11',fieldType:'text',reviewedValueJson:cicpaLocations,reviewStatus:'edited'},
+    {fieldScope:'metadata',fieldCode:'12',fieldType:'date',reviewedValueJson:'2027-05-30',reviewStatus:'edited'},
+  ]);
+  fill(); await submit();
+  await waitFor(() => expect(m.replace).toHaveBeenCalled());
+  const submitted=m.approve.mock.calls[0][0];
+  expect(submitted.metadataValues).toEqual([
+    {definitionId:10,fieldType:'text',rawValue:'00001234'},
+    {definitionId:11,fieldType:'text',rawValue:cicpaLocations},
+    {definitionId:12,fieldType:'date',rawValue:'2027-05-30'},
+  ]);
+  expect(submitted.standardFileName).toBe(input.standardFileName);
+  expect(m.rerun).not.toHaveBeenCalled();
+});
+
+it('CICPA: explicitly clearing required text blocks approval even with a nonblank suggestion', async () => {
+  renderCicpaReview();
+  fireEvent.change(await screen.findByLabelText('Pass Number'),{target:{value:''}});
+  fill(); await submit();
+  expect((await screen.findByRole('alert')).textContent).toContain('Complete required metadata before approving: Pass Number.');
+  expect(m.confirmReview).not.toHaveBeenCalled();
+  expect(m.approve).not.toHaveBeenCalled();
+  expect(m.rerun).not.toHaveBeenCalled();
+});
+
+it('CICPA: explicitly clearing optional Arabic locations omits the field from approval', async () => {
+  renderCicpaReview();
+  fireEvent.change(await screen.findByLabelText('CICPA Location'),{target:{value:''}});
+  fill(); await submit();
+  await waitFor(() => expect(m.replace).toHaveBeenCalled());
+  expect(m.approve.mock.calls[0][0].metadataValues).toEqual([
+    {definitionId:10,fieldType:'text',rawValue:'00001234'},
+    {definitionId:12,fieldType:'date',rawValue:'2027-05-30'},
+  ]);
+  expect(m.rerun).not.toHaveBeenCalled();
+});
+
+it('CICPA: reopening intake keeps exact saved officer metadata over earlier AI suggestions', async () => {
+  renderCicpaReview([{field_scope:'metadata',field_code:'10',field_type:'text',reviewed_value_json:'00009991'}]);
+  await screen.findByLabelText('Pass Number');
+  fill(); await submit();
+  await waitFor(() => expect(m.replace).toHaveBeenCalled());
+  expect(m.approve.mock.calls[0][0].metadataValues).toContainEqual({definitionId:10,fieldType:'text',rawValue:'00009991'});
+  expect(screen.getByLabelText<HTMLInputElement>('Pass Number').value).toBe('00009991');
+});
+
+it('CICPA: reopening intake must not restore a deliberately cleared required value', async () => {
+  renderCicpaReview([{field_scope:'metadata',field_code:'10',field_type:'text',reviewed_value_json:''}]);
+  await screen.findByLabelText('Pass Number');
+  fill(); await submit();
+  expect((await screen.findByRole('alert')).textContent).toContain('Complete required metadata before approving: Pass Number.');
+  expect(screen.getByLabelText<HTMLInputElement>('Pass Number').value).toBe('');
+  expect(m.approve).not.toHaveBeenCalled();
+});
+
 it('reloads the confirmed same-intake retry and retains saved officer values', async () => {
   m.rerun.mockResolvedValue({success:true,data:{sessionCode:retrySession.session_code,status:'review_pending'}});
   m.refreshIntake.mockResolvedValue({success:true,data:refreshedIntake});

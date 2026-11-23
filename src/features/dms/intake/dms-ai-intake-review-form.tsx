@@ -477,12 +477,8 @@ function DmsIntakeReviewFields({
         fieldConfidenceJson={aiResult?.field_confidence_json ?? null}
         values={values.metadataValues}
         onBulkSeed={(seeded) =>
-          // All AI-seeded values arrive in one call — no stale closure issue.
-          onChange({
-            metadataValues: {
-              ...(savedDocument?{...seeded,...values.metadataValues}:{...values.metadataValues,...seeded}),
-            },
-          })
+          // Suggestions fill unreviewed fields. A saved edit, including a blank, takes precedence.
+          onChange({ metadataValues: { ...seeded, ...values.metadataValues } })
         }
         onChange={(defId, fieldType, rawValue) =>
           onChange({

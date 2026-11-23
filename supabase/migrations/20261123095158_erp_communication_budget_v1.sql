@@ -615,7 +615,7 @@ returns boolean language sql set search_path='' as $$
       from erp_comm_cost.stage_poll_hold h join erp_comm_cost.cleanup_resource c on c.permit_id=h.stage_permit
         and c.endpoint='discard_partial_upload' and c.closed_at is null where h.pool=p.permit_id
     ) q cross join lateral (select ceil(extract(epoch from q.latest-clock_timestamp())/30)+q.jobs+4 as ticks) required
-    where p.kind='chat_stage_poll' and p.subject=p_worker::text and p.enabled and f.enabled and p.poll_seconds=30 and p_new_attempts between 3 and 20
+    where p.kind='chat_stage_poll' and p.subject=p_worker::text and p.enabled and f.enabled and p.poll_seconds=30 and (p_new_attempts between 3 and 20 or (p_new_attempts=0 and q.jobs>=3))
       and p.last_poll>clock_timestamp()-interval '2 minutes' and b.lease_until>clock_timestamp() and p_until>clock_timestamp()
       and least(f.valid_until,p.valid_until,b.until_at)>=q.latest and least(p.max_actions-p.used,b.poll_limit-b.polls)>=required.ticks
       and erp_comm_cost.worker_recovery_funded(p.permit_id,q.latest,f.restart_seconds)

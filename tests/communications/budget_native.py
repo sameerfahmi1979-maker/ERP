@@ -467,7 +467,10 @@ def main():
            select erp_comm_cost.take_permit('{stage_permit}','media_upload','communications','2','{json.dumps(stage_wire)}');
            select erp_comm_cost.bind_chat_stage('{stage_permit}','{upload}',now()+interval '25 hours');
            select erp_comm_cost.claim_chat_stage_window('{worker}','{stage_permit}',now()+interval '25 hours'); commit;"""
+        assert sql(f"select erp_comm_cost.chat_stage_worker_covers('{worker}',now()+interval '25 hours',0);").stdout.strip()=="f"
         sql(stage_origin)
+        assert sql(f"select erp_comm_cost.chat_stage_worker_covers('{worker}',now()+interval '25 hours',0);").stdout.strip()=="t"
+        assert sql(f"select count(*) from erp_comm_cost.stage_poll_hold where stage_permit='{stage_permit}';").stdout.strip()=="1"
         assert sql(f"select erp_comm_cost.chat_stage_worker_covers('{worker}',now()+interval '25 hours');").stdout.strip()=="f"
         sql(f"select erp_comm_cost.release_attached_chat_stage('{stage_permit}','{upload}');")
         attempt={"permitId":stage_permit,"endpoint":"discard_partial_upload","resourceId":"erp-chat-media/"+upload,"attemptId":"late-delete"}

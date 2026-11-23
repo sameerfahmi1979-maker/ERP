@@ -199,11 +199,10 @@ begin
   if not exists(select from erp_private.comms_chat_gate where singleton and enabled) then return null;end if;
   select jsonb_build_object('kind','chat','id',m.id,'conversationId',c.id,'seq',m.seq::text,'label',case when c.kind='group' then c.name else u.full_name end,
     'category',case when mention.profile_id is not null then 'mentions' when c.kind='direct' then 'direct' else 'groups' end,
-    'pushEligible',not coalesce(pref.muted,false) or mention.profile_id is not null,'read',r.profile_id is not null)
+    'pushEligible',not coalesce(pref.muted,false) or mention.profile_id is not null,'read',erp_private.chat_read_at(m.conversation,m.seq,i.profile_id) is not null)
   into t from erp_private.chat_messages m join erp_private.chat_conversations c on c.id=m.conversation
    join public.user_profiles u on u.id=m.sender
    join erp_private.chat_memberships member on member.conversation=c.id and member.profile_id=i.profile_id and member.left_at is null and member.joined_at<=m.sent_at
-   left join erp_private.chat_reads r on r.message=m.id and r.profile_id=i.profile_id
    left join erp_private.chat_mentions mention on mention.message=m.id and mention.profile_id=i.profile_id and not erp_private.comms_pair_blocked(m.sender,i.profile_id)
    left join erp_private.chat_personal pref on pref.conversation=c.id and pref.profile_id=i.profile_id
    where m.id=i.source and m.deleted_at is null and m.sender<>i.profile_id and (c.kind='group' or not erp_private.comms_pair_blocked(c.direct_low,c.direct_high));
@@ -634,6 +633,9 @@ begin
   if least(cfg.deadline,cp.valid_until,cfg.ready_at-make_interval(secs=>cp.poll_seconds)+interval '45 seconds')<=clock_timestamp()+interval '20 seconds' then
    perform erp_private.notification_stop_scheduler(p_run);return null;end if;
   update erp_private.notification_mobile_scheduler set phase='running' where id;
+  if exists(select from erp_private.notification_capture_gate where controls) then
+   perform erp_comm_cost.project_due_alerts(cfg.pool,p_ticket,1);
+  end if;
   if exists(select from erp_private.notification_capture_gate where enabled or controls) then perform erp_private.notification_recover();end if;
   if cfg.calendar_enabled and exists(select from erp_private.notification_capture_gate where enabled) then perform erp_private.notification_collect_due();end if;
   perform erp_private.notification_project_chat();

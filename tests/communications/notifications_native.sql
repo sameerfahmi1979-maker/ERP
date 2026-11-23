@@ -64,9 +64,9 @@ begin
  if pg_temp.call_ntf(2,'preview',req)<>'{}' then raise exception 'DMS preview';end if;
  update erp_private.chat_messages set dms_ref=null where id=m;
  perform pg_temp.call_ntf(2,'resolve',jsonb_build_object('eventId',event_ref));
- if exists(select from erp_private.chat_reads) then raise exception 'opening notification created read receipt';end if;
+ if erp_private.chat_read_at(c,1,2) is not null then raise exception 'opening notification created read receipt';end if;
  perform pg_temp.call_ntf(2,'markRead',jsonb_build_object('eventId',event_ref,'clientMutationId',gen_random_uuid()));
- if (pg_temp.call_ntf(2,'list','{}')->>'unreadMessages')<>'0' or not exists(select from erp_private.chat_reads where message=m and profile_id=2) then raise exception 'cross-client read';end if;
+ if (pg_temp.call_ntf(2,'list','{}')->>'unreadMessages')<>'0' or erp_private.chat_read_at(c,1,2) is null then raise exception 'cross-client read';end if;
  notice:=pg_temp.call_ntf(2,'reply',jsonb_build_object('eventId',event_ref,'body','ok','clientMutationId',reply));
  if pg_temp.call_ntf(2,'reply',jsonb_build_object('eventId',event_ref,'body','ok','clientMutationId',reply)) is distinct from notice or (select count(*) from erp_private.chat_messages where reply_to=m)<>1 then raise exception 'reply replay';end if;
  update erp_private.chat_messages set deleted_at=now() where id=m;
@@ -171,6 +171,7 @@ begin
  perform pg_sleep(1.05);
  result:=public.erp_notification_tick('admit',run,t);
  if result->>'pushEnabled' is distinct from 'true' or public.erp_notification_tick('admit',run,t) is not null then raise exception 'admission single use';end if;
+ if not exists(select from erp_comm_cost.control_debit where pool=permit and command_id=t and notification_projection_used) or erp_comm_cost.project_due_alerts(permit,t,1)<>0 then raise exception 'protected projection ticket repeated or absent';end if;
  result:=public.erp_notification_tick('finish',run,t);
  if result is distinct from 'true'::jsonb then raise exception 'missing continuation state %, used %, phase %',result,(select used from erp_comm_cost.control_pool where permit_id=permit),(select phase from erp_private.notification_mobile_scheduler);end if;
  if public.erp_notification_tick('finish',run,t) is not null or (select count(*) from net.queued)<>2 then raise exception 'duplicate continuation';end if;
@@ -279,7 +280,7 @@ end $$;
 
 -- A single paid projection has a fixed write ceiling even after a large unprocessed backlog.
 begin;
-do $$declare c uuid:=gen_random_uuid(); ptt_event uuid;current_phone uuid; prior bigint;current_count bigint;before_jobs bigint;after_jobs bigint;
+do $$declare c uuid:=gen_random_uuid(); ptt_event uuid;current_phone uuid;read_event uuid;first_read timestamptz; prior bigint;current_count bigint;before_jobs bigint;after_jobs bigint;
 begin
  insert into erp_private.chat_conversations(id,kind,name,creator,owner_id,latest_seq) values(c,'group','Fixture queue bounds',3,3,125);
  insert into erp_private.chat_memberships(conversation,profile_id) values(c,2),(c,3);
@@ -303,5 +304,14 @@ begin
  if after_jobs-before_jobs<>64 then raise exception 'device job limit';end if;
  perform erp_private.notification_project_devices();
  if (select count(*) from erp_private.notification_push_jobs)-after_jobs<>64 then raise exception 'device recovery failed to advance';end if;
+ delete from erp_comm_cost.pause where reason='fixture' and feature='chat';
+ select i.id into strict read_event from erp_private.notification_inbox i join erp_private.chat_messages m on m.id=i.source where i.profile_id=2 and m.conversation=c and m.seq=125;
+ perform pg_temp.call_ntf(2,'webResolve',jsonb_build_object('eventId',read_event));
+ if exists(select from erp_private.chat_read_ranges where conversation=c and profile_id=2) then raise exception 'web resolution created read range';end if;
+ perform pg_temp.call_ntf(2,'webMarkRead',jsonb_build_object('eventId',read_event,'clientMutationId',gen_random_uuid()));
+ first_read:=erp_private.chat_read_at(c,1,2);
+ if first_read is null or first_read is distinct from erp_private.chat_read_at(c,125,2) or (select count(*) from erp_private.chat_read_ranges where conversation=c and profile_id=2)<>1 then raise exception 'unbounded notification read-through';end if;
+ perform pg_temp.call_ntf(2,'markRead',jsonb_build_object('eventId',read_event,'clientMutationId',gen_random_uuid()));
+ if erp_private.chat_read_at(c,2,2) is distinct from first_read or (select count(*) from erp_private.chat_read_ranges where conversation=c and profile_id=2)<>1 then raise exception 'repeat native mark changed first read';end if;
 end $$;
 rollback;

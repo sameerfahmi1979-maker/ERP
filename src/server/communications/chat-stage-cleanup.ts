@@ -79,7 +79,7 @@ export async function sweepChatStage(plan: Plan): Promise<number> {
   return coveredUntil;
 }
 
-const runtime = { open: openBoot, poll: sweepChatStage, sleep: (ms: number) => delay(ms, undefined, { ref: false }) };
+const runtime = { open: openBoot, poll: sweepChatStage, sleep: (ms: number): Promise<void> => delay(ms, undefined, { ref: false }) };
 
 /** A declined/ambiguous poll stops this boot. A paid standby recovers the SQL lease. */
 export async function runChatStagePolls(plan: Plan, initialCutoff: number, deps = runtime) {

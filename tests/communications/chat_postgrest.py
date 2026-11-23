@@ -57,8 +57,10 @@ def run():
                 time.sleep(.2)
         else: raise RuntimeError("Synthetic PostgreSQL did not start")
         sql((ROOT/"tests/communications/chat_fixture.sql").read_text())
-        sql((ROOT/"supabase/migrations/20261123094907_erp_communications_chat_v1.sql").read_text())
-        sql((ROOT/"supabase/migrations/20261123095158_erp_communication_budget_v1.sql").read_text())
+        for migration in ["20261123094907_erp_communications_chat_v1.sql","20261123095158_erp_communication_budget_v1.sql"]:
+            contents=(ROOT/"supabase/migrations"/migration).read_bytes()
+            sql(contents.decode("utf-8-sig"))
+            print("Applied synthetic",migration,hashlib.sha256(contents).hexdigest(),flush=True)
         sql(f"""CREATE ROLE fixture_rest LOGIN NOINHERIT PASSWORD '{credential}';
           GRANT authenticated,anon TO fixture_rest; GRANT USAGE ON SCHEMA public TO authenticated,anon;
           CREATE OR REPLACE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $x$ SELECT current_setting('request.jwt.claims',true)::jsonb $x$;

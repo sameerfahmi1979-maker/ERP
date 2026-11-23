@@ -1,5 +1,6 @@
 """Run against a fresh localhost PostgreSQL instance with synthetic ERP rows."""
 import concurrent.futures
+import hashlib
 import json
 import os
 import pathlib
@@ -66,8 +67,10 @@ def run():
 
     try:
         sql((ROOT/"tests/communications/chat_fixture.sql").read_text())
-        sql(MIGRATION.read_text(encoding="utf-8-sig"))
-        sql((ROOT/"supabase/migrations/20261123095158_erp_communication_budget_v1.sql").read_text(encoding="utf-8-sig"))
+        for migration in [MIGRATION, ROOT/"supabase/migrations/20261123095158_erp_communication_budget_v1.sql"]:
+            contents=migration.read_bytes()
+            sql(contents.decode("utf-8-sig"))
+            print("Applied synthetic",migration.name,hashlib.sha256(contents).hexdigest(),flush=True)
         denied(lambda:request(2,"directory"))
         sql("UPDATE erp_private.comms_chat_gate SET enabled=true")
         denied(lambda:request(2,"directory"))

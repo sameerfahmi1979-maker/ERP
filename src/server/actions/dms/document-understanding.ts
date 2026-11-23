@@ -15,6 +15,7 @@
  * - Feature flag ERP_AI_DOC_UNDERSTANDING must be enabled.
  */
 
+import { observeAssistantSource, observeAssistantQuery } from "@/lib/ai/common/assistant/publication-reads";
 import { z } from "zod";
 import {readAllPages} from "@/server/reads/all-pages";
 import { createClient } from "@/lib/supabase/server";
@@ -130,7 +131,7 @@ export async function getDmsDocumentUnderstanding(
     const { data: docData, error: docErr } = await supabase
       .from("dms_documents")
       .select(`
-        id, document_no, title, status, confidentiality_level,
+        id, updated_at, document_no, title, status, confidentiality_level,
         issue_date, expiry_date, deleted_at,
         ocr_last_run_at, ocr_text_available,
         ai_summary, ai_summary_status, ai_summary_updated_at, ai_summary_model, ai_summary_error,
@@ -177,7 +178,7 @@ export async function getDmsDocumentUnderstanding(
     // 8. Content text metadata (no body)
     const { data: contentRow } = await supabase
       .from("dms_document_content")
-      .select("char_count, is_truncated, content_text_source")
+      .select("char_count:content_text_char_count, is_truncated, content_text_source")
       .eq("document_id", documentId)
       .maybeSingle().throwOnError();
 
@@ -192,9 +193,9 @@ export async function getDmsDocumentUnderstanding(
     // 9. AI extraction result (latest — safe metadata only; raw_ocr_text used server-side for OCR detection)
     const { data: extractRows } = await supabase
       .from("dms_ai_extraction_results")
-      .select("ai_status, classification_score, classification_reason, field_confidence_json, raw_ocr_text, created_at")
+      .select("id, ai_status, classification_score, classification_reason, field_confidence_json, raw_ocr_text, created_at")
       .eq("document_id", documentId)
-      .order("created_at", { ascending: false })
+      .order("created_at", { ascending: false }).order("id", { ascending: false })
       .limit(1).throwOnError();
 
     const latestExtract = ((extractRows ?? []) as Array<Record<string, unknown>>)[0] ?? null;
@@ -605,6 +606,13 @@ export async function getDmsDocumentUnderstanding(
     understanding.health = calculateDocumentUnderstandingHealth(understanding);
     understanding.actions = buildRecommendedUnderstandingActions(understanding);
 
+    const reference = {entityType:"dms_document",entityId:documentId} as const;
+    if (typeof doc.updated_at === "string") observeAssistantSource(reference,doc.updated_at);
+    observeAssistantQuery(() => ({kind:"understanding",reference,limit:1,result:{
+      typeName:docType?.name_en??null,typeCode:docType?.type_code??null,summary:understanding.summaryStatus.summaryText?.slice(0,600)??null,
+      fileOcr:files.some(f=>f.ocr_status==="complete"||f.ocr_status==="skipped"||!!f.ocr_text?.trim()),content:contentTextAvailable,
+      linked:links.length>0, extraction:latestExtract ? [latestExtract.id,latestExtract.ai_status,hasRawOcrInExtract,extractedFieldCount,needsHumanReview] : null,
+    }}));
     return { success: true, data: understanding };
   } catch (err) {
     return { success: false, error: String(err).slice(0, 200) };

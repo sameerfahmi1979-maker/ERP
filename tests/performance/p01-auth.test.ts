@@ -70,6 +70,19 @@ import { getAuthContext } from "@/lib/rbac/check";
 
 const verifiedTransport = ["getUser", "f03_current_session_valid", "erp_current_auth_graph"];
 
+it("returns the digest attached to the same authenticated Assistant generation graph", async () => {
+  const hash = "a".repeat(64);
+  state.graphOverride = { graph: { profile: profile(), assignments: [], roles: [], links: [], permissions: [] }, hash };
+  const ctx = await getAuthContext({ bindAssistantPublication: true });
+  expect(ctx.assistantPublicationGraphHash).toBe(hash);
+  expect(state.calls).toEqual(["getUser", "f03_current_session_valid", "erp_assistant_publication_auth_graph"]);
+});
+
+it("rejects an Assistant generation graph without its digest", async () => {
+  state.graphOverride = { graph: { profile: profile(), assignments: [], roles: [], links: [], permissions: [] } };
+  await expect(getAuthContext({ bindAssistantPublication: true })).rejects.toThrow("Assistant authority unavailable");
+});
+
 beforeEach(() => {
   Object.assign(state, {
     active: true, forced: false, session: true, user: true, profileFound: true,

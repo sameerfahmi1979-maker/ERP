@@ -137,9 +137,11 @@ async function prepareDocument(documentId: number, claim: NonNullable<ReturnType
       if (target.canApply) candidate.values.unshift({ key: "document_type_id", label: "Document type and registered category", current: String(source.documentTypeId), proposed: String(target.documentTypeId), evidence: [], confidence: null });
     } else if (code && code !== source.typeCode) candidate.warnings.push("The suggested type was not in the verified catalogue. The existing type is retained.");
     if (source.files.some(f => (f.text?.length ?? 0) > 24000)) candidate.warnings.push("Analysis used bounded source excerpts. Review the original for material outside those excerpts.");
-    const published = z.object({ success: z.literal(true), resultId: z.number().int().positive(), replayed: z.boolean() }).strict().parse(await traceSpan('dms.publish', () => rpc("publish", { candidate,
+    const receipt = z.strictObject({ success: z.literal(true), resultId: z.number().int().positive(), replayed: z.boolean() });
+    const published = await traceSpan('dms.publish', async () => receipt.parse(await rpc("publish", { candidate,
       provenance: { provider: analyzed.provider, model: analyzed.model, configId: analyzed.configId, promptVersion: analyzed.promptVersion, schemaVersion: analyzed.schemaVersion, inputHash: analyzed.inputHash, promptTokens: analyzed.promptTokens, completionTokens: analyzed.completionTokens, durationMs: analyzed.durationMs },
-      candidateText: working.files.map(f => f.text ?? "").join("\n\n").slice(0, 100000) })));
+      candidateText: working.files.map(f => f.text ?? "").join("\n\n").slice(0, 100000) }))).catch(() => null);
+    if (!published) return { success: false, errorCode: "preparation_publication_unconfirmed", retryable: false };
     return { success: published.success, modelName: analyzed.model, providerCode: analyzed.provider, inputTokenCount: analyzed.promptTokens, outputTokenCount: analyzed.completionTokens };
   } catch (error) {
     // A retained uncertain stage needs reconciliation, not a fresh paid request.

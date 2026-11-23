@@ -1,3 +1,4 @@
+import { observeAssistantQuery } from "@/lib/ai/common/assistant/publication-reads";
 // ERP COMMON AI.13 — Dashboard Data Collectors
 // All functions are read-only. No mutations. No future module tables.
 // No raw OCR / content_text / prompt / AI response / API key exposure.
@@ -54,6 +55,7 @@ export async function collectRiskKpis(scope: DailyDashboardScope): Promise<RiskK
     navigationPath: `/admin/ai/risk`,
   }));
 
+  observeAssistantQuery(() => ({kind:"dashboard_risk",limit:1,params:{since},result:[critical,high,stale,unreviewed]}));
   return {
     kpis: [
       { label: "Critical Risk", value: critical, severity: critical > 0 ? "critical" : "normal" },
@@ -103,6 +105,7 @@ export async function collectComplianceKpis(scope: DailyDashboardScope): Promise
     navigationPath: `/admin/ai/compliance`,
   }));
 
+  observeAssistantQuery(() => ({kind:"dashboard_compliance",limit:1,result:[open,critical,high]}));
   return {
     kpis: [
       { label: "Open Findings", value: open, severity: open > 0 ? "warning" : "normal" },
@@ -150,6 +153,7 @@ export async function collectDuplicateKpis(scope: DailyDashboardScope): Promise<
     navigationPath: `/admin/ai/duplicates`,
   }));
 
+  observeAssistantQuery(() => ({kind:"dashboard_duplicates",limit:1,result:[pending,highConf,conflicts]}));
   return {
     kpis: [
       { label: "Pending Candidates", value: pending, severity: pending > 0 ? "warning" : "normal" },
@@ -212,6 +216,7 @@ export async function collectFieldSuggestionKpis(scope: DailyDashboardScope): Pr
     severity: r.status === "conflict_detected" ? "warning" : "normal",
   }));
 
+  observeAssistantQuery(() => ({kind:"dashboard_fields",limit:1,params:{since},result:[pendingCount,acceptedCount,rejectedCount,conflictCount]}));
   return {
     kpis: [
       { label: "Pending Suggestions", value: pendingCount ?? 0, severity: (pendingCount ?? 0) > 0 ? "info" : "normal" },
@@ -280,6 +285,7 @@ export async function collectDmsProcessingKpis(scope: DailyDashboardScope): Prom
     navigationPath: `/dms/documents/record/${r.id}`,
   }));
 
+  observeAssistantQuery(() => ({kind:"dashboard_dms",limit:1,params:{since},result:[uploadedToday,missingOcr,missingSummary,missingEmbedding,highRisk]}));
   return {
     kpis: [
       { label: `Uploaded (${scope})`, value: uploadedToday ?? 0 },

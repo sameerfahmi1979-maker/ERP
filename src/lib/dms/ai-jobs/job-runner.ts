@@ -23,6 +23,14 @@ const claimSchema = z.object({
 });
 const settled = z.object({ success: z.literal(true), jobId: z.number().int().positive(), attemptNumber: z.number().int().positive(),
   status: z.enum(["completed", "failed", "retry_scheduled"]) });
+const preparationPublication = z.object({
+  success: z.literal(true), preparation: z.literal(true), context: z.object({
+    state: z.string(), resultId: z.number().int().positive().nullable(),
+    source: z.object({ documentId: z.number().int().positive() }),
+  }),
+});
+const preparationPublicationUnconfirmed = (job: ClaimedJob, outcome: DmsAiJobHandlerResult) =>
+  job.job_type === "ai_re_extraction" && outcome.errorCode === "preparation_publication_unconfirmed";
 type ClaimedJob = Pick<DmsAiJobQueueRow, "id" | "job_type" | "payload_json" | "attempt_count" | "max_attempts" | "locked_by">;
 export async function runDmsAiJob(job: ClaimedJob, claim: JobClaim): Promise<string | null> {
   if (job.id !== claim.jobId || job.locked_by !== claim.workerId || job.attempt_count !== claim.attemptNumber) return null;
@@ -39,10 +47,26 @@ export async function runDmsAiJob(job: ClaimedJob, claim: JobClaim): Promise<str
       try { outcome = await handler.handle(job.payload_json, { ...claim }); }
       catch (error) { outcome = { success: false, errorCode: sanitizeJobError(error).code, retryable: true }; }
       const scope = currentJobClaim();
-      return scope?.failed ? { success: false, errorCode: "publication_rejected", retryable: !scope.uncertainWrite } : outcome;
+      return scope?.failed && !preparationPublicationUnconfirmed(job, outcome) ? { success: false, errorCode: "publication_rejected", retryable: !scope.uncertainWrite } : outcome;
     });
   } catch (error) { result = { success: false, errorCode: sanitizeJobError(error).code, retryable: true }; }
   try {
+    if (preparationPublicationUnconfirmed(job, result)) {
+      // The handler scope is poisoned after transport loss. This read still uses the
+      // same job and lease and rechecks current actor and source before settlement.
+      const { data, error } = await db.rpc("ai_mod04_preparation_worker", {
+        p_action: "context", p_data: { jobId: job.id, token: claim.token },
+      });
+      if (error && !["42501", "PT409", "40001"].includes(error.code)) return null;
+      const confirmation = preparationPublication.safeParse(data);
+      if (!error && !confirmation.success) return null;
+      if (!error && confirmation.success && confirmation.data.context.state === "review_required" &&
+          confirmation.data.context.source.documentId === job.payload_json.documentId && confirmation.data.context.resultId !== null) {
+        result = { success: true };
+      } else {
+        result = { success: false, errorCode: "publication_rejected", retryable: false };
+      }
+    }
     // Outside the handler scope: settling a failed poisoned attempt remains
     // possible. The DB owns counts, backoff, history and terminal review atomically.
     const { data, error } = await db.rpc("f07_ai_worker", { p_action: "settle", p_data: {

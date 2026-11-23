@@ -19,6 +19,7 @@ export type AuthContext = {
   profile: UserProfile | null;
   /** ERP USERS.4 — auth email from supabase.auth.getUser() (not stored in user_profiles) */
   email: string | null;
+  assistantPublicationGraphHash?: string;
   roleCodes: string[];
   permissionCodes: string[];
   /** ERP USERS.1 — live account status from user_profiles.status */
@@ -45,11 +46,11 @@ export class AccountDisabledError extends Error {
 
 // ── getAuthContext ────────────────────────────────────────────────────────────
 
-export async function getAuthContext(): Promise<AuthContext> {
-  return traceRequest("auth.context", getAuthContextImpl);
+export async function getAuthContext(options?: { bindAssistantPublication?: boolean }): Promise<AuthContext> {
+  return traceRequest("auth.context", () => getAuthContextImpl(options?.bindAssistantPublication === true));
 }
 
-async function getAuthContextImpl(): Promise<AuthContext> {
+async function getAuthContextImpl(bindAssistantPublication: boolean): Promise<AuthContext> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -67,16 +68,26 @@ async function getAuthContextImpl(): Promise<AuthContext> {
   }
   return traceSpan("auth.permissions", async () => {
     // Only the identity verified by GoTrue can select this bootstrap graph.
-    const { data, error } = await createAdminClient().rpc("erp_current_auth_graph", { p_auth_user_id: user.id });
+    const result = bindAssistantPublication
+      ? await createAdminClient().rpc("erp_assistant_publication_auth_graph", { p_auth_user_id: user.id })
+      : await createAdminClient().rpc("erp_current_auth_graph", { p_auth_user_id: user.id });
+    const { error } = result;
+    const data = bindAssistantPublication ? result.data?.graph : result.data;
     if (error) throw new Error("Unable to resolve authorization context");
-    if (data === null) {
+    if (data == null) {
       return { profile: null, email: user.email ?? null, roleCodes: [], permissionCodes: [], accountStatus: "none", isAccountActive: false };
     }
     const graph = authGraphEnvelope.safeParse(data);
     if (!graph.success || graph.data.profile.auth_user_id !== user.id) {
       throw new Error("Unable to resolve authorization context");
     }
-    return buildAuthContext(graph.data.profile as UserProfile, user.email ?? null, graph.data);
+    const context = await buildAuthContext(graph.data.profile as UserProfile, user.email ?? null, graph.data);
+    if (bindAssistantPublication) {
+      const hash = result.data?.hash;
+      if (typeof hash !== "string" || !/^[a-f0-9]{64}$/.test(hash)) throw new Error("Assistant authority unavailable");
+      context.assistantPublicationGraphHash = hash;
+    }
+    return context;
   });
 }
 

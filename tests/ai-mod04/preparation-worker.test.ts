@@ -74,7 +74,7 @@ describe("document preparation worker adoption",()=>{
  it("recovers a received valid result after publication failure with no new paid analysis",async()=>{
   const original=rpc.getMockImplementation()!;let once=true;
   rpc.mockImplementation(async(name,args)=>{if(args.p_action==='publish'&&once){once=false;return {error:{code:'XX000'},data:null};}return original(name,args);});
-  expect(await runDocumentPreparationJob(1)).toMatchObject({errorCode:"database_error"});
+  expect(await runDocumentPreparationJob(1)).toMatchObject({errorCode:"preparation_publication_unconfirmed"});
   expect((await runDocumentPreparationJob(1))?.success).toBe(true);expect(m.complete).toHaveBeenCalledOnce();
  });
  it("replays legacy validated receipts without a provider call",async()=>{

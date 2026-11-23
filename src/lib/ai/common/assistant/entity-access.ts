@@ -1,4 +1,5 @@
 import "server-only";
+import { observeAssistantSource } from "./publication-reads";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { canUseApplication } from "@/lib/rbac/scope";
@@ -103,6 +104,7 @@ export async function readAuthorizedAssistantEntity(
   if (error) throw new Error("Record authority unavailable");
   const row = data as Record<string, unknown> | null;
   if (!row || row.id !== entityId || typeof row.updated_at !== "string") return null;
+  observeAssistantSource(reference, row.updated_at);
   const label = row[source.label], code = row[source.code];
   return { reference, label: typeof label === "string" && label.trim() ? label.slice(0, 200) : "Record", businessCode: typeof code === "string" ? code.slice(0, 100) : null, version: row.updated_at };
 }

@@ -1,4 +1,6 @@
 import "server-only";
+import { observeAssistantQuery } from "@/lib/ai/common/assistant/publication-reads";
+
 import {z} from "zod";
 import {createClient} from "@/lib/supabase/server";
 import {getAuthContext,hasPermission,type AuthContext} from "@/lib/rbac/check";
@@ -29,6 +31,9 @@ export async function searchGlobal(raw:unknown,context?:AuthContext,callerSignal
     }
     if(r.error||r.count===null||!Number.isSafeInteger(r.count)||r.count<0)throw Error("Global source unavailable");
     const rows=z.array(z.object({entity_type:z.enum(["organization","branch","party","site","dms_document"]),entity_id:z.number().int().positive().safe(),title:z.string(),business_code:z.string().nullable(),source_version:z.string()}).strip()).parse(r.data);
+    observeAssistantQuery(() => ({kind:"global_page",limit:p.pageSize,params:{args,offset},result:{
+      count:r.count,rows:rows.map(row=>[row.entity_type,row.entity_id,row.source_version]),
+    }}));
     if(rows.length!==Math.min(p.pageSize,Math.max(0,r.count-(p.page-1)*p.pageSize))||new Set(rows.map(v=>v.entity_type+v.entity_id)).size!==rows.length)throw Error("Incomplete global result");
     await verifySearchDelivery(ctx);
     return {success:true as const,data:{contractVersion:"erp-search/2.1",outcome:r.count?"available":"no_matches",criteria:p,countScope:"exact_authorized",totalCount:r.count,hasMore:p.page*p.pageSize<r.count,

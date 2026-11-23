@@ -1,5 +1,7 @@
 "use server";
 
+import { observeAssistantQuery } from "@/lib/ai/common/assistant/publication-reads";
+
 /**
  * ERP COMMON AI.5 — AI Risk Scoring Server Actions
  * Review-based entity risk scores — no auto-block/update/resolve.
@@ -820,7 +822,7 @@ export async function getRiskScoreForEntity(input: {
     const supabase = await createClient();
     const admin = createAdminClient();
 
-    const { data: row } = await supabase
+    const { data: row, error: readError } = await supabase
       .from("erp_ai_risk_scores")
       .select("*")
       .eq("entity_type", parsed.data.entityType)
@@ -829,6 +831,8 @@ export async function getRiskScoreForEntity(input: {
       .not("status", "in", '("superseded","failed")')
       .maybeSingle();
 
+    if (readError) return { success: false, error: "Risk score unavailable." };
+    observeAssistantQuery(() => ({kind: "risk", reference: parsed.data, limit: 1, result: row ? [[row.id,row.risk_score,row.risk_level,row.status]] : []}));
     if (!row) return { success: true, data: null };
 
     const label = await resolveEntityLabel(

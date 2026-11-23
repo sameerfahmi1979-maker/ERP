@@ -4,6 +4,8 @@ import { assistantAuthorityFingerprint, HISTORY_WITHHELD } from "@/lib/ai/common
 import type { AiEntityReference } from "@/lib/ai/foundation/contracts";
 import type { AuthContext } from "@/lib/rbac/check";
 import { withDocumentReadPolicy } from "@/lib/supabase/document-read-policy";
+import { runOpenRecordAction } from "@/lib/ai/common/assistant/action-handlers";
+import type { AssistantIntent } from "@/lib/ai/common/assistant/types";
 import { getAssistantSession, sendAssistantMessage } from "@/server/actions/ai/common/assistant";
 
 const state = vi.hoisted(() => ({
@@ -12,7 +14,7 @@ const state = vi.hoisted(() => ({
   auth: vi.fn(),
   engine: vi.fn(),
   audit: vi.fn(),
-  finish: vi.fn(),
+  publish: vi.fn(),
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => state.db }));
 vi.mock("@/lib/rbac/check", () => ({
@@ -20,7 +22,11 @@ vi.mock("@/lib/rbac/check", () => ({
   hasPermission: (ctx: AuthContext, code: string) => ctx.permissionCodes.includes(code),
 }));
 vi.mock("@/server/actions/audit", () => ({ logAudit: state.audit }));
-vi.mock("@/server/ai/quality-turn", () => ({ beginQualityTurn: async () => null, finishQualityTurn: state.finish }));
+vi.mock("@/server/actions/ai/common/search", () => ({ searchAcrossErp: vi.fn() }));
+vi.mock("@/server/actions/dms/document-understanding", () => ({ getDmsDocumentUnderstanding: vi.fn() }));
+vi.mock("@/server/actions/ai/common/risk-scoring", () => ({ getRiskScoreForEntity: vi.fn() }));
+vi.mock("@/server/ai/quality-turn", () => ({ beginQualityTurn: async () => ({ requestId: "synthetic-request", hash: "a".repeat(64), authorityHash: "b".repeat(64) }) }));
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ rpc: state.publish }) }));
 vi.mock("@/lib/ai/common/assistant/assistant-engine", () => ({ MAX_USER_MESSAGE_LENGTH: 1000, runAssistantTurn: state.engine }));
 
 const sources = {
@@ -156,9 +162,13 @@ beforeEach(() => {
   state.auth.mockReset().mockImplementation(async () => state.ctx);
   state.engine.mockReset();
   state.audit.mockReset().mockImplementation(async () => { events.push("send audit"); });
-  state.finish.mockReset().mockImplementation(async () => {
-    events.push("finished turn");
-    return true;
+  state.publish.mockReset().mockImplementation(async (name, args) => {
+    expect(name).toBe("erp_publish_assistant_turn");
+    expect(args.p_actor).toBe(11);
+    expect(args.p_auth_user).toBe("synthetic-user");
+    events.push("published turn");
+    inserts.push([{ role: "user" }, { role: "assistant", safe_metadata_json: args.p_meta }]);
+    return { data: 71, error: null };
   });
   state.db = withDocumentReadPolicy(createSdkClient("https://assistant.synthetic.invalid", "fixture-only", {
     global: { fetch: fetchFixture },
@@ -305,9 +315,39 @@ describe("Assistant authorization through the pinned PostgREST SDK", () => {
     expect(state.auth).toHaveBeenCalledTimes(5);
     expect(events).toEqual([
       "session fence", "model returned", "session fence", "source owner_companies", "source owner_companies",
-      "stored pair", "finished turn", "send audit",
+      "published turn", "send audit",
     ]);
     expect(state.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "assistant_message_sent" }));
+  });
+
+  it.each([false,true])("compares the OPEN_RECORD generation version with the publish binding (edited=%s)", async edited => {
+    const ref = reference("company",1);
+    seed(ref);
+    state.engine.mockImplementation(async () => {
+      const partial = await runOpenRecordAction({targetEntityType:"company",targetEntityId:1} as AssistantIntent);
+      if (edited) rows.owner_companies[0].updated_at="changed-after-answer";
+      return {...partial,safeAuditMeta:{actionCodes:["OPEN_RECORD"],draftCount:0,aiCallCount:0,durationMs:1}};
+    });
+    const result=await sendAssistantMessage({sessionId:7,userMessage:"Open the company record"});
+    if (edited) {
+      expect(result).toMatchObject({success:false,code:"FORBIDDEN"});
+      expect(state.publish).not.toHaveBeenCalled();
+    } else {
+      expect(result.data?.messageId).toBe(71);
+      expect(state.publish.mock.calls[0][1].p_generation.sources).toEqual([{reference:ref,sourceVersion:version(ref)}]);
+    }
+  });
+
+  it("withholds an answer when the database rejects the final publication", async () => {
+    const ref = reference("company", 1);
+    seed(ref);
+    state.engine.mockResolvedValue(modelResult([ref]));
+    state.publish.mockResolvedValue({ data: null, error: { code: "42501" } });
+    const result = await sendAssistantMessage({ sessionId: 7, userMessage: "SYNTHETIC" });
+    expect(result).toMatchObject({ success: false, code: "FORBIDDEN" });
+    expect(result.data).toBeUndefined();
+    expect(state.audit).not.toHaveBeenCalled();
+    expect(inserts).toEqual([]);
   });
 
   it.each(["source batch", "follow-up subject"])("prevents append after assignment revocation during the %s", async stage => {
@@ -320,7 +360,7 @@ describe("Assistant authorization through the pinned PostgREST SDK", () => {
         : result;
     });
     const revokeAfterRead = stage === "source batch" ? 1 : 2;
-    state.finish.mockResolvedValue(false);
+    state.publish.mockResolvedValue({ data: null, error: { code: "42501" } });
     onSourceRead = () => {
       if (calls.length === revokeAfterRead) {
         state.ctx = { ...state.ctx!, roleAssignments: state.ctx!.roleAssignments?.filter(assignment => assignment.roleId !== 1) };
@@ -332,7 +372,7 @@ describe("Assistant authorization through the pinned PostgREST SDK", () => {
     expect(inserts).toEqual([]);
     expect(result).toMatchObject({ success: false, code: "FORBIDDEN" });
     expect(result.data).toBeUndefined();
-    expect(state.finish).not.toHaveBeenCalled();
+    expect(state.publish).not.toHaveBeenCalled();
     expect(state.audit).not.toHaveBeenCalled();
   });
 

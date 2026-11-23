@@ -92,3 +92,18 @@ it("withdraws the visible activity and timeline when the detail read denies the 
   expect(host.querySelector(".ac-map")).toBeNull();
   expect(host.querySelector(".ac-inspector")).toBeNull();
 });
+
+it("withdraws the cached case reference when the scoped detail is no longer available", async () => {
+  let resolve!: (response: { data: AgentCenterSnapshot }) => void;
+  vi.mocked(readJson).mockReturnValue(new Promise(done => { resolve = done; }));
+  await click("Intake 1151");
+  expect(host.querySelector(".ac-case-detail")?.textContent).toContain("Intake 1151");
+  await act(async () => {
+    resolve({ data: { ...initial, selectedCase: null, confirmedAt: new Date().toISOString() } });
+    await new Promise(done => setTimeout(done, 15));
+  });
+  const detail = host.querySelector(".ac-case-detail");
+  expect(detail).not.toBeNull();
+  expect(detail?.textContent).not.toContain("Intake 1151");
+  expect(detail?.querySelector("a")).toBeNull();
+});

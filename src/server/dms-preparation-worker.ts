@@ -49,7 +49,7 @@ async function prepareDocument(documentId: number, claim: NonNullable<ReturnType
       z.strictObject({ success: z.literal(true), preparation: z.literal(false) }),
       z.strictObject({ success: z.literal(true), preparation: z.literal(true), context: z.object({
         source: preparationSnapshotSchema, mode: z.enum(["reuse_text", "reread_files"]), fileIds: z.array(z.number().int().positive()).min(1).max(10),
-        state: z.string(), resultId: z.number().int().positive().nullable(),
+        state: z.string(), resultId: z.number().int().positive().nullable(), target: targetSchema.nullable().optional(),
       }).passthrough() }),
     ]).parse(await rpc("context"));
     if (!read.preparation) return null;
@@ -127,10 +127,40 @@ async function prepareDocument(documentId: number, claim: NonNullable<ReturnType
       catch { throw new StructuredAiFailure("provider_output_invalid"); }
     };
     let analyzed = await analyze("analysis", source, types), working = source;
-    let target: z.infer<typeof targetSchema> | null = null;
+    let target = context.target ?? null;
     const code = analyzed.output.documentTypeCode;
-    if (code && code !== source.typeCode && types.some(t => t.code === code)) {
+    const suggestedType = code && code !== source.typeCode && types.some(t => t.code === code) ? code : null;
+    const reread = context.mode === "reread_files";
+    const trainingCandidate = reread ? trainingType(ALGT_DMS_PREVIEW_COMPANY, code, source.typeCode) : undefined;
+    const cicpaPreview = reread && cicpaWordingPreviewEnabled() && [source.typeCode, target?.typeCode, suggestedType].some(isCicpaPassType);
+    let previewCompany: number | null = null;
+    if (trainingCandidate || cicpaPreview || (reread && approvedProfilePreviewConfigured())) {
+      const scope = await db.from("dms_documents").select("owning_company_id").eq("id", documentId).is("deleted_at", null).maybeSingle();
+      if (scope.error || !scope.data) throw Error("source_changed");
+      previewCompany = scope.data.owning_company_id;
+    }
+    const readOnlyPreview = reread && approvedProfilePreviewEnabled(previewCompany);
+    const trainingCode = previewCompany === ALGT_DMS_PREVIEW_COMPANY ? trainingCandidate : undefined;
+    const getPreviewOriginal = async () => {
+      if (source.files.length !== 1) return undefined;
+      const [file] = source.files;
+      const original = originals.get(file.id) ?? await readOriginal(file);
+      if (original.proof.sha256 !== file.sha256) throw Error("source_changed");
+      originals.set(file.id, original);
+      return original;
+    };
+    if (target && readOnlyPreview) throw Error("preparation_outcome_unconfirmed");
+    const trainingOriginal = trainingCode ? await getPreviewOriginal() : undefined;
+    const trainingInputs = trainingOriginal ? [{ bytes: trainingOriginal.bytes, sha256: trainingOriginal.proof.sha256, mime: source.files[0].mime }] : [];
+    // Establish the specialist hold before adding an immutable type binding.
+    const preflightTraining = trainingCode && (suggestedType || target)
+      ? await verifyTrainingOriginal(trainingCode, trainingInputs, trainingOutputFromPreparation(analyzed.output)) : undefined;
+    if (target && preflightTraining && !preflightTraining.prepared) throw Error("preparation_outcome_unconfirmed");
+    if (!target && suggestedType && !readOnlyPreview && preflightTraining?.prepared !== false) {
       target = targetSchema.parse(await rpc("bind_type", { typeCode: code }));
+    }
+    if (target) {
+      if (target.typeCode !== code) throw Error("source_changed");
       if (target.canApply) {
         working = { ...source, documentTypeId: target.documentTypeId, categoryId: target.categoryId, typeName: target.typeName, typeCode: target.typeCode, fields: target.fields, profile: target.profile, profileHash: target.profileHash };
         analyzed = await analyze(`analysis:${target.documentTypeId}`, working, [{ code: target.typeCode, name: target.typeName }]);
@@ -138,48 +168,34 @@ async function prepareDocument(documentId: number, claim: NonNullable<ReturnType
       }
     }
     let reviewed: ReturnType<typeof applySavedTrainingReview> | undefined;
-    const trainingCode = context.mode === "reread_files" ? trainingType(ALGT_DMS_PREVIEW_COMPANY, code, source.typeCode) : undefined;
     let cicpaReview: Awaited<ReturnType<typeof applySavedCicpaWording>> | undefined;
-    const checkCicpa = context.mode === "reread_files" && cicpaWordingPreviewEnabled() && isCicpaPassType(working.typeCode);
     let approvedSaved: { output: ModelPreparation; trusted?: NonNullable<Awaited<ReturnType<typeof applySavedCicpaWording>>["trusted"]> } | undefined;
-    const checkApproved = context.mode === "reread_files" && approvedProfilePreviewConfigured();
-    if (trainingCode || checkCicpa || checkApproved) {
-      const scope = await db.from("dms_documents").select("owning_company_id").eq("id", documentId).is("deleted_at", null).maybeSingle();
-      if (scope.error || !scope.data) throw Error("source_changed");
-      if (scope.data.owning_company_id === ALGT_DMS_PREVIEW_COMPANY) {
-        const inputs = [];
-        let approvedOriginal: Awaited<ReturnType<typeof readVerifiedIntakeSource>>["proof"] | undefined;
-        if (source.files.length === 1) {
-          const [file] = source.files;
-          const original = originals.get(file.id) ?? await readOriginal(file);
-          if (original.proof.sha256 !== file.sha256) throw Error("source_changed");
-          inputs.push({ bytes: original.bytes, sha256: original.proof.sha256, mime: file.mime });
-          approvedOriginal = original.proof;
+    const checkCicpa = cicpaPreview && isCicpaPassType(working.typeCode);
+    if (previewCompany === ALGT_DMS_PREVIEW_COMPANY) {
+      if (checkCicpa && preflightTraining?.prepared !== false) {
+        const original = await getPreviewOriginal();
+        cicpaReview = await applySavedCicpaWording(working, analyzed.output,
+          original ? { sha256: original.proof.sha256, mime: source.files[0].mime } : undefined);
+      } else if (trainingCode) {
+        const review = preflightTraining && !target?.canApply ? preflightTraining
+          : await verifyTrainingOriginal(trainingCode, trainingInputs, trainingOutputFromPreparation(analyzed.output));
+        if (target && !review.prepared) {
+          // The target and completed stages remain recoverable under the original operation.
+          throw Error("preparation_outcome_unconfirmed");
         }
-        if (checkCicpa) {
-          cicpaReview = await applySavedCicpaWording(working, analyzed.output, inputs[0]);
-        } else if (trainingCode) {
-          const review = await verifyTrainingOriginal(trainingCode, inputs, trainingOutputFromPreparation(analyzed.output));
-          if (!review.prepared) {
-            target = null;
-            working = source;
-          }
-          reviewed = applySavedTrainingReview(working, analyzed.output, review);
-        }
-        if (checkApproved && approvedProfilePreviewEnabled(scope.data.owning_company_id)) {
-          let approvedReview = await verifyApprovedProfile(approvedOriginal, code, source.typeCode, analyzed.output.fields);
-          if (reviewed?.held && approvedReview.state === "verified") approvedReview = { state: "held", reason: "specialist_conflict" };
-          const specialist = working.typeCode === source.typeCode ? reviewed?.trusted?.fields ?? cicpaReview?.trusted?.fields : undefined;
-          const fields = mergeApprovedProfileFields(approvedReview, specialist,
-            reviewed ? SPECIALIST_TRAINING_FIELDS : cicpaReview?.controlledKeys);
-          const file = approvedOriginal ? source.files[0] : undefined;
-          approvedSaved = {
-            output: prepareSavedApprovedProfile(reviewed?.output ?? cicpaReview?.output ?? analyzed.output, approvedReview, fields),
-            ...(file && Object.keys(fields).length ? { trusted: { sha256: file.sha256, fileId: file.id, fields } } : {}),
-          };
-          target = null;
-          working = source;
-        }
+        reviewed = applySavedTrainingReview(working, analyzed.output, review);
+      }
+      if (readOnlyPreview) {
+        const original = await getPreviewOriginal();
+        let approvedReview = await verifyApprovedProfile(original?.proof, code, source.typeCode, analyzed.output.fields);
+        if (reviewed?.held && approvedReview.state === "verified") approvedReview = { state: "held", reason: "specialist_conflict" };
+        const fields = mergeApprovedProfileFields(approvedReview, reviewed?.trusted?.fields ?? cicpaReview?.trusted?.fields,
+          reviewed ? SPECIALIST_TRAINING_FIELDS : cicpaReview?.controlledKeys);
+        const file = original ? source.files[0] : undefined;
+        approvedSaved = {
+          output: prepareSavedApprovedProfile(reviewed?.output ?? cicpaReview?.output ?? analyzed.output, approvedReview, fields),
+          ...(file && Object.keys(fields).length ? { trusted: { sha256: file.sha256, fileId: file.id, fields } } : {}),
+        };
       }
     }
     const candidate = buildPreparationCandidates(working, approvedSaved?.output ?? reviewed?.output ?? cicpaReview?.output ?? analyzed.output,

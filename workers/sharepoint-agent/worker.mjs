@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { ConnectionError, createSharePointConnection, readConnectionConfig } from './connection.mjs';
 import { discoverChanges } from './discovery.mjs';
@@ -44,6 +45,7 @@ async function run() {
     : null;
   const pilot = ledger ? readDmsPilotConfig(process.env) : null;
   const continuousClient = pilot?.continuous ? createDmsPilotClient(pilot, { shutdown: shutdown.signal }) : null;
+  const hrLinkEnabled = process.env.AGENT_DMS_HR_LINK_ENABLED === '1';
   let pilotDone = false;
   const interval = 15 * 60_000;
   let retryDelay = 30_000;
@@ -52,7 +54,18 @@ async function run() {
       let wait = interval;
       try {
         if (ledger) {
-          if (continuousClient) {
+          let cycleId;
+          let discoveryRevision;
+          if (ledger.telemetryEnabled) {
+            try {
+              const id = randomUUID();
+              await ledger.startWorkerCycle(id);
+              cycleId = id;
+            } catch {
+              report('dms_agent_center_worker_heartbeat_failed', { reason: 'database_operation_failed' });
+            }
+          }
+          if (continuousClient && hrLinkEnabled) {
             try {
               const status = await ledger.linkNextApprovedEmployeeDocument();
               report('dms_approved_hr_link', { status });
@@ -61,7 +74,10 @@ async function run() {
               report('dms_approved_hr_link_failed', { reason: 'database_operation_failed' });
             }
           }
-          const result = await discoverChanges({ sharePoint: connection, ledger, signal: shutdown.signal });
+          const result = await discoverChanges({
+            sharePoint: connection, ledger, signal: shutdown.signal,
+            onPageCommitted: cycleId ? revision => { discoveryRevision = revision; } : undefined,
+          });
           report('sharepoint_discovery', result);
           if (result.status === 'more_pages' || result.status === 'stale') wait = 1000;
           if (continuousClient && result.status === 'caught_up' && !shutdown.signal.aborted) {
@@ -82,6 +98,15 @@ async function run() {
               const reason = error instanceof ConnectionError ? error.message : 'pilot_unexpected_error';
               report('dms_pilot_failed', { reason });
               pilotDone = true;
+            }
+          }
+          if (cycleId && discoveryRevision && !shutdown.signal.aborted &&
+              ['caught_up', 'more_pages'].includes(result.status)) {
+            try {
+              const recordedAt = await ledger.finishWorkerCycle(cycleId, discoveryRevision, result.status === 'caught_up');
+              if (recordedAt) report('dms_agent_center_worker_heartbeat', { recordedAt });
+            } catch {
+              report('dms_agent_center_worker_heartbeat_failed', { reason: 'database_operation_failed' });
             }
           }
         } else {

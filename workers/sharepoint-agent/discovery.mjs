@@ -1,6 +1,6 @@
 import { ConnectionError } from './connection.mjs';
 
-export async function discoverChanges({ sharePoint, ledger, signal, pageLimit = 5 }) {
+export async function discoverChanges({ sharePoint, ledger, signal, pageLimit = 5, onPageCommitted }) {
   let pages = 0;
   let candidates = 0;
   let verified = false;
@@ -24,6 +24,7 @@ export async function discoverChanges({ sharePoint, ledger, signal, pageLimit = 
     if (signal?.aborted) break;
     const status = await ledger.commit(checkpoint, page);
     if (status !== 'committed') return { status, pages, candidates };
+    onPageCommitted?.((BigInt(checkpoint.revision) + 1n).toString());
     pages++;
     candidates += page.changes.filter(change => change.kind === 'file').length;
     if (!page.more) return { status: 'caught_up', pages, candidates };

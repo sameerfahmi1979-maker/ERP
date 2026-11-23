@@ -114,7 +114,7 @@ export function AgentCenterPageClient({ initial, seedOwner, canInspectControls }
   const feed = classifyFeed(snapshot?.confirmedAt ?? null, now, activityQuery.isError);
   const branches = choices.find(choice => choice.id === companyId)?.branches ?? [];
   const selectedCase = caseData?.selectedCase?.id === caseId ? caseData.selectedCase : null;
-  const caseReference = selectedCase?.dmsNumber ?? selection?.title ?? null;
+  const caseReference = caseData && !selectedCase ? null : selectedCase?.dmsNumber ?? selection?.title ?? null;
   const activeAgent = selectedCase?.stage ?? agent;
   const lane = AGENTS.find(item => item.key === activeAgent)!;
   const states = snapshot ? agentStates(snapshot) : {};

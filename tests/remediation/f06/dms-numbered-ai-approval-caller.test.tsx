@@ -79,8 +79,9 @@ const refreshedIntake = {
 };
 
 async function retryFromReview() {
-  await waitFor(() => expect(m.recover).toHaveBeenCalled());
-  await act(async () => fireEvent.click(screen.getByRole('button',{name:'Re-run AI'})));
+  const retry = screen.getByRole<HTMLButtonElement>('button', { name: 'Re-run AI' });
+  await waitFor(() => expect(retry.disabled).toBe(false));
+  await act(async () => fireEvent.click(retry));
 }
 
 it('reloads the confirmed same-intake retry and retains saved officer values', async () => {
@@ -108,5 +109,31 @@ it('retains the reviewed values when the retry read returns the old row version'
   expect(screen.getByTestId('Title').querySelector('input')?.value).toBe('Saved officer title');
   expect(screen.getByTestId('Description').querySelector('textarea')?.value).toBe('');
   expect(m.success).not.toHaveBeenCalled();
-  expect(m.error).toHaveBeenCalledWith(expect.stringContaining('Reopen the original intake'));
+  await waitFor(() => expect(m.error).toHaveBeenCalledWith(expect.stringContaining('Reopen the original intake')));
+});
+
+it('disables both retry controls until approval receipt recovery completes', async () => {
+  let finishRecovery!: (value: unknown) => void;
+  m.recover.mockReturnValue(new Promise(resolve => { finishRecovery = resolve; }));
+  m.rerun.mockResolvedValue({success:true,data:{sessionCode:retrySession.session_code,status:'review_pending'}});
+  m.refreshIntake.mockResolvedValue({success:true,data:refreshedIntake});
+  render(page({...retrySession, intake_status:'failed'}));
+
+  const header = screen.getByRole<HTMLButtonElement>('button', { name: 'Re-run AI' });
+  const fallback = screen.getByRole<HTMLButtonElement>('button', { name: 'Retry AI' });
+  expect(header.disabled).toBe(true);
+  expect(fallback.disabled).toBe(true);
+  fireEvent.click(header);
+  fireEvent.click(fallback);
+  expect(m.rerun).not.toHaveBeenCalled();
+
+  await act(async () => finishRecovery({success:true,data:null}));
+  expect(header.disabled).toBe(false);
+  expect(fallback.disabled).toBe(false);
+  await act(async () => fireEvent.click(fallback));
+
+  await waitFor(() => expect(m.success).toHaveBeenCalledWith('AI analysis refreshed'));
+  expect(m.rerun).toHaveBeenCalledExactlyOnceWith(retrySession.id, intakeVersion);
+  expect(m.refreshIntake).toHaveBeenCalledExactlyOnceWith(retrySession.session_code);
+  expect(m.approve).not.toHaveBeenCalled();
 });

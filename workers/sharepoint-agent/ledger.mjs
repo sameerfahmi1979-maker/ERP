@@ -32,11 +32,16 @@ function openLedgerPool(env, { loopbackOnly = false } = {}) {
   return pool;
 }
 
-export function openAgentCenterHeartbeatLedger(env) {
-  const companyId = Number(env.AGENT_CENTER_HEARTBEAT_COMPANY_ID);
+function readCompanyId(env, key) {
+  const companyId = Number(env[key]);
   if (!Number.isSafeInteger(companyId) || companyId <= 0) {
-    throw new ConnectionError('invalid_AGENT_CENTER_HEARTBEAT_COMPANY_ID');
+    throw new ConnectionError(`invalid_${key}`);
   }
+  return companyId;
+}
+
+export function openAgentCenterHeartbeatLedger(env) {
+  const companyId = readCompanyId(env, 'AGENT_CENTER_HEARTBEAT_COMPANY_ID');
   const pool = openLedgerPool(env, { loopbackOnly: true });
   const fields = [env.AGENT_CONNECTION_ID, companyId];
   return {
@@ -51,10 +56,26 @@ export function openAgentCenterHeartbeatLedger(env) {
 }
 
 export function openDiscoveryLedger(env, graphConfig) {
-  const pool = openLedgerPool(env);
+  const companyId = env.AGENT_CENTER_TELEMETRY_COMPANY_ID === undefined
+    ? null
+    : readCompanyId(env, 'AGENT_CENTER_TELEMETRY_COMPANY_ID');
+  const pool = openLedgerPool(env, { loopbackOnly: companyId !== null });
   const fields = [env.AGENT_CONNECTION_ID, graphConfig.tenantId, graphConfig.clientId,
     graphConfig.driveId, graphConfig.sourceId, graphConfig.indexId];
+  async function recordWorkerCycle(cycleId, revision, caughtUp) {
+    const { rows } = await pool.query(
+      'select erp_private.record_agent_center_sharepoint_worker_cycle($1, $2, $3, $4, $5) as recorded_at',
+      [fields[0], companyId, cycleId, revision, caughtUp],
+    );
+    return rows[0].recorded_at;
+  }
   return {
+    telemetryEnabled: companyId !== null,
+    async startWorkerCycle(cycleId) {
+      await this.read();
+      await recordWorkerCycle(cycleId, null, false);
+    },
+    finishWorkerCycle: recordWorkerCycle,
     async read() {
       const { rows } = await pool.query(
         `select s.cursor, s.revision, s.paused

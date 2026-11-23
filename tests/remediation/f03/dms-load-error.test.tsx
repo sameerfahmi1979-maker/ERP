@@ -1,14 +1,18 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-const state = vi.hoisted(() => ({ refresh: vi.fn(), allowed: true,
+const state = vi.hoisted(() => ({ refresh: vi.fn(), readDefaults: vi.fn(), allowed: true,
   docs: { success: true, data: [] as unknown[], error: undefined as string | undefined },
   sessions: { success: true, data: [] },
   defaults: { success: true, data: { categories: [], documentTypes: [] } } }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: state.refresh }), redirect: () => { throw new Error("denied"); } }));
 vi.mock("@/hooks/use-workspace", () => ({ useWorkspace: () => ({openTab: vi.fn()}) }));
 vi.mock("@/lib/rbac/check", () => ({ getAuthContext: async () => ({}), hasPermission: () => state.allowed, isGlobalAdmin: () => false }));
-vi.mock("@/server/actions/dms/documents", () => ({ getDmsDocuments: async () => state.docs, getArchivedDocuments: async () => state.docs, getDmsNewDocumentDefaults: async () => state.defaults }));
+vi.mock("@/server/actions/dms/documents", () => ({
+  getDmsDocuments: async () => state.docs,
+  getArchivedDocuments: async () => state.docs,
+  getDmsNewDocumentDefaults: async () => { state.readDefaults(); return state.defaults; },
+}));
 vi.mock("@/server/reads/dms-documents",()=>({readDmsDocumentPage:async()=>({...state.docs,data:{rows:state.docs.data,totalCount:state.docs.data.length}})}));
 vi.mock("@/server/reads/dms-list-choices",()=>({readDmsListChoices:async()=>state.defaults}));
 vi.mock("@/server/reads/dms-archive",()=>({readDmsArchivePage:async()=>({...state.docs,data:{rows:state.docs.data,totalCount:state.docs.data.length}})}));
@@ -23,7 +27,7 @@ import DocumentsPage from "@/app/(protected)/dms/documents/page";
 import ArchivePage from "@/app/(protected)/dms/archive/page";
 import InboxPage from "@/app/(protected)/dms/inbox/page";
 const Inbox = () => InboxPage({ searchParams: Promise.resolve({}) });
-beforeEach(() => { state.allowed = true; state.refresh.mockClear(); state.docs = { success: true, data: [], error: undefined }; state.defaults.success = true; state.sessions.success = true; });
+beforeEach(() => { state.allowed = true; state.refresh.mockClear(); state.readDefaults.mockClear(); state.docs = { success: true, data: [], error: undefined }; state.defaults.success = true; state.sessions.success = true; });
 afterEach(cleanup);
 it.each([DocumentsPage, ArchivePage])("shows safe failure, not an empty list, and supports retry", async (Page) => {
   state.docs = { success: false, data: [], error: "private database diagnostic 57014" };
@@ -34,8 +38,17 @@ it.each([DocumentsPage, ArchivePage])("shows safe failure, not an empty list, an
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
   expect(state.refresh).toHaveBeenCalledOnce();
 });
-it.each([ArchivePage, Inbox])("does not hide failed required lookup loading", async (Page) => {
-  state.defaults.success = false; render(await Page()); expect(screen.getByRole("alert")).toBeTruthy();
+it("shows failure when the Archive cannot load its required choices", async () => {
+  state.defaults.success = false;
+  render(await ArchivePage());
+  expect(screen.getByRole("alert")).toBeTruthy();
+});
+it("opens the Inbox without the choices used only by the create dialog", async () => {
+  state.defaults.success = false;
+  render(await Inbox());
+  expect(state.readDefaults).not.toHaveBeenCalled();
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByText("No documents found")).toBeTruthy();
 });
 it.each([DocumentsPage, ArchivePage, Inbox])("keeps legitimate empty results separate from failures", async (Page) => {
   render(await Page()); expect(screen.queryByRole("alert")).toBeNull(); expect(screen.getByText(/No (archived )?documents found/)).toBeTruthy();

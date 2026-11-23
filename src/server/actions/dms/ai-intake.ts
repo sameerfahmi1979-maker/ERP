@@ -365,6 +365,10 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
     // Admins may intentionally create a second document from the same file.
 
     const sessionCode = typedSession.session_code as string;
+    const auditScope = {
+      owner_company_id: typedSession.owning_company_id as number | null,
+      branch_id: typedSession.owning_branch_id as number | null,
+    };
 
     // ── Check AI provider ───────────────────────────────────────────────────
 
@@ -384,6 +388,7 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
         entity_id: uploadSessionId,
         entity_reference: sessionCode,
         action: "update",
+        ...auditScope,
         new_values: { event: "ai_intake_failed", reason: "provider_not_configured" },
       });
 
@@ -437,6 +442,7 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
       entity_id: uploadSessionId,
       entity_reference: sessionCode,
       action: "update",
+      ...auditScope,
       new_values: { event: "ai_intake_started", uploaded_by: ctx.profile.id },
     });
 
@@ -668,6 +674,7 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
         entity_id: uploadSessionId,
         entity_reference: sessionCode,
         action: "update",
+        ...auditScope,
         new_values: { event: "ai_intake_ai_failed", job_id: jobId, duration_ms: durationMs },
       });
       return { success: false, error: aiError ?? "AI analysis failed" };

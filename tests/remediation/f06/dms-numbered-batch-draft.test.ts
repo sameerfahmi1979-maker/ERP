@@ -209,6 +209,21 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
   expect(ai.analyze).toHaveBeenCalledOnce();
   expect(row.intake_status).toBe("review_pending");
  });
+ it.each([
+  ["started","ai_intake_started"],
+  ["unconfigured","ai_intake_failed"],
+  ["provider failure","ai_intake_ai_failed"],
+ ] as const)("audits the authorized upload scope for %s",async (branch,event)=>{
+  row.batch_draft_operation_id=null;
+  row.batch_id=null;
+  m.auth.mockResolvedValue({profile:{id:5,auth_user_id:durableAuth,owner_company_id:80,branch_id:81},isAccountActive:true});
+  if(branch==="unconfigured")ai.configured.mockReturnValue(false);
+  if(branch==="provider failure")ai.analyze.mockRejectedValue(Error("fixture analysis failure"));
+  await (await real()).startAiIntakeFromUploadSession(input);
+  const events=m.audit.mock.calls.filter(([entry])=>entry.new_values?.event===event);
+  expect(events).toHaveLength(1);
+  expect(events[0]?.[0]).toMatchObject({entity_name:"dms_upload_sessions",entity_id:17,owner_company_id:20,branch_id:21});
+ });
  it("recovers an uncertain mobile claim without restarting processing", async () => {
   row.batch_draft_operation_id = null;
   row.batch_id = null;

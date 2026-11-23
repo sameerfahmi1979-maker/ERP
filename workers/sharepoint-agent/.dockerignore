@@ -1,0 +1,10 @@
+*
+!package.json
+!package-lock.json
+!connection.mjs
+!discovery.mjs
+!dms-pilot.mjs
+!continuous.mjs
+!ledger.mjs
+!worker.mjs
+!Dockerfile

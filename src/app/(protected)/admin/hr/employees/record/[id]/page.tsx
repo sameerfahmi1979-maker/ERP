@@ -4,6 +4,7 @@ import { canBrowseEmployees, getEmployeeAccess } from "@/lib/rbac/employee-acces
 import { getEmployee } from "@/server/actions/hr/employees";
 import { EmployeeWorkspaceForm } from "@/features/hr/employees/employee-workspace-form";
 import Link from "next/link";
+import { EmployeeMessageLink } from "@/features/messages/entry-points";
 import {NotificationArrival} from '@/features/notifications/notification-open';
 import {readNotificationTaskContext} from '@/server/notification-task-context';
 import {employeeRecordSection} from '@/lib/hr/employee-navigation';
@@ -67,6 +68,7 @@ export default async function EmployeeRecordPage({
 
   return (
     <div className="h-full">
+      <EmployeeMessageLink employeeId={String(id)} />
       {task===undefined?<NotificationArrival token={f10_open} path={`/admin/hr/employees/record/${id}`}/>:!taskContext&&<p role="alert">The notified task is unavailable, changed or no longer permitted. Its alert has not been marked read.</p>}
       <EmployeeWorkspaceForm
         employee={result.data}

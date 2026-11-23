@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { MessagesBadge } from "@/features/messages/entry-points";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useWorkspace } from "@/hooks/use-workspace";
@@ -17,6 +18,7 @@ import {
   Banknote,
   BarChart3,
   Bell,
+  MessageSquare,
   Bot,
   Boxes,
   Brain,
@@ -138,6 +140,7 @@ const navSections: NavSection[] = [
     iconColor: "text-blue-400 dark:text-blue-500",
     children: [
       { label: "Dashboard",     icon: LayoutDashboard, path: "/dashboard" },
+      { label: "Messages",      icon: MessageSquare,   path: "/messages" },
       { label: "Notifications", icon: Bell,            path: "/notifications" },
     ],
   },
@@ -578,6 +581,7 @@ export function AppSidebar({
           strokeWidth={1.75}
         />
         {!collapsed && <span className="truncate">{item.label}</span>}
+        {!collapsed && item.path === "/messages" && <MessagesBadge />}
       </button>
     );
 

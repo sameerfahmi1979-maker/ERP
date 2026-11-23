@@ -42,6 +42,9 @@ const nextConfig: NextConfig = {
       ...(process.env.NODE_ENV === "production" && process.env.NEXT_PUBLIC_SITE_URL?.startsWith("https://")
         ? [{ key: "Strict-Transport-Security", value: "max-age=31536000" }] : []),
     ] }, {
+      source: "/messages",
+      headers: [{ key:"Permissions-Policy", value:"camera=(), microphone=(self), geolocation=()" }],
+    }, {
       source: "/api/mobile/dms/shared",
       headers: [{ key: "Content-Security-Policy", value: handoffPolicy }],
     }];

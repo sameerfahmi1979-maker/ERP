@@ -1,7 +1,9 @@
 import { clearPrivateCaches } from "@/lib/query/private-cache";
+import { clearMessagingSession } from "@/features/messages/offline-session";
 import { retireOutputRequestIntents } from "@/lib/output/client-request-intent";
 /** UX invalidation only. Server/RLS checks remain the authorization boundary. */
 export function clearIdentityWorkspace() {
+  clearMessagingSession();
   clearPrivateCaches();
   retireOutputRequestIntents();
   try {

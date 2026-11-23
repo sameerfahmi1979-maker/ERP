@@ -1,3 +1,4 @@
+/public/messages-offline* text eol=lf
 /supabase/migrations/*_f06_*.sql text eol=lf
 /tests/remediation/f06/admin-child-browser-contract.mjs text eol=lf
 /tests/remediation/f06/candidate-replay-v72.mjs text eol=lf

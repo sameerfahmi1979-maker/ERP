@@ -202,6 +202,21 @@ def main():
         assert take(wire,as_actor=OWNER).returncode != 0
         assert take(wire).returncode == 0
         assert take(wire).returncode != 0
+        proof("sos-model",feature="sos")
+        sql("insert into erp_comm_cost.standing_envelope values('communications','sos','sos-model',true);")
+        reason(reserve("sos-unbounded",feature="sos"),"sos_cancellation_envelope_unavailable")
+        sql("insert into erp_comm_cost.sos_limit values('sos-model',4,8,'bounded fanout','zero future liability');")
+        sos_wire={"op":"sos.send","args":{"channel":"synthetic"}}
+        sos=command("reserve",{"feature":"sos","operationId":"sos-origin","actorId":"2","scope":"communications",
+            "upperBoundMicros":"0","liabilityEndsAt":None,"binding":{"actorSessionId":session,"command":sos_wire}})
+        assert sos["ok"], sos
+        origin=f"""begin; set test.actor='{ADMIN}'; set test.age='0';
+            select erp_comm_cost.take_permit('{sos["permitId"]}','sos','communications','2','{json.dumps(sos_wire)}');"""
+        admission=f"select erp_comm_cost.require_sos_envelope('{sos['permitId']}',"
+        assert sql(origin+admission+"5,8); commit;",False).returncode != 0
+        assert sql(origin+admission+"4,9); commit;",False).returncode != 0
+        assert sql(origin+admission+"4,8); commit;",False).returncode == 0
+        assert sql(admission+"1,1);",False).returncode != 0
         proof("model",feature="push")
         sql("insert into erp_comm_cost.standing_envelope values('communications','push','model',true);"
             "update erp_comm_cost.capacity set available_units=2 where dimension='fcm';")

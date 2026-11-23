@@ -79,7 +79,7 @@ create table erp_comm_cost.reservation (
   approval_id uuid references erp_comm_cost.approval(id), liability_ends_at timestamptz,
   floor_micros erp_comm_cost.micros not null, reserved_micros erp_comm_cost.micros not null,
   issued_at timestamptz not null, expires_at timestamptz not null,
-  actor_session uuid, command_hash bytea, consumed_at timestamptz,
+  actor_session uuid, command_hash bytea, consumed_at timestamptz, consumed_xid xid8,
   check ((actor_session is null)=(command_hash is null)),
   settled_micros erp_comm_cost.micros, settlement_evidence text, settled_at timestamptz,
   check ((settled_micros is null) = (settlement_evidence is null) and
@@ -179,6 +179,30 @@ create table erp_comm_cost.cleanup_limit (
   max_resources integer not null check(max_resources between 1 and 1024),
   max_attempts integer not null check(max_attempts between 1 and 20),primary key(operation_id,endpoint)
 );
+-- SOS origin also funds a single, bounded and possibly much later cancellation control action.
+create table erp_comm_cost.sos_limit (
+  operation_id text primary key references erp_comm_cost.proof(operation_id),
+  max_recipients integer not null check(max_recipients>=0),max_devices integer not null check(max_devices>=0),
+  cancellation_evidence text not null check(length(trim(cancellation_evidence))>0),
+  post_expiry_zero_cost_evidence text not null check(length(trim(post_expiry_zero_cost_evidence))>0)
+);
+create table erp_comm_cost.sos_claim (
+  permit_id uuid primary key references erp_comm_cost.reservation(permit_id),recipients integer not null, devices integer not null
+);
+create function erp_comm_cost.require_sos_envelope(p_permit uuid,recipient_count integer,device_count integer)
+returns void language plpgsql security invoker set search_path='' as $$
+declare l erp_comm_cost.sos_limit%rowtype;
+begin
+  select sl.* into l from erp_comm_cost.reservation r join erp_comm_cost.sos_limit sl on sl.operation_id=r.operation_id
+    join erp_comm_cost.proof p on p.operation_id=r.operation_id where r.permit_id=p_permit and r.feature='sos'
+    and r.scope='communications' and r.settled_at is null and r.liability_ends_at is null and
+    r.consumed_xid=pg_current_xact_id() and length(trim(p.retained_at_zero_cost_evidence))>0;
+  if l.operation_id is null or recipient_count is null or device_count is null or
+     recipient_count not between 0 and l.max_recipients or device_count not between 0 and l.max_devices then
+    raise sqlstate 'PT503' using message='sos_cancellation_envelope_unavailable';
+  end if;
+  insert into erp_comm_cost.sos_claim values(p_permit,recipient_count,device_count);
+end $$;
 create table erp_comm_cost.cleanup_resource (
   permit_id uuid not null references erp_comm_cost.reservation(permit_id), endpoint text not null, resource_id text not null,
   max_attempts integer not null check(max_attempts between 1 and 20), closed_at timestamptz,
@@ -330,6 +354,9 @@ begin
        and l.endpoint=case when f='ptt_live' then 'close_sfu_tracks' else 'discard_partial_upload' end) then
     return jsonb_build_object('ok',false,'reason','cleanup_allocation_unavailable');
   end if;
+  if f='sos' and (end_at is not null or not exists(select from erp_comm_cost.sos_limit l where l.operation_id=source_op)) then
+    return jsonb_build_object('ok',false,'reason','sos_cancellation_envelope_unavailable');
+  end if;
   required:=array['railway','database']||case
     when f in ('media_upload','media_download','export','ptt_replay') then array['storage']
     when f='ptt_live' then array['sfu_turn']
@@ -392,6 +419,9 @@ begin
     from erp_comm_cost.meter m where m.operation_id=source_op;
     insert into erp_comm_cost.cleanup_limit(operation_id,endpoint,max_resources,max_attempts)
       select op,l.endpoint,l.max_resources,l.max_attempts from erp_comm_cost.cleanup_limit l where l.operation_id=source_op;
+    insert into erp_comm_cost.sos_limit
+      select op,l.max_recipients,l.max_devices,l.cancellation_evidence,l.post_expiry_zero_cost_evidence
+      from erp_comm_cost.sos_limit l where l.operation_id=source_op;
   end if;
   insert into erp_comm_cost.reservation(operation_id,permit_id,scope,actor_id,feature,approval_id,liability_ends_at,
       floor_micros,reserved_micros,issued_at,expires_at,actor_session,command_hash)
@@ -433,7 +463,7 @@ begin
     or (r.approval_id is not null and not exists(select from erp_comm_cost.approval a where a.id=r.approval_id and
       a.owner_auth_id=o and a.revoked_at is null and a.ends_at>n))
     then raise sqlstate 'PT503' using message='budget_permit_unavailable'; end if;
-  update erp_comm_cost.reservation set consumed_at=n where permit_id=p_permit;
+  update erp_comm_cost.reservation set consumed_at=n, consumed_xid=pg_current_xact_id() where permit_id=p_permit;
 end $$;
 create function erp_comm_cost.take_permit(
   p_permit uuid,p_feature text,p_scope text,p_profile text,p_command jsonb

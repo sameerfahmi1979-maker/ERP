@@ -33,28 +33,55 @@ CREATE FUNCTION erp_private.mobile_dms_share_source(erp_private.mobile_dms_share
 CREATE TABLE auth.users(id uuid PRIMARY KEY);
 INSERT INTO auth.users SELECT auth_user_id FROM public.user_profiles;
 CREATE FUNCTION public.fixture_chat_permit(p bigint,f text,cmd jsonb) RETURNS uuid LANGUAGE plpgsql AS $$
-DECLARE ticket uuid:=gen_random_uuid(); session_id uuid:=lpad(p::text,32,'0')::uuid;
+DECLARE ticket uuid:=gen_random_uuid(); session_id uuid:=lpad(p::text,32,'0')::uuid; eff text; units text; cap_id bigint; slot smallint:=0;
 BEGIN
  INSERT INTO erp_comm_cost.proof(operation_id,scope,actor_id,feature,operational_stop_by,valid_until,max_meter_age,shutdown_evidence,headroom_micros)
  VALUES(ticket::text,'communications',p::text,f::erp_comm_cost.feature,now()+interval '1 minute',now()+interval '1 minute',interval '1 minute','synthetic test fixture',0);
  INSERT INTO erp_comm_cost.reservation(operation_id,permit_id,scope,actor_id,feature,floor_micros,reserved_micros,issued_at,expires_at,actor_session,command_hash)
  VALUES(ticket::text,ticket,'communications',p::text,f::erp_comm_cost.feature,0,0,now(),now()+interval '1 minute',session_id,sha256(convert_to(cmd::text,'UTF8')));
+ FOREACH eff IN ARRAY CASE cmd->>'op'
+ WHEN 'chat.direct' THEN ARRAY['chat_direct_members','chat_scope_facts']
+ WHEN 'chat.groupCreate' THEN ARRAY['chat_group_members','chat_scope_facts']
+ WHEN 'chat.groupChange' THEN ARRAY['chat_group_members','chat_scope_facts']
+ WHEN 'chat.edit' THEN ARRAY['chat_mentions'] WHEN 'chat.send' THEN ARRAY['chat_mentions','chat_attachments'] WHEN 'chat.forward' THEN ARRAY['chat_attachments']
+ WHEN 'chat.historyCapacity' THEN ARRAY['scope_history_slots'] WHEN 'chat.scopeReconcile' THEN ARRAY['scope_reconcile_work','scope_departure'] ELSE ARRAY[]::text[] END LOOP
+  slot:=slot+1;
+  UPDATE erp_comm_cost.proof SET retained_at_zero_cost_evidence='synthetic source+index+WAL+retention envelope' WHERE operation_id=ticket::text;
+  INSERT INTO erp_comm_cost.effect_limit VALUES(ticket::text,cmd->>'op',eff,slot,65536,4096,'synthetic physical upper bound');
+  FOREACH units IN ARRAY ARRAY['effect_'||eff||'_items','effect_'||eff||'_bytes'] LOOP
+   INSERT INTO erp_comm_cost.capacity(billing_account,dimension,unit,valid_from,valid_until,available_units,enabled) VALUES('effects','database',units,now()-interval '1 hour',now()+interval '3 days',1000000000,true)
+    ON CONFLICT(billing_account,dimension,unit) DO UPDATE SET enabled=true RETURNING id INTO cap_id;
+   INSERT INTO erp_comm_cost.unit_hold VALUES(ticket,cap_id,1000000000);
+  END LOOP;
+ END LOOP;
  IF cmd->>'op'='chat.stageOpen' THEN
   UPDATE erp_comm_cost.proof SET operational_stop_by=now()+interval '2 days',retained_at_zero_cost_evidence='synthetic cleanup and immutable retention' WHERE operation_id=ticket::text;
-  INSERT INTO erp_comm_cost.cleanup_limit VALUES(ticket::text,'discard_partial_upload',1,4);
+  INSERT INTO erp_comm_cost.cleanup_limit VALUES(ticket::text,'discard_partial_upload',1,3);
  END IF;
  RETURN ticket;
 END $$;
 REVOKE ALL ON FUNCTION public.fixture_chat_permit(bigint,text,jsonb) FROM PUBLIC;
-CREATE FUNCTION public.fixture_chat_worker(w uuid) RETURNS void LANGUAGE plpgsql AS $$
-DECLARE expiry timestamptz:=date_trunc('second',now())+interval '2 days'; actions int:=3500; ticket uuid; cap bigint; unit_name text;
+CREATE FUNCTION public.fixture_chat_worker(w uuid,active_boot uuid) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE expiry timestamptz:=date_trunc('second',now())+interval '2 days'; actions int:=10000; ticket uuid; cap bigint; unit_name text; boot_id uuid; deployment uuid:=gen_random_uuid(); cutoff timestamptz:=date_trunc('second',now())+interval '27 hours';
 BEGIN
  ticket:=public.fixture_chat_permit(1,'media_upload',jsonb_build_object('op','budget.fundControl','kind','chat_stage_poll','subject',w::text,'maxActions',actions,'endEpoch',extract(epoch FROM expiry)::bigint));
  UPDATE erp_comm_cost.proof SET retained_at_zero_cost_evidence='synthetic finite worker plan' WHERE operation_id=ticket::text;
  FOREACH unit_name IN ARRAY ARRAY['funded_chat_stage_poll_actions','permanent_ledger_bytes'] LOOP
-  INSERT INTO erp_comm_cost.capacity(billing_account,dimension,unit,valid_from,valid_until,available_units,enabled) VALUES('test',unit_name,unit_name,now(),expiry,200000000,true) RETURNING id INTO cap;
-  INSERT INTO erp_comm_cost.unit_hold VALUES(ticket,cap,200000000);
+  INSERT INTO erp_comm_cost.capacity(billing_account,dimension,unit,valid_from,valid_until,available_units,enabled) VALUES('test',unit_name,unit_name,now(),expiry,500000000,true) RETURNING id INTO cap;
+  INSERT INTO erp_comm_cost.unit_hold VALUES(ticket,cap,500000000);
  END LOOP;
  INSERT INTO erp_comm_cost.control_pool(permit_id,kind,subject,max_actions,valid_until,continuing_zero_evidence,poll_seconds,enabled) VALUES(ticket,'chat_stage_poll',w::text,actions,expiry,'synthetic continuing coverage',30,true);
+ FOREACH unit_name IN ARRAY ARRAY['database','railway'] LOOP
+  INSERT INTO erp_comm_cost.capacity(billing_account,dimension,unit,valid_from,valid_until,available_units,enabled) VALUES('worker',unit_name,'funded_worker_registration_probes',now(),expiry,1000,true) RETURNING id INTO cap;
+  INSERT INTO erp_comm_cost.unit_hold VALUES(ticket,cap,1000);
+ END LOOP;
+ INSERT INTO erp_comm_cost.chat_stage_fleet VALUES(true,1,4,70,180,5,20,expiry,true,'finite launch and busy+idle execution');
+ INSERT INTO erp_comm_cost.worker_probe_plan VALUES(ticket,1,10,2,expiry,'synthetic','finite launch count for this fixture',10,'prepaid standby within ten seconds');
+ FOREACH boot_id IN ARRAY ARRAY[active_boot,gen_random_uuid(),gen_random_uuid(),gen_random_uuid()] LOOP
+  INSERT INTO erp_comm_cost.worker_launch_ticket(boot,pool,deployment_id,not_before,register_by,until_at,poll_limit) VALUES(boot_id,ticket,deployment,date_trunc('second',now()-interval '1 hour'),cutoff,cutoff,5000);
+  INSERT INTO erp_comm_cost.chat_stage_boot(boot,worker,pool,until_at,poll_limit) VALUES(boot_id,w,ticket,cutoff,5000);
+ END LOOP;
+ IF erp_comm_cost.take_worker_delivery(active_boot,gen_random_uuid()) IS NULL THEN RAISE EXCEPTION 'Delivery refused'; END IF;
+ IF public.erp_chat_stage_boot(w,active_boot,cutoff,5000) IS NULL THEN RAISE EXCEPTION 'Worker refused'; END IF;
 END $$;
-REVOKE ALL ON FUNCTION public.fixture_chat_worker(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.fixture_chat_worker(uuid,uuid) FROM PUBLIC;

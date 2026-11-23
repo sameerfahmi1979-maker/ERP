@@ -20,7 +20,7 @@ CREATE TABLE erp_private.chat_conversations(
 CREATE TABLE erp_private.chat_memberships(id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,conversation uuid NOT NULL REFERENCES erp_private.chat_conversations,profile_id bigint NOT NULL,joined_at timestamptz NOT NULL DEFAULT clock_timestamp(),left_at timestamptz,appointed boolean NOT NULL DEFAULT false);
 CREATE UNIQUE INDEX chat_current_member ON erp_private.chat_memberships(conversation,profile_id) WHERE left_at IS NULL;
 CREATE INDEX chat_member_history ON erp_private.chat_memberships(profile_id,conversation,id);
-CREATE TABLE erp_private.chat_scope_facts(episode bigint NOT NULL REFERENCES erp_private.chat_memberships,company bigint,branch bigint,UNIQUE NULLS NOT DISTINCT(episode,company,branch));
+
 CREATE TABLE erp_private.chat_messages(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),conversation uuid NOT NULL REFERENCES erp_private.chat_conversations,
  seq bigint NOT NULL,sender bigint NOT NULL,kind text NOT NULL DEFAULT 'message',body text,reply_to uuid,forwarded boolean NOT NULL DEFAULT false,
@@ -56,7 +56,10 @@ END $indexes$;
 CREATE INDEX chat_attachments_by_blob ON erp_private.chat_attachments(upload,message);
 CREATE TABLE erp_private.chat_mentions(message uuid REFERENCES erp_private.chat_messages,profile_id bigint,PRIMARY KEY(message,profile_id));
 CREATE TABLE erp_private.chat_reactions(message uuid REFERENCES erp_private.chat_messages,profile_id bigint,emoji text CHECK(length(emoji) BETWEEN 1 AND 32),PRIMARY KEY(message,profile_id,emoji));
-CREATE TABLE erp_private.chat_reads(message uuid REFERENCES erp_private.chat_messages,profile_id bigint,read_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(message,profile_id));
+CREATE TABLE erp_private.chat_read_ranges(conversation uuid REFERENCES erp_private.chat_conversations,profile_id bigint,through_seq bigint CHECK(through_seq>0),read_at timestamptz NOT NULL DEFAULT clock_timestamp(),PRIMARY KEY(conversation,profile_id,through_seq));
+CREATE FUNCTION erp_private.chat_read_at(p_conversation uuid,p_message_seq bigint,p_reader bigint) RETURNS timestamptz LANGUAGE sql STABLE SET search_path='' AS $$
+ SELECT read_at FROM erp_private.chat_read_ranges WHERE conversation=p_conversation AND profile_id=p_reader AND through_seq>=p_message_seq ORDER BY through_seq LIMIT 1
+$$;
 CREATE TABLE erp_private.chat_stars(profile_id bigint,message uuid REFERENCES erp_private.chat_messages,PRIMARY KEY(profile_id,message));
 CREATE TABLE erp_private.chat_pins(message uuid PRIMARY KEY REFERENCES erp_private.chat_messages);
 CREATE TABLE erp_private.chat_personal(profile_id bigint,conversation uuid REFERENCES erp_private.chat_conversations,muted boolean NOT NULL DEFAULT false,archive_seq bigint,PRIMARY KEY(profile_id,conversation));
@@ -94,53 +97,150 @@ $$;
 CREATE FUNCTION erp_private.chat_active(p bigint) RETURNS boolean LANGUAGE sql STABLE SET search_path='' AS $$
  SELECT EXISTS(SELECT FROM public.user_profiles WHERE id=p AND status='active' AND must_change_password IS FALSE)
 $$;
+CREATE TABLE erp_private.comms_scope_watch(profile_id bigint PRIMARY KEY,revision bigint NOT NULL DEFAULT 0,dirty boolean NOT NULL DEFAULT false,generation bigint NOT NULL DEFAULT 0,disable_pending boolean NOT NULL DEFAULT false,last_disable_anchor jsonb,last_disabled_at timestamptz);
+-- Profile zero is reserved for the single role-definition epoch.
+INSERT INTO erp_private.comms_scope_watch(profile_id) VALUES(0);
+CREATE TABLE erp_private.comms_history_slots(id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,permit uuid NOT NULL,usable_until timestamptz NOT NULL,subject bigint,revision bigint,change_no bigint,kind text,before_value jsonb,after_value jsonb,occurred_at timestamptz,disable_generation bigint);
+CREATE UNIQUE INDEX comms_history_subject_revision ON erp_private.comms_history_slots(subject,revision) WHERE subject IS NOT NULL;
+CREATE INDEX comms_history_ready ON erp_private.comms_history_slots(usable_until DESC,id) WHERE subject IS NULL;
+CREATE INDEX comms_history_disable ON erp_private.comms_history_slots(subject,disable_generation) WHERE disable_generation IS NOT NULL;
+CREATE SEQUENCE erp_private.comms_history_order;
+CREATE TABLE erp_private.comms_scope_snapshot(id uuid PRIMARY KEY,profile_id bigint NOT NULL,at_anchor jsonb NOT NULL,verified_through jsonb NOT NULL,source_count bigint NOT NULL DEFAULT 0);
+CREATE TABLE erp_private.comms_scope_source(snapshot uuid REFERENCES erp_private.comms_scope_snapshot,source_key text,value jsonb NOT NULL,PRIMARY KEY(snapshot,source_key));
+CREATE TABLE erp_private.comms_scope_verified(snapshot uuid REFERENCES erp_private.comms_scope_snapshot,company bigint,branch bigint,UNIQUE NULLS NOT DISTINCT(snapshot,company,branch));
+ALTER TABLE erp_private.chat_memberships ADD COLUMN scope_anchor jsonb,ADD COLUMN scope_closed_anchor jsonb,ADD COLUMN left_at_is_observation boolean NOT NULL DEFAULT false;
+CREATE FUNCTION erp_private.comms_track_profile(p bigint) RETURNS void LANGUAGE plpgsql SET search_path='' AS $$
+BEGIN
+ IF p<=0 OR NOT erp_private.chat_active(p) THEN RAISE EXCEPTION 'Inactive identity' USING ERRCODE='42501'; END IF;
+ INSERT INTO erp_private.comms_scope_watch(profile_id) VALUES(p) ON CONFLICT DO NOTHING;
+ UPDATE erp_private.comms_scope_watch SET dirty=false,disable_pending=false WHERE profile_id IN(0,p) AND (dirty OR disable_pending);
+END $$;
+CREATE FUNCTION erp_private.comms_activation_generation(p_profile bigint) RETURNS bigint LANGUAGE sql STABLE SET search_path='' AS $$ SELECT generation FROM erp_private.comms_scope_watch WHERE profile_id=p_profile $$;
+CREATE FUNCTION erp_private.comms_scope_anchor(p_profile bigint) RETURNS jsonb LANGUAGE sql STABLE SET search_path='' AS $$
+ SELECT jsonb_build_object('profileRevision',w.revision::text,'roleRevision',r.revision::text,'activationGeneration',w.generation::text) FROM erp_private.comms_scope_watch w,erp_private.comms_scope_watch r WHERE w.profile_id=p_profile AND r.profile_id=0
+$$;
+CREATE FUNCTION erp_private.comms_source_value(k text,subject bigint,source_id bigint,role_id bigint,company bigint,branch bigint,active boolean,role_active boolean) RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path='' AS $$
+ SELECT jsonb_build_object('key',CASE k WHEN 'home' THEN 'home' ELSE source_id::text END,'subject',subject,'role',role_id,'company',company,'branch',branch,'active',active,'roleActive',role_active)
+$$;
+CREATE FUNCTION erp_private.comms_record_source(p bigint,k text,prev jsonb,nxt jsonb,disabled boolean) RETURNS void LANGUAGE plpgsql SET search_path='' AS $$
+DECLARE w erp_private.comms_scope_watch; slot bigint; fresh bigint; endpoint jsonb; t timestamptz:=clock_timestamp();
+BEGIN
+ IF prev IS NOT DISTINCT FROM nxt AND NOT disabled THEN RETURN; END IF;
+ IF p=0 AND NOT EXISTS(SELECT FROM erp_private.comms_scope_watch WHERE profile_id>0) THEN RETURN; END IF;
+ SELECT * INTO w FROM erp_private.comms_scope_watch WHERE profile_id=p;
+ IF w.profile_id IS NULL OR (w.dirty AND (NOT disabled OR w.disable_pending)) THEN RETURN; END IF;
+ -- Baseline ERP can change before the budget migration is installed. With no
+ -- prepared slot there is only a one-time conservative invalidation.
+ IF NOT w.dirty THEN
+  SELECT id INTO slot FROM erp_private.comms_history_slots WHERE subject IS NULL AND usable_until>t ORDER BY usable_until DESC,id LIMIT 1 FOR UPDATE SKIP LOCKED;
+  IF slot IS NOT NULL AND NOT erp_private.comms_slot_authorized(slot) THEN slot:=NULL; END IF;
+ END IF;
+ fresh:=w.revision+1;
+ UPDATE erp_private.comms_scope_watch SET revision=fresh,dirty=slot IS NULL,generation=w.generation+disabled::integer,disable_pending=w.disable_pending OR disabled WHERE profile_id=p;
+ IF disabled THEN
+  endpoint:=erp_private.comms_scope_anchor(p);
+  UPDATE erp_private.comms_scope_watch SET last_disable_anchor=endpoint,last_disabled_at=t WHERE profile_id=p;
+ END IF;
+ IF slot IS NOT NULL THEN
+  UPDATE erp_private.comms_history_slots SET subject=p,revision=fresh,change_no=nextval('erp_private.comms_history_order'),kind=k,before_value=prev,after_value=nxt,occurred_at=t,disable_generation=CASE WHEN disabled THEN w.generation+1 END WHERE id=slot;
+  IF disabled THEN UPDATE erp_private.comms_history_slots SET after_value=nxt||jsonb_build_object('endAnchor',endpoint) WHERE id=slot; END IF;
+ END IF;
+END $$;
+CREATE FUNCTION erp_private.chat_capture_auth_change() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+DECLARE prev jsonb; nxt jsonb; old_p bigint; new_p bigint;
+BEGIN
+ IF TG_TABLE_NAME='roles' THEN
+  IF OLD.is_active IS DISTINCT FROM NEW.is_active THEN
+   PERFORM erp_private.comms_record_source(0,'role',jsonb_build_object('role',OLD.id,'active',OLD.is_active),jsonb_build_object('role',NEW.id,'active',NEW.is_active),false);
+  END IF;
+ ELSIF TG_TABLE_NAME='user_profiles' THEN
+  PERFORM erp_private.comms_record_source(NEW.id,'home',
+   erp_private.comms_source_value('home',OLD.id,NULL,NULL,OLD.owner_company_id,OLD.branch_id,OLD.owner_company_id IS NOT NULL,true),
+   erp_private.comms_source_value('home',NEW.id,NULL,NULL,NEW.owner_company_id,NEW.branch_id,NEW.owner_company_id IS NOT NULL,true),OLD.status='active' AND NEW.status<>'active');
+ ELSE
+  IF TG_OP<>'INSERT' THEN old_p:=OLD.user_profile_id; END IF;
+  IF TG_OP<>'DELETE' THEN new_p:=NEW.user_profile_id; END IF;
+  IF NOT EXISTS(SELECT FROM erp_private.comms_scope_watch WHERE profile_id IN(old_p,new_p)) THEN RETURN NULL; END IF;
+  IF TG_OP<>'INSERT' THEN old_p:=OLD.user_profile_id; prev:=erp_private.comms_source_value('assignment',old_p,OLD.id,OLD.role_id,OLD.owner_company_id,OLD.branch_id,OLD.is_active,(SELECT is_active FROM public.roles WHERE id=OLD.role_id)); END IF;
+  IF TG_OP<>'DELETE' THEN new_p:=NEW.user_profile_id; nxt:=erp_private.comms_source_value('assignment',new_p,NEW.id,NEW.role_id,NEW.owner_company_id,NEW.branch_id,NEW.is_active,(SELECT is_active FROM public.roles WHERE id=NEW.role_id)); END IF;
+  IF old_p IS NOT NULL AND old_p IS DISTINCT FROM new_p THEN PERFORM erp_private.comms_record_source(old_p,'assignment',prev,NULL,false); END IF;
+  IF new_p IS NOT NULL THEN PERFORM erp_private.comms_record_source(new_p,'assignment',CASE WHEN new_p=old_p THEN prev END,nxt,false); END IF;
+ END IF;
+ RETURN NULL;
+END $$;
+CREATE FUNCTION erp_private.comms_seed_episode(p_profile bigint,p_snapshot uuid) RETURNS jsonb LANGUAGE plpgsql SET search_path='' AS $$
+DECLARE a jsonb;
+BEGIN
+ PERFORM erp_private.comms_track_profile(p_profile); a:=erp_private.comms_scope_anchor(p_profile);
+ INSERT INTO erp_private.comms_scope_snapshot(id,profile_id,at_anchor,verified_through) VALUES(p_snapshot,p_profile,a,a);
+ INSERT INTO erp_private.comms_scope_source
+ SELECT p_snapshot,'home',erp_private.comms_source_value('home',u.id,NULL,NULL,u.owner_company_id,u.branch_id,u.owner_company_id IS NOT NULL,true) FROM public.user_profiles u WHERE u.id=p_profile
+ UNION ALL SELECT p_snapshot,x.id::text,erp_private.comms_source_value('assignment',p_profile,x.id,x.role_id,x.owner_company_id,x.branch_id,x.is_active,r.is_active) FROM public.user_roles x LEFT JOIN public.roles r ON r.id=x.role_id WHERE x.user_profile_id=p_profile;
+ UPDATE erp_private.comms_scope_snapshot SET source_count=(SELECT count(*) FROM erp_private.comms_scope_source WHERE snapshot=p_snapshot) WHERE id=p_snapshot;
+ PERFORM erp_private.comms_verify_state(p_snapshot,(SELECT jsonb_object_agg(source_key,value) FROM erp_private.comms_scope_source WHERE snapshot=p_snapshot));
+ RETURN a||jsonb_build_object('snapshotId',p_snapshot);
+END $$;
+CREATE FUNCTION erp_private.comms_verify_state(s uuid,state jsonb) RETURNS void LANGUAGE plpgsql SET search_path='' AS $$
+BEGIN
+ INSERT INTO erp_private.comms_scope_verified(snapshot,company,branch)
+ SELECT s,CASE WHEN o.id IS NOT NULL AND (v->>'branch' IS NULL OR b.id IS NOT NULL) THEN o.id END,(v->>'branch')::bigint
+ FROM jsonb_each(state) x(k,v) LEFT JOIN public.owner_companies o ON o.id=(v->>'company')::bigint LEFT JOIN public.branches b ON b.id=(v->>'branch')::bigint AND b.owner_company_id=o.id
+ WHERE (v->>'active')::boolean AND coalesce((v->>'roleActive')::boolean,false)
+ UNION ALL SELECT s,NULL,NULL WHERE NOT EXISTS(SELECT FROM jsonb_each(state) x(k,v) WHERE (v->>'active')::boolean AND coalesce((v->>'roleActive')::boolean,false)) ON CONFLICT DO NOTHING;
+END $$;
+CREATE FUNCTION erp_private.comms_episode_end(p_profile bigint,p_anchor jsonb,p_closed jsonb,p_auto_leave boolean) RETURNS jsonb LANGUAGE sql STABLE SET search_path='' AS $$
+ SELECT CASE WHEN NOT p_auto_leave OR (p_anchor->>'activationGeneration')::bigint=(coalesce(p_closed,erp_private.comms_scope_anchor(p_profile))->>'activationGeneration')::bigint THEN coalesce(p_closed,erp_private.comms_scope_anchor(p_profile))
+ ELSE coalesce((SELECT h.after_value->'endAnchor' FROM erp_private.comms_history_slots h WHERE h.subject=p_profile AND h.disable_generation=(p_anchor->>'activationGeneration')::bigint+1),(SELECT w.last_disable_anchor FROM erp_private.comms_scope_watch w WHERE w.profile_id=p_profile AND w.generation=(p_anchor->>'activationGeneration')::bigint+1)) END
+$$;
+CREATE FUNCTION erp_private.comms_episode_covers(p_profile bigint,p_anchor jsonb,p_end jsonb) RETURNS boolean LANGUAGE sql STABLE SET search_path='' AS $$
+ SELECT EXISTS(SELECT FROM erp_private.comms_scope_snapshot s WHERE s.id=(p_anchor->>'snapshotId')::uuid AND s.profile_id=p_profile AND s.at_anchor=(p_anchor-'snapshotId') AND s.verified_through=p_end AND EXISTS(SELECT FROM erp_private.comms_scope_verified v WHERE v.snapshot=s.id)
+ AND NOT EXISTS(SELECT FROM erp_private.comms_scope_verified v WHERE v.snapshot=s.id AND (v.company IS NULL OR NOT erp_private.comms_covers_scope(v.company,v.branch))))
+$$;
+CREATE FUNCTION erp_private.comms_reconcile_episode(p_profile bigint,p_anchor jsonb,p_end jsonb,p_permit uuid,p_command jsonb) RETURNS void LANGUAGE plpgsql SET search_path='' AS $$
+DECLARE s erp_private.comms_scope_snapshot; e erp_private.comms_history_slots; needed bigint; observed bigint:=0; state jsonb; bound bigint; work numeric;
+BEGIN
+ SELECT * INTO STRICT s FROM erp_private.comms_scope_snapshot WHERE id=(p_anchor->>'snapshotId')::uuid AND profile_id=p_profile FOR UPDATE;
+ IF s.at_anchor IS DISTINCT FROM p_anchor-'snapshotId' OR p_end IS NULL THEN RAISE EXCEPTION 'Historical source unavailable' USING ERRCODE='PT409'; END IF;
+ IF s.verified_through=p_end THEN RETURN; END IF;
+ needed:=((p_end->>'profileRevision')::bigint-(s.at_anchor->>'profileRevision')::bigint)+((p_end->>'roleRevision')::bigint-(s.at_anchor->>'roleRevision')::bigint);
+ bound:=erp_comm_cost.effect_scan_limit(p_permit,p_command,'scope_reconcile_work');
+ work:=(1+needed::numeric)*(s.source_count+needed::numeric+1);
+ IF needed<0 OR work>bound THEN RAISE EXCEPTION 'Insufficient history work capacity' USING ERRCODE='PT503'; END IF;
+ PERFORM erp_comm_cost.claim_effect(p_permit,p_command,'scope_reconcile_work',work::bigint);
+ SELECT jsonb_object_agg(source_key,value) INTO state FROM erp_private.comms_scope_source WHERE snapshot=s.id;
+ FOR e IN SELECT * FROM erp_private.comms_history_slots h WHERE (h.subject=p_profile AND h.revision>(s.at_anchor->>'profileRevision')::bigint AND h.revision<=(p_end->>'profileRevision')::bigint)
+ OR (h.subject=0 AND h.revision>(s.at_anchor->>'roleRevision')::bigint AND h.revision<=(p_end->>'roleRevision')::bigint) ORDER BY h.change_no LOOP
+  observed:=observed+1;
+  IF e.kind='role' THEN
+   SELECT jsonb_object_agg(k,CASE WHEN v->>'role'=e.after_value->>'role' THEN jsonb_set(v,'{roleActive}',e.after_value->'active') ELSE v END) INTO state FROM jsonb_each(state) x(k,v);
+  ELSIF e.after_value IS NULL THEN state:=state-(e.before_value->>'key');
+  ELSE state:=state||jsonb_build_object(e.after_value->>'key',e.after_value); END IF;
+  PERFORM erp_private.comms_verify_state(s.id,state);
+ END LOOP;
+ IF observed<>needed THEN RAISE EXCEPTION 'Historical source gap' USING ERRCODE='PT409'; END IF;
+ UPDATE erp_private.comms_scope_snapshot SET verified_through=p_end WHERE id=s.id;
+END $$;
+CREATE VIEW erp_private.chat_current_memberships AS SELECT m.* FROM erp_private.chat_memberships m JOIN erp_private.chat_conversations c ON c.id=m.conversation
+ WHERE m.left_at IS NULL AND (c.kind='direct' OR (m.scope_anchor->>'activationGeneration')::bigint=erp_private.comms_activation_generation(m.profile_id));
+REVOKE ALL ON erp_private.chat_current_memberships FROM PUBLIC,anon,authenticated,service_role;
 CREATE FUNCTION erp_private.chat_member(c uuid,p bigint) RETURNS boolean LANGUAGE sql STABLE SET search_path='' AS $$
- SELECT EXISTS(SELECT FROM erp_private.chat_memberships WHERE conversation=c AND profile_id=p AND left_at IS NULL)
+ SELECT EXISTS(SELECT FROM erp_private.chat_current_memberships WHERE conversation=c AND profile_id=p)
 $$;
 CREATE FUNCTION erp_private.chat_review(c uuid) RETURNS boolean LANGUAGE sql STABLE SET search_path='' AS $$
- SELECT erp_private.comms_is_system_admin() OR (erp_private.comms_has_named_grant('historyReview')
- AND EXISTS(SELECT FROM erp_private.chat_memberships WHERE conversation=c)
- AND NOT EXISTS(SELECT FROM erp_private.chat_memberships m LEFT JOIN erp_private.chat_scope_facts f ON f.episode=m.id WHERE m.conversation=c AND (f.company IS NULL OR NOT erp_private.comms_covers_scope(f.company,f.branch))))
+ SELECT erp_private.comms_is_system_admin() OR (erp_private.comms_has_named_grant('historyReview') AND EXISTS(SELECT FROM erp_private.chat_memberships WHERE conversation=c)
+ AND NOT EXISTS(SELECT FROM erp_private.chat_memberships m JOIN erp_private.chat_conversations conv ON conv.id=m.conversation WHERE m.conversation=c AND NOT erp_private.comms_episode_covers(m.profile_id,m.scope_anchor,erp_private.comms_episode_end(m.profile_id,m.scope_anchor,m.scope_closed_anchor,conv.kind='group'))))
 $$;
 CREATE FUNCTION erp_private.chat_visible(c uuid,mode text) RETURNS boolean LANGUAGE sql STABLE SET search_path='' AS $$
  SELECT CASE mode WHEN 'participant' THEN erp_private.chat_member(c,erp_private.comms_actor_id()) WHEN 'review' THEN erp_private.chat_review(c) ELSE false END
 $$;
-CREATE FUNCTION erp_private.chat_scope_capture(p bigint) RETURNS void LANGUAGE plpgsql SET search_path='' AS $$
-BEGIN
- INSERT INTO erp_private.chat_scope_facts(episode,company,branch)
- WITH scopes AS (
- SELECT a.owner_company_id company,a.branch_id branch FROM public.user_roles a JOIN public.roles r ON r.id=a.role_id AND r.is_active WHERE a.user_profile_id=p AND a.is_active
- UNION SELECT owner_company_id,branch_id FROM public.user_profiles WHERE id=p AND owner_company_id IS NOT NULL
- ), checked AS (
- SELECT CASE WHEN o.id IS NOT NULL AND (s.branch IS NULL OR b.id IS NOT NULL) THEN s.company END company,s.branch FROM scopes s LEFT JOIN public.owner_companies o ON o.id=s.company LEFT JOIN public.branches b ON b.id=s.branch AND b.owner_company_id=s.company
- UNION ALL SELECT NULL,NULL WHERE NOT EXISTS(SELECT FROM scopes)
- )
- SELECT m.id,c.company,c.branch FROM erp_private.chat_memberships m CROSS JOIN checked c WHERE m.profile_id=p AND m.left_at IS NULL ON CONFLICT DO NOTHING;
-END $$;
 CREATE FUNCTION erp_private.chat_capture_membership() RETURNS trigger LANGUAGE plpgsql SET search_path='' AS $$
-BEGIN PERFORM erp_private.chat_scope_capture(NEW.profile_id); RETURN NULL; END $$;
-CREATE TRIGGER chat_capture_join AFTER INSERT ON erp_private.chat_memberships FOR EACH ROW EXECUTE FUNCTION erp_private.chat_capture_membership();
-
-CREATE FUNCTION erp_private.chat_capture_auth_change() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-DECLARE target bigint; departed uuid;
 BEGIN
- IF TG_TABLE_NAME='user_profiles' THEN
-   PERFORM erp_private.chat_scope_capture(NEW.id);
-   IF NEW.status<>'active' AND OLD.status='active' THEN
-    FOR departed IN UPDATE erp_private.chat_memberships m SET left_at=clock_timestamp(),appointed=false FROM erp_private.chat_conversations c WHERE m.conversation=c.id AND c.kind='group' AND m.profile_id=NEW.id AND m.left_at IS NULL RETURNING m.conversation LOOP
-     UPDATE erp_private.chat_conversations SET owner_id=CASE WHEN owner_id=NEW.id THEN NULL ELSE owner_id END,revision=revision+1 WHERE id=departed;
-     PERFORM erp_private.chat_post(departed,NEW.id,'notice',coalesce(NEW.full_name,'ERP user')||' left the group');
-     PERFORM erp_private.chat_change(departed,'group',departed);
-    END LOOP;
-   END IF;
- ELSIF TG_TABLE_NAME='roles' THEN
-  FOR target IN SELECT DISTINCT user_profile_id FROM public.user_roles WHERE role_id=NEW.id AND is_active LOOP PERFORM erp_private.chat_scope_capture(target); END LOOP;
- ELSE
-  IF TG_OP<>'INSERT' THEN PERFORM erp_private.chat_scope_capture(OLD.user_profile_id); END IF;
-  IF TG_OP<>'DELETE' THEN PERFORM erp_private.chat_scope_capture(NEW.user_profile_id); END IF;
- END IF;
- RETURN NULL;
+ IF TG_OP='INSERT' THEN NEW.scope_anchor:=erp_private.comms_seed_episode(NEW.profile_id,gen_random_uuid());
+ ELSIF NEW.left_at IS NOT NULL AND OLD.left_at IS NULL THEN NEW.scope_closed_anchor:=erp_private.comms_episode_end(OLD.profile_id,OLD.scope_anchor,NULL,true); END IF;
+ RETURN NEW;
 END $$;
+CREATE TRIGGER chat_capture_join BEFORE INSERT OR UPDATE OF left_at ON erp_private.chat_memberships FOR EACH ROW EXECUTE FUNCTION erp_private.chat_capture_membership();
+
 CREATE FUNCTION erp_private.chat_scope_fence() RETURNS trigger LANGUAGE plpgsql SET search_path='' AS $$
 BEGIN PERFORM pg_advisory_xact_lock(hashtextextended('comms-scope-v1',0)); RETURN NULL; END $$;
 CREATE TRIGGER chat_assignment_fence BEFORE INSERT OR UPDATE OR DELETE ON public.user_roles FOR EACH STATEMENT EXECUTE FUNCTION erp_private.chat_scope_fence();
@@ -225,12 +325,13 @@ END $$;
 CREATE FUNCTION erp_private.chat_conversation_json(c erp_private.chat_conversations,p bigint,mode text) RETURNS jsonb LANGUAGE plpgsql STABLE SET search_path='' AS $$
 DECLARE direct_peer bigint; ps erp_private.chat_personal; admin boolean;
 BEGIN
+ IF c.owner_id IS NOT NULL AND NOT erp_private.chat_member(c.id,c.owner_id) THEN c.owner_id:=NULL; END IF;
  direct_peer:=CASE WHEN c.direct_low=p THEN c.direct_high ELSE c.direct_low END;
  SELECT * INTO ps FROM erp_private.chat_personal WHERE conversation=c.id AND profile_id=p;
- admin:=mode='participant' AND (c.owner_id=p OR EXISTS(SELECT FROM erp_private.chat_memberships WHERE conversation=c.id AND profile_id=p AND left_at IS NULL AND appointed));
+ admin:=mode='participant' AND (c.owner_id=p OR EXISTS(SELECT FROM erp_private.chat_current_memberships WHERE conversation=c.id AND profile_id=p AND left_at IS NULL AND appointed));
  RETURN jsonb_strip_nulls(jsonb_build_object('id',c.id,'kind',c.kind,'title',CASE WHEN c.kind='group' THEN c.name WHEN mode='review' THEN (erp_private.chat_work(c.direct_low)->>'name')||' / '||(erp_private.chat_work(c.direct_high)->>'name') ELSE erp_private.chat_work(direct_peer)->>'name' END,
  'peerProfileId',CASE WHEN c.kind='direct' AND mode='participant' THEN direct_peer::text END,'ownerProfileId',c.owner_id::text,'revision',c.revision::text,'changeSeq',c.change_seq::text,'latestSeq',c.latest_seq::text,
- 'unreadCount',CASE WHEN mode='participant' THEN (SELECT count(*) FROM erp_private.chat_messages m WHERE m.conversation=c.id AND m.sender<>p AND NOT EXISTS(SELECT FROM erp_private.chat_reads r WHERE r.message=m.id AND r.profile_id=p)) ELSE 0 END,
+ 'unreadCount',CASE WHEN mode='participant' THEN (SELECT count(*) FROM erp_private.chat_messages m WHERE m.conversation=c.id AND m.sender<>p AND m.seq>coalesce((SELECT max(r.through_seq) FROM erp_private.chat_read_ranges r WHERE r.conversation=c.id AND r.profile_id=p),0)) ELSE 0 END,
  'muted',coalesce(ps.muted,false),'archived',coalesce(ps.archive_seq>=c.latest_seq,false),'canManageMembers',coalesce(admin,false),'canPin',coalesce(admin,false),
  'canManageAdmins',c.kind='group' AND (c.owner_id=p OR erp_private.comms_is_system_admin())));
 END $$;
@@ -244,7 +345,7 @@ RETURNS SETOF jsonb LANGUAGE sql STABLE AS $search$
  WITH pattern AS NOT MATERIALIZED (
   SELECT '%'||replace(replace(replace(lower(p_query),'!','!!'),'%','!%'),'_','!_')||'%' AS literal
  ), visible AS MATERIALIZED (
-  SELECT m.conversation AS id FROM erp_private.chat_memberships m
+  SELECT m.conversation AS id FROM erp_private.chat_current_memberships m
   WHERE p_mode='participant' AND m.profile_id=p_actor AND m.left_at IS NULL
   UNION ALL
   SELECT c.id FROM erp_private.chat_conversations c WHERE p_mode='review' AND erp_private.chat_review(c.id)
@@ -302,7 +403,7 @@ BEGIN
  IF op='chat.directory' THEN
   SELECT jsonb_agg(x) INTO rows FROM (SELECT w.x FROM public.user_profiles u CROSS JOIN LATERAL(SELECT erp_private.chat_work(u.id) x) w WHERE u.status='active' AND NOT u.must_change_password AND strpos(lower(w.x->>'name'),lower(q))>0 ORDER BY u.id LIMIT n+1 OFFSET offn) t;
  ELSIF op='chat.members' THEN
-  SELECT jsonb_agg(x) INTO rows FROM (SELECT erp_private.chat_work(s.profile_id)||jsonb_build_object('role',CASE WHEN conv.owner_id=s.profile_id THEN 'owner' WHEN s.appointed THEN 'admin' ELSE 'member' END,'joinedAt',s.joined_at) x FROM erp_private.chat_memberships s JOIN erp_private.chat_conversations conv ON conv.id=s.conversation WHERE s.conversation=c AND s.left_at IS NULL ORDER BY s.id LIMIT n+1 OFFSET offn) t;
+  SELECT jsonb_agg(x) INTO rows FROM (SELECT erp_private.chat_work(s.profile_id)||jsonb_build_object('role',CASE WHEN conv.owner_id=s.profile_id THEN 'owner' WHEN s.appointed THEN 'admin' ELSE 'member' END,'joinedAt',s.joined_at) x FROM erp_private.chat_current_memberships s JOIN erp_private.chat_conversations conv ON conv.id=s.conversation WHERE s.conversation=c AND s.left_at IS NULL ORDER BY s.id LIMIT n+1 OFFSET offn) t;
  ELSIF op='chat.conversations' THEN
   SELECT jsonb_agg(x) INTO rows FROM (SELECT proj.x FROM erp_private.chat_conversations conv CROSS JOIN LATERAL(SELECT erp_private.chat_conversation_json(conv,p,mode) x) proj WHERE erp_private.chat_visible(conv.id,mode) AND (mode='review' OR (proj.x->>'archived')::boolean=coalesce((a->>'archived')::boolean,false)) AND strpos(lower(proj.x->>'title'),lower(q))>0 ORDER BY (SELECT max(sent_at) FROM erp_private.chat_messages WHERE conversation=conv.id) DESC NULLS LAST,conv.id LIMIT n+1 OFFSET offn) t;
  ELSIF op='chat.messages' THEN
@@ -319,7 +420,7 @@ BEGIN
  ELSIF op='chat.readers' THEN
   SELECT * INTO m FROM erp_private.chat_messages WHERE chat_messages.id=chat_read.id;
   IF m.sender IS DISTINCT FROM p OR NOT erp_private.chat_member(m.conversation,p) THEN RAISE EXCEPTION 'Message unavailable' USING ERRCODE='PT404'; END IF;
-  SELECT jsonb_agg(x) INTO rows FROM (SELECT jsonb_build_object('profileId',r.profile_id::text,'readAt',r.read_at) x FROM erp_private.chat_reads r WHERE r.message=id ORDER BY r.read_at,r.profile_id LIMIT n+1 OFFSET offn) t;
+  SELECT jsonb_agg(x) INTO rows FROM (SELECT jsonb_build_object('profileId',r.profile_id::text,'readAt',r.read_at) x FROM (SELECT DISTINCT h.profile_id FROM erp_private.chat_memberships h WHERE h.conversation=m.conversation AND h.profile_id<>m.sender) h CROSS JOIN LATERAL (SELECT rr.profile_id,rr.read_at FROM erp_private.chat_read_ranges rr WHERE rr.conversation=m.conversation AND rr.profile_id=h.profile_id AND rr.through_seq>=m.seq ORDER BY rr.through_seq LIMIT 1) r ORDER BY r.read_at,r.profile_id LIMIT n+1 OFFSET offn) t;
  ELSIF op='chat.uploadStatus' THEN
   SELECT jsonb_build_object('uploadId',u.id,'conversationId',u.conversation,'byteLength',u.size_bytes,'state',u.state) INTO result FROM erp_private.chat_uploads u WHERE u.id=(a->>'uploadId')::uuid AND u.actor=p AND u.reserving_session=(auth.jwt()->>'session_id')::uuid AND erp_private.chat_member(u.conversation,p);
   IF result IS NULL THEN RAISE EXCEPTION 'Upload unavailable' USING ERRCODE='PT404'; END IF; RETURN result;
@@ -344,14 +445,28 @@ BEGIN
   IF NOT erp_private.comms_pair_blocked(msg.sender,target) THEN INSERT INTO erp_private.chat_mentions VALUES(msg.id,target); END IF;
  END LOOP;
 END $$;
+-- A baseline disable invalidates access synchronously. A funded group action or
+-- historical reconciliation materializes the exit for this one group.
+CREATE FUNCTION erp_private.chat_close_departure(p_episode bigint) RETURNS void LANGUAGE plpgsql SET search_path='' AS $$
+DECLARE m erp_private.chat_memberships; d timestamptz; title text;
+BEGIN
+ SELECT * INTO STRICT m FROM erp_private.chat_memberships WHERE id=p_episode FOR UPDATE;
+ IF m.left_at IS NOT NULL OR erp_private.chat_member(m.conversation,m.profile_id) THEN RETURN; END IF;
+ SELECT coalesce((SELECT occurred_at FROM erp_private.comms_history_slots WHERE subject=m.profile_id AND disable_generation=(m.scope_anchor->>'activationGeneration')::bigint+1),(SELECT last_disabled_at FROM erp_private.comms_scope_watch WHERE profile_id=m.profile_id AND generation=(m.scope_anchor->>'activationGeneration')::bigint+1)) INTO d;
+ UPDATE erp_private.chat_memberships SET left_at=coalesce(d,clock_timestamp()),left_at_is_observation=(d IS NULL),appointed=false WHERE id=m.id;
+ UPDATE erp_private.chat_conversations SET owner_id=CASE WHEN owner_id=m.profile_id THEN NULL ELSE owner_id END,revision=revision+1 WHERE id=m.conversation;
+ SELECT coalesce(full_name,'ERP user') INTO title FROM public.user_profiles WHERE id=m.profile_id;
+ PERFORM erp_private.chat_post(m.conversation,m.profile_id,'notice',coalesce(title,'ERP user')||' left the group');
+ PERFORM erp_private.chat_change(m.conversation,'group',m.conversation);
+END $$;
 CREATE FUNCTION erp_private.chat_group_change(c erp_private.chat_conversations,p bigint,a jsonb) RETURNS bigint LANGUAGE plpgsql SET search_path='' AS $$
-DECLARE act text:=a->>'action'; target bigint:=(a->>'targetProfileId')::bigint; owner_access boolean:=coalesce(c.owner_id=p,false); member erp_private.chat_memberships; moderator boolean; updated bigint; notice text;
+DECLARE act text:=a->>'action'; target bigint:=(a->>'targetProfileId')::bigint; owner_access boolean:=coalesce(c.owner_id=p,false) AND erp_private.chat_member(c.id,p); member erp_private.chat_memberships; moderator boolean; updated bigint; notice text;
 BEGIN
  IF c.kind IS DISTINCT FROM 'group' THEN RAISE EXCEPTION 'Group unavailable' USING ERRCODE='PT404'; END IF;
  IF c.revision IS DISTINCT FROM (a->>'expectedRevision')::bigint THEN RAISE EXCEPTION 'Group revision conflict' USING ERRCODE='PT409'; END IF;
- SELECT owner_access OR EXISTS(SELECT FROM erp_private.chat_memberships WHERE conversation=c.id AND profile_id=p AND left_at IS NULL AND appointed) INTO moderator;
+ SELECT owner_access OR EXISTS(SELECT FROM erp_private.chat_current_memberships WHERE conversation=c.id AND profile_id=p AND left_at IS NULL AND appointed) INTO moderator;
  IF act='leave' THEN target:=p; END IF;
- SELECT * INTO member FROM erp_private.chat_memberships WHERE conversation=c.id AND profile_id=target AND left_at IS NULL;
+ SELECT * INTO member FROM erp_private.chat_current_memberships WHERE conversation=c.id AND profile_id=target AND left_at IS NULL;
  IF act IN('promote','demote') THEN
   IF NOT(owner_access OR erp_private.comms_is_system_admin()) OR member.id IS NULL OR target IS NOT DISTINCT FROM c.owner_id THEN RAISE EXCEPTION 'Admin management denied' USING ERRCODE='42501'; END IF;
   UPDATE erp_private.chat_memberships SET appointed=act='promote' WHERE id=member.id;
@@ -365,6 +480,7 @@ BEGIN
   UPDATE erp_private.chat_conversations SET owner_id=NULL WHERE id=c.id AND owner_id=target;
  ELSIF act='add' AND moderator THEN
   IF member.id IS NOT NULL OR NOT erp_private.chat_active(target) THEN RAISE EXCEPTION 'Member unavailable' USING ERRCODE='PT404'; END IF;
+  PERFORM erp_private.chat_close_departure(h.id) FROM erp_private.chat_memberships h WHERE h.conversation=c.id AND h.profile_id=target AND h.left_at IS NULL;
   INSERT INTO erp_private.chat_memberships(conversation,profile_id) VALUES(c.id,target);
  ELSIF act='rename' AND moderator THEN
   IF length(btrim(a->>'name')) NOT BETWEEN 1 AND 160 OR a->>'name' IS NULL THEN RAISE EXCEPTION 'Invalid name' USING ERRCODE='22023'; END IF;
@@ -378,12 +494,58 @@ BEGIN
  PERFORM erp_private.chat_change(c.id,'group',c.id);
  RETURN updated;
 END $$;
-CREATE FUNCTION erp_private.chat_mutate(op text,a jsonb,p bigint) RETURNS jsonb LANGUAGE plpgsql SET search_path='' AS $$
+CREATE FUNCTION erp_private.comms_slot_authorized(slot bigint) RETURNS boolean LANGUAGE plpgsql STABLE SET search_path='' AS $$
+BEGIN RETURN EXISTS(SELECT FROM erp_private.comms_history_slots h JOIN erp_comm_cost.reservation r ON r.permit_id=h.permit JOIN erp_comm_cost.proof p USING(operation_id) JOIN erp_comm_cost.authority au ON au.singleton JOIN erp_comm_cost.effect_claim ec ON ec.permit_id=r.permit_id AND ec.effect='scope_history_slots'
+ WHERE h.id=slot AND h.subject IS NULL AND EXISTS(SELECT FROM erp_private.comms_chat_gate WHERE enabled) AND r.scope='communications' AND r.feature='chat' AND r.consumed_xid IS NOT NULL AND au.owner_auth_id IS NOT NULL AND r.settled_at IS NULL AND least(p.valid_until,p.operational_stop_by,h.usable_until)>clock_timestamp()
+ AND NOT EXISTS(SELECT FROM erp_comm_cost.pause z WHERE z.scope=r.scope AND z.feature=r.feature)
+ AND NOT EXISTS(SELECT FROM erp_comm_cost.unit_hold u JOIN erp_comm_cost.capacity c ON c.id=u.capacity_id WHERE u.permit_id=r.permit_id AND (NOT c.enabled OR c.valid_until<=clock_timestamp()))
+ AND (r.approval_id IS NULL AND r.reserved_micros=0 OR EXISTS(SELECT FROM erp_comm_cost.approval a WHERE a.id=r.approval_id AND a.owner_auth_id=au.owner_auth_id AND a.revoked_at IS NULL AND a.ends_at>clock_timestamp())));
+EXCEPTION WHEN undefined_table OR undefined_function OR undefined_column OR invalid_schema_name THEN RETURN false; END $$;
+CREATE FUNCTION erp_private.chat_fund_join(ticket uuid,cmd jsonb,ids bigint[],effect text) RETURNS void LANGUAGE plpgsql SET search_path='' AS $$
+DECLARE ceiling bigint; total bigint;
+BEGIN
+ PERFORM erp_comm_cost.claim_effect(ticket,cmd,effect,cardinality(ids));
+ ceiling:=erp_comm_cost.effect_scan_limit(ticket,cmd,'chat_scope_facts');
+ SELECT count(*) INTO total FROM (SELECT 1 FROM unnest(ids) UNION ALL SELECT 1 FROM unnest(ids) i JOIN public.user_roles r ON r.user_profile_id=i LIMIT ceiling+1) q;
+ PERFORM erp_comm_cost.claim_effect(ticket,cmd,'chat_scope_facts',total);
+END $$;
+CREATE FUNCTION erp_private.chat_history_admin(op text,a jsonb,ticket uuid) RETURNS jsonb LANGUAGE plpgsql SET search_path='' AS $$
+DECLARE cmd jsonb:=jsonb_build_object('op',op,'args',a); n integer; ep erp_private.chat_memberships; group_kind boolean; departed boolean:=false; deadline timestamptz;
+BEGIN
+ IF NOT erp_private.comms_is_system_admin() THEN RAISE EXCEPTION 'Historical administration denied' USING ERRCODE='42501'; END IF;
+ PERFORM pg_advisory_xact_lock_shared(hashtextextended('comms-scope-v1',0));
+ IF op='chat.historyCapacity' THEN
+  IF a->>'slotCount' !~ '^[1-9][0-9]{0,3}$' THEN RAISE EXCEPTION 'Invalid history slot count' USING ERRCODE='22023'; END IF;
+  n:=(a->>'slotCount')::integer;
+  IF n NOT BETWEEN 1 AND 4096 THEN RAISE EXCEPTION 'Invalid history slot count' USING ERRCODE='22023'; END IF;
+  PERFORM erp_comm_cost.claim_effect(ticket,cmd,'scope_history_slots',n);
+  SELECT least(p.operational_stop_by,p.valid_until) INTO STRICT deadline FROM erp_comm_cost.reservation r JOIN erp_comm_cost.proof p USING(operation_id) WHERE r.permit_id=ticket;
+  INSERT INTO erp_private.comms_history_slots(permit,usable_until) SELECT ticket,deadline FROM generate_series(1,n);
+  RETURN jsonb_build_object('prepared',n,'usableUntil',deadline);
+ END IF;
+ IF a->>'episodeId' !~ '^[1-9][0-9]{0,18}$' OR (a->>'episodeId')::numeric>9223372036854775807 THEN RAISE EXCEPTION 'Invalid history episode' USING ERRCODE='22023'; END IF;
+ SELECT * INTO STRICT ep FROM erp_private.chat_memberships WHERE id=(a->>'episodeId')::bigint;
+ SELECT kind='group' INTO group_kind FROM erp_private.chat_conversations WHERE id=ep.conversation FOR UPDATE;
+ SELECT * INTO STRICT ep FROM erp_private.chat_memberships WHERE id=ep.id FOR UPDATE;
+ IF group_kind AND ep.left_at IS NULL AND NOT erp_private.chat_member(ep.conversation,ep.profile_id) THEN
+  PERFORM erp_comm_cost.claim_effect(ticket,cmd,'scope_departure',1);
+  PERFORM erp_private.chat_close_departure(ep.id); departed:=true;
+ END IF;
+ BEGIN
+  PERFORM erp_private.comms_reconcile_episode(ep.profile_id,ep.scope_anchor,erp_private.comms_episode_end(ep.profile_id,ep.scope_anchor,ep.scope_closed_anchor,group_kind),ticket,cmd);
+ EXCEPTION WHEN SQLSTATE 'PT409' THEN
+  RETURN jsonb_build_object('episodeId',ep.id::text,'history','held','reason','missing_historical_source','departureRecorded',departed);
+ WHEN SQLSTATE 'PT503' THEN
+  RETURN jsonb_build_object('episodeId',ep.id::text,'history','held','reason','history_work_unfunded','departureRecorded',departed);
+ END;
+ RETURN jsonb_build_object('episodeId',ep.id::text,'history','verified','departureRecorded',departed);
+END $$;
+CREATE FUNCTION erp_private.chat_mutate(op text,a jsonb,p bigint,ticket uuid DEFAULT NULL) RETURNS jsonb LANGUAGE plpgsql SET search_path='' AS $$
 <<chat_mutate>>
 DECLARE mutation uuid:=(a->>'clientMutationId')::uuid; fingerprint bytea:=sha256(convert_to((jsonb_build_array(op,a))::text,'UTF8'));
  prior erp_private.chat_mutations; c erp_private.chat_conversations; source_c erp_private.chat_conversations; m erp_private.chat_messages; src erp_private.chat_messages; up erp_private.chat_uploads;
  cid uuid:=(a->>'conversationId')::uuid; mid uuid:=(a->>'messageId')::uuid; expected bigint:=(a->>'expectedRevision')::bigint;
- target bigint:=coalesce((a->>'targetProfileId')::bigint,(a->>'peerProfileId')::bigint); body text:=a->>'body'; change bigint; ent uuid; result jsonb; flag boolean:=(a->>'enabled')::boolean; kind text:=a->>'kind'; item uuid; ref jsonb; seqnum bigint; admin boolean; newrow boolean; dest uuid; peer bigint; basename text; mime text; previous_pulse erp_private.chat_presence; pulse_time timestamptz; replay_slot integer;
+ target bigint:=coalesce((a->>'targetProfileId')::bigint,(a->>'peerProfileId')::bigint); body text:=a->>'body'; change bigint; ent uuid; result jsonb; flag boolean:=(a->>'enabled')::boolean; kind text:=a->>'kind'; item uuid; ref jsonb; seqnum bigint; admin boolean; newrow boolean; dest uuid; peer bigint; basename text; mime text; previous_pulse erp_private.chat_presence; pulse_time timestamptz; replay_slot integer; cmd jsonb:=jsonb_build_object('op',op,'args',a); selected bigint[]; multiplicity bigint; bound bigint;
 BEGIN
  IF mutation IS NULL THEN RAISE EXCEPTION 'Mutation ID required' USING ERRCODE='22023'; END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('chat-mutation:'||p||':'||mutation,0));
@@ -401,6 +563,7 @@ BEGIN
   IF c.id IS NULL THEN
    IF erp_private.comms_pair_blocked(p,target) THEN RAISE EXCEPTION 'Direct communication unavailable' USING ERRCODE='42501'; END IF;
    PERFORM erp_private.comms_require_terms();
+   PERFORM erp_private.chat_fund_join(ticket,cmd,ARRAY[p,target],'chat_direct_members');
    INSERT INTO erp_private.chat_conversations(kind,direct_low,direct_high,creator) VALUES('direct',least(p,target),greatest(p,target),p) RETURNING * INTO c;
    INSERT INTO erp_private.chat_memberships(conversation,profile_id) VALUES(c.id,p),(c.id,target);
   END IF;
@@ -437,8 +600,10 @@ BEGIN
   result:=jsonb_build_object('id',target::text,'kind',kind,'enabled',flag,'revision',change::text);
  ELSIF op='chat.groupCreate' THEN
   IF length(btrim(a->>'name')) NOT BETWEEN 1 AND 160 OR a->>'name' IS NULL THEN RAISE EXCEPTION 'Invalid group name' USING ERRCODE='22023'; END IF;
+  SELECT array_agg(person ORDER BY person) INTO selected FROM (SELECT p AS person UNION SELECT value::bigint FROM jsonb_array_elements_text(a->'memberProfileIds')) x;
+  PERFORM erp_private.chat_fund_join(ticket,cmd,selected,'chat_group_members');
   INSERT INTO erp_private.chat_conversations(kind,creator,owner_id,name) VALUES('group',p,p,btrim(a->>'name')) RETURNING * INTO c;
-  FOR target IN SELECT p UNION SELECT value::bigint FROM jsonb_array_elements_text(coalesce(a->'memberProfileIds','[]')) LOOP
+  FOREACH target IN ARRAY selected LOOP
    IF NOT erp_private.chat_active(target) THEN RAISE EXCEPTION 'Member unavailable' USING ERRCODE='PT404'; END IF;
    INSERT INTO erp_private.chat_memberships(conversation,profile_id) VALUES(c.id,target);
    PERFORM erp_private.chat_post(c.id,p,'notice',(erp_private.chat_work(target)->>'name')||' joined the group');
@@ -446,15 +611,23 @@ BEGIN
   SELECT * INTO c FROM erp_private.chat_conversations WHERE id=c.id;
   result:=erp_private.chat_conversation_json(c,p,'participant'); ent:=c.id;
  ELSIF op='chat.groupChange' THEN
+  IF a->>'action'='add' THEN PERFORM erp_private.chat_fund_join(ticket,cmd,ARRAY[target],'chat_group_members'); END IF;
   change:=erp_private.chat_group_change(c,p,a); ent:=c.id;
  ELSIF op IN('chat.send','chat.forward') THEN
   IF op='chat.forward' THEN
+   IF EXISTS(SELECT FROM erp_private.chat_attachments WHERE message=src.id) THEN
+    bound:=erp_comm_cost.effect_scan_limit(ticket,cmd,'chat_attachments');
+    SELECT count(*) INTO multiplicity FROM (SELECT FROM erp_private.chat_attachments WHERE message=src.id LIMIT bound+1) z;
+    PERFORM erp_comm_cost.claim_effect(ticket,cmd,'chat_attachments',multiplicity);
+   END IF;
    IF src.revision IS DISTINCT FROM expected OR src.kind='notice' THEN RAISE EXCEPTION 'Source conflict' USING ERRCODE='PT409'; END IF;
    ref:=erp_private.chat_dms_ref(src.dms_ref,true);
    IF src.dms_ref IS NOT NULL AND ref IS NULL THEN RAISE EXCEPTION 'Document unavailable' USING ERRCODE='PT404'; END IF;
    m:=erp_private.chat_post(c.id,p,'message',src.body,NULL,true);
    INSERT INTO erp_private.chat_attachments(message,upload,kind) SELECT m.id,att.upload,att.kind FROM erp_private.chat_attachments att WHERE att.message=src.id;
   ELSE
+   IF jsonb_array_length(coalesce(a->'uploadIds','[]'))>0 THEN PERFORM erp_comm_cost.claim_effect(ticket,cmd,'chat_attachments',jsonb_array_length(a->'uploadIds')); END IF;
+   IF jsonb_array_length(coalesce(a->'mentionProfileIds','[]'))>0 THEN PERFORM erp_comm_cost.claim_effect(ticket,cmd,'chat_mentions',jsonb_array_length(a->'mentionProfileIds')); END IF;
    IF length(body)>32000 OR (coalesce(length(btrim(body)),0)=0 AND jsonb_array_length(coalesce(a->'uploadIds','[]'))=0 AND NOT(a?'dmsRef')) THEN RAISE EXCEPTION 'Invalid message' USING ERRCODE='22023'; END IF;
    IF a->>'replyToMessageId' IS NOT NULL AND NOT EXISTS(SELECT FROM erp_private.chat_messages WHERE id=(a->>'replyToMessageId')::uuid AND conversation=c.id AND deleted_at IS NULL) THEN RAISE EXCEPTION 'Reply unavailable' USING ERRCODE='PT404'; END IF;
    IF a?'dmsRef' THEN ref:=erp_private.chat_dms_ref(a->'dmsRef',true); IF ref IS NULL THEN RAISE EXCEPTION 'Document unavailable' USING ERRCODE='PT404'; END IF; END IF;
@@ -469,10 +642,15 @@ BEGIN
   END IF;
   IF ref IS NOT NULL THEN UPDATE erp_private.chat_messages SET dms_ref=ref WHERE id=m.id; END IF;
  ELSIF op IN('chat.edit','chat.delete') THEN
+  IF op='chat.edit' AND (EXISTS(SELECT FROM erp_private.chat_mentions WHERE message=mid) OR jsonb_array_length(coalesce(a->'mentionProfileIds','[]'))>0) THEN
+   bound:=erp_comm_cost.effect_scan_limit(ticket,cmd,'chat_mentions');
+   SELECT count(*) INTO multiplicity FROM (SELECT FROM erp_private.chat_mentions WHERE message=mid LIMIT bound+1) z;
+   PERFORM erp_comm_cost.claim_effect(ticket,cmd,'chat_mentions',multiplicity+jsonb_array_length(coalesce(a->'mentionProfileIds','[]')));
+  END IF;
   IF src.id IS NULL OR src.deleted_at IS NOT NULL OR src.kind='notice' OR src.revision IS DISTINCT FROM expected THEN RAISE EXCEPTION 'Message revision conflict' USING ERRCODE='PT409'; END IF;
   IF src.sender=p THEN
    IF clock_timestamp()>=src.sent_at+interval '15 minutes' THEN RAISE EXCEPTION 'Message window closed' USING ERRCODE='42501'; END IF;
-  ELSIF op='chat.edit' OR c.kind<>'group' OR NOT(coalesce(c.owner_id=p,false) OR EXISTS(SELECT FROM erp_private.chat_memberships WHERE conversation=c.id AND profile_id=p AND left_at IS NULL AND appointed)) THEN RAISE EXCEPTION 'Moderation denied' USING ERRCODE='42501'; END IF;
+  ELSIF op='chat.edit' OR c.kind<>'group' OR NOT(coalesce(c.owner_id=p,false) OR EXISTS(SELECT FROM erp_private.chat_current_memberships WHERE conversation=c.id AND profile_id=p AND left_at IS NULL AND appointed)) THEN RAISE EXCEPTION 'Moderation denied' USING ERRCODE='42501'; END IF;
   IF op='chat.edit' THEN
    PERFORM erp_private.chat_write_allowed(c,p);
    IF coalesce(length(btrim(body)),0) NOT BETWEEN 1 AND 32000 THEN RAISE EXCEPTION 'Invalid message' USING ERRCODE='22023'; END IF;
@@ -484,7 +662,7 @@ BEGIN
  ELSIF op IN('chat.star','chat.pin','chat.reaction') THEN
   IF flag IS NULL OR src.id IS NULL OR (src.deleted_at IS NOT NULL AND NOT(op='chat.pin' AND flag IS FALSE)) THEN RAISE EXCEPTION 'Message unavailable' USING ERRCODE='PT404'; END IF;
   IF op='chat.pin' THEN
-   IF c.kind<>'group' OR NOT(coalesce(c.owner_id=p,false) OR EXISTS(SELECT FROM erp_private.chat_memberships WHERE conversation=c.id AND profile_id=p AND left_at IS NULL AND appointed)) THEN RAISE EXCEPTION 'Pin denied' USING ERRCODE='42501'; END IF;
+   IF c.kind<>'group' OR NOT(coalesce(c.owner_id=p,false) OR EXISTS(SELECT FROM erp_private.chat_current_memberships WHERE conversation=c.id AND profile_id=p AND left_at IS NULL AND appointed)) THEN RAISE EXCEPTION 'Pin denied' USING ERRCODE='42501'; END IF;
    IF flag THEN INSERT INTO erp_private.chat_pins VALUES(mid) ON CONFLICT DO NOTHING; ELSE DELETE FROM erp_private.chat_pins WHERE message=mid; END IF;
   ELSIF op='chat.star' THEN
    IF flag THEN INSERT INTO erp_private.chat_stars VALUES(p,mid) ON CONFLICT DO NOTHING; ELSE DELETE FROM erp_private.chat_stars WHERE profile_id=p AND message=mid; END IF;
@@ -500,8 +678,12 @@ BEGIN
  ELSIF op='chat.read' THEN
   seqnum:=(a->>'upToSeq')::bigint;
   IF seqnum IS NULL OR seqnum NOT BETWEEN 0 AND c.latest_seq THEN RAISE EXCEPTION 'Invalid read sequence' USING ERRCODE='22023'; END IF;
-  INSERT INTO erp_private.chat_reads(message,profile_id) SELECT s.id,p FROM erp_private.chat_messages s WHERE s.conversation=c.id AND s.seq<=seqnum AND s.sender<>p ON CONFLICT DO NOTHING;
-  change:=erp_private.chat_change(c.id,'read',c.id);
+  SELECT coalesce(max(r.through_seq),0) INTO change FROM erp_private.chat_read_ranges r WHERE r.conversation=c.id AND r.profile_id=p;
+  IF seqnum>change THEN
+   INSERT INTO erp_private.chat_read_ranges(conversation,profile_id,through_seq) VALUES(c.id,p,seqnum);
+   change:=erp_private.chat_change(c.id,'read',c.id);
+  ELSE seqnum:=change; change:=c.change_seq;
+  END IF;
   result:=jsonb_build_object('id',c.id,'conversationId',c.id,'revision',change::text,'readThroughSeq',seqnum::text);
  ELSIF op='chat.uploadBegin' THEN
   basename:=a->>'filename'; mime:=lower(a->>'mime');
@@ -591,7 +773,10 @@ BEGIN
   SELECT worker INTO worker_id FROM erp_private.chat_cleanup_worker w WHERE (u.cleanup_worker IS NULL OR w.worker=u.cleanup_worker)
    AND NOT EXISTS(SELECT FROM erp_private.chat_uploads held WHERE held.cleanup_worker=w.worker AND held.cleanup_phase='attention')
    AND seen_at>clock_timestamp()-interval '2 minutes' AND covered_until>=cutoff
-   AND erp_comm_cost.chat_stage_worker_covers(worker,cutoff) ORDER BY covered_until DESC,worker LIMIT 1;
+   AND (u.stage_permit IS NULL OR EXISTS(SELECT FROM erp_comm_cost.stage_poll_hold h JOIN erp_comm_cost.control_pool cp ON cp.permit_id=h.pool
+    JOIN erp_comm_cost.cleanup_resource cr ON cr.permit_id=h.stage_permit WHERE h.stage_permit=u.stage_permit AND h.until_at>=cutoff
+    AND cp.subject=w.worker::text AND cp.kind='chat_stage_poll' AND cr.endpoint='discard_partial_upload' AND cr.resource_id='erp-chat-media/'||u.id::text AND cr.closed_at IS NULL AND cr.max_attempts>=3))
+   AND erp_comm_cost.chat_stage_worker_covers(worker,cutoff,CASE WHEN u.stage_permit IS NULL THEN 3 ELSE 0 END) ORDER BY covered_until DESC,worker LIMIT 1;
   IF worker_id IS NULL THEN RAISE EXCEPTION 'cleanup_worker_unavailable' USING ERRCODE='PT503'; END IF;
   IF u.stage_permit IS NULL THEN
    PERFORM erp_comm_cost.bind_chat_stage(p_permit,u.id,cutoff);
@@ -610,11 +795,11 @@ BEGIN
  WHERE id=p_upload AND actor=p_actor AND reserving_session=p_session AND stage_permit IS NOT NULL AND state='reserved' AND cleanup_phase IS NULL;
  GET DIAGNOSTICS changed=ROW_COUNT; RETURN jsonb_build_object('queued',changed=1 OR EXISTS(SELECT FROM erp_private.chat_uploads WHERE id=p_upload AND actor=p_actor AND reserving_session=p_session AND cleanup_phase IN('queued','leased')));
 END $$;
-CREATE FUNCTION public.erp_chat_stage_claim(p_worker uuid,p_attempt uuid,p_until timestamptz) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+CREATE FUNCTION public.erp_chat_stage_claim(p_worker uuid,p_boot uuid,p_attempt uuid,p_until timestamptz) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 DECLARE coverage timestamptz; u erp_private.chat_uploads; admission jsonb; now_at timestamptz; deadline timestamptz; result jsonb;
 BEGIN
  IF p_worker IS NULL OR p_attempt IS NULL OR p_until IS NULL OR NOT isfinite(p_until) OR p_until<=clock_timestamp() THEN RAISE EXCEPTION 'Invalid cleanup claim' USING ERRCODE='22023'; END IF;
- coverage:=erp_comm_cost.take_chat_stage_poll(p_worker,p_attempt);
+ coverage:=erp_comm_cost.take_chat_stage_poll(p_worker,p_boot,p_attempt);
  now_at:=clock_timestamp();
  IF coverage IS NULL OR coverage<=now_at THEN RAISE EXCEPTION 'cleanup_poll_unavailable' USING ERRCODE='PT503'; END IF;
  coverage:=least(coverage,p_until);
@@ -653,8 +838,8 @@ BEGIN
  UPDATE erp_private.chat_uploads SET cleanup_phase='queued',cleanup_lease_until=NULL,next_cleanup_at=clock_timestamp()+interval '30 seconds' WHERE id=u.id;
  RETURN jsonb_build_object('confirmed',false);
 END $$;
-REVOKE ALL ON FUNCTION public.erp_chat_stage_open(uuid,bigint,uuid,uuid),public.erp_chat_stage_abort(uuid,bigint,uuid),public.erp_chat_stage_claim(uuid,uuid,timestamptz),public.erp_chat_stage_finish(uuid,uuid,boolean) FROM PUBLIC,anon,authenticated,service_role;
-GRANT EXECUTE ON FUNCTION public.erp_chat_stage_open(uuid,bigint,uuid,uuid),public.erp_chat_stage_abort(uuid,bigint,uuid),public.erp_chat_stage_claim(uuid,uuid,timestamptz),public.erp_chat_stage_finish(uuid,uuid,boolean) TO service_role;
+REVOKE ALL ON FUNCTION public.erp_chat_stage_open(uuid,bigint,uuid,uuid),public.erp_chat_stage_abort(uuid,bigint,uuid),public.erp_chat_stage_claim(uuid,uuid,uuid,timestamptz),public.erp_chat_stage_finish(uuid,uuid,boolean) FROM PUBLIC,anon,authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.erp_chat_stage_open(uuid,bigint,uuid,uuid),public.erp_chat_stage_abort(uuid,bigint,uuid),public.erp_chat_stage_claim(uuid,uuid,uuid,timestamptz),public.erp_chat_stage_finish(uuid,uuid,boolean) TO service_role;
 REVOKE ALL ON FUNCTION erp_private.chat_storage_fence() FROM PUBLIC,anon,authenticated,service_role;
 CREATE FUNCTION public.erp_chat_upload_bind(p_upload uuid,p_permit uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
 <<erp_chat_upload_bind>>
@@ -728,6 +913,8 @@ BEGIN
  fields:=CASE op
  WHEN 'communications.profile' THEN ''
  WHEN 'chat.actor' THEN ''
+ WHEN 'chat.historyCapacity' THEN 'slotCount'
+ WHEN 'chat.scopeReconcile' THEN 'episodeId'
  WHEN 'chat.capabilities' THEN ''
  WHEN 'chat.linkedIdentity' THEN 'employeeId'
  WHEN 'chat.avatarBinding' THEN 'profileId'
@@ -767,7 +954,7 @@ BEGIN
    IF required THEN RAISE EXCEPTION 'Missing required argument' USING ERRCODE='22023'; END IF; CONTINUE;
   END IF;
   v:=a->key;
-  IF jsonb_typeof(v) IS DISTINCT FROM (CASE WHEN key IN('enabled','muted','archived','typing') THEN 'boolean' WHEN key IN('limit','byteLength') THEN 'number' WHEN key IN('memberProfileIds','uploadIds','mentionProfileIds','cursors') THEN 'array' WHEN key='dmsRef' THEN 'object' ELSE 'string' END) THEN RAISE EXCEPTION 'Invalid argument type' USING ERRCODE='22023'; END IF;
+  IF jsonb_typeof(v) IS DISTINCT FROM (CASE WHEN key IN('enabled','muted','archived','typing') THEN 'boolean' WHEN key IN('limit','byteLength','slotCount') THEN 'number' WHEN key IN('memberProfileIds','uploadIds','mentionProfileIds','cursors') THEN 'array' WHEN key='dmsRef' THEN 'object' ELSE 'string' END) THEN RAISE EXCEPTION 'Invalid argument type' USING ERRCODE='22023'; END IF;
   IF key IN('memberProfileIds','mentionProfileIds','uploadIds') AND (jsonb_array_length(v)>4096 OR EXISTS(SELECT FROM jsonb_array_elements(v) e WHERE jsonb_typeof(e)<>'string')) THEN RAISE EXCEPTION 'Invalid selection' USING ERRCODE='22023'; END IF;
  END LOOP;
  IF a-allowed<>'{}' OR (op='chat.personal' AND NOT(a?|ARRAY['muted','archived'])) OR ((a->>'from')::timestamptz>=(a->>'until')::timestamptz) THEN RAISE EXCEPTION 'Invalid chat arguments' USING ERRCODE='22023'; END IF;
@@ -782,21 +969,22 @@ BEGIN
   PERFORM erp_private.chat_take_permit((p_request->>'_budgetPermitId')::uuid,CASE WHEN op IN('chat.pulse','chat.activity') THEN 'realtime' WHEN op IN('chat.uploadBegin','chat.uploadStatus') THEN 'media_upload' ELSE 'chat' END,p,p_request-'_budgetPermitId');
  END IF;
  PERFORM erp_private.chat_validate_args(op,a);
+ IF op IN('chat.historyCapacity','chat.scopeReconcile') THEN RETURN erp_private.chat_history_admin(op,a,(p_request->>'_budgetPermitId')::uuid); END IF;
  IF op='chat.sync' THEN RETURN erp_private.chat_sync(a,p); END IF;
  IF op IN('communications.profile','chat.actor','chat.capabilities','chat.linkedIdentity','chat.avatarBinding','chat.directory','chat.resolveDmsReference','chat.conversation','chat.conversations','chat.members','chat.messages','chat.stars','chat.readers','chat.search','chat.media','chat.uploadStatus','chat.activity') THEN RETURN erp_private.chat_read(op,a,p); END IF;
- IF op IN('chat.direct','chat.groupCreate','chat.groupChange','chat.namedGrant','chat.send','chat.edit','chat.delete','chat.forward','chat.reaction','chat.pin','chat.star','chat.personal','chat.read','chat.uploadBegin','chat.pulse') THEN RETURN erp_private.chat_mutate(op,a,p); END IF;
+ IF op IN('chat.direct','chat.groupCreate','chat.groupChange','chat.namedGrant','chat.send','chat.edit','chat.delete','chat.forward','chat.reaction','chat.pin','chat.star','chat.personal','chat.read','chat.uploadBegin','chat.pulse') THEN RETURN erp_private.chat_mutate(op,a,p,(p_request->>'_budgetPermitId')::uuid); END IF;
  RAISE EXCEPTION 'Unknown chat operation' USING ERRCODE='22023';
 END $$;
 
 DO $privileges$
 DECLARE rel regclass; fn regprocedure;
 BEGIN
- FOR rel IN SELECT c.oid::regclass FROM pg_class c JOIN pg_namespace ns ON ns.oid=c.relnamespace WHERE ns.nspname='erp_private' AND c.relkind='r' AND c.relname=ANY(ARRAY['comms_blocks','comms_policy_versions','comms_policy_acceptances','chat_named_grants','chat_conversations','chat_memberships','chat_scope_facts','chat_messages','chat_uploads','chat_attachments','chat_mentions','chat_reactions','chat_reads','chat_stars','chat_pins','chat_personal','chat_mutations','chat_changes','chat_presence','chat_cleanup_worker','comms_chat_gate']) LOOP
+ FOR rel IN SELECT c.oid::regclass FROM pg_class c JOIN pg_namespace ns ON ns.oid=c.relnamespace WHERE ns.nspname='erp_private' AND c.relkind='r' AND c.relname=ANY(ARRAY['comms_blocks','comms_policy_versions','comms_policy_acceptances','chat_named_grants','chat_conversations','chat_memberships','comms_scope_watch','comms_history_slots','comms_scope_snapshot','comms_scope_source','comms_scope_verified','chat_messages','chat_uploads','chat_attachments','chat_mentions','chat_reactions','chat_read_ranges','chat_stars','chat_pins','chat_personal','chat_mutations','chat_changes','chat_presence','chat_cleanup_worker','comms_chat_gate']) LOOP
   EXECUTE format('ALTER TABLE %s ENABLE ROW LEVEL SECURITY',rel);
   EXECUTE format('REVOKE ALL ON %s FROM PUBLIC,anon,authenticated,service_role',rel);
  END LOOP;
- REVOKE ALL ON SEQUENCE erp_private.chat_memberships_id_seq FROM PUBLIC,anon,authenticated,service_role;
- FOR fn IN SELECT proc.oid::regprocedure FROM pg_proc proc JOIN pg_namespace ns ON ns.oid=proc.pronamespace WHERE ns.nspname='erp_private' AND proc.proname=ANY(ARRAY['comms_actor_id','comms_is_system_admin','comms_covers_scope','comms_has_named_grant','comms_require_terms','comms_lock_pair','comms_pair_blocked','chat_active','chat_member','chat_review','chat_visible','chat_scope_capture','chat_capture_membership','chat_capture_auth_change','chat_scope_fence','chat_change','chat_post','chat_write_allowed','chat_linked_photo','chat_work','chat_dms_ref','chat_attachment_json','chat_message_json','chat_conversation_json','chat_page','chat_read','chat_mentions_set','chat_group_change','chat_mutate','chat_search_rows','chat_mimes','chat_sync','chat_validate_args','chat_take_permit']) LOOP
+ REVOKE ALL ON SEQUENCE erp_private.chat_memberships_id_seq,erp_private.comms_history_slots_id_seq,erp_private.comms_history_order FROM PUBLIC,anon,authenticated,service_role;
+ FOR fn IN SELECT proc.oid::regprocedure FROM pg_proc proc JOIN pg_namespace ns ON ns.oid=proc.pronamespace WHERE ns.nspname='erp_private' AND proc.proname=ANY(ARRAY['comms_actor_id','comms_is_system_admin','comms_covers_scope','comms_has_named_grant','comms_require_terms','comms_lock_pair','comms_pair_blocked','chat_active','chat_member','chat_review','chat_visible','chat_read_at','chat_close_departure','chat_fund_join','chat_history_admin','comms_scope_anchor','comms_activation_generation','comms_track_profile','comms_source_value','comms_record_source','comms_slot_authorized','comms_seed_episode','comms_verify_state','comms_episode_end','comms_episode_covers','comms_reconcile_episode','chat_capture_membership','chat_capture_auth_change','chat_scope_fence','chat_change','chat_post','chat_write_allowed','chat_linked_photo','chat_work','chat_dms_ref','chat_attachment_json','chat_message_json','chat_conversation_json','chat_page','chat_read','chat_mentions_set','chat_group_change','chat_mutate','chat_search_rows','chat_mimes','chat_sync','chat_validate_args','chat_take_permit']) LOOP
   EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,anon,authenticated,service_role',fn);
  END LOOP;
 END $privileges$;

@@ -61,7 +61,7 @@ def run():
         try:
             fn()
         except subprocess.CalledProcessError as error:
-            assert any(s in error.stderr for s in ["unavailable","denied","required","permission","conflict","window","Invalid size","unfunded","Retained media"]),error.stderr
+            assert any(s in error.stderr for s in ["unavailable","denied","required","permission","conflict","window","Invalid size","unfunded","Retained media","Invalid","Historical source gap","Historical administration","Insufficient history work capacity"]),error.stderr
         else:
             raise AssertionError("Expected denial")
 
@@ -143,6 +143,7 @@ def run():
         binding=rpc("authenticated",2,f"public.erp_chat_upload_bind('{upload}')","media_upload","chat.uploadBind",{"uploadId":upload})
         denied(lambda:rpc("authenticated",3,f"public.erp_chat_upload_bind('{upload}')","media_upload","chat.uploadBind",{"uploadId":upload}))
         worker=str(uuid.uuid4())
+        boot=str(uuid.uuid4())
         def stage_open(item, fund=True):
             args={"uploadId":item,"actorId":"2","sessionId":binding["sessionId"]}
             cmd={"op":"chat.stageOpen","args":args}
@@ -153,10 +154,10 @@ def run():
         def cleanup_claim(horizon="2 days"):
             # Move the disposable test clock between polls without sleeping.
             sql("UPDATE erp_comm_cost.control_pool SET last_poll=now()-interval '1 minute'")
-            return json.loads(sql(f"SET ROLE service_role; SELECT public.erp_chat_stage_claim('{worker}','{uuid.uuid4()}',now()+interval '{horizon}')"))["job"]
+            return json.loads(sql(f"SET ROLE service_role; SELECT public.erp_chat_stage_claim('{worker}','{boot}','{uuid.uuid4()}',now()+interval '{horizon}')"))["job"]
         denied(lambda:stage_open(upload))
-        denied(lambda:sql(f"SET ROLE service_role; SELECT public.erp_chat_stage_claim('{worker}','{uuid.uuid4()}',now()+interval '2 days')"))
-        sql(f"SELECT public.fixture_chat_worker('{worker}')")
+        denied(lambda:sql(f"SET ROLE service_role; SELECT public.erp_chat_stage_claim('{worker}','{boot}','{uuid.uuid4()}',now()+interval '2 days')"))
+        sql(f"SELECT public.fixture_chat_worker('{worker}','{boot}')")
         assert cleanup_claim("1 hour") is None
         denied(lambda:stage_open(upload))  # paid pool outlives the configured worker cutoff
         assert cleanup_claim() is None
@@ -292,14 +293,21 @@ def run():
         race_cmd={"op":"chat.send","args":{"clientMutationId":str(uuid.uuid4()),"conversationId":c,"uploadIds":[race_item]}}
         race_cmd["_budgetPermitId"]=permit(2,"chat",race_cmd)
         race_json=json.dumps(race_cmd)
-        sql(f"UPDATE erp_private.chat_uploads SET stage_expires_at=now()+interval '1 second',write_lease_until=now() WHERE id='{race_item}'")
+        sql(f"UPDATE erp_private.chat_uploads SET stage_expires_at=now()+interval '12 seconds',write_lease_until=now() WHERE id='{race_item}'")
         with concurrent.futures.ThreadPoolExecutor() as pool:
-            sending=pool.submit(sql,f"BEGIN;SET ROLE authenticated;SET test.actor='2';SELECT public.erp_chat_v1('{race_json}'); SELECT pg_advisory_xact_lock(77111373);SELECT pg_sleep(2);COMMIT;")
-            for _ in range(10):
-                if sql("SELECT EXISTS(SELECT FROM pg_locks WHERE locktype='advisory' AND objid=77111373)")=="t":break
-            else: raise AssertionError("Send did not acquire fixture barrier")
+            sending=pool.submit(sql,f"BEGIN;SET ROLE authenticated;SET test.actor='2';SELECT public.erp_chat_v1('{race_json}'); SELECT pg_advisory_xact_lock(77111373);SELECT pg_sleep(18);COMMIT;")
             import time
-            time.sleep(1.05)
+            wait_until=time.monotonic()+12
+            while time.monotonic()<wait_until:
+                if sending.done():
+                    sending.result()
+                    raise AssertionError("Transaction finished before race observation")
+                if sql("SELECT EXISTS(SELECT FROM pg_locks WHERE locktype='advisory' AND objid=77111373)")=="t":
+                    break
+            else:
+                raise AssertionError("Send did not acquire fixture barrier")
+            seconds=float(sql(f"SELECT greatest(0,extract(epoch FROM stage_expires_at-clock_timestamp())) FROM erp_private.chat_uploads WHERE id='{race_item}'"))
+            time.sleep(seconds+0.1)
             assert cleanup_claim() is None
             sending.result()
         assert sql(f"SELECT state FROM erp_private.chat_uploads WHERE id='{race_item}'")=="attached"
@@ -337,6 +345,115 @@ def run():
         assert cleanup_claim() is None
         sql("UPDATE erp_comm_cost.control_pool SET used=max_actions-3001 WHERE kind='chat_stage_poll'")
         denied(lambda:stage_open(quota_item))  # fewer than three unpledged cleanup polls remain
+        # Bounded read receipt writes preserve the original first-observed time for every prefix.
+        sql(f"UPDATE erp_private.chat_conversations SET latest_seq=115000 WHERE id='{c}'")
+        before=int(sql(f"SELECT count(*) FROM erp_private.chat_read_ranges WHERE conversation='{c}' AND profile_id=3"))
+        initial=sql(f"SELECT erp_private.chat_read_at('{c}',1,3)")
+        for marker in ["115000","115000","100001"]:
+            assert mutation(3,"read",conversationId=c,upToSeq=marker)["readThroughSeq"]=="115000"
+        assert int(sql(f"SELECT count(*) FROM erp_private.chat_read_ranges WHERE conversation='{c}' AND profile_id=3"))==before+1
+        assert sql(f"SELECT erp_private.chat_read_at('{c}',1,3)")==initial
+        assert sql(f"SELECT erp_private.chat_read_at('{c}',110000,3)")!=initial
+        print("PASS 15,000-message read, retries and regression preserve readAt with one new range")
+
+        # Reject an underfunded group admission before a single episode/notice is persisted.
+        create={"op":"chat.groupCreate","args":{"clientMutationId":str(uuid.uuid4()),"name":"Unfunded group","memberProfileIds":["3","5","6"]}}
+        token=permit(2,"chat",create)
+        sql(f"UPDATE erp_comm_cost.unit_hold h SET units=2 FROM erp_comm_cost.capacity x WHERE h.permit_id='{token}' AND h.capacity_id=x.id AND x.unit='effect_chat_group_members_items'")
+        denied(lambda:raw_request(2,{**create,"_budgetPermitId":token}))
+        assert sql("SELECT count(*) FROM erp_private.chat_conversations WHERE name='Unfunded group'")=="0"
+        assert sql(f"SELECT count(*) FROM erp_comm_cost.effect_claim WHERE permit_id='{token}'")=="0"
+        assert sql("SELECT EXISTS(SELECT FROM erp_comm_cost.effect_claim WHERE effect='chat_attachments' AND items=1)")=="t"
+        create["args"]["clientMutationId"]=str(uuid.uuid4())
+        token=permit(2,"chat",create)
+        sql(f"UPDATE erp_comm_cost.unit_hold h SET units=4 FROM erp_comm_cost.capacity x WHERE h.permit_id='{token}' AND h.capacity_id=x.id AND x.unit='effect_chat_scope_facts_items'")
+        denied(lambda:raw_request(2,{**create,"_budgetPermitId":token}))
+        assert sql("SELECT count(*) FROM erp_private.chat_conversations WHERE name='Unfunded group'")=="0"
+        sql("INSERT INTO public.user_profiles(id,status,must_change_password,owner_company_id,branch_id,full_name) SELECT i,'active',false,10,11,'Member '||i FROM generate_series(10001,14096) i")
+        bulk_args={"name":"Funded maximum batch","clientMutationId":str(uuid.uuid4()),"memberProfileIds":[str(i) for i in range(10001,14097)]}
+        bulk={"op":"chat.groupCreate","args":bulk_args}
+        token=permit(2,"chat",bulk)
+        large=json.loads(raw_request(2,{**bulk,"_budgetPermitId":token}))
+        assert sql(f"SELECT count(*) FROM erp_private.chat_memberships WHERE conversation='{large['id']}'")=="4097"
+        assert sql(f"SELECT count(*) FROM erp_private.chat_messages WHERE conversation='{large['id']}' AND kind='notice'")=="4097"
+        assert sql(f"SELECT items FROM erp_comm_cost.effect_claim WHERE permit_id='{token}' AND effect='chat_group_members'")=="4097"
+        assert sql(f"SELECT items FROM erp_comm_cost.effect_claim WHERE permit_id='{token}' AND effect='chat_scope_facts'")=="4098"
+        print("PASS 4096 requested group members plus creator physically covered, 4097 notices and 4098 raw sources")
+        print("PASS member, source snapshot and attachment physical effects bound before writes")
+
+        # Parallel identity change waits for the funded shared membership snapshot fence.
+        def lock_group():
+            return sql("BEGIN; SELECT pg_advisory_xact_lock_shared(hashtextextended('comms-scope-v1',0)); SELECT pg_advisory_xact_lock(72300491); SELECT pg_sleep(1.5); COMMIT")
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            fence=pool.submit(lock_group)
+            for _ in range(20):
+                if sql("SELECT EXISTS(SELECT FROM pg_locks WHERE locktype='advisory' AND objid=72300491)")=="t":
+                    break
+            else:
+                raise AssertionError("Missing snapshot fence")
+            changing=pool.submit(sql,"UPDATE public.user_profiles SET branch_id=12 WHERE id=14096")
+            assert not changing.done()
+            fence.result()
+            changing.result()
+        assert sql("SELECT revision FROM erp_private.comms_scope_watch WHERE profile_id=14096")=="1"
+
+        group=mutation(2,"groupCreate",name="Generation test",memberProfileIds=["3"])
+        group_id=group["id"]
+        # Reconcile recorded transient assignments and role toggles using a complete funded source journal.
+        denied(lambda:request(4,"historyCapacity",slotCount=4))
+        for wrong in ["4",4097,0,1.25]:
+            denied(lambda:request(1,"historyCapacity",slotCount=wrong))
+        budget_command={"op":"chat.historyCapacity","args":{"slotCount":20}}
+        token=permit(1,"chat",budget_command)
+        denied(lambda:raw_request(1,{"op":"chat.historyCapacity","args":{"slotCount":21},"_budgetPermitId":token}))
+        raw_request(1,{**budget_command,"_budgetPermitId":token})
+        ep=sql(f"SELECT id FROM erp_private.chat_memberships WHERE conversation='{c}' AND profile_id=2")
+        peer_ep=sql(f"SELECT id FROM erp_private.chat_memberships WHERE conversation='{c}' AND profile_id=3")
+        assert request(5,"conversation",conversationId=c,mode="review")["id"]==c
+        sql("INSERT INTO public.roles VALUES(51,'temporary',false,false); INSERT INTO public.user_roles(user_profile_id,role_id,owner_company_id,branch_id,is_active) VALUES(2,51,10,12,true)")
+        sql("UPDATE public.roles SET is_active=true WHERE id=51; UPDATE public.roles SET is_active=false WHERE id=51; DELETE FROM public.user_roles WHERE role_id=51")
+        denied(lambda:request(5,"conversation",conversationId=c,mode="review"))
+        denied(lambda:request(4,"scopeReconcile",episodeId=ep))
+        request(1,"scopeReconcile",episodeId=ep)
+        request(1,"scopeReconcile",episodeId=peer_ep)
+        denied(lambda:request(5,"conversation",conversationId=c,mode="review"))
+        sql("INSERT INTO public.user_roles(user_profile_id,role_id,owner_company_id,branch_id,is_active) VALUES(5,2,10,12,true)")
+        assert request(5,"conversation",conversationId=c,mode="review")["id"]==c
+        assert sql("SELECT count(*) FROM erp_private.comms_history_slots WHERE subject IS NOT NULL")=="4"
+
+        # Baseline ERP still commits unmetered when the finite history allotment expires or is paused.
+        sql("INSERT INTO erp_comm_cost.pause(scope,feature,reason) VALUES('communications','chat','synthetic pause')")
+        sql("UPDATE public.user_profiles SET branch_id=12 WHERE id=2; UPDATE public.user_profiles SET branch_id=11 WHERE id=2")
+        dirty=sql("SELECT revision FROM erp_private.comms_scope_watch WHERE profile_id=2")
+        sql("UPDATE public.user_profiles SET branch_id=12 WHERE id=2; UPDATE public.user_profiles SET branch_id=11 WHERE id=2")
+        assert dirty==sql("SELECT revision FROM erp_private.comms_scope_watch WHERE profile_id=2")
+        assert sql("SELECT count(*) FROM erp_private.comms_history_slots WHERE subject IS NOT NULL")=="4"
+        sql("DELETE FROM erp_comm_cost.pause WHERE scope='communications' AND feature='chat'")
+        assert request(1,"scopeReconcile",episodeId=ep)["history"]=="held"
+        denied(lambda:request(5,"conversation",conversationId=c,mode="review"))
+        assert request(1,"conversation",conversationId=c,mode="review")["id"]==c
+        # Reactivation cannot restore an old group owner or affected group memberships.
+        row_count=sql("SELECT count(*) FROM erp_private.chat_messages")
+        sql("UPDATE public.user_profiles SET status='inactive' WHERE id=2; UPDATE public.user_profiles SET status='active' WHERE id=2")
+        assert row_count==sql("SELECT count(*) FROM erp_private.chat_messages")
+        denied(lambda:request(2,"conversation",conversationId=group_id,mode="participant"))
+        assert not request(3,"conversation",conversationId=group_id,mode="participant").get("ownerProfileId")
+        assert request(2,"conversation",conversationId=c,mode="participant")["id"]==c
+        old_group_ep=sql(f"SELECT id FROM erp_private.chat_memberships WHERE conversation='{group_id}' AND profile_id=2")
+        maintenance={"op":"chat.scopeReconcile","args":{"episodeId":old_group_ep}}
+        ticket=permit(1,"chat",maintenance)
+        sql(f"DELETE FROM erp_comm_cost.effect_limit WHERE operation_id='{ticket}' AND effect='scope_reconcile_work'")
+        status=json.loads(raw_request(1,{**maintenance,"_budgetPermitId":ticket}))
+        assert status["history"]=="held" and status["reason"]=="history_work_unfunded" and status["departureRecorded"]
+        assert request(1,"scopeReconcile",episodeId=old_group_ep)["reason"]=="missing_historical_source"
+        assert not request(1,"scopeReconcile",episodeId=old_group_ep)["departureRecorded"]
+        assert request(3,"messages",conversationId=group_id,mode="participant")["items"][0]["body"].endswith("left the group")
+        group=request(3,"conversation",conversationId=group_id,mode="participant")
+        group_change(1,"replaceOwner",3)
+        group_change(3,"add",2)
+        assert not request(2,"conversation",conversationId=group_id,mode="participant")["canManageAdmins"]
+        denied(lambda:request(5,"conversation",conversationId=c,mode="review"))
+        print("PASS exact historical replay, inactive role transition, fail-closed missing evidence, one dirty invalidation, group generation and rejoin")
         # Terms rotation denies new sends without erasing permitted history.
         sql("UPDATE erp_private.comms_policy_versions SET is_current=false")
         denied(lambda:mutation(2,"send",conversationId=c,body="Requires current terms"))

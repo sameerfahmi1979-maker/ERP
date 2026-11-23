@@ -99,7 +99,7 @@ def run():
         unknown=str(uuid.uuid4())
         internal={"erp_chat_stage_open":{"p_upload":unknown,"p_actor":2,"p_session":unknown,"p_permit":unknown},
                   "erp_chat_stage_abort":{"p_upload":unknown,"p_actor":2,"p_session":unknown},
-                  "erp_chat_stage_claim":{"p_worker":unknown,"p_attempt":unknown,"p_until":"2099-01-01T00:00:00Z"},
+                  "erp_chat_stage_claim":{"p_worker":unknown,"p_boot":unknown,"p_attempt":unknown,"p_until":"2099-01-01T00:00:00Z"},
                   "erp_chat_stage_finish":{"p_upload":unknown,"p_attempt":unknown,"p_absent":True},
                   "erp_chat_upload_verified":{"p_upload":unknown,"p_actor":2,"p_session":unknown,"p_size":1,"p_mime":"audio/ogg","p_sha256":"a"*64,"p_permit":unknown}}
         for name,params in internal.items():

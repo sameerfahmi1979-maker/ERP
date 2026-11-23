@@ -459,6 +459,9 @@ export async function sendAssistantMessage(
   })) return { success: false, error: "Source changed before conversation save. Reopen the current record.", code: "FORBIDDEN" };
   const followUp = turnResult.guidance?.subject;
   const subjectBinding = followUp ? await createAssistantHistoryBinding(ctx, sessionId, [followUp]) : null;
+  if (followUp && !subjectBinding && !hasSameAssistantAuthority(ctx, await getAuthContext())) {
+    return { success: false, error: "Conversation access changed. Reopen the session to continue.", code: "FORBIDDEN" };
+  }
   // Append the pair atomically after its actual source binding is known.
   const saved = await supabase.from("erp_ai_assistant_messages").insert([{
     session_id: sessionId, role: "user", message_text: sanitizeForStorage(userMessage), output_type: "text",

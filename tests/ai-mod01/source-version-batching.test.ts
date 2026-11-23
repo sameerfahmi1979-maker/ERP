@@ -12,6 +12,7 @@ const state = vi.hoisted(() => ({
   auth: vi.fn(),
   engine: vi.fn(),
   audit: vi.fn(),
+  finish: vi.fn(),
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => state.db }));
 vi.mock("@/lib/rbac/check", () => ({
@@ -19,7 +20,7 @@ vi.mock("@/lib/rbac/check", () => ({
   hasPermission: (ctx: AuthContext, code: string) => ctx.permissionCodes.includes(code),
 }));
 vi.mock("@/server/actions/audit", () => ({ logAudit: state.audit }));
-vi.mock("@/server/ai/quality-turn", () => ({ beginQualityTurn: async () => null, finishQualityTurn: async () => true }));
+vi.mock("@/server/ai/quality-turn", () => ({ beginQualityTurn: async () => null, finishQualityTurn: state.finish }));
 vi.mock("@/lib/ai/common/assistant/assistant-engine", () => ({ MAX_USER_MESSAGE_LENGTH: 1000, runAssistantTurn: state.engine }));
 
 const sources = {
@@ -154,7 +155,11 @@ beforeEach(() => {
   } as AuthContext;
   state.auth.mockReset().mockImplementation(async () => state.ctx);
   state.engine.mockReset();
-  state.audit.mockReset();
+  state.audit.mockReset().mockImplementation(async () => { events.push("send audit"); });
+  state.finish.mockReset().mockImplementation(async () => {
+    events.push("finished turn");
+    return true;
+  });
   state.db = withDocumentReadPolicy(createSdkClient("https://assistant.synthetic.invalid", "fixture-only", {
     global: { fetch: fetchFixture },
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -291,15 +296,44 @@ describe("Assistant authorization through the pinned PostgREST SDK", () => {
     const publicationMs = performance.now() - started;
     expect(result.data?.messageId).toBe(71);
     expect(inserts[0][1].safe_metadata_json).toMatchObject({
-      ai_mod01_binding: savedBinding(refs), ai_mod03_subject_binding: savedBinding([refs[0]]),
+      ai_mod01_binding: savedBinding(refs), ai_mod03_subject: refs[0], ai_mod03_subject_binding: savedBinding([refs[0]]),
     });
     if (process.env.ASSISTANT_SCOPE_BENCH === "1") {
       console.log(JSON.stringify({ sample: "publication", auth: state.auth.mock.calls.length, requests: calls.length, rows: calls.reduce((sum, call) => sum + call.rows, 0), bytes: calls.reduce((sum, call) => sum + call.bytes, 0), ms: publicationMs }));
     }
     expect(calls.map(call => call.ids)).toEqual([refs.map(ref => ref.entityId), [refs[0].entityId]]);
-    expect(state.auth).toHaveBeenCalledTimes(3);
-    expect(events).toEqual(["session fence", "model returned", "session fence", "source owner_companies", "source owner_companies", "stored pair"]);
+    expect(state.auth).toHaveBeenCalledTimes(5);
+    expect(events).toEqual([
+      "session fence", "model returned", "session fence", "source owner_companies", "source owner_companies",
+      "stored pair", "finished turn", "send audit",
+    ]);
     expect(state.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "assistant_message_sent" }));
+  });
+
+  it.each(["source batch", "follow-up subject"])("prevents append after assignment revocation during the %s", async stage => {
+    const refs = [reference("company", 1), reference("company", 2)];
+    refs.forEach(ref => seed(ref));
+    state.engine.mockImplementation(async () => {
+      const result = modelResult(refs);
+      return stage === "source batch"
+        ? { ...result, guidance: { ...result.guidance, subject: undefined } }
+        : result;
+    });
+    const revokeAfterRead = stage === "source batch" ? 1 : 2;
+    state.finish.mockResolvedValue(false);
+    onSourceRead = () => {
+      if (calls.length === revokeAfterRead) {
+        state.ctx = { ...state.ctx!, roleAssignments: state.ctx!.roleAssignments?.filter(assignment => assignment.roleId !== 1) };
+      }
+    };
+
+    const result = await sendAssistantMessage({ sessionId: 7, userMessage: "Summarize these records" });
+    expect(calls.map(call => call.rows)).toEqual(stage === "source batch" ? [2] : [2, 1]);
+    expect(inserts).toEqual([]);
+    expect(result).toMatchObject({ success: false, code: "FORBIDDEN" });
+    expect(result.data).toBeUndefined();
+    expect(state.finish).not.toHaveBeenCalled();
+    expect(state.audit).not.toHaveBeenCalled();
   });
 
   it.each(["role revocation", "assignment revocation", "scope relink", "version change", "document revocation", "session revocation"])("stops publication after %s during a model turn", async change => {

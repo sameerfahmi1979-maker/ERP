@@ -9,7 +9,11 @@ vi.mock("@/lib/supabase/server", () => ({createClient: async () => {
   return {from: (table: string) => {
     const call: Call = {table, methods: []}; state.calls.push(call);
     const builder: Record<string, unknown> = {then: (resolve: (data: unknown) => unknown) => {
-      if (state.fault === table) return Promise.resolve({data: null, count: null, error: {message: "SYNTHETIC_PRIVATE_FAILURE"}}).then(resolve);
+      const extendedAttendance = table === "employee_attendance_daily_summary"
+        && String(call.methods.find(m => m[0] === "select")?.[1]).includes("is_missing_punch");
+      if (state.fault === table || state.fault === "attendance-extended-projection" && extendedAttendance) {
+        return Promise.resolve({data: null, count: null, error: {message: "SYNTHETIC_PRIVATE_FAILURE"}}).then(resolve);
+      }
       let rows = [...(state.rows[table] ?? [])];
       for (const [method, key, value] of call.methods) {
         const k = String(key);
@@ -37,6 +41,9 @@ vi.mock("@/lib/supabase/server", () => ({createClient: async () => {
       if (state.cap && table === "employees") rows = rows.slice(0, 20);
       if (state.duplicate && table === "employees" && Number(range?.[1]) > 0) rows[0] = {...state.rows.employees[0]};
       if (state.malformed === table) rows = [{id: "bad"}];
+      if (state.malformed === "attendance-extended-projection" && extendedAttendance) {
+        rows = rows.map(row => ({...row, attendance_date: null, is_missing_punch: "malformed"}));
+      }
       if (String(call.methods.find(m=>m[0]==='select')?.[1]).includes('id:revision_id')) rows=rows.map(r=>({...r,id:r.revision_id}));
       const head = (call.methods.find(m => m[0] === "select")?.[2] as {head?: boolean})?.head;
       return Promise.resolve({data: head ? null : rows, count, error: null}).then(resolve);
@@ -82,6 +89,53 @@ it('counts people distinctly, does not label missing attendance absent, and coun
  expect(result.data?.metrics.leave_today).toMatchObject({value:1,items:[{reference:'SYN-2'}]});
  expect(result.data?.metrics.attendance_missing.items[0].detail).toBe('Attendance not entered');
 });
+it.each([1, 200, 201, 1107, 2000])('reads one authorized date band per employee slice for four attendance metrics (%i employees)', async size => {
+  state.rows.employees = Array.from({length:size},(_,i)=>employee(i+1));
+  state.rows.employee_attendance_daily_summary = [
+    ...Array.from({length:size},(_,i)=>({
+      id:size-i, employee_id:i+1, attendance_date:'2026-10-04',
+      approval_status:i%2===0?'pending':'approved', is_missing_punch:i%3===0,
+      notes:'PRIVATE ATTENDANCE NOTE',
+    })),
+    {id:size+1,employee_id:1,attendance_date:'2026-10-03',approval_status:'pending',is_missing_punch:true},
+  ];
+  const overview = await read({mode:'overview'});
+  expect(overview.data?.metrics.attendance_entered).toMatchObject({status:'ready',value:size});
+  expect(overview.data?.metrics.attendance_missing).toMatchObject({status:'ready',value:0});
+  expect(overview.data?.metrics.attendance_pending).toMatchObject({status:'ready',value:Math.ceil(size/2)});
+  expect(overview.data?.metrics.missing_punches).toMatchObject({status:'ready',value:Math.ceil(size/3)});
+  expect(JSON.stringify(overview)).not.toContain('PRIVATE ATTENDANCE NOTE');
+  const calls=state.calls.filter(c=>c.table==='employee_attendance_daily_summary');
+  expect(calls).toHaveLength(Math.ceil(size/200));
+  expect(calls.every(c=>c.methods.some(m=>m[0]==='eq'&&m[1]==='attendance_date'&&m[2]==='2026-10-04'))).toBe(true);
+  expect(calls.every(c=>c.methods.some(m=>m[0]==='in'&&m[1]==='employee_id'&&(m[2] as unknown[]).length<=200))).toBe(true);
+  for(const metric of ['attendance_pending','missing_punches']) {
+    const drilldown=await read({mode:'records',metric});
+    expect(overview.data?.metrics[metric].items).toEqual(drilldown.data?.metrics[metric].items.slice(0,5));
+  }
+});
+it.each(['fault','malformed'] as const)('keeps independently available attendance metrics on shared projection %s',async(kind)=>{
+  state[kind]='attendance-extended-projection';
+  state.rows.employee_attendance_daily_summary=[{id:1,employee_id:1,attendance_date:'2026-10-04',approval_status:'pending',is_missing_punch:true}];
+  const overview=await read({mode:'overview'});
+  expect(overview.data?.metrics.attendance_entered).toMatchObject({status:'ready',value:1});
+  expect(overview.data?.metrics.attendance_missing).toMatchObject({status:'ready',value:0});
+  expect(overview.data?.metrics.attendance_pending).toMatchObject({status:'ready',value:1});
+  expect(overview.data?.metrics.missing_punches).toMatchObject({status:'ready',value:1});
+  expect(state.calls.filter(c=>c.table==='employee_attendance_daily_summary')).toHaveLength(4);
+});
+it('does not unmask employee labels for an attendance viewer with three capabilities',async()=>{
+  const permissions=['hr.dashboard.view','hr.attendance.view','hr.leave.view'];
+  state.context.permissionCodes=permissions;
+  state.context.globalPermissionCodes=permissions;
+  state.context.roleAssignments=[{roleId:1,roleCode:'synthetic',ownerCompanyId:null,branchId:null,permissionCodes:permissions}];
+  state.rows.employee_attendance_daily_summary=[{id:1,employee_id:1,attendance_date:'2026-10-04',approval_status:'pending',is_missing_punch:true}];
+  const overview=await read({mode:'overview'});
+  expect(overview.data?.metrics.workforce.status).toBe('restricted');
+  for(const key of ['attendance_entered','attendance_pending','missing_punches']) {
+    expect(overview.data?.metrics[key]).toMatchObject({status:'ready',value:1,items:[{label:'Employee record',reference:'Employee'}]});
+  }
+});
 it('uses selected Dubai calendar date and nonoverlapping expired / expiring windows',async()=>{
  state.rows.employee_identity_documents=['2026-10-03','2026-10-04','2026-10-11','2026-10-12'].map((expiry_date,i)=>({id:i+1,employee_id:1,expiry_date}));
  const result=await read({mode:'overview',scope:{date:'2026-10-04',expiryDays:'7'}});
@@ -115,6 +169,9 @@ it('cannot infer missing records through combined disjoint payroll/banking or at
  state.context.globalPermissionCodes=[];
  state.context.roleAssignments=[{roleId:1,roleCode:'one',ownerCompanyId:1,branchId:null,permissionCodes:['hr.payroll.view']},{roleId:2,roleCode:'two',ownerCompanyId:2,branchId:null,permissionCodes:['hr.banking.view','hr.attendance.view']}];
  const result=await read({mode:'overview'});expect(result.data?.metrics.wps_ready.status).toBe('unavailable');expect(result.data?.metrics.attendance_missing.status).toBe('unavailable');
+ const attendance=state.calls.filter(c=>c.table==='employee_attendance_daily_summary');
+ expect(attendance).toHaveLength(2);
+ expect(attendance.every(c=>c.methods.some(m=>m[0]==='eq'&&['approval_status','is_missing_punch'].includes(String(m[1]))))).toBe(true);
  expect(state.calls.some(c=>c.table==='f12_payroll_readiness_facts')).toBe(false);
 });
 it('filters recruitment through verified requisitions and clearance through scoped employees',async()=>{

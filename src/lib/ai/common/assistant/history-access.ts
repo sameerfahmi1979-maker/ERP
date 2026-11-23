@@ -47,6 +47,7 @@ export async function createAssistantHistoryBinding(ctx: AuthContext, sessionId:
       if (sourceVersion === undefined) return null;
       sources.push({ reference: ref, sourceVersion });
     }
+    if (!hasSameAssistantAuthority(current, await getAuthContext())) return null;
   }
   return { version: 1, ownerProfileId: ctx.profile.id, sessionId, authorityFingerprint: assistantAuthorityFingerprint(ctx), sources };
 }

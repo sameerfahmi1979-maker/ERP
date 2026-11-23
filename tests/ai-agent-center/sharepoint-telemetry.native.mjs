@@ -161,3 +161,4 @@ assert.equal(sql(`select has_function_privilege('authenticated','erp_private.rec
   or has_function_privilege('service_role','erp_private.record_agent_center_sharepoint_worker_cycle(uuid,bigint,uuid,bigint,boolean)','EXECUTE')
   or has_table_privilege('${runtime}','erp_private.agent_center_sharepoint_worker_heartbeats','UPDATE');`), "f");
 console.log("PASSED normal worker, authoritative scoped progress and fail-closed telemetry on PostgreSQL");
+export { runWorker, snapshot, sql };

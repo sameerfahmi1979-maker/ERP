@@ -42,4 +42,6 @@ const end = discovery.lastIndexOf("commit;");
 assert.ok(start > 0 && end > start, "Expected the checked-in native discovery commit function");
 run(psql, args, { input: discovery.slice(start, end) });
 run(psql, [...args, "-f", file(held + "20261123120000_dms_agent_center_sharepoint_worker_telemetry.sql")]);
-console.log(run(process.execPath, [file("sharepoint-telemetry.native.mjs"), psql, port, worker]));
+run(psql, [...args, "-f", file("sharepoint-br1-telemetry-fixture.native.sql")]);
+run(psql, [...args, "-f", file(held + "20261123131500_dms_agent_center_br1_sharepoint_telemetry.sql")]);
+console.log(run(process.execPath, [file("sharepoint-br1-telemetry.native.mjs"), psql, port, worker]));

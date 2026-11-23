@@ -1,9 +1,13 @@
 "use server";
 import {discardRetainedIntake} from '@/server/dms-intake-discard';
 import {recoverNumberedAiApproval} from '@/server/dms-ai-approval-recovery';
-import {verifyAndAttestIntakeSource} from '@/server/dms-intake-source-attestation';
+import {prepareIntakeSource,verifyAndAttestIntakeSource} from '@/server/dms-intake-source-attestation';
 import {reviewedCall} from '@/server/dms-reviewed-updates';
 import {rerunRetainedIntakeMetadata} from "@/server/dms-intake-rereview";
+import { ALGT_DMS_PREVIEW_COMPANY, applyIntakeTrainingReview, trainingType, verifyTrainingOriginal } from "@/server/dms-training-profile-review";
+import { DMS_CONFIDENTIALITY_LEVELS } from "@/features/dms/documents/dms-document-constants";
+import { approvedProfileMissingRequiredFields, approvedProfilePreviewEnabled, applyIntakeApprovedProfile, mergeApprovedProfileFields, retainSpecialistProof, SPECIALIST_TRAINING_FIELDS, verifyApprovedProfile } from "@/server/dms-approved-profile-review";
+import { applyIntakeCicpaWording, CICPA_COMPANY_NUMBER_FIELD, cicpaWordingPreviewEnabled, isCicpaPassType } from "@/server/dms-cicpa-wording-review";
 import {prepareIntakeOutput} from '@/lib/dms/preparation/intake';
 import {checkDocumentConfidentialityAccess} from '@/lib/dms/document-access';
 import {dmsTraceId, traceOperation, traceSpan} from '@/lib/performance/trace';
@@ -184,6 +188,7 @@ export type IntakeSessionData = {
   discarded_at: string | null;
   discard_reason: string | null;
   uploaded_at: string;
+  updated_at?: string;
   ai_result?: IntakeAiResultRow | null;
   draft_values?: IntakeReviewValueRow[] | null;
   draft_snapshot?: string | null;
@@ -679,8 +684,8 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
       }
     }
 
-    const suggestedTypeId = typeResolution.typeId;
-    const suggestedTypeCode = typeResolution.typeCode;
+    let suggestedTypeId = typeResolution.typeId;
+    let suggestedTypeCode = typeResolution.typeCode;
 
     if (typeResolution.source !== "ai" && typeResolution.typeCode) {
       aiOutput.classification.suggestedTypeCode = typeResolution.typeCode;
@@ -778,16 +783,84 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
     aiOutput.classification.suggestedTypeCode = suggestedTypeCode;
     aiOutput.classification.suggestedTypeId = suggestedTypeId;
 
+    let approvedReview = verifiedSource && approvedProfilePreviewEnabled(verifiedSource.plan.source.company)
+      ? await verifyApprovedProfile(verifiedSource.proof, firstSuggestion, null,
+        aiOutput.extraction.fields.map(field => ({ code: field.fieldCode, value: field.value })))
+      : undefined;
+    let registeredProfileType: { id: number; code: string } | null = null;
+    if (approvedReview?.state === "verified") {
+      const code = approvedReview.typeCode;
+      const ranked = typeRows.find(row => row.type_code === code);
+      if (ranked) {
+        registeredProfileType = { id: ranked.id, code };
+      } else {
+        const exact = await supabase.from("dms_document_types").select("id,type_code")
+          .eq("type_code", code).eq("is_active", true).is("deleted_at", null).maybeSingle();
+        if (!exact.error && exact.data?.type_code === code && Number.isSafeInteger(exact.data.id) && exact.data.id > 0) {
+          registeredProfileType = { id: exact.data.id, code };
+        }
+      }
+      if (registeredProfileType) {
+        suggestedTypeCode = aiOutput.classification.suggestedTypeCode = registeredProfileType.code;
+        suggestedTypeId = aiOutput.classification.suggestedTypeId = registeredProfileType.id;
+      } else {
+        approvedReview = { state: "held", reason: "type_unavailable" };
+      }
+    }
+
+    let trainingEvidence: ReturnType<typeof applyIntakeTrainingReview>["evidence"] | undefined;
+    let trainingReview: Awaited<ReturnType<typeof verifyTrainingOriginal>> | undefined;
+    const credentialType = trainingType(verifiedSource?.plan.source.company, suggestedTypeCode);
+    if (credentialType && verifiedSource) {
+      const review = await verifyTrainingOriginal(credentialType, [{
+        bytes: verifiedSource.bytes, sha256: verifiedSource.proof.sha256, mime: mimeType,
+      }], aiOutput);
+      trainingReview = review;
+      const verified = applyIntakeTrainingReview(aiOutput, review);
+      aiOutput = verified.output;
+      trainingEvidence = verified.evidence;
+      suggestedTypeCode = aiOutput.classification.suggestedTypeCode;
+      suggestedTypeId = aiOutput.classification.suggestedTypeId;
+    }
+
+    let cicpaReview: Awaited<ReturnType<typeof applyIntakeCicpaWording>>["review"] | undefined;
+    if (cicpaWordingPreviewEnabled() && verifiedSource?.plan.source.company === ALGT_DMS_PREVIEW_COMPANY && isCicpaPassType(suggestedTypeCode)) {
+      const verified = await applyIntakeCicpaWording(aiOutput, { sha256: verifiedSource.proof.sha256, mime: mimeType });
+      aiOutput = verified.output;
+      cicpaReview = verified.review;
+    }
+
+    let approvedEvidence: ReturnType<typeof mergeApprovedProfileFields> | undefined;
+    if (approvedReview) {
+      if (trainingReview && !trainingReview.prepared && approvedReview.state === "verified") {
+        approvedReview = { state: "held", reason: "specialist_conflict" };
+      }
+
+      const specialist = trainingEvidence ?? cicpaReview?.fields;
+      approvedEvidence = mergeApprovedProfileFields(approvedReview, specialist,
+        trainingReview ? SPECIALIST_TRAINING_FIELDS : cicpaReview?.controlledKeys);
+      const specialistType = specialist && Object.keys(specialist).length && retainSpecialistProof(approvedReview)
+        && suggestedTypeId && suggestedTypeCode
+        ? { code: suggestedTypeCode, id: suggestedTypeId }
+        : null;
+      const admissibleType = approvedReview.state === "verified" ? registeredProfileType : specialistType;
+      aiOutput = applyIntakeApprovedProfile(aiOutput, approvedReview, approvedEvidence, admissibleType);
+      suggestedTypeCode = aiOutput.classification.suggestedTypeCode;
+      suggestedTypeId = aiOutput.classification.suggestedTypeId;
+    }
+
     // ── Build extracted fields JSON ────────────────────────────────────────
 
     const extractedFieldsJson: Record<string, unknown> = {};
     const fieldConfidenceJson: Record<string, unknown> = {};
     for (const field of aiOutput.extraction.fields) {
       extractedFieldsJson[field.fieldCode] = field.value;
+      const proof = approvedEvidence?.[field.fieldCode] ?? trainingEvidence?.[field.fieldCode] ?? cicpaReview?.fields[field.fieldCode];
       fieldConfidenceJson[field.fieldCode] = {
         score: field.confidenceScore,
         label: field.confidenceLabel,
         source_snippet: field.sourceSnippet ?? null,
+        ...(proof && { source_page: proof.page, source_region: proof.region ?? null, source_bounds: proof.bounds ?? null, source_method: proof.method ?? null }),
       };
     }
     // Preserve everything else the AI read, so no information is lost.
@@ -844,9 +917,21 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
       const subject = await supabase.from('employee_dependents').select('id,dependent_name_en').eq('id',Number(typedSession.origin_entity_id)).is('deleted_at',null).maybeSingle();
       if (subject.data) verifiedSubject = {kind:'employee_dependent',id:subject.data.id,name:subject.data.dependent_name_en};
     }
-    const preparedType = suggestedTypeId ? await supabase.from("dms_document_types").select("name_en").eq("id",suggestedTypeId).is("deleted_at",null).maybeSingle() : null;
+    const preparedType = suggestedTypeId ? await (approvedReview?.state === "verified"
+      ? supabase.from("dms_document_types").select("name_en,default_confidentiality")
+      : supabase.from("dms_document_types").select("name_en"))
+      .eq("id", suggestedTypeId).is("deleted_at", null).maybeSingle() : null;
+    const registeredDefault = preparedType?.data && "default_confidentiality" in preparedType.data
+      ? preparedType.data.default_confidentiality
+      : null;
+    if (approvedReview?.state === "verified" && z.enum(DMS_CONFIDENTIALITY_LEVELS).safeParse(registeredDefault).success) {
+      extractedFieldsJson.confidentiality_level = registeredDefault;
+    }
     const prepared = prepareIntakeOutput(aiOutput,{typeCode:aiOutput.classification.suggestedTypeCode,typeName:preparedType?.data?.name_en??null,originalName:originalFilename,
       verifiedSubject,sourceHash:String(typedSession.sha256_hash??'')});
+    const approvedMissing = approvedReview && approvedEvidence
+      ? approvedProfileMissingRequiredFields(approvedReview, approvedEvidence)
+      : [];
     const resultPayload = {
         job_id: jobId,
         document_id: null,
@@ -867,7 +952,15 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
         review_action: null,
         reviewed_by: null,
         reviewed_at: null,
-        raw_response_json: {...sanitizedResponse,preparation:prepared},
+        raw_response_json: {...sanitizedResponse,preparation:prepared,
+          ...(cicpaReview && { warnings: aiOutput.warnings, cicpaLocations: { state: cicpaReview.wording.status },
+            cicpaCompanyNumber: { state: cicpaReview.fields[CICPA_COMPANY_NUMBER_FIELD] ? "verified" : "held" } }),
+          ...(approvedReview && { warnings: aiOutput.warnings, approvedProfile: approvedReview.state === "verified"
+            ? { state: approvedReview.state, profileId: approvedReview.profileId, typeCode: approvedReview.typeCode,
+              ...(approvedMissing.length ? { missingRequiredFields: approvedMissing } : {}) }
+            : approvedReview }),
+          ...(trainingReview && { warnings: aiOutput.warnings, trainingProfile: { profileId: trainingReview.profileId, state: trainingReview.prepared ? "verified" : "held", reasons: trainingReview.reasons } }),
+        },
         // For image-based docs (passports, Emirates IDs, certificates, scanned PDFs)
         // local OCR produces no text — use the AI's full_text_transcription instead.
         // For digital PDFs/DOCX, use the locally extracted text (more reliable).
@@ -1081,6 +1174,7 @@ export async function getAiIntakeSession(
       discarded_at: typedSession.discarded_at as string | null,
       discard_reason: typedSession.discard_reason as string | null,
       uploaded_at: typedSession.uploaded_at as string ?? typedSession.created_at as string,
+      updated_at: typeof typedSession.updated_at === "string" ? typedSession.updated_at : undefined,
       ai_result: aiResult,
       draft_values: draft.data.values as unknown as IntakeReviewValueRow[],
       draft_snapshot: draft.data.snapshot,
@@ -1254,8 +1348,15 @@ export async function saveAiIntakeDraft(
 // ── retryAiIntake ─────────────────────────────────────────────────────────────
 
 export async function retryAiIntake(
-  uploadSessionId: number
+  uploadSessionId: number,
+  expectedUpdatedAt?: string,
 ): Promise<ActionResult<{ sessionCode: string; status: string }>> {
+  if (!Number.isSafeInteger(uploadSessionId) || uploadSessionId < 1) {
+    return { success: false, error: "Invalid upload session." };
+  }
+  const refreshMessage = "The original intake changed. Refresh it before retrying AI analysis.";
+  const unconfirmed = { success: false, uncertain: true, error: "The retry reset could not be confirmed. Check the original intake before retrying." } as const;
+  let resetDispatched = false;
   try {
     const supabase = await createClient();
     const ctx = await getAuthContext();
@@ -1263,11 +1364,47 @@ export async function retryAiIntake(
     if (!canStartIntake(ctx)) return { success: false, error: "Permission denied" };
 
     // Governed work cannot be reset: age/failed is not proof a provider is dead.
-    const source=await supabase.from("dms_upload_sessions").select("batch_draft_operation_id").eq("id",uploadSessionId).is("deleted_at",null).single();
+    const source=await supabase.from("dms_upload_sessions")
+      .select("batch_draft_operation_id,status,intake_status,review_status,updated_at,document_id,approve_run_id,ai_result_id,temp_cleaned_at,temp_storage_path,discarded_at,is_duplicate,owning_company_id,owning_branch_id,original_filename,mime_type,file_size_bytes,sha256_hash,uploaded_by,expires_at")
+      .eq("id",uploadSessionId).is("deleted_at",null).single();
     if(source.error||!source.data||source.data.batch_draft_operation_id!==null)
       return {success:false,error:"Use the retained batch recovery workflow. This analysis cannot be reset."};
-    // Reset only the explicit historical NULL route.
-    await supabase
+
+    const intake = source.data;
+    if (!["failed", "review_pending", "review_in_progress"].includes(intake.intake_status) ||
+        !["uploaded", "processing", "ocr_queued", "ai_queued", "review_pending", "failed"].includes(intake.status) ||
+        ["approved", "discarded"].includes(intake.review_status) || intake.document_id !== null ||
+        intake.approve_run_id !== null || intake.temp_cleaned_at !== null || intake.discarded_at !== null ||
+        intake.is_duplicate !== false || !intake.temp_storage_path) {
+      return { success: false, error: "This intake is not eligible for a full AI retry. Check its current status or recover the retained approval." };
+    }
+    if (typeof intake.updated_at !== "string" || !Number.isFinite(Date.parse(intake.updated_at)) ||
+        (expectedUpdatedAt !== undefined && expectedUpdatedAt !== intake.updated_at)) {
+      return { success: false, error: refreshMessage };
+    }
+    const company = intake.owning_company_id as number | null;
+    const branch = intake.owning_branch_id as number | null;
+    if (company !== null && !["dms.documents.upload", "dms.documents.review_ai", "dms.documents.preview"].every(
+      code => hasPermissionInScope(ctx, code, company, branch) || hasPermissionInScope(ctx, "dms.admin", company, branch),
+    )) {
+      return { success: false, error: "Upload, AI review and preview permissions are required in this company or branch." };
+    }
+
+    const prepared = await prepareIntakeSource(supabase, uploadSessionId).catch(() => null);
+    if (!prepared || prepared.actorId !== ctx.profile.id) {
+      return { success: false, error: "The original intake is unavailable or outside your current access." };
+    }
+    const admitted = prepared.source;
+    if (admitted.company !== company || admitted.branch !== branch || admitted.owner !== intake.uploaded_by ||
+        admitted.name !== intake.original_filename || admitted.mime !== intake.mime_type || admitted.size !== intake.file_size_bytes ||
+        admitted.sha256 !== intake.sha256_hash || admitted.path !== intake.temp_storage_path || admitted.expiry !== intake.expires_at ||
+        (admitted.expiry !== null && !(Date.parse(admitted.expiry) > Date.now()))) {
+      return { success: false, error: refreshMessage };
+    }
+
+    // Compare the reviewed state and original binding in the same write. A
+    // concurrent retry, cleanup, or numbered approval must win independently.
+    let reset = supabase
       .from("dms_upload_sessions")
       .update({
         intake_status: "uploaded",
@@ -1275,10 +1412,28 @@ export async function retryAiIntake(
         ai_result_id: null,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", uploadSessionId).is("batch_draft_operation_id",null);
+      .eq("id", uploadSessionId).eq("status", intake.status).eq("intake_status", intake.intake_status)
+      .eq("review_status", intake.review_status).eq("updated_at", intake.updated_at)
+      .eq("temp_storage_path", admitted.path).eq("original_filename", admitted.name).eq("mime_type", admitted.mime)
+      .eq("file_size_bytes", admitted.size).eq("is_duplicate", false)
+      .is("batch_draft_operation_id",null).is("document_id",null).is("approve_run_id",null)
+      .is("temp_cleaned_at",null).is("discarded_at",null).is("deleted_at",null);
+    reset = company === null ? reset.is("owning_company_id", null) : reset.eq("owning_company_id", company);
+    reset = branch === null ? reset.is("owning_branch_id", null) : reset.eq("owning_branch_id", branch);
+    reset = admitted.owner === null ? reset.is("uploaded_by", null) : reset.eq("uploaded_by", admitted.owner);
+    reset = admitted.sha256 === null ? reset.is("sha256_hash", null) : reset.eq("sha256_hash", admitted.sha256);
+    reset = admitted.expiry === null ? reset.is("expires_at", null) : reset.eq("expires_at", admitted.expiry);
+    reset = intake.ai_result_id === null ? reset.is("ai_result_id", null) : reset.eq("ai_result_id", intake.ai_result_id);
+
+    resetDispatched = true;
+    const { data, error } = await reset.select("id,intake_status").retry(false);
+    if (error || !Array.isArray(data)) return unconfirmed;
+    if (data.length === 0) return { success: false, error: refreshMessage };
+    if (data.length !== 1 || data[0].id !== uploadSessionId || data[0].intake_status !== "uploaded") return unconfirmed;
 
     return startAiIntakeFromUploadSession({ uploadSessionId });
   } catch {
+    if (resetDispatched) return unconfirmed;
     return { success: false, error: "Analysis retry is unavailable. Retain the original request for reconciliation." };
   }
 }

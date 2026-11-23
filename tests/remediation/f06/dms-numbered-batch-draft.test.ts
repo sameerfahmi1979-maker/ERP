@@ -124,6 +124,7 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
  let prepareCount:number;
  let hidden=false;
  let resultWriteError=false;
+ let retryResetResult: "committed-lost" | "lost-race" | undefined;
  const real=()=>vi.importActual<typeof import("@/server/actions/dms/ai-intake")>("@/server/actions/dms/ai-intake");
  function query(table:string){
   const op:Operation={table,action:"read",payload:undefined,filters:{},selection:undefined,retry:undefined};
@@ -139,6 +140,13 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
     if(matches)Object.assign(row,op.payload);
     return {data:matches?[{id:17,batch_draft_operation_id:row.batch_draft_operation_id,intake_status:"ocr_processing"}]:[],error:null};
    }
+   if(op.action==="update" && op.payload?.intake_status==="uploaded" && op.selection){
+    if(retryResetResult==="lost-race") Object.assign(row,{intake_status:"approved",document_id:99});
+    const matches=Object.entries(op.filters).every(([key,value])=>row[key]===value);
+    if(matches)Object.assign(row,op.payload);
+    if(matches && retryResetResult==="committed-lost")throw Error("PRIVATE_RESET_RESPONSE");
+    return {data:matches?[{id:17,intake_status:"uploaded"}]:[],error:null};
+   }
    if(op.action==="insert")return table==="dms_ai_extraction_results"&&resultWriteError?{data:null,error:{code:"08007",message:"W22_PRIVATE_RESULT",details:"W22_PRIVATE_DETAILS",hint:"W22_PRIVATE_HINT"}}:{data:{id:table==="dms_ai_extraction_jobs"?71:72},error:null};
    if(table==="dms_upload_sessions"&&op.payload)Object.assign(row,op.payload);
    return {data:null,error:null};
@@ -149,7 +157,8 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
  beforeEach(()=>{
   row={id:17,session_code:"D".repeat(32),batch_id:6,admission_position:0,batch_draft_operation_id:durableOperation,uploaded_by:5,owning_company_id:20,owning_branch_id:21,status:"uploaded",intake_status:"uploaded",updated_at:"2026-10-05T00:00:00.000Z",deleted_at:null,document_id:null,ai_result_id:null,temp_cleaned_at:null,temp_storage_path:"sessions/"+"D".repeat(32)+"/a.pdf",original_filename:"a.pdf",mime_type:"application/pdf"};
   Object.assign(row,{file_size_bytes:actualPdf.length,sha256_hash:createHash('sha256').update(actualPdf).digest('hex'),expires_at:'2027-01-01T00:00:00Z'});
-  operations=[];claimResult=undefined;postGuard=undefined;prepareCount=0;hidden=false;resultWriteError=false;
+  Object.assign(row,{approve_run_id:null,discarded_at:null,is_duplicate:false,review_status:"not_started"});
+  operations=[];claimResult=undefined;postGuard=undefined;prepareCount=0;hidden=false;resultWriteError=false;retryResetResult=undefined;
   m.auth.mockResolvedValue({profile:{id:5,auth_user_id:durableAuth},isAccountActive:true});m.usable.mockReturnValue(true);
   m.from.mockImplementation(query);
   m.rpc.mockImplementation(async(name:string)=>{
@@ -268,14 +277,64 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
   row.intake_status=state;if(state==="missing")delete row.batch_draft_operation_id;
   if(state==="hidden")hidden=true;
   expect(await (await real()).retryAiIntake(17)).toMatchObject({success:false});noPipeline();expect(ai.factory).not.toHaveBeenCalled();expect(operations.every(o=>o.action==="read")).toBe(true);
-  expect(operations).toHaveLength(1);expect(operations[0]).toMatchObject({table:"dms_upload_sessions",action:"read",selection:"batch_draft_operation_id",filters:{id:17,deleted_at:null}});
+  expect(operations).toHaveLength(1);expect(operations[0]).toMatchObject({table:"dms_upload_sessions",action:"read",selection:expect.stringContaining("batch_draft_operation_id"),filters:{id:17,deleted_at:null}});
  });
- it("explicit NULL legacy reset keeps original payload with a NULL database predicate",async()=>{
-  row.batch_draft_operation_id=null;ai.configured.mockReturnValue(false);
+ it("retries a failed legacy intake after confirming the exact guarded reset",async()=>{
+  Object.assign(row,{batch_draft_operation_id:null,intake_status:"failed"});ai.configured.mockReturnValue(false);
   await (await real()).retryAiIntake(17);
   const reset=operations.find(o=>o.payload?.intake_status==="uploaded");
-  expect(reset).toMatchObject({table:"dms_upload_sessions",filters:{id:17,batch_draft_operation_id:null},payload:{intake_status:"uploaded",review_status:"not_started",ai_result_id:null,updated_at:expect.any(String)}});
-  expect(m.rpc).not.toHaveBeenCalled();expect(ai.factory).toHaveBeenCalledOnce();expect(m.download).not.toHaveBeenCalled();
+  expect(reset).toMatchObject({table:"dms_upload_sessions",retry:false,filters:{id:17,batch_draft_operation_id:null,
+   intake_status:"failed",updated_at:"2026-10-05T00:00:00.000Z",document_id:null,approve_run_id:null,deleted_at:null},
+   payload:{intake_status:"uploaded",review_status:"not_started",ai_result_id:null,updated_at:expect.any(String)}});
+  expect(m.rpc.mock.calls).toEqual([["f07_prepare_intake_source",{p_session:17}]]);
+  expect(ai.factory).toHaveBeenCalledOnce();expect(m.download).not.toHaveBeenCalled();
+ });
+ it.each([
+  {intake_status:"ocr_processing"}, {intake_status:"approved",document_id:99},
+  {status:"completed",intake_status:"failed"}, {intake_status:"review_pending",approve_run_id:81},
+  {intake_status:"review_pending",temp_cleaned_at:"2026-10-17T00:00:00Z"},
+ ])("does not reset a protected legacy intake: %j",async override=>{
+  Object.assign(row,{batch_draft_operation_id:null,...override});
+  expect(await (await real()).retryAiIntake(17)).toMatchObject({success:false});
+  expect(operations.every(o=>o.action==="read")).toBe(true);expect(ai.factory).not.toHaveBeenCalled();noPipeline();
+ });
+ it("does not reset a newer legacy review after an earlier retry",async()=>{
+  Object.assign(row,{batch_draft_operation_id:null,intake_status:"review_pending",ai_result_id:72});
+  expect(await (await real()).retryAiIntake(17,"2026-10-04T00:00:00.000Z")).toMatchObject({success:false});
+  expect(operations.every(o=>o.action==="read")).toBe(true);expect(ai.factory).not.toHaveBeenCalled();noPipeline();
+ });
+ it("requires retry authority in the intake's actual scope",async()=>{
+  Object.assign(row,{batch_draft_operation_id:null,intake_status:"failed"});
+  m.permission.mockImplementation((_ctx,code,company,branch)=>company===undefined ||
+   (company===20 && branch===21 && code==="dms.documents.upload"));
+  expect(await (await real()).retryAiIntake(17)).toMatchObject({success:false});
+  expect(operations.every(o=>o.action==="read")).toBe(true);expect(ai.factory).not.toHaveBeenCalled();noPipeline();
+ });
+ it.each(["expired","native-denied","native-source-changed"])("a %s legacy source stays unchanged before a retry",async state=>{
+  Object.assign(row,{batch_draft_operation_id:null,intake_status:"review_pending",ai_result_id:72});
+  if(state==="expired")row.expires_at="2020-01-01T00:00:00.000Z";
+  const readRpc=m.rpc.getMockImplementation()!;
+  m.rpc.mockImplementation(async(name:string,...args:unknown[])=>{
+   if(name==="f07_prepare_intake_source" && state==="native-denied")return {data:null,error:{code:"42501",message:"PRIVATE_NATIVE_SOURCE"}};
+   const result=await readRpc(name,...args);
+   if(name==="f07_prepare_intake_source" && state==="native-source-changed")return {...result,data:{...result.data,source:{...result.data.source,path:"different.pdf"}}};
+   return result;
+  });
+  const result=await (await real()).retryAiIntake(17);
+  expect(result).toMatchObject({success:false});expect(JSON.stringify(result)).not.toContain("PRIVATE_NATIVE_SOURCE");
+  expect(operations.every(o=>o.action==="read")).toBe(true);
+  expect(row).toMatchObject({ai_result_id:72,intake_status:"review_pending"});
+  expect(ai.factory).not.toHaveBeenCalled();noPipeline();
+ });
+ it.each(["lost-race","committed-lost"] as const)("a %s retry reset leaves the original intake for reconciliation",async mode=>{
+  Object.assign(row,{batch_draft_operation_id:null,intake_status:"review_pending",ai_result_id:72});
+  retryResetResult=mode;
+  const result=await (await real()).retryAiIntake(17);
+  expect(result).toMatchObject({success:false,...(mode==="committed-lost"?{uncertain:true}:{})});
+  expect(JSON.stringify(result)).not.toContain("PRIVATE_RESET_RESPONSE");
+  expect(operations.filter(o=>o.action==="update")).toHaveLength(1);
+  expect(row.intake_status).toBe(mode==="lost-race"?"approved":"uploaded");
+  expect(ai.factory).not.toHaveBeenCalled();noPipeline();
  });
  it("committed claim with lost response never reads back ownership, resets or dispatches",async()=>{
   claimResult="committed-lost";

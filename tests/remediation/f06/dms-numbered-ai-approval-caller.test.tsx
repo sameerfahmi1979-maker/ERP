@@ -6,14 +6,14 @@ import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {createWorkspaceDraftStore} from '@/lib/workspace/workspace-draft-store';
 import {input,prepared,receipt} from './dms-ai-approval-fixtures';
-const m=vi.hoisted(()=>({store:null as unknown,owner:'owner',approve:vi.fn(),batch:vi.fn(),recover:vi.fn(),definitions:vi.fn(),prepareReview:vi.fn(),confirmReview:vi.fn(),cacheOwner:{identity:{authUserId:'synthetic',scopeVersion:'one'},generation:1,isLive:()=>true,admits:()=>true},replace:vi.fn(),update:vi.fn(),rename:vi.fn(),success:vi.fn(),error:vi.fn(),rerun:vi.fn(),save:vi.fn(),discard:vi.fn()}));
+const m=vi.hoisted(()=>({store:null as unknown,owner:'owner',approve:vi.fn(),batch:vi.fn(),recover:vi.fn(),definitions:vi.fn(),prepareReview:vi.fn(),confirmReview:vi.fn(),cacheOwner:{identity:{authUserId:'synthetic',scopeVersion:'one'},generation:1,isLive:()=>true,admits:()=>true},replace:vi.fn(),update:vi.fn(),rename:vi.fn(),success:vi.fn(),error:vi.fn(),rerun:vi.fn(),refreshIntake:vi.fn(),save:vi.fn(),discard:vi.fn()}));
 vi.mock('@/components/layout/read-cache-boundary',()=>({useReadCacheOwner:()=>m.cacheOwner}));
 vi.mock('@/components/workspace/workspace-draft-provider',()=>({useWorkspaceDraftStoreContext:()=>m.store}));
 vi.mock('@/hooks/use-workspace-form-owner',()=>({useWorkspaceFormOwner:()=>({id:m.owner})}));
 vi.mock('@/hooks/use-workspace',()=>({useWorkspace:()=>({activeTab:{id:m.owner},updateTabRoute:m.update,renameTab:m.rename,closeTab:vi.fn()})}));
 vi.mock('next/navigation',()=>({useRouter:()=>({replace:m.replace,push:vi.fn(),refresh:vi.fn()})}));
 vi.mock('sonner',()=>({toast:{success:m.success,error:m.error,info:vi.fn()}}));
-vi.mock('@/server/actions/dms/ai-intake',()=>({approveAiIntakeAndCreateDocument:m.approve,recoverAiIntakeApproval:m.recover,discardAiIntake:m.discard,retryAiIntake:m.rerun,saveAiIntakeDraft:m.save,getIntakeSessionSignedUrl:vi.fn(),rerunMetadataExtractionForIntakeSession:m.rerun}));
+vi.mock('@/server/actions/dms/ai-intake',()=>({approveAiIntakeAndCreateDocument:m.approve,recoverAiIntakeApproval:m.recover,discardAiIntake:m.discard,retryAiIntake:m.rerun,getAiIntakeSession:m.refreshIntake,saveAiIntakeDraft:m.save,getIntakeSessionSignedUrl:vi.fn(),rerunMetadataExtractionForIntakeSession:m.rerun}));
 vi.mock('@/server/actions/dms/batch-intake',()=>({finalizeDraftIntake:m.batch,discardDraftIntake:m.discard,recoverDraftFinalization:m.recover}));
 vi.mock('@/server/actions/dms/intake-review',()=>({prepareExactIntakeReview:m.prepareReview,confirmExactIntakeReview:m.confirmReview}));
 vi.mock('@/server/actions/dms/standard-file-name',()=>({previewDmsStandardFileName:vi.fn(async()=>({success:true,data:{validation:{valid:true}}}))}));
@@ -69,3 +69,44 @@ it('batch document dispatch remains the existing finalizer without a new operati
 it('known preparation rejection unlocks correction and submits current values under the original operation',async()=>{m.approve.mockImplementationOnce(async(i,c)=>({success:false,uncertain:false,error:'Review the title',preparationRejected:{operation_id:c.operationId,upload_session_id:i.uploadSessionId}}));render(page());fill();await submit();await waitFor(()=>expect(m.error).toHaveBeenCalledWith('Review the title'));const original=structuredClone(m.approve.mock.calls[0]);expect(screen.queryByText(/An approval request is retained/)).toBeNull();const title=screen.getByTestId('Title').querySelector('input')!;await waitFor(()=>expect(title.closest('fieldset')?.disabled).toBe(false));fireEvent.change(title,{target:{value:'Corrected reviewed title'}});await submit();await waitFor(()=>expect(m.replace).toHaveBeenCalled());expect(m.approve.mock.calls[1][0].title).toBe('Corrected reviewed title');expect(m.approve.mock.calls[1][1]).toEqual(original[1]);expect(m.approve.mock.calls[2][1]).toEqual(original[1]);});
 it('uncertain request survives remount and retry uses its original scope/classification',async()=>{m.approve.mockImplementationOnce(async(_i,c)=>({success:false,prepared:{operation_id:c.operationId,snapshot:{...prepared,source:{...prepared.source,ai_result_id:19},analysis_result_id:19,analysis_fingerprint:'d'.repeat(64)}}})).mockRejectedValueOnce(Error('lost'));const h=render(page());fill();await submit();await waitFor(()=>expect(m.error).toHaveBeenCalled());const original=structuredClone(m.approve.mock.calls[1]);expect(m.replace).not.toHaveBeenCalled();h.unmount();render(page());await waitFor(()=>expect((screen.getAllByRole('button',{name:'Recover saved request'})[0] as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getAllByRole('button',{name:'Recover saved request'})[0]);await waitFor(()=>expect(m.replace).toHaveBeenCalled());expect(m.approve.mock.calls[2]).toEqual(original);expect(m.rerun).not.toHaveBeenCalled();});
 it.each(['owner','account','unmount'])('late preparation after %s change neither completes nor navigates',async kind=>{let finish!:(v:any)=>void;m.approve.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));const h=render(page());fill();submit();await waitFor(()=>expect(m.approve).toHaveBeenCalledOnce());if(kind==='unmount')h.unmount();else{if(kind==='owner')m.owner='other';else m.store=createWorkspaceDraftStore();h.rerender(page());}await act(async()=>finish({success:false,prepared:{operation_id:m.approve.mock.calls[0][1].operationId,snapshot:prepared}}));expect(m.approve).toHaveBeenCalledOnce();expect(m.replace).not.toHaveBeenCalled();expect(m.success).not.toHaveBeenCalled();});
+
+const intakeVersion = '2026-11-23T08:00:00Z';
+const officerDraft = {field_scope:'document',field_code:'title',reviewed_value_json:'Saved officer title'};
+const retrySession = {...session, ai_result_id:19, updated_at:intakeVersion, draft_values:[officerDraft]};
+const refreshedIntake = {
+  ...retrySession, ai_result_id:20, updated_at:'2026-11-23T08:01:00Z', draft_snapshot:'1'.repeat(64),
+  ai_result:{...session.ai_result,id:20,suggested_title:'New suggested title',suggested_description:'New extracted description'},
+};
+
+async function retryFromReview() {
+  await waitFor(() => expect(m.recover).toHaveBeenCalled());
+  await act(async () => fireEvent.click(screen.getByRole('button',{name:'Re-run AI'})));
+}
+
+it('reloads the confirmed same-intake retry and retains saved officer values', async () => {
+  m.rerun.mockResolvedValue({success:true,data:{sessionCode:retrySession.session_code,status:'review_pending'}});
+  m.refreshIntake.mockResolvedValue({success:true,data:refreshedIntake});
+  render(page(retrySession));
+
+  await retryFromReview();
+
+  expect(m.rerun).toHaveBeenCalledExactlyOnceWith(retrySession.id,intakeVersion);
+  expect(m.refreshIntake).toHaveBeenCalledExactlyOnceWith(retrySession.session_code);
+  expect(screen.getByTestId('Title').querySelector('input')?.value).toBe('Saved officer title');
+  expect(screen.getByTestId('Description').querySelector('textarea')?.value).toBe('New extracted description');
+  expect(m.approve).not.toHaveBeenCalled();
+});
+
+it('retains the reviewed values when the retry read returns the old row version', async () => {
+  m.rerun.mockResolvedValue({success:true,data:{sessionCode:retrySession.session_code,status:'review_pending'}});
+  m.refreshIntake.mockResolvedValue({success:true,data:{...refreshedIntake,updated_at:intakeVersion}});
+  render(page(retrySession));
+
+  await retryFromReview();
+
+  expect(m.refreshIntake).toHaveBeenCalledOnce();
+  expect(screen.getByTestId('Title').querySelector('input')?.value).toBe('Saved officer title');
+  expect(screen.getByTestId('Description').querySelector('textarea')?.value).toBe('');
+  expect(m.success).not.toHaveBeenCalled();
+  expect(m.error).toHaveBeenCalledWith(expect.stringContaining('Reopen the original intake'));
+});

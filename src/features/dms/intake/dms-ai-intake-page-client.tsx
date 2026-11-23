@@ -15,6 +15,7 @@ import {
   approveAiIntakeAndCreateDocument,
   recoverAiIntakeApproval,
   discardAiIntake,
+  getAiIntakeSession,
   retryAiIntake,
   saveAiIntakeDraft,
   getIntakeSessionSignedUrl,
@@ -24,6 +25,7 @@ import { previewDmsStandardFileName } from "@/server/actions/dms/standard-file-n
 import { getMetadataDefinitionsForType } from "@/server/actions/dms/document-metadata-values";
 import type { DmsDocumentTypeRow } from "@/server/actions/dms/document-types";
 import { aiApprovalInputSchema, type AiApprovalInput } from "@/lib/dms/numbered-ai-approval";
+import { canAssignQatarPermitNumberOnApproval } from "@/lib/dms/standard-file-name";
 import { type IntakeLinkChip } from "@/features/dms/intake/dms-intake-link-panel";
 import {confirmExactIntakeReview} from '@/server/actions/dms/intake-review';
 import type {IntakeReviewConfirmation} from '@/lib/dms/intake-review';
@@ -47,7 +49,7 @@ export function DmsAiIntakePageClient({
   const router = useRouter();
   const { activeTab, updateTabRoute, renameTab, closeTab } = useWorkspace();
   const previewOwner = useReadCacheOwner();
-  const [session] = useState<IntakeSessionData>(initialSession);
+  const [session, setSession] = useState<IntakeSessionData>(initialSession);
   const approval = useNumberedAiApproval(String(initialSession.id), approveAiIntakeAndCreateDocument,session.document_id?undefined:recoverAiIntakeApproval);
   const batchApproval=useRetainedBatchFinalization({enabled:!!session.document_id,sessionId:session.id,recover:recoverDraftFinalization,submit:finalizeDraftIntake});
   const retainedApproval = session.document_id?batchApproval.pending:approval.pendingSessionIds.includes(session.id);
@@ -116,7 +118,7 @@ export function DmsAiIntakePageClient({
 
   // ── Validate before approve ───────────────────────────────────────────────
 
-  const validate = async (): Promise<{ error: string; fieldId?: number } | { metadataValues: AiApprovalInput["metadataValues"] }> => {
+  const validate = async (): Promise<{ error: string; fieldId?: number } | { metadataValues: AiApprovalInput["metadataValues"]; useReservedNumber?: boolean }> => {
     if (!formValues.title.trim()) return { error: "Title is required" };
     if (!formValues.documentTypeId) return { error: "Document type is required" };
     if (!formValues.standardFileName.trim()) return { error: "Standard file name is required" };
@@ -163,6 +165,9 @@ export function DmsAiIntakePageClient({
         suggestedTitle: formValues.title || session.ai_result?.suggested_title || null,
       });
       if (preview.success && preview.data && !preview.data.validation.valid) {
+        if (!session.document_id && canAssignQatarPermitNumberOnApproval(docType.type_code, preview.data.fileName, preview.data.validation)) {
+          return { metadataValues, useReservedNumber: true };
+        }
         return { error: `Standard file name is incomplete (missing: ${preview.data.validation.missing.join(", ")})` };
       }
     }
@@ -242,7 +247,10 @@ export function DmsAiIntakePageClient({
       // Both paths approve exactly one document — never in bulk.
       const result = session.document_id
         ? await batchApproval.run(sharedPayload)
-        : await approval.run(sharedPayload);
+        : await approval.run({
+          ...sharedPayload,
+          standardFileName: validated.useReservedNumber ? null : sharedPayload.standardFileName,
+        });
 
       // A response from a closed/replaced owner must not navigate a new tab or
       // another account. Batch dispatch and its existing lifecycle stay unchanged.
@@ -271,15 +279,41 @@ export function DmsAiIntakePageClient({
   // ── Retry AI ──────────────────────────────────────────────────────────────
 
   const handleRetry = () => {
-    if (retainedApproval || approvalBlocked || draftUncertain) return;
+    if (retainedApproval || approvalBlocked || draftUncertain || isPending) return;
+    const isCurrent = session.document_id ? batchApproval.isCurrent : approval.isCurrent;
+    const reopenMessage = "Reopen the original intake to check its current review.";
     startTransition(async () => {
-      const result = await retryAiIntake(session.id);
-      if (result.success) {
-        toast.success("AI analysis re-started. Refreshing…");
-        router.refresh();
-      } else {
-        toast.error(result.error ?? "Failed to retry AI analysis");
+      const result = await retryAiIntake(session.id, session.updated_at).catch(() => null);
+      if (!isCurrent()) return;
+      if (!result?.success) {
+        toast.error(result?.error ?? `The AI retry could not be confirmed. ${reopenMessage}`);
+        return;
       }
+      if (!result.data || result.data.sessionCode !== session.session_code || result.data.status !== "review_pending") {
+        toast.error(`The new AI review is still unconfirmed. ${reopenMessage}`);
+        return;
+      }
+
+      const refreshed = await getAiIntakeSession(session.session_code).catch(() => null);
+      if (!isCurrent()) return;
+      const current = refreshed?.success ? refreshed.data : undefined;
+      if (!current || current.id !== session.id || current.session_code !== session.session_code ||
+          !current.updated_at || current.updated_at === session.updated_at || current.document_id !== null ||
+          !current.ai_result || current.ai_result_id !== current.ai_result.id || current.ai_result_id === session.ai_result_id ||
+          !current.draft_snapshot || !["review_pending", "review_in_progress"].includes(current.intake_status)) {
+        toast.error(`The latest AI review could not be loaded. ${reopenMessage}`);
+        return;
+      }
+
+      setSession(current);
+      setAiResultPatch(null);
+      setFormValues(buildInitialReviewValues(current));
+      draftSnapshot.current = current.draft_snapshot;
+      setEntityLinks([]);
+      setFileReview(null);
+      setReviewBlockReason(null);
+      setApprovalError(null);
+      toast.success("AI analysis refreshed");
     });
   };
 

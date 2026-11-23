@@ -7,6 +7,7 @@ vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({auth:{getClaims:m.
  const q={select:()=>q,eq:()=>q,is:()=>q,maybeSingle:m.source};return q;
 }})}));
 import {recoverNumberedAiApproval} from '@/server/dms-ai-approval-recovery';
+import {withMobileToken} from '@/lib/supabase/mobile-request';
 const original=()=>({input:{...input,prepared},contract,receipt:null});
 beforeEach(()=>{vi.resetAllMocks();m.ctx.mockResolvedValue({profile:{id:11}});m.can.mockReturnValue(true);
  m.source.mockResolvedValue({data:{id:17,status:'uploaded',document_id:null},error:null});m.claims.mockResolvedValue({data:{claims:{session_id:plan.auth_session_id}},error:null});
@@ -36,4 +37,30 @@ it('completed receipt requires current approval authority on the same document',
  expect((await recoverNumberedAiApproval(17)).success).toBe(true);
  expect(m.visible).toHaveBeenCalledWith('verify_completed_numbered_ai_intake',{p_operation:contract.operationId,p_request:expect.objectContaining(original().input)});
  m.visible.mockResolvedValue({data:false,error:null});expect((await recoverNumberedAiApproval(17)).success).toBe(false);
+});
+
+it('operation-bound recovery hides a different completed operation before verifying a receipt', async () => {
+  m.source.mockResolvedValue({data:{id:17,status:'completed',document_id:41},error:null});
+  m.lookup.mockResolvedValue({data:{...original(),receipt:receipt()},error:null});
+
+  const result = await recoverNumberedAiApproval(17, '12345678-1234-4234-8234-123456789012');
+
+  expect(result.success).toBe(false);
+  expect(result).not.toHaveProperty('data');
+  expect(m.visible).not.toHaveBeenCalled();
+});
+
+it('operation-bound recovery uses the native bearer to verify the exact completed receipt', async () => {
+  m.source.mockResolvedValue({data:{id:17,status:'completed',document_id:41},error:null});
+  m.lookup.mockResolvedValue({data:{...original(),receipt:receipt()},error:null});
+  m.visible.mockResolvedValue({data:true,error:null});
+
+  const result = await withMobileToken('offline-native-bearer', () => recoverNumberedAiApproval(17, contract.operationId));
+
+  expect(m.claims).toHaveBeenCalledExactlyOnceWith('offline-native-bearer');
+  expect(m.visible).toHaveBeenCalledWith('verify_completed_numbered_ai_intake', {
+    p_operation:contract.operationId,
+    p_request:{ ...original().input, allowDuplicate:false, links:[], metadataValues:[], tagIds:[] },
+  });
+  expect(result).toMatchObject({success:true,data:{receipt:{documentId:41,operation_id:contract.operationId}}});
 });

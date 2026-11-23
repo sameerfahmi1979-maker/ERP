@@ -6,7 +6,7 @@ import { Search } from "lucide-react";
 import { useReadCacheOwner, type ReadCacheIdentity } from "@/components/layout/read-cache-boundary";
 import { AGENTS, MODULES, agentsInModule, registeredModules, type Agent, type AgentCenterSnapshot, type AgentModule, type Outcome } from "@/lib/ai-agent-center/contracts";
 import { dubaiTime, getConfirmedHandoff } from "@/lib/ai-agent-center/progress";
-import { classifyFeed, readWithinAuthority, retainNewest, SAFE_REFRESH_MS } from "@/lib/ai-agent-center/live";
+import { classifyFeed, readWithinAuthority, reconcileAttention, retainNewest, SAFE_REFRESH_MS, type CaseReadSnapshot } from "@/lib/ai-agent-center/live";
 import { readJson, ReadError, retryAuthorizedRead } from "@/lib/reads/client";
 import { AgentCenterInspector, type InspectorTab } from "./agent-center-inspector";
 import { AgentCenterWorkflow, type AgentState } from "./agent-center-workflow";
@@ -17,7 +17,7 @@ const outcomes = [
   { id: "review", label: "Awaiting review" }, { id: "failed", label: "Failed" },
 ] as const;
 
-type CaseReadData = Pick<AgentCenterSnapshot, "selectedCase" | "confirmedAt"> & { handoff: ReturnType<typeof getConfirmedHandoff> };
+type CaseReadData = CaseReadSnapshot & { handoff: ReturnType<typeof getConfirmedHandoff> };
 const NAMESPACE = "ai-agent-center";
 const noSubscription = () => () => {};
 
@@ -96,9 +96,9 @@ export function AgentCenterPageClient({ initial, seedOwner, canInspectControls }
     queryKey: caseKey,
     enabled: ownerMatches && !!caseId,
     queryFn: async ({ signal }) => {
-      const incoming = await readSnapshot({ caseId }, signal);
+      const { selectedCase, attention, scope, confirmedAt } = await readSnapshot({ caseId }, signal);
       const prior = queryClient.getQueryData<CaseReadData>(caseKey);
-      const result = { selectedCase: incoming.selectedCase, confirmedAt: incoming.confirmedAt, handoff: null };
+      const result: CaseReadData = { selectedCase, attention, scope, confirmedAt, handoff: null };
       const newest = retainNewest(prior, result);
       if (newest !== result || !prior || classifyFeed(prior.confirmedAt, Date.parse(newest.confirmedAt), false) !== "live") return newest;
       return { ...newest, handoff: getConfirmedHandoff(prior.selectedCase, newest.selectedCase) };
@@ -210,7 +210,8 @@ export function AgentCenterPageClient({ initial, seedOwner, canInspectControls }
             branchId={branchId} scopeLabel={`${snapshot.scope.company} · ${snapshot.scope.branch}`}
             runtimeLabel={states[lane.key]?.label ?? "Status unavailable"} canInspect={canInspectControls} />
         </div>
-        <AgentCenterInspector snapshot={{ ...snapshot, selectedCase }} caseReference={caseReference} tab={tab} onTab={setTab}
+        <AgentCenterInspector snapshot={{ ...snapshot, selectedCase, attention: reconcileAttention(snapshot, selectedCase ? caseData : null, !!search) }}
+          caseReference={caseReference} tab={tab} onTab={setTab}
           caseLoading={!!caseId && caseQuery.isPending}
           onRetryCase={caseQuery.isError ? () => void caseQuery.refetch() : undefined}
           listLabel={outcomes.find(item => item.id === outcome)?.label ?? (search ? "Search results" : "Recent cases")}

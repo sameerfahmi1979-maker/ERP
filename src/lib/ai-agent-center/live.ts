@@ -1,3 +1,5 @@
+import type { AgentCenterSnapshot } from "./contracts";
+
 export const SAFE_REFRESH_MS = 15_000;
 const STALE_AFTER_MS = 45_000;
 
@@ -9,6 +11,20 @@ export function classifyFeed(confirmedAt: string | null, now: number, failed: bo
 
 export function retainNewest<T extends { confirmedAt: string }>(prior: T | undefined, incoming: T): T {
   return prior && Date.parse(prior.confirmedAt) > Date.parse(incoming.confirmedAt) ? prior : incoming;
+}
+
+export type CaseReadSnapshot = Pick<AgentCenterSnapshot, "selectedCase" | "attention" | "scope" | "confirmedAt">;
+
+export function reconcileAttention(activity: AgentCenterSnapshot, detail: CaseReadSnapshot | null, searched: boolean) {
+  const { attention } = activity;
+  const filed = detail?.selectedCase;
+  if (!attention || !detail || !filed || filed.id !== attention.id || filed.status !== "filed" ||
+    !filed.documentId || !filed.finishedAt || detail.scope.companyId !== activity.scope.companyId ||
+    detail.scope.branchId !== activity.scope.branchId || Date.parse(detail.confirmedAt) <= Date.parse(activity.confirmedAt) ||
+    Date.parse(filed.updatedAt) <= Date.parse(attention.updatedAt)) return attention;
+
+  // Detail reads can supply the next attention item only for an unsearched activity list.
+  return !searched && detail.attention?.id !== filed.id ? detail.attention : null;
 }
 
 type ReadAuthority = {

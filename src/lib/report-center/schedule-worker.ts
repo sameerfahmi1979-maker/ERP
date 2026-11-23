@@ -8,6 +8,8 @@ import { F09_LIMITS, queryWithin } from "@/lib/email/queue/runtime-limits";
 
 const positiveId = z.number().int().positive();
 const reservedRuns = z.array(z.object({ id: positiveId })).max(25);
+const batchCount = z.number().int().min(0).max(25);
+const enqueueCounts = z.object({ queued: batchCount, skipped: batchCount, failed: batchCount });
 const scheduleInventory = z.object({
     due: z.array(z.object({
         id: positiveId,
@@ -79,6 +81,22 @@ export async function processDueSchedules(options: {
         pending = reservedRuns.parse(refreshed.data);
         if (pending.length > limit)
             throw new Error("Reserved runs exceed the requested limit");
+    }
+    if (pending.length > 1) {
+        const batch = await queryWithin(db.rpc("f09_enqueue_schedule_run_batch", {
+            p_run_ids: pending.map(run => run.id),
+        }), signal);
+        if (!batch.error) {
+            const counts = enqueueCounts.parse(batch.data);
+            if (counts.queued + counts.skipped + counts.failed !== pending.length)
+                throw new Error("Invalid schedule enqueue totals");
+            result.queued += counts.queued;
+            result.skipped += counts.skipped;
+            result.terminal += counts.failed;
+            return;
+        }
+        // The reply can be lost after commit. Replay only these same run IDs.
+        // The single-run routine returns the existing durable intent on replay.
     }
     for (const run of pending) {
         signal.throwIfAborted();

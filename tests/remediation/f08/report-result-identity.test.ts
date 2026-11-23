@@ -65,6 +65,10 @@ it('limits the interactive payload while retaining exact full counts and filteri
  expect(first.data?.rows.map(row => row.amount)).toEqual(Array.from({length: 25}, (_, index) => index + 1));
  expect(JSON.stringify(first)).not.toContain('Person 1002');
  expect(first.screenPage?.filters).toEqual(expect.arrayContaining([expect.objectContaining({id: 'amount', type: 'number'}), expect.objectContaining({id: 'accepted', type: 'select'})]));
+ const sameOrder = await runAnalytical({...worklistPage, receipt:first.screenPage!.receipt,
+   columnFilters:[{id:'unused',value:'ignored'}]});
+ expect(sameOrder.screenPage).toEqual(first.screenPage);
+ expect(sameOrder.data).toEqual(first.data);
  const filtered = await runAnalytical({ ...worklistPage, receipt: first.screenPage!.receipt, pageIndex: 1,
   sorting: [{id: 'amount', desc: true}], globalFilter: 'Person', columnFilters: [{id: 'accepted', value: 'true'}]});
  expect(filtered).toMatchObject({success: true, rowCount: 1002, screenPage: {totalCount: 501, pageIndex: 1, receipt: first.screenPage!.receipt}});

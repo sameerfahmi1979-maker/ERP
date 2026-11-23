@@ -50,8 +50,11 @@ export function pageAnalyticalRows(data: ReportDataResult, query: ReportScreenPa
   const selected = query.columns ? new Set(query.columns) : null;
   const columns = selected ? data.columns.filter(id => selected.has(id)) : data.columns;
   const columnIds = new Set(columns);
+  const sourceOrder = !query.sorting.length && !query.columnFilters.length && !query.globalFilter;
   const table = createTable<Record<string, unknown>>({
-    data: data.rows,
+    // TanStack reads the first filtered row to determine a column's initial
+    // sort direction. A source-order preview pages the verified rows directly.
+    data: sourceOrder ? data.rows.slice(0, 1) : data.rows,
     columns: columns.map(id => ({
       id, accessorFn: row => row[id],
       filterFn: (row, key, value: string) => {
@@ -74,9 +77,10 @@ export function pageAnalyticalRows(data: ReportDataResult, query: ReportScreenPa
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
   });
-  const matching = table.getSortedRowModel().rows;
+  const matching = sourceOrder ? null : table.getSortedRowModel().rows;
+  const totalCount = matching?.length ?? data.rows.length;
   const {pageSize} = query;
-  const pageIndex = Math.min(query.pageIndex, Math.max(0, Math.ceil(matching.length / pageSize) - 1));
+  const pageIndex = Math.min(query.pageIndex, Math.max(0, Math.ceil(totalCount / pageSize) - 1));
   const offset = pageIndex * pageSize;
   const filters: ReportScreenPage["filters"] = [];
   for (const id of data.columns) {
@@ -92,8 +96,11 @@ export function pageAnalyticalRows(data: ReportDataResult, query: ReportScreenPa
     }
   }
   const screenPage: ReportScreenPage = {
-    pageIndex, pageSize, totalCount: matching.length, filters, receipt,
+    pageIndex, pageSize, totalCount, filters, receipt,
     sortDescFirst: table.getAllLeafColumns().filter(column => column.getAutoSortDir() === "desc").map(column => column.id),
   };
-  return { data: {...data, rows: matching.slice(offset, offset + pageSize).map(row => row.original)}, screenPage };
+  const rows = matching
+    ? matching.slice(offset, offset + pageSize).map(row => row.original)
+    : data.rows.slice(offset, offset + pageSize);
+  return { data: {...data, rows}, screenPage };
 }

@@ -14,6 +14,7 @@ it('F09 integrates after F08 with the server font adapter and shared fenced send
   '20261018100339_f09_dms_delivery_projection.sql',
   '20261018102324_f09_dms_reminder_intent_fence.sql',
   '20261123020014_f09_schedule_worker_inventory.sql',
+  '20261123090920_f09_schedule_enqueue_batch.sql',
  ]);
 });
 it('keeps the later F05 authentication transport and independently owned DMS migrations',()=>{

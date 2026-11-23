@@ -92,3 +92,19 @@ it("a malformed inventory that exceeds the requested cap cannot enqueue",async()
  expect(rpc).toHaveBeenCalledExactlyOnceWith(inventory,{p_limit:1,p_due_at:expect.any(String)});
  expect(m.batch).not.toHaveBeenCalled();
 });
+
+it("enqueues a mixed recovery set in one call and preserves each outcome",async()=>{
+ rows=[];pending=[{id:44},{id:55},{id:66}];
+ rpc.mockResolvedValueOnce({data:{due:[],reserved:pending},error:null});
+ rpc.mockResolvedValueOnce({data:{queued:1,skipped:1,failed:1},error:null});
+ const result=await processDueSchedules({workerId:"synthetic"});
+ expect(result).toMatchObject({claimed:0,queued:1,skipped:1,terminal:1});
+ expect(rpc.mock.calls.map(([name])=>name)).toEqual([inventory,"f09_enqueue_schedule_run_batch"]);
+ expect(rpc.mock.calls[1][1]).toEqual({p_run_ids:[44,55,66]});
+});
+it("rejects an incomplete enqueue receipt before starting delivery",async()=>{
+ rpc.mockResolvedValueOnce({data:{due:[],reserved:[{id:44},{id:55}]},error:null});
+ rpc.mockResolvedValueOnce({data:{queued:1,skipped:0,failed:0},error:null});
+ await expect(processDueSchedules({workerId:"synthetic"})).rejects.toThrow("enqueue totals");
+ expect(m.batch).not.toHaveBeenCalled();
+});

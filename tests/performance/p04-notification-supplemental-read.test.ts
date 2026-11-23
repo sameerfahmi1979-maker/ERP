@@ -33,7 +33,9 @@ afterEach(()=>Object.assign(s,{permissions:["notifications.admin","reports.histo
 for(const f of families){
  it(f.name+" reads bounded exact complete pages beyond the previous cap and strips unknown private fields",async()=>{
   s.results=[result([{...f.row,metadata_json:{secret:"PRIVATE_METADATA"},html_template:"PRIVATE_HTML"}],1101)];
-  const r=await f.reader({page:12,pageSize:100,...(f.name==="dms"?viewCriteria:{})});expect(r.success).toBe(true);expect(r.data?.totalCount).toBe(1101);expect(s.calls).toContainEqual(["range",1100,1199]);
+  const r=await f.reader({page:12,pageSize:100,...(f.name==="dms"?viewCriteria:{})});
+  if (!r.success) throw new Error("Expected a successful supplemental read");
+  expect(r.data?.totalCount).toBe(1101);expect(s.calls).toContainEqual(["range",1100,1199]);
   expect(s.calls).toContainEqual(["from",f.table]);expect(s.calls).toContainEqual(["select",f.columns,{count:"exact",head:false}]);expect(JSON.stringify(r)).not.toContain("PRIVATE");
  });
  it(f.name+" denies before database access",async()=>{s.permissions=[];expect(await f.reader({})).toMatchObject({success:false,error:"Permission denied"});expect(s.calls).toEqual([]);});

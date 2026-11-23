@@ -270,6 +270,7 @@ export const APPLICATION_ROUTE_PATTERNS = [
   "/api/reads/hr-record-choices",
   "/api/reads/hr-recruitment-inquiries",
   "/api/reads/hr-recruitment-requisition-detail",
+  "/api/reads/hr-rule-settings",
   "/api/reads/hr-search",
   "/api/reads/hr-time",
   "/api/reads/hr-time-choices",

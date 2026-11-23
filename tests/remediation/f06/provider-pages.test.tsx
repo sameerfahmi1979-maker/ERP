@@ -18,7 +18,7 @@ for(const [kind,page,reads,flagPermission,logPermission] of [
 ] as const){
  for(const [grant,expected] of [['test',[true,false,false]],['secrets.manage',[true,false,false]],[flagPermission,kind==='ai'?[true,true,false]:[false,true,false]],[logPermission,[false,false,true]]] as const){
   it(`${kind}: ${grant} opens only authorized sections without invented grants`,async()=>{
-   permissions([`settings.${kind}.${grant}`]);const element=await page();const props=element.props.children.props;
+   permissions([`settings.${kind}.${grant}`]);const element=await page({});const props=element.props.children.props;
    const flags=kind==='ai'?props.permissions:props;
    expect([flags.canViewProviders,flags.canViewFlags,flags[kind==='ai'?'canViewUsage':'canViewLogs']]).toEqual(expected);
    reads.forEach((read,index)=>expect(read.mock.calls.length).toBe(expected[index]?1:0));
@@ -26,16 +26,16 @@ for(const [kind,page,reads,flagPermission,logPermission] of [
   });
  }
  for(const grant of ['manage','test','secrets.manage',flagPermission,logPermission])it(`${kind}: company-only ${grant} cannot administer global providers`,async()=>{
-  permissions([`settings.${kind}.${grant}`],true);await expect(page()).rejects.toThrow('ACCESS_DENIED');reads.forEach(read=>expect(read).not.toHaveBeenCalled());
+  permissions([`settings.${kind}.${grant}`],true);await expect(page({})).rejects.toThrow('ACCESS_DENIED');reads.forEach(read=>expect(read).not.toHaveBeenCalled());
  });
  it(`${kind}: no-role, inactive and password-setup principals cannot read settings`,async()=>{
   for(const context of [()=>permissions([]),()=>{permissions([`settings.${kind}.manage`]);mock.ctx.isAccountActive=false;},()=>{permissions([`settings.${kind}.manage`]);mock.ctx.profile!.must_change_password=true;}]){
-   context();await expect(page()).rejects.toThrow('ACCESS_DENIED');
+   context();await expect(page({})).rejects.toThrow('ACCESS_DENIED');
   }reads.forEach(read=>expect(read).not.toHaveBeenCalled());
  });
  it(`${kind}: global administrator works without fabricated explicit permission rows`,async()=>{
   permissions([]);mock.ctx.roleAssignments=[{roleCode:'system_admin',ownerCompanyId:null,branchId:null,permissionCodes:[]}];
-  const element=await page();const props=element.props.children.props;expect((kind==='ai'?props.permissions:props).canManage).toBe(true);
+  const element=await page({});const props=element.props.children.props;expect((kind==='ai'?props.permissions:props).canManage).toBe(true);
   expect(reads[0]).toHaveBeenCalledOnce();expect(reads[1]).toHaveBeenCalledOnce();expect(reads[2]).not.toHaveBeenCalled();
  });
  for(const index of [0,1,2])it(`${kind}: failed section ${index} is not silently presented as empty`,async()=>{
@@ -54,11 +54,11 @@ for(const [kind,page,reads,flagPermission,logPermission] of [
  });
  it(`${kind}: unrequested reads cannot force a failure outcome`,async()=>{
   permissions([`settings.${kind}.${logPermission}`]);reads[0].mockImplementation(()=>{throw Error('UNREQUESTED_READ');});reads[1].mockImplementation(()=>{throw Error('UNREQUESTED_READ');});
-  const element=await page();expect(element.type).not.toBe(LoadError);renderToStaticMarkup(element);
+  const element=await page({});expect(element.type).not.toBe(LoadError);renderToStaticMarkup(element);
   expect(kind==='ai'?mock.aiClient:mock.emailClient).toHaveBeenCalledOnce();expect(reads[0]).not.toHaveBeenCalled();expect(reads[1]).not.toHaveBeenCalled();expect(reads[2]).toHaveBeenCalledOnce();
  });
  it(`${kind}: confirmed empty results render the existing permitted client`,async()=>{
-  permissions(['manage',logPermission].map(grant=>`settings.${kind}.${grant}`));const element=await page();expect(element.type).not.toBe(LoadError);
+  permissions(['manage',logPermission].map(grant=>`settings.${kind}.${grant}`));const element=await page({});expect(element.type).not.toBe(LoadError);
   const props=element.props.children.props;expect(props.configs).toEqual([]);expect(props.featureFlags).toEqual([]);expect(props[kind==='ai'?'usageLogs':'sendLogs']).toEqual([]);
   expect(props.failedPanels).toEqual({providers:false,flags:false,logs:false});
   renderToStaticMarkup(element);expect(kind==='ai'?mock.aiClient:mock.emailClient).toHaveBeenCalledOnce();
@@ -78,7 +78,7 @@ it.each([['ai', AiPage, mock.ai, 'usage.view'], ['email', EmailPage, mock.email,
   '%s manager opens provider settings without reading hidden logs, then reads them once on tab entry',
   async (kind, page, reads, logPermission) => {
     permissions([`settings.${kind}.manage`, `settings.${kind}.${logPermission}`]);
-    await page();
+    await page({});
     expect(reads[0]).toHaveBeenCalledOnce();
     expect(reads[1]).toHaveBeenCalledOnce();
     expect(reads[2]).not.toHaveBeenCalled();

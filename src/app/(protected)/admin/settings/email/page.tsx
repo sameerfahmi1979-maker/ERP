@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 
 export default async function EmailSettingsPage({ searchParams }: {
   searchParams?: Promise<{ panel?: string | string[] }>;
-} = {}) {
+}) {
   const ctx = await getAuthContext();
 
   const canViewProviders = ["settings.email.view","settings.email.manage","settings.email.test","settings.email.secrets.manage"].some(code=>hasGlobalPermission(ctx,code));

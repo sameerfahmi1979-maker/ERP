@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default async function AiSettingsPage({ searchParams }: {
   searchParams?: Promise<{ panel?: string | string[] }>;
-} = {}) {
+}) {
   const ctx = await getAuthContext();
   const permissions = {
     canViewProviders: ["settings.ai.view","settings.ai.manage","settings.ai.test","settings.ai.secrets.manage"].some(code=>hasGlobalPermission(ctx,code)),

@@ -20,7 +20,10 @@ import { logAudit } from "@/server/actions/audit";
 import { runAssistantTurn, MAX_USER_MESSAGE_LENGTH } from "@/lib/ai/common/assistant/assistant-engine";
 import { sanitizeForStorage } from "@/lib/ai/common/assistant/response-builder";
 import { normalizeAssistantReference, readAuthorizedAssistantEntity } from "@/lib/ai/common/assistant/entity-access";
-import { createAssistantHistoryBinding, createAssistantHistoryVerifier, HISTORY_WITHHELD, verifyAssistantSessionNow } from "@/lib/ai/common/assistant/history-access";
+import {
+  createAssistantHistoryBinding, createAssistantHistoryVerifier, hasSameAssistantAuthority, HISTORY_WITHHELD,
+  verifyAssistantHistoryPage, verifyAssistantSessionNow,
+} from "@/lib/ai/common/assistant/history-access";
 import type { AiEntityReference } from "@/lib/ai/foundation/contracts";
 import type {
   AssistantSessionRow,
@@ -218,19 +221,20 @@ export async function getAssistantSession(
     ? await readAuthorizedAssistantEntity(session.context_entity_type, session.context_entity_id, { context: ctx, db: supabase })
     : null;
   if ((session.context_entity_type || session.context_entity_id) && !context) return { success: false, error: "Record context is unavailable", code: "FORBIDDEN" };
-  const verifyHistory = createAssistantHistoryVerifier(ctx, sessionId, supabase);
-  const messages: AssistantMessageRow[] = [];
-  for (const row of messagesRes.data ?? []) {
+  const messageBindings = messagesRes.data.map(row => (row.safe_metadata_json as Record<string, unknown> | null)?.ai_mod01_binding);
+  const draftBindings = draftsRes.data.map(row => (row.draft_payload_json as Record<string, unknown> | null)?.historyBinding);
+  const verified = await verifyAssistantHistoryPage(ctx, sessionId, supabase, [...messageBindings, ...draftBindings]);
+  if ((context || verified.some(Boolean)) && !hasSameAssistantAuthority(ctx, await getAuthContext())) {
+    return { success: false, error: "Conversation access changed. Reopen the session to continue.", code: "FORBIDDEN" };
+  }
+  const messages = messagesRes.data.map((row, index): AssistantMessageRow => {
     const mapped = mapMessageRow(row as Record<string, unknown>);
-    const valid = await verifyHistory((row.safe_metadata_json as Record<string, unknown> | null)?.ai_mod01_binding);
-    messages.push(valid ? mapped : { ...mapped, messageText: HISTORY_WITHHELD, outputType: "blocked_notice", safeMetadataJson: {} });
-  }
-  const drafts: AssistantDraftRow[] = [];
-  for (const row of draftsRes.data ?? []) {
+    return verified[index] ? mapped : { ...mapped, messageText: HISTORY_WITHHELD, outputType: "blocked_notice", safeMetadataJson: {} };
+  });
+  const drafts = draftsRes.data.map((row, index): AssistantDraftRow => {
     const mapped = mapDraftRow(row as Record<string, unknown>);
-    const valid = await verifyHistory((row.draft_payload_json as Record<string, unknown> | null)?.historyBinding);
-    drafts.push(valid ? mapped : { ...mapped, targetEntityType: null, targetEntityId: null, draftPayloadJson: { summary: HISTORY_WITHHELD } });
-  }
+    return verified[messageBindings.length + index] ? mapped : { ...mapped, targetEntityType: null, targetEntityId: null, draftPayloadJson: { summary: HISTORY_WITHHELD } };
+  });
 
   return {
     success: true,

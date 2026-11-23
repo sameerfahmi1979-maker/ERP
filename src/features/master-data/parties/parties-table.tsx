@@ -18,7 +18,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { Party } from "@/features/master-data/parties/party-types";
+import { partyCatalogueColumns, type PartyCatalogueColumn, type PartyCatalogueRow } from "./party-catalogue";
+import { usePartyCatalogue } from "./use-party-catalogue";
 import { useRealtimeSync } from "@/hooks/realtime/use-realtime-sync";
 import { useWorkspace } from "@/hooks/use-workspace";
 import type { AuthContext } from "@/lib/rbac/check";
@@ -28,16 +29,17 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { format } from "date-fns";
 import { Edit, Eye, MoreVertical, Plus, Power } from "lucide-react";
 import { useRouter } from "next/navigation";
-import {useState} from 'react';
+import {useMemo,useState} from 'react';
 import {PartyLifecycleDialog} from './party-lifecycle-dialog';
 import { prefetchPartyFormData } from "./party-form-prefetch";
 
 type PartiesTableProps = {
-  parties: Party[];
+  parties: PartyCatalogueRow[];
+  totalCount: number;
+  sortAscendingFirst?: PartyCatalogueColumn[];
   authContext: AuthContext;
   onRefresh?: () => void;
   defaultTypeCode?: string | null;
-  pageTitle?: string | null;
 };
 
 // Maps party type codes to friendly "Add" labels
@@ -55,7 +57,7 @@ const PARTY_TYPE_CODE_LABELS: Record<string, string> = {
 // Codes that are valid for defaultType param (excludes BANK per spec)
 const ALLOWED_DEFAULT_TYPE_CODES = new Set(Object.keys(PARTY_TYPE_CODE_LABELS));
 
-export function PartiesTable({ parties, authContext, onRefresh, defaultTypeCode, pageTitle }: PartiesTableProps) {
+export function PartiesTable({ parties, totalCount, sortAscendingFirst, authContext, onRefresh, defaultTypeCode }: PartiesTableProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { openTab } = useWorkspace();
@@ -64,9 +66,12 @@ export function PartiesTable({ parties, authContext, onRefresh, defaultTypeCode,
     && (!defaultTypeCode || !ALLOWED_DEFAULT_TYPE_CODES.has(defaultTypeCode) || hasGlobalPermission(authContext,'master_data.parties.manage_types'));
   const canEdit = hasPermission(authContext,"master_data.parties.edit");
   const canDeactivate = hasGlobalPermission(authContext,"master_data.parties.deactivate");
-  const [lifecycleParty,setLifecycleParty]=useState<Party|null>(null);
+  const [lifecycleParty,setLifecycleParty]=useState<PartyCatalogueRow|null>(null);
+  const initialPage = useMemo(() => ({ rows: parties, totalCount, sortAscendingFirst }), [parties, totalCount, sortAscendingFirst]);
+  const read = usePartyCatalogue(initialPage, defaultTypeCode ?? undefined, authContext.profile?.id);
 
   const handleRefresh = () => {
+    read.retireSelection();
     if (onRefresh) onRefresh();
     else router.refresh();
   };
@@ -103,7 +108,7 @@ export function PartiesTable({ parties, authContext, onRefresh, defaultTypeCode,
     });
   };
 
-  const openView = (item: Party) => {
+  const openView = (item: PartyCatalogueRow) => {
     openTab({
       route: `/admin/master-data/parties/record/${item.id}?mode=view`,
       title: `Party — ${item.display_name ?? item.party_code}`,
@@ -116,7 +121,7 @@ export function PartiesTable({ parties, authContext, onRefresh, defaultTypeCode,
     });
   };
 
-  const openEdit = (item: Party) => {
+  const openEdit = (item: PartyCatalogueRow) => {
     prefetchPartyFormData(queryClient).catch(() => {});
     openTab({
       route: `/admin/master-data/parties/record/${item.id}?mode=edit`,
@@ -132,10 +137,10 @@ export function PartiesTable({ parties, authContext, onRefresh, defaultTypeCode,
 
   // ── Columns ────────────────────────────────────────────────────────────────
 
-  const columns: ColumnDef<Party>[] = [
+  const columns: ColumnDef<PartyCatalogueRow>[] = [
     {
       accessorKey: "party_code",
-      header: "Party Code",
+      header: partyCatalogueColumns.party_code,
       cell: ({ row }) => (
         <span className="font-mono text-sm font-medium">{row.original.party_code}</span>
       ),
@@ -143,7 +148,7 @@ export function PartiesTable({ parties, authContext, onRefresh, defaultTypeCode,
     },
     {
       accessorKey: "display_name",
-      header: "Display Name",
+      header: partyCatalogueColumns.display_name,
       cell: ({ row }) => (
         <div className="flex flex-col">
           <span className="font-medium">{row.original.display_name}</span>
@@ -175,7 +180,7 @@ export function PartiesTable({ parties, authContext, onRefresh, defaultTypeCode,
     },
     {
       accessorKey: "party_status_name",
-      header: "Status",
+      header: partyCatalogueColumns.party_status_name,
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           <Badge variant={row.original.is_active ? "default" : "secondary"}>
@@ -187,19 +192,19 @@ export function PartiesTable({ parties, authContext, onRefresh, defaultTypeCode,
     },
     {
       accessorKey: "country_name",
-      header: "Country",
+      header: partyCatalogueColumns.country_name,
       cell: ({ row }) => <span className="text-sm">{row.original.country_name ?? "—"}</span>,
       meta: { exportable: true },
     },
     {
       accessorKey: "emirate_name",
-      header: "Emirate",
+      header: partyCatalogueColumns.emirate_name,
       cell: ({ row }) => <span className="text-sm">{row.original.emirate_name ?? "—"}</span>,
       meta: { exportable: true },
     },
     {
       accessorKey: "main_phone",
-      header: "Phone",
+      header: partyCatalogueColumns.main_phone,
       cell: ({ row }) => (
         <span className="text-sm">{row.original.main_phone ?? row.original.main_mobile ?? "—"}</span>
       ),
@@ -207,13 +212,13 @@ export function PartiesTable({ parties, authContext, onRefresh, defaultTypeCode,
     },
     {
       accessorKey: "main_email",
-      header: "Email",
+      header: partyCatalogueColumns.main_email,
       cell: ({ row }) => <span className="text-sm">{row.original.main_email ?? "—"}</span>,
       meta: { exportable: true },
     },
     {
       accessorKey: "updated_at",
-      header: "Updated",
+      header: partyCatalogueColumns.updated_at,
       cell: ({ row }) => (
         <span className="text-xs text-muted-foreground">
           {format(new Date(row.original.updated_at), "yyyy-MM-dd")}
@@ -263,10 +268,18 @@ export function PartiesTable({ parties, authContext, onRefresh, defaultTypeCode,
   ];
 
   return (
-    <><ERPDataTable<Party> presentation="worklist"
+    <>
+    {read.failed && <div role="alert" className="flex items-center gap-3 py-2 text-sm">
+      Party records could not be loaded. <Button type="button" size="sm" variant="outline" onClick={read.retry}>Retry</Button>
+    </div>}
+    <ERPDataTable<PartyCatalogueRow> presentation="worklist"
       tableId="parties_table"
-      columns={columns}
-      data={parties}
+      columns={columns.map(column => "accessorKey" in column && read.sortAscendingFirst
+        ? { ...column, sortDescFirst: !read.sortAscendingFirst.includes(column.accessorKey as PartyCatalogueColumn) }
+        : column)}
+      data={read.rows}
+      serverRead={read.serverRead}
+      isLoading={read.pending}
       enableSorting
       enableColumnResizing
       enableRowSelection
@@ -277,7 +290,7 @@ export function PartiesTable({ parties, authContext, onRefresh, defaultTypeCode,
       initialPageSize={25}
       exportConfig={{
         title: "Party Master Data",
-        subtitle: `${parties.length} part${parties.length !== 1 ? "ies" : "y"} registered`,
+        subtitle: `${totalCount} part${totalCount !== 1 ? "ies" : "y"} registered`,
         filename: "party-master-data",
         orientation: "landscape",
       }}

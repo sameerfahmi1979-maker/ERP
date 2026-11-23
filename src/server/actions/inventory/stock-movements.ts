@@ -8,7 +8,8 @@ import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
 import { fleetId } from "@/lib/fleet/asset-contract";
 import { fuelAssetList, fuelWorkspace, stockMovement, supplyActionQueue, supplyActionQueueKinds, supplyActionQueuePage,
-  supplyActionQueueSearch, supplyActionReceipt, supplyBranchList, supplyRequest, supplyWorkspace, workspaceKinds } from "@/lib/supply/contracts";
+  supplyActionQueueSearch, supplyActionReceipt, supplyBranchList, supplyReceiptHistory, supplyReceiptHistoryPageSize,
+  supplyRequest, supplyWorkspace, workspaceKinds } from "@/lib/supply/contracts";
 
 const command = { setup: "t11_supply_setup", stock: "t11_stock_command",
   purchase: "t11_purchase_command", fuel: "t11_fuel_command" } as const;
@@ -35,7 +36,19 @@ export async function listSupplyBranches(workspace: "inventory" | "procurement")
 }
 export async function getSupplyWorkspace(branch: number, workspace: "inventory" | "procurement") {
   if (!fleetId.safeParse(branch).success || !workspaceKinds.safeParse(workspace).success) return null;
+  if (workspace === "procurement") {
+    const data = await read("t11_procurement_workspace", { p_branch: branch }, supplyWorkspace);
+    return data?.branch === branch && data.receipt_choices ? data : null;
+  }
   return read("t11_supply_workspace", { p_branch: branch, p_workspace: workspace }, supplyWorkspace);
+}
+
+export async function getSupplyReceiptHistory(branch: number, page: number) {
+  if (!fleetId.safeParse(branch).success || !supplyActionQueuePage.safeParse(page).success) return null;
+  const result = await read("t11_procurement_receipt_history", {
+    p_branch: branch, p_page: page, p_page_size: supplyReceiptHistoryPageSize,
+  }, supplyReceiptHistory);
+  return result?.branch === branch && result.page === page && result.pageSize === supplyReceiptHistoryPageSize ? result : null;
 }
 export async function getSupplyActionQueue(branch: number, queue: "receiving" | "stock-review", query: string, page: number) {
   const search = supplyActionQueueSearch.safeParse(query);

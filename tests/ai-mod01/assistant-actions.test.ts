@@ -8,7 +8,15 @@ vi.mock("@/lib/rbac/check", () => ({ getAuthContext: async () => state.ctx, hasP
 vi.mock("@/server/actions/audit", () => ({ logAudit: async () => {} }));
 vi.mock("@/lib/ai/common/assistant/assistant-engine", () => ({ MAX_USER_MESSAGE_LENGTH: 1000, runAssistantTurn: state.engine }));
 vi.mock("@/lib/ai/common/assistant/entity-access", () => ({ normalizeAssistantReference: (entityType: string, entityId: number) => ({ entityType, entityId }), readAuthorizedAssistantEntity: async () => ({ label: "SYNTHETIC", version: "v1" }) }));
-vi.mock("@/lib/ai/common/assistant/history-access", () => ({ HISTORY_WITHHELD: "SOURCE WITHHELD", verifyAssistantSessionNow: async () => {}, createAssistantHistoryBinding: state.binding, createAssistantHistoryVerifier: () => async (raw: { current?: boolean }) => raw?.current === true }));
+vi.mock("@/lib/ai/common/assistant/history-access", () => ({
+  HISTORY_WITHHELD: "SOURCE WITHHELD",
+  verifyAssistantSessionNow: async () => {},
+  hasSameAssistantAuthority: () => true,
+  createAssistantHistoryBinding: state.binding,
+  createAssistantHistoryVerifier: () => async (raw: { current?: boolean }) => raw?.current === true,
+  verifyAssistantHistoryPage: async (_ctx: unknown, _id: number, _db: unknown, bindings: Array<{ current?: boolean }>) =>
+    bindings.map(raw => raw?.current === true),
+}));
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from(table: string) {
   const rows = () => table === "erp_ai_assistant_messages" ? state.messages : table === "erp_ai_assistant_action_drafts" ? state.drafts : [state.session];
   let operation = "read";

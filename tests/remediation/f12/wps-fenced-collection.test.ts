@@ -71,11 +71,13 @@ function fixture(size = 1) {
   const generations: Record<string, string> = Object.fromEntries(sources.map(source => [source, "1"]));
   const selectReads: string[] = [];
   const pageReads: string[] = [];
+  const exactCountReads: string[] = [];
   const readPayloads: number[] = [];
   const from = (table: string) => {
     let visible = tables[table];
     let first = 0;
     let last = 499;
+    let exactCount = true;
     const query = {
       select: () => { selectReads.push(table); return query; },
       range: (start: number, end: number) => { first = start; last = end; return query; },
@@ -84,11 +86,17 @@ function fixture(size = 1) {
       eq: () => query,
       lte: () => query,
       order: () => query,
-      then: (resolve: (value: { data: FixtureRow[]; count: number; error: null }) => unknown) => {
+      setHeader: (name: string, value: string) => {
+        expect(name.toLowerCase()).toBe("prefer");
+        exactCount = value.includes("count=exact");
+        return query;
+      },
+      then: (resolve: (value: { data: FixtureRow[]; count: number | null; error: null }) => unknown) => {
         pageReads.push(table);
+        if (exactCount) exactCountReads.push(table);
         const data = visible.slice(first, last + 1);
         readPayloads.push(Buffer.byteLength(JSON.stringify(data)));
-        return Promise.resolve({ data, count: visible.length, error: null }).then(resolve);
+        return Promise.resolve({ data, count: exactCount ? visible.length : null, error: null }).then(resolve);
       },
     };
     return query;
@@ -100,7 +108,7 @@ function fixture(size = 1) {
       return { abortSignal: async () => ({ data: { ...generations }, error: null }) };
     },
   });
-  return { generations, selectReads, pageReads, readPayloads, tables };
+  return { generations, selectReads, pageReads, exactCountReads, readPayloads, tables };
 }
 
 async function reportClient() {
@@ -113,12 +121,13 @@ beforeEach(() => {
 });
 
 it("reads six authorized WPS sources once across 1,107 employees and exact native pages", async () => {
-  const { selectReads, pageReads } = fixture(1107);
+  const { selectReads, pageReads, exactCountReads } = fixture(1107);
   const client = await reportClient();
   const result = await wpsReadinessFetcher.fetch({}, permissions, client);
   await revalidateScopedReportReadClient(client, actor);
   expect(selectReads).toEqual(sources.slice(0, 6));
   expect(pageReads).toHaveLength(14);
+  expect(exactCountReads).toEqual(sources.slice(0, 6));
   expect(result.rows.map(row => row.employee_code)).toEqual(
     Array.from({ length: 1107 }, (_, index) => `SYN-${index + 1}`),
   );
@@ -142,6 +151,16 @@ it.each(sources)("rejects a changed generation for %s before releasing output", 
   const client = await reportClient();
   await wpsReadinessFetcher.fetch({}, permissions, client);
   generations[source] = "3";
+  await expect(revalidateScopedReportReadClient(client, actor)).rejects.toThrow("Report data changed during collection");
+});
+
+it("rejects price-source replacement across count-free continuation pages", async () => {
+  const { exactCountReads, generations } = fixture(501);
+  const client = await reportClient();
+  const result = await wpsReadinessFetcher.fetch({}, permissions, client);
+  expect(result.meta?.total).toBe(501);
+  expect(exactCountReads.filter(table => table === "employee_salary_components")).toHaveLength(1);
+  generations.employee_salary_components = "2";
   await expect(revalidateScopedReportReadClient(client, actor)).rejects.toThrow("Report data changed during collection");
 });
 

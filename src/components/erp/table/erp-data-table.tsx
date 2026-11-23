@@ -88,7 +88,7 @@ function getColumnHeaderText<TData>(column: Column<TData, unknown>): string {
  */
 function getExportRows<TData>(sortedRows: Row<TData>[], hasSelection: boolean) {
   const selectedRows = hasSelection ? sortedRows.filter(row => row.getIsSelected()) : [];
-  const mode = selectedRows.length ? "selected" : "filtered";
+  const mode: "selected" | "filtered" = selectedRows.length ? "selected" : "filtered";
   const rows = selectedRows.length ? selectedRows : sortedRows;
   return { mode, count: rows.length, load: () => rows.map(row => row.original) };
 }
@@ -151,8 +151,9 @@ export function ERPDataTable<TData>({
   // Table state — start with server-safe empty defaults; preferences applied post-mount
   const [sorting, setSorting] = usePersistentUiState<SortingState>(key ? key+":sorting" : undefined,[]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const [selectionData, setSelectionData] = useState(data);
-  if (selectionData !== data) { setSelectionData(data); setRowSelection({}); }
+  const selectionScope = serverRead?.exportSelection?.scope ?? data;
+  const [selectionData, setSelectionData] = useState(selectionScope);
+  if (selectionData !== selectionScope) { setSelectionData(selectionScope); setRowSelection({}); }
   const [globalFilter, setGlobalFilter] = usePersistentUiState(key ? key+":search" : undefined,"");
   const [columnFilters, setColumnFilters] = usePersistentUiState<ColumnFiltersState>(key ? key+":filters" : undefined, []);
   const [mounted, setMounted] = useState(false);
@@ -305,12 +306,19 @@ export function ERPDataTable<TData>({
       return pageIndex === previous.pageIndex ? previous : { ...previous, pageIndex };
     });
   }, [filteredCount, remote, setPagination]);
-  const selectedRowCount = table.getFilteredSelectedRowModel().rows.length;
+  const selectedIds = useMemo(() => Object.keys(rowSelection).filter(id => rowSelection[id]), [rowSelection]);
+  const selectedRowCount = serverRead?.exportSelection ? selectedIds.length : table.getFilteredSelectedRowModel().rows.length;
 
   const exportSortRows = exportConfig && !embedded ? table.getSortedRowModel().rows : null;
   const exportData = useMemo(() => exportSortRows
-    ? getExportRows(exportSortRows, Object.keys(rowSelection).length > 0) : null,
-  [exportSortRows, rowSelection]);
+    ? getExportRows(exportSortRows, selectedIds.length > 0) : null,
+  [exportSortRows, selectedIds]);
+  const exportSelection = serverRead?.exportSelection;
+  const exportMode = exportSelection && selectedIds.length > 0 ? "selected" : exportData?.mode;
+  const exportCount = exportMode === "selected" && exportSelection ? selectedIds.length : exportData?.count ?? 0;
+  const exportLoad = exportMode === "selected"
+    ? exportSelection && (() => exportSelection.load(selectedIds))
+    : serverRead?.loadExportData;
   const exportColumns = exportData ? getExportColumns(table) : [];
 
   // Build dynamic subtitle for export
@@ -319,15 +327,15 @@ export function ERPDataTable<TData>({
     
     const baseSubtitle = exportConfig.subtitle || "";
     const modeText = 
-      `${exportData.count} ${exportData.mode} record${exportData.count > 1 ? "s" : ""}`;
+      `${exportCount} ${exportMode} record${exportCount > 1 ? "s" : ""}`;
     
-    const scope = serverRead && exportData.mode !== "selected"
+    const scope = serverRead && exportMode !== "selected"
       ? unavailable ? "Matching total is not yet available"
         : serverRead.loadExportData ? `all ${serverRead.totalCount} matching authorized records`
           : "Complete export is unavailable"
-      : remote ? `${modeText} from the current loaded page only` : modeText;
+      : remote && !exportSelection ? `${modeText} from the current loaded page only` : modeText;
     return baseSubtitle ? `${baseSubtitle} (${scope})` : scope;
-  }, [exportConfig, exportData, remote, serverRead, unavailable]);
+  }, [exportConfig, exportData, exportCount, exportMode, exportSelection, remote, serverRead, unavailable]);
 
   return (
     <div className="algt-data-table min-w-0 flex flex-col" data-list-presentation={presentation} aria-busy={isLoading || undefined}>
@@ -354,15 +362,18 @@ export function ERPDataTable<TData>({
             <WorklistFitControl viewport={viewport} />
             {exportConfig && exportData && (
               <ERPExportMenu
+                key={serverRead?.exportScope === undefined ? undefined : JSON.stringify([serverRead.exportScope, selectedIds, exportColumns.map(column => column.key)])}
                 title={exportConfig.title}
                 filename={exportConfig.filename}
                 localRows={exportData}
-                loadData={serverRead && exportData.mode !== "selected" ? serverRead.loadExportData : undefined}
+                loadData={exportLoad}
+                allowCompleteLegacyEmail={serverRead?.completeLegacyEmail}
+                exportMode={exportSelection ? exportMode : undefined}
                 columns={exportColumns}
                 subtitle={exportSubtitle}
                 generatedBy={exportConfig.generatedBy}
                 orientation={exportConfig.orientation}
-                disabled={exportData.count === 0 || (!!serverRead && (unavailable || isLoading || (exportData.mode !== "selected" && !serverRead.loadExportData)))}
+                disabled={exportCount === 0 || (!!serverRead && (unavailable || isLoading || (exportMode !== "selected" && !exportLoad)))}
               />
             )}
           </div>

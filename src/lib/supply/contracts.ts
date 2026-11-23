@@ -8,7 +8,8 @@ const option = z.object({ id, label: z.string() });
 export const workspaceKinds = z.enum(["inventory", "procurement", "fuel"]);
 export const supplyBranchList = z.array(z.object({ id, name: z.string(), company: z.string() }));
 export const supplyActionQueueKinds = z.enum(["receiving", "stock-review"]);
-export const supplyActionQueuePage = z.number().int().min(1).max(1_000_000);
+export const supplyMaxPage = 1_000_000;
+export const supplyActionQueuePage = z.number().int().min(1).max(supplyMaxPage);
 export const supplyActionQueueSearch = z.string().trim().max(120);
 const queuePage = z.object({
   page: supplyActionQueuePage, pageSize: z.number().int().min(1).max(100),
@@ -28,6 +29,16 @@ export const stockMovement = z.object({
   recorded_at: z.string(), revision: id, reference: idOrNull, from_layer: idOrNull, to_layer: idOrNull,
   valuation: z.enum(["pending-finance", "verified"]), amount: numberOrNull, currency: textOrNull,
 });
+const supplyReceipt = option.extend({ purchase_id: id, delivered: z.number(), accepted: z.number(),
+  rejected: z.number(), quarantined: z.number(), lot: textOrNull, serial: textOrNull, received_at: z.string(), uom: id,
+  accepted_movement: idOrNull, quarantine_movement: idOrNull,
+  inspections: z.array(z.object({ id, outcome: z.string(), quantity: z.number(), movement: idOrNull })),
+  returns: z.array(z.object({ id, quantity: z.number(), movement: id, reference: z.string() })),
+});
+export const supplyReceiptHistoryPageSize = 25;
+export const supplyReceiptHistory = queuePage.extend({ branch: id, rows: z.array(supplyReceipt) }).refine(result =>
+  result.rows.length === Math.min(result.pageSize, Math.max(0, result.totalCount - (result.page - 1) * result.pageSize))
+  && result.rows.every((receipt, index) => index === 0 || result.rows[index - 1].id > receipt.id));
 export const supplyWorkspace = z.object({
   branch: id, name: z.string(), rights: z.array(z.string()), company_setup: z.boolean(),
   units: z.array(option.extend({ decimals: z.number() })),
@@ -46,12 +57,8 @@ export const supplyWorkspace = z.object({
   suppliers: z.array(option).optional(),
   purchases: z.array(option.extend({ approved_at: textOrNull, quantity: z.number(), delivered: z.number(),
     item_id: id, uom: id, supplier: textOrNull })).optional(),
-  receipts: z.array(option.extend({ purchase_id: id, delivered: z.number(), accepted: z.number(),
-    rejected: z.number(), quarantined: z.number(), lot: textOrNull, serial: textOrNull, received_at: z.string(), uom: id,
-    accepted_movement: idOrNull, quarantine_movement: idOrNull,
-    inspections: z.array(z.object({ id, outcome: z.string(), quantity: z.number(), movement: idOrNull })),
-    returns: z.array(z.object({ id, quantity: z.number(), movement: id, reference: z.string() })),
-  })).optional(),
+  receipts: z.array(supplyReceipt).optional(),
+  receipt_choices: z.array(option.extend({ needs_inspection: z.boolean() })).max(100).optional(),
 });
 export const fuelAssetList = z.object({ assets: z.array(option) });
 export const fuelWorkspace = z.object({
@@ -76,4 +83,5 @@ export const supplyActionReceipt = z.object({
 export type SupplyRequest = z.infer<typeof supplyRequest>;
 export type SupplyWorkspace = z.infer<typeof supplyWorkspace>;
 export type SupplyActionQueue = z.infer<typeof supplyActionQueue>;
+export type SupplyReceiptHistory = z.infer<typeof supplyReceiptHistory>;
 export type FuelWorkspace = z.infer<typeof fuelWorkspace>;

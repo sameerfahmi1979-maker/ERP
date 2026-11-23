@@ -1,4 +1,5 @@
 import "server-only";
+import { z } from "zod";
 import { traceRequest } from "@/lib/performance/request";
 import { traceSpan } from "@/lib/performance/trace";
 
@@ -64,19 +65,41 @@ async function getAuthContextImpl(): Promise<AuthContext> {
   if (sessionError || sessionValid !== true) {
     return { profile: null, email: null, roleCodes: [], permissionCodes: [], accountStatus: "none", isAccountActive: false };
   }
-  // Narrow bootstrap lookup also supports the forced-change page while business RLS denies access.
-  const { data: profile, error: profileError } = await createAdminClient()
-    .from("user_profiles")
-    .select("*")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (profileError || !profile) {
-    return { profile: null, email: user.email ?? null, roleCodes: [], permissionCodes: [], accountStatus: "none", isAccountActive: false };
-  }
-
-  return traceSpan("auth.permissions", () => buildAuthContext(profile as UserProfile, user.email ?? null));
+  return traceSpan("auth.permissions", async () => {
+    // Only the identity verified by GoTrue can select this bootstrap graph.
+    const { data, error } = await createAdminClient().rpc("erp_current_auth_graph", { p_auth_user_id: user.id });
+    if (error) throw new Error("Unable to resolve authorization context");
+    if (data === null) {
+      return { profile: null, email: user.email ?? null, roleCodes: [], permissionCodes: [], accountStatus: "none", isAccountActive: false };
+    }
+    const graph = authGraphEnvelope.safeParse(data);
+    if (!graph.success || graph.data.profile.auth_user_id !== user.id) {
+      throw new Error("Unable to resolve authorization context");
+    }
+    return buildAuthContext(graph.data.profile as UserProfile, user.email ?? null, graph.data);
+  });
 }
+
+// The graph is a single JSON value so PostgREST row limits cannot truncate
+// individual role, link or permission sets. Validate fields used for authority
+// and retain the full profile shape for the application and forced-change page.
+const authGraph = z.strictObject({
+  assignments: z.array(z.strictObject({ role_id: z.int(), owner_company_id: z.int().nullable(), branch_id: z.int().nullable() })),
+  roles: z.array(z.strictObject({ id: z.int(), role_code: z.string() })),
+  links: z.array(z.strictObject({ role_id: z.int(), permission_id: z.int() })),
+  permissions: z.array(z.strictObject({ id: z.int(), permission_code: z.string() })),
+});
+const authGraphEnvelope = authGraph.extend({
+  profile: z.looseObject({
+    id: z.int().positive(),
+    auth_user_id: z.string(),
+    status: z.string(),
+    must_change_password: z.boolean(),
+    owner_company_id: z.int().nullable(),
+    branch_id: z.int().nullable(),
+  }),
+});
+type AuthGraph = z.infer<typeof authGraph>;
 
 /** Internal worker entry point. Never expose this through a Server Action. */
 export async function getAuthContextForProfileId(profileId: number): Promise<AuthContext> {
@@ -89,7 +112,7 @@ export async function getAuthContextForProfileId(profileId: number): Promise<Aut
   return ctx;
 }
 
-async function buildAuthContext(profile: UserProfile, email: string | null): Promise<AuthContext> {
+async function buildAuthContext(profile: UserProfile, email: string | null, graph?: AuthGraph): Promise<AuthContext> {
   const rawStatus = profile.status as string;
   const accountStatus: AccountStatus =
     rawStatus === "active" || rawStatus === "inactive" || rawStatus === "suspended"
@@ -98,97 +121,37 @@ async function buildAuthContext(profile: UserProfile, email: string | null): Pro
   const isAccountActive = accountStatus === "active";
   if (!isAccountActive || profile.must_change_password === true) return { profile, email, roleCodes: [], permissionCodes: [], roleAssignments: [], globalPermissionCodes: [], accountStatus, isAccountActive };
 
-  // ── USERS.4: flat separate queries to avoid !inner join ambiguity ──────────
-  // IMPORTANT: use the admin client (service role) for roles/permissions lookups.
-  // RLS on these tables requires roles.view / permissions.view — a bootstrapping
-  // deadlock when we're *trying* to determine what the user can see. The cookie
-  // client is only used for getUser() (authentication); all authorisation lookups
-  // must bypass RLS via the service-role client.
-  const admin = createAdminClient();
-
-  // Step 1 — get role_ids the user is actively assigned to
-  const { data: userRoleRows, error: err1 } = await admin
-    .from("user_roles")
-    .select("role_id, owner_company_id, branch_id")
-    .eq("user_profile_id", profile.id)
-    .eq("is_active", true);
-
-  if (err1) throw new Error("Unable to resolve role assignments");
-
-  let validUserRoleRows = userRoleRows ?? [];
-  const roleIds = (userRoleRows ?? []).map((r) => r.role_id as number).filter(Boolean);
-
-  // Step 2 — get active role records (filter inactive roles at role level)
-  const roleCodes: string[] = [];
-  const activeRoleIds: number[] = [];
-  const roleNames = new Map<number, string>();
-
-  if (roleIds.length > 0) {
-    const { data: activeRoles, error: err2 } = await admin
-      .from("roles")
-      .select("id, role_code")
-      .in("id", roleIds)
-      .eq("is_active", true);
-
-    if (err2) throw new Error("Unable to resolve active roles");
-
-    for (const r of activeRoles ?? []) {
-      if (r.role_code) {
-        roleNames.set(r.id as number, r.role_code as string);
-        // Existing callers inspect roleCodes directly. Privileged codes must NEVER
-        // acquire global meaning from a company/branch assignment.
-        const isGlobal = (userRoleRows ?? []).some(a => a.role_id === r.id && a.owner_company_id === null && a.branch_id === null);
-        if (isGlobal || !["system_admin", "group_admin"].includes(r.role_code as string)) roleCodes.push(r.role_code as string);
-      }
-      if (r.id) activeRoleIds.push(r.id as number);
-    }
-  }
-
-  // Invalid reserved administrator shapes never become authority, including legacy rows.
-  validUserRoleRows = validUserRoleRows.filter(a => !assignmentScopeError(roleNames.get(a.role_id) ?? '', a.owner_company_id, a.branch_id));
-  for (let i = roleCodes.length - 1; i >= 0; i--) {
-    if (!validUserRoleRows.some(a => roleNames.get(a.role_id) === roleCodes[i])) roleCodes.splice(i, 1);
-  }
-  // Step 3 — get permission_ids linked to the active roles
+  const { assignments, roles, links, permissions } = graph ?? await readWorkerAuthGraph(profile.id);
+  const roleNames = new Map(roles.map(role => [role.id, role.role_code]));
+  const validAssignments = assignments.filter(assignment =>
+    !assignmentScopeError(roleNames.get(assignment.role_id) ?? "", assignment.owner_company_id, assignment.branch_id));
+  const assignedRoles = new Set(validAssignments.map(assignment => assignment.role_id));
+  const globalRoles = new Set(validAssignments
+    .filter(assignment => assignment.owner_company_id === null && assignment.branch_id === null)
+    .map(assignment => assignment.role_id));
+  const roleCodes = roles.filter(role => role.role_code && assignedRoles.has(role.id)).map(role => role.role_code);
   const permissionSet = new Set<string>();
   const globalPermissionSet = new Set<string>();
   const rolePermissions = new Map<number, string[]>();
+  const rolesByPermission = new Map<number, number[]>();
+  for (const link of links) {
+    const linkedRoles = rolesByPermission.get(link.permission_id) ?? [];
+    linkedRoles.push(link.role_id);
+    rolesByPermission.set(link.permission_id, linkedRoles);
+  }
 
-  if (activeRoleIds.length > 0) {
-    const { data: rolePermRows, error: err3 } = await admin
-      .from("role_permissions")
-      .select("role_id, permission_id")
-      .in("role_id", activeRoleIds);
+  for (const { id, permission_code: code } of permissions) {
+    if (!code) continue;
+    for (const roleId of rolesByPermission.get(id) ?? []) {
+      const codes = rolePermissions.get(roleId) ?? [];
+      codes.push(code);
+      rolePermissions.set(roleId, codes);
+      if (!assignedRoles.has(roleId)) continue;
 
-    if (err3) throw new Error("Unable to resolve role permissions");
-
-    const permissionIds = (rolePermRows ?? []).map((r) => r.permission_id as number).filter(Boolean);
-
-    // Step 4 — get active permission codes
-    if (permissionIds.length > 0) {
-      const { data: activePerms, error: err4 } = await admin
-        .from("permissions")
-        .select("id, permission_code")
-        .in("id", permissionIds)
-        .eq("is_active", true);
-
-      if (err4) throw new Error("Unable to resolve permissions");
-
-      for (const p of activePerms ?? []) {
-        if (!p.permission_code) continue;
-        for (const link of rolePermRows ?? []) {
-          if (link.permission_id !== p.id) continue;
-          const codes = rolePermissions.get(link.role_id as number) ?? [];
-          codes.push(p.permission_code as string);
-          rolePermissions.set(link.role_id as number, codes);
-          const assignments = validUserRoleRows.filter(a => a.role_id === link.role_id);
-          if (assignments.length === 0) continue;
-          const global = assignments.some(a => a.owner_company_id === null && a.branch_id === null);
-          if (global) globalPermissionSet.add(p.permission_code as string);
-          // These are platform-wide capabilities, not company capabilities.
-          if (global || (p.permission_code !== "erp.admin" && !p.permission_code.startsWith("settings.") && !p.permission_code.startsWith("numbering.rules.") && !["roles.manage", "permissions.manage"].includes(p.permission_code))) permissionSet.add(p.permission_code as string);
-        }
-      }
+      const global = globalRoles.has(roleId);
+      if (global) globalPermissionSet.add(code);
+      // These capabilities require global authority even when attached to a scoped role.
+      if (global || (code !== "erp.admin" && !code.startsWith("settings.") && !code.startsWith("numbering.rules.") && !["roles.manage", "permissions.manage"].includes(code))) permissionSet.add(code);
     }
   }
 
@@ -204,8 +167,40 @@ async function buildAuthContext(profile: UserProfile, email: string | null): Pro
     accountStatus,
     isAccountActive,
     globalPermissionCodes: Array.from(globalPermissionSet),
-    roleAssignments: validUserRoleRows.filter(a => activeRoleIds.includes(a.role_id as number)).map(a => ({ roleId: a.role_id as number, roleCode: roleNames.get(a.role_id as number)!, ownerCompanyId: a.owner_company_id as number | null, branchId: a.branch_id as number | null, permissionCodes: rolePermissions.get(a.role_id as number) ?? [] })),
+    roleAssignments: validAssignments.filter(assignment => roleNames.has(assignment.role_id)).map(assignment => ({
+      roleId: assignment.role_id,
+      roleCode: roleNames.get(assignment.role_id)!,
+      ownerCompanyId: assignment.owner_company_id,
+      branchId: assignment.branch_id,
+      permissionCodes: rolePermissions.get(assignment.role_id) ?? [],
+    })),
   };
+}
+
+// Worker workflows identify their principal by profile ID and keep their
+// existing transport. Reuse the same scope and capability mapping above.
+async function readWorkerAuthGraph(profileId: number): Promise<AuthGraph> {
+  const admin = createAdminClient();
+  const assignments = await admin.from("user_roles").select("role_id, owner_company_id, branch_id")
+    .eq("user_profile_id", profileId).eq("is_active", true);
+  if (assignments.error) throw new Error("Unable to resolve role assignments");
+
+  const roleIds = (assignments.data ?? []).map(row => row.role_id as number).filter(Boolean);
+  if (roleIds.length === 0) return { assignments: assignments.data ?? [], roles: [], links: [], permissions: [] };
+
+  const roles = await admin.from("roles").select("id, role_code").in("id", roleIds).eq("is_active", true);
+  if (roles.error) throw new Error("Unable to resolve active roles");
+  const activeRoleIds = (roles.data ?? []).map(row => row.id as number).filter(Boolean);
+  if (activeRoleIds.length === 0) return { assignments: assignments.data ?? [], roles: roles.data ?? [], links: [], permissions: [] };
+
+  const links = await admin.from("role_permissions").select("role_id, permission_id").in("role_id", activeRoleIds);
+  if (links.error) throw new Error("Unable to resolve role permissions");
+  const permissionIds = (links.data ?? []).map(row => row.permission_id as number).filter(Boolean);
+  if (permissionIds.length === 0) return { assignments: assignments.data ?? [], roles: roles.data ?? [], links: links.data ?? [], permissions: [] };
+
+  const permissions = await admin.from("permissions").select("id, permission_code").in("id", permissionIds).eq("is_active", true);
+  if (permissions.error) throw new Error("Unable to resolve permissions");
+  return { assignments: assignments.data ?? [], roles: roles.data ?? [], links: links.data ?? [], permissions: permissions.data ?? [] };
 }
 
 // ── Boolean helpers ───────────────────────────────────────────────────────────

@@ -33,6 +33,14 @@ import { savePartyRecord, changePartyState } from "@/server/party-save";
 import { partyTypeState, type PartyTypeState, type PartySaveReceipt } from "@/lib/master-data/party-save-contract";
 import { attachPartyReferenceLabels } from "@/server/party-reference-labels";
 import type { WorkspaceSaveContract } from "@/lib/workspace/save-contract";
+import {
+  partyCatalogueExportInput,
+  partyCataloguePageInput,
+  partyCatalogueSortDirections,
+  type PartyCataloguePage,
+  type PartyCatalogueRow as PartyTableRow,
+} from "@/features/master-data/parties/party-catalogue";
+import { matchPartyCatalogue } from "@/server/reads/party-catalogue-criteria";
 
 // ─── List & Fetch ────────────────────────────────────────────────────────────
 
@@ -51,16 +59,34 @@ type PartyCatalogueRow = Party & {
   parent_party?: { display_name?: string } | null;
 };
 
+const partyTableProjection = `
+  id,workspace_revision,party_code,display_name,legal_name_en,main_phone,main_mobile,main_email,
+  country_id,emirate_id,city_id,area_zone_id,is_active,is_locked,updated_at,
+  party_statuses!party_status_id(name_en),party_types!primary_party_type_id(type_name)
+`;
+
+function partyCatalogueQuery(db: Awaited<ReturnType<typeof createClient>>, projection: string, typeId?: number) {
+  const selected = typeId === undefined ? projection : `${projection},type_scope:party_type_assignments!inner()`;
+  let query = db.from("parties").select(selected, { count: "exact" });
+  if (typeId !== undefined) {
+    query = query.eq("type_scope.party_type_id", typeId).eq("type_scope.is_active", true);
+  }
+  return query.order("display_name").order("id");
+}
+
+type PartyTableProjection = PartyTableRow & Pick<PartyCatalogueRow, "party_statuses">;
+
+async function attachPartyTableLabels(rows: PartyTableProjection[]): Promise<PartyTableRow[]> {
+  return attachPartyReferenceLabels("parties", rows.map(({ party_statuses, ...row }) => ({
+    ...row,
+    party_status_name: party_statuses?.name_en ?? null,
+    primary_type_name: row.party_types?.type_name ?? null,
+  })));
+}
+
 async function readPartyCatalogue(db: Awaited<ReturnType<typeof createClient>>, typeId?: number): Promise<Party[]> {
-  const selected = typeId === undefined
-    ? partyListProjection
-    : `${partyListProjection},type_scope:party_type_assignments!inner()`;
   const data = await readAllPages<PartyCatalogueRow>(async (from, to) => {
-    let query = db.from("parties").select(selected, { count: "exact" });
-    if (typeId !== undefined) {
-      query = query.eq("type_scope.party_type_id", typeId).eq("type_scope.is_active", true);
-    }
-    const { data, count, error } = await query.order("display_name").order("id").range(from, to);
+    const { data, count, error } = await partyCatalogueQuery(db, partyListProjection, typeId).range(from, to);
     return { data: data as unknown as PartyCatalogueRow[] | null, count, error };
   }, { identity: row => row.id, maxRows: 50000 });
 
@@ -71,6 +97,100 @@ async function readPartyCatalogue(db: Awaited<ReturnType<typeof createClient>>, 
     primary_type_name: row.party_types?.type_name ?? null,
     parent_party_name: row.parent_party?.display_name ?? null,
   })));
+}
+
+const partyListForbidden = { success: false, kind: "forbidden", error: "You do not have permission to view parties" } as const;
+const partyListFailed = { success: false, kind: "failed", error: "Parties could not be loaded. Try again." } as const;
+const partyTypeUnavailable = { success: false, kind: "not_found", error: "This party type is not configured or available." } as const;
+
+async function getPartyCatalogueAuthority(typeCode?: string) {
+  const ctx = await getAuthContext();
+  if (!hasGlobalPermission(ctx, "master_data.parties.view") && !hasGlobalPermission(ctx, "master_data.party_master.view")) {
+    return partyListForbidden;
+  }
+
+  const db = await createClient();
+  if (typeCode === undefined) return { success: true, db, typeId: undefined } as const;
+  const { data, error } = await db.from("party_types").select("id").eq("type_code", typeCode).maybeSingle();
+  if (error) return error.code === "42501" ? partyListForbidden : partyListFailed;
+  if (!data) return partyTypeUnavailable;
+  if (!Number.isSafeInteger(data.id) || data.id < 1) return partyListFailed;
+  return { success: true, db, typeId: data.id } as const;
+}
+
+async function readPartyTableCatalogue(db: Awaited<ReturnType<typeof createClient>>, typeId?: number) {
+  const rows = await readAllPages<PartyTableProjection>(async (from, to) => {
+    const { data, count, error } = await partyCatalogueQuery(db, partyTableProjection, typeId).range(from, to);
+    return { data: data as unknown as PartyTableProjection[] | null, count, error };
+  }, { identity: row => row.id });
+  return attachPartyTableLabels(rows);
+}
+
+export async function getPartyCataloguePage(input: unknown): Promise<ActionResult<PartyCataloguePage>> {
+  const parsed = partyCataloguePageInput.safeParse(input);
+  if (!parsed.success) return partyListFailed;
+  const { typeCode, pageIndex, pageSize, ...criteria } = parsed.data;
+
+  try {
+    const authority = await getPartyCatalogueAuthority(typeCode);
+    if (!authority.success) return authority;
+    const { db, typeId } = authority;
+    const offset = pageIndex * pageSize;
+    if (criteria.search || criteria.filters.length || criteria.sorting.length) {
+      const { rows, sortAscendingFirst } = matchPartyCatalogue(await readPartyTableCatalogue(db, typeId), { typeCode, ...criteria });
+      return { success: true, data: { rows: rows.slice(offset, offset + pageSize), totalCount: rows.length, sortAscendingFirst } };
+    }
+
+    const query = () => partyCatalogueQuery(db, partyTableProjection, typeId);
+    let response = await query().range(offset, offset + pageSize - 1);
+    if (offset > 0 && response.status === 416 && (!response.error?.code || response.error.code === "PGRST103")) {
+      const counted = await query().range(0, 0);
+      if (counted.error || counted.count === null || counted.count > offset || counted.data?.length !== Math.min(1, counted.count)) {
+        return counted.error?.code === "42501" ? partyListForbidden : partyListFailed;
+      }
+      response = { ...counted, data: [] };
+    }
+
+    const { data, count, error } = response;
+    if (error?.code === "42501") return partyListForbidden;
+    const rows = data as unknown as PartyTableProjection[] | null;
+    if (error || count === null || !Number.isSafeInteger(count) || count < 0 || !Array.isArray(rows) ||
+        rows.length !== Math.min(pageSize, Math.max(0, count - offset)) ||
+        rows.some(row => !Number.isSafeInteger(row?.id) || row.id < 1) || new Set(rows.map(row => row.id)).size !== rows.length) {
+      return partyListFailed;
+    }
+
+    const hydrated = rows.length ? await attachPartyTableLabels(rows) : [];
+    return { success: true, data: {
+      rows: hydrated, totalCount: count,
+      sortAscendingFirst: offset === 0 ? partyCatalogueSortDirections(hydrated[0]) : undefined,
+    } };
+  } catch {
+    logger.warn("Party catalogue page could not be verified.");
+    return partyListFailed;
+  }
+}
+
+export async function getPartyCatalogueExport(input: unknown): Promise<ActionResult<PartyTableRow[]>> {
+  const parsed = partyCatalogueExportInput.safeParse(input);
+  if (!parsed.success) return partyListFailed;
+  const { typeCode, selectedIds, ...criteria } = parsed.data;
+  try {
+    const authority = await getPartyCatalogueAuthority(typeCode);
+    if (!authority.success) return authority;
+    const rows = await readPartyTableCatalogue(authority.db, authority.typeId);
+    const matching = criteria.search || criteria.filters.length || criteria.sorting.length
+      ? matchPartyCatalogue(rows, { typeCode, ...criteria }).rows : rows;
+    if (!selectedIds) return { success: true, data: matching };
+
+    const selection = new Set(selectedIds);
+    const selected = matching.filter(row => selection.has(row.id));
+    return selected.length === selection.size
+      ? { success: true, data: selected } : partyListFailed;
+  } catch {
+    logger.warn("Party catalogue export could not be verified.");
+    return partyListFailed;
+  }
 }
 
 export async function getParties(): Promise<ActionResult<Party[]>> {

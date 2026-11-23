@@ -26,7 +26,39 @@ vi.mock("@/lib/supabase/server",()=>({createClient:async()=>{s.clients++;const f
     if(s.short===table)rows=rows.slice(0,Math.max(0,rows.length-1));if(s.duplicates===table&&rows.length>1)rows[1]=rows[0];
     const result={data:c.head?null:rows,error:s.fault===table?{code:"XX001",message:"SYNTHETIC_PRIVATE"}:null,count:s.nullCount===table?null:count};s.afterRead?.(c);return result;
   }).finally(()=>{s.active--;}).then(resolve,reject);};return q;
-}});return{from,rpc:()=>{throw Error("Dashboard RPC is unavailable in the migrated schema");}};}}));
+}});
+const rpc=(table:string,args:Record<string,string>={})=>{
+  const c:Call={table,fields:"",head:false,methods:[["args",args]]};s.calls.push(c);
+  const q={
+    abortSignal(signal:AbortSignal){c.signal=signal;return q;},
+    then(resolve:(r:unknown)=>unknown,reject:(r:unknown)=>unknown){
+      s.active++;s.peak=Math.max(s.peak,s.active);
+      return Promise.resolve().then(()=>{
+        c.signal?.throwIfAborted();
+        const docs=s.rows.dms_documents.filter(row=>row.deleted_at===null);
+        let data:unknown;
+        if(table==="perf_dms_dashboard_ai_pipeline"){
+          data=[
+            docs.filter(r=>["pending","queued"].includes(String(r.ocr_status))).length,
+            docs.filter(r=>["complete","skipped"].includes(String(r.ocr_status))&&["pending","not_applicable","skipped"].includes(String(r.ai_status))).length,
+            docs.filter(r=>r.ai_status==="complete").length,
+            docs.filter(r=>["pending","in_review"].includes(String(r.review_status))).length,
+          ];
+        }else if(table==="perf_dms_dashboard_expiry_buckets"){
+          const today=Date.parse(args.p_today);
+          data=[7,14,30,60,90].map((end,index,ends)=>docs.filter(r=>{
+            const days=(Date.parse(String(r.expiry_date))-today)/86400000;
+            const start=index===0?0:ends[index-1]+1;
+            return r.status!=null&&r.status!=="superseded"&&days>=start&&days<=end;
+          }).length);
+        }else throw Error("Unknown dashboard RPC");
+        s.afterRead?.(c);
+        return{data:s.nullCount===table?null:data,count:null,error:s.fault===table?{code:"XX001",message:"SYNTHETIC_PRIVATE"}:null};
+      }).finally(()=>{s.active--;}).then(resolve,reject);
+    },
+  };return q;
+};
+return{from,rpc};}}));
 vi.mock("@/lib/supabase/admin",()=>({createAdminClient:()=>{throw Error("Admin reads forbidden");}}));
 import {getDmsDashboardStats} from "@/server/actions/dms/dashboard";
 import {readDmsDashboard,DMS_DASHBOARD_AGGREGATE_LIMIT,DMS_DASHBOARD_TIMEOUT_MS} from "@/server/reads/dms-dashboard";
@@ -53,6 +85,26 @@ it("month boundaries retain server-local calendar and rolling range has no inven
 it("original SQL not-equal discarded semantics exclude null intake statuses",async()=>{s.rows.dms_upload_sessions=[inbox(1),{...inbox(2),intake_status:null},{...inbox(3),intake_status:"discarded"},{...inbox(4),deleted_at:"2026-01-01"}];expect((await readDmsDashboard()).data?.inbox_pending).toEqual({status:"ready",value:1});});
 it("AI stages retain overlapping archive-inclusive predicates without fabricated remainder",async()=>{s.rows.dms_documents=[doc(1,{status:"archived",ocr_status:"complete",ai_status:"complete",review_status:"pending"}),doc(2,{ocr_status:"skipped",ai_status:"not_applicable"}),doc(3,{ocr_status:"queued"})];const r=(await readDmsDashboard()).data!;expect(r.total_documents).toEqual({status:"ready",value:2});expect(r.ai_pipeline).toEqual({status:"ready",items:[{status:"ocr_pending",label:"OCR Pending",count:1},{status:"ocr_done",label:"OCR Done / AI Pending",count:1},{status:"ai_complete",label:"AI Complete",count:1},{status:"pending_review",label:"Pending Review",count:1}]});expect(JSON.stringify(r.ai_pipeline)).not.toContain("not_processed");});
 it("expiry boundary bins preserve today, inclusivity and non-superseded archive rules",async()=>{const offsets=[-1,0,7,8,14,15,30,31,60,61,90,91];s.rows.dms_documents=offsets.map((n,i)=>doc(i+1,{status:n===7?"archived":"active",expiry_date:new Date(Date.now()+n*86400000).toISOString().slice(0,10)}));s.rows.dms_documents.push(doc(99,{status:"superseded"}),doc(100,{expiry_date:null}));const r=(await readDmsDashboard()).data!;expect(r.expiry_buckets).toMatchObject({status:"ready",items:[{count:2},{count:2},{count:2},{count:2},{count:2}]});expect(r.expiring_30_days).toEqual({status:"ready",value:6});});
+it("AI stages and expiry buckets each use one protected grouped request",async()=>{
+  const r=(await readDmsDashboard()).data!;
+  expect(r.ai_pipeline.status).toBe("ready");expect(r.expiry_buckets.status).toBe("ready");
+  expect(s.calls.filter(c=>c.table==="perf_dms_dashboard_ai_pipeline")).toHaveLength(1);
+  expect(s.calls.filter(c=>c.table==="perf_dms_dashboard_expiry_buckets")).toHaveLength(1);
+  const legacyHeads=s.calls.filter(c=>c.table==="dms_documents"&&c.head);
+  expect(legacyHeads).toHaveLength(4);
+  expect(legacyHeads.filter(c=>c.methods.some(m=>m[1]==="expiry_date"))).toHaveLength(1);
+});
+it.each([
+  ["perf_dms_dashboard_ai_pipeline","ai_pipeline","expiry_buckets"],
+  ["perf_dms_dashboard_expiry_buckets","expiry_buckets","ai_pipeline"],
+] as const)("unverified %s leaves the other chart and independent exact badge usable",async(rpc,failed,other)=>{
+  s.nullCount=rpc;
+  const r=(await readDmsDashboard()).data!;
+  expect(r[failed]).toEqual({status:"failed"});
+  expect(r[other].status).toBe("ready");
+  expect(r.expiring_30_days).toEqual({status:"ready",value:1});
+  expect(r.expiring_items).toMatchObject({status:"ready",totalCount:1});
+});
 it("same-label categories still combine, with stable top-eight ties",async()=>{s.rows.dms_documents=[doc(1,{category_id:1,category:{name_en:"Same"}}),doc(2,{category_id:2,category:{name_en:"Same"}}),...Array.from({length:10},(_,i)=>doc(i+3,{category_id:i+3,category:{name_en:`C${String(i).padStart(2,"0")}`}}))];expect((await readDmsDashboard()).data?.documents_by_category).toMatchObject({status:"ready",items:[{name:"Same",count:2},...Array.from({length:7},(_,i)=>({name:`C0${i}`,count:1}))]});});
 it("renewals use the existing scoped relation, then hydrate only the exact ordered page",async()=>{
   s.rows.dms_documents=[doc(1),doc(2),doc(3),doc(4),doc(5)];

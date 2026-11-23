@@ -11,7 +11,9 @@ import {useWorkspaceTabDirty} from '@/hooks/use-workspace-tab-dirty';
 import {deactivateParty,reactivateParty} from '@/server/actions/master-data/parties';
 import type {Party} from './party-types';
 
-export function PartyLifecycleDialog({party,onClose,onSaved}:{party:Party;onClose:()=>void;onSaved:()=>void}){
+type LifecycleParty = Pick<Party,'id'|'display_name'|'party_code'|'is_active'|'workspace_revision'>;
+
+export function PartyLifecycleDialog({party,onClose,onSaved}:{party:LifecycleParty;onClose:()=>void;onSaved:()=>void}){
  const [opening]=useState(()=>({...party})),[attempt]=useState(createWorkspaceSaveAttempt),flight=useRef(false);
  const [reason,setReason]=useState(''),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),[error,setError]=useState<string|null>(null);
  const [closing,setClosing]=useState(false);

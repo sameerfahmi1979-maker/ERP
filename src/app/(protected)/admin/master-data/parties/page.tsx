@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getAuthContext, hasGlobalPermission } from "@/lib/rbac/check";
-import { getParties } from "@/server/actions/master-data/parties";
+import { getPartyCataloguePage } from "@/server/actions/master-data/parties";
 import { PartiesTable } from "@/features/master-data/parties/parties-table";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,12 +17,11 @@ async function PartiesContent() {
     redirect("/access-denied");
   }
 
-  const result = await getParties();
+  const result = await getPartyCataloguePage({});
   if (!result.success && result.kind === 'forbidden') redirect('/access-denied');
   if (!result.success || !result.data) return <LoadError title="Parties" retryHref="/admin/master-data/parties" />;
-  const parties = result.data;
-
-  return <PartiesTable parties={parties} authContext={authContext} />;
+  return <PartiesTable key={authContext.profile?.id} parties={result.data.rows} totalCount={result.data.totalCount}
+    sortAscendingFirst={result.data.sortAscendingFirst} authContext={authContext} />;
 }
 
 export default async function PartiesPage() {

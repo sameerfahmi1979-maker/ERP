@@ -3,14 +3,15 @@ import "../remediation/f05/setup";
 import React from "react";
 import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {act,cleanup,fireEvent,render,screen,waitFor} from "@testing-library/react";
-const m=vi.hoisted(()=>({read:vi.fn(),csv:vi.fn(),excel:vi.fn(),pdf:vi.fn(),print:vi.fn(),send:vi.fn(),allowed:true}));
+import type {ERPSendEmailDialogProps} from "@/components/erp/email/email-types-ui";
+const m=vi.hoisted(()=>({read:vi.fn(),csv:vi.fn(),excel:vi.fn(),pdf:vi.fn(),print:vi.fn(),send:vi.fn(),legacySend:vi.fn(),legacyAccess:vi.fn(),attachment:vi.fn(),dialog:null as ERPSendEmailDialogProps|null,allowed:true}));
 vi.mock("@/hooks/use-legacy-email-access",()=>({useLegacyEmailAccess:()=>m.allowed}));
 vi.mock("@/lib/reads/client",()=>({readJson:m.read}));
-vi.mock("@/lib/export",()=>({exportToCSV:m.csv,exportToExcel:m.excel,exportToPDF:m.pdf,exportToPrint:m.print,generateCSVAttachment:vi.fn(),generateExcelAttachment:vi.fn(),generatePDFAttachment:vi.fn()}));
-vi.mock("@/server/actions/email",()=>({sendExportEmail:()=>{throw Error("Generic email is forbidden for on-demand output");}}));
+vi.mock("@/lib/export",()=>({exportToCSV:m.csv,exportToExcel:m.excel,exportToPDF:m.pdf,exportToPrint:m.print,generateCSVAttachment:vi.fn(),generateExcelAttachment:vi.fn(),generatePDFAttachment:m.attachment}));
+vi.mock("@/server/actions/email",()=>({sendExportEmail:m.legacySend,getLegacyEmailExportAccess:m.legacyAccess}));
 vi.mock("@/server/actions/lookups/users-for-email",()=>({getUsersForEmailSelect:async()=>[]}));
 vi.mock("@/server/actions/dms/expiry-reminders",()=>({sendExpiryDocumentsEmail:m.send}));
-vi.mock("@/components/erp/email/erp-send-email-dialog",()=>({ERPSendEmailDialog:()=>null}));
+vi.mock("@/components/erp/email/erp-send-email-dialog",()=>({ERPSendEmailDialog:(props:ERPSendEmailDialogProps)=>{m.dialog=props.open?props:null;return null;}}));
 vi.mock("@/components/erp/combobox",()=>({ERPCombobox:()=>null}));
 vi.mock("@/components/ui/dropdown-menu",()=>({
  DropdownMenu:({children}:{children:React.ReactNode})=><div>{children}</div>,DropdownMenuContent:({children}:{children:React.ReactNode})=><div>{children}</div>,
@@ -32,6 +33,26 @@ it.each([["Export to CSV","csv"],["Export to Excel","excel"],["Export to PDF","p
  expect(m.read).toHaveBeenCalledWith("dms-expiry-output",criteria,expect.any(AbortSignal));expect(m.read.mock.calls[0][1]).not.toHaveProperty("page");
 });
 it("ordinary export callers retain their supplied data behavior",async()=>{render(<ERPExportMenu title="Existing" filename="existing" data={[{id:7}]} columns={[]}/>);fireEvent.click(screen.getByRole("button",{name:"Export to CSV"}));await waitFor(()=>expect(m.csv).toHaveBeenCalledOnce());expect(m.csv.mock.calls[0][0].data).toEqual([{id:7}]);expect(m.read).not.toHaveBeenCalled();});
+it("permits an opted-in complete legacy attachment only after fresh global sending authority and verifies again before dispatch",async()=>{
+ const load=vi.fn().mockResolvedValue(docs),attachment={filename:"party.pdf",contentType:"application/pdf",base64Content:"YQ==",sizeBytes:1};
+ m.legacyAccess.mockResolvedValue(true);m.attachment.mockResolvedValue(attachment);
+ render(<ERPExportMenu title="Party" filename="party" columns={[]} loadData={load} allowCompleteLegacyEmail/>);
+ fireEvent.click(screen.getByRole("button",{name:"Send by Email"}));await waitFor(()=>expect(m.dialog?.recordCount).toBe(docs.length));
+ expect(load).toHaveBeenCalledOnce();expect(m.legacySend).not.toHaveBeenCalled();
+ await m.dialog?.attachmentOptions[0].generateAttachment();expect(m.attachment.mock.calls[0][0].data).toEqual(docs);
+ const payload={to:"synthetic@example.invalid",cc:"",bcc:"",subject:"Synthetic",body:"Synthetic",attachment,attachmentType:"pdf" as const};
+ load.mockResolvedValueOnce(docs.slice(1));
+ expect(await m.dialog?.onPreparedSend?.(payload)).toMatchObject({success:false});expect(m.legacySend).not.toHaveBeenCalled();
+ expect(load).toHaveBeenCalledTimes(2);
+});
+it("leaves complete-data legacy email closed by default, and avoids a load when the opted-in principal lost permission",async()=>{
+ const load=vi.fn(),view=render(<ERPExportMenu title="Other" filename="other" columns={[]} loadData={load}/>);
+ expect(screen.getByRole("button",{name:"Use module email action"})).toHaveProperty("disabled",true);
+ m.legacyAccess.mockResolvedValue(false);
+ view.rerender(<ERPExportMenu title="Party" filename="party" columns={[]} loadData={load} allowCompleteLegacyEmail/>);
+ fireEvent.click(screen.getByRole("button",{name:"Send by Email"}));await waitFor(()=>expect(m.legacyAccess).toHaveBeenCalledOnce());
+ expect(load).not.toHaveBeenCalled();expect(m.dialog).toBeNull();
+});
 it("failed and partial complete results cannot produce a file",async()=>{
  m.read.mockResolvedValueOnce({success:true,data:{rows:docs.slice(0,25),totalCount:1107,fingerprint:"a".repeat(64)}}).mockRejectedValueOnce(Error("Unavailable"));
  render(<DmsExpiryOutputs criteria={criteria} ready total={1107}/>);

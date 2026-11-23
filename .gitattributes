@@ -42,3 +42,4 @@
 /supabase/migrations/20261121070619_qatar_residency_permit_catalog.sql text eol=lf
 # Preserve the exact independently replayed bytes on every platform.
 /supabase/migrations/202611230100*.sql -text
+/supabase/migrations/202611230200*.sql -text

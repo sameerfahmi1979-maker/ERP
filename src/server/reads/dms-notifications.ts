@@ -13,6 +13,28 @@ export async function readDmsNotifications(input:unknown,context?:AuthContext,si
   if(!ctx.profile||!canViewDmsNotifications(ctx))return {success:false as const,error:"Permission denied"};
   if(p.audience==="all"&&!canManageDmsNotifications(ctx))return {success:false as const,error:"Permission denied"};
   const db=await createClient();signal?.throwIfAborted();
+  const verifyPage = (rows: unknown, totalCount: unknown) => {
+    const data = dmsNotificationPageSchema.parse({ rows, totalCount, page: p.page, pageSize: p.pageSize });
+    if (data.rows.some(row =>
+      (p.audience === "my" && row.recipient_user_id !== ctx.profile!.id) ||
+      (row.visible_document_id !== null && row.visible_document_id !== row.document_id) ||
+      (row.visible_document_id === null && row.document_no !== null)
+    )) throw Error("Notification authority mismatch");
+    return { success: true as const, data };
+  };
+  const firstSort = p.sorting[0];
+  if (p.audience === "my" && !p.search && !p.status && !p.channel && !p.bridgeStatus &&
+      p.sorting.length === 1 && firstSort?.id === "scheduled_for" && firstSort.desc) {
+    const query = db.rpc("perf_dms_personal_notification_page", {
+      p_page: p.page, p_page_size: p.pageSize, p_unread_only: p.unreadOnly,
+    }, { get: true });
+    if (signal) query.abortSignal(signal);
+    const result = await query;
+    signal?.throwIfAborted();
+    if (!result.error) return verifyPage(result.data?.rows, result.data?.totalCount);
+    // A lagging PostgREST schema cache can still use the same legacy authority.
+    if (result.error.code !== "PGRST202") throw Error("Notification read unavailable");
+  }
   const projection = p.audience === "all" ? "perf_dms_notification_read"
     : isGlobalAdmin(ctx) ? "perf_dms_my_notification_read" : "f10_dms_personal_notification_read";
   const base=(head=false)=>{const q=db.from(projection).select(columns,{count:"exact",head});if(signal)q.abortSignal(signal);
@@ -24,8 +46,6 @@ export async function readDmsNotifications(input:unknown,context?:AuthContext,si
   const result=await q.range(offset,offset+p.pageSize-1);signal?.throwIfAborted();let rows=result.data,count=result.count,error=result.error;
   if(offset>0&&result.status===416&&error?.code==="PGRST103"){const r=await base(true);signal?.throwIfAborted();if(r.error||r.count===null||!Number.isSafeInteger(r.count)||r.count<0||r.count>offset)throw Error("Unverified count");rows=[];count=r.count;error=null;}
   if(error)throw Error("Notification read unavailable");
-  const data=dmsNotificationPageSchema.parse({rows,page:p.page,pageSize:p.pageSize,totalCount:count});
-  if(p.audience==="my"&&data.rows.some(r=>r.recipient_user_id!==ctx.profile!.id)||data.rows.some(r=>r.visible_document_id!==null&&r.visible_document_id!==r.document_id))throw Error("Notification authority mismatch");
-  return {success:true as const,data};
+  return verifyPage(rows,count);
  }catch{signal?.throwIfAborted();return {success:false as const,error:"Document notifications could not be loaded. Please retry."};}
 }

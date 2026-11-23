@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { resolveNotificationRecipients, type NotificationEvent } from "@/server/notification-events";
+import { processNotificationEvents, resolveNotificationRecipients, type NotificationEvent } from "@/server/notification-events";
 
 const ports = vi.hoisted(() => ({
   rpc: vi.fn(),
@@ -51,5 +51,25 @@ it("passes failed authority checks to the existing retry path", async () => {
   ports.rpc.mockResolvedValue({ data: null, error: { code: "PT409", message: "private detail" } });
   await expect(resolveNotificationRecipients(event, createAdminClient(), undefined, { candidateIds: [13] }))
     .rejects.toThrow("Expiry recipient authority unavailable");
+});
+
+it("records the database's current authority result for each pending expiry recipient", async () => {
+  const roster = [13, 20].map(profile_id => ({ profile_id, state: "pending" }));
+  ports.rpc.mockImplementation(async (name, args) => {
+    if (name === "f10_claim_notification_events") return { data: [event], error: null };
+    if (name === "f10_notification_routing_work") return { data: { phase: "ready", recipients: roster }, error: null };
+    if (name === "t19_expiry_recipients") return { data: null, error: { code: "unexpected_redundant_read" } };
+    if (name === "f10_record_notification_recipient") {
+      return { data: { state: args.profile_id === 13 ? "created" : "held" }, error: null };
+    }
+    return { data: true, error: null };
+  });
+
+  expect(await processNotificationEvents(1)).toEqual({ processed: 1, results: [{ id: event.id, outcome: "held" }] });
+  expect(ports.rpc.mock.calls.filter(([name]) => name === "f10_record_notification_recipient")).toEqual(
+    [13, 20].map(profile_id => ["f10_record_notification_recipient", {
+      event_id: event.id, lease: event.lease_token, profile_id, recipient_allowed: true,
+    }]),
+  );
 });
 

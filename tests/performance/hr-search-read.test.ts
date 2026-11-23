@@ -48,6 +48,17 @@ const full = (extra = {}) => ({mode: "results", query: "Employee", ...extra});
 beforeEach(() => {vi.clearAllMocks(); calls.length = 0; for (const key of Object.keys(tables)) delete tables[key];
   m.auth.mockResolvedValue(auth()); m.create.mockResolvedValue({from: chain}); m.resolve.mockImplementation(resolve);});
 describe("complete fixed-source paging", () => {
+  it.each([0, 25, 1201])("reads one bounded first page with an exact total for %i single-source matches", async total => {
+    tables.employees = Array.from({length: total}, (_, i) => row(i + 1));
+    const result = await readHrSearch(full({categories: ["employees"], pageSize: 25}));
+    expect(result).toMatchObject({success: true, data: {totalCount: total, groupCounts: {employees: total}, hasMore: total > 25}});
+    if (!result.success || !("results" in result.data)) throw Error("Wrong result");
+    expect(result.data.results.map(r => r.entityId)).toEqual(Array.from({length: Math.min(total, 25)}, (_, i) => i + 1));
+    expect(calls).toHaveLength(1);
+    expect(calls[0].calls).toContainEqual(["select", expect.any(String), {count: "exact", head: false}]);
+    expect(calls[0].calls).toContainEqual(["range", 0, 24]);
+    expect(calls[0].calls).toContainEqual(["order", "id", {ascending: true}]);
+  });
   it("reaches past the former 5000 subject walk and reads only a bounded counted page", async () => {
     tables.employees = Array.from({length: 5107}, (_, i) => row(i + 1));
     const result = await readHrSearch(full({categories: ["employees"], page: 101}));
@@ -121,7 +132,7 @@ it("payroll/operations active conditions and existing category-specific employee
   for (const e of calls.filter(e => ["employee_payroll_holds", "employee_wps_profiles"].includes(e.table))) expect(e.calls).toContainEqual(["in", "employee.employee_status", ["active", "probation"]]);
 });
 it("counts onboarding without an unnecessary nullable candidate-label join and keeps that label on the displayed page",async()=>{
-  tables.hr_onboarding_tasks=[row()];expect((await readHrSearch(full({categories:["onboarding"]}))).success).toBe(true);
+  tables.hr_onboarding_tasks=[row(),row(2)];expect((await readHrSearch(full({categories:["onboarding"],page:2,pageSize:1}))).success).toBe(true);
   const selects=calls.filter(e=>e.table==="hr_onboarding_tasks").map(e=>e.calls.find(c=>c[0]==="select")!);
   expect(selects).toHaveLength(2);expect(selects[0][2]).toMatchObject({head:true});expect(selects[0][1]).not.toContain("candidate:hr_candidates");expect(selects[1][1]).toContain("candidate:hr_candidates");
 });
@@ -148,7 +159,8 @@ it.each(["count-null", "count-negative", "count-fraction", "read-error", "page-c
       if (kind === "hidden-inner-parent") r.data = [{...row(), employee: null}, row(2)];
       if (kind === "unexpected-to-many") r.data = [{...row(), leave_type: [{name_en: "one"}, {name_en: "two"}]}, row(2)];}
     return r;});
-  const result = await readHrSearch(full({categories: ["time"]})); expect(result.success).toBe(false); expect(result).not.toHaveProperty("data"); expect(JSON.stringify(result)).not.toContain("PRIVATE");
+  const result = await readHrSearch(full({categories: ["time"], ...(kind === "page-count-drift" ? {page: 2, pageSize: 1} : {})}));
+  expect(result.success).toBe(false); expect(result).not.toHaveProperty("data"); expect(JSON.stringify(result)).not.toContain("PRIVATE");
 });
 it("a single permitted category failure fails the whole read instead of allSettled partial success", async () => {
   tables.employees = [row()]; m.resolve.mockImplementation((e: Entry) => e.table === "hr_candidates" ? {data: null, count: null, error: {message: "hidden failure"}} : resolve(e));

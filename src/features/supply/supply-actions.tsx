@@ -80,6 +80,10 @@ function purchaseOperations(data: SupplyWorkspace, queue: SupplyActionQueue | nu
   const add = (action: string, title: string, fields: Field[]) => list.push({ family: "purchase", action, title, fields });
   const unit = select("uom", "Item unit", data.units);
   const open = data.purchases ?? [];
+  const receipts = data.receipt_choices ?? (data.receipts ?? []).map(row => ({
+    id: row.id, label: row.label,
+    needs_inspection: row.quarantined > row.inspections.reduce((sum, inspection) => sum + inspection.quantity, 0),
+  }));
   const bin = select("bin", "Available bin", data.bins.filter(r => r.kind === "available"), true);
   if (rights.has("supply.purchase")) {
     const receivableLines = queue?.queue === "receiving" ? queue.rows.map(row => ({
@@ -94,25 +98,25 @@ function purchaseOperations(data: SupplyWorkspace, queue: SupplyActionQueue | nu
       text("delivery_note", "Delivery note"), qty("quantity", "Delivered quantity"), qty("accepted", "Accepted", "0"), qty("rejected", "Rejected", "0"),
       qty("quarantined", "Quarantined", "0"), unit, bin, select("quarantine_bin", "Quarantine bin", data.bins.filter(b => b.kind === "quarantine"), true),
       text("lot", "Lot (if required)", true), text("serial", "Serial (if required)", true)]);
-    add("supplier-return", "Record physical supplier return", [select("receipt", "Original goods receipt", data.receipts ?? []),
+    add("supplier-return", "Record physical supplier return", [select("receipt", "Original goods receipt", receipts),
       actorId("movement", "Exact receipt movement number"), unit, qty("quantity", "Returned quantity"), text("reference", "Supplier return reference")]);
   }
   if (rights.has("supply.purchase.approve")) {
     add("approve", "Approve an independent purchase line", [select("purchase", "Pending purchase line", open.filter(r => !r.approved_at))]);
-    add("quarantine", "Inspect quarantined goods", [select("receipt", "Receipt awaiting disposition", (data.receipts ?? []).filter(r =>
-      r.quarantined > r.inspections.reduce((sum, row) => sum + row.quantity, 0))),
+    add("quarantine", "Inspect quarantined goods", [select("receipt", "Receipt awaiting disposition", receipts.filter(row => row.needs_inspection)),
       choice("outcome", "Inspection outcome", { accepted: "Accept into stock", rejected: "Reject and retain for supplier return" }),
       bin, unit, qty("quantity", "Inspected quantity")]);
   }
   return list;
 }
 
-type QueueView = { search: string; page: number; open: boolean; scope?: string; result: SupplyActionQueue | null };
+type QueueView = { search: string; page: number; open: boolean; scope?: string; receiptPage?: number; result: SupplyActionQueue | null };
 
 function queueHref(workspace: "inventory" | "procurement", branch: number, view: QueueView, page: number) {
   const params = new URLSearchParams({
     branch: String(branch), ...(view.scope ? { scope: view.scope } : {}),
     queueSearch: view.search, queuePage: String(page),
+    ...(view.receiptPage ? { receiptPage: String(view.receiptPage) } : {}),
   });
   return `/modules/${workspace}?${params}`;
 }
@@ -133,6 +137,7 @@ function SupplyQueueControls({ view, workspace, branch }: {
     <Form action={root} className="flex flex-wrap items-end gap-2">
       <input type="hidden" name="branch" value={branch} />
       {view.scope && <input type="hidden" name="scope" value={view.scope} />}
+      {view.receiptPage && <input type="hidden" name="receiptPage" value={view.receiptPage} />}
       <label className="grid max-w-sm gap-1 text-sm">
         Search {workspace === "inventory" ? "stock reviews" : "purchase lines"}
         <Input key={view.search} name="queueSearch" defaultValue={view.search} maxLength={120} />

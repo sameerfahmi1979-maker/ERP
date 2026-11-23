@@ -64,6 +64,12 @@ export interface ERPTableServerRead<TData> {
   filters: ListFilter[];
   /** Collect all matching authorized rows, or reject partial/drifted reads. */
   loadExportData?: () => Promise<TData[]>;
+  /** Opt into stable ID selection across pages and re-authorize those rows at export. */
+  exportSelection?: { scope: string | number; load: (ids: string[]) => Promise<TData[]> };
+  /** Explicit opt-in for an already-supported globally authorized legacy email flow. */
+  completeLegacyEmail?: boolean;
+  /** Remount the output control when its criteria or authority changes. */
+  exportScope?: string;
 }
 
 /**

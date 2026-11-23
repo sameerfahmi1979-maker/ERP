@@ -1,6 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ read: vi.fn(), rpc: vi.fn() }));
-vi.mock("@/lib/ai/common/assistant/entity-access", () => ({ readAuthorizedAssistantEntity: state.read }));
+vi.mock("@/lib/rbac/check", () => ({ getAuthContext: async () => context() }));
+vi.mock("@/lib/ai/common/assistant/entity-access", () => ({
+  assistantSourceKey: ({ entityType, entityId }: { entityType: string; entityId: number }) => `${entityType}:${entityId}`,
+  readAuthorizedAssistantEntity: state.read,
+  readAuthorizedAssistantSourceVersions: async (refs: Array<{ entityType: string; entityId: number }>) => {
+    const versions = new Map();
+    for (const { entityType, entityId } of refs) {
+      const row = await state.read(entityType, entityId);
+      if (row) versions.set(`${entityType}:${entityId}`, row.version);
+    }
+    return versions;
+  },
+}));
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ rpc: state.rpc }) }));
 import { assistantAuthorityFingerprint, createAssistantHistoryBinding, createAssistantHistoryVerifier, verifyAssistantSessionNow } from "@/lib/ai/common/assistant/history-access";
 import type { AuthContext } from "@/lib/rbac/check";

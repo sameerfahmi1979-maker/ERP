@@ -106,5 +106,19 @@ describe("partial search",()=>{
   const from=vi.fn(()=>query({data:docs,count:2,error:null}));mocks.createClient.mockResolvedValue({from,rpc:vi.fn(()=>query({data:[],count:0,error:null}))});
   const result=await readMobileDocuments({search:"same",page:1,validity:"all",personal:false},ctx(["dms.documents.view"]));expect(result.total).toBe(2);expect(result.rows.map(r=>r.id)).toEqual([1,2]);
  });
+ it("uses bounded content-summary pages without reading unused descriptions or losing late exact matches",async()=>{
+  const docs=Array.from({length:501},(_,i)=>({id:i+1,title:`Permit ${String(i+1).padStart(3,"0")}`,document_no:i===500?"DMS-5000":`OTHER-${i+1}`,expiry_date:null,status:"active",document_type:null}));
+  const content=query(null);
+  content.range=vi.fn(async(from:number,to:number)=>({data:docs.slice(from,to+1),count:docs.length,error:null}));
+  const metadata=query({data:[],count:0,error:null});
+  const rpc=vi.fn(()=>content);
+  mocks.createClient.mockResolvedValue({from:vi.fn(()=>metadata),rpc});
+  const result=await readMobileDocuments({search:"DMS-5000",page:1,validity:"all",personal:false},ctx(["dms.documents.view"]));
+  expect(result).toMatchObject({total:501,more:true,rows:[{id:501,number:"DMS-5000"},...docs.slice(0,24).map(({id})=>({id}))]});
+  expect(content.select).toHaveBeenCalledWith("id,title,document_no,expiry_date,status,document_type:dms_document_types(name_en)");
+  expect(content.range).toHaveBeenNthCalledWith(1,0,499);
+  expect(content.range).toHaveBeenNthCalledWith(2,500,999);
+  expect(content.range).toHaveBeenCalledTimes(2);
+ });
  it("fails explicitly on incomplete protected results",async()=>{mocks.createClient.mockResolvedValue({from:vi.fn(()=>query({data:[],count:2,error:null})),rpc:vi.fn(()=>query({data:[],count:0,error:null}))});await expect(readMobileDocuments({search:"same",page:1,validity:"all",personal:false},ctx(["dms.documents.view"]))).rejects.toThrow();});
 });

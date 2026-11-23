@@ -302,6 +302,30 @@ export interface ReportRunRequest {
   templateId?: number;
   ownerCompanyIds?: number[];
   requestedByUserId: number;
+  screenPage?: ReportScreenPageQuery;
+}
+
+export interface ReportScreenPageQuery {
+  pageIndex: number;
+  pageSize: number;
+  sorting: { id: string; desc: boolean }[];
+  globalFilter: string;
+  columnFilters: { id: string; value: string }[];
+  columns?: string[];
+  receipt?: string;
+}
+
+export const FIRST_REPORT_SCREEN_PAGE: ReportScreenPageQuery = {
+  pageIndex: 0, pageSize: 25, sorting: [], globalFilter: "", columnFilters: [],
+};
+
+export interface ReportScreenPage {
+  pageIndex: number;
+  pageSize: number;
+  totalCount: number;
+  receipt: string;
+  filters: { id: string; type: "select" | "number" | "text"; options?: { value: string; label: string }[] }[];
+  sortDescFirst: string[];
 }
 
 export interface ReportRunResult {
@@ -315,6 +339,9 @@ export interface ReportRunResult {
   requiresManualTemplateSelection?: boolean;
   resolvedBrandingProfileId?: number;
   resolvedTemplateId?: number;
+  analyticalBrandingVersion?: string;
+  analyticalBrandingCanSign?: boolean;
+  screenPage?: ReportScreenPage;
 }
 
 export interface ReportDataResult {

@@ -8,7 +8,7 @@ import type { ActionResult, HrSettingsWorklistParams } from "@/server/actions/hr
 
 type Criteria = { pagination: PaginationState; sorting: SortingState; filters: ColumnFiltersState; search: string };
 type Page<T> = { data: T[]; total: number };
-export type ListHrSettingsPage<T> = (input: HrSettingsWorklistParams) => Promise<ActionResult<Page<T>>>;
+export type ListHrSettingsPage<T> = (input: HrSettingsWorklistParams, signal?: AbortSignal) => Promise<ActionResult<Page<T>>>;
 const initialCriteria: Criteria = {
   pagination: { pageIndex: 0, pageSize: HR_SETTINGS_FIRST_PAGE.page_size }, sorting: [], filters: [], search: "",
 };
@@ -32,19 +32,34 @@ function verifyPage<T extends { id: number }>(result: ActionResult<Page<T>>, { p
 
 export function useHrSettingsWorklist<T extends { id: number }>(
   initialData: T[], initialTotal: number, onList: ListHrSettingsPage<T>, filters: ERPTableServerRead<T>["filters"],
+  abortable = false,
 ) {
   const [criteria, setCriteria] = useState(initialCriteria);
   const [page, setPage] = useState<Page<T>>({ data: initialData, total: initialTotal });
   const [status, setStatus] = useState<"ready" | "loading" | "failed">("ready");
+  const [refreshFailed, setRefreshFailed] = useState(false);
   const [current] = useState(() => ({ criteria: initialCriteria, sequence: 0, active: true }));
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const pageRequest = useRef<AbortController | undefined>(undefined);
+  const exportRequests = useRef(new Set<AbortController>());
   useEffect(() => {
+    const exports = exportRequests.current;
     current.active = true;
-    return () => { current.active = false; current.sequence++; clearTimeout(timer.current); };
+    return () => {
+      current.active = false;
+      current.sequence++;
+      clearTimeout(timer.current);
+      pageRequest.current?.abort();
+      exports.forEach(request => request.abort());
+    };
   }, [current]);
 
-  function read(next: Criteria, debounce = false) {
+  function read(next: Criteria, debounce = false, refresh = false) {
     clearTimeout(timer.current);
+    pageRequest.current?.abort();
+    exportRequests.current.forEach(request => request.abort());
+    const request = abortable ? new AbortController() : undefined;
+    pageRequest.current = request;
     const sequence = ++current.sequence;
     current.criteria = next;
     setCriteria(next);
@@ -53,17 +68,21 @@ export function useHrSettingsWorklist<T extends { id: number }>(
     const load = async () => {
       if (!isCurrent()) return;
       try {
-        const result = verifyPage(await onList(readParams(next)), next.pagination);
+        const params = readParams(next);
+        const result = verifyPage(await (request ? onList(params, request.signal) : onList(params)), next.pagination);
         if (!isCurrent()) return;
         const last = Math.max(0, Math.ceil(result.total / next.pagination.pageSize) - 1);
         if (next.pagination.pageIndex > last) {
-          read({ ...next, pagination: { ...next.pagination, pageIndex: last } });
+          read({ ...next, pagination: { ...next.pagination, pageIndex: last } }, false, refresh);
           return;
         }
         setPage(result);
         setStatus("ready");
       } catch {
-        if (isCurrent()) setStatus("failed");
+        if (isCurrent()) {
+          setStatus("failed");
+          setRefreshFailed(refresh);
+        }
       }
     };
     if (debounce) timer.current = setTimeout(() => void load(), 250);
@@ -87,24 +106,31 @@ export function useHrSettingsWorklist<T extends { id: number }>(
     onColumnFiltersChange: update => reset("filters", update),
     onGlobalFilterChange: update => reset("search", update, true),
     loadExportData: async () => {
+      const request = abortable ? new AbortController() : undefined;
+      if (request) exportRequests.current.add(request);
       const sequence = current.sequence, selected = current.criteria;
       const ids = new Set<number>();
       const rows: T[] = [];
       let total: number | undefined;
-      for (let pageIndex = 0; total === undefined || rows.length < total; pageIndex++) {
-        const pagination = { pageIndex, pageSize: 100 };
-        const next = verifyPage(await onList(readParams(selected, pagination)), pagination);
-        total ??= next.total;
-        if (!current.active || sequence !== current.sequence || total !== next.total) throw Error("HR settings export changed. Refresh and retry.");
-        for (const row of next.data) {
-          if (ids.has(row.id)) throw Error("HR settings export could not be verified.");
-          ids.add(row.id);
-          rows.push(row);
+      try {
+        for (let pageIndex = 0; total === undefined || rows.length < total; pageIndex++) {
+          const pagination = { pageIndex, pageSize: 100 };
+          const params = readParams(selected, pagination);
+          const next = verifyPage(await (request ? onList(params, request.signal) : onList(params)), pagination);
+          total ??= next.total;
+          if (!current.active || sequence !== current.sequence || total !== next.total) throw Error("HR settings export changed. Refresh and retry.");
+          for (const row of next.data) {
+            if (ids.has(row.id)) throw Error("HR settings export could not be verified.");
+            ids.add(row.id);
+            rows.push(row);
+          }
         }
+        return rows;
+      } finally {
+        if (request) exportRequests.current.delete(request);
       }
-      return rows;
     },
   };
-  return { rows: status === "ready" ? page.data : [], total: serverRead.totalCount, status, serverRead,
-    refresh: () => read(current.criteria) };
+  return { rows: status === "ready" ? page.data : [], total: serverRead.totalCount, status, serverRead, refreshFailed,
+    refresh: () => read(current.criteria, false, true) };
 }

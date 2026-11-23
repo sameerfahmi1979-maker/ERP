@@ -26,7 +26,7 @@ async function execute(input:MobileDmsV5Command,ctx:AuthContext,packSignal?:Abor
   case "documentDetails":case "documentSources":case "documentMetadata":case "documentMetadataSave":case "documentTags":case "documentTagOptions":case "documentTagsChange":case "documentComments":case "documentCommentAdd":case "documentCommentEdit":case "documentCommentDelete":case "documentHistory":return documents(input,ctx);
   case "processingStatus":case "processingAction":return processing(input,ctx);
   case "documentCompare":case "documentQuestion":case "documentNaturalSearch":case "documentNotifications":case "documentNotificationAction":case "documentQrLookup":return search(input,ctx);
-  case "requiredChecklist":case "documentRequestOptions":case "documentRequests":case "documentRequestCreate":case "documentRequestAct":return requests(input);
+  case "requiredChecklist":case "documentRequestOptions":case "documentRequests":case "documentRequestEvidence":case "documentRequestCreate":case "documentRequestAct":return requests(input);
   case "documentShareRecipients":case "documentShares":return readShares(input);
   case "documentShareCreate":case "documentShareRevoke":return mutateShare(input);
   case "documentShareResolve":return resolveShare(input.token);

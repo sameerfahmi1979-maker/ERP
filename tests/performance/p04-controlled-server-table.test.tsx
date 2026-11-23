@@ -9,15 +9,15 @@ import {ERPDataTable} from "@/components/erp/table/erp-data-table";
 import type {ERPExportMenuProps} from "@/components/erp/export/erp-export-menu";
 import {WorkspaceUiMemoryProvider} from "@/hooks/use-persistent-ui-state";
 type Row={id:number;name:string;amount:number};
-const mocks=vi.hoisted(()=>({exportProps:null as unknown,load:vi.fn()}));
+const mocks=vi.hoisted(()=>({exportProps:null as unknown,load:vi.fn(),loadSelected:vi.fn()}));
 vi.mock("next/navigation",()=>({usePathname:()=>"/synthetic/server-table"}));
 vi.mock("@/components/erp/export/erp-export-menu",()=>({ERPExportMenu:(props:unknown)=>{mocks.exportProps=props;return <span>Mocked output control</span>;}}));
 const rows:Row[]=[{id:2,name:"Zulu",amount:100},{id:1,name:"Alpha",amount:10}];
 const columns:ColumnDef<Row>[]=[{accessorKey:"name",header:"Name"},{accessorKey:"amount",header:"Amount"}];
 function Wrap({children}:{children:ReactNode}){return <FluentProvider theme={webLightTheme}><WorkspaceUiMemoryProvider>{children}</WorkspaceUiMemoryProvider></FluentProvider>;}
-function Driver({totalCount=1108,data=rows,loading=false,complete=true,selection=false}:{totalCount?:number|null;data?:Row[];loading?:boolean;complete?:boolean;selection?:boolean}){
+function Driver({totalCount=1108,data=rows,loading=false,complete=true,selection=false,selectedExport=false,selectionScope=0}:{totalCount?:number|null;data?:Row[];loading?:boolean;complete?:boolean;selection?:boolean;selectedExport?:boolean;selectionScope?:number}){
  const[pagination,onPaginationChange]=useState<PaginationState>({pageIndex:40,pageSize:25}),[sorting,onSortingChange]=useState<SortingState>([{id:"name",desc:false}]),[globalFilter,onGlobalFilterChange]=useState(""),[columnFilters,onColumnFiltersChange]=useState<ColumnFiltersState>([]);
- return <><output aria-label="Controlled read state">{JSON.stringify({pagination,sorting,globalFilter,columnFilters})}</output><ERPDataTable tableId="controlled" columns={columns} data={data} isLoading={loading} enableRowSelection={selection} exportConfig={{title:"Synthetic metadata",filename:"synthetic-only"}} serverRead={{pagination,onPaginationChange,sorting,onSortingChange,globalFilter,onGlobalFilterChange,columnFilters,onColumnFiltersChange,totalCount,filters:[{id:"amount",label:"Amount",type:"number"}],loadExportData:complete?mocks.load:undefined}}/></>;
+ return <><output aria-label="Controlled read state">{JSON.stringify({pagination,sorting,globalFilter,columnFilters})}</output><ERPDataTable tableId="controlled" columns={columns} data={data} isLoading={loading} enableRowSelection={selection} exportConfig={{title:"Synthetic metadata",filename:"synthetic-only"}} serverRead={{pagination,onPaginationChange,sorting,onSortingChange,globalFilter,onGlobalFilterChange,columnFilters,onColumnFiltersChange,totalCount,filters:[{id:"amount",label:"Amount",type:"number"}],loadExportData:complete?mocks.load:undefined,exportSelection:selectedExport?{scope:selectionScope,load:mocks.loadSelected}:undefined}}/></>;
 }
 function state(){return JSON.parse(screen.getByLabelText("Controlled read state").textContent!);}
 function exportProps(){return mocks.exportProps as ERPExportMenuProps<Row>;}
@@ -42,6 +42,18 @@ it("preserves column controls and supplies a complete on-demand export instead o
 });
 it("explicit selected-row exports remain selected loaded records rather than silently expanding to all matches",()=>{
  render(<Wrap><Driver selection/></Wrap>);fireEvent.click(screen.getAllByRole("checkbox",{name:"Select row"})[0]);const p=exportProps();expect(p.localRows?.load()).toEqual([rows[0]]);expect(p.loadData).toBeUndefined();expect(p.subtitle).toContain("1 selected record from the current loaded page only");expect(mocks.load).not.toHaveBeenCalled();
+});
+it("opt-in selected output preserves IDs across pages and requests fresh rows for those IDs only",async()=>{
+ const second=[{id:88,name:"Second page",amount:1}],view=render(<Wrap><Driver selection selectedExport/></Wrap>);
+ fireEvent.click(screen.getAllByRole("checkbox",{name:"Select row"})[0]);
+ view.rerender(<Wrap><Driver selection selectedExport data={second}/></Wrap>);
+ fireEvent.click(screen.getByRole("checkbox",{name:"Select row"}));
+ expect(screen.getByText("2 rows selected")).toBeDefined();
+ mocks.loadSelected.mockResolvedValue([rows[0],second[0]]);
+ expect(await exportProps().loadData?.()).toEqual([rows[0],second[0]]);
+ expect(mocks.loadSelected).toHaveBeenCalledWith(["2","88"]);expect(mocks.load).not.toHaveBeenCalled();
+ view.rerender(<Wrap><Driver selection selectedExport data={second} selectionScope={1}/></Wrap>);
+ expect(screen.queryByText(/rows? selected/)).toBeNull();
 });
 it("unknown totals mask stale rows and block pagination/export without claiming an empty successful result",()=>{
  render(<Wrap><Driver totalCount={null}/></Wrap>);expect(screen.queryByText("Zulu")).toBeNull();expect(screen.queryByText("Alpha")).toBeNull();expect(screen.getByText("Matching total is not yet available")).toBeDefined();expect(screen.getByText(/Records could not yet be verified/)).toBeDefined();expect(screen.queryByText(/No records match/)).toBeNull();expect(screen.getByRole("button",{name:"Next"}).hasAttribute("disabled")).toBe(true);expect(screen.getByRole("button",{name:"Previous"}).hasAttribute("disabled")).toBe(true);expect(exportProps().disabled).toBe(true);

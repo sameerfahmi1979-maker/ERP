@@ -37,6 +37,7 @@ interface ReportExportToolbarProps {
   isExporting?: boolean;
   runId?: number;
   resolvedBranding?: ExportBrandingContext;
+  loadEmailReport?: () => Promise<{data: ReportDataResult; runId?: number}>;
 }
 
 export function ReportExportToolbar({
@@ -48,10 +49,12 @@ export function ReportExportToolbar({
   isExporting,
   runId,
   resolvedBranding,
+  loadEmailReport,
 }: ReportExportToolbarProps) {
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const canEmail = useLegacyEmailAccess();
   const currentEmailAccess = useRef(false);
+  const preparedRuns = useRef(new WeakMap<object, {runId?: number; rowCount: number}>());
   useLayoutEffect(() => {
     currentEmailAccess.current = canEmail;
     return () => {currentEmailAccess.current = false;};
@@ -69,8 +72,7 @@ export function ReportExportToolbar({
   const dateStr = new Date().toISOString().split("T")[0];
   const filenameBase = `${registryEntry.report_code}_${dateStr}`;
 
-  const buildExportOptions = (): ERPExportOptions<Record<string, unknown>> => {
-    const { columns, rows } = data;
+  const buildExportOptions = ({columns, rows}: ReportDataResult): ERPExportOptions<Record<string, unknown>> => {
     const exportColumns = columns.map((col) => ({
       key: col,
       header: col.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
@@ -92,10 +94,13 @@ export function ReportExportToolbar({
   // Do not hand attachment bytes back to it after the report owner changes.
   const prepareAttachment = async (format: "pdf" | "excel" | "csv") => {
     if (!canUseEmail()) throw new Error(unavailable);
-    const options = buildExportOptions();
+    const report = loadEmailReport ? await loadEmailReport() : {data, runId};
+    if (!canUseEmail()) throw new Error(unavailable);
+    const options = buildExportOptions(report.data);
     const attachment = await (format === "pdf" ? generatePDFAttachment(options)
       : format === "excel" ? generateExcelAttachment(options) : generateCSVAttachment(options));
     if (!canUseEmail()) throw new Error(unavailable);
+    if (loadEmailReport) preparedRuns.current.set(attachment, {runId: report.runId, rowCount: report.data.rows.length});
     return attachment;
   };
 
@@ -210,17 +215,19 @@ export function ReportExportToolbar({
             if (!input.attachment) {
               return { success: false, error: "Attachment not ready." };
             }
+            const prepared = preparedRuns.current.get(input.attachment);
+            if (loadEmailReport && !prepared) return {success: false, error: "Prepare the report attachment again before sending."};
             const result = await sendReportEmail({
               to: input.to.split(",").map((e) => e.trim()).filter(Boolean),
               cc: input.cc ? input.cc.split(",").map((e) => e.trim()).filter(Boolean) : [],
               subject: input.subject,
               body: input.body,
               attachment: input.attachment,
-              runId,
+              runId: prepared ? prepared.runId : runId,
               attachmentFormat: input.attachmentType,
               attachmentFilename: input.attachment.filename,
               attachmentSizeBytes: input.attachment.sizeBytes,
-              context: { moduleCode: "REPORTS", recordCount: rowCount },
+              context: { moduleCode: "REPORTS", recordCount: prepared?.rowCount ?? rowCount },
             });
             // An already-dispatched server mutation may have committed. Keep
             // its outcome truthful but do not announce it to another owner.

@@ -5,15 +5,15 @@ import {runSingleDatabaseReadAttempt} from "@/lib/supabase/read-attempt-scope";
 import { withReadRequest } from "./read-context";
 type AuthorizedReader = (params: unknown) => Promise<{ success: boolean; error?: string; data?: unknown }>;
 
-export function readRoute(request: Request, reader: AuthorizedReader) {
-  if (!tracingEnabled()) return respondToRead(request, reader, performanceCorrelationId());
+export function readRoute(request: Request, reader: AuthorizedReader, { maxBytes = 4000 }: { maxBytes?: number } = {}) {
+  if (!tracingEnabled()) return respondToRead(request, reader, performanceCorrelationId(), maxBytes);
   const pathname = new URL(request.url).pathname;
   const correlation = performanceCorrelationId(request.headers.get(PERF_HEADER));
   return traceOperation(performanceReadOperation(pathname),
-    () => respondToRead(request, reader, currentTraceId() ?? correlation), correlation, pathname);
+    () => respondToRead(request, reader, currentTraceId() ?? correlation, maxBytes), correlation, pathname);
 }
 
-async function respondToRead(request: Request, reader: AuthorizedReader, correlationId: string) {
+async function respondToRead(request: Request, reader: AuthorizedReader, correlationId: string, maxBytes: number) {
   const headers={"Cache-Control":"private, no-store, max-age=0","Vary":"Cookie","X-Content-Type-Options":"nosniff","X-ERP-Correlation":correlationId};
   const fail=(status:number,error:string)=>tracedJsonResponse({success:false,error,correlationId},{status,headers});
   // An application-level terminal outcome, not an HTTP-standard cancellation code.
@@ -31,13 +31,13 @@ async function respondToRead(request: Request, reader: AuthorizedReader, correla
       if(request.signal.aborted)return cancelled();
       if(done)break;
       size+=value.byteLength;
-      if(size>4000){await bodyReader.cancel();return request.signal.aborted?cancelled():fail(400,"Invalid read parameters");}
+      if(size>maxBytes){await bodyReader.cancel();return request.signal.aborted?cancelled():fail(400,"Invalid read parameters");}
       parts.push(value);
     }
     const body=new Uint8Array(size);let at=0;for(const part of parts){body.set(part,at);at+=part.length;}raw=new TextDecoder().decode(body);
   } else raw=new URL(request.url).searchParams.get("params");
   if(request.signal.aborted)return cancelled();
-  if(raw&&raw.length>4000)return fail(400,"Invalid read parameters");
+  if(raw&&raw.length>maxBytes)return fail(400,"Invalid read parameters");
   let params:unknown;
   try{params=raw?JSON.parse(raw):{};}catch{return fail(400,"Invalid read parameters");}
   if(request.signal.aborted)return cancelled();

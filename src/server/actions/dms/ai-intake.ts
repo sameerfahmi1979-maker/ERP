@@ -1,4 +1,5 @@
 "use server";
+import { randomUUID } from "node:crypto";
 import {discardRetainedIntake} from '@/server/dms-intake-discard';
 import {recoverNumberedAiApproval} from '@/server/dms-ai-approval-recovery';
 import {prepareIntakeSource,verifyAndAttestIntakeSource} from '@/server/dms-intake-source-attestation';
@@ -237,9 +238,18 @@ export async function startAiIntakeFromUploadSession(
   return traceOperation('dms.intake', () => runAiIntake(parsed.data), dmsTraceId(`upload:${parsed.data.uploadSessionId}`));
 }
 
-async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<ActionResult<{ sessionCode: string; status: string; message?: string }>> {
+async function runAiIntake(
+  input: z.output<typeof StartIntakeSchema>,
+  reset?: { sessionCode: string; updatedAt: string },
+): Promise<ActionResult<{ sessionCode: string; status: string; message?: string }>> {
   // Until an ordinary source read proves explicit NULL, failures are not legacy.
   let modernStart=true;
+  let attemptClaimed = false;
+  const attemptUnconfirmed = () => ({
+    success: false as const,
+    uncertain: true as const,
+    error: "AI review progress could not be confirmed. Check the original intake before retrying.",
+  });
   try {
     const { uploadSessionId, allowDuplicate, onlyIfUploaded } = input;
     const supabase = await createClient();
@@ -258,9 +268,13 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
       .is("deleted_at", null)
       .single();
 
-    if (sessionError || !session) return { success: false, error: "Upload session not found" };
+    if (sessionError || !session) return reset ? attemptUnconfirmed() : { success: false, error: "Upload session not found" };
 
     const typedSession = session as Record<string, unknown>;
+    if (reset && (session.session_code !== reset.sessionCode || session.updated_at !== reset.updatedAt ||
+      session.intake_status !== "uploaded" || session.batch_draft_operation_id !== null)) {
+      return attemptUnconfirmed();
+    }
     if (onlyIfUploaded && (typedSession.status !== "uploaded" || typedSession.intake_status !== "uploaded" ||
         typedSession.uploaded_by !== ctx.profile.id || typedSession.batch_draft_operation_id !== null ||
         typedSession.document_id !== null || typedSession.ai_result_id !== null || typedSession.is_duplicate === true)) {
@@ -330,8 +344,9 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
     // ── SPEED.2K: concurrency guard + stale-run sweeper ─────────────────────
     // A second "AI Fill" click while a run is in flight must NOT start a second
     // full pipeline (double OCR + double GPT cost, racing status updates).
-    const intakeStatusNow = typedSession.intake_status as string;
-    if (!modern && (intakeStatusNow === "ocr_processing" || intakeStatusNow === "ai_processing")) {
+    const intakeStatusNow = session.intake_status as string;
+    const staleLegacyRun = !modern && (intakeStatusNow === "ocr_processing" || intakeStatusNow === "ai_processing");
+    if (staleLegacyRun) {
       const updatedAtMs = typedSession.updated_at
         ? new Date(typedSession.updated_at as string).getTime()
         : 0;
@@ -349,27 +364,41 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
         };
       }
 
-      // Stale (no status progress for 5+ min): the previous run was killed
-      // mid-flight (server restart, dropped connection). Mark orphaned jobs
-      // failed and proceed with a fresh run.
-      await supabase
-        .from("dms_ai_extraction_jobs")
-        .update({
-          status: "failed",
-          error_message: "Stale run — superseded by a new AI Fill request",
-          completed_at: new Date().toISOString(),
-        })
-        .eq("upload_session_id", uploadSessionId)
-        .in("status", ["pending", "processing"]);
-      logger.warn("[ai-intake] stale processing session swept — starting fresh run", {
-        uploadSessionId,
-        staleForMs: ageMs,
-      });
     }
     // Duplicate detection is informational only — the UI shows a warning badge.
     // Admins may intentionally create a second document from the same file.
 
     const sessionCode = typedSession.session_code as string;
+
+    // Every synchronous status change must still own the revision it replaces.
+    // Retain Postgres's returned precision when sending the next comparison.
+    const transitionAttempt = async (from: string, revision: string, to: string): Promise<string | null> => {
+      if (typeof revision !== "string" || !Number.isFinite(Date.parse(revision))) return null;
+      const nextRevision = new Date(Math.max(Date.now(), Date.parse(revision) + 1)).toISOString();
+      let update = supabase.from("dms_upload_sessions")
+        .update({ intake_status: to, updated_at: nextRevision })
+        .eq("id", uploadSessionId).eq("session_code", sessionCode)
+        .eq("status", session.status).eq("intake_status", from).eq("updated_at", revision)
+        .eq("temp_storage_path", session.temp_storage_path)
+        .is("deleted_at", null).is("document_id", null).is("ai_result_id", null)
+        .is("approve_run_id", null).is("temp_cleaned_at", null).is("discarded_at", null);
+      if (modern) {
+        update = update.eq("batch_draft_operation_id", marker)
+          .eq("batch_id", session.batch_id).eq("admission_position", session.admission_position)
+          .eq("uploaded_by", ctx.profile!.id);
+      } else {
+        update = update.is("batch_draft_operation_id", null);
+      }
+      const { data, error } = await update.select("id,batch_draft_operation_id,intake_status,updated_at").retry(false);
+      const elected = z.array(z.object({
+        id: z.literal(uploadSessionId),
+        batch_draft_operation_id: z.literal(marker as string | null),
+        intake_status: z.literal(to),
+        updated_at: z.iso.datetime({ offset: true }),
+      }).strict()).length(1).safeParse(data);
+      if (error || !elected.success || Date.parse(elected.data[0].updated_at) <= Date.parse(revision)) return null;
+      return elected.data[0].updated_at;
+    };
 
     // ── Check AI provider ───────────────────────────────────────────────────
 
@@ -378,10 +407,7 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
     if (!provider.isConfigured()) {
       if(modern || onlyIfUploaded)return {success:false,data:{sessionCode,status:"provider_not_configured",message:"No AI provider configured. Please configure one in Administration → Settings → AI Settings."},error:"No AI provider configured"};
       // Mark as failed but return sessionCode so user can proceed manually
-      await supabase
-        .from("dms_upload_sessions")
-        .update({ intake_status: "failed", updated_at: new Date().toISOString() })
-        .eq("id", uploadSessionId);
+      if (!(await transitionAttempt(intakeStatusNow, session.updated_at, "failed"))) return attemptUnconfirmed();
 
       await logAudit({
         module_code: "DMS",
@@ -402,37 +428,32 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
     // ── Update status: processing ───────────────────────────────────────────
 
 
-    if(modern){
-      try{
-        const response=await supabase.from("dms_upload_sessions")
-          .update({intake_status:"ocr_processing",updated_at:new Date().toISOString()})
-          .eq("id",uploadSessionId).eq("batch_draft_operation_id",marker)
-          .eq("batch_id",typedSession.batch_id).eq("admission_position",typedSession.admission_position)
-          .eq("uploaded_by",ctx.profile.id).eq("intake_status","uploaded").eq("status",typedSession.status)
-          .eq("updated_at",typedSession.updated_at).is("deleted_at",null).is("document_id",null).is("ai_result_id",null).is("temp_cleaned_at",null)
-          .select("id,batch_draft_operation_id,intake_status").retry(false);
-        const elected=z.array(z.object({id:z.literal(uploadSessionId),batch_draft_operation_id:z.literal(marker as string),intake_status:z.literal("ocr_processing")}).strict()).length(1).safeParse(response.data);
-        if(response.error||!elected.success)return claimFailure();
-        // A new ordinary governed statement after the conditional UPDATE wait.
-        // Not a durable worker lease or DB protection against other direct DML.
-        const current=await modernPrepare();
-        if(!current||current.member.kind!=="analysis_required"||!current.member.processing)return claimFailure();
-      }catch{return claimFailure();}
-    }else{
-      const claimed = await supabase
-        .from("dms_upload_sessions")
-        .update({ intake_status: "ocr_processing", updated_at: new Date().toISOString() })
-        .eq("id", uploadSessionId)
-        .eq("status", session.status)
-        .eq("intake_status", session.intake_status)
-        .eq("updated_at", session.updated_at)
-        .is("deleted_at", null)
-        .is("batch_draft_operation_id", null)
-        .select("id")
-        .retry(false);
-      if (claimed.error || claimed.data?.length !== 1 || claimed.data[0].id !== uploadSessionId) {
-        return { success: false, uncertain: true, error: "Analysis start could not be confirmed. Check the original intake for progress." };
+    let staleJobIds: number[] = [];
+    if (staleLegacyRun) {
+      const previousJobs = await supabase.from("dms_ai_extraction_jobs")
+        .select("id").eq("upload_session_id", uploadSessionId).eq("run_source", "ai_intake")
+        .in("status", ["pending", "processing"]);
+      if (previousJobs.error) return attemptUnconfirmed();
+      staleJobIds = (previousJobs.data ?? []).map(job => job.id as number);
+    }
+
+    const ocrRevision = await transitionAttempt(intakeStatusNow, session.updated_at, "ocr_processing").catch(() => null);
+    if (!ocrRevision) return modern ? claimFailure() : attemptUnconfirmed();
+    attemptClaimed = true;
+    if (modern) {
+      // Recheck ordinary admission after the conditional update acquired the row.
+      const current = await modernPrepare().catch(() => null);
+      if (!current || current.member.kind !== "analysis_required" || !current.member.processing) return claimFailure();
+    }
+    if (staleLegacyRun) {
+      // Reclaim only jobs observed before election, so we cannot sweep a successor's jobs.
+      if (staleJobIds.length) {
+        await supabase.from("dms_ai_extraction_jobs")
+          .update({ status: "failed", error_message: "Stale run — superseded by a new AI Fill request", completed_at: new Date().toISOString() })
+          .eq("upload_session_id", uploadSessionId).eq("run_source", "ai_intake")
+          .in("id", staleJobIds).in("status", ["pending", "processing"]);
       }
+      logger.warn("[ai-intake] stale processing session swept — starting fresh run", { uploadSessionId });
     }
 
 
@@ -512,19 +533,14 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
     }
 
     if (!contentExtracted) {
-      await supabase
-        .from("dms_upload_sessions")
-        .update({ intake_status: "failed", updated_at: new Date().toISOString() })
-        .eq("id", uploadSessionId);
+      if (!(await transitionAttempt("ocr_processing", ocrRevision, "failed"))) return attemptUnconfirmed();
       return { success: false, error: "The uploaded file could not be fully read. Check the OCR provider, or split a long PDF into files of at most four pages and retry." };
     }
 
     // ── Update status: AI processing ────────────────────────────────────────
 
-    await supabase
-      .from("dms_upload_sessions")
-      .update({ intake_status: "ai_processing", updated_at: new Date().toISOString() })
-      .eq("id", uploadSessionId);
+    const aiRevision = await transitionAttempt("ocr_processing", ocrRevision, "ai_processing");
+    if (!aiRevision) return attemptUnconfirmed();
 
     // ── Create AI job record ────────────────────────────────────────────────
 
@@ -549,10 +565,7 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
       .single();
 
     if (jobErr || !job) {
-      await supabase
-        .from("dms_upload_sessions")
-        .update({ intake_status: "failed", updated_at: new Date().toISOString() })
-        .eq("id", uploadSessionId);
+      if (!(await transitionAttempt("ai_processing", aiRevision, "failed"))) return attemptUnconfirmed();
       return { success: false, error: "Failed to create AI job record" };
     }
 
@@ -599,10 +612,12 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
 
     // ── Mark job processing ────────────────────────────────────────────────
 
-    await supabase
+    const startedJob = await supabase
       .from("dms_ai_extraction_jobs")
       .update({ status: "processing", started_at: new Date().toISOString() })
-      .eq("id", jobId);
+      .eq("id", jobId).eq("upload_session_id", uploadSessionId).eq("created_by", ctx.profile.id)
+      .eq("status", "pending").select("id").retry(false).maybeSingle();
+    if (startedJob.error || startedJob.data?.id !== jobId) return attemptUnconfirmed();
 
     // ── Run AI ────────────────────────────────────────────────────────────
 
@@ -648,11 +663,8 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
       await supabase
         .from("dms_ai_extraction_jobs")
         .update({ status: "failed", error_message: (aiError ?? "").slice(0, 500), completed_at: completedAt, duration_ms: durationMs })
-        .eq("id", jobId);
-      await supabase
-        .from("dms_upload_sessions")
-        .update({ intake_status: "failed", updated_at: new Date().toISOString() })
-        .eq("id", uploadSessionId);
+        .eq("id", jobId).eq("upload_session_id", uploadSessionId).eq("status", "processing");
+      if (!(await transitionAttempt("ai_processing", aiRevision, "failed"))) return attemptUnconfirmed();
       await logAudit({
         module_code: "DMS",
         entity_name: "dms_upload_sessions",
@@ -953,6 +965,11 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
         reviewed_by: null,
         reviewed_at: null,
         raw_response_json: {...sanitizedResponse,preparation:prepared,
+          classification: {
+            ...sanitizedResponse.classification,
+            needs_human_review: aiOutput.classification.needsHumanReview ?? false,
+            review_reason: aiOutput.classification.reviewReason ?? null,
+          },
           ...(cicpaReview && { warnings: aiOutput.warnings, cicpaLocations: { state: cicpaReview.wording.status },
             cicpaCompanyNumber: { state: cicpaReview.fields[CICPA_COMPANY_NUMBER_FIELD] ? "verified" : "held" } }),
           ...(approvedReview && { warnings: aiOutput.warnings, approvedProfile: approvedReview.state === "verified"
@@ -981,78 +998,43 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
       await supabase
         .from("dms_ai_extraction_jobs")
         .update({ status: "failed", error_message: modern ? "AI result storage was not confirmed." : resultErr?.message ?? "Failed to store result", completed_at: completedAt, duration_ms: durationMs })
-        .eq("id", jobId);
-      await supabase
-        .from("dms_upload_sessions")
-        .update({ intake_status: "failed", updated_at: new Date().toISOString() })
-        .eq("id", uploadSessionId);
+        .eq("id", jobId).eq("upload_session_id", uploadSessionId).eq("status", "processing");
+      if (!(await transitionAttempt("ai_processing", aiRevision, "failed"))) return attemptUnconfirmed();
       return { success: false, error: modern ? "AI result storage was not confirmed. Retain this batch for reconciliation." : resultErr?.message ?? "Failed to store AI result" };
     }
 
     const resultId = result.id as number;
 
-    // ── Complete job + update session ──────────────────────────────────────
+    // ── Complete job and publish the attested result ────────────────────────
 
-    await supabase
+    const completedJob = await supabase
       .from("dms_ai_extraction_jobs")
       .update({ status: "complete", completed_at: completedAt, duration_ms: durationMs })
-      .eq("id", jobId);
+      .eq("id", jobId).eq("upload_session_id", uploadSessionId).eq("created_by", ctx.profile.id)
+      .eq("status", "processing").select("id,upload_session_id,status").retry(false).maybeSingle();
+    if (completedJob.error || completedJob.data?.id !== jobId ||
+      completedJob.data.upload_session_id !== uploadSessionId || completedJob.data.status !== "complete") return attemptUnconfirmed();
 
     if(!verifiedSource)return {success:false,error:'The exact original-file proof is missing. Retain this intake for reconciliation.'};
     const attestedAnalysis=await traceSpan('dms.publish', () => adminClient.rpc('f07_attest_intake_analysis',{
       p_session:uploadSessionId,p_actor:verifiedSource.plan.actorId,p_auth_session:verifiedSource.plan.authSessionId,
-      p_result:resultId,p_expected:resultPayload,
-    }));
+      p_result:resultId,p_expected:resultPayload,p_claim_at:aiRevision,
+    }).retry(false));
     if(attestedAnalysis.error)return {success:false,error:'The AI result could not be verified against its exact original file. Retain this intake; no approval was submitted.'};
 
-    await supabase
-      .from("dms_upload_sessions")
-      .update({
-        intake_status: "review_pending",
-        review_status: "pending",
-        ai_job_id: jobId,
-        ai_result_id: resultId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", uploadSessionId);
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_upload_sessions",
-      entity_id: uploadSessionId,
-      entity_reference: sessionCode,
-      action: "update",
-      new_values: {
-        event: "classification_completed",
-        job_id: jobId,
-        result_id: resultId,
-        duration_ms: durationMs,
-        suggested_type_code: suggestedTypeCode,
-        classification_score: aiOutput.classification.confidenceScore,
-        needs_human_review: aiOutput.classification.needsHumanReview ?? false,
-        prompt_version: PROMPT_VERSION,
-      },
-    });
-
-    if (
-      aiOutput.classification.needsHumanReview ||
-      (aiOutput.classification.confidenceScore != null &&
-        aiOutput.classification.confidenceScore < 0.6)
-    ) {
-      await logAudit({
-        module_code: "DMS",
-        entity_name: "dms_upload_sessions",
-        entity_id: uploadSessionId,
-        entity_reference: sessionCode,
-        action: "update",
-        new_values: {
-          event: "classification_low_confidence",
-          result_id: resultId,
-          classification_score: aiOutput.classification.confidenceScore,
-          review_reason: aiOutput.classification.reviewReason ?? null,
-        },
-      });
-    }
+    const publication = { p_session: uploadSessionId, p_code: sessionCode, p_claim_at: aiRevision, p_job: jobId, p_result: resultId };
+    const publish = async () => {
+      try {
+        const { data, error } = await traceSpan("dms.publish", () =>
+          supabase.rpc("dms_publish_intake_classification", publication).retry(false));
+        return !error && data?.id === uploadSessionId && data.session_code === sessionCode &&
+          data.intake_status === "review_pending" && data.review_status === "pending" &&
+          data.ai_job_id === jobId && data.ai_result_id === resultId;
+      } catch {
+        return false;
+      }
+    };
+    if (!(await publish()) && !(await publish())) return attemptUnconfirmed();
 
     // NOTE (SPEED.2L flash fix, 2026-08-03): do NOT call revalidatePath here.
     // This action runs for 30s+; the client's status poll redirects to
@@ -1102,6 +1084,7 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
       data: { sessionCode, status: "review_pending", message: "AI analysis complete" },
     };
   } catch (e) {
+    if (attemptClaimed) return attemptUnconfirmed();
     if(modernStart)return {success:false,error:"Analysis start is unconfirmed. Retain this batch for reconciliation."};
     if(input?.onlyIfUploaded === true)return {success:false,uncertain:true,error:"Analysis start could not be confirmed. Check the original intake for progress."};
     logger.error("startAiIntakeFromUploadSession error", e);
@@ -1365,7 +1348,7 @@ export async function retryAiIntake(
 
     // Governed work cannot be reset: age/failed is not proof a provider is dead.
     const source=await supabase.from("dms_upload_sessions")
-      .select("batch_draft_operation_id,status,intake_status,review_status,updated_at,document_id,approve_run_id,ai_result_id,temp_cleaned_at,temp_storage_path,discarded_at,is_duplicate,owning_company_id,owning_branch_id,original_filename,mime_type,file_size_bytes,sha256_hash,uploaded_by,expires_at")
+      .select("session_code,batch_draft_operation_id,status,intake_status,review_status,updated_at,document_id,approve_run_id,ai_result_id,temp_cleaned_at,temp_storage_path,discarded_at,is_duplicate,owning_company_id,owning_branch_id,original_filename,mime_type,file_size_bytes,sha256_hash,uploaded_by,expires_at")
       .eq("id",uploadSessionId).is("deleted_at",null).single();
     if(source.error||!source.data||source.data.batch_draft_operation_id!==null)
       return {success:false,error:"Use the retained batch recovery workflow. This analysis cannot be reset."};
@@ -1402,36 +1385,43 @@ export async function retryAiIntake(
       return { success: false, error: refreshMessage };
     }
 
-    // Compare the reviewed state and original binding in the same write. A
-    // concurrent retry, cleanup, or numbered approval must win independently.
-    let reset = supabase
-      .from("dms_upload_sessions")
-      .update({
-        intake_status: "uploaded",
-        review_status: "not_started",
-        ai_result_id: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", uploadSessionId).eq("status", intake.status).eq("intake_status", intake.intake_status)
-      .eq("review_status", intake.review_status).eq("updated_at", intake.updated_at)
-      .eq("temp_storage_path", admitted.path).eq("original_filename", admitted.name).eq("mime_type", admitted.mime)
-      .eq("file_size_bytes", admitted.size).eq("is_duplicate", false)
-      .is("batch_draft_operation_id",null).is("document_id",null).is("approve_run_id",null)
-      .is("temp_cleaned_at",null).is("discarded_at",null).is("deleted_at",null);
-    reset = company === null ? reset.is("owning_company_id", null) : reset.eq("owning_company_id", company);
-    reset = branch === null ? reset.is("owning_branch_id", null) : reset.eq("owning_branch_id", branch);
-    reset = admitted.owner === null ? reset.is("uploaded_by", null) : reset.eq("uploaded_by", admitted.owner);
-    reset = admitted.sha256 === null ? reset.is("sha256_hash", null) : reset.eq("sha256_hash", admitted.sha256);
-    reset = admitted.expiry === null ? reset.is("expires_at", null) : reset.eq("expires_at", admitted.expiry);
-    reset = intake.ai_result_id === null ? reset.is("ai_result_id", null) : reset.eq("ai_result_id", intake.ai_result_id);
-
+    const request = {
+      p_session: uploadSessionId,
+      p_operation: randomUUID(),
+      p_expected_updated_at: intake.updated_at,
+      p_expected_source: admitted,
+      p_expected_state: {
+        status: intake.status,
+        intake_status: intake.intake_status,
+        review_status: intake.review_status,
+        ai_result_id: intake.ai_result_id,
+      },
+    };
+    const receiptSchema = z.object({
+      id: z.literal(uploadSessionId),
+      session_code: z.literal(intake.session_code as string),
+      intake_status: z.literal("uploaded"),
+      updated_at: z.iso.datetime({ offset: true }),
+      outcome: z.enum(["reset", "advanced"]),
+    }).strict();
     resetDispatched = true;
-    const { data, error } = await reset.select("id,intake_status").retry(false);
-    if (error || !Array.isArray(data)) return unconfirmed;
-    if (data.length === 0) return { success: false, error: refreshMessage };
-    if (data.length !== 1 || data[0].id !== uploadSessionId || data[0].intake_status !== "uploaded") return unconfirmed;
-
-    return startAiIntakeFromUploadSession({ uploadSessionId });
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await (async () => {
+        try { return await supabase.rpc("dms_reset_intake_retry", request).retry(false); }
+        catch { return null; }
+      })();
+      if (!response) continue;
+      if (attempt === 0 && response.error?.code === "PT409") return { success: false, error: refreshMessage };
+      if (attempt === 0 && response.error?.code === "42501") {
+        return { success: false, error: "The original intake is unavailable or outside your current access." };
+      }
+      const receipt = receiptSchema.safeParse(response.data);
+      if (response.error || !receipt.success) continue;
+      if (receipt.data.outcome === "advanced") return { success: false, error: refreshMessage };
+      const reset = { sessionCode: receipt.data.session_code, updatedAt: receipt.data.updated_at };
+      return await traceOperation('dms.intake', () => runAiIntake({ uploadSessionId, allowDuplicate: false, onlyIfUploaded: false }, reset), dmsTraceId(`upload:${uploadSessionId}`));
+    }
+    return unconfirmed;
   } catch {
     if (resetDispatched) return unconfirmed;
     return { success: false, error: "Analysis retry is unavailable. Retain the original request for reconciliation." };

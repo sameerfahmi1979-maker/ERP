@@ -48,3 +48,4 @@
 /supabase/migrations/20261123134330_hr_saved_photo_custom_plan.sql -text
 /supabase/migrations/20261123140022_ai_subject_text_first.sql -text
 /supabase/migrations/20261123155820_mobile_hr_directory_scope_set.sql -text
+/supabase/migrations/20261123160609_dms_inbox_bound_context_prefilter.sql -text

@@ -9,7 +9,9 @@ export async function runContinuousIntake({ config, client, graph, ledger, signa
     const advance = (step, hash) => ledger.advancePdf(item, step, hash);
     let status;
     try {
-      status = await advance('inspect');
+      const outsidePilot = config.agentCenterSharePointFlow &&
+        (item.item_id !== config.itemId || item.version !== config.sourceVersion);
+      status = await advance(outsidePilot ? 'defer' : 'inspect');
       if (status === 'download') {
         const source = await graph.readDiscoveredPdf(item.item_id, item.version, signal);
         if (!source.bytes.subarray(0, 1024).includes('%PDF-')) {
@@ -17,6 +19,12 @@ export async function runContinuousIntake({ config, client, graph, ledger, signa
           continue;
         }
         const sha256 = createHash('sha256').update(source.bytes).digest('hex');
+        if (config.agentCenterSharePointFlow && sha256 !== config.sha256) {
+          const deferred = await advance('defer');
+          receipts.push(deferred);
+          if (deferred === 'paused') break;
+          continue;
+        }
         status = await advance('prepare', sha256);
         if (status === 'ready') {
           const result = await runPilot({
@@ -27,6 +35,12 @@ export async function runContinuousIntake({ config, client, graph, ledger, signa
           if (result.status === 'admission_retained') {
             // Leave this isolated receipt for a future claim with the same
             // operation. The remaining worker write boundaries are held.
+            receipts.push(result.status);
+            break;
+          }
+          if (config.agentCenterSharePointFlow && ['paused', 'review_pending'].includes(result.status)) {
+            // The protected publication already committed the scoped work and
+            // review notification event. Never advance it through the legacy path.
             receipts.push(result.status);
             break;
           }

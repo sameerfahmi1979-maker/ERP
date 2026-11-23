@@ -1,0 +1,111 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  user: vi.fn(), admin: vi.fn(), verify: vi.fn(), analyze: vi.fn(), upload: vi.fn(),
+}));
+vi.mock("@/lib/supabase/mobile-request", () => ({ withMobileToken: (_: string, run: () => unknown) => run() }));
+vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ rpc: (...args: unknown[]) => ({ retry: () => mocks.user(...args) }), auth: { getUser: async () => ({ data: { user: { id: "fixture" } } }) } }) }));
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: () => ({ rpc: (...args: unknown[]) => ({ retry: () => mocks.admin(...args) }), storage: { from: () => ({ upload: mocks.upload }) } }),
+}));
+vi.mock("@/server/dms-verified-intake-source", () => ({ readVerifiedIntakeSource: mocks.verify }));
+vi.mock("@/server/dms-sharepoint-worker-ai", () => ({ analyzeSharePointWorkPermit: mocks.analyze }));
+
+import { POST } from "@/app/api/internal/agents/sharepoint-intake/route";
+
+const operationId = "745a559c-3615-4e7b-897e-22f8a36bcb4e";
+const sharePointLease = "bed07e1f-8b4d-4b6b-bb25-cbd8e5d29bb1";
+const authSessionId = "77c63c89-2a30-4e09-a9a8-dae298dfdaa4";
+const attemptId = "df691874-aac6-424f-9069-d4724cac6a5d";
+const object = {
+  id: "76e98b5d-916f-46ac-a789-87d38c6354f9",
+  version: "retained-version",
+  lastModified: "2026-11-23T00:00:00Z",
+};
+const bytes = Buffer.from("%PDF-1.7\nsynthetic");
+const sha256 = (await import("node:crypto")).createHash("sha256").update(bytes).digest("hex");
+const source = {
+  operationId, sessionId: 42, actorId: 51, authSessionId, companyId: 1, branchId: 1,
+  path: "sessions/fixture/original.pdf", filename: "original.pdf", sha256, byteCount: bytes.length,
+};
+const receipt = {
+  operationId, sessionId: 42, state: "review_pending", resultId: 19, reviewId: 20, notificationEventId: 8,
+};
+
+function post(body: unknown) {
+  return POST(new Request("https://fixture.invalid/api/internal/agents/sharepoint-intake", {
+    method: "POST",
+    headers: { Authorization: "Bearer fixture.token.value", "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }));
+}
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  vi.stubEnv("DMS_AGENT_CENTER_SHAREPOINT_FLOW", "1");
+  mocks.verify.mockResolvedValue({ bytes, object, proof: { sha256 } });
+});
+
+describe("supervised SharePoint intake boundary", () => {
+  it("keeps the protected lane off by default", async () => {
+    vi.stubEnv("DMS_AGENT_CENTER_SHAREPOINT_FLOW", "0");
+    expect((await post({ op: "reviewSharePoint", operationId, sharePointLease, sessionId: 42 })).status).toBe(404);
+    expect(mocks.user).not.toHaveBeenCalled();
+  });
+
+  it("does not accept interrupted storage when native authority changed", async () => {
+    mocks.user.mockResolvedValue({ data: { ...source, state: "uploading" } });
+    mocks.upload.mockResolvedValue({});
+    mocks.admin.mockResolvedValue({ error: { code: "55000" } });
+    const response = await post({ op: "stageSharePoint", operationId, sharePointLease, sessionId: 42, pdfBase64: bytes.toString("base64") });
+    expect(response.status).toBe(409);
+    expect(mocks.admin).toHaveBeenCalledWith("f07_accept_sharepoint_worker_pdf", expect.objectContaining({
+      p_operation: operationId, p_lease: sharePointLease, p_object: object.id,
+    }));
+    expect(mocks.analyze).not.toHaveBeenCalled();
+  });
+
+  it("does not retry the provider after an already committed response was lost", async () => {
+    mocks.user.mockResolvedValue({ data: { ...source, ...receipt } });
+    const response = await post({ op: "reviewSharePoint", operationId, sharePointLease, sessionId: 42 });
+    expect(await response.json()).toEqual({ success: true, data: receipt });
+    expect(mocks.verify).not.toHaveBeenCalled();
+    expect(mocks.analyze).not.toHaveBeenCalled();
+  });
+
+  it("recovers a result published while waiting for the native claim", async () => {
+    mocks.user.mockResolvedValue({ data: { ...source, state: "processing" } });
+    mocks.admin.mockResolvedValue({ data: { ...source, ...receipt, started: false } });
+    const response = await post({ op: "reviewSharePoint", operationId, sharePointLease, sessionId: 42 });
+    expect(await response.json()).toEqual({ success: true, data: receipt });
+    expect(mocks.analyze).not.toHaveBeenCalled();
+  });
+
+  it("uses the exact claimed attempt and cannot publish after a pause during AI Fill", async () => {
+    const processingRevision = "2026-11-23T00:01:00Z";
+    mocks.user.mockResolvedValue({ data: { ...source, state: "staged" } });
+    mocks.admin
+      .mockResolvedValueOnce({ data: { ...source, state: "processing", attemptId, processingRevision, started: true } })
+      .mockResolvedValueOnce({ error: { code: "55000" } });
+    const extracted = { classification: "synthetic" };
+    mocks.analyze.mockResolvedValue(extracted);
+    const response = await post({ op: "reviewSharePoint", operationId, sharePointLease, sessionId: 42 });
+    expect(response.status).toBe(409);
+    expect(mocks.analyze).toHaveBeenCalledTimes(1);
+    expect(mocks.admin).toHaveBeenLastCalledWith("f07_publish_sharepoint_worker_review", expect.objectContaining({
+      p_actor: source.actorId, p_auth_session: authSessionId, p_attempt: attemptId, p_claim_at: processingRevision, p_output: extracted,
+    }));
+  });
+
+  it("refuses mismatched bytes before storage and refuses a second provider claim", async () => {
+    mocks.user.mockResolvedValue({ data: { ...source, state: "uploading" } });
+    const stage = await post({ op: "stageSharePoint", operationId, sharePointLease, sessionId: 42, pdfBase64: Buffer.from("different").toString("base64") });
+    expect(stage.status).toBe(422);
+    expect(mocks.upload).not.toHaveBeenCalled();
+
+    mocks.user.mockResolvedValue({ data: { ...source, state: "processing" } });
+    mocks.admin.mockResolvedValue({ data: { ...source, state: "processing", attemptId, processingRevision: "2026-11-23T00:01:00Z", started: false } });
+    expect((await post({ op: "reviewSharePoint", operationId, sharePointLease, sessionId: 42 })).status).toBe(409);
+    expect(mocks.analyze).not.toHaveBeenCalled();
+  });
+});

@@ -104,3 +104,67 @@ test('defers an uncertain admission on the same operation and continues the next
     ['waiting', 'inspect'], ['waiting', 'defer'],
   ]);
 });
+
+test('keeps the exact protected source and operation pinned across a lost stage response', async () => {
+  const bytes = Buffer.from('%PDF-representative-worker');
+  const { createHash } = await import('node:crypto');
+  const hash = createHash('sha256').update(bytes).digest('hex');
+  const config = { itemId: 'pinned-item', sourceVersion: 'c:approved', sha256: hash, agentCenterSharePointFlow: true };
+  const steps = [];
+  const claims = [];
+  const admissions = [];
+  const downloads = [];
+  const fixture = operations => ({
+    config,
+    ledger: {
+      claimPdf: async () => operations.shift(),
+      advancePdf: async (item, step, fingerprint) => {
+        steps.push([item.lease_token, step, fingerprint]);
+        return step === 'inspect' ? 'download' : step === 'defer' ? 'deferred' : 'ready';
+      },
+    },
+    graph: { readDiscoveredPdf: async (item, version) => {
+      downloads.push([item, version]);
+      return { name: 'fixture.pdf', bytes: item === 'pinned-item' && version === 'c:approved' ? bytes : Buffer.from('%PDF-other-worker') };
+    } },
+    runPilot: async request => {
+      claims.push(request.sharePointLease);
+      admissions.push([request.config.operationId, request.config.sha256]);
+      if (request.sharePointLease === firstLease) throw Error('stage response lost');
+      return { status: 'review_pending', sessionId: 42 };
+    },
+  });
+  const current = { operation_id: operationId, item_id: 'pinned-item', version: 'c:approved' };
+  const firstRun = await runContinuousIntake(fixture([
+    { ...current, item_id: 'other-item', lease_token: 'other' },
+    { ...current, version: 'c:superseded', lease_token: 'superseded' },
+    { ...current, lease_token: firstLease },
+  ]));
+  assert.deepEqual(firstRun, ['deferred', 'deferred', 'deferred']);
+  const secondRun = await runContinuousIntake(fixture([{ ...current, lease_token: secondLease }]));
+  assert.deepEqual(secondRun, ['review_pending']);
+  assert.deepEqual(downloads, [['pinned-item','c:approved'], ['pinned-item','c:approved']]);
+  assert.deepEqual(claims, [firstLease, secondLease]);
+  assert.deepEqual(admissions, [[operationId, hash], [operationId, hash]]);
+  assert.deepEqual(steps, [
+    ['other','defer',undefined], ['superseded','defer',undefined],
+    [firstLease,'inspect',undefined], [firstLease,'prepare',hash], [firstLease,'defer',undefined],
+    [secondLease,'inspect',undefined], [secondLease,'prepare',hash],
+  ]);
+});
+
+test('holds pinned discovery metadata if the content fingerprint differs from approval', async () => {
+  const item = { operation_id: operationId, item_id: 'pinned-item', version: 'c:approved', lease_token: firstLease };
+  const steps = [];
+  const results = await runContinuousIntake({
+    config: { itemId: item.item_id, sourceVersion: item.version, sha256: 'f'.repeat(64), agentCenterSharePointFlow: true },
+    ledger: {
+      claimPdf: async () => steps.length ? null : item,
+      advancePdf: async (_item, step) => { steps.push(step); return step === 'inspect' ? 'download' : 'deferred'; },
+    },
+    graph: { readDiscoveredPdf: async () => ({ name: 'fixture.pdf', bytes: Buffer.from('%PDF-other-worker') }) },
+    runPilot: async () => assert.fail('unapproved bytes should never reach the ERP pilot'),
+  });
+  assert.deepEqual(steps, ['inspect', 'defer']);
+  assert.deepEqual(results, ['deferred']);
+});

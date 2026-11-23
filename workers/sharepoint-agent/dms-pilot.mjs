@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { ConnectionError } from './connection.mjs';
 
 const erpEndpoint = 'https://erp.algt.net/api/mobile/dms/v1';
+const sharePointIntakeEndpoint = new URL('/api/internal/agents/sharepoint-intake', erpEndpoint);
 const storageOrigin = 'https://mmiefuieduzdiiwnqpie.supabase.co';
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const bearerFormat = /^[\w-]+\.[\w-]+\.[\w-]+$/;
@@ -20,6 +21,8 @@ export function readDmsPilotConfig(env) {
   if (!continuous && !isBatch && env.AGENT_DMS_PILOT !== 'one_file') throw new ConnectionError('invalid_pilot_mode');
   const agentCenterAdmission = env.PILOT_AGENT_CENTER_ADMISSION === '1';
   if (agentCenterAdmission && !continuous) throw new ConnectionError('agent_center_admission_requires_continuous');
+  const agentCenterSharePointFlow = env.PILOT_AGENT_CENTER_SHAREPOINT_FLOW === '1';
+  if (agentCenterSharePointFlow && !agentCenterAdmission) throw new ConnectionError('sharepoint_flow_requires_agent_center_admission');
   const config = {
     itemId: env.PILOT_GRAPH_ITEM_ID,
     etag: env.PILOT_GRAPH_ETAG,
@@ -32,7 +35,19 @@ export function readDmsPilotConfig(env) {
     oneFileSession: env.PILOT_ERP_ONE_FILE_SESSION,
     continuous,
     agentCenterAdmission,
+    agentCenterSharePointFlow,
   };
+  if (agentCenterSharePointFlow) {
+    const branch = env.PILOT_ERP_BRANCH_ID ?? '';
+    const version = env.PILOT_GRAPH_VERSION;
+    if (!/^[1-9]\d*$/.test(branch) || !Number.isSafeInteger(Number(branch)) ||
+        !/^[A-Za-z0-9_!-]{1,256}$/.test(config.itemId ?? '') || !fingerprint.test(config.sha256 ?? '') ||
+        typeof version !== 'string' || version.length > 512 || !/^[ce]:[^\u0000-\u001f\u007f]+$/u.test(version)) {
+      throw new ConnectionError('sharepoint_pilot_source_or_branch_unavailable');
+    }
+    config.branchId = Number(branch);
+    config.sourceVersion = version;
+  }
   if (!uuid.test(config.authUserId ?? '') ||
       !Number.isSafeInteger(config.companyId) || config.companyId <= 0 ||
       (config.oneFileSession
@@ -70,10 +85,10 @@ export function createDmsPilotClient(config, { fetch = globalThis.fetch, shutdow
     ? AbortSignal.any([shutdown, AbortSignal.timeout(ms)])
     : AbortSignal.timeout(ms);
 
-  async function post(op, options = {}, timeout = 20_000) {
+  async function post(op, options = {}, timeout = 20_000, endpoint = erpEndpoint) {
     let response;
     try {
-      response = await fetch(erpEndpoint, {
+      response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ op, ...options }),
@@ -112,6 +127,20 @@ export function createDmsPilotClient(config, { fetch = globalThis.fetch, shutdow
     },
     admit: request => post('admit', { request }),
     admitSharePoint: (request, sharePointLease) => post('admitSharePoint', { request, sharePointLease }),
+    stageSharePoint: (binding, bytes) => post('stageSharePoint', { ...binding, pdfBase64: bytes.toString('base64') }, 60_000, sharePointIntakeEndpoint),
+    async reviewSharePoint(binding) {
+      const send = () => post('reviewSharePoint', binding, 180_000, sharePointIntakeEndpoint);
+      try {
+        return await send();
+      } catch (error) {
+        // An uncertain reply may already have committed. The original actor
+        // and consumed lease can read that same receipt once more.
+        if (shutdown?.aborted || !['pilot_reviewSharePoint_unconfirmed', 'pilot_reviewSharePoint_http_200'].includes(error?.message)) {
+          throw error;
+        }
+        return send();
+      }
+    },
     async upload(admission, bytes) {
       let target;
       try {
@@ -155,12 +184,17 @@ export async function runDmsPilot({ config, client, graph, ledger, signal, sourc
     throw new ConnectionError('pilot_actor_mismatch');
   }
   const scopes = await client.scopes();
-  const companyWide = scopes.filter(scope => scope.companyId === config.companyId && scope.branchId === null);
-  // Temporary pilot sessions may have broader ERP access. Admission still
-  // requires the configured company-wide scope and the approved source bytes.
-  if (companyWide.length !== 1 || scopes.some(scope => (!config.oneFileSession && scope.companyId !== config.companyId) ||
-      (scope.branchId !== null && (!Number.isSafeInteger(scope.branchId) || scope.branchId <= 0)))) {
+  const branchId = config.agentCenterSharePointFlow ? config.branchId : null;
+  const matchingScopes = scopes.filter(scope => scope.companyId === config.companyId && scope.branchId === branchId);
+  // The protected path requires an explicitly scoped branch account. The older
+  // company-wide pilot can still inherit branches within its own company.
+  if (matchingScopes.length !== 1 || (config.agentCenterSharePointFlow && scopes.length !== 1) ||
+      scopes.some(scope => (!config.oneFileSession && scope.companyId !== config.companyId) ||
+        (scope.branchId !== null && (!Number.isSafeInteger(scope.branchId) || scope.branchId <= 0)))) {
     throw new ConnectionError('pilot_scope_mismatch');
+  }
+  if (config.agentCenterSharePointFlow && (!source || !uuid.test(config.operationId ?? ''))) {
+    throw new ConnectionError('pilot_sharepoint_source_unconfirmed');
   }
   const { name, bytes } = source ?? await graph.readApprovedPdf(config.itemId, config.etag, signal);
   if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > maxBytes ||
@@ -172,7 +206,7 @@ export async function runDmsPilot({ config, client, graph, ledger, signal, sourc
 
   const request = {
     version: 1, operationId: config.operationId, authUserId: config.authUserId, context: null,
-    scope: { companyId: config.companyId, branchId: null },
+    scope: { companyId: config.companyId, branchId },
     metadata: { original_filename: name, mime_type: 'application/pdf', file_size_bytes: bytes.length, sha256_hash: config.sha256 },
   };
   if (!await canWrite()) return { status: 'paused' };
@@ -180,7 +214,22 @@ export async function runDmsPilot({ config, client, graph, ledger, signal, sourc
     const receipt = await client.admitSharePoint(request, sharePointLease);
     if (!Number.isSafeInteger(receipt?.id) || receipt.id <= 0 || receipt.operationId !== request.operationId ||
         typeof receipt.replayed !== 'boolean') throw new ConnectionError('pilot_admission_unconfirmed');
-    return { status: 'admission_retained', sessionId: receipt.id };
+    if (!config.agentCenterSharePointFlow) return { status: 'admission_retained', sessionId: receipt.id };
+    const binding = { operationId: request.operationId, sessionId: receipt.id, sharePointLease };
+    const matchesBinding = row => row?.operationId === binding.operationId && row.sessionId === binding.sessionId;
+    if (!await canWrite()) return { status: 'paused' };
+    const staged = await client.stageSharePoint(binding, bytes);
+    if (!matchesBinding(staged) || staged.sha256 !== request.metadata.sha256_hash ||
+        staged.byteCount !== bytes.length || !['staged', 'processing', 'review_pending'].includes(staged.state)) {
+      throw new ConnectionError('pilot_sharepoint_stage_unconfirmed');
+    }
+    if (!await canWrite()) return { status: 'paused' };
+    const review = await client.reviewSharePoint(binding);
+    if (!matchesBinding(review) || review.state !== 'review_pending' ||
+        ![review.resultId, review.reviewId, review.notificationEventId].every(id => Number.isSafeInteger(id) && id > 0)) {
+      throw new ConnectionError('pilot_sharepoint_review_unconfirmed');
+    }
+    return { status: 'review_pending', sessionId: receipt.id };
   }
   const admission = await client.admit(request);
   if (admission?.duplicate === true) return { status: 'duplicate' };

@@ -186,3 +186,142 @@ test('a pilot can select the next three files from the same saved discovery wind
       /pilot_batch_configuration_incomplete/);
   }
 });
+
+const protectedEnv = {
+  AGENT_DMS_PILOT: 'continuous',
+  PILOT_AGENT_CENTER_ADMISSION: '1',
+  PILOT_AGENT_CENTER_SHAREPOINT_FLOW: '1',
+  PILOT_ERP_COMPANY_ID: '7',
+  PILOT_ERP_BRANCH_ID: '8',
+  PILOT_ERP_AUTH_USER_ID: config.authUserId,
+  PILOT_ERP_EMAIL: 'worker@example.invalid',
+  PILOT_ERP_PASSWORD: 'synthetic',
+  PILOT_GRAPH_ITEM_ID: config.itemId,
+  PILOT_GRAPH_VERSION: 'c:pinned-version',
+  PILOT_FILE_SHA256: config.sha256,
+};
+
+test('protected worker startup requires explicit continuous admission, branch and fixture source', () => {
+  const run = env => readDmsPilotConfig({ ...protectedEnv, ...env });
+  const protectedConfig = run({});
+  assert.equal(protectedConfig.agentCenterSharePointFlow, true);
+  assert.equal(protectedConfig.branchId, 8);
+  assert.equal(protectedConfig.sourceVersion, protectedEnv.PILOT_GRAPH_VERSION);
+  for (const changed of [
+    { AGENT_DMS_PILOT: 'one_file' }, { PILOT_AGENT_CENTER_ADMISSION: '0' },
+    { PILOT_ERP_BRANCH_ID: '0' }, { PILOT_ERP_BRANCH_ID: '1.2' }, { PILOT_ERP_BRANCH_ID: '01' },
+    { PILOT_GRAPH_ITEM_ID: undefined }, { PILOT_GRAPH_VERSION: undefined }, { PILOT_GRAPH_VERSION: 'not-versioned' },
+    { PILOT_FILE_SHA256: 'changed' },
+  ]) assert.throws(() => run(changed), /pilot|sharepoint|branch|continuous/i);
+});
+
+test('uses the same branch-bound operation and current lease at each protected service boundary', async () => {
+  const f = fixture();
+  const authLease = 'f1000000-0000-4000-8000-000000000011';
+  const protectedConfig = { ...readDmsPilotConfig(protectedEnv), operationId: config.operationId };
+  const requests = [];
+  const client = createDmsPilotClient(protectedConfig, {
+    fetch: async (url, options) => {
+      const body = JSON.parse(options.body);
+      const route = ['stageSharePoint', 'reviewSharePoint'].includes(body.op) ? 'internal/agents/sharepoint-intake' : 'mobile/dms/v1';
+      assert.equal(String(url), 'https://erp.algt.net/api/' + route);
+      assert.equal(options.redirect, 'error');
+      requests.push(body);
+      const data = {
+        login: { userId: config.authUserId, accessToken: 'mock.payload.signature', expiresAt: Date.now() / 1000 + 3600 },
+        profile: await f.client.profile(),
+        scopes: { rows: [{ companyId: 7, branchId: 8 }] },
+        admitSharePoint: { id: 42, operationId: config.operationId, replayed: false },
+        stageSharePoint: { sessionId: 42, operationId: config.operationId, sha256: config.sha256, byteCount: bytes.length, state: 'staged' },
+        reviewSharePoint: { sessionId: 42, operationId: config.operationId, state: 'review_pending', resultId: 20, reviewId: 21, notificationEventId: 22 },
+      }[body.op];
+      assert.ok(data, body.op);
+      return Response.json({ success: true, data });
+    },
+  });
+  const done = await runDmsPilot({ ...f, client, config: protectedConfig, sharePointLease: authLease, source: await f.graph.readApprovedPdf() });
+  assert.deepEqual(done, { status: 'review_pending', sessionId: 42 });
+  const [, , , admission, stage, review] = requests;
+  assert.deepEqual(admission.request.scope, { companyId: 7, branchId: 8 });
+  assert.equal(admission.request.operationId, config.operationId);
+  assert.equal(admission.sharePointLease, authLease);
+  assert.deepEqual(stage, { op: 'stageSharePoint', operationId: config.operationId, sessionId: 42,
+    sharePointLease: authLease, pdfBase64: bytes.toString('base64') });
+  assert.deepEqual(review, { op: 'reviewSharePoint', operationId: config.operationId, sessionId: 42,
+    sharePointLease: authLease });
+});
+
+test('protected intake defers the next write after pause and refuses other branch scopes or receipt identities', async () => {
+  const protectedConfig = { ...readDmsPilotConfig(protectedEnv), operationId: config.operationId };
+  const sharePointLease = 'f1000000-0000-4000-8000-000000000011';
+  const f = fixture();
+  const calls = [];
+  f.client.scopes = async () => [{ companyId: 7, branchId: 9 }];
+  f.client.admitSharePoint = async () => { calls.push('admit'); return { id: 42, operationId: config.operationId, replayed: false }; };
+  f.client.stageSharePoint = async () => { calls.push('stage'); return { sessionId: 42,
+    operationId: config.operationId, sha256: config.sha256, byteCount: bytes.length, state: 'staged' }; };
+  f.client.reviewSharePoint = async () => { calls.push('review'); return { sessionId: 43,
+    operationId: config.operationId, state: 'review_pending', resultId: 20, reviewId: 21, notificationEventId: 22 }; };
+  const run = async () => runDmsPilot({ ...f, config: protectedConfig, sharePointLease, source: await f.graph.readApprovedPdf() });
+  await assert.rejects(run(), /pilot_scope_mismatch/);
+  assert.deepEqual(calls, []);
+  f.client.scopes = async () => [{ companyId: 7, branchId: 8 }];
+  await assert.rejects(run(), /pilot_sharepoint_review_unconfirmed/);
+  assert.deepEqual(calls, ['admit', 'stage', 'review']);
+  const stage = f.client.stageSharePoint;
+  f.client.stageSharePoint = async () => { const receipt = await stage(); f.pause(); return receipt; };
+  assert.equal((await run()).status, 'paused');
+  assert.deepEqual(calls, ['admit', 'stage', 'review', 'admit', 'stage']);
+});
+
+test('recovers an uncertain protected review through the same intake under the reclaimed lease', async () => {
+  const f = fixture();
+  const protectedConfig = { ...readDmsPilotConfig(protectedEnv), operationId: config.operationId };
+  const source = await f.graph.readApprovedPdf();
+  const first = 'f1000000-0000-4000-8000-000000000011';
+  const second = 'f1000000-0000-4000-8000-000000000012';
+  const receipts = [];
+  const bindings = [];
+  f.client.scopes = async () => [{ companyId: 7, branchId: 8 }];
+  f.client.admitSharePoint = async (request, lease) => {
+    receipts.push(request);
+    return { id: 42, operationId: config.operationId, replayed: lease === second };
+  };
+  f.client.stageSharePoint = async (binding, pdf) => {
+    bindings.push(['stage', binding]);
+    assert.deepEqual(pdf, bytes);
+    return { ...binding, sha256: config.sha256, byteCount: bytes.length,
+      state: binding.sharePointLease === first ? 'staged' : 'review_pending' };
+  };
+  f.client.reviewSharePoint = async binding => {
+    bindings.push(['review', binding]);
+    if (binding.sharePointLease === first) throw Error('response lost after review');
+    return { ...binding, state: 'review_pending', resultId: 20, reviewId: 21, notificationEventId: 22 };
+  };
+  const run = sharePointLease => runDmsPilot({ ...f, config: protectedConfig, sharePointLease, source });
+  await assert.rejects(run(first), /response lost/);
+  assert.deepEqual(await run(second), { status: 'review_pending', sessionId: 42 });
+  assert.deepEqual(receipts[0], receipts[1]);
+  for (const [index, [step, binding]] of bindings.entries()) {
+    assert.equal(step, index % 2 === 0 ? 'stage' : 'review');
+    assert.deepEqual(binding, { operationId: config.operationId, sessionId: 42, sharePointLease: index < 2 ? first : second });
+  }
+});
+
+test('replays the original review once after uncertain transport, only on that protected command', async () => {
+  const protectedConfig = readDmsPilotConfig(protectedEnv);
+  const binding = { operationId: config.operationId, sessionId: 42, sharePointLease: 'f1000000-0000-4000-8000-000000000011' };
+  for (const mayRecover of [true, false]) {
+    const sent = [];
+    const client = createDmsPilotClient(protectedConfig, { fetch: async (url, options) => {
+      assert.equal(String(url), 'https://erp.algt.net/api/internal/agents/sharepoint-intake');
+      sent.push(JSON.parse(options.body));
+      if (sent.length === 1 || !mayRecover) throw Error('response interrupted');
+      return Response.json({ success: true, data: { operationId: config.operationId,
+        sessionId: 42, state: 'review_pending', resultId: 20, reviewId: 21, notificationEventId: 22 } });
+    } });
+    if (mayRecover) assert.equal((await client.reviewSharePoint(binding)).resultId, 20);
+    else await assert.rejects(client.reviewSharePoint(binding), /pilot_reviewSharePoint_unconfirmed/);
+    assert.deepEqual(sent, Array(2).fill({ op: 'reviewSharePoint', ...binding }));
+  }
+});

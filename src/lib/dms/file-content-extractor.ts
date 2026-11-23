@@ -37,6 +37,8 @@ export interface ExtractedContent {
   pdfTextRejected?: boolean;
   /** Actual PDF page count reported by the renderer, not the capped image count. */
   pageCount?: number;
+  /** Opt-in embedded PDF text for a caller verifying specific printed labels. */
+  pdfEmbeddedText?: string;
 }
 
 const EMPTY: ExtractedContent = { text: "", images: [], hasContent: false, method: "none" };
@@ -135,6 +137,8 @@ export interface ExtractFileContentOptions {
   forcePdfVision?: boolean;
   /** The same input buffer has already failed the embedded text check. */
   pdfTextAlreadyChecked?: boolean;
+  /** Retain embedded text for cross-checking printed Latin labels, not as OCR input. */
+  retainPdfTextForVerification?: boolean;
 }
 
 /**
@@ -152,19 +156,24 @@ export async function extractFileContent(
   if (PDF_MIMES.has(mime)) {
     // Try text layer first
     let text = "";
+    let pageCount: number | undefined;
     if (!options?.pdfTextAlreadyChecked && !options?.forcePdfVision) {
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (b: Uint8Array) => Promise<{ text: string }>;
+        const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (b: Uint8Array) => Promise<{ text: string; numpages: number }>;
         // Give legacy PDF.js an owning byte array so it retains the byte offset.
         const parsed = await traceSpan('dms.pdf.text', () => pdfParse(new Uint8Array(buffer)));
         text = (parsed.text ?? "").trim();
+        pageCount = Number.isSafeInteger(parsed.numpages) && parsed.numpages > 0 ? parsed.numpages : undefined;
       } catch { /* fall through to image conversion */ }
     }
 
     const pdfTextRejected = !!options?.forcePdfVision || pdfTextNeedsVisualOcr(text);
+    const retainedText = options?.retainPdfTextForVerification && text
+      ? { pdfEmbeddedText: text.slice(0, 100_000) }
+      : {};
     if (!isPdfTextEmpty(text) && !pdfTextRejected) {
-      return { text, images: [], hasContent: true, method: "pdf-text-layer" };
+      return { text, images: [], hasContent: true, method: "pdf-text-layer", pageCount };
     }
 
     // No text layer — scanned PDF.
@@ -181,7 +190,8 @@ export async function extractFileContent(
         hasContent: true,
         method: "pdf-rendered-images",
         pdfTextRejected,
-        pageCount: pages[0]?.totalPages,
+        pageCount: pages[0]?.totalPages ?? pageCount,
+        ...retainedText,
       };
     }
     return { ...EMPTY, method: "pdf-no-content" };

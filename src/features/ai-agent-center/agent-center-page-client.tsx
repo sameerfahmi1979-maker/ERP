@@ -109,7 +109,7 @@ export function AgentCenterPageClient({ initial, seedOwner, canInspectControls }
   const activityCurrent = cache?.readDataIsCurrent(NAMESPACE, queryCache.find({ queryKey: activityKey, exact: true }));
   const caseCurrent = cache?.readDataIsCurrent(NAMESPACE, queryCache.find({ queryKey: caseKey, exact: true }));
   const snapshot = !denied && ownerMatches && activityCurrent ? activityQuery.data : null;
-  const caseData = !denied && ownerMatches && caseCurrent ? caseQuery.data : null;
+  const caseData = !denied && ownerMatches && caseCurrent ? caseQuery.data ?? null : null;
   const choices = denied || !ownerMatches ? [] : snapshot?.choices ?? (seedAllowed ? initial.choices : []);
   const feed = classifyFeed(snapshot?.confirmedAt ?? null, now, activityQuery.isError);
   const branches = choices.find(choice => choice.id === companyId)?.branches ?? [];

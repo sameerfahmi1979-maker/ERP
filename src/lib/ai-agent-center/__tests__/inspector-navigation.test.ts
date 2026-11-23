@@ -156,7 +156,7 @@ it.each([["empty", null], ["the same stale row", item]] as const)("removes the s
 
 it("keeps unsearched attention out of a filtered activity result", async () => {
   vi.mocked(readJson).mockResolvedValueOnce({ data: initial });
-  const input = host.querySelector('input[aria-label="Find a case"]')!;
+  const input = host.querySelector<HTMLInputElement>('input[aria-label="Find a case"]')!;
   await act(async () => fireEvent.change(input, { target: { value: "Intake 1151" } }));
   await act(async () => {
     fireEvent.submit(input.form!);

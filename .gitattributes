@@ -41,3 +41,12 @@
 /supabase/migrations/20261121120050_dms_question_source_provenance.sql text eol=lf
 /supabase/migrations/20261121054457_permissions_matrix_access_performance.sql -text
 /supabase/migrations/20261121070619_qatar_residency_permit_catalog.sql text eol=lf
+
+# New communications migrations are rehearsed and applied by exact byte digest.
+/supabase/migrations/20261123094907_erp_communications_chat_v1.sql text eol=lf
+/supabase/migrations/20261123095158_erp_communication_budget_v1.sql text eol=lf
+/supabase/migrations/20261123095505_erp_ptt_control_v1.sql text eol=lf
+/supabase/migrations/20261123100551_erp_ptt_recordings_v1.sql text eol=lf
+/supabase/migrations/20261123100933_erp_communications_notifications_v1.sql text eol=lf
+/supabase/migrations/20261123101442_erp_ptt_sos_v1.sql text eol=lf
+/supabase/migrations/20261123101744_erp_communications_policy_v1.sql text eol=lf

@@ -181,22 +181,49 @@ export function DmsAiIntakePageClient({
 
   const draftSnapshot = useRef(session.draft_snapshot ?? null);
   const draftRequest = useRef<{values:Parameters<typeof saveAiIntakeDraft>[1];review:{requestId:string;snapshot:string}}|null>(null);
+  const retryRevisionNeedsRead = useRef(false);
   const [draftUncertain,setDraftUncertain]=useState(false);
 
   // ── Save draft ────────────────────────────────────────────────────────────
 
   const handleSaveDraft = () => {
-    if (retainedApproval || approvalBlocked) return;
+    if (retainedApproval || approvalBlocked || isPending) return;
     startTransition(async () => {
-      if(!draftSnapshot.current){toast.error("Reload the saved review before saving.");return;}
-      draftRequest.current ??= {values:buildDraftPayload(formValues),review:{requestId:crypto.randomUUID(),snapshot:draftSnapshot.current}};
+      const snapshot = draftSnapshot.current;
+      if (!snapshot) { toast.error("Reload the saved review before saving."); return; }
+      const isCurrent = session.document_id ? batchApproval.isCurrent : approval.isCurrent;
+      if (!draftRequest.current) {
+        const metadataValues = { ...formValues.metadataValues };
+        const extracted = aiResult?.extracted_fields_json;
+        if (formValues.documentTypeId && extracted && Object.keys(extracted).length) {
+          const definitions = await getMetadataDefinitionsForType(formValues.documentTypeId, "intake").catch(() => null);
+          if (!isCurrent()) return;
+          if (!definitions?.success || !definitions.data) {
+            toast.error("The metadata fields could not be checked. Keep this review and try saving again.");
+            return;
+          }
+          for (const field of definitions.data) {
+            const value = resolveIntakeMetadataValue(field.field_type, metadataValues[field.id], extracted[field.field_code]);
+            if (value && value.rawValue !== "") metadataValues[field.id] = value;
+          }
+        }
+        if (!draftRequest.current && draftSnapshot.current !== snapshot) {
+          toast.error("The review changed while preparing the draft. Check the current values and try saving again.");
+          return;
+        }
+        draftRequest.current ??= {
+          values: buildDraftPayload({ ...formValues, metadataValues }),
+          review: { requestId: crypto.randomUUID(), snapshot },
+        };
+      }
       const original=draftRequest.current;
       let result;
       try { result=await saveAiIntakeDraft(session.id,original.values,original.review); }
       catch { setDraftUncertain(true);toast.error("Draft save is unconfirmed. Retry Save draft to recover the same values.");return; }
-      if(session.document_id?!batchApproval.isCurrent():!approval.isCurrent())return;
+      if (!isCurrent()) return;
       if (result.success) {
         draftSnapshot.current=result.data?.snapshot??null;draftRequest.current=null;setDraftUncertain(false);
+        retryRevisionNeedsRead.current = true;
         toast.success("Draft saved");
       } else {
         setDraftUncertain(result.uncertain===true);if(!result.uncertain)draftRequest.current=null;
@@ -288,7 +315,32 @@ export function DmsAiIntakePageClient({
     const isCurrent = session.document_id ? batchApproval.isCurrent : approval.isCurrent;
     const reopenMessage = "Reopen the original intake to check its current review.";
     startTransition(async () => {
-      const result = await retryAiIntake(session.id, session.updated_at).catch(() => null);
+      const readIntake = async () => {
+        const response = await getAiIntakeSession(session.session_code).catch(() => null);
+        return response?.success ? response.data : undefined;
+      };
+      let expectedRevision = session.updated_at;
+      const expectedResultId = displaySession.ai_result_id;
+      if (retryRevisionNeedsRead.current && session.document_id === null) {
+        const knownSnapshot = draftSnapshot.current;
+        const current = await readIntake();
+        if (!isCurrent()) return;
+        // Local draft and type-extraction receipts bind the source, draft and result.
+        // Adopt the row revision only when the scoped read matches that receipt.
+        if (!knownSnapshot || draftSnapshot.current !== knownSnapshot ||
+          !current || current.id !== session.id || current.session_code !== session.session_code ||
+          current.draft_snapshot !== knownSnapshot || current.ai_result_id !== expectedResultId ||
+          (current.ai_result?.id ?? null) !== expectedResultId ||
+          current.document_id !== null || current.is_duplicate !== false || current.discarded_at ||
+          ["approved", "discarded"].includes(current.review_status) ||
+          !["review_pending", "review_in_progress"].includes(current.intake_status) ||
+          !current.updated_at || !Number.isFinite(Date.parse(current.updated_at)) || current.updated_at === expectedRevision) {
+          toast.error(`The current AI review could not be confirmed. ${reopenMessage}`);
+          return;
+        }
+        expectedRevision = current.updated_at;
+      }
+      const result = await retryAiIntake(session.id, expectedRevision).catch(() => null);
       if (!isCurrent()) return;
       if (!result?.success) {
         toast.error(result?.error ?? `The AI retry could not be confirmed. ${reopenMessage}`);
@@ -299,12 +351,11 @@ export function DmsAiIntakePageClient({
         return;
       }
 
-      const refreshed = await getAiIntakeSession(session.session_code).catch(() => null);
+      const current = await readIntake();
       if (!isCurrent()) return;
-      const current = refreshed?.success ? refreshed.data : undefined;
       if (!current || current.id !== session.id || current.session_code !== session.session_code ||
-          !current.updated_at || current.updated_at === session.updated_at || current.document_id !== null ||
-          !current.ai_result || current.ai_result_id !== current.ai_result.id || current.ai_result_id === session.ai_result_id ||
+          !current.updated_at || current.updated_at === expectedRevision || current.document_id !== null ||
+          !current.ai_result || current.ai_result_id !== current.ai_result.id || current.ai_result_id === expectedResultId ||
           !current.draft_snapshot || !["review_pending", "review_in_progress"].includes(current.intake_status)) {
         toast.error(`The latest AI review could not be loaded. ${reopenMessage}`);
         return;
@@ -314,6 +365,7 @@ export function DmsAiIntakePageClient({
       setAiResultPatch(null);
       setFormValues(buildInitialReviewValues(current));
       draftSnapshot.current = current.draft_snapshot;
+      retryRevisionNeedsRead.current = false;
       setEntityLinks([]);
       setFileReview(null);
       setReviewBlockReason(null);
@@ -390,7 +442,14 @@ export function DmsAiIntakePageClient({
   return <DmsAiIntakeView {...{session,displaySession,aiResult,documentTypes,formValues,handleFormChange,entityLinks,setEntityLinks,isReady,isFailed,isProcessing,isPending,retainedApproval,approvalBlocked,draftUncertain,handleRetry,handleSaveDraft,handleApprove,handleDiscard,handlePreview,isLoadingPreview,discardAnchor,setDiscardAnchor,discardReason,setDiscardReason,setFileReview,setReviewBlockReason}}
     approvalError={approvalError}
     approvalLoading={approval.loading} retentionError={approval.retentionError} batchLoading={batchApproval.loading} batchBlocked={batchApproval.blocked} navigate={url=>router.push(url)}
-    onAiResultPatch={(patch,snapshot)=>{setAiResultPatch(prev=>({...prev,...patch}));setFileReview(null);if(snapshot)draftSnapshot.current=snapshot;}}/>;
+    onAiResultPatch={(patch, snapshot) => {
+      setAiResultPatch(prev => ({ ...prev, ...patch }));
+      setFileReview(null);
+      if (snapshot) {
+        draftSnapshot.current = snapshot;
+        retryRevisionNeedsRead.current = true;
+      }
+    }}/>;
 }
 
 // ── Build draft payload ────────────────────────────────────────────────────────

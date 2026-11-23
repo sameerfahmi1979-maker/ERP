@@ -40,7 +40,7 @@ interface DmsAiIntakeMetadataSectionProps {
   fieldConfidenceJson: Record<string, unknown> | null;
   values: Record<number, MetadataValue>;
   onChange: (definitionId: number, fieldType: string, rawValue: string) => void;
-  /** Called ONCE with all AI-seeded values when definitions first load. */
+  /** The saved-document preparation form can retain suggestions in its draft. */
   onBulkSeed?: (seeded: Record<number, { fieldType: string; rawValue: string }>) => void;
   /** DMS AI META.2 Flow A — called after AI-suggested definitions are approved, so the parent can offer re-extraction. */
   onDefinitionsCreated?: (documentTypeId: number) => void;
@@ -163,15 +163,11 @@ export function DmsAiIntakeMetadataSection({
   const definitions = documentTypeId ? definitionsQuery.data ?? [] : [];
   const isLoading = !!documentTypeId && definitionsQuery.isPending;
 
-  // Seed the parent formValues with AI-extracted values immediately after
-  // definitions load. All fields are collected first and emitted in ONE bulk
-  // call via onBulkSeed so the parent can merge them atomically. Calling
-  // onChange() per-field in a loop causes a stale-closure race: each call
-  // captures the same snapshot of values.metadataValues and the last call
-  // overwrites all previous ones (React 18 batching does not help here).
+  // Only saved-document preparation opts into seeding its draft. Ordinary
+  // intake resolves suggestions from the current extraction as it renders.
   useEffect(() => {
     if (!documentTypeId) { seededForTypeRef.current = null; return; }
-    if (!definitions.length || !documentTypeId) return;
+    if (!onBulkSeed || !definitions.length) return;
     if (seededForTypeRef.current === documentTypeId) return;
     seededForTypeRef.current = documentTypeId;
 
@@ -182,16 +178,7 @@ export function DmsAiIntakeMetadataSection({
         seeded[def.id] = { fieldType: def.field_type, rawValue: String(aiValue) };
       }
     }
-    if (Object.keys(seeded).length > 0) {
-      if (onBulkSeed) {
-        onBulkSeed(seeded);
-      } else {
-        // Fallback: per-field calls (legacy callers without onBulkSeed)
-        for (const [idStr, v] of Object.entries(seeded)) {
-          onChange(Number(idStr), v.fieldType, v.rawValue);
-        }
-      }
-    }
+    if (Object.keys(seeded).length > 0) onBulkSeed(seeded);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [definitions]);
 

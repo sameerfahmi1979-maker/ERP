@@ -476,10 +476,9 @@ function DmsIntakeReviewFields({
         extractedFieldsJson={aiResult?.extracted_fields_json ?? null}
         fieldConfidenceJson={aiResult?.field_confidence_json ?? null}
         values={values.metadataValues}
-        onBulkSeed={(seeded) =>
-          // Suggestions fill unreviewed fields. A saved edit, including a blank, takes precedence.
-          onChange({ metadataValues: { ...seeded, ...values.metadataValues } })
-        }
+        onBulkSeed={savedDocument
+          ? (seeded) => onChange({ metadataValues: { ...seeded, ...values.metadataValues } })
+          : undefined}
         onChange={(defId, fieldType, rawValue) =>
           onChange({
             metadataValues: {

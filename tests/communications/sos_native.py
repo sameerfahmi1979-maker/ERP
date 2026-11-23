@@ -77,7 +77,8 @@ def exercise(sql):
 
     channel = uid()
     sql(f"""insert into erp_private.ptt_channels(id,name,kind,creator,owner_id,required) values('{channel}','Crew','group',2,2,true);
-        insert into erp_private.ptt_memberships(channel_id,profile_id) select '{channel}',p from unnest(array[2,3,5,6]) p;
+        select erp_private.comms_track_profile(p) from unnest(array[2,3,5,6]) p;
+        insert into erp_private.ptt_memberships(channel_id,profile_id,scope_anchor) select '{channel}',p,erp_private.comms_scope_anchor(p) from unnest(array[2,3,5,6]) p;
         insert into erp_private.comms_blocks values(3,2,now());""")
     epochs = {p: uid() for p in (2,3,5,6,7)}
     for p, epoch in epochs.items():
@@ -158,9 +159,14 @@ def exercise(sql):
     denied(lambda:history(4))
     sql("insert into erp_private.chat_named_grants(profile_id,kind,enabled,granted_by) values(6,'historyReview',true,1)")
     denied(lambda:history(6,"review"))
+    old_episode=sql(f"select id from erp_private.ptt_current_memberships where channel_id='{channel}' and profile_id=5")
+    sql("update public.user_profiles set status='inactive' where id=5; update public.user_profiles set status='active' where id=5")
+    assert sql(f"select count(*) from erp_private.ptt_current_memberships where id={old_episode}")=="0"
+    denied(lambda:history(5))
+    assert len(history(1,"review"))==2
     sql(f"update erp_private.ptt_memberships set left_at=now() where channel_id='{channel}' and profile_id=5")
     denied(lambda:history(5))
-    sql(f"insert into erp_private.ptt_memberships(channel_id,profile_id) values('{channel}',5)")
+    sql(f"insert into erp_private.ptt_memberships(channel_id,profile_id,scope_anchor) values('{channel}',5,erp_private.comms_scope_anchor(5))")
     assert history(5)==[]
     assert sql(f"select erp_private.notification_sos_target('{incident}',5) is null")=="t"
     for value in (None,dict(fix,capturedAt="2000-01-01T00:00:00Z")):

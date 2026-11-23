@@ -61,7 +61,7 @@ language sql stable set search_path='' as $$
    'pushEligible',case when e.is_cancellation then a.push_cancellation else a.push_original end
                   and erp_private.sos_push_allowed(recipient) and not c.archived)
  from erp_private.ptt_sos_events e join erp_private.ptt_sos_audience a on a.incident_id=e.incident_id
- join erp_private.ptt_memberships m on m.id=a.episode and m.profile_id=recipient and m.left_at is null
+ join erp_private.ptt_current_memberships m on m.id=a.episode and m.profile_id=recipient and m.left_at is null
  join erp_private.ptt_channels c on c.id=e.channel_id
  where e.id=source and erp_private.chat_active(recipient)
    and not erp_private.comms_moderation_hidden('ptt_sos',e.id)
@@ -125,7 +125,7 @@ begin
  if op='sos.send' then permitted_keys:=permitted_keys||array['location']; end if;
  if epoch is null or incident is null or a-permitted_keys<>'{}' then raise sqlstate '22023'; end if;
  perform erp_private.ptt_require_phone(epoch);
- if not exists(select from erp_private.ptt_channels ch join erp_private.ptt_memberships m on m.channel_id=ch.id
+ if not exists(select from erp_private.ptt_channels ch join erp_private.ptt_current_memberships m on m.channel_id=ch.id
     where ch.id=c and ch.kind='group' and m.profile_id=actor and m.left_at is null
     and (op='sos.status' or not ch.archived)) then raise insufficient_privilege; end if;
  select * into original from erp_private.ptt_sos_events where id=incident and not is_cancellation
@@ -151,7 +151,7 @@ begin
     into audience,n
     from (select m.id as episode,
         erp_private.sos_push_allowed(m.profile_id) as push_original
-      from erp_private.ptt_memberships m where m.channel_id=c and m.left_at is null and m.profile_id<>actor
+      from erp_private.ptt_current_memberships m where m.channel_id=c and m.left_at is null and m.profile_id<>actor
         and erp_private.chat_active(m.profile_id)) member;
    perform erp_comm_cost.require_sos_envelope(permit,n,n);
    insert into erp_private.ptt_sos_events(id,incident_id,channel_id,sender_id,is_cancellation,location,command_hash)
@@ -168,12 +168,12 @@ begin
    insert into erp_private.ptt_sos_events(id,incident_id,channel_id,sender_id,is_cancellation)
     values(gen_random_uuid(),incident,c,actor,true) returning id into source;
    update erp_private.ptt_sos_audience aud set push_cancellation=erp_private.sos_push_allowed(m.profile_id)
-    from erp_private.ptt_memberships m where aud.incident_id=incident and m.id=aud.episode and m.left_at is null;
+    from erp_private.ptt_current_memberships m where aud.incident_id=incident and m.id=aud.episode and m.left_at is null;
  end if;
  perform erp_private.notification_enqueue('sos',source,m.profile_id,
     case when (case when op='sos.send' then aud.push_original else aud.push_cancellation end)
       then erp_private.sos_device(m.profile_id) else '{}'::uuid[] end)
-  from erp_private.ptt_sos_audience aud join erp_private.ptt_memberships m on m.id=aud.episode and m.left_at is null
+  from erp_private.ptt_sos_audience aud join erp_private.ptt_current_memberships m on m.id=aud.episode and m.left_at is null
   where aud.incident_id=incident;
  return jsonb_build_object('incidentId',incident,'state',case when op='sos.send' then 'recorded' else 'cancelled' end);
 end $$;

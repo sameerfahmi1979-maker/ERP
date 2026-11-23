@@ -19,5 +19,21 @@ describe("retained intake type review service",()=>{
  it("publishes once and rechecks authorized delivery",async()=>{mock.rpc.mockResolvedValueOnce(envelope("ready",{source})).mockResolvedValueOnce(envelope("started",{source,token})).mockResolvedValueOnce(envelope("completed",{receipt}));mock.publish.mockResolvedValue({data:{state:"completed",receipt},error:null});expect((await rerunRetainedIntakeMetadata(p)).success).toBe(true);expect(mock.analyze).toHaveBeenCalledTimes(1);expect(mock.publish).toHaveBeenCalledTimes(1);});
  it("retains a lost post-commit response and recovers without repeating the provider",async()=>{mock.rpc.mockResolvedValueOnce(envelope("ready",{source})).mockResolvedValueOnce(envelope("started",{source,token}));mock.publish.mockRejectedValue(Error("lost after commit"));expect(await rerunRetainedIntakeMetadata(p)).toMatchObject({success:false,uncertain:true});mock.rpc.mockResolvedValue(envelope("completed",{receipt}));expect((await rerunRetainedIntakeMetadata(p)).success).toBe(true);expect(mock.analyze).toHaveBeenCalledTimes(1);});
  it("does not return candidates after owner delivery access is revoked",async()=>{mock.rpc.mockResolvedValueOnce(envelope("ready",{source})).mockResolvedValueOnce(envelope("started",{source,token})).mockResolvedValueOnce({error:{code:"42501"}});mock.publish.mockResolvedValue({data:{state:"completed",receipt},error:null});const result=await rerunRetainedIntakeMetadata(p);expect(result.success).toBe(false);expect(result).not.toHaveProperty("data");});
+ it("retains source-bound admission for other foreign immigration credentials", async () => {
+  const foreign = { ...source, typeCode: "FOREIGN_IMMIGRATION_CREDENTIAL", text: "Kingdom of Saudi Arabia\nVisit Visa" };
+  mock.rpc.mockResolvedValueOnce(envelope("ready", { source: foreign })).mockResolvedValueOnce({ error: { code: "PT409" } });
+  const result = await rerunRetainedIntakeMetadata(p);
+  expect(result).toMatchObject({ success: false, error: expect.stringContaining("source changed") });
+  expect(mock.rpc).toHaveBeenCalledTimes(2);
+  expect(mock.analyze).not.toHaveBeenCalled();
+ });
+ it("holds a recognizable Qatar permit with a missing reverse before admission", async () => {
+  const qatar = { ...source, typeCode: "FOREIGN_IMMIGRATION_CREDENTIAL", text: "[Front]\nState of Qatar\nResidency Permit" };
+  mock.rpc.mockResolvedValueOnce(envelope("ready", { source: qatar }));
+  const result = await rerunRetainedIntakeMetadata(p);
+  expect(result).toMatchObject({ success: false, error: expect.stringContaining("both sides") });
+  expect(mock.rpc).toHaveBeenCalledTimes(1);
+  expect(mock.provider).not.toHaveBeenCalled();
+ });
  it("portraits do not load a model or OCR provider",async()=>{const portrait={...source,typeCode:"EMPLOYEE_PHOTO",text:null};mock.rpc.mockResolvedValueOnce(envelope("ready",{source:portrait})).mockResolvedValueOnce(envelope("started",{source:portrait,token})).mockResolvedValueOnce(envelope("completed",{receipt}));mock.publish.mockResolvedValue({data:{state:"completed",receipt},error:null});expect((await rerunRetainedIntakeMetadata(p)).success).toBe(true);expect(mock.provider).not.toHaveBeenCalled();expect(mock.analyze).not.toHaveBeenCalled();});
 });

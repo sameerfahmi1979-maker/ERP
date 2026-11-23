@@ -43,6 +43,7 @@ import { DMS_CONFIDENTIALITY_LEVELS, DMS_CONFIDENTIALITY_LABELS } from "@/featur
 import { DmsPreparationReviewFields, type ExistingDocumentReviewProps } from "./dms-preparation-review-fields";
 import { getDmsPreparationTagOptions } from "@/server/actions/dms/document-preparation";
 import {AiFeedback} from '@/features/ai/quality/ai-feedback';
+import { FOREIGN_IMMIGRATION_TYPE } from "@/lib/dms/ai/qatar-residency-permit";
 
 const CONFIDENTIALITY_OPTIONS = DMS_CONFIDENTIALITY_LEVELS.map(value => ({ value, label: DMS_CONFIDENTIALITY_LABELS[value] }));
 const EMPTY_DOCUMENT_TYPES: DmsDocumentTypeRow[] = [];
@@ -508,6 +509,8 @@ function DmsIntakeReviewFields({
 export function buildInitialReviewValues(session: IntakeSessionData): ReviewFormValues {
   const aiResult = session.ai_result;
   const extractedFields = aiResult?.extracted_fields_json ?? {};
+  const isQatarPermit = aiResult?.suggested_type?.type_code === FOREIGN_IMMIGRATION_TYPE
+    && extractedFields.issuer_country === "QA" && extractedFields.credential_kind === "residence_permit";
 
   const initial: ReviewFormValues = {
     title: aiResult?.suggested_title ?? stripExtension(session.original_filename),
@@ -516,8 +519,9 @@ export function buildInitialReviewValues(session: IntakeSessionData): ReviewForm
     categoryId: null,
     description: aiResult?.suggested_description ?? "",
     issueDate: aiResult?.issue_date_suggestion ?? (extractedFields["issue_date"] as string | undefined) ?? "",
-    expiryDate: aiResult?.expiry_date_suggestion ?? (extractedFields["expiry_date"] as string | undefined) ?? "",
-    confidentialityLevel: (extractedFields["confidentiality_level"] as string | undefined) ?? "internal",
+    expiryDate: (isQatarPermit && typeof extractedFields.permit_expiry_date === "string" ? extractedFields.permit_expiry_date : null)
+      ?? aiResult?.expiry_date_suggestion ?? (extractedFields["expiry_date"] as string | undefined) ?? "",
+    confidentialityLevel: isQatarPermit ? "hr" : (extractedFields["confidentiality_level"] as string | undefined) ?? "internal",
     owningCompanyId: session.owning_company_id ?? null,
     owningBranchId: session.owning_branch_id ?? null,
     metadataValues: {},

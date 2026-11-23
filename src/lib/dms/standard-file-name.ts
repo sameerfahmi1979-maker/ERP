@@ -26,6 +26,7 @@ const TYPE_CODE_SEGMENTS: Record<string, string> = {
   PASSPORT_COPY: "Passport",
   VISA: "Residence_Visa",
   VISA_RESIDENCE: "Residence_Visa",
+  QATAR_RESIDENCY_PERMIT: "Qatar_Residency_Permit",
   LABOUR_CARD: "Labour_Card",
   DRIVING_LICENSE: "Driving_License",
   MEDICAL_INSURANCE: "Medical_Insurance",
@@ -46,6 +47,8 @@ const DOC_NO_FIELD_PRIORITY: Record<string, string[]> = {
   PASSPORT_COPY: ["passport_number", "document_number"],
   VISA: ["visa_number", "visa_file_number", "uid_number", "uid", "file_number", "document_number"],
   VISA_RESIDENCE: ["visa_number", "visa_file_number", "uid_number", "uid", "file_number", "document_number"],
+  RESIDENCE_VISA: ["visa_number"],
+  QATAR_RESIDENCY_PERMIT: [],
   LABOUR_CARD: ["labour_card_number", "work_permit_number", "card_number", "document_number"],
   DRIVING_LICENSE: ["license_number", "driving_license_number", "licence_number", "document_number"],
   MEDICAL_INSURANCE: [
@@ -423,6 +426,16 @@ export function validateStandardFileName(
     missing,
     expiryToken,
   };
+}
+
+export function canAssignQatarPermitNumberOnApproval(
+  typeCode: string,
+  fileName: string,
+  validation: StandardFileNameValidation,
+): boolean {
+  return typeCode === "FOREIGN_IMMIGRATION_CREDENTIAL"
+    && validation.missing.length === 1 && validation.missing[0] === "DOC_NO"
+    && /^Qatar_Residency_Permit_.+_DMS-Unknown_\d{4}-\d{2}-\d{2}$/.test(stripFilenameExtension(fileName));
 }
 
 /**

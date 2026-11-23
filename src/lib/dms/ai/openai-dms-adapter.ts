@@ -86,7 +86,8 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
       input.currentTypeCode,
       input.imageFiles ?? [],
       input.originalFilename,
-      input.classificationPackets
+      input.classificationPackets,
+      input.dateEvidenceMode
     );
 
     // Preserve the configured model/deployment identifier exactly.
@@ -130,7 +131,7 @@ export class OpenAiDmsAdapter implements IDmsAiProvider {
     const content = data.choices?.[0]?.message?.content ?? "";
     if (!content) throw new Error("AI provider returned empty response.");
 
-    const validated = validateAiOutput(content);
+    const validated = validateAiOutput(content, input.dateEvidenceMode);
     if (!validated.ok || !validated.output) {
       throw new Error(validated.error ?? "AI response validation failed.");
     }

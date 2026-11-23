@@ -19,6 +19,7 @@ import type { WorkspaceFieldIssue } from "@/lib/workspace/form-validation";
 import { saveDmsDocumentMetadataValues, type DmsMetadataDefinitionRow, type DmsMetadataValueRow, type DmsMetadataValueInput } from "@/server/actions/dms/document-metadata-values";
 import { queryKeys } from "@/lib/query/query-keys";
 import {validateMetadataEntry} from "@/lib/dms/metadata/review-validation";
+import {parseMetadataOptions} from "@/lib/dms/metadata/metadata-definition-shared";
 
 type Props = { documentId: number | null; documentTypeId: number | null; isViewing: boolean };
 type EditSnapshot = { definitions: DmsMetadataDefinitionRow[]; values: DmsMetadataValueRow[]; snapshot:string };
@@ -142,15 +143,14 @@ function MetadataEditor({ ready, documentId, snapshot, onClose, onSaved }: { rea
 }
 
 export function MetadataField({ id, def, value, onChange }: { id: string; def: DmsMetadataDefinitionRow; value: string; onChange: (value: string) => void }) {
-  const rawOptions = (def.options_json as { values?: unknown })?.values;
-  const options = Array.isArray(rawOptions) ? [...new Set(rawOptions.filter((item): item is string => typeof item === "string" && !!item))] : [];
+  const options = parseMetadataOptions(def.options_json);
   const native = { id, name: `metadata_${def.id}`, "data-metadata-id": def.id, required: def.is_required, "aria-label": def.field_label_en };
   return <div className="space-y-1">
     <Label htmlFor={id}>{def.field_label_en}{def.is_required && <span aria-hidden="true"> *</span>}</Label>
     {def.help_text_en && <p className="text-sm text-muted-foreground">{def.help_text_en}</p>}
     {def.field_type === "boolean" ? <div className="flex items-center gap-2"><Switch id={id} data-metadata-id={def.id} aria-label={def.field_label_en} checked={value === "true"} onCheckedChange={checked => onChange(checked ? "true" : "false")} /><span className="text-sm">{value === "true" ? "Yes" : "No"}</span></div>
-      : def.field_type === "select" && options.length ? <Select value={value} onValueChange={next => onChange(next ?? "")}><SelectTrigger id={id} data-metadata-id={def.id} aria-label={def.field_label_en} aria-required={def.is_required} data-workspace-field={`metadata_${def.id}`} data-workspace-required={def.is_required} data-workspace-empty={!value}><SelectValue placeholder="Select…" /></SelectTrigger><SelectContent>{options.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent></Select>
-      : ["multiselect","multi_select"].includes(def.field_type) && options.length ? <select {...native} multiple value={(() => {try {const parsed:unknown=JSON.parse(value||"[]");return Array.isArray(parsed)?parsed.filter((x):x is string=>typeof x==="string"):[];}catch{return [];}})()} onChange={event => onChange(JSON.stringify(Array.from(event.target.selectedOptions, option=>option.value)))} className="w-full min-h-24 rounded-sm border border-input bg-background p-2 text-sm focus-visible:outline-2 focus-visible:outline-primary">{options.map(option => <option key={option} value={option}>{option}</option>)}</select>
+      : def.field_type === "select" && options.length ? <Select items={options} value={value} onValueChange={next => onChange(next ?? "")}><SelectTrigger id={id} data-metadata-id={def.id} aria-label={def.field_label_en} aria-required={def.is_required} data-workspace-field={`metadata_${def.id}`} data-workspace-required={def.is_required} data-workspace-empty={!value}><SelectValue placeholder="Select…" /></SelectTrigger><SelectContent>{options.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select>
+      : ["multiselect","multi_select"].includes(def.field_type) && options.length ? <select {...native} multiple value={(() => {try {const parsed:unknown=JSON.parse(value||"[]");return Array.isArray(parsed)?parsed.filter((x):x is string=>typeof x==="string"):[];}catch{return [];}})()} onChange={event => onChange(JSON.stringify(Array.from(event.target.selectedOptions, option=>option.value)))} className="w-full min-h-24 rounded-sm border border-input bg-background p-2 text-sm focus-visible:outline-2 focus-visible:outline-primary">{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
       : ["textarea","json"].includes(def.field_type) ? <Textarea {...native} value={value} onChange={event => onChange(event.target.value)} rows={4} dir={def.field_type === "json" ? "ltr" : "auto"} />
       : <Input {...native} type={["number","currency"].includes(def.field_type) ? "number" : def.field_type === "datetime" ? "datetime-local" : def.field_type === "date" ? "date" : "text"} step="any" value={value} onChange={event => onChange(event.target.value)} dir="auto" />}
   </div>;

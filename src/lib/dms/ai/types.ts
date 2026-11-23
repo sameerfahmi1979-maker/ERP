@@ -185,6 +185,8 @@ export interface DmsAiImageFile {
   mimeType: string;
 }
 
+export type DmsAiDateEvidenceMode = "source_roles";
+
 export interface DmsAiInput {
   /**
    * Combined text extracted from PDF files (may be empty when all content
@@ -206,6 +208,8 @@ export interface DmsAiInput {
   originalFilename?: string;
   /** Phase 3 — metadata-aware classification packets for Pass 1 (when set, used in prompt). */
   classificationPackets?: DmsClassificationCandidatePacket[];
+  /** Opt-in evaluation mode that requires dates to keep their printed roles. */
+  dateEvidenceMode?: DmsAiDateEvidenceMode;
 }
 
 // ── Summary ───────────────────────────────────────────────────────────────────

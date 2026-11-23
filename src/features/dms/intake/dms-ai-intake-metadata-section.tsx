@@ -8,7 +8,7 @@ import { DmsAiIntakeFieldRow } from "./dms-ai-intake-field-row";
 import { DmsAiIntakeZeroDefinitionsNotice } from "./dms-ai-intake-zero-definitions-notice";
 import { getMetadataDefinitionsForType } from "@/server/actions/dms/document-metadata-values";
 import type { DmsMetadataDefinitionRow } from "@/server/actions/dms/document-metadata-values";
-import { groupMetadataDefinitionsByFieldGroup } from "@/lib/dms/metadata/metadata-definition-shared";
+import { groupMetadataDefinitionsByFieldGroup, parseMetadataOptions } from "@/lib/dms/metadata/metadata-definition-shared";
 import { Loader2 } from "lucide-react";
 
 interface MetadataValue {
@@ -44,7 +44,9 @@ function buildReviewWarning(
   const warnings: string[] = [];
   const trimmed = currentValue.trim();
   if (!trimmed && (def.is_required || def.review_required_if_missing)) {
-    warnings.push("Enter a value before approving.");
+    warnings.push(def.field_code === "visa_number"
+      ? "Use the visa number printed on the document. If it is absent, leave the intake pending and verify the document type."
+      : "Enter a value before approving.");
   }
   if (
     def.review_required_if_low_confidence &&
@@ -67,23 +69,36 @@ function MetadataFieldInput({
   onChange: (definitionId: number, fieldType: string, rawValue: string) => void;
 }) {
   const placeholder = def.placeholder_en ?? def.field_label_en;
-  if (def.field_type === "textarea") {
+  const options = def.field_type === "select" ? parseMetadataOptions(def.options_json) : [];
+  if (options.length) {
+    const unavailable = !!currentValue && !options.some(option => option.value === currentValue);
+    return (
+      <select
+        id={"intake-metadata-" + def.id} name={def.field_code} required={def.is_required}
+        aria-invalid={unavailable || (def.is_required && !currentValue) || undefined}
+        className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm focus-visible:outline-2 focus-visible:outline-primary"
+        value={currentValue}
+        onChange={(event) => onChange(def.id, def.field_type, event.target.value)}
+      >
+        <option value="">Select…</option>
+        {unavailable && <option value={currentValue} disabled>{currentValue} (unavailable)</option>}
+        {options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+    );
+  }
+  const arabicLocations = def.field_code === "cicpa_locations_arabic";
+  if (def.field_type === "textarea" || arabicLocations) {
     return (
       <Textarea
         id={`intake-metadata-${def.id}`} name={def.field_code} required={def.is_required}
         aria-invalid={def.is_required && !currentValue.trim() || undefined}
         value={currentValue}
         onChange={(e) => onChange(def.id, def.field_type, e.target.value)}
-        rows={2}
+        rows={arabicLocations ? 3 : 2}
         className="text-sm"
         placeholder={placeholder}
-        // Arabic/RTL content (e.g. AI-extracted Arabic name fields) must render
-        // right-to-left with correctly ordered word arrangement. dir="auto"
-        // lets the browser pick the direction per the first strong-direction
-        // character in the field's current value, and re-evaluates live as
-        // the value changes (AI seed or manual edit) — no per-field-code
-        // Arabic detection needed.
-        dir="auto"
+        dir={arabicLocations ? "rtl" : "auto"}
+        lang={arabicLocations ? "ar" : undefined}
       />
     );
   }

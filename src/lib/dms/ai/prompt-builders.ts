@@ -6,7 +6,7 @@
  * Prompts are truncated to safe token limits before sending.
  */
 
-import type { DmsAiDocumentTypeCandidate, DmsAiImageFile, DmsAiMetadataField, DmsClassificationCandidatePacket } from "./types";
+import type { DmsAiDateEvidenceMode, DmsAiDocumentTypeCandidate, DmsAiImageFile, DmsAiMetadataField, DmsClassificationCandidatePacket } from "./types";
 import { TYPE_CLASSIFICATION_FINGERPRINTS } from "./classification-resolver";
 import { formatClassificationPacketsForPrompt } from "./classification-candidate-builder";
 import {
@@ -51,6 +51,7 @@ const OCR_TAIL_CHARS = 8_000;
 const PROMPT_VERSION = "v3.6-preparation";
 
 export { PROMPT_VERSION };
+export const SOURCE_ROLE_PROMPT_VERSION = "v3.7-source-dates";
 
 export interface BuiltPrompt {
   systemPrompt: string;
@@ -62,7 +63,24 @@ export interface BuiltPrompt {
   hasImages: boolean;
 }
 
-const SYSTEM_PROMPT = `You are an AI document classifier, OCR engine, and metadata extractor for an Enterprise Resource Planning (ERP) system used in the UAE (United Arab Emirates). You have expert-level Arabic language reading ability.
+const LEGACY_DATE_RULES = `- DATE ORDERING RULE (CRITICAL — never violate): suggested_issue_date must ALWAYS be strictly EARLIER than suggested_expiry_date. When a document shows two dates, the EARLIER date is the issue date and the LATER date is the expiry date. This also applies to issue/expiry metadata fields. On Emirates ID cards both dates are printed on the front: "Issuing Date / تاريخ الإصدار" (earlier) and "Expiry Date / تاريخ الإنتهاء" (later) — match each value to its printed label AND verify the ordering before returning.
+- ALWAYS attempt to extract suggested_issue_date and suggested_expiry_date:
+  - Emirates ID: issue date is printed on the card (or derive as expiry date minus 5 years if only one date is visible); expiry date is the card validity end date.
+  - Passport: both issue date and expiry date are printed.
+  - Visa/Residence Permit: issue date = entry/issue date; expiry date = permit end date.
+  - Trade License: issue date = licence issue date; expiry date = renewal/expiry date.
+  - Invoice/Contract: issue date = document date; no expiry.
+  - If only one date is visible, put it in suggested_expiry_date if future, else suggested_issue_date.
+- All dates in structured fields must be YYYY-MM-DD. Convert DD/MM/YYYY → YYYY-MM-DD. Convert MM/YYYY → YYYY-MM-01.`;
+
+const SOURCE_ROLE_DATE_RULES = `- Assign a date from its printed date role or a source label specifically defined for that role in the relevant metadata field. Include the printed label and full value in the field's source_snippet.
+- Return null for a missing, unreadable or ambiguous issue or expiry date and omit the corresponding unsupported date field. Never infer dates or roles from date order, the current date, document type expectations or assumed validity periods.
+- Keep permit expiry, passport expiry, entry deadline, actual entry date, issue, signing, course, award, and reporting dates distinct. Do not promote one role into another. On Emirates ID, use the printed "Issuing Date / تاريخ الإصدار" and "Expiry Date / تاريخ الإنتهاء" independently.
+- If the printed issue date is after the printed expiry date, preserve their reported roles, explain the contradiction in warnings, and set needs_human_review to true. Do not swap them.
+- Use YYYY-MM-DD for unambiguous complete Gregorian dates. Never add a missing day or month.`;
+
+function buildSystemPrompt(sourceRoles: boolean) {
+  return `You are an AI document classifier, OCR engine, and metadata extractor for an Enterprise Resource Planning (ERP) system used in the UAE (United Arab Emirates). You have expert-level Arabic language reading ability.
 
 You will receive a business document — either as extracted text, as one or more images, or both.
 Your task has THREE steps, performed in order:
@@ -83,7 +101,9 @@ ARABIC DOCUMENT RULES — MANDATORY (applies to all bilingual UAE documents):
 - Emirates ID: ALWAYS extract BOTH English name AND Arabic name (اسم بالعربية). The Arabic name appears on the front of the card.
 - Trade License / Commercial Register: extract both Arabic company name (الاسم التجاري بالعربية) AND English company name.
 - Labor/Employment documents: extract Arabic employer name (صاحب العمل), position (المسمى الوظيفي), and department (القسم).
-- Hijri dates: if a Hijri calendar date appears (e.g. ١٤٤٥/٠٧/١٤ or 1445/07/14), note it in additional_fields["hijri_date"] and convert to approximate Gregorian date. Use formula: Gregorian ≈ Hijri year × 0.970 + 621.5.
+${sourceRoles
+    ? '- Keep original Hijri dates in additional_fields["hijri_date"]. Do not use an approximate calendar conversion for structured dates.'
+    : '- Hijri dates: if a Hijri calendar date appears (e.g. ١٤٤٥/٠٧/١٤ or 1445/07/14), note it in additional_fields["hijri_date"] and convert to approximate Gregorian date. Use formula: Gregorian ≈ Hijri year × 0.970 + 621.5.'}
 - Arabic-only documents: if the document has NO English text, generate an English translation of the key fields in suggested_description. Add full English translation in additional_fields["english_translation"].
 - Mixed RTL/LTR: maintain field values in their correct language. Arabic names → Arabic script. English names → English.
 - Tashkeel: if visible, include diacritics (e.g. مَدِينَة not مدينة). They distinguish words (e.g. مَدرسة=school vs مُدرِّس=teacher).
@@ -149,7 +169,9 @@ IMPORTANT — Document types you will commonly encounter in this UAE-based ERP:
 EXHAUSTIVE READING RULES:
 - Read EVERY piece of text. Never skip a line.
 - For multi-image submissions (e.g. front + back of an ID card): transcribe ALL images.
-- Dates may be DD/MM/YYYY, MM/YYYY, YYYY, or written-out — always convert to YYYY-MM-DD in the structured fields (keep originals in transcription).
+${sourceRoles
+    ? "- Keep date precision and wording in transcription. Use structured dates only when the calendar date and printed role are established."
+    : "- Dates may be DD/MM/YYYY, MM/YYYY, YYYY, or written-out — always convert to YYYY-MM-DD in the structured fields (keep originals in transcription)."}
 - ID/passport/licence/TRN numbers are high-value — reproduce character by character, preserving any dashes or spaces.
 - If image quality is low, transcribe what is visible and note uncertainty with [?] markers.
 
@@ -180,7 +202,7 @@ JSON output format:
   },
   "suggested_title": "<suggested document title, e.g. 'Emirates ID — Sameer Fahmi' or null>",
   "suggested_description": "<1-2 sentence description mentioning key identifiers (name, ID number, nationality, etc.) or null>",
-  "suggested_issue_date": "<YYYY-MM-DD or null — the date the document was issued/signed>",
+  "suggested_issue_date": "<YYYY-MM-DD or null — ${sourceRoles ? "explicit printed issue date" : "the date the document was issued/signed"}>",
   "suggested_expiry_date": "<YYYY-MM-DD or null — the date the document expires or becomes invalid>",
   "fields": [
     {
@@ -221,15 +243,7 @@ Rules:
 - Only suggest document types from the provided candidates list. If no candidate matches, use the closest match and note it in warnings.
 - Only extract fields from the provided metadata fields list — do not invent field_codes.
 - If a field cannot be found in the document, omit it from the fields array.
-- DATE ORDERING RULE (CRITICAL — never violate): suggested_issue_date must ALWAYS be strictly EARLIER than suggested_expiry_date. When a document shows two dates, the EARLIER date is the issue date and the LATER date is the expiry date. This also applies to issue/expiry metadata fields. On Emirates ID cards both dates are printed on the front: "Issuing Date / تاريخ الإصدار" (earlier) and "Expiry Date / تاريخ الإنتهاء" (later) — match each value to its printed label AND verify the ordering before returning.
-- ALWAYS attempt to extract suggested_issue_date and suggested_expiry_date:
-  - Emirates ID: issue date is printed on the card (or derive as expiry date minus 5 years if only one date is visible); expiry date is the card validity end date.
-  - Passport: both issue date and expiry date are printed.
-  - Visa/Residence Permit: issue date = entry/issue date; expiry date = permit end date.
-  - Trade License: issue date = licence issue date; expiry date = renewal/expiry date.
-  - Invoice/Contract: issue date = document date; no expiry.
-  - If only one date is visible, put it in suggested_expiry_date if future, else suggested_issue_date.
-- All dates in structured fields must be YYYY-MM-DD. Convert DD/MM/YYYY → YYYY-MM-DD. Convert MM/YYYY → YYYY-MM-01.
+${sourceRoles ? SOURCE_ROLE_DATE_RULES : LEGACY_DATE_RULES}
 - Do not invent or guess data not visible in the document.
 - For bilingual documents, prefer the English value for structured fields. ALWAYS include Arabic name in detected_entities.name_ar. If only Arabic is available, provide your best English transliteration and note it in warnings.
 - Populate detected_entities with EVERY person and company/organization named in the document. For Arabic names: populate both name (English or transliteration) and name_ar (Arabic script).
@@ -249,6 +263,7 @@ METADATA EXTRACTION RULES (Phase 2):
 - Normalize extracted values to ai_expected_format where specified (e.g. ID number patterns, YYYY-MM-DD dates).
 - Do not invent field_codes — only extract fields from the provided metadata list.
 - If a per-field confidence threshold is specified, treat values below it as needs_manual_review.`;
+}
 
 /**
  * Builds a combined classification + extraction prompt.
@@ -261,7 +276,8 @@ export function buildCombinedPrompt(
   currentTypeCode: string | null,
   imageFiles: DmsAiImageFile[] = [],
   originalFilename?: string,
-  classificationPackets?: DmsClassificationCandidatePacket[]
+  classificationPackets?: DmsClassificationCandidatePacket[],
+  dateEvidenceMode?: DmsAiDateEvidenceMode
 ): BuiltPrompt {
   // SPEED.2N: head+tail sampling — keep the start (headers, parties, IDs) AND the
   // end (signatures, expiry tables) of very long documents instead of hard-cutting.
@@ -378,7 +394,7 @@ Set full_text_transcription to null — the text above is already extracted and 
     });
   }
 
-  return { systemPrompt: SYSTEM_PROMPT, userPrompt, userContent, ocrTruncated, hasImages };
+  return { systemPrompt: buildSystemPrompt(dateEvidenceMode === "source_roles"), userPrompt, userContent, ocrTruncated, hasImages };
 }
 
 /**

@@ -1,4 +1,4 @@
-import type {DmsMetadataDefinitionBase} from './metadata-definition-shared';
+import {parseMetadataOptions, type DmsMetadataDefinitionBase} from './metadata-definition-shared';
 
 /** Editor feedback only; the database independently validates the entire merged state. */
 export function validateMetadataEntry(def:Pick<DmsMetadataDefinitionBase,'field_type'|'is_required'|'options_json'|'validation_json'>,value:unknown):string|null{
@@ -29,9 +29,8 @@ export function validateMetadataEntry(def:Pick<DmsMetadataDefinitionBase,'field_
   if(t==='url'&&!/^https?:\/\/[^\s]+$/i.test(value))return 'Enter a full http or https address.';
  }
  if(['select','multi_select','multiselect'].includes(t)){
-  const opts=def.options_json as {values?:unknown;options?:unknown}|null;
-  const choices=Array.isArray(def.options_json)?def.options_json:opts?.values??opts?.options;
-  if(!Array.isArray(choices)||(Array.isArray(value)?value:[value]).some(v=>!choices.includes(v)))return 'Choose an available option.';
+  const choices=new Set(parseMetadataOptions(def.options_json).map(option=>option.value));
+  if((Array.isArray(value)?value:[value]).some(v=>!choices.has(v)))return 'Choose an available option.';
  }
  return null;
 }

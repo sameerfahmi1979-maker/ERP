@@ -66,6 +66,25 @@ export function parseJsonStringArray(value: unknown): string[] | null {
   return null;
 }
 
+/** Read the catalog tokens and their labels without changing stored values. */
+export function parseMetadataOptions(options: unknown): { value: string; label: string }[] {
+  const config = options && typeof options === "object" && !Array.isArray(options)
+    ? options as { values?: unknown; options?: unknown; labels?: Record<string, unknown> }
+    : undefined;
+  const choices = Array.isArray(options) ? options : config?.values ?? config?.options;
+  if (!Array.isArray(choices)) return [];
+
+  const data = new Map<string, { value: string; label: string }>();
+  for (const item of choices) {
+    const option = item && typeof item === "object" ? item as { value?: unknown; label?: unknown } : undefined;
+    const value = option?.value ?? item;
+    if (typeof value !== "string" || !value.trim() || data.has(value)) continue;
+    const label = option?.label ?? config?.labels?.[value];
+    data.set(value, { value, label: typeof label === "string" && label.trim() ? label : value });
+  }
+  return [...data.values()];
+}
+
 /** Map a raw DB row to typed definition (handles missing Phase 2 columns on older rows). */
 export function mapMetadataDefinitionRow(row: Record<string, unknown>): DmsMetadataDefinitionBase {
   return {

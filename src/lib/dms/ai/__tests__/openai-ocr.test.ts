@@ -33,6 +33,28 @@ describe("GPT-6.1 OCR requests", () => {
     expect(body()).toMatchObject({ response_format: { type: "json_object" }, reasoning_effort: "low" });
     expect(body()).not.toHaveProperty("temperature");
   });
+  it("uses strict printed-role rules on both sides of the configured adapter", async () => {
+    const response = {
+      suggested_issue_date: "2028-04-28",
+      suggested_expiry_date: "2024-04-29",
+    };
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify(response) } }],
+    })));
+    const result = await new OpenAiDmsAdapter(config).analyze({
+      ocrText: "Synthetic printed dates",
+      imageFiles: [],
+      typeCandidates: [],
+      metadataFields: [],
+      currentTypeCode: null,
+      dateEvidenceMode: "source_roles",
+    });
+    expect(body().messages[0].content).toContain("printed date role");
+    expect(body().messages[0].content).not.toContain("expiry date minus 5 years");
+    expect(result.classification.needsHumanReview).toBe(true);
+    expect(result.extraction.issueDateSuggestion).toBe("2028-04-28");
+    expect(result.extraction.expiryDateSuggestion).toBe("2024-04-29");
+  });
   it("uses a reasoning budget for summaries and structured metadata", async () => {
     await new OpenAiDmsAdapter(config).summarize("Summarize", "synthetic");
     expect(body()).toMatchObject({ max_completion_tokens: 4096, reasoning_effort: "low" });

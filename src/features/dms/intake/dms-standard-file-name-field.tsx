@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
 import { previewDmsStandardFileName } from "@/server/actions/dms/standard-file-name";
-import { stripFilenameExtension } from "@/lib/dms/standard-file-name";
+import { canAssignQatarPermitNumberOnApproval, stripFilenameExtension } from "@/lib/dms/standard-file-name";
 import type { ReviewFormValues } from "./dms-ai-intake-review-form";
 import type { DmsDocumentTypeRow } from "@/server/actions/dms/document-types";
 import type { IntakeSessionData } from "@/server/actions/dms/ai-intake";
@@ -21,6 +21,7 @@ type Props = {
 export function DmsStandardFileNameField({ session, values, docTypes, onChange, savedDocument }: Props) {
   const [isPending, startTransition] = useTransition();
   const [missingParts, setMissingParts] = useState<string[]>([]);
+  const [willAssignDocumentNumber, setWillAssignDocumentNumber] = useState(false);
   const userEditedRef = useRef(false);
   const selectedType = docTypes.find((t) => t.id === values.documentTypeId) ?? null;
 
@@ -55,7 +56,10 @@ export function DmsStandardFileNameField({ session, values, docTypes, onChange, 
         if (!userEditedRef.current && suggestedName !== values.standardFileName) {
           onChange({ standardFileName: suggestedName });
         }
-        setMissingParts(res.data.validation.missing);
+        const willAssignNumber = !savedDocument && !session.document_id
+          && canAssignQatarPermitNumberOnApproval(selectedType.type_code, res.data.fileName, res.data.validation);
+        setWillAssignDocumentNumber(willAssignNumber);
+        setMissingParts(willAssignNumber ? [] : res.data.validation.missing);
       });
     }, 300);
 
@@ -74,6 +78,7 @@ export function DmsStandardFileNameField({ session, values, docTypes, onChange, 
     selectedType?.type_code,
     selectedType?.requires_expiry_tracking,
     onChange,
+    session.document_id,
   ]);
 
   return (
@@ -101,6 +106,7 @@ export function DmsStandardFileNameField({ session, values, docTypes, onChange, 
         Original upload: {session.original_filename}
       </p>
       {savedDocument && <p className="text-xs text-muted-foreground">Keep the original file extension when renaming this saved file.</p>}
+      {willAssignDocumentNumber && <p className="text-xs text-muted-foreground">DMS assigns the document number on approval.</p>}
       {missingParts.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {missingParts.map((part) => (

@@ -57,6 +57,20 @@ describe("communication push dispatch",()=>{
     expect(fetcher).not.toHaveBeenCalled();expect(reserve).not.toHaveBeenCalled();
     expect(rpc).toHaveBeenCalledWith("finish",{jobId:A,lease:B,outcome:"held"});
   });
+  it("holds an authorized send whose remaining physical window shrinks during confirmation",async()=>{
+    const start=Date.now();
+    const clock=vi.spyOn(Date,"now").mockReturnValue(start);
+    try {
+      const rpc=vi.fn(async(op:string)=>{
+        if(op==="confirm") {clock.mockReturnValue(start+24000);return row;}
+        return op==="claim"?job:op==="prepare"?row:true;
+      });
+      const fetcher=vi.fn().mockResolvedValueOnce(Response.json({access_token:"synthetic-access",token_type:"Bearer"}));
+      expect(await dispatchOnePush({env,rpc,reserve:vi.fn().mockResolvedValue(permit),fetcher,hardEnd:start+35000})).toEqual({state:"held"});
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(rpc).toHaveBeenLastCalledWith("finish",{jobId:A,lease:B,outcome:"held"});
+    } finally {clock.mockRestore();}
+  });
   it("distinguishes invalid installations, quota pressure, ambiguous acceptance and invalid configuration",async()=>{
     expect(await classifyFcm(Response.json({error:{details:[{"@type":"type.googleapis.com/google.firebase.fcm.v1.FcmError",errorCode:"UNREGISTERED"}]}},{status:404}))).toBe("invalidToken");
     expect(await classifyFcm(Response.json({},{status:429}))).toBe("retry");

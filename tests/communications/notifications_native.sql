@@ -6,7 +6,9 @@ create function pg_temp.inject_outbox_error() returns trigger language plpgsql a
 create trigger fixture_notice_failure before insert on erp_private.notification_inbox for each row execute function pg_temp.inject_outbox_error();
 insert into public.dms_upload_sessions(id,status,intake_status,uploaded_by,session_code) values(802,'Processing','ai_processing',2,'TEST-RECOVERY');
 update public.dms_upload_sessions set intake_status='review_pending',updated_at=clock_timestamp() where id=802;
+select erp_private.notification_recover();
 drop trigger fixture_notice_failure on erp_private.notification_inbox;
+select erp_private.notification_recover();
 select erp_private.notification_recover();
 do $$begin if not exists(select from public.dms_upload_sessions where id=802 and intake_status='review_pending')
  or not exists(select from erp_private.notification_sources s join erp_private.notification_inbox i on i.source=s.id where s.kind='intake' and s.record_id=802)
@@ -28,6 +30,7 @@ begin
  insert into erp_private.chat_conversations(id,kind,direct_low,direct_high,creator,latest_seq) values(c,'direct',2,3,3,1);
  insert into erp_private.chat_memberships(conversation,profile_id) values(c,2),(c,3);
  insert into erp_private.chat_messages(id,conversation,seq,sender,body) values(m,c,1,3,'Sensitive fixture');
+ perform erp_private.notification_project_chat();perform erp_private.notification_project_devices();
  event_ref:=erp_private.notification_enqueue('chat',m,2);
  if (select count(*) from erp_private.notification_inbox where source=m)<>1 or (select count(*) from erp_private.notification_push_jobs where event=event_ref)<>1 then raise exception 'fanout dedupe'; end if;
  begin perform pg_temp.call_ntf(3,'resolve',jsonb_build_object('eventId',event_ref));raise exception 'recipient leaked';exception when no_data_found then null; end;
@@ -75,6 +78,7 @@ begin
  insert into public.erp_user_employee_links values(2,101);
  insert into public.erp_notifications(id,recipient_user_id,channel_in_app,metadata_json,status,source_entity_type,source_entity_id) values(51,2,true,'{"f10_event_id":41}','unread','employee_leave_requests',201);
  insert into erp_private.notification_event_recipients values(41,2,51,'created');
+ perform erp_private.notification_ingest('erp_notifications',51,true);
  select x.id into rid from erp_private.notification_inbox x where kind='erp';
  notice:=pg_temp.call_ntf(2,'resolve',jsonb_build_object('eventId',rid));
  if notice->>'path' is distinct from '/admin/hr/employees/record/101?task=leave&task_id=201' then raise exception 'ERP route';end if;
@@ -89,6 +93,7 @@ begin
  insert into erp_private.chat_memberships(conversation,profile_id) values(c,3),(c,2);
  insert into erp_private.chat_personal(profile_id,conversation,muted) values(2,c,true);
  insert into erp_private.chat_messages(id,conversation,seq,sender,body) values(m,c,1,3,'Group post');
+ perform erp_private.notification_project_chat();
  select id into strict r from erp_private.notification_inbox where source=m and profile_id=2;
  t:=pg_temp.call_ntf(2,'resolve',jsonb_build_object('eventId',r));
  if t->>'pushEligible'<>'false' then raise exception 'muted group';end if;
@@ -113,6 +118,7 @@ begin
  insert into public.dms_upload_sessions(id,status,intake_status,uploaded_by,session_code) values(501,'processing','ai_processing',2,'SYNTHETIC');
  insert into public.dms_review_queue values(600,501,3,'pending',null);
  update public.dms_upload_sessions set intake_status='review_pending' where id=501;
+ perform erp_private.notification_ingest('dms_upload_sessions',501,true);
  select id into strict a from erp_private.notification_inbox where kind='intake' and profile_id=2;
  select id into strict b from erp_private.notification_inbox where kind='intake' and profile_id=3;
  if pg_temp.call_ntf(3,'resolve',jsonb_build_object('eventId',b))->>'id'<>'501' then raise exception 'reviewer intake';end if;
@@ -138,8 +144,73 @@ begin
  insert into public.employee_attendance_daily_summary values(801,1,'pending',101,today-1,2);
  begin perform pg_temp.call_ntf(2,'resolve',jsonb_build_object('eventId',a));raise exception 'fulfilled deadline remained active';exception when no_data_found then null;end;
  update public.employee_attendance_daily_summary set approval_status='queried',workspace_revision=2 where id=801;
+ perform erp_private.notification_ingest('employee_attendance_daily_summary',801,true);
  select i.id into strict b from erp_private.notification_inbox i join erp_private.notification_sources s on s.id=i.source where s.kind='timesheet' and s.record_id=801 and s.revision='2:queried';
  if pg_temp.call_ntf(2,'resolve',jsonb_build_object('eventId',b))->>'status' is distinct from 'queried' then raise exception 'returned correction';end if;
+end $$;
+-- The installed cron catalog contains the original job only, with no enrollment or idle run.
+do $$declare stop_at timestamptz:=date_trunc('second',clock_timestamp()+interval '5 minutes');cmd jsonb;permit uuid;cap bigint;ledger bigint;run uuid;t uuid;t2 uuid;result jsonb;before_count int;wrong uuid;
+begin
+ if (select count(*) from cron.job)<>1 or not exists(select from cron.job where jobname='existing-erp-fixture' and active) or exists(select from cron.job_run_details) or exists(select from net.queued)
+   or exists(select from pg_trigger where tgname in('communication_employee_notice','communication_erp_notice','communication_intake_notice','communication_budget_notice','communication_timesheet_notice','communication_chat_notice'))
+   then raise exception 'default introduced recurring cron, event capture or wake';end if;
+ if has_function_privilege('authenticated','public.erp_notification_tick(text,uuid,uuid)','execute') or has_function_privilege('service_role','erp_private.notification_start_scheduler(uuid,timestamptz,integer,boolean,boolean)','execute') then raise exception 'scheduler exposed';end if;
+ begin perform erp_private.notification_start_scheduler(gen_random_uuid(),stop_at,2,false,false);raise exception 'unfunded start';exception when sqlstate 'PT503' then null;end;
+ cmd:=jsonb_build_object('op','budget.fundControl','kind','notification_tick','subject','mobile-notifications','maxActions',6,'endEpoch',extract(epoch from stop_at)::bigint);
+ permit:=public.fixture_chat_permit(2,'push',cmd);
+ update erp_comm_cost.proof set retained_at_zero_cost_evidence='synthetic exact pool retention',operational_stop_by=stop_at+interval '1 hour' where operation_id=permit::text;
+ insert into erp_comm_cost.capacity(billing_account,dimension,unit,valid_from,valid_until,available_units,enabled) values('fixture','database','funded_notification_tick_actions',now()-interval '1 minute',now()+interval '1 hour',6,true) returning id into cap;
+ insert into erp_comm_cost.capacity(billing_account,dimension,unit,valid_from,valid_until,available_units,enabled) values('fixture-tick','database','permanent_ledger_bytes',now()-interval '1 minute',now()+interval '1 hour',262144,true) returning id into ledger;
+ insert into erp_comm_cost.unit_hold values(permit,cap,6),(permit,ledger,262144);
+ insert into erp_comm_cost.control_pool(permit_id,kind,subject,max_actions,poll_seconds,valid_until,continuing_zero_evidence,enabled) values(permit,'notification_tick','mobile-notifications',6,1,stop_at,'synthetic fixed tick',true);
+ run:=erp_private.notification_start_scheduler(permit,stop_at,2,false,true);
+ if run is null or (select count(*) from net.queued)<>1 then raise exception 'missing paid launch';end if;
+ select (body->>'ticket')::uuid into strict t from net.queued;
+ begin perform erp_private.notification_start_scheduler(permit,stop_at,1,false,false);raise exception 'overlap';exception when sqlstate 'PT409' then null;end;
+ if public.erp_notification_tick('admit',run,t) is not null or public.erp_notification_tick('admit',run,gen_random_uuid()) is not null then raise exception 'early or wrong ticket';end if;
+ perform pg_sleep(1.05);
+ result:=public.erp_notification_tick('admit',run,t);
+ if result->>'pushEnabled' is distinct from 'true' or public.erp_notification_tick('admit',run,t) is not null then raise exception 'admission single use';end if;
+ result:=public.erp_notification_tick('finish',run,t);
+ if result is distinct from 'true'::jsonb then raise exception 'missing continuation state %, used %, phase %',result,(select used from erp_comm_cost.control_pool where permit_id=permit),(select phase from erp_private.notification_mobile_scheduler);end if;
+ if public.erp_notification_tick('finish',run,t) is not null or (select count(*) from net.queued)<>2 then raise exception 'duplicate continuation';end if;
+ select (body->>'ticket')::uuid into strict t2 from net.queued order by id desc limit 1;
+ perform pg_sleep(1.05);
+ if public.erp_notification_tick('admit',run,t2) is null then raise exception 'missing second admission';end if;
+ result:=public.erp_notification_tick('finish',run,t2);
+ if result is distinct from 'false'::jsonb or not exists(select from erp_private.notification_mobile_scheduler where phase='stopped' and ticket is null and remaining=0) then raise exception 'finite retirement';end if;
+ perform set_config('test.net_fail','yes',true);
+ run:=erp_private.notification_start_scheduler(permit,stop_at,1,false,false);
+ if run is not null or (select used from erp_comm_cost.control_pool where permit_id=permit)<>3 or (select count(*) from net.queued)<>2
+   or not exists(select from erp_private.notification_mobile_scheduler where phase='stopped') then raise exception 'unfunded transport retry';end if;
+ perform set_config('test.net_fail','no',true);
+ perform pg_sleep(1.05);
+ run:=erp_private.notification_start_scheduler(permit,stop_at,1,false,false);
+ select (body->>'ticket')::uuid into t from net.queued order by id desc limit 1;
+ if run is null then raise exception 'operator restart';end if;
+ update erp_private.notification_mobile_scheduler set deadline=clock_timestamp()-interval '1 second' where id;
+ result:=public.erp_notification_tick('admit',run,t);
+ if result is not null or not exists(select from erp_private.notification_mobile_scheduler where phase='stopped') then raise exception 'expired run rescheduled';end if;
+ -- A later selected grant cannot consume the earlier program's next prepaid action.
+ perform pg_sleep(1.05);
+ stop_at:=stop_at+interval '1 minute';
+ cmd:=jsonb_set(cmd,'{endEpoch}',to_jsonb(extract(epoch from stop_at)::bigint));
+ wrong:=public.fixture_chat_permit(2,'push',cmd);
+ update erp_comm_cost.proof set retained_at_zero_cost_evidence='synthetic second physical pool',operational_stop_by=stop_at+interval '1 hour' where operation_id=wrong::text;
+ insert into erp_comm_cost.unit_hold values(wrong,cap,6),(wrong,ledger,262144);
+ begin
+  insert into erp_comm_cost.control_pool(permit_id,kind,subject,max_actions,poll_seconds,valid_until,continuing_zero_evidence,enabled) values(wrong,'notification_tick','mobile-notifications',6,1,stop_at,'synthetic second pool',true);
+  raise exception 'overlapping funded tick pools';
+ exception when unique_violation then null;end;
+ run:=erp_private.notification_start_scheduler(permit,stop_at-interval '1 minute',1,false,false);
+ if run is null then raise exception 'original grant restart';end if;
+ select (body->>'ticket')::uuid into t from net.queued order by id desc limit 1;
+ select used into strict before_count from erp_comm_cost.control_pool where permit_id=permit;
+ update erp_comm_cost.control_pool set enabled=false where permit_id=permit;
+ insert into erp_comm_cost.control_pool(permit_id,kind,subject,max_actions,poll_seconds,valid_until,continuing_zero_evidence,enabled) values(wrong,'notification_tick','mobile-notifications',6,1,stop_at,'synthetic second pool',true);
+ result:=public.erp_notification_tick('admit',run,t);
+ if result is not null or (select used from erp_comm_cost.control_pool where permit_id=permit)<>before_count or (select used from erp_comm_cost.control_pool where permit_id=wrong)<>0 or (select count(*) from net.queued)<>4 or not exists(select from erp_private.notification_mobile_scheduler where phase='stopped') then raise exception 'replacement grant financed stale run';end if;
+ if (select count(*) from cron.job)<>1 or exists(select from cron.job_run_details) then raise exception 'calendar registration changed';end if;
 end $$;
 do $$declare cmd jsonb; until_time timestamptz:=date_trunc('second',clock_timestamp()+interval '30 seconds');permit uuid;cap bigint;moneycap bigint;sid uuid:=lpad('2',32,'0')::uuid;alert_uuid uuid;event_uuid uuid;j jsonb;a jsonb;t jsonb;
 begin
@@ -153,6 +224,8 @@ begin
  insert into erp_comm_cost.control_pool(permit_id,kind,subject,max_actions,valid_until,continuing_zero_evidence,enabled) values(permit,'budget_alert','2',6,until_time,'synthetic bounded control',true);
  insert into erp_comm_cost.pause values('communications','push','fixture',now()),('communications','chat','fixture',now());
  insert into erp_comm_cost.alert(event_key,recipient_auth_id,scope,feature,reason) values('fixture:paused',sid,'communications','push','fixture pause') returning source_uuid into alert_uuid;
+ perform erp_private.notification_ingest('alert',(select event_id from erp_comm_cost.alert where source_uuid=alert_uuid),true);
+ perform erp_private.notification_project_devices();
  select id into strict event_uuid from erp_private.notification_inbox where kind='budget' and source=alert_uuid;
  t:=public.erp_notification_control_read('list',null,null,2,sid,gen_random_uuid(),false);
  if t->'items'->0->>'eventId' is distinct from event_uuid::text then raise exception 'funded web budget inbox';end if;
@@ -203,3 +276,32 @@ begin
  j:=public.erp_notification_worker('claim','{"control":true}');args:=jsonb_build_object('jobId',j->'jobId','lease',j->'lease');
  begin perform public.erp_notification_worker('prepare',args);raise exception 'exhausted cancellation retries';exception when sqlstate 'PT503' then null;end;
 end $$;
+
+-- A single paid projection has a fixed write ceiling even after a large unprocessed backlog.
+begin;
+do $$declare c uuid:=gen_random_uuid(); ptt_event uuid;current_phone uuid; prior bigint;current_count bigint;before_jobs bigint;after_jobs bigint;
+begin
+ insert into erp_private.chat_conversations(id,kind,name,creator,owner_id,latest_seq) values(c,'group','Fixture queue bounds',3,3,125);
+ insert into erp_private.chat_memberships(conversation,profile_id) values(c,2),(c,3);
+ insert into erp_private.notification_devices(installation,profile_id,session_id,token) select gen_random_uuid(),2,lpad('2',32,'0')::uuid,repeat('fixture-',6)||n from generate_series(1,80) n;
+ select d.id into strict current_phone from erp_private.notification_devices d join erp_private.ptt_phones ph on ph.profile_id=d.profile_id and ph.device_id=d.installation and ph.auth_session=d.session_id where ph.profile_id=2;
+ ptt_event:=erp_private.notification_enqueue('ptt',gen_random_uuid(),2);
+ if (select count(*) from erp_private.notification_push_jobs where event=ptt_event)<>1 or not exists(select from erp_private.notification_push_jobs where event=ptt_event and device=current_phone) then raise exception 'PTT paid for unrelated registrations';end if;
+ ptt_event:=erp_private.notification_enqueue('sos',gen_random_uuid(),2,array[]::uuid[]);
+ if exists(select from erp_private.notification_push_jobs where event=ptt_event) then raise exception 'SOS bound empty snapshot was broadened';end if;
+ insert into erp_private.chat_messages(conversation,seq,sender,body) select c,n,3,'fixture' from generate_series(1,125) n;
+ select count(*) into prior from erp_private.notification_inbox;
+ if exists(select from erp_private.notification_inbox i join erp_private.chat_messages m on m.id=i.source where m.conversation=c) then raise exception 'unfunded chat fanout';end if;
+ perform erp_private.notification_project_chat();
+ select count(*) into current_count from erp_private.notification_inbox;
+ if current_count-prior<>100 then raise exception 'chat projection exceeded or lost bounded page';end if;
+ perform erp_private.notification_project_chat();
+ if (select count(*) from erp_private.notification_inbox i join erp_private.chat_messages m on m.id=i.source where m.conversation=c)<>125 then raise exception 'chat recovery lost next page';end if;
+ select count(*) into before_jobs from erp_private.notification_push_jobs;
+ perform erp_private.notification_project_devices();
+ select count(*) into after_jobs from erp_private.notification_push_jobs;
+ if after_jobs-before_jobs<>64 then raise exception 'device job limit';end if;
+ perform erp_private.notification_project_devices();
+ if (select count(*) from erp_private.notification_push_jobs)-after_jobs<>64 then raise exception 'device recovery failed to advance';end if;
+end $$;
+rollback;

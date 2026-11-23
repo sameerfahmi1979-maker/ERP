@@ -2,7 +2,7 @@ begin;
 set local lock_timeout='5s';
 create table erp_private.notification_devices (
  id uuid primary key default gen_random_uuid(), installation uuid not null, profile_id bigint not null references public.user_profiles on delete cascade,
- session_id uuid not null, token text not null unique check(length(token) between 32 and 4096), unique(profile_id,installation)
+ registered_at timestamptz not null default clock_timestamp(), session_id uuid not null, token text not null unique check(length(token) between 32 and 4096), unique(profile_id,installation)
 );
 create table erp_private.notification_inbox (
  id uuid primary key default gen_random_uuid(), n bigint generated always as identity unique,
@@ -42,7 +42,11 @@ begin
  insert into erp_private.notification_inbox(kind,source,profile_id) values(p_kind,p_source,p_recipient)
  on conflict(kind,source,profile_id) do nothing returning id into event;
  if event is null then select id into event from erp_private.notification_inbox where kind=p_kind and source=p_source and profile_id=p_recipient;return event;end if;
- insert into erp_private.notification_push_jobs(event,device) select event,d.id from erp_private.notification_devices d where d.profile_id=p_recipient and (p_devices is null or d.id=any(p_devices));
+ -- Legacy ERP/budget fan-out is materialized in bounded pages inside a paid scheduler tick.
+ if p_kind in ('chat','erp','intake','timesheet','leaveStart','employeeExpiry','leaveChange','budget') then return event;end if;
+ insert into erp_private.notification_push_jobs(event,device) select event,d.id from erp_private.notification_devices d where d.profile_id=p_recipient and (p_devices is null or d.id=any(p_devices))
+  and (p_kind not in ('ptt','sos') or exists(select from erp_private.ptt_phones ph where ph.profile_id=d.profile_id and ph.device_id=d.installation
+   and ph.auth_session=d.session_id and ph.availability<>'offDuty' and not ph.stopped));
  return event;
 end $$;
 create function erp_private.notification_enqueue(p_kind text,p_source uuid,p_recipient bigint) returns uuid
@@ -80,7 +84,12 @@ begin
  if not found then return;end if;
  if source_name='notification_events' then
   if rowdata.source_table='employee_leave_requests' or (rowdata.source_table in('employee_identity_documents','employee_medical_insurances') and rowdata.source_snapshot ? 't19_policy_id') then
-   for p in select l.user_profile_id from public.erp_user_employee_links l where l.employee_id=(rowdata.source_snapshot->>'employee_id')::bigint loop
+   for p in select l.user_profile_id from public.erp_user_employee_links l where l.employee_id=(rowdata.source_snapshot->>'employee_id')::bigint
+    and erp_private.chat_active(l.user_profile_id)
+    and not exists(select from erp_private.notification_event_recipients nr where nr.event_id=rowdata.id and nr.profile_id=l.user_profile_id and nr.state='created')
+    and not exists(select from erp_private.notification_inbox i join erp_private.notification_sources s on i.source=s.id
+      where i.profile_id=l.user_profile_id and s.kind in ('leaveChange','employeeExpiry') and s.record_id=rowdata.id)
+    order by l.user_profile_id limit 4 loop
     if rowdata.source_table='employee_leave_requests' then
      perform erp_private.notification_enqueue('leaveChange',erp_private.notification_source('leaveChange',rowdata.id,'event'),p);
     elsif not (rowdata.source_snapshot->'recipient_ids' @> jsonb_build_array(p)) then
@@ -112,44 +121,33 @@ begin
    perform erp_private.notification_enqueue('intake',sid,rowdata.uploaded_by);
    for p in select distinct q.assigned_to from public.dms_review_queue q where q.upload_session_id=rowdata.id
     and q.status in('pending','in_review') and q.deleted_at is null and q.assigned_to is not null and q.assigned_to<>rowdata.uploaded_by
+    and erp_private.chat_active(q.assigned_to) and not exists(select from erp_private.notification_inbox i where i.kind='intake' and i.source=sid and i.profile_id=q.assigned_to)
+    order by q.assigned_to limit 4
    loop perform erp_private.notification_enqueue('intake',sid,p);end loop;
   end if;
  elsif source_name='employee_attendance_daily_summary' then
   if rowdata.approval_status not in('pending','queried') then return;end if;
   sid:=erp_private.notification_source('timesheet',rowdata.id,rowdata.workspace_revision::text||':'||rowdata.approval_status);
   if rowdata.approval_status='pending' then
-   for p in select l.user_profile_id from public.employees e join public.erp_user_employee_links l on e.reporting_manager_id=l.employee_id where e.id=rowdata.employee_id loop perform erp_private.notification_enqueue('timesheet',sid,p);end loop;
+   for p in select l.user_profile_id from public.employees e join public.erp_user_employee_links l on e.reporting_manager_id=l.employee_id where e.id=rowdata.employee_id
+     and erp_private.chat_active(l.user_profile_id) and not exists(select from erp_private.notification_inbox i where i.kind='timesheet' and i.source=sid and i.profile_id=l.user_profile_id)
+     order by l.user_profile_id limit 4 loop perform erp_private.notification_enqueue('timesheet',sid,p);end loop;
   else perform erp_private.notification_enqueue('timesheet',sid,rowdata.created_by);end if;
  end if;
 end $$;
-create function erp_private.notification_capture() returns trigger language plpgsql security definer set search_path='' as $$
-declare p bigint;
-begin
- if tg_table_name='chat_messages' then
-  for p in select profile_id from erp_private.chat_memberships where conversation=new.conversation and left_at is null and profile_id<>new.sender loop
-   perform erp_private.notification_enqueue('chat',new.id,p);
-  end loop;
-  return null;
- end if;
- if not exists(select from erp_private.notification_capture_gate where id and case when tg_table_name='alert' then controls else enabled end) then return null;end if;
- begin
-  if tg_table_name='alert' then perform erp_private.notification_ingest(tg_table_name,new.event_id,false);
-  elsif tg_table_name='dms_upload_sessions' then
-   if new.intake_status is distinct from old.intake_status then perform erp_private.notification_ingest(tg_table_name,new.id,false);end if;
-  else perform erp_private.notification_ingest(tg_table_name,new.id,false);
-  end if;
- exception when others then
-  -- A new optional projection must never abort a successful ERP/DMS business write.
-  -- Recover from the authoritative committed source in bounded pages while enabled.
-  return null;
- end;
- return null;
-end $$;
-create trigger communication_chat_notice after insert on erp_private.chat_messages for each row execute function erp_private.notification_capture();
-create trigger communication_employee_notice after insert on erp_private.notification_events for each row execute function erp_private.notification_capture();
-create trigger communication_erp_notice after insert on public.erp_notifications for each row execute function erp_private.notification_capture();
-create trigger communication_intake_notice after update of intake_status on public.dms_upload_sessions for each row execute function erp_private.notification_capture();
-create trigger communication_budget_notice after insert on erp_comm_cost.alert for each row execute function erp_private.notification_capture();
+-- Authoritative ERP, DMS, chat and cost writes acquire no optional trigger or wake.
+-- A funded projection recovers from committed rows, including messages during a held interval.
+create function erp_private.notification_project_chat() returns void language sql set search_path='' as $$
+ insert into erp_private.notification_inbox(kind,source,profile_id)
+ select 'chat',m.id,member.profile_id from erp_private.chat_messages m join erp_private.chat_memberships member
+  on member.conversation=m.conversation and member.left_at is null and member.joined_at<=m.sent_at and member.profile_id<>m.sender
+ join erp_private.chat_conversations c on c.id=m.conversation
+ where m.deleted_at is null and erp_private.chat_active(member.profile_id)
+  and exists(select from erp_private.comms_chat_gate where singleton and enabled)
+  and (c.kind='group' or not erp_private.comms_pair_blocked(c.direct_low,c.direct_high))
+  and not exists(select from erp_private.notification_inbox i where i.kind='chat' and i.source=m.id and i.profile_id=member.profile_id)
+ order by m.sent_at,m.id,member.profile_id limit 100 on conflict(kind,source,profile_id) do nothing
+$$;
 
 create function erp_private.notification_erp_target(nid bigint,p bigint) returns jsonb language plpgsql stable set search_path='' as $$
 declare n public.erp_notifications;e erp_private.notification_events; path text;matches boolean:=false;who bigint;current_row jsonb;
@@ -312,7 +310,6 @@ begin
  if s.kind='timesheet' and (public.current_user_can_view_employee(emp) is not true or erp_private.employee_permission(emp,'hr.attendance.view') is not true) then return null;end if;
  return jsonb_strip_nulls(jsonb_build_object('kind',s.kind,'id',s.record_id::text,'employeeId',emp::text,'date',dt,'status',state,'path',path));
 end $$;
-create trigger communication_timesheet_notice after insert or update of workspace_revision,approval_status on public.employee_attendance_daily_summary for each row execute function erp_private.notification_capture();
 create function erp_private.notification_collect_due() returns void language plpgsql set search_path='' as $$
 declare r record;
 begin
@@ -323,6 +320,9 @@ begin
  cross join lateral (values((now() at time zone pol.zone)::date-1),((now() at time zone pol.zone)::date)) day(dt)
  cross join lateral (select erp_private.notification_scheduled_day(e.id,day.dt) due) deadline
  where pol.enabled and deadline.due<=now() and not exists(select from public.employee_attendance_daily_summary summary where summary.employee_id=e.id and summary.attendance_date=day.dt)
+ and not exists(select from erp_private.notification_timesheet_deadlines old where old.employee_id=e.id and old.work_date=day.dt
+  and (not old.generated_from_shift or old.due_at is not distinct from deadline.due))
+ order by day.dt,e.id limit 100
  on conflict(employee_id,work_date) do update set due_at=excluded.due_at where notification_timesheet_deadlines.generated_from_shift and notification_timesheet_deadlines.due_at is distinct from excluded.due_at;
  for r in select candidates.* from (select 'leaveStart' k,l.id,l.start_date::text rev,el.user_profile_id p from public.employee_leave_requests l join public.employees e on e.id=l.employee_id
   join public.erp_user_employee_links el on el.employee_id in(e.id,e.reporting_manager_id)
@@ -516,30 +516,15 @@ end $$;
 revoke all on function public.erp_notification_worker(text,jsonb) from public,anon,authenticated,service_role;
 grant execute on function public.erp_notification_worker(text,jsonb) to service_role;
 
--- Installation does not activate scheduling. Explicitly configure the reviewed calendar/dispatch switches once approved.
-create table erp_private.notification_mobile_scheduler(id boolean primary key check(id),calendar_enabled boolean not null default false,push_enabled boolean not null default false,last_request timestamptz);
+-- Nothing registers a pg_cron job, starts a process timer or sends a wake on installation.
+-- A single finite, explicitly funded run may hand off one committed pg_net request at a time.
+create table erp_private.notification_mobile_scheduler(
+ id boolean primary key check(id), run_id uuid, ticket uuid, pool uuid references erp_comm_cost.control_pool(permit_id),
+ phase text not null default 'stopped' check(phase in('queued','running','stopped')),
+ deadline timestamptz, ready_at timestamptz, remaining int not null default 0 check(remaining>=0),
+ calendar_enabled boolean not null default false, push_enabled boolean not null default false
+);
 insert into erp_private.notification_mobile_scheduler(id) values(true);
-create function erp_private.notification_request_worker() returns void language plpgsql security definer set search_path='' as $$
-declare secret text;
-begin
- if not exists(select from erp_private.notification_mobile_scheduler where id and push_enabled) then return;end if;
- if not pg_try_advisory_xact_lock(187710,12) then return;end if;
- update erp_private.notification_mobile_scheduler set last_request=clock_timestamp()
-  where id and push_enabled and (last_request is null or last_request<clock_timestamp()-interval '5 seconds');
- if not found then return;end if;
- select min(decrypted_secret) into secret from vault.decrypted_secrets where name='algt_internal_api_secret' having count(*)=1;
- if length(secret)>=32 then perform net.http_post(url:='https://erp.algt.net/api/internal/process-communication-push',
-   headers:=jsonb_build_object('Authorization','Bearer '||secret,'Content-Type','application/json'),body:='{}',timeout_milliseconds:=45000);end if;
-end $$;
-create function erp_private.notification_wake_worker() returns trigger language plpgsql security definer set search_path='' as $$
-begin
- if exists(select from new_jobs) then perform erp_private.notification_request_worker();end if;
- return null;
-exception when others then
- -- The committed inbox and push job survive scheduler/vault/network outages.
- return null;
-end $$;
-create trigger notification_signal_push after insert on erp_private.notification_push_jobs referencing new table as new_jobs for each statement execute function erp_private.notification_wake_worker();
 create function erp_private.notification_recover() returns void language plpgsql set search_path='' as $$
 declare src record;item record;cut bigint;last_seen bigint;query text;
 begin
@@ -564,16 +549,105 @@ begin
    on conflict(source) do update set last_id=excluded.last_id;
  end loop;
 end $$;
-create function erp_private.notification_mobile_tick() returns void language plpgsql security definer set search_path='' as $$
-declare cfg erp_private.notification_mobile_scheduler;
+create function erp_private.notification_project_devices() returns void language sql set search_path='' as $$
+ insert into erp_private.notification_push_jobs(event,device)
+ select i.id,d.id from erp_private.notification_inbox i join erp_private.notification_devices d on d.profile_id=i.profile_id and d.registered_at<=i.created_at
+ where i.kind in ('chat','erp','intake','timesheet','leaveStart','employeeExpiry','leaveChange','budget')
+ and i.read_at is null and not exists(select from erp_private.notification_push_jobs j where j.event=i.id and j.device=d.id)
+ order by i.n,d.id limit 64 on conflict(event,device) do nothing
+$$;
+create function erp_private.notification_stop_scheduler(p_run uuid) returns boolean language plpgsql security definer set search_path='' as $$
 begin
- if not pg_try_advisory_xact_lock(187710,11) then return;end if;
- select * into cfg from erp_private.notification_mobile_scheduler where id;
- if exists(select from erp_private.notification_capture_gate where enabled or controls) then perform erp_private.notification_recover();end if;
- if cfg.calendar_enabled and exists(select from erp_private.notification_capture_gate where enabled) then perform erp_private.notification_collect_due();end if;
- if not cfg.push_enabled or not exists(select from erp_private.notification_push_jobs where state in('pending','working') and next_try<=now()) then return;end if;
- perform erp_private.notification_request_worker();
+ update erp_private.notification_mobile_scheduler set phase='stopped',ticket=null,remaining=0,calendar_enabled=false,push_enabled=false
+  where id and run_id=p_run;
+ return found;
 end $$;
+
+create function erp_private.notification_queue_tick(p_run uuid) returns boolean language plpgsql security definer set search_path='' as $$
+declare cfg erp_private.notification_mobile_scheduler;cp erp_comm_cost.control_pool; next_ticket uuid:=gen_random_uuid();cutoff timestamptz;
+ ready timestamptz; secret text; request_id bigint; funded_pool uuid;
+begin
+ select * into cfg from erp_private.notification_mobile_scheduler where id and run_id=p_run and phase='running' for update;
+ if not found then return false;end if;
+ select * into cp from erp_comm_cost.control_pool where permit_id=cfg.pool and enabled and kind='notification_tick' and subject='mobile-notifications';
+ if cp.permit_id is null or cp.poll_seconds not between 1 and 20 or cfg.remaining<1
+  or least(cfg.deadline,cp.valid_until)<=clock_timestamp()+make_interval(secs=>cp.poll_seconds+45)
+ then perform erp_private.notification_stop_scheduler(p_run);return false;end if;
+ -- Never roll into another pool/approval after exhausting the exact initial grant.
+ begin
+  cutoff:=erp_comm_cost.debit_control('notification_tick','mobile-notifications',next_ticket);
+  select d.pool into funded_pool from erp_comm_cost.control_debit d where d.command_id=next_ticket;
+  if funded_pool is not null and funded_pool<>cfg.pool then raise sqlstate 'PT409';end if;
+ exception when sqlstate 'PT409' then cutoff:=null; -- Undo a wrong-pool debit atomically.
+ end;
+ if cutoff is null or cutoff<=clock_timestamp() or funded_pool is distinct from cfg.pool then
+  perform erp_private.notification_stop_scheduler(p_run);return false;end if;
+ ready:=clock_timestamp()+make_interval(secs=>cp.poll_seconds);
+ -- The debit covers this one queue submission, idle wait, DB probe, bounded tick work,
+ -- max eight claims and final confirmation. Attempts remain charged on transport/vault failure.
+ begin
+  select min(decrypted_secret) into secret from vault.decrypted_secrets where name='algt_internal_api_secret' having count(*)=1;
+  if secret is not null and length(secret) between 32 and 256 then
+   request_id:=net.http_post(url:='https://erp.algt.net/api/internal/process-communication-push',
+     headers:=jsonb_build_object('Authorization','Bearer '||secret,'Content-Type','application/json'),
+     body:=jsonb_build_object('runId',p_run,'ticket',next_ticket,'readyAtMs',ceil(extract(epoch from ready)*1000)::bigint),
+     timeout_milliseconds:=45000);
+  end if;
+ exception when others then request_id:=null;
+ end;
+ if request_id is null then perform erp_private.notification_stop_scheduler(p_run);return false;end if;
+ update erp_private.notification_mobile_scheduler set phase='queued',ticket=next_ticket,ready_at=ready,remaining=remaining-1 where id;
+ return true;
+end $$;
+
+-- A designated database operator binds a single pre-enrolled A17 pool and an explicit deadline.
+-- A missing/crashed ERP receiver leaves no autonomous repeating job; restarting needs a fresh paid launch.
+create function erp_private.notification_start_scheduler(p_pool uuid,p_until timestamptz,p_ticks int,p_calendar boolean,p_push boolean)
+returns uuid language plpgsql security definer set search_path='' as $$
+declare cfg erp_private.notification_mobile_scheduler;cp erp_comm_cost.control_pool;new_run uuid:=gen_random_uuid();
+begin
+ select * into strict cfg from erp_private.notification_mobile_scheduler where id for update;
+ if cfg.phase<>'stopped' and cfg.deadline>clock_timestamp() then raise sqlstate 'PT409' using message='Existing notification run';end if;
+ if p_until is null or not isfinite(p_until) or p_until<=clock_timestamp() or p_until>clock_timestamp()+interval '24 hours'
+  or p_ticks is null or p_ticks not between 1 and 4096 or p_calendar is null or p_push is null then raise invalid_parameter_value;end if;
+ select * into cp from erp_comm_cost.control_pool where permit_id=p_pool and kind='notification_tick' and subject='mobile-notifications' and enabled;
+ if cp.permit_id is null or p_until>cp.valid_until or p_ticks>cp.max_actions-cp.used-1 then raise sqlstate 'PT503' using message='Finite notification run unavailable';end if;
+ update erp_private.notification_mobile_scheduler set run_id=new_run,pool=p_pool,phase='running',remaining=p_ticks,deadline=p_until,
+  ticket=null,ready_at=null,calendar_enabled=p_calendar,push_enabled=p_push where id;
+ if not erp_private.notification_queue_tick(new_run) then return null;end if;
+ return new_run;
+end $$;
+
+create function public.erp_notification_tick(p_op text,p_run uuid,p_ticket uuid) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare cfg erp_private.notification_mobile_scheduler; cp erp_comm_cost.control_pool;
+begin
+ select * into cfg from erp_private.notification_mobile_scheduler where id and run_id=p_run and ticket=p_ticket for update;
+ if not found then return null;end if;
+ select * into cp from erp_comm_cost.control_pool where permit_id=cfg.pool and enabled;
+ if cp.permit_id is null or least(cfg.deadline,cp.valid_until)<=clock_timestamp() or cfg.ready_at-make_interval(secs=>cp.poll_seconds)+interval '45 seconds'<=clock_timestamp() then
+  perform erp_private.notification_stop_scheduler(p_run);return null;end if;
+ if p_op='admit' then
+  if cfg.phase<>'queued' or clock_timestamp()<cfg.ready_at
+    or not exists(select from erp_comm_cost.control_debit where pool=cfg.pool and command_id=p_ticket)
+   then return null;end if;
+  if least(cfg.deadline,cp.valid_until,cfg.ready_at-make_interval(secs=>cp.poll_seconds)+interval '45 seconds')<=clock_timestamp()+interval '20 seconds' then
+   perform erp_private.notification_stop_scheduler(p_run);return null;end if;
+  update erp_private.notification_mobile_scheduler set phase='running' where id;
+  if exists(select from erp_private.notification_capture_gate where enabled or controls) then perform erp_private.notification_recover();end if;
+  if cfg.calendar_enabled and exists(select from erp_private.notification_capture_gate where enabled) then perform erp_private.notification_collect_due();end if;
+  perform erp_private.notification_project_chat();
+  if cfg.push_enabled then perform erp_private.notification_project_devices();end if;
+  return jsonb_build_object('pushEnabled',cfg.push_enabled,'workUntilMs',floor(extract(epoch from least(cfg.deadline,cp.valid_until,cfg.ready_at-make_interval(secs=>cp.poll_seconds)+interval '45 seconds'))*1000)::bigint);
+ elsif p_op='finish' and cfg.phase='running' then
+  return to_jsonb(erp_private.notification_queue_tick(p_run));
+ elsif p_op='stop' then
+  return to_jsonb(erp_private.notification_stop_scheduler(p_run));
+ end if;
+ return null;
+end $$;
+revoke all on function public.erp_notification_tick(text,uuid,uuid) from public,anon,authenticated,service_role;
+grant execute on function public.erp_notification_tick(text,uuid,uuid) to service_role;
 do $$ declare t text; f regprocedure;
 begin
  foreach t in array array['notification_recovery_cursor','notification_capture_gate','notification_setting_receipts','notification_preview_channels','notification_devices','notification_inbox','notification_push_jobs','notification_sources','notification_preferences','notification_timesheet_deadlines','notification_timesheet_policy','notification_mobile_scheduler'] loop
@@ -581,12 +655,9 @@ begin
   execute format('revoke all on table erp_private.%I from public,anon,authenticated,service_role',t);
  end loop;
  for f in select p.oid::regprocedure from pg_proc p join pg_namespace ns on ns.oid=p.pronamespace where ns.nspname='erp_private'
-  and p.proname=any(array['notification_enqueue','notification_source','notification_capture','notification_target','notification_erp_target','notification_time_target','notification_scheduled_day','notification_employee_target','notification_collect_due','notification_recover','notification_gate_changed','notification_ingest','notification_request_worker','notification_wake_worker','notification_mobile_tick']) loop
+  and p.proname=any(array['notification_enqueue','notification_source','notification_capture','notification_target','notification_erp_target','notification_time_target','notification_scheduled_day','notification_employee_target','notification_collect_due','notification_recover','notification_gate_changed','notification_ingest','notification_project_chat','notification_project_devices','notification_start_scheduler','notification_stop_scheduler','notification_queue_tick']) loop
    execute format('revoke all on function %s from public,anon,authenticated,service_role',f);
  end loop;
- if to_regprocedure('cron.schedule(text,text,text)') is not null then
-  perform cron.schedule('erp-mobile-notifications','* * * * *','select erp_private.notification_mobile_tick()');
- end if;
 end $$;
 notify pgrst,'reload schema';
 commit;

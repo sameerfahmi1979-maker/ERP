@@ -35,7 +35,7 @@ def run():
                 pg("psql","-X","-qAt","-h","127.0.0.1","-p",port,"-U","postgres","-d","postgres","-v","ON_ERROR_STOP=1","-f",source,env={**os.environ,"PGPASSWORD":secret})
             except subprocess.CalledProcessError as error:
                 raise RuntimeError(error.stderr) from None
-        print("Notification migration and synthetic actor, stale source, retry, deduplication, payload, read, reply and grant fixtures passed")
+        print("Notification migration and synthetic actor, stale source, retry, deduplication, payload, read, reply, funded finite ticks, retained ERP writes and scheduler retirement fixtures passed")
     finally:
         if started: pg("pg_ctl","-D",cluster,"-m","fast","-w","stop")
         if scratch.resolve().parent==base.resolve() and scratch.name.startswith("notification-native-"):

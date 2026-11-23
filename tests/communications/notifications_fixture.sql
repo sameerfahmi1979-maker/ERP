@@ -27,3 +27,26 @@ create function erp_private.f07_upload_subject_allowed(bigint) returns boolean l
 create function erp_private.f10_review_notification_target(bigint) returns text language sql stable as $$select '/dms/review-queue?item_id='||id from public.dms_review_queue where id=$1 and assigned_to=public.current_user_profile_id() and deleted_at is null$$;
 create function public.current_user_can_view_employee(bigint) returns boolean language sql stable as $$select public.current_user_profile_id() in(2,3)$$;
 create or replace function erp_private.employee_permission(bigint,text) returns boolean language sql stable as $$select public.current_user_profile_id() in(2,3)$$;
+
+-- Local catalog doubles capture scheduler requests without any network or cron daemon.
+create schema cron;
+create table cron.job(jobid bigint generated always as identity primary key,jobname text unique,schedule text,command text,active boolean default true);
+create table cron.job_run_details(jobid bigint);
+create function cron.schedule(text,text,text) returns bigint language sql as $$
+ insert into cron.job(jobname,schedule,command) values($1,$2,$3) returning jobid
+$$;
+select cron.schedule('existing-erp-fixture','0 0 * * *','select 1');
+create schema vault;
+create table vault.decrypted_secrets(name text,decrypted_secret text);
+insert into vault.decrypted_secrets values('algt_internal_api_secret','synthetic-local-fixture-no-live-credential');
+create schema net;
+create table net.queued(id bigint generated always as identity primary key,body jsonb);
+create function net.http_post(url text,body jsonb,headers jsonb,timeout_milliseconds integer) returns bigint language plpgsql as $$
+declare job bigint;
+begin
+ if current_setting('test.net_fail',true)='yes' then raise exception 'fixture transport unavailable';end if;
+ if url<>'https://erp.algt.net/api/internal/process-communication-push' or timeout_milliseconds<>45000
+   or headers->>'Authorization' is distinct from 'Bearer synthetic-local-fixture-no-live-credential' then raise exception 'fixture transport contract';end if;
+ insert into net.queued(body) values(body) returning id into job;
+ return job;
+end$$;

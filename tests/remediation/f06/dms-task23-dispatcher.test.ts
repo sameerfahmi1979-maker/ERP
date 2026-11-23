@@ -43,12 +43,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-it('reuses one preparation recovery per tick while keeping all three scoped claims', async () => {
+it('reuses one preparation recovery per tick while keeping both scoped local claims', async () => {
   startPreparationDispatcher();
   await vi.advanceTimersByTimeAsync(20_001);
   expect(calls('heartbeat')).toHaveLength(3);
   expect(calls('recover')).toHaveLength(3);
-  expect(calls('claim')).toHaveLength(9);
+  expect(calls('claim')).toHaveLength(6);
   expect(calls('claim').every(([name, request]) =>
     name === 'dms_preparation_dispatch_worker' && request.p_data.runtimeId === 'synthetic-worker' &&
     request.p_data.limit === 1 && request.p_data.preparationVersion === 1,
@@ -72,7 +72,7 @@ it('preserves immediate wake, exclusive claim and refill after verified settleme
   await vi.advanceTimersByTimeAsync(1);
   expect(mocks.handle).toHaveBeenCalledOnce();
   expect(calls('settle')).toHaveLength(1);
-  expect(calls('claim')).toHaveLength(7);
+  expect(calls('claim')).toHaveLength(5);
   expect(calls('recover')).toHaveLength(3);
 });
 
@@ -90,7 +90,7 @@ it.each([null, 'false', 0])('retains the normal claim fence for unrecognized hin
   startPreparationDispatcher();
   await vi.advanceTimersByTimeAsync(1);
   expect(calls('recover')).toHaveLength(1);
-  expect(calls('claim')).toHaveLength(3);
+  expect(calls('claim')).toHaveLength(2);
 });
 
 it('retains a local wake that races an in-flight idle heartbeat', async () => {

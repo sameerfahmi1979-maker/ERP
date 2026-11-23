@@ -2,8 +2,9 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { processNextDmsAiJobs, type PreparationRecoveryPass } from '@/lib/dms/ai-jobs/job-runner';
 import { logger } from '@/lib/logger';
+import { DMS_DOCUMENT_PARSER_CONCURRENCY } from './dms-document-parser';
 
-// One local pump per process; the database enforces three slots across ALL processes.
+// Match the process-local document parser. The database still permits three claims across runtimes.
 const state = globalThis as typeof globalThis & { algtPreparationPump?: { timer: ReturnType<typeof setInterval>; active: number; checking: boolean; wakePending: boolean; runtimeId: string; runtimeSecret: string } };
 
 function startSlot(pump: NonNullable<typeof state.algtPreparationPump>, preparationRecovery?: PreparationRecoveryPass) {
@@ -31,7 +32,7 @@ export async function tickPreparationDispatcher() {
     // One recovery covers this runtime's starting slots for this tick. Claims
     // still run independently and refill after each confirmed settlement.
     const preparationRecovery: PreparationRecoveryPass = { runtimeId };
-    while (pump.active < 3) {
+    while (pump.active < DMS_DOCUMENT_PARSER_CONCURRENCY) {
       startSlot(pump, preparationRecovery);
     }
   } catch { logger.warn('AI preparation service unavailable; saved requests retained'); }
@@ -39,14 +40,14 @@ export async function tickPreparationDispatcher() {
     pump.checking = false;
     if (pump.wakePending) {
       pump.wakePending = false;
-      if (state.algtPreparationPump === pump && pump.active < 3) void tickPreparationDispatcher();
+      if (state.algtPreparationPump === pump && pump.active < DMS_DOCUMENT_PARSER_CONCURRENCY) void tickPreparationDispatcher();
     }
   }
 }
 
 export function wakePreparationDispatcher() {
   const pump = state.algtPreparationPump;
-  if (!pump || pump.active >= 3) return;
+  if (!pump || pump.active >= DMS_DOCUMENT_PARSER_CONCURRENCY) return;
   // A local admission may commit just after an in-flight heartbeat observes no work.
   if (pump.checking) {
     pump.wakePending = true;

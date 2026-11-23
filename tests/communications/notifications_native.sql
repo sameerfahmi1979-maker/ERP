@@ -87,6 +87,47 @@ begin
  if has_function_privilege('authenticated','public.erp_notification_worker(text,jsonb)','execute') or has_function_privilege('authenticated','erp_private.notification_enqueue(text,uuid,bigint)','execute') or has_table_privilege('authenticated','erp_private.notification_devices','select') then raise exception 'raw access';end if;
 end $$;
 
+-- Historical group membership can remain open in the base table after an ERP
+-- deactivation. Cached notices, fresh projection and queued device work must all
+-- use the active generation. A new episode begins at its own join timestamp.
+begin;
+do $$declare c uuid:=gen_random_uuid();old_message uuid:=gen_random_uuid();gap_message uuid:=gen_random_uuid();new_message uuid:=gen_random_uuid();notice uuid; job jsonb;req jsonb;permit uuid;reply jsonb;
+begin
+ insert into erp_private.chat_conversations(id,kind,name,creator,owner_id,latest_seq) values(c,'group','Episode fixture',3,3,3);
+ insert into erp_private.chat_memberships(conversation,profile_id) values(c,3),(c,2);
+ insert into erp_private.chat_messages(id,conversation,seq,sender,body) values(old_message,c,1,3,'before');
+ perform erp_private.notification_project_chat();perform erp_private.notification_project_devices();
+ select id into strict notice from erp_private.notification_inbox where source=old_message and profile_id=2;
+ update erp_private.notification_push_jobs set next_try=now()+interval '1 hour' where event<>notice;
+ job:=public.erp_notification_worker('claim','{"ordinary":true}');
+ if (select event from erp_private.notification_push_jobs where id=(job->>'jobId')::uuid) is distinct from notice then raise exception 'missing original device job';end if;
+ req:=jsonb_build_object('jobId',job->'jobId','lease',job->'lease');
+ permit:=public.fixture_chat_permit(2,'push',jsonb_build_object('op','notifications.deliver','args',req));
+ if public.erp_notification_worker('prepare',req||jsonb_build_object('permitId',permit)) is null then raise exception 'active member cannot prepare push';end if;
+ update public.user_profiles set status='inactive' where id=2;
+ update public.user_profiles set status='active' where id=2;
+ if not exists(select from erp_private.chat_memberships where conversation=c and profile_id=2 and left_at is null)
+  or exists(select from erp_private.chat_current_memberships where conversation=c and profile_id=2) then raise exception 'fixture membership generation did not change';end if;
+ if public.erp_notification_worker('confirm',req||jsonb_build_object('permitId',permit)) is not null then raise exception 'stale registered device confirmed push';end if;
+ begin perform pg_temp.call_ntf(2,'resolve',jsonb_build_object('eventId',notice));raise exception 'closed episode resolved';exception when no_data_found then null;end;
+ reply:=pg_temp.call_ntf(2,'webList','{"filter":"messages"}');
+ if (reply->'items') @> jsonb_build_array(jsonb_build_object('eventId',notice)) then raise exception 'closed episode in web inbox';end if;
+ insert into erp_private.chat_messages(id,conversation,seq,sender,body) values(gap_message,c,2,3,'while absent');
+ perform erp_private.notification_project_chat();
+ if exists(select from erp_private.notification_inbox where source=gap_message and profile_id=2) then raise exception 'left group projected after reactivation';end if;
+ perform set_config('test.actor','3',true);
+ req:=jsonb_build_object('op','chat.groupChange','args',jsonb_build_object('clientMutationId',gen_random_uuid(),'conversationId',c,'expectedRevision',(select revision::text from erp_private.chat_conversations where id=c),'action','add','targetProfileId','2'));
+ permit:=public.fixture_chat_permit(3,'chat',req);
+ perform public.erp_chat_v1(req||jsonb_build_object('_budgetPermitId',permit));
+ if not exists(select from erp_private.chat_current_memberships where conversation=c and profile_id=2) then raise exception 'funded owner re-add did not establish new episode';end if;
+ insert into erp_private.chat_messages(id,conversation,seq,sender,body) values(new_message,c,3,3,'after rejoin');
+ perform erp_private.notification_project_chat();
+ if exists(select from erp_private.notification_inbox where source=gap_message and profile_id=2) then raise exception 'join backfilled group absence';end if;
+ begin perform pg_temp.call_ntf(2,'resolve',jsonb_build_object('eventId',notice));raise exception 'new episode resolved prior notice';exception when no_data_found then null;end;
+ select id into strict notice from erp_private.notification_inbox where source=new_message and profile_id=2;
+ if pg_temp.call_ntf(2,'resolve',jsonb_build_object('eventId',notice))->>'id' is distinct from new_message::text then raise exception 'authorized new episode notice missing';end if;
+end $$;
+rollback;
 do $$declare c uuid:=gen_random_uuid();m uuid:=gen_random_uuid(); r uuid; t jsonb;
 begin
  insert into erp_private.chat_conversations(id,kind,name,creator,owner_id,latest_seq) values(c,'group','Group',3,3,1);

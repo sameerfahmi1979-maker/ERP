@@ -139,7 +139,7 @@ end $$;
 -- A funded projection recovers from committed rows, including messages during a held interval.
 create function erp_private.notification_project_chat() returns void language sql set search_path='' as $$
  insert into erp_private.notification_inbox(kind,source,profile_id)
- select 'chat',m.id,member.profile_id from erp_private.chat_messages m join erp_private.chat_memberships member
+ select 'chat',m.id,member.profile_id from erp_private.chat_messages m join erp_private.chat_current_memberships member
   on member.conversation=m.conversation and member.left_at is null and member.joined_at<=m.sent_at and member.profile_id<>m.sender
  join erp_private.chat_conversations c on c.id=m.conversation
  where m.deleted_at is null and erp_private.chat_active(member.profile_id)
@@ -202,7 +202,7 @@ begin
     'pushEligible',not coalesce(pref.muted,false) or mention.profile_id is not null,'read',erp_private.chat_read_at(m.conversation,m.seq,i.profile_id) is not null)
   into t from erp_private.chat_messages m join erp_private.chat_conversations c on c.id=m.conversation
    join public.user_profiles u on u.id=m.sender
-   join erp_private.chat_memberships member on member.conversation=c.id and member.profile_id=i.profile_id and member.left_at is null and member.joined_at<=m.sent_at
+   join erp_private.chat_current_memberships member on member.conversation=c.id and member.profile_id=i.profile_id and member.left_at is null and member.joined_at<=m.sent_at
    left join erp_private.chat_mentions mention on mention.message=m.id and mention.profile_id=i.profile_id and not erp_private.comms_pair_blocked(m.sender,i.profile_id)
    left join erp_private.chat_personal pref on pref.conversation=c.id and pref.profile_id=i.profile_id
    where m.id=i.source and m.deleted_at is null and m.sender<>i.profile_id and (c.kind='group' or not erp_private.comms_pair_blocked(c.direct_low,c.direct_high));

@@ -35,7 +35,7 @@ def main():
     def sql(query, check=True):
         client = getattr(local, "client", None)
         if client is None or client.poll() is not None:
-            client = subprocess.Popen(["docker","exec","-i",name,"sh","-c","exec stdbuf -oL -eL psql -U postgres -XqAt -v ON_ERROR_STOP=0 2>&1"],
+            client = subprocess.Popen(["docker","exec","-i",name,"sh","-c","exec stdbuf -oL -eL psql -h 127.0.0.1 -U postgres -XqAt -v ON_ERROR_STOP=0 2>&1"],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
             local.client = client
             clients.append(client)
@@ -132,6 +132,11 @@ def main():
           now()+interval '10 minutes',now()+interval '30 minutes',0,id,{limit} from erp_comm_cost.capacity where unit='{unit}';
           update erp_comm_cost.meter set upper_units=greatest(upper_units,{65536+limit*32768}) where operation_id='{label}' and
             capacity_id in(select id from erp_comm_cost.capacity where unit='permanent_ledger_bytes');""")
+        if kind in ('chat_stage_poll','ptt_worker_poll'):
+            sql(f"""insert into erp_comm_cost.capacity(billing_account,dimension,unit,valid_from,valid_until,available_units,enabled)
+              select 'test',dim,'funded_worker_registration_probes',now()-interval '1 day',now()+interval '3 days',100,true from unnest(array['railway','database']) dim on conflict do nothing;
+              insert into erp_comm_cost.meter select '{label}',dimension,'all fixed host process starts',true,now(),now()+interval '10 minutes',now()+interval '30 minutes',0,id,22
+                from erp_comm_cost.capacity where unit='funded_worker_registration_probes';""")
         epoch = int(sql(f"select extract(epoch from now()+interval '{horizon_hours} hours')::bigint;").stdout.strip())
         seal = {"op":"budget.fundControl","kind":kind,"subject":subject,"maxActions":limit,"endEpoch":epoch}
         issued = command("reserve",{"feature":feature,"scope":"communications","operationId":label,"actorId":ADMIN,"upperBoundMicros":"0",
@@ -140,6 +145,13 @@ def main():
         sql(f"""insert into erp_comm_cost.control_pool(permit_id,kind,subject,max_actions,valid_until,continuing_zero_evidence,enabled)
             values('{issued["permitId"]}','{kind}','{subject}',{limit},to_timestamp({epoch}),'bounded post-expiry controls',true);""")
         return issued["permitId"]
+    deployment=str(uuid.uuid4())
+    def launch_plan(pool,label):
+        sql(f"insert into erp_comm_cost.worker_probe_plan values('{pool}',1,10,2,now()+interval '28 hours','{label}','fixed rolling deployment and restart bounds',10,'funded standby receipt delivery within 10 seconds');")
+    def launch_ticket(pool,token,until,polls):
+        return f"insert into erp_comm_cost.worker_launch_ticket(boot,pool,deployment_id,not_before,register_by,until_at,poll_limit) values('{token}','{pool}','{deployment}',date_trunc('second',now()-interval '1 hour'),'{until}','{until}',{polls});"
+    def take_delivery(token):
+        return sql(f"select erp_comm_cost.take_worker_delivery('{token}',gen_random_uuid());").stdout.strip()
     try:
         for _ in range(60):
             status = sql("select current_setting('server_version_num');", check=False)
@@ -200,6 +212,45 @@ def main():
         reason(reserve("unfunded-alerts"),"owner_alert_capacity_unavailable")
         fund_pool("owner-baseline","budget_alert","1",500,"push",72)
         fund_pool("admin-baseline","budget_alert","2",500,"push",72)
+        # Price the entire frozen recording audience even when more than 100 episodes are offline.
+        press={"op":"ptt.press","args":{k:str(uuid.uuid4()) for k in ("channelId","epoch","pressId")}}
+        request={"feature":"ptt_live","scope":"communications","actorId":"2","upperBoundMicros":"0",
+                 "liabilityEndsAt":None,"binding":{"actorSessionId":session,"command":press}}
+        proof("floor-template")
+        sql("""update erp_comm_cost.proof set actor_id='2' where operation_id='floor-template';
+            insert into erp_comm_cost.standing_envelope values('communications','ptt_live','floor-template',true);""")
+        reason(command('reserve',{**request,'operationId':'floor-without-funding'}),'ptt_receipt_capacity_unavailable')
+        sql("""insert into erp_comm_cost.ptt_receipt_limit values('floor-template',65536,65536,'indexed receipt, inbox, active phone job and delayed retention');
+            insert into erp_comm_cost.effect_limit values('floor-template','ptt.press','fixture_rows',1,65536,1024,'bounded rows, receipt and indexed byte exposure');
+            insert into erp_comm_cost.capacity(billing_account,dimension,unit,valid_from,valid_until,available_units,enabled)
+             select 'test','database',unit,now()-interval '1 hour',now()+interval '1 day',quantity,true
+             from(values('funded_ptt_receipt_episodes',125),('funded_ptt_busy_inboxes',126),('funded_ptt_busy_device_jobs',127),
+                  ('ptt_floor_retained_bytes',65536*126),('effect_fixture_rows_items',150),('effect_fixture_rows_bytes',65536+1024*120+1023)) f(unit,quantity);
+            insert into erp_comm_cost.meter select 'floor-template','database','per-press upper bound',true,now(),now()+interval '10 minutes',
+             now()+interval '30 minutes',0,id,available_units from erp_comm_cost.capacity where unit like 'funded_ptt_%' or unit='ptt_floor_retained_bytes' or unit like 'effect_fixture_rows_%';""")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            candidates=list(pool.map(lambda op:command('reserve',{**request,'operationId':op}),('floor-one','floor-two')))
+        issued=next(x for x in candidates if x['ok'])
+        assert sum(x['ok'] for x in candidates)==1 and any(x.get('reason')=='provider_capacity_exhausted' for x in candidates),candidates
+        perm=issued['permitId']; lease=str(uuid.uuid4()); cmd=json.dumps(press)
+        actor_context=f"set test.actor='{ADMIN}';set test.age='0';"
+        consumed=f"{actor_context} select erp_comm_cost.take_permit('{perm}','ptt_live','communications','2','{cmd}');"
+        claim=f"select erp_comm_cost.require_ptt_receipt_capacity('{perm}','{lease}',125,'{cmd}');"
+        assert sql(actor_context+claim,check=False).returncode!=0
+        assert sql(consumed+claim.replace(',125,',',126,'),check=False).returncode!=0
+        assert sql(consumed+claim.replace('ptt.press','ptt.status'),check=False).returncode!=0
+        assert sql(consumed+f"set test.actor='{OWNER}';"+claim,check=False).returncode!=0
+        assert sql(consumed+claim+claim,check=False).returncode!=0
+        effect=f"select erp_comm_cost.claim_effect('{perm}','{cmd}','fixture_rows',120);"
+        assert sql(consumed+effect.replace(',120)',',121)'),check=False).returncode!=0
+        assert sql(consumed+effect.replace('fixture_rows','other_rows'),check=False).returncode!=0
+        assert sql(consumed+effect.replace('ptt.press','ptt.status'),check=False).returncode!=0
+        assert sql(consumed+effect+effect,check=False).returncode!=0
+        assert sql(consumed+f"set role authenticated;"+effect,check=False).returncode!=0
+        assert sql(f"select count(*) from erp_comm_cost.ptt_receipt_claim where lease_id='{lease}';").stdout.strip()=='0'
+        assert sql(consumed+f"select erp_comm_cost.ptt_receipt_scan_limit('{perm}','{cmd}');"+claim+effect).stdout.strip()=='125'
+        assert sql(f"select episodes from erp_comm_cost.ptt_receipt_claim where permit_id='{perm}' and lease_id='{lease}';").stdout.strip()=='125'
+        sql("delete from erp_comm_cost.standing_envelope where template_id='floor-template';")
         proof("unfunded", 1)
         reason(reserve("unfunded"), "owner_approval_required")
         proof("hold", retention=False, feature="chat")
@@ -364,10 +415,42 @@ def main():
         assert sql("select erp_comm_cost.take_policy_control(2,'report');",False).returncode!=0
 
         worker=str(uuid.uuid4())
-        fund_pool("worker-plan","chat_stage_poll",worker,10000,"media_upload",28)
+        worker_pool=fund_pool("worker-plan","chat_stage_poll",worker,10000,"media_upload",28)
+        tokens=[str(uuid.uuid4()) for _ in range(4)]
+        worker_until=sql("select date_trunc('second',now()+interval '27 hours');").stdout.strip()
+        launch_plan(worker_pool,'chat-launch')
+        def provision(token):
+            return sql(launch_ticket(worker_pool,token,worker_until,5000)+f"insert into erp_comm_cost.chat_stage_boot(boot,worker,pool,until_at,poll_limit) values('{token}','{worker}','{worker_pool}','{worker_until}',5000);",False)
+        def start_token(token,role='service_role'):
+            return sql(f"set role {role}; select public.erp_chat_stage_boot('{worker}','{token}','{worker_until}',5000) is not null;",False)
+        assert start_token(str(uuid.uuid4())).stdout.strip()=='f'
+        assert provision(tokens[0]).returncode!=0
+        sql("insert into erp_comm_cost.chat_stage_fleet values(true,1,4,70,180,5,20,now()+interval '2 days',true,'bounded external boots and real service time');")
+        sql(f"update erp_comm_cost.worker_probe_plan set max_deployments=3 where pool='{worker_pool}';")
+        assert provision(tokens[0]).returncode!=0
+        sql(f"update erp_comm_cost.worker_probe_plan set max_deployments=2 where pool='{worker_pool}';")
+        for token in tokens[:3]: assert provision(token).returncode==0
+        assert start_token(tokens[0],'authenticated').returncode!=0
+        envelope=json.loads(take_delivery(tokens[0]))
+        assert envelope['v']==1 and envelope['kind']=='chat_stage' and envelope['prepaidProbes']==22 and envelope['deploymentId']==deployment
+        assert not take_delivery(tokens[0]); assert envelope['boot']==tokens[0] and envelope['worker']==worker
+        assert sql(f"update erp_comm_cost.worker_launch_ticket set deployment_id=gen_random_uuid() where boot='{tokens[0]}';",False).returncode!=0
+        assert sql(f"set role service_role; select erp_comm_cost.take_worker_delivery('{tokens[1]}',gen_random_uuid());",False).returncode!=0
+        assert start_token(tokens[0]).stdout.strip()=='t'
+        assert start_token(tokens[0]).stdout.strip()=='f'
         poll=str(uuid.uuid4())
-        assert sql(f"select erp_comm_cost.take_chat_stage_poll('{worker}','{poll}') is not null;").stdout.strip()=="t"
-        assert sql(f"select erp_comm_cost.take_chat_stage_poll('{worker}','{poll}') is not null;").stdout.strip()=="f"
+        assert sql(f"select erp_comm_cost.take_chat_stage_poll('{worker}','{tokens[1]}','{poll}') is not null;").stdout.strip()=="f"
+        assert sql(f"select erp_comm_cost.take_chat_stage_poll('{worker}','{tokens[0]}','{poll}') is not null;").stdout.strip()=="t"
+        assert sql(f"select erp_comm_cost.take_chat_stage_poll('{worker}','{tokens[0]}','{poll}') is not null;").stdout.strip()=="f"
+        assert sql(f"select erp_comm_cost.chat_stage_worker_covers('{worker}',now()+interval '25 hours');").stdout.strip()=="f"
+        assert provision(tokens[3]).returncode==0
+        assert provision(str(uuid.uuid4())).returncode!=0
+        sql(f"update erp_comm_cost.worker_probe_plan set recovery_seconds=null,recovery_evidence=null where pool='{worker_pool}';")
+        assert sql(f"select erp_comm_cost.chat_stage_worker_covers('{worker}',now()+interval '25 hours');").stdout.strip()=="f"
+        sql(f"update erp_comm_cost.worker_probe_plan set recovery_seconds=10,recovery_evidence='funded standby delivery' where pool='{worker_pool}';")
+        sql("update erp_comm_cost.chat_stage_fleet set busy_seconds=1000;")
+        assert sql(f"select erp_comm_cost.chat_stage_worker_covers('{worker}',now()+interval '25 hours');").stdout.strip()=="f"
+        sql("update erp_comm_cost.chat_stage_fleet set busy_seconds=70;")
         assert sql(f"select erp_comm_cost.chat_stage_worker_covers('{worker}',now()+interval '25 hours');").stdout.strip()=="t"
         proof("chat-object",feature="media_upload")
         sql("""update erp_comm_cost.capacity set valid_until=now()+interval '3 days';
@@ -385,6 +468,7 @@ def main():
            select erp_comm_cost.bind_chat_stage('{stage_permit}','{upload}',now()+interval '25 hours');
            select erp_comm_cost.claim_chat_stage_window('{worker}','{stage_permit}',now()+interval '25 hours'); commit;"""
         sql(stage_origin)
+        assert sql(f"select erp_comm_cost.chat_stage_worker_covers('{worker}',now()+interval '25 hours');").stdout.strip()=="f"
         sql(f"select erp_comm_cost.release_attached_chat_stage('{stage_permit}','{upload}');")
         attempt={"permitId":stage_permit,"endpoint":"discard_partial_upload","resourceId":"erp-chat-media/"+upload,"attemptId":"late-delete"}
         reason(command("authorize_cleanup",attempt),"retained_object_protected")
@@ -400,8 +484,13 @@ def main():
         # Model one registered replica, one boot and finite poll cadence/byte and monetary holds.
         ptt_worker, boot, pulse=[str(uuid.uuid4()) for _ in range(3)]
         sql("delete from erp_comm_cost.pause where feature='ptt_live'; insert into erp_comm_cost.ptt_worker_fleet values(true,1,2,45,30,now()+interval '2 days',true,'bounded local boot budget');")
-        fund_pool("ptt-worker","ptt_worker_poll",ptt_worker,10000,"ptt_live",27)
-        start=f"select erp_comm_cost.start_ptt_worker('{ptt_worker}','{boot}',now()+interval '3 hours',1000) is not null;"
+        ptt_pool=fund_pool("ptt-worker","ptt_worker_poll",ptt_worker,10000,"ptt_live",27)
+        launch_plan(ptt_pool,'ptt-launch')
+        ptt_until=sql("select date_trunc('second',now()+interval '3 hours');").stdout.strip()
+        start=f"select erp_comm_cost.start_ptt_worker('{ptt_worker}','{boot}','{ptt_until}',1000) is not null;"
+        assert sql(start).stdout.strip()=='f'
+        sql(launch_ticket(ptt_pool,boot,ptt_until,1000)+launch_ticket(ptt_pool,str(uuid.uuid4()),ptt_until,1000))
+        assert json.loads(take_delivery(boot))['kind']=='ptt'
         assert sql(start).stdout.strip()=="t"
         assert sql(start).stdout.strip()=="f"
         assert sql(f"select erp_comm_cost.take_ptt_worker_poll('{ptt_worker}','{boot}','{pulse}') is not null;").stdout.strip()=="t"
@@ -432,9 +521,32 @@ def main():
         sql(f"update erp_comm_cost.proof set approval_id='{later_approval}' where operation_id='expired';")
         assert reserve("expired",feature="chat")["ok"]
         early=sql("set role service_role; select reason from public.erp_comm_budget_monitor_events(0,100);").stdout
-        assert "budget_early_warning" in early and "approval_ending_soon" in early
+        assert "budget_early_warning" in early and "approval_ending_soon" not in early
+        sql("update erp_comm_cost.control_pool set enabled=false where kind='notification_tick';")
+        projection_pool=fund_pool('budget-clock','notification_tick','mobile-notifications',8,'push')
+        def clock_ticket():
+            nonce=str(uuid.uuid4())
+            sql("update erp_comm_cost.control_pool set last_poll=now()-interval '1 hour' where kind='notification_tick';")
+            assert sql(f"select erp_comm_cost.debit_control('notification_tick','mobile-notifications','{nonce}')>clock_timestamp();").stdout.strip()=='t'
+            return nonce
+        def project(nonce):
+            return sql(f"select erp_comm_cost.project_due_alerts('{projection_pool}','{nonce}',1);").stdout.strip()
+        assert project(str(uuid.uuid4()))=='0'
+        ticket=clock_ticket()
+        assert project(ticket)=='1' and project(ticket)=='0'
+        assert sql(f"select recipient_auth_id from erp_comm_cost.alert where event_key='{later_approval}/expiring';").stdout.strip()==OWNER
+        sql(f"delete from erp_comm_cost.alert_recipient where auth_id='{ADMIN}';")
+        assert project(clock_ticket())=='0'
         sql(f"update erp_comm_cost.approval set approved_at=now()-interval '2 days', ends_at=now()-interval '1 day' where id='{later_approval}';")
         reason(reserve("expired",feature="chat"),"owner_approval_invalid")
+        sql(f"""insert into erp_comm_cost.approval(id,owner_auth_id,scope,features,currency,max_micros,approved_at,step_up_at,ends_at)
+         select gen_random_uuid(),'{OWNER}','communications',array['chat']::erp_comm_cost.feature[],'USD',1,now()-interval '3 days',now()-interval '3 days',now()-interval '12 hours'
+         from generate_series(1,250);""")
+        assert 'approval_expired' not in sql("set role service_role; select reason from public.erp_comm_budget_monitor_events(0,100);").stdout
+        ticket=clock_ticket()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            assert sorted(pool.map(project,[ticket,ticket]))==['0','1']
+        assert sql("select count(*) from erp_comm_cost.alert where reason='approval_expired';").stdout.strip()=='1'
         expired_events=sql("set role service_role; select reason from public.erp_comm_budget_monitor_events(0,100);").stdout
         assert "approval_expired" in expired_events
         print("PostgreSQL 17 budget migration, owner checks, evidence gates, atomic cap race, idempotency, scoped pause, reconciliation and alerts passed.")

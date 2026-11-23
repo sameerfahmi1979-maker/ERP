@@ -28,8 +28,11 @@ create table erp_comm_cost.approval (
   step_up_at timestamptz not null,
   ends_at timestamptz not null,
   revoked_at timestamptz,
+  soon_step integer not null default 0,soon_after uuid,expired_step integer not null default 0,expired_after uuid,
   check(isfinite(ends_at) and approved_at < ends_at)
 );
+create index approval_expiry_pending on erp_comm_cost.approval(ends_at,id) where revoked_at is null and expired_step>=0;
+create index approval_warning_pending on erp_comm_cost.approval(ends_at,id) where revoked_at is null and soon_step>=0;
 create table erp_comm_cost.pause (
   scope text not null references erp_comm_cost.scope(name), feature erp_comm_cost.feature not null, reason text not null,
   paused_at timestamptz not null default clock_timestamp(), primary key(scope,feature)
@@ -103,6 +106,7 @@ create table erp_comm_cost.alert (
   created_at timestamptz not null default clock_timestamp(),
   unique(event_key,recipient_auth_id)
 );
+create index alert_recipient_event on erp_comm_cost.alert(recipient_auth_id,event_id);
 -- Dispatch and open-time eligibility for the shared notification pipeline.
 create function erp_private.notification_budget_target(source uuid,recipient bigint) returns jsonb
 language sql stable security definer set search_path='' as $$
@@ -199,6 +203,83 @@ create table erp_comm_cost.sos_limit (
 create table erp_comm_cost.sos_claim (
   permit_id uuid primary key references erp_comm_cost.reservation(permit_id),recipients integer not null, devices integer not null
 );
+-- The live-seat maximum does not bound retained membership episodes for a recording.
+-- Each issued floor must also cover the eventual Busy inbox and one active-phone job per episode.
+create table erp_comm_cost.ptt_receipt_limit (
+  operation_id text primary key references erp_comm_cost.proof(operation_id),
+  base_bytes bigint not null check(base_bytes>=65536),bytes_per_episode bigint not null check(bytes_per_episode>=65536),
+  retention_and_fanout_evidence text not null check(length(trim(retention_and_fanout_evidence)) between 1 and 2048)
+);
+create table erp_comm_cost.ptt_receipt_claim (
+  permit_id uuid primary key references erp_comm_cost.reservation(permit_id),lease_id uuid not null unique,
+  episodes bigint not null check(episodes>=0)
+);
+create function erp_comm_cost.ptt_receipt_scan_limit(p_permit uuid,p_command jsonb)
+returns bigint language plpgsql security invoker set search_path='' as $$
+declare ceiling numeric;
+begin
+  select least(9223372036854775806::numeric,min(case c.unit when 'ptt_floor_retained_bytes'
+    then case when h.units<l.base_bytes then -1 else div(h.units-l.base_bytes,l.bytes_per_episode) end else h.units end)) into ceiling
+  from erp_comm_cost.reservation r join erp_comm_cost.ptt_receipt_limit l using(operation_id)
+    join erp_comm_cost.proof p using(operation_id) join erp_comm_cost.unit_hold h on h.permit_id=r.permit_id
+    join erp_comm_cost.capacity c on c.id=h.capacity_id join public.user_profiles u on u.auth_user_id=auth.uid() and u.id::text=r.actor_id
+  where r.permit_id=p_permit and r.feature='ptt_live' and r.scope='communications' and r.consumed_xid=pg_current_xact_id()
+    and r.settled_at is null and r.liability_ends_at is null and r.actor_session=(auth.jwt()->>'session_id')::uuid
+    and r.command_hash=sha256(convert_to(p_command::text,'UTF8')) and p_command->>'op'='ptt.press'
+    and length(trim(p.retained_at_zero_cost_evidence))>0 and c.dimension='database'
+    and c.unit in ('funded_ptt_receipt_episodes','funded_ptt_busy_inboxes','funded_ptt_busy_device_jobs','ptt_floor_retained_bytes')
+  having count(distinct c.unit)=4 and bool_and(c.enabled and c.valid_from<=clock_timestamp() and c.valid_until>clock_timestamp());
+  if ceiling is null or ceiling<0 then raise sqlstate 'PT503' using message='ptt_receipt_capacity_unavailable'; end if;
+  return ceiling::bigint;
+end $$;
+-- Protected operator evidence defines independently payable row classes for exact commands.
+-- The base prices the rejection probe and immutable receipt. Each item prices the whole child effect.
+create table erp_comm_cost.effect_limit (
+  operation_id text not null references erp_comm_cost.proof(operation_id),command_op text not null check(length(command_op) between 1 and 128),
+  effect text not null check(effect ~ '^[a-z][a-z0-9_]{0,47}$'),slot smallint not null check(slot between 1 and 16),
+  base_bytes bigint not null check(base_bytes>=65536),bytes_per_item bigint not null check(bytes_per_item>0),
+  work_evidence text not null check(length(trim(work_evidence)) between 1 and 2048),
+  primary key(operation_id,command_op,effect),unique(operation_id,command_op,slot)
+);
+create table erp_comm_cost.effect_claim (
+  permit_id uuid not null references erp_comm_cost.reservation(permit_id),effect text not null,items bigint not null check(items>=0),
+  primary key(permit_id,effect)
+);
+create function erp_comm_cost.effect_scan_limit(p_permit uuid,p_command jsonb,p_effect text)
+returns bigint language plpgsql security invoker set search_path='' as $$
+declare ceiling numeric;
+begin
+  select least(9223372036854775806::numeric,min(case when c.unit='effect_'||p_effect||'_bytes'
+    then case when h.units<l.base_bytes then -1 else div(h.units-l.base_bytes,l.bytes_per_item) end else h.units end)) into ceiling
+  from erp_comm_cost.reservation r join erp_comm_cost.effect_limit l using(operation_id)
+    join erp_comm_cost.proof p using(operation_id) join erp_comm_cost.unit_hold h on h.permit_id=r.permit_id
+    join erp_comm_cost.capacity c on c.id=h.capacity_id join public.user_profiles u on u.auth_user_id=auth.uid() and u.id::text=r.actor_id
+  where r.permit_id=p_permit and r.scope='communications' and r.feature=p.feature and r.consumed_xid=pg_current_xact_id()
+    and r.settled_at is null and r.actor_session=(auth.jwt()->>'session_id')::uuid and r.command_hash=sha256(convert_to(p_command::text,'UTF8'))
+    and l.command_op=p_command->>'op' and l.effect=p_effect and length(trim(p.retained_at_zero_cost_evidence))>0 and c.dimension='database'
+    and c.unit in ('effect_'||p_effect||'_bytes','effect_'||p_effect||'_items')
+  having count(distinct c.unit)=2 and bool_and(c.enabled and c.valid_from<=clock_timestamp() and c.valid_until>clock_timestamp());
+  if ceiling is null or ceiling<0 then raise sqlstate 'PT503' using message='effect_capacity_unavailable'; end if;
+  return ceiling::bigint;
+end $$;
+create function erp_comm_cost.claim_effect(p_permit uuid,p_command jsonb,p_effect text,p_items bigint)
+returns void language plpgsql security invoker set search_path='' as $$
+begin
+  if p_items is null or p_items<0 or p_items>erp_comm_cost.effect_scan_limit(p_permit,p_command,p_effect) then
+    raise sqlstate 'PT503' using message='effect_capacity_unavailable';
+  end if;
+  insert into erp_comm_cost.effect_claim values(p_permit,p_effect,p_items) on conflict do nothing;
+  if not found then raise sqlstate 'PT503' using message='effect_claim_already_used'; end if;
+end $$;
+create function erp_comm_cost.require_ptt_receipt_capacity(p_permit uuid,p_lease uuid,p_episodes bigint,p_command jsonb)
+returns void language plpgsql security invoker set search_path='' as $$
+begin
+  if p_lease is null or p_episodes is null or p_episodes<0 or p_episodes>erp_comm_cost.ptt_receipt_scan_limit(p_permit,p_command) then
+    raise sqlstate 'PT503' using message='ptt_receipt_capacity_unavailable';
+  end if;
+  insert into erp_comm_cost.ptt_receipt_claim values(p_permit,p_lease,p_episodes) on conflict do nothing;
+  if not found then raise sqlstate 'PT503' using message='ptt_receipt_claim_already_used'; end if;
+end $$;
 create function erp_comm_cost.require_sos_envelope(p_permit uuid,recipient_count integer,device_count integer)
 returns void language plpgsql security invoker set search_path='' as $$
 declare l erp_comm_cost.sos_limit%rowtype;
@@ -344,7 +425,8 @@ end $$;
 create trigger control_pool_enrollment before insert or update on erp_comm_cost.control_pool
 for each row execute function erp_comm_cost.enroll_pool();
 create table erp_comm_cost.control_debit (
-  pool uuid not null references erp_comm_cost.control_pool(permit_id), command_id uuid not null, lane text, primary key(pool,command_id)
+  pool uuid not null references erp_comm_cost.control_pool(permit_id),command_id uuid not null,lane text,
+  notification_projection_until timestamptz,notification_projection_used boolean not null default false,primary key(pool,command_id)
 );
 create function erp_comm_cost.debit_control(k text,s text,nonce uuid,p_lane text default null)
 returns timestamptz language plpgsql set search_path='' as $$
@@ -369,39 +451,192 @@ begin
   if k='budget_alert' and (p_lane is null or p_lane not in ('read','push') or
     (select count(*) from erp_comm_cost.control_debit x where x.pool=p.permit_id and x.lane=p_lane)>=
       (case p_lane when 'push' then p.max_actions/2 else p.max_actions-p.max_actions/2 end)) then return null; end if;
-  insert into erp_comm_cost.control_debit values(p.permit_id,nonce,p_lane);
+  insert into erp_comm_cost.control_debit(pool,command_id,lane,notification_projection_until)
+    values(p.permit_id,nonce,p_lane,case when k='notification_tick' and p.used+1<p.max_actions then least(p.valid_until,n+interval '45 seconds') end);
   update erp_comm_cost.control_pool set used=used+1,last_poll=case when k in ('chat_stage_poll','ptt_worker_poll','notification_tick') and p_lane is distinct from 'boot' then n else last_poll end where permit_id=p.permit_id;
   if k in ('chat_stage_poll','ptt_worker_poll','notification_tick') and p_lane is distinct from 'boot' then return least(p.valid_until,n+make_interval(secs=>p.poll_seconds::double precision*(p.max_actions-p.used-1))); end if;
   return p.valid_until;
 end $$;
-create function erp_comm_cost.take_chat_stage_poll(p_worker uuid,p_poll uuid)
-returns timestamptz language sql set search_path='' as $$
-  select erp_comm_cost.debit_control('chat_stage_poll',p_worker::text,p_poll)
-$$;
 create unique index on erp_comm_cost.control_pool(kind,subject) where enabled;
+-- Before signing a runtime launch envelope, reserve even the first rejected/lost RPC of each possible host process.
+create table erp_comm_cost.worker_probe_plan (
+  pool uuid primary key references erp_comm_cost.control_pool(permit_id),max_replicas integer not null check(max_replicas>0),
+  max_restarts_per_deployment integer not null check(max_restarts_per_deployment>=0),max_deployments integer not null check(max_deployments>0),
+  valid_until timestamptz not null check(isfinite(valid_until)),evidence_id text not null unique check(length(trim(evidence_id)) between 1 and 256),
+  frozen_host_evidence text not null check(length(trim(frozen_host_evidence))>0),
+  recovery_seconds integer check(recovery_seconds>0),recovery_evidence text check(length(trim(recovery_evidence))>0),
+  check((recovery_seconds is null)=(recovery_evidence is null)),
+  check(max_replicas::numeric*(1+max_restarts_per_deployment::numeric)*max_deployments<=9007199254740991)
+);
+create table erp_comm_cost.worker_launch_ticket (
+  boot uuid primary key,pool uuid not null references erp_comm_cost.worker_probe_plan(pool),deployment_id uuid not null,
+  not_before timestamptz not null,register_by timestamptz not null,until_at timestamptz not null,poll_limit integer not null check(poll_limit>0),
+  attempted_at timestamptz,delivery_id uuid unique,delivered_receipt_at timestamptz,
+  check(isfinite(not_before) and not_before<register_by and register_by<=until_at and isfinite(until_at)),
+  check(date_trunc('milliseconds',not_before)=not_before and date_trunc('milliseconds',register_by)=register_by and date_trunc('milliseconds',until_at)=until_at)
+);
+create index on erp_comm_cost.worker_launch_ticket(pool,register_by) where attempted_at is null;
+create function erp_comm_cost.worker_probes_funded(p_pool uuid,p_through timestamptz) returns boolean language sql stable set search_path='' as $$
+  select exists(select from erp_comm_cost.worker_probe_plan e join erp_comm_cost.control_pool cp on cp.permit_id=e.pool
+    join erp_comm_cost.reservation r on r.permit_id=cp.permit_id join erp_comm_cost.proof original using(operation_id)
+    join erp_comm_cost.unit_hold h on h.permit_id=e.pool join erp_comm_cost.capacity c on c.id=h.capacity_id
+    where e.pool=p_pool and cp.kind in ('chat_stage_poll','ptt_worker_poll') and cp.enabled and r.settled_at is null
+      and length(trim(original.retained_at_zero_cost_evidence))>0 and cp.max_actions>=e.max_replicas::numeric*(e.max_restarts_per_deployment::numeric+1)*e.max_deployments
+      and least(cp.valid_until,e.valid_until)>=p_through and c.unit='funded_worker_registration_probes' and c.dimension in('railway','database')
+      and c.enabled and c.valid_until>=p_through and c.valid_from<=statement_timestamp()
+      and h.units>=e.max_replicas::numeric*(e.max_restarts_per_deployment::numeric+1)*e.max_deployments group by e.pool having count(distinct c.dimension)=2)
+$$;
+create function erp_comm_cost.worker_recovery_funded(p_pool uuid,p_through timestamptz,p_allowance integer) returns boolean language sql stable set search_path='' as $$
+  select erp_comm_cost.worker_probes_funded(p_pool,p_through) and exists(select from erp_comm_cost.worker_probe_plan
+    where pool=p_pool and recovery_seconds between 1 and p_allowance and length(trim(recovery_evidence))>0)
+$$;
+create function erp_comm_cost.fund_launch_ticket() returns trigger language plpgsql set search_path='' as $$
+declare e erp_comm_cost.worker_probe_plan%rowtype;
+begin
+  select * into e from erp_comm_cost.worker_probe_plan where pool=new.pool for update;
+  if not erp_comm_cost.worker_probes_funded(new.pool,new.until_at) or new.attempted_at is not null or new.delivery_id is not null or new.delivered_receipt_at is not null or new.register_by<=clock_timestamp() or
+    (select count(*) from erp_comm_cost.worker_launch_ticket where pool=new.pool)>=e.max_replicas::numeric*(1+e.max_restarts_per_deployment::numeric)*e.max_deployments or
+    (not exists(select from erp_comm_cost.worker_launch_ticket where pool=new.pool and deployment_id=new.deployment_id) and
+      (select count(distinct deployment_id) from erp_comm_cost.worker_launch_ticket where pool=new.pool)>=e.max_deployments) then
+    raise sqlstate 'PT503' using message='worker_registration_probes_unfunded'; end if;
+  return new;
+end $$;
+create trigger worker_launch_funding before insert on erp_comm_cost.worker_launch_ticket for each row execute function erp_comm_cost.fund_launch_ticket();
+create function erp_comm_cost.protect_launch_ticket() returns trigger language plpgsql set search_path='' as $$
+begin
+  if (new.boot,new.pool,new.deployment_id,new.not_before,new.register_by,new.until_at,new.poll_limit) is distinct from
+     (old.boot,old.pool,old.deployment_id,old.not_before,old.register_by,old.until_at,old.poll_limit)
+    or (old.delivery_id is not null and (new.delivery_id,new.delivered_receipt_at) is distinct from (old.delivery_id,old.delivered_receipt_at))
+    or (old.attempted_at is not null and new.attempted_at is distinct from old.attempted_at) then
+    raise sqlstate '22023' using message='Immutable worker launch ticket'; end if;
+  return new;
+end $$;
+create trigger worker_ticket_immutable before update on erp_comm_cost.worker_launch_ticket for each row execute function erp_comm_cost.protect_launch_ticket();
+-- The private commissioner commits this result before signing and sending exactly one POST.
+create function erp_comm_cost.take_worker_delivery(p_boot uuid,p_attempt uuid) returns jsonb language plpgsql set search_path='' as $$
+declare t erp_comm_cost.worker_launch_ticket%rowtype; e erp_comm_cost.worker_probe_plan%rowtype; cp erp_comm_cost.control_pool%rowtype; n timestamptz:=clock_timestamp();
+begin
+  select * into t from erp_comm_cost.worker_launch_ticket where boot=p_boot for update;
+  if t.boot is null or p_attempt is null or t.delivery_id is not null or t.attempted_at is not null or n<t.not_before
+    or t.register_by<=n+interval '5 seconds' or not erp_comm_cost.worker_probes_funded(t.pool,t.until_at) then return null; end if;
+  select * into strict e from erp_comm_cost.worker_probe_plan where pool=t.pool;
+  select * into strict cp from erp_comm_cost.control_pool where permit_id=t.pool;
+  if cp.kind='chat_stage_poll' and not exists(select from erp_comm_cost.chat_stage_boot where boot=t.boot and worker::text=cp.subject) then return null; end if;
+  update erp_comm_cost.worker_launch_ticket set delivery_id=p_attempt,delivered_receipt_at=n where boot=t.boot;
+  return jsonb_build_object('v',1,'kind',case cp.kind when 'chat_stage_poll' then 'chat_stage' when 'ptt_worker_poll' then 'ptt' end,
+    'deploymentId',t.deployment_id,'worker',cp.subject,'boot',t.boot,'maxPolls',t.poll_limit,'maxReplicas',e.max_replicas,
+    'notBefore',to_char(t.not_before at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    'registerBy',to_char(t.register_by at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    'until',to_char(t.until_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    'maxRestartsPerDeployment',e.max_restarts_per_deployment,'maxDeployments',e.max_deployments,'evidenceId',e.evidence_id,
+    'prepaidProbes',e.max_replicas::numeric*(1+e.max_restarts_per_deployment::numeric)*e.max_deployments);
+end $$;
+create function erp_comm_cost.take_worker_launch(p_pool uuid,p_boot uuid,p_until timestamptz,p_max_polls integer) returns boolean language plpgsql set search_path='' as $$
+declare t erp_comm_cost.worker_launch_ticket%rowtype; n timestamptz:=clock_timestamp();
+begin
+  update erp_comm_cost.worker_launch_ticket set attempted_at=n where boot=p_boot and pool=p_pool and attempted_at is null and delivery_id is not null returning * into t;
+  return found and t.not_before<=n and t.register_by>n and t.until_at=p_until and t.poll_limit=p_max_polls and erp_comm_cost.worker_probes_funded(p_pool,t.until_at);
+end $$;
+create table erp_comm_cost.chat_stage_fleet (
+  singleton boolean primary key check(singleton),max_instances integer not null check(max_instances>0),max_boots integer not null check(max_boots>=max_instances),
+  busy_seconds integer not null check(busy_seconds>=70),retry_seconds integer not null check(retry_seconds>=180),
+  registration_seconds integer not null check(registration_seconds>=5),restart_seconds integer not null check(restart_seconds>0),
+  valid_until timestamptz not null check(isfinite(valid_until)),enabled boolean not null default false,
+  external_boot_and_retention_evidence text not null check(length(trim(external_boot_and_retention_evidence))>0)
+);
+create table erp_comm_cost.chat_stage_boot (
+  boot uuid primary key references erp_comm_cost.worker_launch_ticket(boot),worker uuid not null,pool uuid not null references erp_comm_cost.control_pool(permit_id),
+  until_at timestamptz not null check(isfinite(until_at)),poll_limit integer not null check(poll_limit>0),
+  attempted_at timestamptz,lease_until timestamptz,polls integer not null default 0 check(polls>=0 and polls<=poll_limit)
+);
+create index on erp_comm_cost.chat_stage_boot(worker,lease_until);
+-- A separately commissioned supervisor pays the initial registration attempt BEFORE the process is permitted to run.
+create function erp_comm_cost.fund_chat_stage_boot() returns trigger language plpgsql set search_path='' as $$
+declare f erp_comm_cost.chat_stage_fleet%rowtype; p erp_comm_cost.control_pool%rowtype;
+begin
+  perform 1 from erp_comm_cost.authority where singleton for update;
+  select * into f from erp_comm_cost.chat_stage_fleet where singleton and enabled for update;
+  select * into p from erp_comm_cost.control_pool where permit_id=new.pool and kind='chat_stage_poll' and subject=new.worker::text and enabled;
+  if f.singleton is null or p.permit_id is null or p.poll_seconds<>30 or new.until_at>least(f.valid_until,p.valid_until) or new.until_at<=clock_timestamp()
+    or not exists(select from erp_comm_cost.worker_launch_ticket t where t.boot=new.boot and t.pool=new.pool and t.until_at=new.until_at and t.poll_limit=new.poll_limit)
+    or new.attempted_at is not null or new.lease_until is not null or new.polls<>0 or (select count(*) from erp_comm_cost.chat_stage_boot)>=f.max_boots
+    or (not exists(select from erp_comm_cost.chat_stage_boot where worker=new.worker) and (select count(distinct worker) from erp_comm_cost.chat_stage_boot)>=f.max_instances)
+    or erp_comm_cost.debit_control('chat_stage_poll',new.worker::text,new.boot,'boot') is null then
+    raise sqlstate 'PT503' using message='chat_stage_boot_unfunded'; end if;
+  return new;
+end $$;
+create trigger chat_stage_boot_prepaid before insert on erp_comm_cost.chat_stage_boot for each row execute function erp_comm_cost.fund_chat_stage_boot();
+create function public.erp_chat_stage_boot(p_worker uuid,p_boot uuid,p_until timestamptz,p_max_polls integer)
+returns timestamptz language plpgsql security definer set search_path='' as $$
+declare f erp_comm_cost.chat_stage_fleet%rowtype; b erp_comm_cost.chat_stage_boot%rowtype; p erp_comm_cost.control_pool%rowtype; n timestamptz:=clock_timestamp(); cutoff timestamptz;
+begin
+  perform 1 from erp_comm_cost.authority where singleton for update;
+  update erp_comm_cost.chat_stage_boot set attempted_at=n where worker=p_worker and boot=p_boot and attempted_at is null returning * into b;
+  if not found then return null; end if;
+  if erp_comm_cost.take_worker_launch(b.pool,p_boot,p_until,p_max_polls) is not true then return null; end if;
+  select * into f from erp_comm_cost.chat_stage_fleet where singleton and enabled;
+  select * into p from erp_comm_cost.control_pool where permit_id=b.pool and enabled and poll_seconds=30;
+  if f.singleton is null or p.permit_id is null or b.until_at is distinct from p_until or b.poll_limit is distinct from p_max_polls
+    or exists(select from erp_comm_cost.chat_stage_boot where worker=p_worker and lease_until>n) then return null; end if;
+  cutoff:=least(f.valid_until,p.valid_until,b.until_at,n+make_interval(secs=>30.0*least(b.poll_limit,p.max_actions-p.used)));
+  if cutoff<=n+make_interval(secs=>f.busy_seconds) then return null; end if;
+  update erp_comm_cost.chat_stage_boot set lease_until=least(cutoff,n+make_interval(secs=>f.busy_seconds+30+f.registration_seconds)) where boot=p_boot;
+  return cutoff;
+end $$;
+revoke all on function public.erp_chat_stage_boot(uuid,uuid,timestamptz,integer) from public,anon,authenticated,service_role;
+grant execute on function public.erp_chat_stage_boot(uuid,uuid,timestamptz,integer) to service_role;
+create function erp_comm_cost.take_chat_stage_poll(p_worker uuid,p_boot uuid,p_attempt uuid)
+returns timestamptz language plpgsql set search_path='' as $$
+declare b erp_comm_cost.chat_stage_boot%rowtype; f erp_comm_cost.chat_stage_fleet%rowtype; n timestamptz:=clock_timestamp(); cutoff timestamptz;
+begin
+  perform 1 from erp_comm_cost.authority where singleton for update;
+  select * into b from erp_comm_cost.chat_stage_boot where worker=p_worker and boot=p_boot for update;
+  select * into f from erp_comm_cost.chat_stage_fleet where singleton and enabled;
+  if b.lease_until is null or b.lease_until<=n or b.polls>=b.poll_limit or f.singleton is null or least(b.until_at,f.valid_until)<=n+make_interval(secs=>f.busy_seconds)
+    or not exists(select from erp_comm_cost.control_pool cp where cp.permit_id=b.pool and cp.enabled and cp.poll_seconds=30 and cp.valid_until>n+make_interval(secs=>f.busy_seconds)) then return null; end if;
+  cutoff:=erp_comm_cost.debit_control('chat_stage_poll',p_worker::text,p_attempt,'poll');
+  if cutoff is null then return null; end if;
+  cutoff:=least(cutoff,f.valid_until,b.until_at,n+make_interval(secs=>30.0*(b.poll_limit-b.polls-1)));
+  update erp_comm_cost.chat_stage_boot set polls=polls+1,lease_until=least(cutoff,n+make_interval(secs=>f.busy_seconds+30+f.registration_seconds)) where boot=p_boot;
+  if cutoff<=n+make_interval(secs=>f.busy_seconds) then return null; end if;
+  return cutoff;
+end $$;
 create table erp_comm_cost.stage_poll_hold (
   stage_permit uuid primary key references erp_comm_cost.reservation(permit_id), pool uuid not null references erp_comm_cost.control_pool(permit_id),
   until_at timestamptz not null
 );
 create index on erp_comm_cost.stage_poll_hold(pool);
-create function erp_comm_cost.chat_stage_worker_covers(p_worker uuid,p_until timestamptz)
+create function erp_comm_cost.chat_stage_worker_covers(p_worker uuid,p_until timestamptz,p_new_attempts integer)
 returns boolean language sql set search_path='' as $$
-  select exists(select from erp_comm_cost.control_pool p where p.kind='chat_stage_poll' and p.subject=p_worker::text and p.enabled
-    and p.last_poll>clock_timestamp()-interval '2 minutes' and p.valid_until>=p_until and p_until>clock_timestamp() and
-    (select count(*)*3+3 from erp_comm_cost.stage_poll_hold sh join erp_comm_cost.cleanup_resource c
-      on c.permit_id=sh.stage_permit and c.endpoint='discard_partial_upload' and c.closed_at is null where sh.pool=p.permit_id)
-       <= least(floor(3600::numeric/p.poll_seconds),p.max_actions-p.used-ceil(extract(epoch from p_until-clock_timestamp())/p.poll_seconds)))
+  select exists(select from erp_comm_cost.control_pool p join erp_comm_cost.chat_stage_boot b on b.worker=p_worker and b.pool=p.permit_id
+    cross join erp_comm_cost.chat_stage_fleet f cross join lateral (
+      select coalesce(sum(c.max_attempts),0)+p_new_attempts as jobs,
+        greatest(max(h.until_at),p_until) as latest,least(min(h.until_at),p_until) as earliest
+      from erp_comm_cost.stage_poll_hold h join erp_comm_cost.cleanup_resource c on c.permit_id=h.stage_permit
+        and c.endpoint='discard_partial_upload' and c.closed_at is null where h.pool=p.permit_id
+    ) q cross join lateral (select ceil(extract(epoch from q.latest-clock_timestamp())/30)+q.jobs+4 as ticks) required
+    where p.kind='chat_stage_poll' and p.subject=p_worker::text and p.enabled and f.enabled and p.poll_seconds=30 and p_new_attempts between 3 and 20
+      and p.last_poll>clock_timestamp()-interval '2 minutes' and b.lease_until>clock_timestamp() and p_until>clock_timestamp()
+      and least(f.valid_until,p.valid_until,b.until_at)>=q.latest and least(p.max_actions-p.used,b.poll_limit-b.polls)>=required.ticks
+      and erp_comm_cost.worker_recovery_funded(p.permit_id,q.latest,f.restart_seconds)
+      and (select count(*) from erp_comm_cost.chat_stage_boot spare join erp_comm_cost.worker_launch_ticket t on t.boot=spare.boot
+        where spare.worker=p_worker and spare.pool=p.permit_id and spare.attempted_at is null and t.attempted_at is null and t.delivery_id is null and t.not_before<=clock_timestamp() and t.register_by>=q.latest
+        and spare.until_at>=q.latest and spare.poll_limit>=required.ticks)>=q.jobs
+      and extract(epoch from q.earliest-greatest(q.latest-interval '1 hour',clock_timestamp()))>=q.jobs*(f.busy_seconds::numeric+30+f.retry_seconds+
+        f.busy_seconds+30+f.registration_seconds+f.restart_seconds+f.registration_seconds))
 $$;
+create function erp_comm_cost.chat_stage_worker_covers(p_worker uuid,p_until timestamptz)
+returns boolean language sql set search_path='' as $$ select erp_comm_cost.chat_stage_worker_covers(p_worker,p_until,3) $$;
 create function erp_comm_cost.claim_chat_stage_window(p_worker uuid,p_permit uuid,p_until timestamptz)
 returns void language plpgsql set search_path='' as $$
-declare pool_id uuid;
+declare pool_id uuid; attempts integer;
 begin
   perform 1 from erp_comm_cost.authority where singleton for update;
   select cp.permit_id into pool_id from erp_comm_cost.control_pool cp where cp.kind='chat_stage_poll' and cp.subject=p_worker::text
     and cp.enabled for update;
-  if pool_id is null or not erp_comm_cost.chat_stage_worker_covers(p_worker,p_until) or
-    not exists(select from erp_comm_cost.reservation r join erp_comm_cost.cleanup_resource c on c.permit_id=r.permit_id and
-      c.endpoint='discard_partial_upload' and c.closed_at is null where r.permit_id=p_permit and r.consumed_xid=pg_current_xact_id()) then
+  select c.max_attempts into attempts from erp_comm_cost.reservation r join erp_comm_cost.cleanup_resource c on c.permit_id=r.permit_id and
+      c.endpoint='discard_partial_upload' and c.closed_at is null where r.permit_id=p_permit and r.consumed_xid=pg_current_xact_id();
+  if pool_id is null or attempts is null or not erp_comm_cost.chat_stage_worker_covers(p_worker,p_until,attempts) then
     raise sqlstate 'PT503' using message='stage_worker_unfunded'; end if;
   insert into erp_comm_cost.stage_poll_hold values(p_permit,pool_id,p_until);
 end $$;
@@ -435,6 +670,7 @@ begin
   perform 1 from erp_comm_cost.authority where singleton for update;
   select * into f from erp_comm_cost.ptt_worker_fleet where singleton and enabled and valid_until>n for update;
   select * into p from erp_comm_cost.control_pool where kind='ptt_worker_poll' and subject=p_worker::text and enabled for update;
+  if erp_comm_cost.take_worker_launch(p.permit_id,p_boot,p_local_until,p_local_max_polls) is not true then return null; end if;
   if f.singleton is null or p.permit_id is null or p_boot is null or p_local_until is null or not isfinite(p_local_until) or p_local_until<=n
     or p_local_max_polls is null or p_local_max_polls<1 or p.max_actions-p.used<=1 or
     exists(select from erp_comm_cost.ptt_worker_boot b where b.boot=p_boot or (b.worker=p_worker and b.lease_until>n))
@@ -474,6 +710,8 @@ returns boolean language sql set search_path='' as $$
       p.last_poll>=clock_timestamp()-make_interval(secs=>f.busy_tick_seconds+p.poll_seconds) and
       least(b.poll_limit-b.polls,p.max_actions-p.used-1)>=ceil(extract(epoch from p_until-clock_timestamp())/p.poll_seconds)+backlog.required and
       f.max_boots>=(select count(*) from erp_comm_cost.ptt_worker_boot)+1+erp_comm_cost.pending_ptt_workers_except(p_worker) and
+      erp_comm_cost.worker_recovery_funded(p.permit_id,p_until,f.restart_seconds) and exists(select from erp_comm_cost.worker_launch_ticket t where t.pool=p.permit_id and t.attempted_at is null and t.delivery_id is null
+        and t.not_before<=clock_timestamp() and t.register_by>=p_until and t.poll_limit>=ceil(extract(epoch from p_until-clock_timestamp())/p.poll_seconds)+backlog.required) and
       extract(epoch from p_until-clock_timestamp())>=backlog.required*(f.busy_tick_seconds::bigint+f.retry_seconds+p.poll_seconds)+
         extract(epoch from b.lease_until-clock_timestamp())+f.restart_seconds)
 $$;
@@ -501,6 +739,8 @@ begin
      or horizon<=n or least(cfg.valid_until,p.valid_until,b.until_at)<horizon or
      p.last_poll<n-make_interval(secs=>cfg.busy_tick_seconds+p.poll_seconds)
      or cfg.max_boots<(select count(*) from erp_comm_cost.ptt_worker_boot)+1+erp_comm_cost.pending_ptt_workers_except(p_worker)
+     or not erp_comm_cost.worker_recovery_funded(p.permit_id,horizon,cfg.restart_seconds) or not exists(select from erp_comm_cost.worker_launch_ticket t where t.pool=p.permit_id and t.attempted_at is null and t.delivery_id is null
+       and t.not_before<=n and t.register_by>=horizon and t.poll_limit>=ceil(extract(epoch from horizon-n)/p.poll_seconds)+jobs+outstanding)
      or least(b.poll_limit-b.polls,p.max_actions-p.used-1)<ceil(extract(epoch from horizon-n)/p.poll_seconds)+jobs+outstanding
      or extract(epoch from earliest_stop-last_ready)<(jobs+outstanding)*(cfg.busy_tick_seconds::bigint+cfg.retry_seconds+p.poll_seconds)+
        extract(epoch from b.lease_until-n)+cfg.restart_seconds
@@ -728,6 +968,13 @@ begin
   if f='sos' and (end_at is not null or not exists(select from erp_comm_cost.sos_limit l where l.operation_id=source_op)) then
     return jsonb_build_object('ok',false,'reason','sos_cancellation_envelope_unavailable');
   end if;
+  if f='ptt_live' and p_payload->'binding'->'command'->>'op'='ptt.press' and (end_at is not null or not exists(
+    select from erp_comm_cost.ptt_receipt_limit l join erp_comm_cost.meter m using(operation_id)
+    join erp_comm_cost.capacity c on c.id=m.capacity_id where l.operation_id=source_op and m.dimension='database' and c.dimension='database'
+      and c.unit in ('funded_ptt_receipt_episodes','funded_ptt_busy_inboxes','funded_ptt_busy_device_jobs','ptt_floor_retained_bytes')
+    group by l.operation_id having count(distinct c.unit)=4 and bool_and(c.unit<>'ptt_floor_retained_bytes' or m.upper_units>=l.base_bytes))) then
+    return jsonb_build_object('ok',false,'reason','ptt_receipt_capacity_unavailable');
+  end if;
   required:=array['railway','database']||case
     when f in ('media_upload','media_download','export','ptt_replay') then array['storage']
     when f='ptt_live' then array['sfu_turn']
@@ -829,6 +1076,12 @@ begin
     insert into erp_comm_cost.export_spool_limit
       select op,sl.bytes_per_slot,sl.slots_per_volume,sl.max_volumes,sl.cleanup_tail_seconds,sl.export_spool_evidence
       from erp_comm_cost.export_spool_limit sl where sl.operation_id=source_op;
+    insert into erp_comm_cost.ptt_receipt_limit
+      select op,l.base_bytes,l.bytes_per_episode,l.retention_and_fanout_evidence from erp_comm_cost.ptt_receipt_limit l
+      where l.operation_id=source_op and p_payload->'binding'->'command'->>'op'='ptt.press';
+    insert into erp_comm_cost.effect_limit
+      select op,l.command_op,l.effect,l.slot,l.base_bytes,l.bytes_per_item,l.work_evidence from erp_comm_cost.effect_limit l
+      where l.operation_id=source_op and l.command_op=p_payload->'binding'->'command'->>'op';
     insert into erp_comm_cost.sos_limit
       select op,l.max_recipients,l.max_devices,l.cancellation_evidence,l.post_expiry_zero_cost_evidence,l.max_push_attempts,l.max_control_reads,l.max_discovery_slots
       from erp_comm_cost.sos_limit l where l.operation_id=source_op;
@@ -977,28 +1230,58 @@ returns jsonb language sql security invoker set search_path='' as $$
   select erp_comm_cost.operator(p_profile,p_session,p_op,p_args)
 $$;
 revoke all on function public.erp_comm_budget_operator(text,uuid,text,jsonb) from public,anon,authenticated,service_role;
--- Feed the existing notification pipeline by durable event ID. No scheduler is installed.
+-- A funded notification scheduler tick advances a single recipient for a single pending phase.
+-- Process the current warning before old expired grants. Finished grants leave the partial indexes.
+create function erp_comm_cost.project_due_alerts(p_scheduler_pool uuid,p_tick uuid,p_take integer default 1)
+returns integer language plpgsql security invoker set search_path='' as $$
+declare grant_row erp_comm_cost.approval%rowtype; n timestamptz:=clock_timestamp(); owner_id uuid; recipient uuid;
+  expired boolean; progress integer; last_recipient uuid; written integer:=0;
+begin
+  if p_take is distinct from 1 then raise sqlstate '22023' using message='One projected alert per tick'; end if;
+  select owner_auth_id into owner_id from erp_comm_cost.authority where singleton for update;
+  update erp_comm_cost.control_debit d set notification_projection_used=true from erp_comm_cost.control_pool c
+    where d.pool=p_scheduler_pool and d.command_id=p_tick and not d.notification_projection_used and d.notification_projection_until>n
+      and c.permit_id=d.pool and c.kind='notification_tick' and c.subject='mobile-notifications' and c.enabled and c.valid_until>n;
+  if not found or owner_id is null then return 0; end if;
+  select * into grant_row from erp_comm_cost.approval where revoked_at is null and soon_step>=0 and ends_at>n and ends_at<=n+interval '24 hours'
+    order by ends_at,id limit 1 for update;
+  expired:=not found;
+  if expired then
+    select * into grant_row from erp_comm_cost.approval where revoked_at is null and expired_step>=0 and ends_at<=n
+      order by ends_at,id limit 1 for update;
+    if not found then return 0; end if;
+  end if;
+  progress:=case when expired then grant_row.expired_step else grant_row.soon_step end;
+  last_recipient:=case when expired then grant_row.expired_after else grant_row.soon_after end;
+  if progress=0 then recipient:=owner_id;
+  else
+    select r.auth_id into recipient from erp_comm_cost.alert_recipient r where r.auth_id<>owner_id and (last_recipient is null or r.auth_id>last_recipient)
+      order by r.auth_id limit 1;
+    last_recipient:=recipient;
+  end if;
+  if recipient is not null then
+    insert into erp_comm_cost.alert(event_key,recipient_auth_id,reason,scope)
+    select grant_row.id::text||case when expired then '/expired' else '/expiring' end, recipient,
+      case when expired then 'approval_expired' else 'approval_ending_soon' end,grant_row.scope
+      where exists(select from public.user_profiles u where u.auth_user_id=recipient and u.status='active' and not u.must_change_password)
+      on conflict do nothing;
+    get diagnostics written=row_count;
+  end if;
+  progress:=case when recipient is null then -1 else progress+1 end;
+  if expired then update erp_comm_cost.approval set expired_step=progress,expired_after=last_recipient where id=grant_row.id;
+  else update erp_comm_cost.approval set soon_step=progress,soon_after=last_recipient where id=grant_row.id; end if;
+  return written;
+end $$;
+-- Read existing durable events without projecting historical grants or creating any work.
 create function erp_comm_cost.monitor_events(p_after bigint,p_take integer)
 returns table(event_id bigint, recipient_auth_id uuid, reason text, scope text, feature text, created_at timestamptz)
 language plpgsql security definer set search_path='' as $$
-declare item erp_comm_cost.approval%rowtype; n timestamptz;
 begin
   if p_after is null or p_after<0 or p_take is null or p_take not between 1 and 100 then raise exception 'Invalid event page'; end if;
-  perform 1 from erp_comm_cost.authority where singleton for update;
-  n:=clock_timestamp();
-  for item in select a.* from erp_comm_cost.approval a where a.revoked_at is null and a.ends_at<=n+interval '24 hours'
-  loop
-    if item.ends_at<=n then
-      perform erp_comm_cost.enqueue(item.id::text||'/expired','approval_expired',item.scope,null);
-    else
-      perform erp_comm_cost.enqueue(item.id::text||'/expiring','approval_ending_soon',item.scope,null);
-    end if;
-  end loop;
-  return query select e.event_id,e.recipient_auth_id,e.reason,e.scope,e.feature::text,e.created_at
-    from erp_comm_cost.alert e where e.event_id>p_after and exists (
-      select from public.user_profiles u where u.auth_user_id=e.recipient_auth_id and u.status='active' and u.must_change_password is false
-    ) and (exists(select from erp_comm_cost.authority o where o.owner_auth_id=e.recipient_auth_id)
-       or exists(select from erp_comm_cost.alert_recipient r where r.auth_id=e.recipient_auth_id))
+  return query select e.event_id,e.recipient_auth_id,e.reason,e.scope,e.feature::text,e.created_at from
+    (select o.owner_auth_id as uid from erp_comm_cost.authority o union select r.auth_id from erp_comm_cost.alert_recipient r) t
+    cross join lateral (select a.* from erp_comm_cost.alert a where a.recipient_auth_id=t.uid and a.event_id>p_after order by a.event_id limit p_take) e
+    where exists(select from public.user_profiles u where u.auth_user_id=t.uid and u.status='active' and not u.must_change_password)
     order by e.event_id limit p_take;
 end $$;
 create function public.erp_comm_budget_monitor_events(p_after bigint,p_take integer)

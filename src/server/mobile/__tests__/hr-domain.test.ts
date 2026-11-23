@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+// Load the route modules during suite setup so the test timeout covers the requests.
+import { POST as dms } from "@/app/api/mobile/dms/v1/route";
+import { POST as hr } from "@/app/api/mobile/hr/v1/route";
 import type { AuthContext } from "@/lib/rbac/check";
 import { dispatchHr } from "../hr";
 import { employeeContext, leaveRead, timeRead, type Db } from "../hr-reads";
@@ -94,8 +97,6 @@ describe("binding native operations to original records",()=>{
 describe("HR entry for independently assigned domains",()=>{
   const minimal={...ctx,permissionCodes:["hr.leave.view.self"],roleAssignments:[{roleId:2,roleCode:"custom",ownerCompanyId:1,branchId:1,permissionCodes:["hr.leave.view.self"]}]};
   it("goes from DMS entry to private home to an actual leave reader with a single leave grant",async()=>{
-    const {POST:dms}=await import("@/app/api/mobile/dms/v1/route");
-    const {POST:hr}=await import("@/app/api/mobile/hr/v1/route");
     const request=(what:Record<string,unknown>)=>new Request("http://local/api/mobile",{method:"POST",headers:{Authorization:"Bearer test.synthetic.token","Content-Type":"application/json"},body:JSON.stringify(what)});
     auth.mockResolvedValue(minimal);
     createClient.mockResolvedValue({...source(null),rpc});

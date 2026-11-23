@@ -16,7 +16,7 @@ export async function proxy(request: NextRequest) {
 async function proxyImpl(request: NextRequest) {
   const release = releaseResponse(request);
   if (release) return release;
-  if (skipsSessionRefresh(request.nextUrl.pathname)) return NextResponse.next();
+  if (skipsSessionRefresh(request.nextUrl.pathname, request.method)) return NextResponse.next();
   return updateSession(request);
 }
 

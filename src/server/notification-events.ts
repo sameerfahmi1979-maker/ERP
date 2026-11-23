@@ -24,6 +24,11 @@ const hrProjection:Record<typeof hrSources[number],string>={
 };
 const eventSchema=z.object({id:positive,event_key:z.string(),source_table:z.enum(['dms_document_events','dms_notification_queue','dms_review_queue','erp_report_template_events','fleet_asset_evidence',...hrSources]),
  source_id:positive,event_type:z.string(),actor_id:positive.nullable(),source_snapshot:z.record(z.string(),z.unknown()),lease_token:z.uuid()}).passthrough();
+const numberedFilingSnapshot=z.strictObject({
+ operation_id:z.uuid(),document_id:positive,document_no:z.string().max(120).regex(/^[^\p{C}]+$/u).refine(value=>value.trim().length>0),
+ company_id:z.literal(1),branch_id:z.literal(1),document_type_id:z.literal(16),recipient_profile_id:positive,
+ connection_id:z.uuid(),upload_session_id:positive,approve_run_id:positive,
+});
 export type NotificationEvent=z.infer<typeof eventSchema>;
 type Recipient={profile_id:number;state:'pending'|'created'|'held';outcome?:string|null};
 type DB=ReturnType<typeof createAdminClient>;
@@ -143,7 +148,25 @@ async function expiryRecipients(
  return authorized;
 }
 
+async function numberedFilingRecipients(event:NotificationEvent,db:DB,considered:Set<number>|undefined,options:RoutingOptions):Promise<number[]>{
+ if(event.source_table!=='dms_document_events')return [];
+ const snapshot=numberedFilingSnapshot.safeParse(event.source_snapshot);
+ if(!snapshot.success)return [];
+ const {recipient_profile_id:profileId,document_id:documentId}=snapshot.data;
+ if(options.candidateIds&&!options.candidateIds.includes(profileId))return [];
+ considered?.add(profileId);
+ const authority=await boundedQuery(db.rpc('f10_numbered_filing_notification_recipient',{p_event:event.id,p_profile:profileId}));
+ if(authority.error||typeof authority.data!=='boolean')throw Error('Numbered filing recipient authority unavailable');
+ if(!authority.data)return [];
+ // The configured officer may also be the filing actor for this confirmation.
+ if(options.discoverOnly)return [profileId];
+ const ctx=await recipientContext(profileId);
+ if(!ctx||!canUseApplication(ctx)||!hasPermission(ctx,'notifications.view'))return [];
+ return await documentAllowed(db,ctx,documentId,null,false)?[profileId]:[];
+}
+
 export async function resolveNotificationRecipients(event:NotificationEvent,db:DB,considered?:Set<number>,options:RoutingOptions={}):Promise<number[]>{
+ if(event.event_type==='dms_numbered_filing_committed')return numberedFilingRecipients(event,db,considered,options);
  if('t19_policy_id' in event.source_snapshot)return expiryRecipients(event,db,considered,options);
  if(hrSources.some(s=>s===event.source_table))return hrRecipients(event,db,considered,options);
  const snapshot=event.source_snapshot,ids=new Set<number>();

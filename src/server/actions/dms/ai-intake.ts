@@ -665,12 +665,19 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
     const pass1Transcription =
       aiOutput.extraction.fullTextTranscription ?? ocrText ?? "";
 
-    const typeResolution = resolveSuggestedDocumentType(
-      aiOutput.classification.suggestedTypeCode,
+    const firstSuggestion = aiOutput.classification.suggestedTypeCode;
+    let typeResolution = resolveSuggestedDocumentType(
+      firstSuggestion,
       typeRows as Array<{ id: number; type_code: string; name_en?: string }>,
       pass1Transcription,
       aiOutput.classification.confidenceScore
     );
+    if (!typeResolution.typeCode || ["HSE_PERMIT_AR", "VISA", "VISA_RESIDENCE"].includes(typeResolution.typeCode)) {
+      const sourceResolution = resolveSuggestedDocumentType(firstSuggestion, typeRows, `${ocrText}\n${pass1Transcription}`);
+      if (sourceResolution.typeCode === "LABOUR_CARD" && sourceResolution.source === "heuristic") {
+        typeResolution = sourceResolution;
+      }
+    }
 
     const suggestedTypeId = typeResolution.typeId;
     const suggestedTypeCode = typeResolution.typeCode;
@@ -686,7 +693,17 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
       }
     }
 
-    if (suggestedTypeId && suggestedTypeId === pass1FieldsTypeId) {
+    const isLabourCard = suggestedTypeCode === "LABOUR_CARD";
+    const labourFieldHints: Record<string, string> = {
+      full_name_en: "Copy all English words in the Person Name cell, joining wrapped lines within that cell.",
+      labour_card_number: "Copy the printed Card Number exactly, including leading zeros. Passport Number and Person Code are separate identifiers.",
+      expiry_date: "Use the printed Card Expiry Date, normalized to ISO. Passport Expiry Date is a separate field.",
+    };
+    const pass1Fields = aiOutput.extraction.fields;
+    const needsLabourCardExtraction = isLabourCard && (typeResolution.source === "heuristic" ||
+      Object.keys(labourFieldHints).some(code => !pass1Fields.some(field =>
+        field.fieldCode === code && field.value != null && String(field.value).trim())));
+    if (suggestedTypeId && suggestedTypeId === pass1FieldsTypeId && !needsLabourCardExtraction) {
       // SPEED.1 P3: Pass 1 already extracted this type's fields — skip Pass 2.
       logger.info("[ai-intake] pass-2 skipped: pass-1 covered resolved type fields", {
         typeCode: suggestedTypeCode,
@@ -696,12 +713,16 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
       if (typeSpecificFields.length > 0) {
         try {
           const pass2StartMs = Date.now();
+          const extractionFields = isLabourCard ? typeSpecificFields.map(field => {
+            const hint = labourFieldHints[field.fieldCode];
+            return hint ? { ...field, isRequired: true, aiFieldHint: [field.aiFieldHint, hint].filter(Boolean).join(" ") } : field;
+          }) : typeSpecificFields;
           const extractOutput = await traceSpan('dms.model.second', () => provider.analyze({
             ocrText: pass1Transcription || ocrText,
             imageFiles,
             currentTypeCode: suggestedTypeCode,
-            typeCandidates,
-            metadataFields: typeSpecificFields,
+            typeCandidates: isLabourCard ? typeCandidates.filter(candidate => candidate.typeCode === "LABOUR_CARD") : typeCandidates,
+            metadataFields: extractionFields,
             originalFilename,
           }));
           // SPEED.2M: log pass-2 token counts + duration (non-fatal)
@@ -734,7 +755,7 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
           if (!aiOutput.extraction.issueDateSuggestion && extractOutput.extraction.issueDateSuggestion) {
             aiOutput.extraction.issueDateSuggestion = extractOutput.extraction.issueDateSuggestion;
           }
-          if (!aiOutput.extraction.expiryDateSuggestion && extractOutput.extraction.expiryDateSuggestion) {
+          if ((isLabourCard || !aiOutput.extraction.expiryDateSuggestion) && extractOutput.extraction.expiryDateSuggestion) {
             aiOutput.extraction.expiryDateSuggestion = extractOutput.extraction.expiryDateSuggestion;
           }
           if (!aiOutput.extraction.fullTextTranscription && extractOutput.extraction.fullTextTranscription) {

@@ -67,6 +67,13 @@ const MEDICAL_INSURANCE_SIGNALS = [
   /تأمين\s*طبي/i,
 ];
 const TRADE_LICENSE_SIGNALS = [/trade\s*licen/i, /commercial\s*licen/i, /رخصة\s*تجارية/i, /ded/i, /sedd/i];
+const MOHRE_WORK_PERMIT_SIGNALS = [
+  /\belectronic\s+work\s+permit\s+information\b/i,
+  /\bministry\s+of\s+human\s+resources\b/i,
+  /\bcard\s+number\b/i,
+  /\bcard\s+issuance\s+date\b/i,
+  /\bcard\s+expiry\s+date\b/i,
+];
 
 export type TypeResolutionResult = {
   typeCode: string | null;
@@ -125,6 +132,23 @@ export function resolveSuggestedDocumentType(
   aiConfidenceScore?: number | null
 ): TypeResolutionResult {
   const text = transcription ?? "";
+  const aiCode = suggestedTypeCode ? normalizeToken(suggestedTypeCode) : null;
+  const visaSuggestion = aiCode !== null && (TYPE_CODE_ALIASES[aiCode] === "VISA" || aiCode === "VISA_RESIDENCE");
+  if (
+    (aiCode === "HSE_PERMIT_AR" || aiCode === null || visaSuggestion) &&
+    MOHRE_WORK_PERMIT_SIGNALS.every((signal) => signal.test(text)) &&
+    !/\bpermit\s+to\s+work\b/i.test(text)
+  ) {
+    const row = findTypeRow(typeRows, "LABOUR_CARD");
+    if (row) {
+      return {
+        typeCode: row.type_code,
+        typeId: row.id,
+        source: "heuristic",
+        overrideReason: "The MOHRE employment form contains the electronic work permit heading and labelled card fields",
+      };
+    }
+  }
   const heuristicType = inferTypeCodeFromText(text);
 
   // Strong Emirates ID fingerprint always wins over weak AI classification
@@ -132,7 +156,6 @@ export function resolveSuggestedDocumentType(
     heuristicType === "EMIRATES_ID" &&
     (EMIRATES_ID_NUMBER_RE.test(text) || scoreSignals(text, EMIRATES_ID_TEXT_SIGNALS) >= 2)
   ) {
-    const aiCode = suggestedTypeCode ? normalizeToken(suggestedTypeCode) : null;
     if (aiCode !== "EMIRATES_ID" && (aiConfidenceScore == null || aiConfidenceScore < 0.92)) {
       const row = findTypeRow(typeRows, "EMIRATES_ID");
       if (row) {

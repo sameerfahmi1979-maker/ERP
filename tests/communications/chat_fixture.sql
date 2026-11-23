@@ -39,6 +39,22 @@ BEGIN
  VALUES(ticket::text,'communications',p::text,f::erp_comm_cost.feature,now()+interval '1 minute',now()+interval '1 minute',interval '1 minute','synthetic test fixture',0);
  INSERT INTO erp_comm_cost.reservation(operation_id,permit_id,scope,actor_id,feature,floor_micros,reserved_micros,issued_at,expires_at,actor_session,command_hash)
  VALUES(ticket::text,ticket,'communications',p::text,f::erp_comm_cost.feature,0,0,now(),now()+interval '1 minute',session_id,sha256(convert_to(cmd::text,'UTF8')));
+ IF cmd->>'op'='chat.stageOpen' THEN
+  UPDATE erp_comm_cost.proof SET operational_stop_by=now()+interval '2 days',retained_at_zero_cost_evidence='synthetic cleanup and immutable retention' WHERE operation_id=ticket::text;
+  INSERT INTO erp_comm_cost.cleanup_limit VALUES(ticket::text,'discard_partial_upload',1,4);
+ END IF;
  RETURN ticket;
 END $$;
 REVOKE ALL ON FUNCTION public.fixture_chat_permit(bigint,text,jsonb) FROM PUBLIC;
+CREATE FUNCTION public.fixture_chat_worker(w uuid) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE expiry timestamptz:=date_trunc('second',now())+interval '2 days'; actions int:=3500; ticket uuid; cap bigint; unit_name text;
+BEGIN
+ ticket:=public.fixture_chat_permit(1,'media_upload',jsonb_build_object('op','budget.fundControl','kind','chat_stage_poll','subject',w::text,'maxActions',actions,'endEpoch',extract(epoch FROM expiry)::bigint));
+ UPDATE erp_comm_cost.proof SET retained_at_zero_cost_evidence='synthetic finite worker plan' WHERE operation_id=ticket::text;
+ FOREACH unit_name IN ARRAY ARRAY['funded_chat_stage_poll_actions','permanent_ledger_bytes'] LOOP
+  INSERT INTO erp_comm_cost.capacity(billing_account,dimension,unit,valid_from,valid_until,available_units,enabled) VALUES('test',unit_name,unit_name,now(),expiry,200000000,true) RETURNING id INTO cap;
+  INSERT INTO erp_comm_cost.unit_hold VALUES(ticket,cap,200000000);
+ END LOOP;
+ INSERT INTO erp_comm_cost.control_pool(permit_id,kind,subject,max_actions,valid_until,continuing_zero_evidence,poll_seconds,enabled) VALUES(ticket,'chat_stage_poll',w::text,actions,expiry,'synthetic continuing coverage',30,true);
+END $$;
+REVOKE ALL ON FUNCTION public.fixture_chat_worker(uuid) FROM PUBLIC;

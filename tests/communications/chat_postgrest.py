@@ -94,7 +94,14 @@ def run():
         assert call(2,"communications.profile",{})[0]==200
         assert call(2,"chat.directory",{})[0] in (403,503)
         assert http("/chat_messages?select=*",actor=2)[0] in (401,403,404)
-        assert http("/rpc/erp_chat_upload_verified",{},actor=2)[0] in (401,403,404)
+        unknown=str(uuid.uuid4())
+        internal={"erp_chat_stage_open":{"p_upload":unknown,"p_actor":2,"p_session":unknown,"p_permit":unknown},
+                  "erp_chat_stage_abort":{"p_upload":unknown,"p_actor":2,"p_session":unknown},
+                  "erp_chat_stage_claim":{"p_worker":unknown,"p_attempt":unknown,"p_until":"2099-01-01T00:00:00Z"},
+                  "erp_chat_stage_finish":{"p_upload":unknown,"p_attempt":unknown,"p_absent":True},
+                  "erp_chat_upload_verified":{"p_upload":unknown,"p_actor":2,"p_session":unknown,"p_size":1,"p_mime":"audio/ogg","p_sha256":"a"*64,"p_permit":unknown}}
+        for name,params in internal.items():
+            assert http("/rpc/"+name,params,actor=2)[0] in (401,403,404),name
         sql("UPDATE erp_private.comms_chat_gate SET enabled=true")
         assert call(2,"chat.directory",{})[0] in (403,503)
         command={"op":"chat.directory","args":{}}

@@ -60,7 +60,7 @@ def run():
         try:
             fn()
         except subprocess.CalledProcessError as error:
-            assert any(s in error.stderr for s in ["unavailable","denied","required","permission","conflict","window","Invalid size"]),error.stderr
+            assert any(s in error.stderr for s in ["unavailable","denied","required","permission","conflict","window","Invalid size","unfunded","Retained media"]),error.stderr
         else:
             raise AssertionError("Expected denial")
 
@@ -139,6 +139,32 @@ def run():
             return json.loads(sql(f"SET ROLE {role}; SET test.actor='{actor}'; SELECT {call};"))
         binding=rpc("authenticated",2,f"public.erp_chat_upload_bind('{upload}')","media_upload","chat.uploadBind",{"uploadId":upload})
         denied(lambda:rpc("authenticated",3,f"public.erp_chat_upload_bind('{upload}')","media_upload","chat.uploadBind",{"uploadId":upload}))
+        worker=str(uuid.uuid4())
+        def stage_open(item, fund=True):
+            args={"uploadId":item,"actorId":"2","sessionId":binding["sessionId"]}
+            cmd={"op":"chat.stageOpen","args":args}
+            token=permit(2,"media_upload",cmd)
+            if not fund:
+                sql(f"DELETE FROM erp_comm_cost.cleanup_limit WHERE operation_id='{token}'")
+            return json.loads(sql(f"SET ROLE service_role; SELECT public.erp_chat_stage_open('{item}',2,'{binding['sessionId']}','{token}')"))
+        def cleanup_claim(horizon="2 days"):
+            # Move the disposable test clock between polls without sleeping.
+            sql("UPDATE erp_comm_cost.control_pool SET last_poll=now()-interval '1 minute'")
+            return json.loads(sql(f"SET ROLE service_role; SELECT public.erp_chat_stage_claim('{worker}','{uuid.uuid4()}',now()+interval '{horizon}')"))["job"]
+        denied(lambda:stage_open(upload))
+        denied(lambda:sql(f"SET ROLE service_role; SELECT public.erp_chat_stage_claim('{worker}','{uuid.uuid4()}',now()+interval '2 days')"))
+        sql(f"SELECT public.fixture_chat_worker('{worker}')")
+        assert cleanup_claim("1 hour") is None
+        denied(lambda:stage_open(upload))  # paid pool outlives the configured worker cutoff
+        assert cleanup_claim() is None
+        sql("UPDATE erp_comm_cost.control_pool SET enabled=false")
+        denied(lambda:stage_open(upload))  # recent heartbeat cannot override a suspended funded worker
+        sql("UPDATE erp_comm_cost.control_pool SET enabled=true")
+        denied(lambda:stage_open(upload,False))
+        assert stage_open(upload)["state"]=="reserved"
+        origin=sql(f"SELECT stage_permit FROM erp_private.chat_uploads WHERE id='{upload}'")
+        assert stage_open(upload)["state"]=="reserved"
+        assert origin==sql(f"SELECT stage_permit FROM erp_private.chat_uploads WHERE id='{upload}'")
         checksum="a"*64
         confirm=f"public.erp_chat_upload_verified('{upload}',2,'{binding['sessionId']}',4,'audio/ogg','{checksum}')"
         verified_args={"uploadId":upload,"actorId":"2","sessionId":binding["sessionId"],"byteLength":4,"mime":"audio/ogg","sha256":checksum}
@@ -179,10 +205,36 @@ def run():
         assert pages["nextSeq"] and len(pages["items"])==2
         mutation(3,"pulse",conversationId=c,typing=True)
         assert request(2,"activity",conversationId=c)["items"][0]["typing"]
+        sample1=sql("SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')")
+        pulse_key=str(uuid.uuid4())
+        request(3,"pulse",conversationId=c,typing=True,pulseAt=sample1,clientMutationId=pulse_key)
+        expiry1=sql(f"SELECT online_until FROM erp_private.chat_presence WHERE conversation='{c}' AND profile_id=3")
+        request(3,"pulse",conversationId=c,typing=True,pulseAt=sample1,clientMutationId=pulse_key)
+        assert expiry1==sql(f"SELECT online_until FROM erp_private.chat_presence WHERE conversation='{c}' AND profile_id=3")
+        mutation(3,"pulse",conversationId=c,typing=False)
+        request(3,"pulse",conversationId=c,typing=True,pulseAt=sample1,clientMutationId=pulse_key)
+        assert not request(2,"activity",conversationId=c)["items"][0]["typing"]
+        for i in range(5):
+            mutation(3,"pulse",conversationId=c,typing=bool(i%2))
+        sql(f"""SET test.actor='3'; DO $batch$ DECLARE request jsonb; ticket uuid; BEGIN
+            FOR n IN 1..40 LOOP
+              request:=jsonb_build_object('op','chat.pulse','args',jsonb_build_object('conversationId','{c}','clientMutationId',gen_random_uuid(),'typing',false));
+              ticket:=public.fixture_chat_permit(3,'realtime',request);
+              PERFORM public.erp_chat_v1(request||jsonb_build_object('_budgetPermitId',ticket));
+            END LOOP;
+            END $batch$;""")
+        assert sql(f"SELECT cardinality(recent_ids) FROM erp_private.chat_presence WHERE conversation='{c}' AND profile_id=3")=="32"
+        assert sql(f"SELECT count(*) FROM erp_private.chat_presence WHERE conversation='{c}' AND profile_id=3")=="1"
+        assert sql(f"SELECT count(*) FROM erp_private.chat_mutations WHERE actor=3 AND conversation='{c}' AND entity='{c}' AND result=jsonb_build_object('id','{c}'::uuid,'conversationId','{c}'::uuid,'revision','1')")=="0", "heartbeat receipts must be physically bounded"
         sync=request(3,"sync",cursors=[{"conversationId":c,"changeSeq":"0"}],limit=2)
         assert sync["changes"] and sync["conversations"] and sync["hasMore"]
         assert group_id in request(6,"sync",cursors=[{"conversationId":group_id,"changeSeq":"0"}])["revokedConversationIds"]
         mutation(2,"delete",messageId=copied["id"],expectedRevision="1")
+        pinned=[x for x in request(3,"messages",conversationId=group_id,mode="participant")["items"] if x["id"]==copied["id"]][0]
+        assert pinned["pinned"] and pinned["deleted"] and pinned["body"]=="Message deleted"
+        assert not pinned["attachments"] and not pinned["mentions"] and not pinned["reactions"]
+        mutation(2,"pin",messageId=copied["id"],enabled=False)
+        assert not next(x for x in request(3,"messages",conversationId=group_id,mode="participant")["items"] if x["id"]==copied["id"])["pinned"]
         group_change(2,"leave")
         group_change(1,"replaceOwner",3)
         assert request(3,"conversations",mode="participant")["items"]
@@ -190,6 +242,66 @@ def run():
         # An unrelated permissive object policy must not open the private chat bucket.
         sql("GRANT USAGE ON SCHEMA storage TO authenticated; GRANT SELECT ON storage.objects TO authenticated; CREATE POLICY unrelated_fixture ON storage.objects FOR SELECT TO authenticated USING(true); INSERT INTO storage.objects(bucket_id,name,metadata) VALUES('other-app','visible','{}')")
         assert sql("SET ROLE authenticated; SELECT string_agg(name,',') FROM storage.objects")=="visible"
+        def new_stage(label, store=False, verify=False):
+            item=mutation(2,"uploadBegin",conversationId=c,filename=label+".ogg",mime="audio/ogg",byteLength=4)["uploadId"]
+            stage_open(item)
+            if store:
+                sql(f"""INSERT INTO storage.objects(bucket_id,name,metadata) VALUES('erp-chat-media','{item}','{{"size":4,"mimetype":"audio/ogg"}}')""")
+            if verify:
+                args={**verified_args,"uploadId":item}
+                rpc("service_role",2,f"public.erp_chat_upload_verified('{item}',2,'{binding['sessionId']}',4,'audio/ogg','{checksum}')","media_upload","chat.uploadVerified",args)
+            return item
+
+        def abort_stage(item):
+            return json.loads(sql(f"SET ROLE service_role; SELECT public.erp_chat_stage_abort('{item}',2,'{binding['sessionId']}')"))["queued"]
+
+        def make_due(item):
+            sql(f"UPDATE erp_private.chat_uploads SET stage_expires_at=now()-interval '1 second',write_lease_until=now()-interval '1 second',next_cleanup_at=now() WHERE id='{item}'")
+
+        def finish_job(job,absent):
+            return json.loads(sql(f"SET ROLE service_role; SELECT public.erp_chat_stage_finish('{job['uploadId']}','{job['attemptId']}',{str(absent).lower()})"))["confirmed"]
+
+        # No file was written before the request failed; reconciling an absent object closes the obligation.
+        missed=new_stage("never-written")
+        assert abort_stage(missed)
+        assert cleanup_claim() is None  # active write lease fences the potentially delayed upload
+        make_due(missed)
+        job=cleanup_claim()
+        assert job["uploadId"]==missed and finish_job(job,True) and finish_job(job,True)
+        denied(lambda:sql(f"INSERT INTO storage.objects(bucket_id,name) VALUES('erp-chat-media','{missed}')"))
+        # Revocation after Storage accepted bytes cannot prevent funded service cleanup.
+        abandoned=new_stage("unattached",True,True)
+        assert not abort_stage(abandoned)  # a delayed failure callback cannot undo successful verification
+        make_due(abandoned)
+        sql("INSERT INTO erp_private.comms_blocks(blocker_id,blocked_id) VALUES(2,3)")
+        job=cleanup_claim()
+        assert job["uploadId"]==abandoned and not finish_job(job,True)  # catalog still present
+        denied(lambda:mutation(2,"send",conversationId=c,uploadIds=[abandoned]))
+        make_due(abandoned)
+        next_job=cleanup_claim()
+        assert next_job["attemptId"]!=job["attemptId"]
+        denied(lambda:finish_job(job,True))  # stale lease cannot acknowledge the next worker's attempt
+        sql(f"DELETE FROM storage.objects WHERE bucket_id='erp-chat-media' AND name='{abandoned}'")
+        assert finish_job(next_job,True)
+        sql("DELETE FROM erp_private.comms_blocks")
+        # Race a send holding its transaction open across the expiry boundary with a worker claim.
+        race_item=new_stage("race",True,True)
+        race_cmd={"op":"chat.send","args":{"clientMutationId":str(uuid.uuid4()),"conversationId":c,"uploadIds":[race_item]}}
+        race_cmd["_budgetPermitId"]=permit(2,"chat",race_cmd)
+        race_json=json.dumps(race_cmd)
+        sql(f"UPDATE erp_private.chat_uploads SET stage_expires_at=now()+interval '1 second',write_lease_until=now() WHERE id='{race_item}'")
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            sending=pool.submit(sql,f"BEGIN;SET ROLE authenticated;SET test.actor='2';SELECT public.erp_chat_v1('{race_json}'); SELECT pg_advisory_xact_lock(77111373);SELECT pg_sleep(2);COMMIT;")
+            for _ in range(10):
+                if sql("SELECT EXISTS(SELECT FROM pg_locks WHERE locktype='advisory' AND objid=77111373)")=="t":break
+            else: raise AssertionError("Send did not acquire fixture barrier")
+            import time
+            time.sleep(1.05)
+            assert cleanup_claim() is None
+            sending.result()
+        assert sql(f"SELECT state FROM erp_private.chat_uploads WHERE id='{race_item}'")=="attached"
+        denied(lambda:sql(f"DELETE FROM storage.objects WHERE bucket_id='erp-chat-media' AND name='{race_item}'"))
+        denied(lambda:sql(f"DELETE FROM storage.objects WHERE bucket_id='erp-chat-media' AND name='{upload}'"))
         # Bounds are checked in the DB even if HTTP validation is bypassed.
         denied(lambda:mutation(2,"uploadBegin",conversationId=c,filename="x.ogg",mime="audio/ogg",byteLength=52428801))
         exact=mutation(2,"uploadBegin",conversationId=c,filename="x.ogg",mime="audio/ogg",byteLength=52428800)
@@ -199,6 +311,29 @@ def run():
         mutation(3,"send",conversationId=c,body="Arrived during paging")
         pg2=request(2,"messages",conversationId=c,mode="participant",cursor=pg1["nextCursor"],limit=1)
         assert int(pg2["items"][0]["seq"])<int(pg1["items"][0]["seq"])
+        # Exercise the actual inlined, authorized search function at realistic cardinality.
+        pattern="Needle_%! Привет مرحبا"
+        distinctive=mutation(2,"send",conversationId=c,body=pattern)
+        for literal in ["Needle_%!","_","%","!","مرحبا","Привет"]:
+            hits=request(3,"search",mode="participant",query=literal)["items"]
+            assert any(x["id"]==distinctive["id"] for x in hits),literal
+        body_stress=f"INSERT INTO erp_private.chat_messages(conversation,seq,sender,body) SELECT '{c}',n+100000,2,md5(n::text) FROM generate_series(1,15000) n"
+        sql(body_stress)
+        sql("VACUUM (ANALYZE) erp_private.chat_messages")
+        plan=json.loads(sql("SET test.actor='3'; EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) SELECT * FROM erp_private.chat_search_rows(3,'participant','Needle_%!',null,null,null,41,0)"))[0]["Plan"]
+        def plan_nodes(node):
+            yield node
+            for child in node.get("Plans",[]):
+                yield from plan_nodes(child)
+        indexed=[n for n in plan_nodes(plan) if n.get("Index Name")=="chat_message_body_substring"]
+        assert indexed, json.dumps(plan)[:6000]
+        assert not any(n.get("Relation Name")=="chat_messages" and n["Node Type"]=="Seq Scan" for n in plan_nodes(plan))
+        print("PASS actual 15,000-row EXPLAIN uses",indexed[0]["Index Name"],"hits",indexed[0]["Shared Hit Blocks"],"index rows",indexed[0]["Actual Rows"])
+        assert all(x["id"]!=distinctive["id"] for x in request(6,"search",mode="participant",query="Needle_%!")["items"])
+        quota_item=mutation(2,"uploadBegin",conversationId=c,filename="quota.ogg",mime="audio/ogg",byteLength=4)["uploadId"]
+        assert cleanup_claim() is None
+        sql("UPDATE erp_comm_cost.control_pool SET used=max_actions-3001 WHERE kind='chat_stage_poll'")
+        denied(lambda:stage_open(quota_item))  # fewer than three unpledged cleanup polls remain
         # Terms rotation denies new sends without erasing permitted history.
         sql("UPDATE erp_private.comms_policy_versions SET is_current=false")
         denied(lambda:mutation(2,"send",conversationId=c,body="Requires current terms"))

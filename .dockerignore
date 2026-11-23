@@ -20,5 +20,8 @@
 !tooling/
 !tooling/dms/
 !tooling/dms/validate-intake.cjs
+!tooling/local/
+tooling/local/**
+!tooling/local/build-chat-offline.mjs
 !tooling/release/
 !tooling/release/build-inputs.cjs

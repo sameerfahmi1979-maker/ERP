@@ -9,7 +9,7 @@ const directories = ['src', 'public'];
 const files = [
   '.dockerignore', 'Dockerfile', 'next.config.ts', 'package.json', 'package-lock.json',
   'postcss.config.mjs', 'tsconfig.json', 'tsconfig.shipping.json', 'tooling/dms/validate-intake.cjs',
-  'tooling/release/build-inputs.cjs', 'vendor/shadcn/tailwind.css',
+  'tooling/local/build-chat-offline.mjs', 'tooling/release/build-inputs.cjs', 'vendor/shadcn/tailwind.css',
   'vendor/braces-3.0.3-algt-integrated-2.tgz', 'vendor/sprintf-js-1.0.3-algt.1.tgz',
 ];
 const publicConfiguration = [

@@ -12,6 +12,7 @@ RUN npm ci --no-fund
 COPY src ./src
 COPY vendor/shadcn/tailwind.css ./vendor/shadcn/tailwind.css
 COPY tooling/dms/validate-intake.cjs ./tooling/dms/validate-intake.cjs
+COPY tooling/local/build-chat-offline.mjs ./tooling/local/build-chat-offline.mjs
 COPY tooling/release/build-inputs.cjs ./tooling/release/build-inputs.cjs
 COPY Dockerfile .dockerignore ./
 COPY public ./public

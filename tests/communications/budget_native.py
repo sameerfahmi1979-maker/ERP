@@ -96,6 +96,9 @@ def main():
         dims = ["railway", "database"]
         if feature == "ptt_live":
             dims.append("sfu_turn")
+        if feature=="sos":
+            discovery = f"""insert into erp_comm_cost.meter select '{op}','database','bounded discovery',true,now(),now()+interval '10 minutes',
+                now()+interval '30 minutes',0,id,100000 from erp_comm_cost.capacity where unit='sos_discovery_target_checks';"""
         if feature=="realtime":
             dims.append("realtime")
         if feature in ("media_upload","media_download","export"):
@@ -114,6 +117,8 @@ def main():
 
         statements.append(f"""insert into erp_comm_cost.meter select '{op}','database','ledger size and continuing funding',true,now(),
             now()+interval '10 minutes',now()+interval '30 minutes',0,id,10000000 from erp_comm_cost.capacity where unit='permanent_ledger_bytes';""")
+        if feature=="sos":
+            statements.append(discovery)
         sql("\n".join(statements))
 
     def fund_pool(label, kind, subject, limit, feature, horizon_hours=1):
@@ -164,7 +169,8 @@ def main():
             select 'test',d,'units',now()-interval '1 hour',now()+interval '1 day',1000,true
             from unnest(array['railway','database','sfu_turn','fcm','storage','realtime']) d;
             insert into erp_comm_cost.capacity(billing_account,dimension,unit,valid_from,valid_until,available_units,enabled)
-            values('test','database','permanent_ledger_bytes',now()-interval '1 hour',now()+interval '1 day',10000000000,true);""")
+            values('test','database','permanent_ledger_bytes',now()-interval '1 hour',now()+interval '1 day',10000000000,true),
+             ('test','database','sos_discovery_target_checks',now()-interval '1 hour',now()+interval '1 day',1000000,true);""")
         assert json.loads(operator(ADMIN,"status",{"scope":"communications"}).stdout)["canApprove"] is False
         reason(reserve("missing"), "owner_binding_unverified")
         assert approve(OWNER).returncode != 0
@@ -305,6 +311,26 @@ def main():
         assert sql(f"select erp_comm_cost.notice_attempt_valid({bound_args});").stdout.strip()=="t"
         assert sql(f"select erp_comm_cost.take_control_read('sos','{cancelled}',2,'{session}',gen_random_uuid());").stdout.strip()=="t"
         assert sql(admission+"1,1);",False).returncode != 0
+        # Twenty newer UUIDs previously hid the eligible cancellation behind LIMIT 16. Simulate both
+        # depleted receipts and still-funded sources whose current target access was revoked.
+        sql(f"""do $$ declare i integer; op text; ticket uuid; src uuid; begin
+          for i in 1..20 loop
+            op:='past-notice-'||i; ticket:=gen_random_uuid(); src:=('ffffffff-ffff-4fff-8fff-'||lpad(i::text,12,'0'))::uuid;
+            insert into erp_comm_cost.proof select (jsonb_populate_record(null::erp_comm_cost.proof,
+              to_jsonb(p)||jsonb_build_object('operation_id',op))).* from erp_comm_cost.proof p where p.operation_id='sos-origin';
+            insert into erp_comm_cost.reservation select (jsonb_populate_record(null::erp_comm_cost.reservation,to_jsonb(r)||
+              jsonb_build_object('operation_id',op,'permit_id',ticket))).* from erp_comm_cost.reservation r where r.operation_id='sos-origin';
+            insert into erp_comm_cost.sos_claim values(ticket,1,1);
+            insert into erp_comm_cost.notice_binding(source,profile,origin,phase,remaining_reads,discovery_ceiling,future_cancel)
+              values(src,2,ticket,'original',case when i<=10 then 0 else 1 end,64,false);
+          end loop;
+          update erp_comm_cost.notice_binding set remaining_reads=0 where source='{source}';
+        end $$;
+        create or replace function erp_private.notification_sos_target(uuid,bigint) returns jsonb language sql as
+          $$select jsonb_build_object('pushEligible',true) where $2=2 and $1::text not like 'ffffffff-%'$$;""")
+        list_id=str(uuid.uuid4())
+        assert sql(f"select erp_comm_cost.take_control_read('sos',null,2,'{session}','{list_id}');").stdout.strip()=="t"
+        assert sql(f"select source from erp_comm_cost.notice_read where profile=2 and request='{list_id}';").stdout.strip()==cancelled
         proof("model",feature="push")
         sql("insert into erp_comm_cost.standing_envelope values('communications','push','model',true);"
             "update erp_comm_cost.capacity set available_units=1+(select coalesce(sum(h.units),0) from erp_comm_cost.unit_hold h where h.capacity_id=erp_comm_cost.capacity.id) where dimension='fcm';")
@@ -373,7 +399,7 @@ def main():
         assert reserve("spool-held",feature="export")["spool"]=={"bytesPerSlot":"1048576","slotsPerVolume":2,"maxVolumes":1,"cleanupTailSeconds":60}
         # Model one registered replica, one boot and finite poll cadence/byte and monetary holds.
         ptt_worker, boot, pulse=[str(uuid.uuid4()) for _ in range(3)]
-        sql("delete from erp_comm_cost.pause where feature='ptt_live'; insert into erp_comm_cost.ptt_worker_fleet values(true,1,1,45,30,now()+interval '2 days',true,'bounded local boot budget');")
+        sql("delete from erp_comm_cost.pause where feature='ptt_live'; insert into erp_comm_cost.ptt_worker_fleet values(true,1,2,45,30,now()+interval '2 days',true,'bounded local boot budget');")
         fund_pool("ptt-worker","ptt_worker_poll",ptt_worker,10000,"ptt_live",27)
         start=f"select erp_comm_cost.start_ptt_worker('{ptt_worker}','{boot}',now()+interval '3 hours',1000) is not null;"
         assert sql(start).stdout.strip()=="t"
@@ -384,6 +410,9 @@ def main():
         proof("drain",feature="ptt_live")
         live=reserve("drain",feature="ptt_live")
         assert live["ok"],live
+        sql("update erp_comm_cost.ptt_worker_fleet set max_boots=1;")
+        assert sql(f"select erp_comm_cost.claim_ptt_drain('{ptt_worker}','{live['permitId']}',now()+interval '3 minutes');",False).returncode!=0
+        sql("update erp_comm_cost.ptt_worker_fleet set max_boots=2;")
         assert sql(f"select erp_comm_cost.claim_ptt_drain('{ptt_worker}','{live['permitId']}',now()+interval '19 minutes');",False).returncode!=0
         assert sql(f"select erp_comm_cost.claim_ptt_drain('{ptt_worker}','{live['permitId']}',now()+interval '3 minutes');",False).returncode==0
         assert sql(f"select erp_comm_cost.claim_ptt_drain('{ptt_worker}','{live['permitId']}',now()+interval '2 days');",False).returncode!=0

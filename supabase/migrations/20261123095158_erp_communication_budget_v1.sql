@@ -193,7 +193,8 @@ create table erp_comm_cost.sos_limit (
   cancellation_evidence text not null check(length(trim(cancellation_evidence))>0),
   post_expiry_zero_cost_evidence text not null check(length(trim(post_expiry_zero_cost_evidence))>0),
   max_push_attempts integer not null default 1 check(max_push_attempts between 1 and 20),
-  max_control_reads integer not null default 2 check(max_control_reads between 2 and 256)
+  max_control_reads integer not null default 2 check(max_control_reads between 2 and 256),
+  max_discovery_slots integer not null default 64 check(max_discovery_slots between 2 and 65536)
 );
 create table erp_comm_cost.sos_claim (
   permit_id uuid primary key references erp_comm_cost.reservation(permit_id),recipients integer not null, devices integer not null
@@ -410,7 +411,7 @@ create table erp_comm_cost.ptt_worker_fleet (
   max_boots integer not null check(max_boots>=max_instances),
   busy_tick_seconds integer not null check(busy_tick_seconds>=30), restart_seconds integer not null check(restart_seconds>0),
   valid_until timestamptz not null check(isfinite(valid_until)), enabled boolean not null default false,
-  bounded_fleet_evidence text not null check(length(trim(bounded_fleet_evidence))>0), retry_seconds integer not null default 60 check(retry_seconds>=0)
+  bounded_fleet_evidence text not null check(length(trim(bounded_fleet_evidence))>0), retry_seconds integer not null default 60 check(retry_seconds>=60)
 );
 create table erp_comm_cost.ptt_worker_boot (
   boot uuid primary key,worker uuid not null,pool uuid not null references erp_comm_cost.control_pool(permit_id),
@@ -421,6 +422,12 @@ create table erp_comm_cost.ptt_drain_hold (
   permit_id uuid primary key references erp_comm_cost.reservation(permit_id),worker uuid not null,polls integer not null,ready_at timestamptz not null,until_at timestamptz not null
 );
 create index on erp_comm_cost.ptt_drain_hold(worker);
+create function erp_comm_cost.pending_ptt_workers_except(p_worker uuid) returns bigint language sql stable set search_path='' as $$
+  select count(distinct h.worker) from erp_comm_cost.ptt_drain_hold h join erp_comm_cost.reservation r on r.permit_id=h.permit_id
+    where h.worker<>p_worker and r.settled_at is null and
+      (not exists(select from erp_comm_cost.cleanup_resource c where c.permit_id=h.permit_id) or
+       exists(select from erp_comm_cost.cleanup_resource c where c.permit_id=h.permit_id and c.closed_at is null))
+$$;
 create function erp_comm_cost.start_ptt_worker(p_worker uuid,p_boot uuid,p_local_until timestamptz,p_local_max_polls integer)
 returns timestamptz language plpgsql set search_path='' as $$
 declare f erp_comm_cost.ptt_worker_fleet%rowtype;p erp_comm_cost.control_pool%rowtype; n timestamptz:=clock_timestamp(); cutoff timestamptz;
@@ -431,7 +438,7 @@ begin
   if f.singleton is null or p.permit_id is null or p_boot is null or p_local_until is null or not isfinite(p_local_until) or p_local_until<=n
     or p_local_max_polls is null or p_local_max_polls<1 or p.max_actions-p.used<=1 or
     exists(select from erp_comm_cost.ptt_worker_boot b where b.boot=p_boot or (b.worker=p_worker and b.lease_until>n))
-    or (select count(*) from erp_comm_cost.ptt_worker_boot)>=f.max_boots
+    or (select count(*) from erp_comm_cost.ptt_worker_boot)+1+erp_comm_cost.pending_ptt_workers_except(p_worker)>f.max_boots
     or (select count(*) from erp_comm_cost.ptt_worker_boot where lease_until>n)>=f.max_instances then return null; end if;
   if erp_comm_cost.debit_control('ptt_worker_poll',p_worker::text,p_boot,'boot') is null then return null; end if;
   cutoff:=least(p_local_until,f.valid_until,p.valid_until,n+make_interval(secs=>p.poll_seconds::double precision*least(p_local_max_polls,p.max_actions-p.used-1)));
@@ -465,8 +472,10 @@ returns boolean language sql set search_path='' as $$
     where b.worker=p_worker and p_until>clock_timestamp() and p.enabled and f.singleton and f.enabled and
       least(p.valid_until,b.until_at,f.valid_until)>=p_until and b.lease_until>clock_timestamp() and
       p.last_poll>=clock_timestamp()-make_interval(secs=>f.busy_tick_seconds+p.poll_seconds) and
-      least(b.poll_limit-b.polls,p.max_actions-p.used)>=ceil(extract(epoch from p_until-clock_timestamp())/p.poll_seconds)+backlog.required and
-      extract(epoch from p_until-clock_timestamp())>=backlog.required*f.busy_tick_seconds+f.restart_seconds)
+      least(b.poll_limit-b.polls,p.max_actions-p.used-1)>=ceil(extract(epoch from p_until-clock_timestamp())/p.poll_seconds)+backlog.required and
+      f.max_boots>=(select count(*) from erp_comm_cost.ptt_worker_boot)+1+erp_comm_cost.pending_ptt_workers_except(p_worker) and
+      extract(epoch from p_until-clock_timestamp())>=backlog.required*(f.busy_tick_seconds::bigint+f.retry_seconds+p.poll_seconds)+
+        extract(epoch from b.lease_until-clock_timestamp())+f.restart_seconds)
 $$;
 create function erp_comm_cost.claim_ptt_drain(p_worker uuid,p_permit uuid,p_until timestamptz)
 returns void language plpgsql set search_path='' as $$
@@ -491,8 +500,10 @@ begin
   if p_until is null or not isfinite(p_until) or cfg.singleton is null or b.boot is null or p.permit_id is null or horizon is null or jobs is null
      or horizon<=n or least(cfg.valid_until,p.valid_until,b.until_at)<horizon or
      p.last_poll<n-make_interval(secs=>cfg.busy_tick_seconds+p.poll_seconds)
-     or least(b.poll_limit-b.polls,p.max_actions-p.used)<ceil(extract(epoch from horizon-n)/p.poll_seconds)+jobs+outstanding
-     or extract(epoch from earliest_stop-last_ready)<(jobs+outstanding)*(cfg.busy_tick_seconds::bigint+cfg.retry_seconds)+cfg.restart_seconds
+     or cfg.max_boots<(select count(*) from erp_comm_cost.ptt_worker_boot)+1+erp_comm_cost.pending_ptt_workers_except(p_worker)
+     or least(b.poll_limit-b.polls,p.max_actions-p.used-1)<ceil(extract(epoch from horizon-n)/p.poll_seconds)+jobs+outstanding
+     or extract(epoch from earliest_stop-last_ready)<(jobs+outstanding)*(cfg.busy_tick_seconds::bigint+cfg.retry_seconds+p.poll_seconds)+
+       extract(epoch from b.lease_until-n)+cfg.restart_seconds
      then raise sqlstate 'PT503' using message='ptt_drain_capacity_unavailable'; end if;
   if current_hold.permit_id is null then insert into erp_comm_cost.ptt_drain_hold values(p_permit,p_worker,jobs,p_until,horizon); end if;
 end $$;
@@ -508,9 +519,13 @@ end $$;
 create table erp_comm_cost.notice_binding (
   source uuid not null, profile bigint not null, origin uuid not null references erp_comm_cost.sos_claim(permit_id),
   phase text not null check(phase in ('original','cancelled')),
+  remaining_reads integer not null check(remaining_reads>=0), discovery_ceiling integer not null check(discovery_ceiling>=2),
+  future_cancel boolean not null, issued_at timestamptz not null default clock_timestamp(),
   primary key(source,profile), unique(origin,phase,profile)
 );
 create index on erp_comm_cost.notice_binding(profile,source);
+create index on erp_comm_cost.notice_binding(profile,issued_at desc,source) where remaining_reads>0;
+create index on erp_comm_cost.notice_binding(profile,discovery_ceiling) where remaining_reads>0 or future_cancel;
 create table erp_comm_cost.notice_attempt (
   kind text not null,source uuid not null,profile bigint not null, device uuid not null,job uuid not null,lease uuid not null,
   valid_until timestamptz not null,primary key(kind,source,profile,lease)
@@ -523,8 +538,9 @@ create table erp_comm_cost.notice_read (
 );
 create function erp_comm_cost.bind_sos_notice(p_permit uuid,p_source uuid,p_phase text,p_profile bigint)
 returns void language plpgsql set search_path='' as $$
-declare claim erp_comm_cost.sos_claim%rowtype;
+declare claim erp_comm_cost.sos_claim%rowtype; lim erp_comm_cost.sos_limit%rowtype; slots bigint; ceiling integer;
 begin
+  perform 1 from erp_comm_cost.authority where singleton for update;
   select * into claim from erp_comm_cost.sos_claim where permit_id=p_permit for update;
   if claim.permit_id is null or p_source is null or p_profile is null or p_phase is null or p_phase not in ('original','cancelled')
     then raise sqlstate 'PT503'; end if;
@@ -534,7 +550,20 @@ begin
     or exists(select from erp_comm_cost.notice_binding b where b.origin=p_permit and b.phase=p_phase and b.source<>p_source)
     or (select count(*) from erp_comm_cost.notice_binding b where b.origin=p_permit and b.phase=p_phase)>=claim.recipients
     then raise sqlstate 'PT503' using message='sos_notice_unfunded'; end if;
-  insert into erp_comm_cost.notice_binding values(p_source,p_profile,p_permit,p_phase);
+  select l.* into strict lim from erp_comm_cost.reservation r join erp_comm_cost.sos_limit l on l.operation_id=r.operation_id
+    where r.permit_id=p_permit;
+  if p_phase='original' then
+    select coalesce(sum((x.remaining_reads>0)::integer+x.future_cancel::integer),0),least(min(x.discovery_ceiling),lim.max_discovery_slots)
+      into slots,ceiling from erp_comm_cost.notice_binding x where x.profile=p_profile and (x.remaining_reads>0 or x.future_cancel);
+    -- Prebook BOTH entry slots now. A later eligible cancellation never needs to grow this bounded candidate index.
+    if slots+2>ceiling then raise sqlstate 'PT503' using message='sos_discovery_capacity_unavailable'; end if;
+  else
+    update erp_comm_cost.notice_binding x set future_cancel=false where x.profile=p_profile and x.origin=p_permit
+      and x.phase='original' and x.future_cancel;
+    if not found then raise sqlstate 'PT503' using message='sos_notice_unfunded'; end if;
+  end if;
+  insert into erp_comm_cost.notice_binding(source,profile,origin,phase,remaining_reads,discovery_ceiling,future_cancel)
+    values(p_source,p_profile,p_permit,p_phase,lim.max_control_reads,lim.max_discovery_slots,p_phase='original');
 end $$;
 create function erp_comm_cost.take_notice_attempt(p_kind text,p_source uuid,p_profile bigint,p_device uuid,p_job uuid,p_lease uuid)
 returns boolean language plpgsql set search_path='' as $$
@@ -583,15 +612,18 @@ begin
     and erp_comm_cost.debit_control('budget_alert',p_profile::text,p_request,'read') is not null then
     insert into erp_comm_cost.control_read_receipt values(p_profile,p_request); return true; end if;
   if p_kind='budget' or to_regprocedure('erp_private.notification_sos_target(uuid,bigint)') is null then return false; end if;
-  for b in select nb.source,l.max_control_reads from erp_comm_cost.notice_binding nb join erp_comm_cost.reservation r on r.permit_id=nb.origin
-    join erp_comm_cost.sos_limit l on l.operation_id=r.operation_id where nb.profile=p_profile and (p_source is null or nb.source=p_source)
-    order by nb.source desc limit 16 loop
-    execute 'select erp_private.notification_sos_target($1,$2)' into eligible using b.source,p_profile;
-    if eligible is not null and (select count(*) from erp_comm_cost.notice_read nr where nr.source=b.source and nr.profile=p_profile)<b.max_control_reads
-      and not exists(select from erp_comm_cost.notice_read nr where nr.profile=p_profile and nr.request=p_request) then
-      insert into erp_comm_cost.notice_read values(b.source,p_profile,p_request); insert into erp_comm_cost.control_read_receipt values(p_profile,p_request); return true;
-    end if;
-  end loop;
+  -- The active index contains only unspent credits. Live target authorization precedes LIMIT.
+  -- Each original admission enforces a prepaid recipient-specific upper bound on active and future rows.
+  execute $find$
+    select x.source from erp_comm_cost.notice_binding x where x.profile=$1 and x.remaining_reads>0
+      and ($2 is null or x.source=$2) and erp_private.notification_sos_target(x.source,$1) is not null
+    order by x.issued_at desc,x.source limit 1
+  $find$ into b using p_profile,p_source;
+  if b.source is not null then
+    update erp_comm_cost.notice_binding x set remaining_reads=x.remaining_reads-1 where x.source=b.source and x.profile=p_profile;
+    insert into erp_comm_cost.notice_read values(b.source,p_profile,p_request);
+    insert into erp_comm_cost.control_read_receipt values(p_profile,p_request); return true;
+  end if;
   return false;
 end $$;
 -- Private service operations use one persistent lock shared by every feature and billing scope.
@@ -720,6 +752,10 @@ begin
             from erp_comm_cost.sos_limit l where l.operation_id=source_op)) then
     return jsonb_build_object('ok',false,'reason','ledger_retention_capacity_unproven');
   end if;
+  if f='sos' and not exists(select from erp_comm_cost.sos_limit l join erp_comm_cost.meter mm on mm.operation_id=l.operation_id
+    join erp_comm_cost.capacity c on c.id=mm.capacity_id where l.operation_id=source_op and c.dimension='database' and
+      c.unit='sos_discovery_target_checks' and mm.upper_units>=2::numeric*l.max_recipients*l.max_control_reads*l.max_discovery_slots)
+    then return jsonb_build_object('ok',false,'reason','sos_discovery_capacity_unavailable'); end if;
   if f='export' and not exists(select from erp_comm_cost.export_spool_limit sl join erp_comm_cost.meter mm on mm.operation_id=sl.operation_id
     join erp_comm_cost.capacity c on c.id=mm.capacity_id where sl.operation_id=source_op and c.dimension='railway' and
     c.unit='encrypted_spool_byte_hours' and p.operational_stop_by>=n+make_interval(secs=>sl.cleanup_tail_seconds) and
@@ -794,7 +830,7 @@ begin
       select op,sl.bytes_per_slot,sl.slots_per_volume,sl.max_volumes,sl.cleanup_tail_seconds,sl.export_spool_evidence
       from erp_comm_cost.export_spool_limit sl where sl.operation_id=source_op;
     insert into erp_comm_cost.sos_limit
-      select op,l.max_recipients,l.max_devices,l.cancellation_evidence,l.post_expiry_zero_cost_evidence,l.max_push_attempts,l.max_control_reads
+      select op,l.max_recipients,l.max_devices,l.cancellation_evidence,l.post_expiry_zero_cost_evidence,l.max_push_attempts,l.max_control_reads,l.max_discovery_slots
       from erp_comm_cost.sos_limit l where l.operation_id=source_op;
   end if;
   insert into erp_comm_cost.reservation(operation_id,permit_id,scope,actor_id,feature,approval_id,liability_ends_at,

@@ -15,7 +15,9 @@ const documentSchema=z.object({id,document_no:z.string(),title:z.string(),status
   document_type_id:id.nullable(),document_type:z.object({type_code:text,name_en:text}).strip().nullable(),ai_risk_level:text,ai_risk_score:z.number().finite().nullable(),completeness_score:z.number().finite().nullable(),created_at:z.string(),updated_at:z.string(),
 }).strip();
 type Document=z.infer<typeof documentSchema>;
-type Native={data:unknown;count:number|null;error:unknown};
+const optionDocumentSchema=documentSchema.pick({id:true,document_no:true,title:true,status:true,issue_date:true,expiry_date:true,document_type:true});
+const OPTION_FIELDS="id,document_no,title,status,issue_date,expiry_date,document_type:dms_document_types(type_code,name_en)";
+type Native={data:unknown;count:number|null;error:{code?:string}|null;status?:number};
 interface Query extends PromiseLike<Native>{eq(k:string,v:unknown):Query;neq(k:string,v:unknown):Query;is(k:string,v:null):Query;in(k:string,v:number[]):Query;not(k:string,op:string,v:unknown):Query;or(v:string):Query;order(k:string,opts?:{ascending:boolean}):Query;range(a:number,b:number):Query;}
 // The finite ceiling is an execution limit, not a business result or a silent
 // provider cap. Count drift, short pages and over-budget unions return no rows.
@@ -82,7 +84,7 @@ async function execute(input:unknown,context:AuthContext|undefined,callerSignal:
       if(fleetScope&&p.operation==="selected")query.eq("owning_company_id",fleetScope.company).eq("owning_branch_id",fleetScope.branch);
       return query.order("id",{ascending:true});
     },documentSchema);if(rows.some(r=>!batch.includes(r.id)))throw Error("Document mismatch");docs.push(...rows);}return docs;};
-    const enrich=async(docs:Document[]):Promise<AvailableDmsDocumentOption[]>=>{
+    const enrich=async(docs:z.infer<typeof optionDocumentSchema>[]):Promise<AvailableDmsDocumentOption[]>=>{
       const caps=new Map<number,{preview:boolean;extraction:boolean}>();
       // A small concurrency bound; every RPC participates in the same finite
       // request/deadline budget. Flat permissions are never row grants.
@@ -104,22 +106,51 @@ async function execute(input:unknown,context:AuthContext|undefined,callerSignal:
         has_extraction:c.extraction?!!ef:null,has_ocr:c.preview?ocr.has(d.id):null,extracted_person_name:ef?(ef.full_name_en??ef.full_name??ef.holder_name??ef.person_name):null});});
     };
     if(p.operation==="attach"||p.operation==="selected"){
-      let docs:Document[];
       if(p.operation==="selected"){
-        docs=await readDocs(p.documentIds);
+        const docs=await readDocs(p.documentIds);
         if(docs.length!==p.documentIds.length||docs.some(d=>d.deleted_at!==null||d.status==="deleted"||linkedIds.includes(d.id)))return output({criteria:p,asOf,availability:"unavailable"});
-      }else{
-        const shared=p.search?await prepareDocumentQuery(db,p.search,ctx,{signal}):null;
-        docs=await complete(()=>{
-          const q=shared?shared.query.select(DOC_FIELDS).is("deleted_at",null).not("status","eq","deleted"):select("dms_documents",DOC_FIELDS).is("deleted_at",null).neq("status","deleted");
-          if(fleetScope)q.eq("owning_company_id",fleetScope.company).eq("owning_branch_id",fleetScope.branch);
-          return q.order("created_at",{ascending:false}).order("id",{ascending:false}) as unknown as Query;
-        },documentSchema);
-        docs=docs.filter(d=>!linkedIds.includes(d.id));
+        return output({criteria:p,asOf,availability:"available",rows:await enrich(docs)});
       }
-      const totalCount=docs.length,window=p.operation==="selected"||legacy?docs:docs.slice(p.offset,p.offset+p.limit),rows=await enrich(window);
-      if(legacy&&p.operation==="attach")return {success:true,collection:{kind:"attach",rows}};
-      return output(p.operation==="selected"?{criteria:p,asOf,availability:"available",rows}:{criteria:p,asOf,availability:"available",totalCount,rows});
+      const shared=p.search?await prepareDocumentQuery(db,p.search,ctx,{signal}):null;
+      const choices=(fields:string)=>{
+        const q=shared?shared.query.select(fields).is("deleted_at",null).not("status","eq","deleted").abortSignal(signal):select("dms_documents",fields).is("deleted_at",null).neq("status","deleted");
+        if(fleetScope)q.eq("owning_company_id",fleetScope.company).eq("owning_branch_id",fleetScope.branch);
+        return q.order("created_at",{ascending:false}).order("id",{ascending:false}) as unknown as Query;
+      };
+      // Keep large exclusion sets out of the URL. Shared searches with links
+      // use the complete reader so their prepared subject query is never rebuilt.
+      if(!legacy&&linkedIds.length<=BATCH&&(!shared||!linkedIds.length)){
+        const query=choices(OPTION_FIELDS);
+        if(linkedIds.length)query.not("id","in",`(${linkedIds.join(",")})`);
+        let page=await query.range(p.offset,p.offset+p.limit-1);
+        signal.throwIfAborted();
+        if(p.offset>0&&page.status===416&&page.error?.code==="PGRST103"){
+          attempt();
+          const first=await query.range(0,0);
+          signal.throwIfAborted();
+          if(first.error||first.count===null||first.count>p.offset||!Array.isArray(first.data)||first.data.length!==Math.min(1,first.count))throw Error("Unverified empty page");
+          page={...first,data:[]};
+        }
+        const totalCount=page.count;
+        if(page.error||totalCount===null||!Number.isSafeInteger(totalCount)||totalCount<0)throw Error("Candidate count unavailable");
+        if(totalCount>ENTITY_DOCUMENTS_MAX_ROWS)throw new TooLarge();
+        if(totalCount+linkedIds.length>ENTITY_DOCUMENTS_MAX_ROWS){
+          // Only the unfiltered protected source can decide the original limit:
+          // some linked records may be deleted or invisible to this user.
+          const source=await choices("id").range(0,0);
+          signal.throwIfAborted();
+          if(source.error||source.count===null||!Number.isSafeInteger(source.count)||source.count<totalCount||source.count>totalCount+linkedIds.length)throw Error("Candidate count changed");
+          if(source.count>ENTITY_DOCUMENTS_MAX_ROWS)throw new TooLarge();
+        }
+        const docs=z.array(optionDocumentSchema).parse(page.data);
+        if(docs.length!==Math.min(p.limit,Math.max(0,totalCount-p.offset))||new Set(docs.map(d=>d.id)).size!==docs.length||docs.some(d=>linkedIds.includes(d.id)))throw Error("Incomplete candidate page");
+        return output({criteria:p,asOf,availability:"available",totalCount,rows:await enrich(docs)});
+      }
+      const excluded=new Set(linkedIds);
+      const docs=(await complete(()=>choices(OPTION_FIELDS),optionDocumentSchema)).filter(d=>!excluded.has(d.id));
+      const rows=await enrich(legacy?docs:docs.slice(p.offset,p.offset+p.limit));
+      if(legacy)return {success:true,collection:{kind:"attach",rows}};
+      return output({criteria:p,asOf,availability:"available",totalCount:docs.length,rows});
     }
     const docs = await readDocs(linkedIds);
     const excludedEmployeeDocumentIds = new Set(

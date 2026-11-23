@@ -20,7 +20,7 @@ export function usePayrollCommand<Request, Response extends Result>(
 ) {
   const inFlight = useRef(false);
   const pending = useRef<Request | null>(null);
-  const confirmed = useRef<Success<Response> | null>(null);
+  const confirmed = useRef<{ receipt: Success<Response>; needsServerRefresh: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [retry, setRetry] = useState(false);
   const [refreshing, beginRefresh] = useTransition();
@@ -40,7 +40,6 @@ export function usePayrollCommand<Request, Response extends Result>(
         confirmed.current = null;
         setRefreshError(false);
       } catch {
-        confirmed.current = receipt;
         setRefreshError(true);
       }
     });
@@ -68,16 +67,15 @@ export function usePayrollCommand<Request, Response extends Result>(
       pending.current = null;
       setRetry(false);
       receipt = result as Success<Response>;
+      confirmed.current = { receipt, needsServerRefresh: receipt.refreshRequired === true };
       setMessage({ text: options.onSuccess(request), error: false });
       if (receipt.refreshRequired) {
-        confirmed.current = receipt;
         setRefreshError(true);
       } else {
         updateView(receipt);
       }
     } catch {
       if (receipt) {
-        confirmed.current = receipt;
         setRefreshError(true);
         setMessage({ text: "Payroll action recorded.", error: false });
       } else {
@@ -92,13 +90,16 @@ export function usePayrollCommand<Request, Response extends Result>(
   }
 
   async function retryRefresh() {
-    const receipt = confirmed.current;
-    if (inFlight.current || !receipt) return;
+    const view = confirmed.current;
+    if (inFlight.current || !view) return;
     inFlight.current = true;
     setBusy(true);
     try {
-      if (receipt.refreshRequired && (!options.target || !await refreshPayrollWorkspace(options.target))) return;
-      updateView(receipt);
+      if (view.needsServerRefresh) {
+        if (!options.target || !await refreshPayrollWorkspace(options.target)) return;
+        view.needsServerRefresh = false;
+      }
+      updateView(view.receipt);
     } catch {
       setRefreshError(true);
     } finally {

@@ -300,3 +300,26 @@ it("all three business mutation blocks preserve the original source (line-ending
 it("protected read service has no privileged client, broad JSON/row projection, provider or mutation",()=>{
   const source=readFileSync("src/server/reads/dms-entity-documents.ts","utf8");expect(source).not.toMatch(/createAdminClient|supabase\/admin|\.insert\(|\.update\(|\.delete\(|\.upload\(|\.select\(["'`]\*/);expect(source).toContain("f03_has_document_permission");expect(source).toContain("current_user_has_permission");
 });
+it.each([0, 900, 1000, 1100])("reads only the requested attachment window at %i", async offset=>{
+  s.rows.dms_documents=Array.from({length:1001},(_,i)=>doc(i+1));
+  const r=entityDocumentsAttachPage.parse((await read("attach",{offset})).data);
+  const calls=s.calls.filter(c=>c.table==="dms_documents");
+  const ranges=calls.map(c=>c.methods.find(m=>m[0]==="range")?.slice(1));
+  expect(r.totalCount).toBe(1001);
+  expect(r.rows.map(d=>d.id)).toEqual(Array.from({length:Math.min(25,Math.max(0,1001-offset))},(_,i)=>1001-offset-i));
+  expect(ranges).toEqual([[offset,offset+24]]);
+});
+it("excludes linked choices before fetching the requested attachment window",async()=>{
+  s.rows.dms_documents=Array.from({length:1001},(_,i)=>doc(i+1));
+  s.rows.dms_document_links=[link(1001),link(999),link(7001)];
+  const r=entityDocumentsAttachPage.parse((await read("attach",{offset:1,limit:2})).data);
+  expect(r.totalCount).toBe(999);expect(r.rows.map(d=>d.id)).toEqual([998,997]);
+  const calls=s.calls.filter(c=>c.table==="dms_documents");expect(calls).toHaveLength(1);
+  expect(calls[0].methods).toContainEqual(["range",1,2]);
+});
+it("keeps the pre-exclusion source limit near 5000",async()=>{
+  s.rows.dms_documents=Array.from({length:5001},(_,i)=>doc(i+1));s.rows.dms_document_links=[link(1),link(2)];
+  expect((await read("attach")).data).toMatchObject({availability:"too_large"});
+  s.rows.dms_documents.pop();s.rows.dms_document_links.push(link(9999));
+  const r=entityDocumentsAttachPage.parse((await read("attach")).data);expect(r.totalCount).toBe(4998);
+});

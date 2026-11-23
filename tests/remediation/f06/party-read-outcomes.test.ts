@@ -57,6 +57,7 @@ function cataloguePort() {
   const query = {
    select: (projection: string) => { projections.push(projection); return query; },
    eq: (key: string, value: unknown) => { predicates.push([key, value]); return query; },
+   in: (key: string, values: number[]) => { predicates.push([key, values]); return query; },
    order: () => query,
    range: (from: number, to: number) => { ranges.push([from, to]); return query; },
    maybeSingle: async () => response,
@@ -160,6 +161,35 @@ it('exports every matching row, or an exact selected subset in current sort orde
  expect(selected.data?.map(row => row.id)).toEqual([1100, 103, 2]);
  expect(await getPartyCatalogueExport({ ...input, selectedIds: [2, 1101] })).toMatchObject({ success: false });
  expect(predicates.filter(([key]) => key === 'type_scope.is_active').length).toBe(9);
+});
+
+it('hydrates only selected typed rows for a literal historical-label filter, preserving database order', async () => {
+ const { predicates, ranges } = cataloguePort();
+ const rows = [{ id: 7 }, { id: 1201 }];
+ m.responses = [{ data: { id: 8 }, error: null }, { data: rows, count: 2, error: null }];
+ m.labels.mockImplementation(async (_entity, selected) => selected.map((row: { id: number }) => ({
+  ...row, country_name: 'Retired Market_%',
+ })));
+ const result = await getPartyCatalogueExport({
+  typeCode: 'CUSTOMER', selectedIds: [1201, 7], filters: [{ id: 'country_name', value: 'market_%' }],
+ });
+ expect(result.data?.map(row => row.id)).toEqual([7, 1201]);
+ expect(predicates).toEqual([['type_code', 'CUSTOMER'], ['type_scope.party_type_id', 8], ['type_scope.is_active', true], ['id', [1201, 7]]]);
+ expect(ranges).toEqual([[0, 1]]);
+ expect(m.labels.mock.calls[0][1].map((row: { id: number }) => row.id)).toEqual([7, 1201]);
+});
+
+it.each(['left type', 'changed label', 'identity substituted'])('rejects incomplete selected export when a Party has %s', async reason => {
+ cataloguePort();
+ const rows = reason === 'left type' ? [{ id: 7 }] : [{ id: 7 }, { id: reason === 'identity substituted' ? 29 : 1201 }];
+ m.responses = [{ data: { id: 8 }, error: null }, { data: rows, count: rows.length, error: null }];
+ m.labels.mockImplementation(async (_entity, selected) => selected.map((row: { id: number }) => ({
+  ...row, country_name: reason === 'changed label' && row.id === 1201 ? 'Other' : 'Retired',
+ })));
+ const result = await getPartyCatalogueExport({
+  typeCode: 'CUSTOMER', selectedIds: [1201, 7], filters: [{ id: 'country_name', value: 'retired' }],
+ });
+ expect(result).toMatchObject({ success: false, kind: 'failed' });
 });
 
 it('retains the existing Party Types attachment cell and its empty value', async () => {

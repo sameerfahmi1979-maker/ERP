@@ -71,18 +71,21 @@ export function AttendanceWorkbench({authContext,initial}:{authContext:AuthConte
   const targets=all?await selectAll():selected;if(!targets||!life.active)return;
   flight.current=true;setBusy(true);
   try{
+  const openingDrafts=session.drafts;
   const prepared:{row:AttendanceRosterRow;value:EnteredAttendance;reason:string}[]=[];
-  let applied=0,excluded=0,complex=0,unchanged=0,failed=0;
+  let excluded=0,complex=0,unchanged=0;
   for(const row of Object.values(targets)){
-   const old=session.drafts[key(row)];
+   const old=openingDrafts[key(row)];
    if(!canEditTimesheetRow(row)||old?.request||old?.status==='conflict'){excluded++;continue;}
    const original=old?.values??row.entered??{attendance_type:'site' as const,intervals:[]};
    const result=applyTimesheetFields(original,date,fields,replaceExisting);if(result.skippedTimes)complex++;
    if(!result.changed){unchanged++;continue;}
    prepared.push({row,value:result.value,reason:old?.reason??''});
   }
-  if(prepared.filter(p=>!session.drafts[key(p.row)]).length+Object.keys(session.drafts).length>500){setMessage('Save or review the current batch before adding more rows. No rows were changed.');return;}
-  for(const p of prepared){try{session.edit(p.row,date,p.value,p.reason);applied++;}catch{failed++;break;}}
+  if(prepared.filter(p=>!openingDrafts[key(p.row)]).length+Object.keys(openingDrafts).length>500){setMessage('Save or review the current batch before adding more rows. No rows were changed.');return;}
+  let result={applied:0,failed:true};
+  try{result=session.editMany(date,prepared);}catch{/* Use the batch failure summary below. */}
+  const {applied,failed}=result;
   if(all&&total>500&&!failed)setNextBatch(p=>p+20>Math.ceil(total/25)?1:p+20);
   redraw(n=>n+1);setMessage(`${applied} drafts updated; ${excluded} locked, ineligible or held; ${complex} complex/non-work time entries preserved; ${unchanged} unchanged. ${failed?'Draft preparation stopped; review retained rows before continuing.':'Save changes when ready.'}`);
   }finally{flight.current=false;if(ownership.active)setBusy(false);}

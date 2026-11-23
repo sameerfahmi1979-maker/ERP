@@ -26,7 +26,12 @@ it('prepares every matching employee in explicit 500-row batches without silentl
    return Promise.resolve({success:true,data:{rows:Array.from({length:Math.min(500,501-offset)},(_,index)=>({...row,employee_id:offset+index+1,employee_code:'SYN'+(offset+index+1)})),total:501,page:q.page}});
  });
  await open();fireEvent.change(screen.getByLabelText('Bulk site / location'),{target:{value:'3'}});fireEvent.change(screen.getByLabelText('Bulk time in'),{target:{value:'08:00'}});fireEvent.change(screen.getByLabelText('Bulk time out'),{target:{value:'17:00'}});
+ const writeDraft = vi.spyOn(m.store as ReturnType<typeof createWorkspaceDraftStore>, 'setViewState');
+ const readDraft = vi.spyOn(m.store as ReturnType<typeof createWorkspaceDraftStore>, 'getViewState');
  fireEvent.click(screen.getByRole('button',{name:'Apply to next batch (up to 500)'}));await screen.findByRole('button',{name:'Save changes (500)'},{timeout:10000});expect(m.save).not.toHaveBeenCalled();
+ expect(writeDraft).toHaveBeenCalledTimes(1);
+ expect(readDraft).toHaveBeenCalledTimes(1);
+ expect(Object.values(JSON.parse(writeDraft.mock.calls[0][1]).drafts)).toHaveLength(500);
  fireEvent.click(screen.getByRole('button',{name:'Apply to next batch (up to 500)'}));await screen.findByText(/Save or discard the current batch/);expect(screen.getByRole('button',{name:'Save changes (500)'})).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'Save changes (500)'}));await screen.findByText(/500 saved; 0 need review; 0 unconfirmed/,{},{timeout:20000});
  await waitFor(()=>expect(screen.getByRole('button',{name:'Apply to next batch (up to 500)'}).hasAttribute('disabled')).toBe(false));

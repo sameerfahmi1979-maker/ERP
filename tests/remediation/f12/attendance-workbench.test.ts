@@ -20,3 +20,25 @@ it('closing the owning workspace removes its memory namespace and blocks stale c
 it('unavailable/tampered/stale controller fails closed',()=>{const{store,session}=make();store.setViewState(session.key,'broken');expect(()=>session.prepare('1:2026-10-20')).toThrow();expect(createAttendanceBatchState(null,'a','o','s').blocked).toBe(true);});
 it('a corrupted controller stays blocked rather than allowing another save',()=>{const{store,session}=make();store.setViewState(session.key,'broken');expect(()=>session.prepare('1:2026-10-20')).toThrow();expect(session.blocked).toBe(true);expect(()=>session.edit(row,request.date,value,'another reason')).toThrow();});
 it('row revocation clears private data but preserves an uncertain operation identifier',()=>{const{store,session}=make(),r=session.prepare('1:2026-10-20');session.retireRow('1:2026-10-20');expect(session.drafts).toEqual({});expect(session.retired).toEqual([{operation:r.operation,employee:1,id:null}]);expect(store.getViewState(session.key)).not.toContain('Private actual note');expect(()=>session.edit(row,request.date,value,'retry')).toThrow();});
+
+it('batch draft preparation retains its ordered prefix and pins any existing original receipt',()=>{
+ const {store,session}=make();
+ const original=session.prepare('1:2026-10-20');
+ session.fail('1:2026-10-20','Unconfirmed',true);
+ const edit=(employee_id:number)=>({row:{...row,employee_id},value,reason:request.reason});
+ expect(session.editMany(request.date,[edit(2),edit(1),edit(3)])).toEqual({applied:1,failed:true});
+ const restored=createAttendanceBatchState(store,'actor','owner','scope');
+ expect(restored.drafts).toMatchObject({
+  '1:2026-10-20':{request:original,status:'uncertain'},
+  '2:2026-10-20':{request:null,status:'draft',values:value},
+ });
+ expect(restored.drafts).not.toHaveProperty('3:2026-10-20');
+});
+
+it('batch draft preparation rejects a stale private snapshot before preparing any row',()=>{
+ const {store,session}=make();
+ store.clearDraftsForTab('owner');
+ expect(()=>session.editMany(request.date,[{row:{...row,employee_id:2},value,reason:''}])).toThrow('Original draft memory changed');
+ expect(store.getViewState(session.key)).toBeUndefined();
+ expect(session.blocked).toBe(true);
+});

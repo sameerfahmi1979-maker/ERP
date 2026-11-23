@@ -118,11 +118,13 @@ async function getPartyCatalogueAuthority(typeCode?: string) {
   return { success: true, db, typeId: data.id } as const;
 }
 
-async function readPartyTableCatalogue(db: Awaited<ReturnType<typeof createClient>>, typeId?: number) {
+async function readPartyTableCatalogue(db: Awaited<ReturnType<typeof createClient>>, typeId?: number, selectedIds?: number[]) {
   const rows = await readAllPages<PartyTableProjection>(async (from, to) => {
-    const { data, count, error } = await partyCatalogueQuery(db, partyTableProjection, typeId).range(from, to);
+    let query = partyCatalogueQuery(db, partyTableProjection, typeId);
+    if (selectedIds) query = query.in("id", selectedIds);
+    const { data, count, error } = await query.range(from, to);
     return { data: data as unknown as PartyTableProjection[] | null, count, error };
-  }, { identity: row => row.id });
+  }, { identity: row => row.id, maxRows: selectedIds?.length, batchSize: selectedIds?.length });
   return attachPartyTableLabels(rows);
 }
 
@@ -178,7 +180,11 @@ export async function getPartyCatalogueExport(input: unknown): Promise<ActionRes
   try {
     const authority = await getPartyCatalogueAuthority(typeCode);
     if (!authority.success) return authority;
-    const rows = await readPartyTableCatalogue(authority.db, authority.typeId);
+    // Global search and automatic sorting depend on other authorized rows. Text
+    // column filters can be evaluated on the selected rows after label hydration.
+    const boundedSelection = selectedIds && selectedIds.length <= 100 && !criteria.search && !criteria.sorting.length
+      ? selectedIds : undefined;
+    const rows = await readPartyTableCatalogue(authority.db, authority.typeId, boundedSelection);
     const matching = criteria.search || criteria.filters.length || criteria.sorting.length
       ? matchPartyCatalogue(rows, { typeCode, ...criteria }).rows : rows;
     if (!selectedIds) return { success: true, data: matching };

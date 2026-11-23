@@ -46,3 +46,4 @@
 /supabase/migrations/2026112308*.sql -text
 /supabase/migrations/2026112309*.sql -text
 /supabase/migrations/20261123134330_hr_saved_photo_custom_plan.sql -text
+/supabase/migrations/20261123140022_ai_subject_text_first.sql -text

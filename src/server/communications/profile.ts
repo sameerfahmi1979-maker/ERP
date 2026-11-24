@@ -39,6 +39,7 @@ export async function communicationProfile(args: Record<string,unknown>, actor: 
       reason:configured ? "operation_admission_required" : "feature_disabled" };
   };
   const budgetAccess=z.object({scope:z.literal("communications"),canMonitor:z.boolean()}).safeParse(budget);
+  const refreshMode = process.env.ERP_COMM_CHAT_PILOT_MANUAL_REFRESH_ENABLED === "true" ? "manual" : "live";
   return { ...flags, ...webCache(request,actor), canCreatePttChannel:creation.canCreatePttChannel,
-    chat:workspace("chat"), ptt:workspace("ptt_live"),budget:{eligible:budgetAccess.success&&budgetAccess.data.canMonitor} };
+    chat:{...workspace("chat"),refreshMode}, ptt:workspace("ptt_live"),budget:{eligible:budgetAccess.success&&budgetAccess.data.canMonitor} };
 }

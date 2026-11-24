@@ -76,7 +76,7 @@ export function prepareProfiles(input,{now=Date.now()}={}) {
   check(instant(e.observedAt,'context observedAt')<=now,'Future context observation');contextEvidence.set(e.id,{...e,reference:'sha256:'+e.sha256,bytes});
  }
  ev(s.approval.evidenceId);
- obj(s.host,['limitsEvidenceId','ratesEvidenceId','replicas'],'host');check(s.host.replicas===1,'Only one verified existing host replica is supported');
+ obj(s.host,['limitsEvidenceId','ratesEvidenceId','replicas'],'host',['topologyEvidenceId']);check(s.host.replicas===1,'Only one verified existing host replica is supported');
  const limits=JSON.parse(ev(s.host.limitsEvidenceId).bytes.toString('utf8'));
  check(limits?.data?.serviceInstanceLimitOverride===null&&limits?.data?.serviceInstanceLimits?.containers?.cpu===24&&limits.data.serviceInstanceLimits.containers.memoryBytes===24000000000,'Authentic actual 24 CPU/24000000000-byte host ceiling required');
  const rates=JSON.parse(ev(s.host.ratesEvidenceId).bytes.toString('utf8'));
@@ -115,6 +115,7 @@ export function prepareProfiles(input,{now=Date.now()}={}) {
  }
  const featureModes=new Map(),commandCoverage=new Map();
  const standing=new Set(),slots=new Map(),normalized=[];let maxClaims=0,booked=0n,dbClaim=0n,storageClaim=0n;
+ let notificationWindow = null, notificationManifest = null;
  const addSlot=(dimension,unit,account,available)=>{
   check(/^[a-z][a-z0-9_]{0,63}$/.test(unit),'Invalid physical unit');text(account,'billing account');
   const key=[account,dimension,unit].join('/'),old=slots.get(key);
@@ -143,11 +144,43 @@ export function prepareProfiles(input,{now=Date.now()}={}) {
   check(features.includes(p.feature),'Unknown feature');check(p.feature!=='ptt_live','SFU live needs a real provider hard bound; this compiler deliberately excludes unsupported live issuance');
   const control=p.control;
   if(control){
-   obj(control,['kind','subject','maxActions','pollSeconds'],'control',['maxPhysicalStarts','workerPlan','supervisorPlan']);check(['budget_alert','chat_stage_poll','ptt_worker_poll','notification_tick','supervisor_delivery','baseline_poll','terms','report','block'].includes(control.kind),'Unsupported control kind');
+   obj(control,['kind','subject','maxActions','pollSeconds'],'control',['maxPhysicalStarts','workerPlan','supervisorPlan','notificationPlan']);check(['budget_alert','chat_stage_poll','ptt_worker_poll','notification_tick','supervisor_delivery','baseline_poll','terms','report','block'].includes(control.kind),'Unsupported control kind');
    check(control.kind!=='ptt_worker_poll','SFU worker needs a real provider hard bound');text(control.subject,'control subject');integer(control.maxActions,1,1000000,'control actions');integer(control.pollSeconds,1,3600,'control cadence');
    const f=control.kind==='budget_alert'||control.kind==='notification_tick'?'push':control.kind==='chat_stage_poll'?'media_upload':'chat';check(p.feature===f,'Wrong funded control feature');
    check(control.kind!=='chat_stage_poll'||control.pollSeconds===30,'Chat stage cadence must be 30 seconds');
-   check(control.kind!=='notification_tick'||control.subject==='mobile-notifications'&&control.pollSeconds<=20&&control.maxActions>=2,'Invalid finite scheduler control');
+   if (control.kind === 'notification_tick') {
+    check(!notificationWindow,'Only one signed notification pool is supported');
+    check(control.subject === 'mobile-notifications' && control.pollSeconds === 60,'Invalid signed notification subject or cadence');
+    check(p.usePrepaidHost === true && hostFunding,'Signed notification pool requires linked host prepayment');
+    const plan = control.notificationPlan;
+    obj(plan,['physicalStarts','planId','startsAt','calendarEnabled','pushEnabled'],'signed notification plan');
+    const physicalStarts = integer(plan.physicalStarts,1,16,'notification physical starts');
+    const deployments = JSON.parse(ev(s.host.topologyEvidenceId).bytes.toString('utf8').replace(/^\uFEFF/,''));
+    const running = Array.isArray(deployments) ? deployments.filter(d=>d.id===hostFunding.deploymentId && d.status==='SUCCESS') : [];
+    const topology = running[0]?.meta?.serviceManifest?.deploy;
+    const regions = Object.values(topology?.multiRegionConfig??{});
+    check(running.length===1 && /^sha256:[a-f0-9]{64}$/.test(running[0].meta.imageDigest) &&
+     topology?.numReplicas===1 && regions.length===1 && regions[0]?.numReplicas===1 && topology.startCommand===null &&
+     (topology.restartPolicyType==='NEVER' || topology.restartPolicyType==='ON_FAILURE' && Number.isInteger(topology.restartPolicyMaxRetries) && topology.restartPolicyMaxRetries>=0) &&
+     physicalStarts===(topology.restartPolicyType==='NEVER'?1:1+topology.restartPolicyMaxRetries),
+     'Notification physical starts must match the original single-replica deployment topology and bounded restart policy');
+    const planId = id(plan.planId,'notification plan ID');
+    const startsAt = instant(plan.startsAt,'signed notification start');
+    check(typeof plan.calendarEnabled === 'boolean' && typeof plan.pushEnabled === 'boolean','Explicit notification switches required');
+    const ticks = integer(control.maxActions-1,1,120,'signed notification ticks plus retirement');
+    // The ordinary push reserve carries 120 seconds of liability. Enrollment
+    // rechecks the signed UTC times against the actual pool, host and allocation.
+    const tailSeconds = 125;
+    const latestUntil = Math.floor(Math.min(admissionEnd,end-tailSeconds*1000)/60000)*60000;
+    const latestStart = latestUntil-ticks*60000;
+    check(startsAt===Math.floor(now/60000)*60000+60000 && startsAt>=start && startsAt<=latestStart,'Signed notification must start next minute within funded admission and retirement tail');
+    notificationWindow = {ticks,physicalStarts,latestStartsAt:new Date(latestStart).toISOString(),latestUntil:new Date(latestUntil).toISOString(),controlUntil:until,tailSeconds};
+    const canonical = JSON.stringify(input,(_key,value)=>value!==null && typeof value==='object' && !Array.isArray(value)
+     ? Object.fromEntries(Object.keys(value).sort().map(key=>[key,value[key]])) : value);
+    notificationManifest = {v:1,planId,deploymentId:hostFunding.deploymentId,allocationId:s.allocation.id,approvalId:s.approval.id,
+     approvalFingerprint:s.approval.fingerprint,startsAt:new Date(startsAt).toISOString(),until:new Date(startsAt+ticks*60000).toISOString(),
+     controlUntil:until,maxPhysicalStarts:physicalStarts,calendarEnabled:plan.calendarEnabled,pushEnabled:plan.pushEnabled,profileSha256:hash(canonical)};
+   } else check(!Object.hasOwn(control,'notificationPlan'),'Unexpected notification plan');
    check(control.kind!=='supervisor_delivery'||control.subject==='communication-supervisor'&&control.pollSeconds>=10&&control.pollSeconds<=30&&control.maxActions>=2&&control.maxActions<=4096,'Invalid finite supervisor delivery control');
    if(control.kind==='supervisor_delivery'){
     obj(control.supervisorPlan,['physicalStarts','maxClaimsPerProcess'],'supervisor private manifest probe plan');integer(control.supervisorPlan.physicalStarts,1,16,'supervisor physical starts');check(control.supervisorPlan.maxClaimsPerProcess===3,'Exactly three prepaid manifest claim attempts per physical start required');
@@ -216,6 +249,16 @@ export function prepareProfiles(input,{now=Date.now()}={}) {
   let extra=0n;
   if(control){
    let minimum=65536n+32768n*BigInt(control.maxActions);
+   if (control.kind === 'notification_tick') {
+    const attempts = BigInt(notificationWindow.ticks * notificationWindow.physicalStarts);
+    minimum = 131072n+32768n*(BigInt(control.maxActions)+attempts);
+    // Signed SQL bounds business projections to 32 rows per tick. Their
+    // physical hold is separate from claim, action and retirement ledger bytes.
+    check(db>=ledger+8388608n*BigInt(notificationWindow.ticks),'Insufficient signed notification projection database bytes');
+    for (const [dimension,account] of [['railway',hostFunding.account],['database',dbAccount]]) {
+     check(p.meters.some(m=>m.dimension===dimension && m.billingAccount===account && m.unit==='funded_notification_tick_claim_attempts' && BigInt(m.upperUnits)>=attempts),`Missing funded notification claim attempts in original ${dimension} account`);
+    }
+   }
    if(control.kind==='supervisor_delivery'){
     const attempts=control.supervisorPlan.physicalStarts*control.supervisorPlan.maxClaimsPerProcess;minimum+=32768n*(1n+BigInt(attempts));
     for(const dimension of ['railway','database'])check(p.meters.some(m=>m.dimension===dimension&&m.unit==='funded_supervisor_manifest_probes'&&BigInt(m.upperUnits)>=BigInt(attempts)),`Missing ${dimension} private supervisor manifest probe capacity`);
@@ -275,6 +318,8 @@ export function prepareProfiles(input,{now=Date.now()}={}) {
  const rows=[...slots.entries()].map(([key,value],i)=>({key,...value,name:'c'+i})),slotName=new Map(rows.map(r=>[r.key,r.name]));
  const ref=name=>q(ev(name).reference),allocationMarker=q('existing-plan:'+s.allocation.id);
  let sql=`-- Prepared offline; independent evidence review and target/history verification are mandatory.\nbegin;\nset local lock_timeout='5s';\ndo $pilot_profiles$\ndeclare ${rows.map(r=>r.name+' bigint').join(';')}; v_host uuid; v_reply jsonb; v_pool uuid;\nbegin\n`;
+ const signedStartGuard = notificationManifest ? `if ${q(notificationManifest.startsAt)}::timestamptz <> date_trunc('minute',clock_timestamp()) + interval '1 minute' then raise exception 'Signed notification funding window elapsed';end if;\n` : '';
+ sql+=signedStartGuard;
  sql+=`perform 1 from erp_comm_cost.authority where singleton for update;\nif not exists(select from erp_comm_cost.approval a join erp_comm_cost.authority o on o.singleton and o.owner_auth_id=a.owner_auth_id join erp_comm_cost.baseline_approval_receipt br on br.approval_id=a.id join public.user_profiles u on u.auth_user_id=a.owner_auth_id where a.id=${q(s.approval.id)}::uuid and a.owner_auth_id=${q(s.approval.ownerAuthId)}::uuid and u.id::text=${q(s.approval.ownerProfileId)} and u.status='active' and not u.must_change_password and a.scope='communications' and a.currency='USD' and a.max_micros=5000000 and a.revoked_at is null and a.ends_at=${q(PILOT_END)}::timestamptz and br.fingerprint=decode(${q(s.approval.fingerprint)},'hex') and br.fingerprint=erp_comm_cost.baseline_approval_fingerprint(a)) then raise exception 'Actual authenticated owner approval/receipt mismatch';end if;\n`;
  sql+=`if clock_timestamp()<${q(s.window.startsAt)}::timestamptz or clock_timestamp()>=${q(admitUntil)}::timestamptz then raise exception 'Pilot admission window closed';end if;\nif (select coalesce(sum(coalesce(settled_micros,reserved_micros)),0) from erp_comm_cost.reservation where approval_id=${q(s.approval.id)}::uuid)+${booked}>5000000 then raise exception 'Existing obligations plus planned conservative maximum exceed USD 5';end if;\n`;
  for(const r of rows){
@@ -305,6 +350,7 @@ export function prepareProfiles(input,{now=Date.now()}={}) {
    const c=p.control,command={op:'budget.fundControl',kind:c.kind,subject:c.subject,maxActions:c.maxActions,endEpoch:Math.round(end/1000)};
    const payload={feature:p.feature,scope:'communications',operationId:op,actorId:s.approval.ownerProfileId,upperBoundMicros:'0',liabilityEndsAt:null,binding:{actorSessionId:s.commissionerSessionId,command},...(hostFunding?{hostDeploymentId:hostFunding.deploymentId}:{})};
    out+=`v_reply:=erp_comm_cost.command('reserve',${q(JSON.stringify(payload))}::jsonb);if (v_reply->>'ok')::boolean is distinct from true then raise exception 'Control funding held: %',v_reply->>'reason';end if;v_pool:=(v_reply->>'permitId')::uuid;\ninsert into erp_comm_cost.control_pool(permit_id,kind,subject,max_actions,valid_until,continuing_zero_evidence,poll_seconds,enabled) values(v_pool,${q(c.kind)},${q(c.subject)},${c.maxActions},${q(until)}::timestamptz,${allocationMarker},${c.pollSeconds},true);\nraise notice 'Funded control %/% permit %',${q(c.kind)},${q(c.subject)},v_pool;\n`;
+   if (c.kind === 'notification_tick') out+=`insert into erp_comm_cost.notification_tick_authorization(pool,manifest) values(v_pool,${q(JSON.stringify(notificationManifest))}::jsonb);\n`;
   }else if(p.mode==='command')for(const command of new Set(p.commands.map(commandClass)))out+=`insert into erp_comm_cost.command_envelope(scope,feature,command_op,template_id,enabled) values('communications',${q(p.feature)},${q(command)},${q(op)},true);\n`;
   else out+=`insert into erp_comm_cost.standing_envelope(scope,feature,template_id,enabled) values('communications',${q(p.feature)},${q(op)},true);\n`;
   if(!p.control){
@@ -328,8 +374,8 @@ export function prepareProfiles(input,{now=Date.now()}={}) {
   sql+=`v_reply:=erp_comm_cost.command('reserve',${q(JSON.stringify(payload))}::jsonb);if (v_reply->>'ok')::boolean is distinct from true then raise exception 'Host funding held: %',v_reply->>'reason';end if;v_host:=(v_reply->>'permitId')::uuid;\ninsert into erp_comm_cost.host_window(funding_permit,approval_id,deployment_id,starts_at,admission_ends_at,ends_at,cpu_count,memory_bytes,max_operations,host_evidence,enabled) values(v_host,${q(s.approval.id)}::uuid,${q(h.deploymentId)}::uuid,${q(s.window.startsAt)}::timestamptz,${q(admitUntil)}::timestamptz,${q(until)}::timestamptz,24,24000000000,${s.maxReservations},${q(e.reference)},true);\nraise notice 'Host funding permit %',v_host;\n`;
  }
  for(const p of normalized.filter(p=>!(p.control?.kind==='budget_alert'&&!p.usePrepaidHost)))sql+=emitProfile(p);
- sql+='end $pilot_profiles$;\ncommit;\n';
- return {v:1,state:'prepared-not-applied',scope:s.scope,approvalId:s.approval.id,allocationId:s.allocation.id,startsAt:s.window.startsAt,admissionEndsAt:admitUntil,endsAt:until,profileCount:normalized.length,maximumReservations:maxClaims,maximumBookedMicros:booked.toString(),maximumDatabaseBytes:dbClaim.toString(),maximumStorageBytes:storageClaim.toString(),storageAllocationBasis:baseline.get('storage').basis??'physical',hostPrepaymentMicros:hostFunding?hostFunding.compute.toString():null,omittedFeatures:features.filter(f=>!standing.has(f)),heldCommands:Object.fromEntries([...commandCoverage].map(([f,covered])=>[f,commands[f].filter(c=>!covered.has(commandClass(c)))])),unrefreshedMeters,evidence:s.evidence.map(({id,file,sha256})=>({id,file,sha256})),contextEvidence:(s.contextEvidence??[]).map(({id,file,sha256,observedAt})=>({id,file,sha256,observedAt})),sql,sqlSha256:hash(sql)};
+ sql+=signedStartGuard+'end $pilot_profiles$;\ncommit;\n';
+ return {v:1,state:'prepared-not-applied',...(notificationWindow?{notificationWindow,notificationManifest}:{}),scope:s.scope,approvalId:s.approval.id,allocationId:s.allocation.id,startsAt:s.window.startsAt,admissionEndsAt:admitUntil,endsAt:until,profileCount:normalized.length,maximumReservations:maxClaims,maximumBookedMicros:booked.toString(),maximumDatabaseBytes:dbClaim.toString(),maximumStorageBytes:storageClaim.toString(),storageAllocationBasis:baseline.get('storage').basis??'physical',hostPrepaymentMicros:hostFunding?hostFunding.compute.toString():null,omittedFeatures:features.filter(f=>!standing.has(f)),heldCommands:Object.fromEntries([...commandCoverage].map(([f,covered])=>[f,commands[f].filter(c=>!covered.has(commandClass(c)))])),unrefreshedMeters,evidence:s.evidence.map(({id,file,sha256})=>({id,file,sha256})),contextEvidence:(s.contextEvidence??[]).map(({id,file,sha256,observedAt})=>({id,file,sha256,observedAt})),sql,sqlSha256:hash(sql)};
 }
 
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){

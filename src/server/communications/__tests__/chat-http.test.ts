@@ -128,6 +128,16 @@ describe("shared authorization and command transport",()=>{
     await expect(dispatchChat({op:"chat.activity",args:{conversationId:conversation}},actor)).rejects.toThrow("feature_disabled");
     expect(fake.rpc).toHaveBeenCalledTimes(3);
   });
+  it("reports bounded pilot refresh separately from ordinary live chat",async()=>{
+    fake.rpc.mockResolvedValue(ok({profileId:actor.profileId,isGlobalSystemAdmin:false,canReviewHistory:false,canCreateGroup:true,canCreatePttChannel:false}));
+    vi.stubEnv("ERP_COMM_CHAT_PILOT_MANUAL_REFRESH_ENABLED","true");
+    try {
+      expect((await communicationProfile({},actor)).chat).toMatchObject({refreshMode:"manual"});
+      vi.stubEnv("ERP_COMM_CHAT_PILOT_MANUAL_REFRESH_ENABLED","");
+      expect((await communicationProfile({},actor)).chat).toMatchObject({refreshMode:"live"});
+      expect(fake.permit).not.toHaveBeenCalled();
+    } finally { vi.unstubAllEnvs(); }
+  });
   it.each([true,false])("uses current authenticated budget-monitor authority for the owner entry (%s)",async canMonitor=>{
     fake.rpc.mockImplementation(async(name:string)=>ok(name==="erp_comm_budget_operator"
       ? {scope:"communications",canMonitor,canApprove:canMonitor}

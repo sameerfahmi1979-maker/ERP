@@ -199,3 +199,63 @@ test('supervisor delivery requires both private manifest claim probes before pub
   const p=make();assert.equal(p.maximumReservations,23);assert.ok(p.sql.includes('funded_supervisor_manifest_probes'));assert.ok(p.sql.includes('funded_supervisor_delivery_actions'));
  });
 });
+
+export function configureNotificationTopology(s, restartRetries = 1) {
+ const e = s.evidence[0];
+ const topology = {numReplicas:1,multiRegionConfig:{test:{numReplicas:1}},restartPolicyType:'ON_FAILURE',restartPolicyMaxRetries:restartRetries,startCommand:null};
+ const body = JSON.stringify([{id:s.hostFunding.deploymentId,status:'SUCCESS',meta:{imageDigest:'sha256:'+'a'.repeat(64),serviceManifest:{deploy:topology}}}]);
+ const file = join(dirname(e.file),'notification-host-test.json');
+ writeFileSync(file,body);
+ s.host.topologyEvidenceId='notification-topology';
+ s.evidence.push({...e,id:s.host.topologyEvidenceId,file,sha256:createHash('sha256').update(body).digest('hex')});
+}
+
+function notificationProfile(s, ticks = 3) {
+ configurePrepayment(s);
+ configureNotificationTopology(s);
+ const p = structuredClone(s.profiles[0]);
+ p.feature = 'push';
+ p.maxReservations = 1;
+ p.commands = ['budget.fundControl'];
+ p.effects = [];
+ p.control = {kind:'notification_tick',subject:'mobile-notifications',maxActions:ticks+1,pollSeconds:60,
+  notificationPlan:{physicalStarts:2,planId:'66666666-6666-4666-8666-666666666666',startsAt:new Date(Date.parse(s.window.startsAt)+60000).toISOString(),calendarEnabled:true,pushEnabled:true}};
+ p.ledgerBytes = String(131072+32768*(ticks+1+ticks*2));
+ p.databaseBytes = String(Number(p.ledgerBytes)+8388608*ticks);
+ p.meters.push({...s.profiles[1].meters.find(m=>m.dimension==='fcm'),upperUnits:'1',availableUnits:'9'});
+ s.profiles[1].meters.find(m=>m.dimension==='fcm').availableUnits = '9';
+ for(const dimension of ['railway','database']) {
+  p.meters.push({dimension,unit:'funded_notification_tick_claim_attempts',billingAccount:dimension==='railway'?s.hostFunding.billingAccount:s.baseline[0].billingAccount,upperUnits:String(ticks*2),availableUnits:String(ticks*2),upperMicros:'0',evidenceId:'operating'});
+ }
+ s.profiles.push(p);
+ return p;
+}
+
+test('signed notification pool funds every claim and the retirement tail',async()=>{
+ await run(s=>notificationProfile(s),make=>{
+  const p = make();
+  assert.ok(p.sql.includes('funded_notification_tick_actions'));
+  assert.ok(p.sql.includes('funded_notification_tick_claim_attempts'));
+  assert.ok(p.sql.includes("notification_tick_authorization(pool,manifest) values(v_pool,'"+JSON.stringify(p.notificationManifest)+"'::jsonb)"));
+  assert.equal(p.notificationManifest.until,'2026-11-24T12:04:00.000Z');
+  assert.equal(p.sql.match(/Signed notification funding window elapsed/g).length,2);
+  assert.match(p.notificationManifest.profileSha256,/^[a-f0-9]{64}$/);
+  assert.deepEqual(p.notificationWindow,{ticks:3,physicalStarts:2,latestStartsAt:'2026-11-24T12:57:00.000Z',latestUntil:'2026-11-24T13:00:00.000Z',controlUntil:'2026-11-24T14:00:00.000Z',tailSeconds:125});
+ });
+ for(const mutation of [
+  p=>delete p.control.notificationPlan, p=>p.control.pollSeconds=20,
+  p=>p.control.notificationPlan.physicalStarts=17, p=>p.control.notificationPlan.physicalStarts=1, p=>p.control.maxActions=1,
+  p=>p.control.notificationPlan.startsAt='2026-11-24T12:02:00.000Z',p=>p.control.notificationPlan.pushEnabled='true',
+  p=>p.control.maxActions=122, p=>p.usePrepaidHost=false,
+  p=>p.ledgerBytes=String(Number(p.ledgerBytes)-1),
+  p=>p.databaseBytes=String(Number(p.databaseBytes)-1),
+  p=>p.meters.find(m=>m.dimension==='railway'&&m.unit==='funded_notification_tick_claim_attempts').upperUnits='5',
+  p=>p.meters.find(m=>m.dimension==='database'&&m.unit==='funded_notification_tick_claim_attempts').billingAccount='different-project',
+  p=>p.meters=p.meters.filter(m=>!(m.unit==='funded_notification_tick_claim_attempts'&&m.dimension==='database')),
+ ]) await run(s=>mutation(notificationProfile(s)),make=>assert.throws(make));
+ await run(s=>{const p=notificationProfile(s);s.profiles.push(structuredClone(p));},make=>assert.throws(make,/one signed notification pool/i));
+ await run(s=>{configurePrepayment(s);s.profiles[1].control.notificationPlan={physicalStarts:1};},make=>assert.throws(make,/Unexpected notification/));
+ await run(s=>notificationProfile(s,59),make=>assert.equal(make().notificationWindow.ticks,59));
+ await run(s=>notificationProfile(s,60),make=>assert.throws(make,/notification.*admission/i));
+ await run(s=>{notificationProfile(s,61).control.notificationPlan.pushEnabled=false;},make=>assert.throws(make,/notification.*admission/i));
+});

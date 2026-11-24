@@ -146,7 +146,23 @@ export async function readMobileDocuments(raw:MobileDocumentsInput,ctx:AuthConte
   if(r.error||r.count===null||!Number.isSafeInteger(r.count)||r.count<0||!parsed.success||parsed.data.length!==Math.min(25,Math.max(0,r.count-from))||new Set(parsed.data.map(d=>d.id)).size!==parsed.data.length)throw new MobileDmsError("Documents or their current count could not be verified.");
   return {rows:parsed.data.map(mobileDocumentRow),total:r.count,more:from+25<r.count};
  }
- const rows=await readAllPages(async(from,to)=>{let q=base();if(ts.length){const ors=ts.flatMap(t=>["title","document_no","description"].map(f=>`${f}.ilike.${literalContains(t)}`));if(labels.size)ors.push(`id.in.(${[...labels.keys()].join(",")})`);q=q.or(ors.join(","));}const r=await q.order("id").range(from,to);return {...r,data:z.array(documentSchema).parse(r.data)};},{identity:r=>r.id,maxRows:5000,batchSize:200});
+ const matchingTypes=ts.length?await readAllPages(async(from,to)=>{
+  let q=db.from("dms_document_types").select("id",{count:"exact"}).or(ts.map(t=>`name_en.ilike.${literalContains(t)}`).join(","));
+  if(input.typeId)q=q.eq("id",input.typeId);
+  const r=await q.order("id").range(from,to);
+  return {...r,data:z.array(z.object({id:rowId})).parse(r.data)};
+ },{identity:r=>r.id,maxRows:500,batchSize:100}):[];
+ const rows=await readAllPages(async(from,to)=>{
+  let q=base();
+  if(ts.length){
+   const ors=ts.flatMap(t=>["title","document_no","description"].map(f=>`${f}.ilike.${literalContains(t)}`));
+   if(labels.size)ors.push(`id.in.(${[...labels.keys()].join(",")})`);
+   if(matchingTypes.length)ors.push(`document_type_id.in.(${matchingTypes.map(type=>type.id).join(",")})`);
+   q=q.or(ors.join(","));
+  }
+  const r=await q.order("id").range(from,to);
+  return {...r,data:z.array(documentSchema).parse(r.data)};
+ },{identity:r=>r.id,maxRows:5000,batchSize:200});
  const candidates=new Map<number,Document>(rows.filter(r=>ts.every(t=>normalized(`${r.title} ${r.document_no} ${r.description??""} ${r.document_type?.name_en??""} ${(labels.get(r.id)??[]).join(" ")}`).includes(t))).map(r=>[r.id,r]));
  // Supplement metadata/name partial matches with the existing invoker content
  // search. Extracted text is never returned; the RPC retains its native RLS.

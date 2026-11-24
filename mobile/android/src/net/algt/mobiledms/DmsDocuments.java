@@ -82,6 +82,9 @@ final class DmsDocuments {
         return "?fileId=" + id(file,"id") + "&disposition=attachment&expectedDocumentId=" + id(doc,"id")
             + "&expectedVersionId=" + version + "&expectedSourceHash=" + hash(file,"sourceHash");
     }
+    static boolean canPreviewOriginal(JSONObject file) {
+        return file.optBoolean("canPreview") && DmsSharing.originalPreviewMime(str(file,"mime")) != null;
+    }
     void versions(long doc,int page,DmsWorkspace.Open select,Runnable back){
         if(!ui.page(DOCUMENT_FILES,"Choose document version",back,()->versions(doc,page,select,back)))return;
         ui.read(cmd("documentSources","documentId",doc,"kind","versions","page",page),r->{
@@ -107,7 +110,8 @@ final class DmsDocuments {
                         }), new LinearLayout.LayoutParams(a.dp(48), a.dp(48)));
                     }
                     Runnable here=()->files(doc,version,page,false,back);
-                    if(f.optBoolean("canPreview"))ui.action("Preview "+str(f,"name"),()->ui.sharing.file(doc,f,page,"preview",here),true);
+                    if(canPreviewOriginal(f))ui.action("Preview "+str(f,"name"),()->ui.sharing.file(doc,f,page,"preview",here),true);
+                    else if(f.optBoolean("canPreview"))a.subtitle(DmsSharing.previewUnavailable(f.optBoolean("canDownload"),"Save original"));
                     if(f.optBoolean("canDownload")){ui.action("Save original",()->ui.sharing.file(doc,f,page,"save",here),false);ui.action("Share original file",()->ui.sharing.file(doc,f,page,"share",here),false);}
                 }
             }ui.pages(r,page,n->files(doc,version,n,share,back));

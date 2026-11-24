@@ -58,15 +58,30 @@ final class DmsSharing {
             if(s.optBoolean("canRevoke"))ui.action("Revoke link",()->ui.confirm("Revoke this ERP link?",str(s,"recipientLabel"),()->ui.mutate(cmd("documentShareRevoke","shareId",s.optLong("id")),"revoke/"+s.optLong("id"),ok->here.run())),false);
         }ui.pages(r,page,p->list(doc,p,back));});
     }
+    static String originalPreviewMime(String mime) {
+        if(mime==null)return null;
+        String type=mime.split(";",2)[0].trim();
+        return DmsVisualPdf.supports(type)||"image/gif".equals(type) ? type : null;
+    }
+    static String previewUnavailable(boolean canDownload,String saveAction) {
+        String explanation="This file format cannot be previewed in the app.";
+        return canDownload ? explanation+" Choose "+saveAction+" to download it." : explanation;
+    }
     void resolve(){
         Incoming selected=incoming;if(selected==null||!selected.valid())return;
         String token=selected.token;if(!DmsRules.tokenValid(token)||!ui.page(INCOMING_LINK,"Incoming ERP link",ui::hub,ui::hub))return;
         ui.read(cmd("documentShareResolve","token",token),r->{
             if(incoming!=selected)return;
-            JSONObject s=r.getJSONObject("source");id(s,"fileId");id(s,"documentId");id(s,"versionId");hash(s,"sourceHash");ui.line(r,"title","number","expiresAt");ui.line(s,"versionId");
-            if(r.optBoolean("canPreview"))ui.action("Preview shared original",()->shared(token,r,true),true);
-            if(r.optBoolean("canDownload"))ui.action("Save shared original",()->shared(token,r,false),false);
+            JSONObject s=r.getJSONObject("source");id(s,"fileId");id(s,"documentId");id(s,"versionId");hash(s,"sourceHash");
+            showIncoming(token,r,false);
         });
+    }
+    private void showIncoming(String token,JSONObject ref,boolean unsupported){
+        ui.line(ref,"title","number","expiresAt");ui.line(ref.optJSONObject("source"),"versionId");
+        boolean canDownload=ref.optBoolean("canDownload");
+        if(unsupported)a.subtitle(previewUnavailable(canDownload,"Save shared original"));
+        else if(ref.optBoolean("canPreview"))ui.action("Preview shared original",()->shared(token,ref,true),true);
+        if(canDownload)ui.action("Save shared original",()->shared(token,ref,false),false);
     }
     interface Validate {void run(DmsWorkspace.Ticket t)throws Exception;}
     void shared(String token,JSONObject ref,boolean preview){
@@ -80,7 +95,14 @@ final class DmsSharing {
             try{t.api.dmsFile("?share=1&disposition=attachment",token,e.file,()->t.visible()&&e.valid());check.run(t);export(t,e,uri);}finally{e.remove();}});return;}
         ui.work("Opening protected shared file",t->{DmsPrivateFiles.Entry e=DmsPrivateFiles.create(a,t.api,"shared","application/octet-stream",false,t::visible);
             try{String mime=t.api.dmsFile("?share=1&disposition=inline",token,e.file,()->t.visible()&&e.valid());check.run(t);return new Asset(e,mime);}catch(Exception ex){e.remove();throw ex;}
-        },asset->preview(asset,0,check,this::resolve),null);
+        },asset->{
+            String type=originalPreviewMime(asset.mime);
+            if(type!=null)preview(new Asset(asset.entry,type),0,check,this::resolve);
+            else {
+                asset.entry.remove();
+                if(incoming==selected&&ui.page(INCOMING_LINK,"Incoming ERP link",ui::hub,ui::hub))showIncoming(token,ref,true);
+            }
+        },null);
     }
     static final class Asset {final DmsPrivateFiles.Entry entry;final String mime;Asset(DmsPrivateFiles.Entry e,String m){entry=e;mime=m;}}
     void file(JSONObject doc,JSONObject f,int page,String action,Runnable back){
@@ -96,11 +118,16 @@ final class DmsSharing {
                 boolean inline=action.equals("preview");String path="?fileId="+file+"&disposition="+(inline?"inline":"attachment");
                 if((!inline||doc.has("selectedEmployee"))&&v==doc.getLong("currentVersionId"))path+="&expectedDocumentId="+docId+"&expectedVersionId="+v+"&expectedSourceHash="+hash(f,"sourceHash");
                 if(doc.has("selectedEmployee"))path+="&expectedEmployeeId="+id(doc,"selectedEmployee");
-                t.api.dmsFile(path,null,e.file,()->t.visible()&&e.valid());verify(f,e.file);validate.run(t);return new Asset(e,mime);
+                String receivedMime=t.api.dmsFile(path,null,e.file,()->t.visible()&&e.valid());verify(f,e.file);validate.run(t);return new Asset(e,inline?receivedMime:mime);
             }catch(Exception ex){e.remove();throw ex;}
         };
         if(action.equals("save"))ui.capture.save(name,mime,(t,uri)->{Asset asset=download.get(t);try{export(t,asset.entry,uri);}finally{asset.entry.remove();}});
-        else ui.work("Opening selected original",download,asset->{if(action.equals("preview"))preview(asset,0,validate,back);else share(asset.entry);},null);
+        else ui.work("Opening selected original",download,asset->{
+            if(!action.equals("preview")){share(asset.entry);return;}
+            String type=originalPreviewMime(asset.mime);
+            if(type!=null)preview(new Asset(asset.entry,type),0,validate,back);
+            else {asset.entry.remove();a.message(previewUnavailable(f.optBoolean("canDownload"),"Save original"),false);}
+        },null);
     }
     static void verify(JSONObject f,File file)throws Exception{FileFingerprint fp=FileFingerprint.read(file);DmsArchive.check(fp.size==id(f,"size")&&(f.isNull("sha256")||fp.sha256.equals(hash(f,"sha256"))));}
     void export(DmsWorkspace.Ticket t,DmsPrivateFiles.Entry entry,Uri uri)throws Exception{

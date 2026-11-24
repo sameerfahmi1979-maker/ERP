@@ -18,6 +18,14 @@ public final class DmsOfflineSelectionTest {
         expect(null, DmsDocuments.offlineAttachmentPath(doc, changed(file, "canPreview", false)), "no preview permission");
         expect(null, DmsDocuments.offlineAttachmentPath(doc, changed(file, "canDownload", false)), "no download permission");
         expect(null, DmsDocuments.offlineAttachmentPath(changed(doc, "selectedEmployee", 42), file), "employee-linked selection");
+        check(!DmsDocuments.canPreviewOriginal(changed(file, "mime", "application/msword")), "Office original must not advertise Preview");
+        check(!DmsDocuments.canPreviewOriginal(changed(file, "mime", "image/tiff")), "unsupported image must not advertise Preview");
+        check(!DmsDocuments.canPreviewOriginal(changed(file, "canPreview", false)), "recognized MIME does not grant preview authority");
+        check(DmsDocuments.canPreviewOriginal(changed(file, "canDownload", false)), "PDF preview does not require download authority");
+        check(DmsDocuments.canPreviewOriginal(changed(file, "mime", "image/gif")), "existing GIF preview stays supported");
+        expect("application/pdf", DmsSharing.originalPreviewMime("application/pdf; charset=binary"), "accepted response MIME strips parameters");
+        expect(null, DmsSharing.originalPreviewMime("application/octet-stream"), "unknown shared response is saved, not rendered");
+        expect(null, DmsSharing.originalPreviewMime("text/plain"), "shared response supported by web but not by native renderer");
         System.out.println("PASS DmsOfflineSelectionTest");
     }
 
@@ -27,5 +35,9 @@ public final class DmsOfflineSelectionTest {
 
     private static void expect(String expected, String actual, String label) {
         if (!java.util.Objects.equals(expected, actual)) throw new AssertionError(label);
+    }
+
+    private static void check(boolean value, String label) {
+        if (!value) throw new AssertionError(label);
     }
 }

@@ -7,6 +7,26 @@ import static net.algt.mobiledms.CommunicationsApi.*;
 
 /** Refresh the complete authorized index before retiring cached conversations absent from the server. */
 final class ChatManifest {
+    interface ClearHistory { void clear(String folder) throws IOException; }
+
+    static String deniedHistoryFolder(String mode,int status,String code) {
+        if(status==401 && "unauthenticated".equals(code))return "cache";
+        if(status==403 && "permission_denied".equals(code)){
+            if("participant".equals(mode))return "cache/participant";
+            if("review".equals(mode))return "cache/review";
+        }
+        return null;
+    }
+
+    static void clearDeniedHistory(String mode,int status,String code,ClearHistory cache)throws IOException {
+        String folder=deniedHistoryFolder(mode,status,code);
+        if(folder!=null)cache.clear(folder);
+    }
+
+    static String errorCode(ErpApi.Rejected failure) {
+        return failure.response==null?"":text(failure.response.optJSONObject("error"),"code");
+    }
+
     static final class Result {
         final List<JSONObject> rows=new ArrayList<>();
         final List<JSONObject> all=new ArrayList<>();
@@ -34,13 +54,22 @@ final class ChatManifest {
             do{
                 JSONObject fields=args("limit",100);
                 JSONObject page;
-                if(mode.equals("participant")){
-                    if(!cursor.isEmpty())fields.put("manifestCursor",cursor);
-                    page=s.api.call("chat.sync",fields);
-                }else{
-                    fields.put("mode",mode);
-                    if(!cursor.isEmpty())fields.put("cursor",cursor);
-                    page=s.api.page("chat.conversations",fields);
+                try {
+                    if(mode.equals("participant")){
+                        if(!cursor.isEmpty())fields.put("manifestCursor",cursor);
+                        page=s.api.call("chat.sync",fields);
+                    }else{
+                        fields.put("mode",mode);
+                        if(!cursor.isEmpty())fields.put("cursor",cursor);
+                        page=s.api.page("chat.conversations",fields);
+                    }
+                }catch(ErpApi.Rejected failed){
+                    try {
+                        clearDeniedHistory(mode,failed.status,errorCode(failed),folder->s.store.clearDeniedHistory(folder,s::accountCurrent));
+                    }catch(IOException purge){
+                        failed.addSuppressed(purge);
+                    }
+                    throw failed;
                 }
                 JSONArray items=page.getJSONArray(mode.equals("participant")?"conversations":"items");
                 if(items.length()>100)throw new IOException("Invalid conversation index.");

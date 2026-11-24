@@ -147,9 +147,13 @@ final class ChatWorkspace {
         }
         boolean current() {
             Integer stamp=operationStamp.get();
-            return (stamp==null || stamp==interruption) && !closed && (outboxOnly||active==this) && a.api==erp && epoch==erp.sessionEpoch() && owner.equals(erp.user())
+            return (stamp==null || stamp==interruption) && !closed && (outboxOnly||active==this) && accountCurrent()
+                && shell.getAsBoolean() && LocalSecurity.unlocked(a);
+        }
+        boolean accountCurrent() {
+            return a.api==erp && epoch==erp.sessionEpoch() && owner.equals(erp.user())
                 && !(owner.equals(closingOwner)&&epoch==closingEpoch) && logout==store.logoutMarker()
-                && generation==LocalSecurity.generation(a) && shell.getAsBoolean() && LocalSecurity.unlocked(a);
+                && generation==LocalSecurity.generation(a);
         }
         boolean historyVisible(){ return !pilot || hideProtected==null || pilotRefresh.visible(SystemClock.elapsedRealtime(),online()); }
         void hide(){
@@ -275,7 +279,9 @@ final class ChatWorkspace {
             boolean connected=s.pilot?connectedAtStart:online();
             ChatManifest.Result manifest=ChatManifest.list(s,mode,archived,connected);
             if(connected && mode.equals("participant") && !s.store.conversationIds("review").isEmpty()){
-                try{ChatManifest.list(s,"review",false,true);}catch(Exception e){if(blockedAccess(e))s.store.clear("cache/review");else throw e;}
+                try{ChatManifest.list(s,"review",false,true);}catch(ErpApi.Rejected e){
+                    if(e.status!=403 || !"permission_denied".equals(ChatManifest.errorCode(e)) || e.getSuppressed().length>0)throw e;
+                }
             }
             return manifest;
         },manifest->{
@@ -309,6 +315,10 @@ final class ChatWorkspace {
             },delay);
         },e->{
             s.completeRefresh(false,connectedAtStart);
+            if(e instanceof ErpApi.Rejected){
+                ErpApi.Rejected failure=(ErpApi.Rejected)e;
+                if(ChatManifest.deniedHistoryFolder(mode,failure.status,ChatManifest.errorCode(failure))!=null)chats.removeAllViews();
+            }
             if(s.pilot && !connectedAtStart && online()){s.refresh.run();return;}
             notice(s,e);
             if(!s.pilot)button(s,"Reload conversations",here);

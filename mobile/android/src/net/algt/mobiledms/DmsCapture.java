@@ -164,9 +164,10 @@ final class DmsCapture {
                 catch(ErpApi.Rejected e){if(e.status==401||e.status==403)throw e;put(r,"inspection","Current intake unavailable.");}
                 catch(IOException e){put(r,"inspection","The current intake could not be confirmed.");}
             }
-            if("duplicate".equals(str(r,"state"))&&r.optJSONObject("match")==null){
+            if("duplicate".equals(str(r,"state"))){
+                r.remove("match");
                 try{JSONObject match=q.scopedDuplicate(r);if(match!=null)put(r,"match",match);}
-                catch(IOException e){if(DmsWorkspace.accessDenied(e))throw e;}
+                catch(IOException unavailable){/* A scoped advisory is optional for this retained state. */}
             }
             return r;},row->{
             JSONObject request=row.getJSONObject("request"),meta=request.getJSONObject("metadata");ui.line(meta,"original_filename","mime_type","file_size_bytes","sha256_hash");ui.line(row,"state");a.subtitle("Operation "+op);
@@ -198,9 +199,9 @@ final class DmsCapture {
             }
             if(state.equals("duplicate")){
                 JSONObject match=row.optJSONObject("match");
-                if(match==null)a.subtitle("An identical saved document was detected by ERP.");
+                if(match==null)a.subtitle("ERP detected a possible duplicate.");
                 else{
-                    ui.line(match,"status","documentNo","sessionCode");
+                    ui.line(match,"status","documentNo");
                     if(match.optLong("documentId")>0)ui.action("Open existing document",()->ui.docs.detail(match.optLong("documentId"),request.optJSONObject("context"),here),false);
                 }
             }

@@ -116,6 +116,14 @@ final class ChatStore {
     void clear(String folder) throws IOException {
         synchronized (LocalSecurity.STORAGE_LOCK) { check(); LocalSecurity.deleteTree(dir(folder)); }
     }
+    void clearDeniedHistory(String folder,BooleanSupplier accountCurrent)throws IOException {
+        // A response can arrive after the user leaves the inbox. Delete only under the same account fence.
+        synchronized(LocalSecurity.STORAGE_LOCK){
+            LocalSecurity.requireAccount(app,owner,generation);
+            ChatRules.check(accountCurrent);
+            LocalSecurity.deleteTree(dir(folder));
+        }
+    }
     boolean hasMedia(String folder, String id) throws Exception {
         synchronized (LocalSecurity.STORAGE_LOCK) { check(); return new File(dir(folder),hash(id)+".enc").isFile(); }
     }

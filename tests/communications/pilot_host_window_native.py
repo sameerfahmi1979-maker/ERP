@@ -19,7 +19,7 @@ APPROVAL='20000000-0000-4000-8000-000000000001'
 DEPLOYMENT='40000000-0000-4000-8000-000000000001'
 FUND='50000000-0000-4000-8000-000000000001'
 
-def main():
+def main(owner_object=False):
     assert HOST.exists(), 'Missing protected host prepayment migration'
     name='erp-host-window-'+uuid.uuid4().hex[:12]
     database='postgres'
@@ -51,11 +51,17 @@ def main():
           create function public.f03_current_session_valid() returns boolean language sql as $$select true$$;
           create function erp_private.business_principal_is_active() returns boolean language sql as $$select true$$;
           create function erp_private.provider_actor_session_valid(bigint,uuid) returns boolean language sql as $$select $1=1 and $2='{SESSION}'::uuid$$;"""
+        if owner_object:
+            setup_sql+="""create schema storage;create table storage.objects(bucket_id text,name text,metadata jsonb);
+              create table erp_private.chat_uploads(id uuid,size_bytes bigint,stage_permit uuid,cleanup_phase text);
+              create table erp_private.ptt_recording_uploads(id uuid,permit_id uuid);"""
         sql(setup_sql)
         sql((ROOT/'supabase/migrations/20261123095158_erp_communication_budget_v1.sql').read_text(encoding='utf-8-sig'))
         sql((ROOT/'supabase/migrations/20261124085000_erp_comm_pilot_baseline_retention.sql').read_text(encoding='utf-8-sig'))
         sql(HOST.read_text(encoding='utf-8-sig'))
         sql((ROOT/'supabase/migrations/20261124085300_erp_comm_pilot_baseline_collector.sql').read_text(encoding='utf-8-sig'))
+        if owner_object:
+            sql((ROOT/'supabase/migrations/20261124111336_erp_comm_object_storage_baseline.sql').read_text(encoding='utf-8-sig'))
         sql(f"update erp_comm_cost.authority set owner_auth_id='{OWNER}',owner_binding_evidence='synthetic owner';")
         args=json.dumps({'scope':'communications','clientMutationId':APPROVAL,'currency':'USD','maxMicros':'5000000','endsAt':'2026-11-30T19:59:00Z','features':['chat','realtime','media_upload','media_download','export','push','ptt_live','ptt_replay','sos']})
         sql(f"set role authenticated;set test.actor='{OWNER}';select public.erp_comm_budget_operator('1','{SESSION}','budget.approve','{args}');")
@@ -107,7 +113,7 @@ def main():
         fingerprint=sql(f"select encode(erp_comm_cost.baseline_approval_fingerprint(a),'hex') from erp_comm_cost.approval a where id='{APPROVAL}';").stdout.strip()
         with tempfile.TemporaryDirectory(prefix='pilot-profile-native-',dir=ROOT/'tmp') as folder:
             output=Path(folder)/'generated.sql'
-            script="""import {fixture} from './tooling/local/prepare-communication-pilot-profiles.test.mjs';
+            script="""import {fixture,configureObjectAllocation} from './tooling/local/prepare-communication-pilot-profiles.test.mjs';
 import {prepareProfiles} from './tooling/local/prepare-communication-pilot-profiles.mjs';
 import {writeFileSync} from 'node:fs';
 const f=fixture();try{const s=f.spec,now=Date.now(),start=new Date(now-1000).toISOString(),end=new Date(now-1000+7200000).toISOString();
@@ -118,6 +124,8 @@ c.meters.push({dimension:'fcm',unit:'dispatch_attempts',billingAccount:'existing
 writeFileSync(process.argv[5],prepareProfiles(s,{now}).sql);
 }finally{f.cleanup();}
 """
+            if owner_object:
+                script=script.replace("writeFileSync(process.argv[5],prepareProfiles(s,{now}).sql);","configureObjectAllocation(s);writeFileSync(process.argv[5],prepareProfiles(s,{now}).sql);")
             p=subprocess.run([r'C:\dev\toolchains\node-v22.23.4-win-x64\node.exe','--input-type=module','-e',script,APPROVAL,OWNER,fingerprint,SESSION,str(output)],cwd=ROOT,capture_output=True,text=True)
             assert p.returncode==0,p.stderr or p.stdout
             sql(output.read_text(encoding='utf8'))
@@ -139,6 +147,8 @@ writeFileSync(process.argv[5],prepareProfiles(s,{now}).sql);
         sql(setup_sql.replace('create role anon;create role authenticated;create role service_role bypassrls;',''))
         for filename in ['20261123095158_erp_communication_budget_v1.sql','20261124085000_erp_comm_pilot_baseline_retention.sql','20261124085200_erp_comm_pilot_host_window.sql','20261124085300_erp_comm_pilot_baseline_collector.sql']:
             sql((ROOT/'supabase/migrations'/filename).read_text(encoding='utf-8-sig'))
+        if owner_object:
+            sql((ROOT/'supabase/migrations/20261124111336_erp_comm_object_storage_baseline.sql').read_text(encoding='utf-8-sig'))
         sql(f"update erp_comm_cost.authority set owner_auth_id='{OWNER}',owner_binding_evidence='synthetic owner';")
         sql(f"set role authenticated;set test.actor='{OWNER}';select public.erp_comm_budget_operator('1','{SESSION}','budget.approve','{args}');")
         fingerprint=sql(f"select encode(erp_comm_cost.baseline_approval_fingerprint(a),'hex') from erp_comm_cost.approval a where id='{APPROVAL}';").stdout.strip()
@@ -201,6 +211,18 @@ w.mode='command';w.commands=['chat.send'];w.effects=w.effects.filter(e=>e.comman
         checks.append('paid control survives capacity reduction plus revoked stale new admission')
         p=sql('begin;'+reduction+f"select erp_comm_cost.host_operation_covered('{read_template}','{APPROVAL}','{DEPLOYMENT}',true);rollback;").stdout.strip()
         assert p=='f',p;checks.append('new admission remains closed when operation slots shrink')
+        if owner_object:
+            assert sql("select count(*) from erp_comm_cost.baseline_capacity_evidence e join erp_comm_cost.capacity c on c.id=e.capacity_id where c.dimension='storage';").stdout.strip()=='0'
+            checks.append('generated object allocation enrolls without any fictitious Storage physical evidence')
+            coverage=f"select erp_comm_cost.retention_covered(p) from erp_comm_cost.proof p where operation_id='{read_template}';"
+            assert sql("begin;insert into storage.objects values('unrelated-erp-bucket','unknown',null);"+coverage+'rollback;').stdout.strip()=='t'
+            checks.append('unrelated unknown object size does not pretend to measure global physical capacity')
+            assert sql("begin;insert into storage.objects values('erp-chat-media','unknown',null);"+coverage+'rollback;').stdout.strip()=='f'
+            checks.append('unknown own object blocks new retention admission')
+            assert sql("begin;insert into storage.objects values('erp-chat-media','large','{\"size\":268435456}');"+coverage+'rollback;').stdout.strip()=='f'
+            checks.append('actual own bytes plus permanent held bytes cannot exceed 256 MiB')
+            assert sql("begin;update erp_comm_cost.object_storage_observation set observed_at=now()-interval '10 minutes';"+paid+'rollback;').stdout.strip()=='t'
+            checks.append('stale own-object observation preserves already-funded cleanup tail')
         print(json.dumps({'checks':checks,'count':len(checks)},indent=2))
     finally: docker('rm','--force',name)
 
@@ -210,6 +232,6 @@ if __name__=='__main__':
         with NativePgDockerShim(label='host-window') as shim:
             original_run=subprocess.run
             subprocess.run=shim.run
-            try: main()
+            try: main('--owner-object-allocation' in sys.argv)
             finally: subprocess.run=original_run
-    else: main()
+    else: main('--owner-object-allocation' in sys.argv)

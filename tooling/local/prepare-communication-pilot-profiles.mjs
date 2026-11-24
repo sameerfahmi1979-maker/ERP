@@ -41,7 +41,7 @@ const commandClass=command=>command.startsWith('@')?'@transport':command;
 
 export function prepareProfiles(input,{now=Date.now()}={}) {
  const s=structuredClone(input);
- obj(s,['v','scope','approval','allocation','window','host','evidence','baseline','maxReservations','profiles'],'spec',['hostFunding','commissionerSessionId']);
+ obj(s,['v','scope','approval','allocation','window','host','evidence','baseline','maxReservations','profiles'],'spec',['hostFunding','commissionerSessionId','contextEvidence']);
  check(s.v===1,'Unsupported spec version');check(s.scope==='communications','Invalid cost scope');
  obj(s.approval,['id','ownerAuthId','ownerProfileId','maxMicros','endsAt','fingerprint','evidenceId'],'approval');
  s.approval.id=id(s.approval.id,'approval ID');s.approval.ownerAuthId=id(s.approval.ownerAuthId,'owner auth ID');
@@ -65,6 +65,16 @@ export function prepareProfiles(input,{now=Date.now()}={}) {
   evidence.set(e.id,{...e,reference:'sha256:'+e.sha256,bytes});
  }
  const ev=name=>{const value=evidence.get(name);check(value,`Missing independent evidence: ${name}`);return value;};
+ // Dated plan/cost-control context is not a fresh operating meter or a promise
+ // about future bills. It cannot satisfy ev(), meter age or shutdown coverage.
+ const contextEvidence=new Map();
+ check(s.contextEvidence===undefined||Array.isArray(s.contextEvidence)&&s.contextEvidence.length<=16,'Invalid context evidence');
+ for(const e of s.contextEvidence??[]){
+  obj(e,['id','file','sha256','observedAt'],'context evidence');text(e.id,'context evidence ID');
+  check(!evidence.has(e.id)&&!contextEvidence.has(e.id),'Duplicate context evidence ID');check(isAbsolute(e.file),'Absolute context evidence file required');check(hex.test(e.sha256),'Invalid context evidence hash');
+  const bytes=readFileSync(e.file);check(bytes.length>0&&bytes.length<=10*1024*1024&&hash(bytes)===e.sha256,'Missing or changed context evidence hash');
+  check(instant(e.observedAt,'context observedAt')<=now,'Future context observation');contextEvidence.set(e.id,{...e,reference:'sha256:'+e.sha256,bytes});
+ }
  ev(s.approval.evidenceId);
  obj(s.host,['limitsEvidenceId','ratesEvidenceId','replicas'],'host');check(s.host.replicas===1,'Only one verified existing host replica is supported');
  const limits=JSON.parse(ev(s.host.limitsEvidenceId).bytes.toString('utf8'));
@@ -78,6 +88,16 @@ export function prepareProfiles(input,{now=Date.now()}={}) {
  check(Array.isArray(s.baseline)&&s.baseline.length===2,'Two physical baseline measurements required');
  const baseline=new Map();
  for(const b of s.baseline){
+  if(b?.basis==='owner_object_allocation'){
+   obj(b,['dimension','basis','billingAccount','projectRef','organizationRef','planName','spendCapObserved','planEvidenceId','observedCommunicationsBytes','pendingUpperBytes','unknownObjectCount','evidenceId'],'object allocation');
+   check(b.dimension==='storage'&&!baseline.has(b.dimension),'Object allocation is storage only');text(b.billingAccount,'object billing account');text(b.organizationRef,'object organization');
+   check(b.projectRef==='mmiefuieduzdiiwnqpie'&&b.planName==='Pro'&&b.spendCapObserved===true,'Actual ERP Pro object allocation context required');ev(b.evidenceId);
+   const context=contextEvidence.get(b.planEvidenceId);check(context,'Separate dated plan context required');const receipt=JSON.parse(context.bytes.toString('utf8').replace(/^\uFEFF/,''));
+   check(receipt.organization===b.organizationRef&&receipt.plan==='Pro'&&receipt.spendCap?.enabled===true&&Date.parse(receipt.observedAtUtc)===Date.parse(context.observedAt),'Plan context identity, cap or observation mismatch');
+   check(storageQuota===268435456n&&b.unknownObjectCount===0&&number(b.pendingUpperBytes,'pending own bytes')===0n,'Exact own quota and complete enrollment observation required');
+   check(number(b.observedCommunicationsBytes,'observed own object bytes')<=storageQuota,'Existing own bytes exceed object quota');
+   baseline.set('storage',{...b,quota:storageQuota,context});continue;
+  }
   obj(b,['dimension','billingAccount','planReference','physicalLimitBytes','observedTotalBytes','observedCommunicationsBytes','reservedOtherBytes','safetyHeadroomBytes','evidenceId'],'baseline measurement');
   check(['database','storage'].includes(b.dimension)&&!baseline.has(b.dimension),'Invalid/duplicate physical baseline dimension');text(b.billingAccount,'baseline billing account');text(b.planReference,'plan reference');ev(b.evidenceId);
   const total=number(b.observedTotalBytes,'observed total'),comm=number(b.observedCommunicationsBytes,'observed communication bytes');
@@ -102,7 +122,8 @@ export function prepareProfiles(input,{now=Date.now()}={}) {
   return key;
  };
  const dbAccount=baseline.get('database').billingAccount,storageAccount=baseline.get('storage').billingAccount;
- const dbKey=addSlot('database','physical_database_bytes',dbAccount,dbQuota),storageKey=addSlot('storage','physical_storage_bytes',storageAccount,storageQuota);
+ const storageUnit=baseline.get('storage').basis==='owner_object_allocation'?'allocated_storage_object_bytes':'physical_storage_bytes';
+ const dbKey=addSlot('database','physical_database_bytes',dbAccount,dbQuota),storageKey=addSlot('storage',storageUnit,storageAccount,storageQuota);
  const ledgerKey=addSlot('database','permanent_ledger_bytes',dbAccount,dbQuota),quotaKey=addSlot('database','pilot_reservation_slots',dbAccount,BigInt(s.maxReservations));
  let hostFunding=null;
  if(s.hostFunding){
@@ -261,6 +282,11 @@ export function prepareProfiles(input,{now=Date.now()}={}) {
  }
  for(const dimension of ['database','storage']){
   const b=baseline.get(dimension),e=ev(b.evidenceId),cid=slotName.get(dimension==='database'?dbKey:storageKey);
+  if(b.basis==='owner_object_allocation'){
+   const context=b.context,policy=ev(s.allocation.policyEvidenceId);
+   sql+=`insert into erp_comm_cost.object_storage_allocation_basis(allocation_id,storage_capacity_id,approval_id,project_ref,organization_ref,billing_account,plan_name,spend_cap_observed,plan_evidence_id,plan_evidence_sha256,plan_observed_at,policy_evidence_id,policy_evidence_sha256,byte_quota,admission_ends_at,enabled) values(${q(s.allocation.id)}::uuid,${cid},${q(s.approval.id)}::uuid,${q(b.projectRef)},${q(b.organizationRef)},${q(b.billingAccount)},'Pro',true,${q(context.reference)},${q(context.sha256)},${q(context.observedAt)}::timestamptz,${q(policy.reference)},${q(policy.sha256)},${storageQuota},${q(until)}::timestamptz,true);\n`;
+   continue;
+  }
   sql+=`insert into erp_comm_cost.baseline_capacity_evidence(capacity_id,plan_reference,evidence_id,observed_at,valid_until,max_measurement_age,physical_limit_bytes,observed_total_bytes,observed_communications_bytes,reserved_other_bytes,safety_headroom_bytes,allocated_bytes,enabled) values(${cid},${q(b.planReference)},${q(e.reference)},${q(e.observedAt)}::timestamptz,${q(until)}::timestamptz,interval '${e.maxAgeSeconds} seconds',${b.physicalLimitBytes},${b.observedTotalBytes},${b.observedCommunicationsBytes},${b.reservedOtherBytes},${b.safetyHeadroomBytes},${b.quota},true);\n`;
  }
  sql+=`insert into erp_comm_cost.baseline_allocation(id,approval_id,database_capacity_id,storage_capacity_id,database_quota_bytes,storage_quota_bytes,valid_from,valid_until,policy_evidence,enabled) values(${q(s.allocation.id)}::uuid,${q(s.approval.id)}::uuid,${slotName.get(dbKey)},${slotName.get(storageKey)},${dbQuota},${storageQuota},${q(s.window.startsAt)}::timestamptz,${q(until)}::timestamptz,${ref(s.allocation.policyEvidenceId)},true);\n`;
@@ -287,7 +313,7 @@ export function prepareProfiles(input,{now=Date.now()}={}) {
     const slot=slots.get(m.key),e=m.evidenceId==='@host'?ev(s.hostFunding.evidenceId):ev(m.evidenceId);
     const b=m.refreshBasis??(m.evidenceId==='@host'?{basis:'prepaid_host',numerator:0n,denominator:1n}:m.dimension==='database'&&isCounter(slot.unit)&&m.micros===0n?{basis:'protected_counter',numerator:0n,denominator:1n}:null);
     if(b)out+=`if to_regclass('erp_comm_cost.meter_refresh_basis') is null then raise exception 'Reviewed finite meter-refresh capability required';end if;\ninsert into erp_comm_cost.meter_refresh_basis(operation_id,capacity_id,basis,source_evidence_id,source_evidence_sha256,max_upper_units,max_upper_micros,rate_numerator_micros,rate_denominator_units,valid_until) values(${q(op)},${slotName.get(m.key)},${q(b.basis)},${q(e.reference)},${q(e.sha256)},${m.units},${m.micros},${b.numerator},${b.denominator},${q(until)}::timestamptz);\n`;
-    else if(!['physical_database_bytes','physical_storage_bytes'].includes(slot.unit))unrefreshedMeters.push({templateId:op,feature:p.feature,dimension:m.dimension,unit:slot.unit,reason:'No reviewed immutable accounting certificate; fresh external evidence remains required'});
+    else if(!['physical_database_bytes','physical_storage_bytes','allocated_storage_object_bytes'].includes(slot.unit))unrefreshedMeters.push({templateId:op,feature:p.feature,dimension:m.dimension,unit:slot.unit,reason:'No reviewed immutable accounting certificate; fresh external evidence remains required'});
    }
   }
   return out;
@@ -303,7 +329,7 @@ export function prepareProfiles(input,{now=Date.now()}={}) {
  }
  for(const p of normalized.filter(p=>!(p.control?.kind==='budget_alert'&&!p.usePrepaidHost)))sql+=emitProfile(p);
  sql+='end $pilot_profiles$;\ncommit;\n';
- return {v:1,state:'prepared-not-applied',scope:s.scope,approvalId:s.approval.id,allocationId:s.allocation.id,startsAt:s.window.startsAt,admissionEndsAt:admitUntil,endsAt:until,profileCount:normalized.length,maximumReservations:maxClaims,maximumBookedMicros:booked.toString(),maximumDatabaseBytes:dbClaim.toString(),maximumStorageBytes:storageClaim.toString(),hostPrepaymentMicros:hostFunding?hostFunding.compute.toString():null,omittedFeatures:features.filter(f=>!standing.has(f)),heldCommands:Object.fromEntries([...commandCoverage].map(([f,covered])=>[f,commands[f].filter(c=>!covered.has(commandClass(c)))])),unrefreshedMeters,evidence:s.evidence.map(({id,file,sha256})=>({id,file,sha256})),sql,sqlSha256:hash(sql)};
+ return {v:1,state:'prepared-not-applied',scope:s.scope,approvalId:s.approval.id,allocationId:s.allocation.id,startsAt:s.window.startsAt,admissionEndsAt:admitUntil,endsAt:until,profileCount:normalized.length,maximumReservations:maxClaims,maximumBookedMicros:booked.toString(),maximumDatabaseBytes:dbClaim.toString(),maximumStorageBytes:storageClaim.toString(),storageAllocationBasis:baseline.get('storage').basis??'physical',hostPrepaymentMicros:hostFunding?hostFunding.compute.toString():null,omittedFeatures:features.filter(f=>!standing.has(f)),heldCommands:Object.fromEntries([...commandCoverage].map(([f,covered])=>[f,commands[f].filter(c=>!covered.has(commandClass(c)))])),unrefreshedMeters,evidence:s.evidence.map(({id,file,sha256})=>({id,file,sha256})),contextEvidence:(s.contextEvidence??[]).map(({id,file,sha256,observedAt})=>({id,file,sha256,observedAt})),sql,sqlSha256:hash(sql)};
 }
 
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){

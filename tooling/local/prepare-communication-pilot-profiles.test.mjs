@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 
@@ -47,6 +47,38 @@ export function fixture() {
   return {spec,now,dir,cleanup:()=>rmSync(dir,{recursive:true,force:true})};
 }
 async function run(changes,check) { const f=fixture(); try { changes?.(f.spec); const {prepareProfiles}=await import(modulePath); check(()=>prepareProfiles(f.spec,{now:f.now}),f); } finally {f.cleanup();} }
+
+// Explicitly synthetic context and own-byte observation for isolated SQL rehearsals.
+export function configureObjectAllocation(s) {
+  const observedAt='2026-11-24T10:00:00.000Z';
+  const body={testOnly:true,observedAtUtc:observedAt,organization:'ihbccbesrprobvxmivtx',plan:'Pro',spendCap:{enabled:true},settingsOrBillingChanged:false};
+  const file=join(dirname(s.evidence[0].file),'plan-context.json'),bytes=Buffer.from(JSON.stringify(body));writeFileSync(file,bytes);
+  s.contextEvidence=[{id:'plan-context',file,sha256:createHash('sha256').update(bytes).digest('hex'),observedAt}];
+  s.baseline[1]={dimension:'storage',basis:'owner_object_allocation',billingAccount:'existing-supabase-project',projectRef:'mmiefuieduzdiiwnqpie',organizationRef:body.organization,planName:'Pro',spendCapObserved:true,planEvidenceId:'plan-context',observedCommunicationsBytes:'0',pendingUpperBytes:'0',unknownObjectCount:0,evidenceId:'baseline'};
+}
+
+test('typed own-object allocation uses authentic dated plan context without inventing physical or global usage',async()=>run(configureObjectAllocation,make=>{
+  const p=make();assert.ok(p.sql.includes('allocated_storage_object_bytes'));assert.ok(p.sql.includes('object_storage_allocation_basis'));
+  assert.ok(!p.sql.includes('physical_storage_bytes'));assert.equal((p.sql.match(/insert into erp_comm_cost.baseline_capacity_evidence/g)||[]).length,1);
+  assert.ok(p.sql.indexOf('insert into erp_comm_cost.object_storage_allocation_basis')<p.sql.indexOf('insert into erp_comm_cost.baseline_allocation'));
+  assert.ok(p.sql.includes('2026-11-24T10:00:00.000Z'));assert.equal(p.storageAllocationBasis,'owner_object_allocation');
+  assert.ok(!p.unrefreshedMeters.some(m=>m.unit==='allocated_storage_object_bytes'));
+}));
+
+test('typed allocation rejects wrong plan identity, unknown own bytes, pending legacy writes and dishonest context',async()=>{
+  const mutations=[s=>s.baseline[1].organizationRef='other-org',s=>s.baseline[1].projectRef='other-project',s=>s.baseline[1].spendCapObserved=false,
+    s=>s.baseline[1].unknownObjectCount=1,s=>s.baseline[1].pendingUpperBytes='1',s=>s.baseline[1].observedCommunicationsBytes='268435456',
+    s=>s.baseline[1].physicalLimitBytes='100000000000',s=>s.allocation.storageQuotaBytes='268435455',
+    s=>s.contextEvidence[0].observedAt='2026-11-24T10:01:00.000Z',s=>s.contextEvidence[0].sha256='f'.repeat(64),s=>s.baseline[1].planEvidenceId='operating'];
+  for(const mutate of mutations)await run(s=>{configureObjectAllocation(s);mutate(s);},make=>assert.throws(make));
+});
+
+test('dated plan context cannot replace fresh operating evidence or contradict its own provider receipt',async()=>{
+  for(const mutate of [s=>s.baseline[1].evidenceId='plan-context',s=>s.profiles[0].shutdownEvidenceId='plan-context',s=>{
+    const e=s.contextEvidence[0],body=JSON.parse(readFileSync(e.file,'utf8'));body.spendCap.enabled=false;
+    const bytes=Buffer.from(JSON.stringify(body));writeFileSync(e.file,bytes);e.sha256=createHash('sha256').update(bytes).digest('hex');
+  }])await run(s=>{configureObjectAllocation(s);mutate(s);},make=>assert.throws(make));
+});
 
 test('generates actual-owner guarded allocation and positive physical holds without authorizing spend',async()=>run(null,make=>{
   const p=make(); assert.equal(p.state,'prepared-not-applied'); assert.equal(p.maximumBookedMicros,'762000');

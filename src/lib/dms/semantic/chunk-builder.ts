@@ -35,6 +35,7 @@ export interface BuildSemanticChunksInput {
   contentText: string;
   contentHash: string;
   isTruncated?: boolean;
+  preserveSourceText?: boolean;
 }
 
 export interface SemanticChunkDraft {
@@ -65,6 +66,33 @@ function normalizeText(text: string): string {
     .replace(/\r/g, "\n")
     .replace(/\n{3,}/g, "\n\n")  // collapse triple+ newlines to double
     .trim();
+}
+
+function splitsSurrogatePair(text: string, index: number): boolean {
+  const before = text.charCodeAt(index - 1);
+  const after = text.charCodeAt(index);
+  return before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff;
+}
+
+/** Keep ordered slices of the retained text so publication can verify each chunk in SQL. */
+function buildSourceSlices(text: string): string[] {
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < text.length && chunks.length < MAX_CHUNKS_PER_DOCUMENT) {
+    const target = start + TARGET_CHUNK_CHARS;
+    let end = Math.min(start + MAX_CHUNK_CHARS, text.length);
+    if (target < text.length) {
+      const paragraphEnd = Math.max(text.lastIndexOf("\n\n", target), text.lastIndexOf("\r\n\r\n", target));
+      if (paragraphEnd >= start + OVERLAP_CHARS + MIN_CHUNK_CHARS) end = paragraphEnd;
+    }
+    if (splitsSurrogatePair(text, end)) end--;
+    const chunk = text.slice(start, end).trim();
+    if (chunk) chunks.push(chunk);
+    if (end === text.length) break;
+    start = end - OVERLAP_CHARS;
+    if (splitsSurrogatePair(text, start)) start++;
+  }
+  return chunks;
 }
 
 /**
@@ -122,9 +150,9 @@ function splitOversizedParagraph(para: string): string[] {
 export function buildSemanticChunkDrafts(
   input: BuildSemanticChunksInput
 ): SemanticChunkDraft[] {
-  const { documentId, contentId, contentHash, isTruncated } = input;
+  const { documentId, contentId, contentHash, isTruncated, preserveSourceText } = input;
 
-  const normalized = normalizeText(input.contentText);
+  const normalized = preserveSourceText ? input.contentText.trim() : normalizeText(input.contentText);
 
   if (normalized.length === 0) return [];
 
@@ -132,22 +160,24 @@ export function buildSemanticChunkDrafts(
     ? "truncated_content"
     : "document_content";
 
+  const draft = (chunkText: string, chunkIndex: number, kind: SemanticChunkDraft["sourceKind"] = sourceKind): SemanticChunkDraft => ({
+    documentId,
+    contentId,
+    chunkIndex,
+    chunkText,
+    chunkHash: sha256(chunkText),
+    contentHash,
+    sourceKind: kind,
+    tokenEstimate: Math.ceil(chunkText.length / 4),
+    charCount: chunkText.length,
+  });
+
   // ── Short document: single chunk ────────────────────────────────────────────
   if (normalized.length < SHORT_DOCUMENT_THRESHOLD) {
-    const chunkText = normalized;
-    return [
-      {
-        documentId,
-        contentId,
-        chunkIndex:    0,
-        chunkText,
-        chunkHash:     sha256(chunkText),
-        contentHash,
-        sourceKind:    "short_document",
-        tokenEstimate: Math.ceil(chunkText.length / 4),
-        charCount:     chunkText.length,
-      },
-    ];
+    return [draft(normalized, 0, "short_document")];
+  }
+  if (preserveSourceText) {
+    return buildSourceSlices(normalized).map((chunk, index) => draft(chunk, index));
   }
 
   // ── Paragraph-aware sliding window ─────────────────────────────────────────
@@ -199,15 +229,5 @@ export function buildSemanticChunkDrafts(
   // Enforce max chunks cap
   const cappedChunks = chunks.slice(0, MAX_CHUNKS_PER_DOCUMENT);
 
-  return cappedChunks.map((chunkText, idx) => ({
-    documentId,
-    contentId,
-    chunkIndex:    idx,
-    chunkText,
-    chunkHash:     sha256(chunkText),
-    contentHash,
-    sourceKind,
-    tokenEstimate: Math.ceil(chunkText.length / 4),
-    charCount:     chunkText.length,
-  }));
+  return cappedChunks.map((chunk, index) => draft(chunk, index));
 }

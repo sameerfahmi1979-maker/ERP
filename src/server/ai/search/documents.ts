@@ -15,7 +15,8 @@ export const searchDocumentRow=z.object({id,document_no:z.string(),title:z.strin
   issue_date:nullable,expiry_date:nullable,updated_at:z.string(),current_version_id:id.nullable(),
   document_type:z.object({name_en:nullable,type_code:nullable}).nullable(),}).strip();
 export type SearchDocumentRow=z.infer<typeof searchDocumentRow>;
-export const SEARCH_DOCUMENT_PROJECTION="id,document_no,title,status,document_type_id,owning_company_id,owning_branch_id,issue_date,expiry_date,updated_at,current_version_id,document_type:dms_document_types(name_en,type_code)";
+// PostgREST must project the sort key before it can order the native read.
+export const SEARCH_DOCUMENT_PROJECTION="id,document_no,title,status,document_type_id,owning_company_id,owning_branch_id,issue_date,expiry_date,created_at,updated_at,current_version_id,document_type:dms_document_types(name_en,type_code)";
 export function constrainDocumentQuery(q:SharedDocumentQuery,p:SharedSearchRequest):SharedDocumentQuery {
   const f=p.filters;
   if(f.companyId)q=q.eq("owning_company_id",f.companyId);if(f.branchId)q=q.eq("owning_branch_id",f.branchId);

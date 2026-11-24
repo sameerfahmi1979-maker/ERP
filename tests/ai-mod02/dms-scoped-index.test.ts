@@ -146,7 +146,7 @@ it("indexes synthetic documents through the queue handler and delivers only curr
     id, owning_company_id: company, owning_branch_id: branch, confidentiality_level,
     document_no: `SYN-INDEX-${id}`, title: "Synthetic inspection bulletin", status: "active",
     issue_date: null, expiry_date: null, document_type_id: null, document_type: null,
-    current_version_id: id, updated_at: "2026-11-24T10:00:00Z",
+    current_version_id: id, created_at: "2026-11-24T09:00:00Z", updated_at: "2026-11-24T10:00:00Z",
   }));
   const contents = docs.map(doc => {
     const content_text = `Synthetic extraction ${doc.id}: overhauled inspection component.`;
@@ -218,6 +218,9 @@ it("indexes synthetic documents through the queue handler and delivers only curr
         });
       } else if (endpoint === "ai_mod02_search_documents") {
         privilegedSearch ||= admin;
+        if (filters.get("order")?.includes("created_at.") && !filters.get("select")?.split(",").includes("created_at")) {
+          return Response.json({ code: "42703", message: "column dms_documents.created_at does not exist" }, { status: 400 });
+        }
         const terms = filters.get("text_query")?.toLowerCase().split(/\s+/).filter(Boolean) ?? [];
         data = docs.filter(doc => canRead(doc) && matches(doc) && terms.every(term => `${doc.title} ${doc.document_no}`.toLowerCase().includes(term)));
       } else if (endpoint === "erp_ai_usage_logs") {
@@ -263,6 +266,7 @@ it("indexes synthetic documents through the queue handler and delivers only curr
   expect(semantic.headers.get("cache-control")).toBe("private, no-store, max-age=0");
   const semanticResult = await semantic.json();
   expect(semanticResult).toMatchObject({ success: true, data: { countScope: "bounded_preview", complete: false, rows: [{ id: 101 }] } });
+  expect(semanticResult.data.rows[0]).not.toHaveProperty("created_at");
   expect(JSON.stringify(semanticResult)).not.toContain("Synthetic extraction");
   expect(semanticResult.data.rows.map((row: { id: number }) => row.id)).toEqual([101]);
   expect(searchCandidates).toHaveBeenCalledOnce();

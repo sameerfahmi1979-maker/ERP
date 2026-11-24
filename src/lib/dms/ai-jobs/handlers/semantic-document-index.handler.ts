@@ -61,7 +61,7 @@ export const semanticDocumentIndexHandler: DmsAiJobHandler = {
       success:      false,
       errorCode:    result.errorCode ?? "unexpected",
       safeMessage:  result.safeMessage ?? "Semantic indexing failed.",
-      retryable:    isRetryable,
+      retryable:    result.retryable ?? isRetryable,
     };
   },
 };

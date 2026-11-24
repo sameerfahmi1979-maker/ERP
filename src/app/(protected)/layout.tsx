@@ -5,6 +5,7 @@ import { loadRuntimeAppBranding } from "@/lib/branding/load-runtime-app-branding
 import { SessionBoundary } from "@/components/layout/session-boundary";
 import { ReadCacheBoundary } from "@/components/layout/read-cache-boundary";
 import { readScopeVersion } from "@/lib/reads/scope-version";
+import { sessionFingerprint } from "@/features/messages/session-fingerprint";
 
 export const dynamic = "force-dynamic";
 
@@ -28,11 +29,11 @@ export default async function ProtectedLayout({
   }
 
   const globalAdmin = isGlobalAdmin(ctx);
-  const appBranding = await loadRuntimeAppBranding();
+  const [appBranding,sessionTag] = await Promise.all([loadRuntimeAppBranding(),sessionFingerprint(ctx.profile.auth_user_id)]);
   const scopeVersion = readScopeVersion(ctx);
 
   return (
-    <ReadCacheBoundary key={`${ctx.profile.auth_user_id}:${scopeVersion}`} authUserId={ctx.profile.auth_user_id} scopeVersion={scopeVersion}><SessionBoundary key={ctx.profile.auth_user_id} authUserId={ctx.profile.auth_user_id} scopeVersion={scopeVersion}><ErpShell
+    <ReadCacheBoundary key={`${ctx.profile.auth_user_id}:${scopeVersion}`} authUserId={ctx.profile.auth_user_id} scopeVersion={scopeVersion}><SessionBoundary key={ctx.profile.auth_user_id} authUserId={ctx.profile.auth_user_id} scopeVersion={scopeVersion} sessionTag={sessionTag}><ErpShell
       principalId={ctx.profile.auth_user_id}
       displayName={ctx.profile.display_name ?? ctx.profile.full_name}
       email={ctx.email}

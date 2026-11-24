@@ -1,0 +1,166 @@
+import groovy.json.JsonSlurper
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import kotlin.jvm.functions.Function1
+
+plugins {
+    id 'com.android.application' version '8.12.2'
+    id 'com.google.gms.google-services' version '4.6.0' apply false
+}
+
+def packageId = 'net.algt.mobiledms'
+def firebaseSetting = providers.gradleProperty('algtFirebaseConfigured').orElse('false').get()
+if (!(firebaseSetting in ['true', 'false'])) {
+    throw new GradleException('algtFirebaseConfigured must be true or false.')
+}
+def firebaseConfigured = firebaseSetting == 'true'
+if (firebaseConfigured) {
+    def clientConfig = file('google-services.json')
+    if (!clientConfig.isFile()) {
+        throw new GradleException('The Firebase-enabled build requires the registered Android client configuration in the module directory.')
+    }
+    Map firebase
+    try {
+        firebase = (Map) new JsonSlurper().parse(clientConfig)
+    } catch (RuntimeException ignored) {
+        throw new GradleException('The Firebase Android client configuration is invalid.')
+    }
+    def clients = firebase.client instanceof List ? firebase.client.findAll {
+        it.client_info?.android_client_info?.package_name == packageId
+    } : []
+    if (clients.size() != 1 || !clients[0].client_info?.mobilesdk_app_id || !firebase.project_info?.project_number) {
+        throw new GradleException('The Firebase Android client configuration must contain exactly one registered application for ' + packageId)
+    }
+    apply plugin: 'com.google.gms.google-services'
+}
+
+android {
+    namespace = packageId
+    compileSdk = 36
+    buildToolsVersion = '36.0.0'
+    ndkVersion = '27.1.12297006'
+
+    defaultConfig {
+        applicationId = packageId
+        minSdk = 26
+        targetSdk = 36
+        versionCode = 13
+        versionName = '1.0'
+        buildConfigField 'boolean', 'FIREBASE_CLIENT_CONFIGURED', firebaseConfigured.toString()
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'AndroidManifest.xml'
+            java.srcDirs = ['src']
+            res.srcDirs = ['res']
+        }
+        test {
+            java.srcDirs = ['tests/play']
+        }
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
+}
+
+dependencyLocking {
+    lockAllConfigurations()
+}
+
+dependencies {
+    implementation files('libs/core-3.5.4.jar')
+    implementation 'com.google.android.play:app-update:2.1.0'
+    implementation platform('com.google.firebase:firebase-bom:35.2.0')
+    implementation 'com.google.firebase:firebase-messaging'
+    implementation 'io.github.webrtc-sdk:android:150.7871.04'
+    testImplementation 'junit:junit:4.13.2'
+}
+
+abstract class GeneratePublicErpConfig extends DefaultTask {
+    @InputFile
+    @PathSensitive(PathSensitivity.NONE)
+    abstract RegularFileProperty getConfigFile()
+
+    @OutputDirectory
+    abstract DirectoryProperty getOutputDirectory()
+
+    @TaskAction
+    void generate() {
+        def keys = configFile.get().asFile.readLines('UTF-8').findAll {
+            it.startsWith('NEXT_PUBLIC_SUPABASE_ANON_KEY=')
+        }
+        if (keys.size() != 1) {
+            throw new GradleException('Expected one public ERP API key in the supplied environment file.')
+        }
+        def key = keys[0].split('=', 2)[1].trim()
+        if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+            key = key.substring(1, key.length() - 1)
+        }
+        if (!(key ==~ /^sb_publishable_[A-Za-z0-9_-]+$/)) {
+            if (!(key ==~ /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)) {
+                throw new GradleException('Expected a public ERP publishable key or anon JWT.')
+            }
+            Map claims
+            try {
+                def payload = new String(Base64.urlDecoder.decode(key.split(/\./)[1]), StandardCharsets.UTF_8)
+                claims = (Map) new JsonSlurper().parseText(payload)
+            } catch (RuntimeException ignored) {
+                throw new GradleException('The ERP public key does not have valid JWT claims.')
+            }
+            if (claims.role != 'anon' || claims.ref != 'mmiefuieduzdiiwnqpie') {
+                throw new GradleException('Expected the approved ERP project anon role.')
+            }
+        }
+
+        def destination = outputDirectory.file('net/algt/mobiledms/PublicErpConfig.java').get().asFile
+        destination.parentFile.mkdirs()
+        destination.setText('package net.algt.mobiledms;\n'
+                + 'final class PublicErpConfig { static final String KEY = "' + key + '"; }\n', 'UTF-8')
+    }
+}
+
+def configPath = providers.gradleProperty('algtPublicErpConfig')
+        .orElse(providers.environmentVariable('ALGT_PUBLIC_ERP_CONFIG'))
+        .orElse('C:/dev/agt-erp/.env.local')
+def verifyLocalDependencies = tasks.register('verifyLocalDependencies') {
+    def zxing = layout.projectDirectory.file('libs/core-3.5.4.jar')
+    inputs.file(zxing)
+    doLast {
+        def expected = '71de5d89341b5fcf5dd89da7f44e84d825d0e084cdf3ec77c9abe26b0f0ceb13'
+        def sha256 = MessageDigest.getInstance('SHA-256')
+        zxing.asFile.withInputStream { input ->
+            byte[] buffer = new byte[8192]
+            for (int read = input.read(buffer); read != -1; read = input.read(buffer)) {
+                sha256.update(buffer, 0, read)
+            }
+        }
+        if (sha256.digest().encodeHex().toString() != expected) {
+            throw new GradleException('ZXing core checksum mismatch.')
+        }
+    }
+}
+
+tasks.named('preBuild').configure {
+    dependsOn(verifyLocalDependencies)
+}
+
+androidComponents.onVariants(androidComponents.selector().all(), { variant ->
+    def generateErpConfig = tasks.register("generate${variant.name.capitalize()}PublicErpConfig", GeneratePublicErpConfig) {
+        configFile.set(layout.file(configPath.map { file(it) }))
+        outputDirectory.set(layout.buildDirectory.dir("generated/sources/publicErp/${variant.name}/java"))
+    }
+    variant.sources.java.addGeneratedSourceDirectory(generateErpConfig, { it.outputDirectory } as Function1)
+} as Action)

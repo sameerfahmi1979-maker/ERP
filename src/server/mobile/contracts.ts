@@ -5,7 +5,13 @@ export const mobileDocumentCriteria=z.object({search:z.string().trim().max(200),
  personal:z.boolean().default(false),entityType:z.enum(["employee","site"]).optional(),entityId:mobileId.optional(),
  validity:z.enum(["all","valid","expired","expiring"]).default("all")}).strict()
  .refine(v=>(v.entityType===undefined)===(v.entityId===undefined)&&!(v.personal&&v.entityId!==undefined),"Choose personal documents or one exact record.");
-export const offlinePermitCriteria=z.strictObject({documentId:mobileId,fileId:mobileId,days:z.union([z.literal(1),z.literal(3),z.literal(7)])});
+export const offlinePermitCriteria = z.strictObject({
+  documentId: mobileId,
+  fileId: mobileId,
+  leaseVersion: z.literal(2).optional(),
+  days: z.literal([0, 1, 3, 7, 15, 30]),
+}).refine(input => (input.leaseVersion === 2 ? [0, 1, 15, 30] : [1, 3, 7]).includes(input.days),
+  "Choose an offline duration supported by this client version.");
 export const mobileTaskCriteria=z.strictObject({kind:z.enum(["uploads","approvals","renewals","expiring","notifications"]),page:mobilePage.default(1),beforeId:mobileId.optional()});
 export const mobileApprovalCriteria=z.strictObject({documentId:mobileId,approvalId:mobileId,decision:z.enum(["approve","reject"]),comment:z.string().trim().max(2000)})
  .refine(v=>v.decision!=="reject"||v.comment.length>=5,"A rejection reason of at least 5 characters is required.");

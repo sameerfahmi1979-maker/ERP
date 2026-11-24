@@ -240,13 +240,22 @@ export async function authorizeOfflineDocument(raw:OfflinePermitInput,ctx:AuthCo
  const db=await createClient();
  const verify=async()=>{for(const permission_code of ["dms.documents.preview","dms.documents.download"]){const r=await db.rpc("f03_has_document_permission",{document_id:input.documentId,permission_code});if(r.error)throw new MobileDmsError("Offline permission could not be checked.");if(r.data!==true)denied("Current document permission is required.");}};
  await verify();
- const result=await getDmsDocumentRecordData(input.documentId);if(!result.success||!result.data||result.data.id!==input.documentId)throw new MobileDmsError("Document unavailable.",404);
+ const readDocument=async()=>{
+  const result=await getDmsDocumentRecordData(input.documentId);
+  if(!result.success){
+   if(result.error==="Permission denied"||result.error==="Document access is restricted.")denied("Current document permission is required.");
+   throw new MobileDmsError("The document record could not be verified. Try again.",503);
+  }
+  if(!result.data||result.data.id!==input.documentId)throw new MobileDmsError("Document unavailable.",404);
+  return result.data;
+ };
+ const doc=await readDocument();
  const original=await db.from("dms_document_files").select("id,document_id,version_id,file_name,mime_type,file_role,sha256_hash,file_size_bytes").eq("id",input.fileId).eq("document_id",input.documentId).eq("file_role","original").is("deleted_at",null).maybeSingle();
  if(original.error)throw new MobileDmsError("The selected original could not be checked.");
  const file=z.object({id:rowId,document_id:rowId,version_id:rowId,file_name:z.string(),mime_type:z.string(),file_role:z.literal("original"),sha256_hash:z.string().nullable(),file_size_bytes:z.number().int().nonnegative()}).safeParse(original.data);
  if(!file.success||file.data.id!==input.fileId||file.data.document_id!==input.documentId)throw new MobileDmsError("The selected original does not belong to this document.",404);
  const storedSha=file.data.sha256_hash;
- if(!rowId.safeParse(result.data.current_version_id).success)throw new MobileDmsError("The document current version could not be verified. Refresh this document before saving offline.",409);
+ if(!rowId.safeParse(doc.current_version_id).success)throw new MobileDmsError("The document current version could not be verified. Refresh this document before saving offline.",409);
  const version=await db.from("dms_document_versions").select("id,document_id,version_number,version_label").eq("id",file.data.version_id).eq("document_id",input.documentId).maybeSingle();
  if(version.error)throw new MobileDmsError("The original version could not be checked.");
  if(!version.data||version.data.id!==file.data.version_id||version.data.document_id!==input.documentId)throw new MobileDmsError("The original version is unavailable.",404);
@@ -256,10 +265,16 @@ export async function authorizeOfflineDocument(raw:OfflinePermitInput,ctx:AuthCo
  const checked=file.data,binding=current.data;
  if(!binding||Object.keys(checked).some(key=>binding[key as keyof typeof binding]!==checked[key as keyof typeof checked]))throw new MobileDmsError("The selected original changed. Refresh and save it again.",409);
  await verify();
- const doc=result.data,authorizedAt=Date.now();
+ const finalDocument=await readDocument();
+ if(finalDocument.current_version_id!==doc.current_version_id||finalDocument.updated_at!==doc.updated_at)
+  throw new MobileDmsError("The document changed during authorization. Refresh the document.",409);
+ const authorizedAt=Date.now();
+ const lease=input.leaseVersion===2
+  ? {leaseVersion:2,days:input.days,retention:input.days===0?"permanent":"timed",expiresAt:input.days===0?null:authorizedAt+input.days*86400000}
+  : {expiresAt:authorizedAt+input.days*86400000};
  // version is document updated_at; versionId pins the actual original-file
  // version. The phone discards retained bytes on any binding mismatch.
- return {authUserId:ctx.profile!.auth_user_id,documentId:doc.id,fileId:file.data.id,versionId:file.data.version_id,currentVersionId:doc.current_version_id,authorizedAt,expiresAt:authorizedAt+input.days*86400000,
+ return {authUserId:ctx.profile!.auth_user_id,documentId:doc.id,fileId:file.data.id,versionId:file.data.version_id,currentVersionId:doc.current_version_id,authorizedAt,...lease,
   version:doc.updated_at,documentNo:doc.document_no,title:doc.title,mime:file.data.mime_type,name:file.data.file_name,expiry:doc.expiry_date,size:file.data.file_size_bytes,
   sha256:sha.toLowerCase()};
 }

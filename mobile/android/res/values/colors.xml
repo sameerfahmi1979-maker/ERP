@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ALGT ERP Fluent light theme and its neutral surfaces. -->
+    <color name="erp_primary">#115EA3</color>
+    <color name="erp_primary_surface">#EBF3FC</color>
+    <color name="erp_surface">#F5F5F5</color>
+    <color name="erp_panel">#FFFFFF</color>
+    <color name="erp_text">#242424</color>
+    <color name="erp_text_secondary">#424242</color>
+    <color name="erp_border">#D1D1D1</color>
+    <color name="erp_error">#BC2F32</color>
+</resources>

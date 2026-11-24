@@ -1,0 +1,63 @@
+html {
+  color-scheme: light dark;
+  font:
+    16px/1.5 system-ui,
+    sans-serif;
+}
+body {
+  margin: 0;
+}
+main {
+  max-width: 55rem;
+  margin: auto;
+  padding: 1.25rem;
+}
+h1,
+h2,
+h3 {
+  line-height: 1.2;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+button {
+  min-height: 44px;
+  padding: 0.45rem 0.8rem;
+  margin: 0.25rem;
+  cursor: pointer;
+}
+label,
+textarea,
+input,
+select {
+  display: block;
+}
+textarea {
+  width: 100%;
+  min-height: 6rem;
+}
+article,
+fieldset {
+  border: 1px solid GrayText;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  margin: 0.7rem 0;
+}
+p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+:focus-visible {
+  outline: 3px solid Highlight;
+  outline-offset: 2px;
+}
+audio,
+video,
+img {
+  max-width: 100%;
+}

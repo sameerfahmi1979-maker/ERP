@@ -30,6 +30,7 @@ export type WorkspaceRouteConfig = {
 };
 
 const REGISTRY: WorkspaceRouteConfig[] = [
+  { route: "/messages", title: "Messages", icon: "MessageSquare", tabKind: "list", singleton: true, moduleCode: "MESSAGES" },
   ...additionalWorkspaceRoutes,
   // ── Dashboard ──────────────────────────────────────────────────────────────
   {

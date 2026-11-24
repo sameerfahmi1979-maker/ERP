@@ -1,6 +1,11 @@
+import {clearMessagingSession,messagingSessionTag} from "@/features/messages/offline-session";
+import {retireContinuation} from "@/features/messages/continuation";
 /** Wait for the complete response before callers discard the document and its caches. */
 export async function signOut(): Promise<{ success: boolean; error?: string }> {
   try {
+    const session=messagingSessionTag();
+    clearMessagingSession();
+    await retireContinuation(session).catch(()=>{ /* Server logout must still revoke the Auth cookie when device storage is unavailable. */ });
     const response = await fetch("/api/auth/logout", {
       method: "POST", credentials: "same-origin", cache: "no-store", redirect: "error",
     });

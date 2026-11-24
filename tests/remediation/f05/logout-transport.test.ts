@@ -41,11 +41,25 @@ it.each([null, {}, { success: "true" }, { success: false }])("rejects malformed 
   expect((await signOut()).success).toBe(false);
 });
 it("waits for response completion rather than only headers", async () => {
-  let resolve!: (value: unknown) => void;
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => new Promise(r => { resolve = r; }) }));
-  let settled = false; const pending = signOut().then(r => { settled = true; return r; });
-  await Promise.resolve(); await Promise.resolve(); expect(settled).toBe(false);
-  resolve({ success: true }); expect((await pending).success).toBe(true);
+  const reading = Promise.withResolvers<void>();
+  const body = Promise.withResolvers<{ success: boolean }>();
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+    ok: true,
+    json: () => {
+      reading.resolve();
+      return body.promise;
+    },
+  }));
+  const pending = signOut();
+  await reading.promise;
+  const stateBeforeBody = await Promise.race([
+    pending.then(() => "settled"),
+    new Promise(resolve => setImmediate(() => resolve("waiting"))),
+  ]);
+  expect(stateBeforeBody).toBe("waiting");
+
+  body.resolve({ success: true });
+  expect((await pending).success).toBe(true);
 });
 it("an interrupted response does not trigger identity navigation or success", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => { throw new Error("cut off"); } }));

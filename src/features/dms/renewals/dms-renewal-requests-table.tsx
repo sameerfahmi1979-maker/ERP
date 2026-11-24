@@ -23,7 +23,7 @@ import {
 } from "@/server/actions/dms/renewals";
 import { DmsRenewalStatusBadge } from "./dms-renewal-status-badge";
 import { DmsCompleteRenewalDialog } from "./dms-complete-renewal-dialog";
-import { BR1_LABOUR_CARD_RENEWAL_DOCUMENT_ID, DmsBr1RenewalPreparationDialog } from "./dms-br1-renewal-preparation-dialog";
+import { isBr1RenewalPreparationEnabled, DmsBr1RenewalPreparationDialog } from "./dms-br1-renewal-preparation-dialog";
 import { invalidateDmsRenewals } from "@/lib/query/invalidation";
 import { ReadError } from "@/lib/reads/client";
 
@@ -137,10 +137,10 @@ export function DmsRenewalRequestsTable({ filter = {}, canManage = false }: DmsR
   if (completeDialog && (completeDialog.owner !== owner || !canManage || denied ||
       (!isLoading && !isError && !visibleRenewals.some(row => row.id === completeDialog.renewal.id && row.document_id === completeDialog.renewal.document_id)))) setCompleteDialog(null);
   const openedRenewal = completeDialog?.renewal;
-  const isPilotDialog = openedRenewal?.document_id === BR1_LABOUR_CARD_RENEWAL_DOCUMENT_ID;
+  const isPilotDialog = isBr1RenewalPreparationEnabled(openedRenewal?.document_id);
   const currentPilotRenewal = isPilotDialog
     ? visibleRenewals.find(row => row.id === openedRenewal?.id
-      && row.document_id === BR1_LABOUR_CARD_RENEWAL_DOCUMENT_ID
+      && isBr1RenewalPreparationEnabled(row.document_id)
       && !CLOSED_RENEWAL_STATUSES.includes(row.status))
     : undefined;
 
@@ -236,7 +236,7 @@ export function DmsRenewalRequestsTable({ filter = {}, canManage = false }: DmsR
                             onClick={() => setCompleteDialog({ renewal: r, owner })}
                           >
                             <CheckCircle2 className="h-3 w-3 text-green-500" />
-                            {r.document_id === BR1_LABOUR_CARD_RENEWAL_DOCUMENT_ID ? "Prepare renewal" : "Complete"}
+                            {isBr1RenewalPreparationEnabled(r.document_id) ? "Prepare renewal" : "Complete"}
                           </Button>
                           <Button
                             type="button"

@@ -2,7 +2,12 @@ import { format, isValid, parseISO } from "date-fns";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 
 // Matches the predecessor predicate in migration 20261123075457. Release together.
-export const BR1_LABOUR_CARD_RENEWAL_DOCUMENT_ID = 127;
+const BR1_LABOUR_CARD_RENEWAL_DOCUMENT_ID = 127;
+
+export function isBr1RenewalPreparationEnabled(documentId?: number | null) {
+  return documentId === BR1_LABOUR_CARD_RENEWAL_DOCUMENT_ID &&
+    process.env.NEXT_PUBLIC_DMS_BR1_RENEWAL_PREPARATION_ENABLED === "1";
+}
 
 interface DmsBr1RenewalPreparationDialogProps {
   open: boolean;

@@ -52,7 +52,7 @@ const expiryRows=(page=1)=>Array.from({length:25},(_,index)=>({...expiry,id:(pag
 const renewalPage=(rows=[renewal],page=1,totalCount=rows.length)=>({success:true,data:{rows,page,pageSize:25,totalCount}});
 const expiryPage=(rows=[expiry],page=1,totalCount=rows.length)=>({success:true,data:{rows,page,pageSize:25,totalCount}});
 beforeEach(()=>{mocks.read.mockResolvedValue(expiryPage([]));mocks.renewals.mockResolvedValue(renewalPage());mocks.cancel.mockResolvedValue({success:true});mocks.override.mockResolvedValue({success:true});});
-afterEach(()=>{cleanup();ownedCaches.forEach(cache=>cache.clear());ownedCaches.clear();vi.resetAllMocks();});
+afterEach(()=>{cleanup();ownedCaches.forEach(cache=>cache.clear());ownedCaches.clear();vi.resetAllMocks();vi.unstubAllEnvs();});
 it("expiry search and filter tools remain available on initial loading and genuine zero",async()=>{
  let resolve!:(v:unknown)=>void;mocks.read.mockReturnValue(new Promise(r=>{resolve=r;}));render(wrap(client(),<DmsExpiringDocumentsTable view="expired"/>));
  expect(screen.getByPlaceholderText("Search documents…")).toBeTruthy();expect(screen.getByRole("button",{name:/Edit filters/i})).toBeTruthy();
@@ -80,6 +80,7 @@ it("explicit managers can open completion but lose the dialog when the capabilit
 });
 
 it("routes the guarded pilot to read-only renewal preparation and retains ordinary completion", async () => {
+  vi.stubEnv("NEXT_PUBLIC_DMS_BR1_RENEWAL_PREPARATION_ENABLED", "1");
   const pilot = {
     ...renewal,
     id: 2,
@@ -107,6 +108,7 @@ it("routes the guarded pilot to read-only renewal preparation and retains ordina
   expect(screen.queryByRole("button", { name: "Prepare renewal" })).toBeNull();
 });
 it("routes the expiry worklist's pilot through the shared read-only renewal dialog", async () => {
+  vi.stubEnv("NEXT_PUBLIC_DMS_BR1_RENEWAL_PREPARATION_ENABLED", "1");
   mocks.read.mockResolvedValue(expiryPage([{ ...expiry, id: 127, document_no: "DMS-2026-000127" }]));
   const cache = client();
   const view = render(wrap(cache, <DmsExpiringDocumentsTable view="expired" canRenew />));

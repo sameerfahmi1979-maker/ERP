@@ -13,7 +13,8 @@ export async function runContinuousIntake({ config, client, graph, ledger, signa
         (item.item_id !== config.itemId || item.version !== config.sourceVersion);
       status = await advance(outsidePilot ? 'defer' : 'inspect');
       if (status === 'download') {
-        const source = await graph.readDiscoveredPdf(item.item_id, item.version, signal);
+        const source = await graph.readDiscoveredPdf(item.item_id, item.version, signal,
+          config.agentCenterSharePointFlow ? config.etag : undefined);
         if (!source.bytes.subarray(0, 1024).includes('%PDF-')) {
           receipts.push(await advance('invalid_pdf'));
           continue;

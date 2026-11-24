@@ -1,8 +1,8 @@
 import {beforeEach,expect,it,vi}from 'vitest';
 import {qualityWrite,qualityFiltersSchema}from '@/server/ai/quality';
-import {submitAiFeedback,saveAiOperationControl,runAiQualityEvaluation}from '@/server/actions/ai/quality';
+import {getAiQualitySnapshot,submitAiFeedback,saveAiEvaluationDataset,saveAiOperationControl,runAiQualityEvaluation}from '@/server/actions/ai/quality';
 const m=vi.hoisted(()=>({rpc:vi.fn(),auth:vi.fn(),client:vi.fn()}));
-vi.mock('@/lib/supabase/server',()=>({createClient:m.client}));vi.mock('@/lib/rbac/check',()=>({getAuthContext:m.auth,canUseApplication:(c:any)=>!!c.profile}));
+vi.mock('@/lib/supabase/server',()=>({createClient:m.client}));vi.mock('@/lib/rbac/check',()=>({getAuthContext:m.auth,canUseApplication:(c:{profile:unknown})=>!!c.profile}));
 const source={kind:'assistant',id:7,documentId:null},request={source,requestId:'00000000-0000-4000-8000-000000000001',category:'wrong_person',correction:'SYNTHETIC correction',shareForReview:false};
 beforeEach(()=>{vi.resetAllMocks();m.auth.mockResolvedValue({profile:{id:1}});m.client.mockResolvedValue({rpc:m.rpc});m.rpc.mockImplementation(async(name:string)=>name==='f03_current_session_valid'?{data:true,error:null}:{data:{id:1,replayed:false},error:null});});
 it('rejects forged caller fields before a database write',async()=>{expect(await submitAiFeedback({...request,actor:999})).toMatchObject({success:false,uncertain:false});expect(m.rpc).not.toHaveBeenCalled();});
@@ -14,3 +14,56 @@ it('minimizes credentials, links and mailbox data before retaining correction',a
 it('does not imply a company-scoped Assistant or unsupported Assistant USD budget',async()=>{const control={feature:'assistant',companyId:1,paused:false,expectedRevision:0,dailyLimit:5,dailyUsd:null,reason:'SYNTHETIC',requestId:request.requestId};expect(await saveAiOperationControl(control)).toMatchObject({success:false,uncertain:false});expect(await saveAiOperationControl({...control,companyId:null,dailyUsd:1})).toMatchObject({success:false,uncertain:false});expect(m.rpc).not.toHaveBeenCalled();});
 it('requires representative evaluation approval and exact versions before a run',async()=>{expect(await runAiQualityEvaluation({datasetId:1,candidate:{mode:'reviewed_provider_results'},observations:[],requestId:request.requestId})).toMatchObject({success:false,uncertain:false});expect(m.rpc).not.toHaveBeenCalled();});
 it('bounds server filters and accepts profile provenance without widening scope',()=>{expect(qualityFiltersSchema.safeParse({profile:'a'.repeat(64),feedbackBefore:2}).success).toBe(true);expect(qualityFiltersSchema.safeParse({actor:99}).success).toBe(false);expect(qualityFiltersSchema.safeParse({feedbackBefore:-1}).success).toBe(false);});
+
+const nativeDefinition = {
+  code: 'SYNTHETIC-READ',
+  revision: 1,
+  title: ' Synthetic case review ',
+  minimized: true,
+  feedbackIds: [],
+  cases: [{caseId: ' SYN-REF-1 ', language: 'ar', category: 'incorrect_value', expected: ' رمز الاختبار ٠٠٧ ', evidence: [' SYN-DOC-1 '], critical: true}],
+};
+
+it('preserves the exact label strings from the retained database definition for review', async () => {
+  const dataset = {id: 14, reference: 'AI-DS-000014', definition: nativeDefinition, sha256: 'd'.repeat(64), state: 'draft', canApprove: true};
+  m.rpc.mockImplementation(async (name: string) => {
+    if (name === 'f03_current_session_valid') return {data: true, error: null};
+    if (name === 'ai_mod05_snapshot') return {data: {feedback: [], datasets: [dataset], evaluations: [], canOperate: false, canEvaluate: true}, error: null};
+    return {data: null, error: {code: '42501'}};
+  });
+  const result = await getAiQualitySnapshot();
+  expect(result).toMatchObject({success: true, data: {datasets: [dataset]}});
+});
+
+it('continues normalizing labels when saving a new dataset revision', async () => {
+  expect(await saveAiEvaluationDataset(nativeDefinition)).toMatchObject({success: true});
+  expect(m.rpc).toHaveBeenCalledWith('ai_mod05_evaluate', {
+    p_action: 'dataset',
+    p_data: {definition: {
+      code: 'SYNTHETIC-READ',
+      revision: 1,
+      title: 'Synthetic case review',
+      minimized: true,
+      feedbackIds: [],
+      cases: [{caseId: 'SYN-REF-1', language: 'ar', category: 'incorrect_value', expected: 'رمز الاختبار ٠٠٧', evidence: ['SYN-DOC-1'], critical: true}],
+    }},
+  });
+});
+
+it('sends exact observation labels to the native scorer', async () => {
+  const observations = [{caseId: ' SYN-REF-1 ', actual: ' رمز الاختبار ٠٠٧ ', evidence: [' SYN,DOC-1 ']}];
+  expect(await runAiQualityEvaluation({
+    datasetId: 14,
+    baselineId: null,
+    requestId: request.requestId,
+    candidate: {
+      mode: 'synthetic_contract', model: null, promptVersion: 'syn/1', rulesVersion: 'syn/2',
+      documentTypeId: null, profileRulesHash: null, schemaHash: null, approvalReference: null,
+    },
+    observations,
+  })).toMatchObject({success: true});
+  expect(m.rpc).toHaveBeenCalledWith('ai_mod05_evaluate', {
+    p_action: 'run',
+    p_data: expect.objectContaining({observations}),
+  });
+});

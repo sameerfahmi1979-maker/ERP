@@ -104,7 +104,7 @@ function MetadataEditor({ ready, documentId, snapshot, onClose, onSaved }: { rea
   const save = async () => {
     if(!ready)return;
     const invalid: WorkspaceFieldIssue[] = [];
-    const payload: DmsMetadataValueInput[] = snapshot.definitions.map(def => {
+    const reviewed: DmsMetadataValueInput[] = snapshot.definitions.map(def => {
       const raw = values[def.id] ?? "", value: DmsMetadataValueInput = { definition_id: def.id };
       if (["json","multiselect","multi_select"].includes(def.field_type)) {
         try { value.value_json = raw.trim() ? JSON.parse(raw) : null; }
@@ -121,6 +121,8 @@ function MetadataEditor({ ready, documentId, snapshot, onClose, onSaved }: { rea
     });
     setIssues(invalid); setFailure(null);
     if (invalid.length) { invalid[0].control?.focus(); return; }
+    const payload = reviewed.filter(entry => values[entry.definition_id] !== initial[entry.definition_id]);
+    if (!payload.length) { onClose(); return; }
     try {
       const requestId=session.begin({documentId,values:payload,snapshot:snapshot.snapshot}).operationId;
       const result = await saveDmsDocumentMetadataValues(documentId, payload,{requestId,snapshot:snapshot.snapshot});

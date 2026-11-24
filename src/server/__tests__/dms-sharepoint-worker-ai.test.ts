@@ -73,6 +73,48 @@ describe("SharePoint Work Permit AI Fill", () => {
     expect(output.result.rawResponse).not.toHaveProperty("untrusted_extra");
   });
 
+  it.each(["ISSUE DATE", "EXPIRY DATE", "ISSUE\nDATE", "EXPIRY\nDATE", "TRANSACTION NO", "ELECTRONIC WORK PERMIT INFORMATION"])(
+    "stops the printed holder name before the %s label",
+    async caption => {
+      const text = ocrText.replace("LAB TEST\nWORKER", `LAB TEST WORKER\n${caption}`);
+      mocks.extract.mockResolvedValue({ text, images: [], pageCount: 1 });
+      const output = await analyzeSharePointWorkPermit(input);
+      expect(output.result.extractedFields.full_name_en).toBe("LAB TEST WORKER");
+      expect(output.result.fieldConfidence.full_name_en.source_snippet).toBe("Person Name\nLAB TEST WORKER");
+    },
+  );
+
+  it.each([
+    { form: "detached", printed: "Person Name\nISSUE DATE", value: "ISSUE DATE" },
+    { form: "inline", printed: "Person Name: ISSUE DATE", value: "ISSUE DATE" },
+    { form: "split", printed: "Person Name\nEXPIRY\nDATE", value: "EXPIRY DATE" },
+  ])("rejects an $form caption masquerading as the holder name", async ({ printed, value }) => {
+    const text = ocrText.replace("Person Name\nLAB TEST\nWORKER", printed);
+    mocks.extract.mockResolvedValue({ text, images: [], pageCount: 1 });
+    const model = modelOutput();
+    model.extraction.fields[0] = field("full_name_en", value, `Person Name: ${value}`);
+    mocks.analyze.mockResolvedValue(model);
+
+    await expect(analyzeSharePointWorkPermit(input)).rejects.toThrow(/source evidence/i);
+    expect(mocks.analyze).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { form: "detached", printed: "Person Name\nCARD PATEL", value: "CARD PATEL" },
+    { form: "inline", printed: "Person Name: CARD PATEL", value: "CARD PATEL" },
+    { form: "detached", printed: "Person Name\nPASSPORT PATEL", value: "PASSPORT PATEL" },
+  ])("verifies the $form holder name $value", async ({ printed, value }) => {
+    const text = ocrText.replace("Person Name\nLAB TEST\nWORKER", printed);
+    mocks.extract.mockResolvedValue({ text, images: [], pageCount: 1 });
+    const model = modelOutput();
+    model.extraction.fields[0] = field("full_name_en", value, `Person Name: ${value}`);
+    mocks.analyze.mockResolvedValue(model);
+
+    const output = await analyzeSharePointWorkPermit(input);
+    expect(output.result.extractedFields.full_name_en).toBe(value);
+    expect(output.result.fieldConfidence.full_name_en.source_snippet).toBe(`Person Name\n${value}`);
+  });
+
   it("rejects a model that reads the passport expiry rather than the card expiry", async () => {
     const output = modelOutput();
     output.extraction.fields[2] = field("expiry_date", "2030-12-17", "Passport Expiry Date: 17/12/2030");

@@ -40,10 +40,10 @@ async function run() {
   const config = readConnectionConfig(process.env);
   const connection = createSharePointConnection(config);
   if (!['connection_probe', 'discovery'].includes(mode)) throw new ConnectionError('invalid_AGENT_MODE');
+  const pilot = mode === 'discovery' ? readDmsPilotConfig(process.env) : null;
   const ledger = mode === 'discovery'
-    ? (await import('./ledger.mjs')).openDiscoveryLedger(process.env, config)
+    ? (await import('./ledger.mjs')).openDiscoveryLedger(process.env, config, { pilot })
     : null;
-  const pilot = ledger ? readDmsPilotConfig(process.env) : null;
   const continuousClient = pilot?.continuous ? createDmsPilotClient(pilot, { shutdown: shutdown.signal }) : null;
   const hrLinkEnabled = process.env.AGENT_DMS_HR_LINK_ENABLED === '1';
   let pilotDone = false;

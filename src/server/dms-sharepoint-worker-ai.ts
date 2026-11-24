@@ -20,7 +20,8 @@ const captions = {
   expiry_date: "Card Expiry Date",
 };
 const namePattern = /^[A-Za-z][A-Za-z .’'-]{1,119}$/u;
-const nextCaption = /^(?:Person Code|Passport|Card|Work Permit|Establishment|Nationality|Occupation|Profession|Gender|Sex|Date of Birth|Work Site)\b/iu;
+const printedCaption = /^(?:Person Name|Person Code|Passport Number|Passport Issue Date|Passport Expiry Date|Card Number|Card Type|Card Issuance Date|Card Expiry Date|Work Permit|Establishment Name|Nationality|Occupation|Profession|Gender|Sex|Date of Birth|Work Site|Issue Date|Expiry Date|Transaction No|Electronic Work Permit Information)(?:\s*:|$)/iu;
+const nextCaption = /^(?:Person Code|Passport|Card|Work Permit|Establishment|Nationality|Occupation|Profession|Gender|Sex|Date of Birth|Work Site|Issue Date|Expiry Date|Transaction No|Electronic Work Permit Information)\b/iu;
 
 type PrintedField = { value: string; snippet: string };
 
@@ -36,11 +37,16 @@ function readCaption(lines: string[], caption: string, allowNameContinuation = f
   const index = indexes[0];
   const inline = lines[index].slice(caption.length).replace(/^:\s*/u, "").trim();
   const first = inline || lines[index + 1];
-  if (!first) throw Error("The work permit source evidence is missing a printed value.");
-  const continuation = lines[index + (inline ? 1 : 2)];
+  if (!first || (allowNameContinuation && printedCaption.test(first))) {
+    throw Error("The work permit source evidence is missing a printed value.");
+  }
+  const continuationIndex = index + (inline ? 1 : 2);
+  const continuation = lines[continuationIndex];
+  const following = lines[continuationIndex + 1];
   const parts = [first];
   if (allowNameContinuation && continuation && /^[A-Z]/u.test(continuation) && continuation === continuation.toUpperCase() &&
-    namePattern.test(continuation) && !nextCaption.test(continuation)) parts.push(continuation);
+    namePattern.test(continuation) && !nextCaption.test(continuation) &&
+    !(following && printedCaption.test(`${continuation} ${following}`))) parts.push(continuation);
   return { value: parts.join(" "), snippet: [caption, ...parts].join("\n") };
 }
 
@@ -87,7 +93,7 @@ export async function analyzeSharePointWorkPermit({ client, bytes, filename, sha
   const issuance = readCaption(lines, "Card Issuance Date");
   const expiryDate = isoPrintedDate(expiry.value);
   const issueDate = isoPrintedDate(issuance.value);
-  if (!namePattern.test(holder.value) || !/^[A-Z0-9][A-Z0-9-]{2,39}$/iu.test(card.value) ||
+  if (!namePattern.test(holder.value) || printedCaption.test(holder.value) || !/^[A-Z0-9][A-Z0-9-]{2,39}$/iu.test(card.value) ||
     !expiryDate || !issueDate || issueDate > expiryDate) {
     throw Error("The work permit source evidence does not establish the critical fields.");
   }

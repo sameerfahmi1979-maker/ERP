@@ -134,8 +134,11 @@ test('downloads the pinned PDF only in the approved subtree without forwarding t
   } });
   assert.deepEqual(await connection.readApprovedPdf('sample', 'metadata'), { name: 'sample.pdf', bytes: raw });
   assert.equal(calls.find(([url]) => url === site)[1].headers, undefined);
+  await assert.rejects(connection.readApprovedPdf('sample'), /pilot_source_unverified/);
+  await assert.rejects(connection.readDiscoveredPdf('sample', 'c:bytes', undefined, 'previous-metadata'), /pilot_source_unverified/);
+  assert.deepEqual(await connection.readDiscoveredPdf('sample', 'c:bytes', undefined, 'metadata'), { name: 'sample.pdf', bytes: raw });
   await assert.rejects(connection.readApprovedPdf('sample', 'changed'), /pilot_source_unverified/);
   parent = 'index';
   await assert.rejects(connection.readApprovedPdf('sample', 'metadata'), /pilot_source_unverified/);
-  assert.equal(calls.filter(([url]) => url.endsWith('/content')).length, 1);
+  assert.equal(calls.filter(([url]) => url.endsWith('/content')).length, 2);
 });

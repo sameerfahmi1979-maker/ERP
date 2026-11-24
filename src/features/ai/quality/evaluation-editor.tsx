@@ -2,6 +2,7 @@
 import {useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
+import {Textarea} from '@/components/ui/textarea';
 import {ERPChildDialogForm} from '@/components/erp/erp-child-dialog-form';
 import type {QualityDataset,QualityDatasetRow,QualityEvaluationRow,QualityFeedback,QualityCandidate,QualityObservations} from '@/lib/ai/quality/contracts';
 type Props={datasets:QualityDatasetRow[];evaluations:QualityEvaluationRow[];feedback:QualityFeedback[];busy:boolean;saveDataset:(v:QualityDataset)=>Promise<boolean>;run:(v:{datasetId:number;baselineId:number|null;candidate:QualityCandidate;observations:QualityObservations;requestId:string})=>Promise<boolean>;approve:(kind:'dataset'|'run',id:number)=>Promise<boolean>};
@@ -12,7 +13,20 @@ export function AiEvaluationEditor({datasets,evaluations,feedback,busy,saveDatas
  const save=async()=>{await saveDataset({code,revision,title,cases,feedbackIds:curated,minimized:true});};
  return <div className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-medium">Reference cases and version evaluations</h3><Button type="button" size="sm" variant="outline" disabled={busy} onClick={()=>setOpen(true)}>New dataset revision</Button></div>
  <p className="text-sm text-muted-foreground">Reference checks are exact fact and evidence comparisons. Synthetic results demonstrate contracts; reviewed provider results need an approved representative sample and budget reference. No model or prompt is activated here.</p>
- {datasets.map(d=><article key={d.id} className="flex flex-wrap gap-2 items-center rounded border p-3"><div className="flex-1 min-w-0 text-sm"><strong>{d.reference} · {d.definition.title}</strong><p>{d.definition.code} · revision {d.definition.revision} · {d.definition.cases.length} cases · {d.state}</p></div>{d.canApprove&&<Button type="button" size="sm" variant="outline" disabled={busy} onClick={()=>void approve('dataset',d.id)}>Approve minimized cases</Button>}{d.state==='approved'&&<Button type="button" size="sm" disabled={busy} onClick={()=>setSelected(d)}>Record candidate results</Button>}</article>)}
+ {datasets.map(dataset => (
+  <article key={dataset.id} className="space-y-3 rounded border p-3">
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="min-w-0 flex-1 text-sm">
+        <strong>{dataset.reference} · <bdi className="whitespace-pre-wrap [overflow-wrap:anywhere]">{dataset.definition.title}</bdi></strong>
+        <p>{dataset.definition.code} · revision {dataset.definition.revision} · {dataset.definition.cases.length} cases · {dataset.state}</p>
+      </div>
+      {dataset.state === 'approved' && (
+        <Button type="button" size="sm" disabled={busy} onClick={() => setSelected(dataset)}>Record candidate results</Button>
+      )}
+    </div>
+    <DatasetCaseReview dataset={dataset} busy={busy} approve={approve} />
+  </article>
+ ))}
  {evaluations.map(e=><article key={e.id} className="rounded border p-3 text-sm"><strong>{e.reference}</strong><p>{datasets.find(d=>d.id===e.datasetId)?.reference??'Original dataset'} · {new Date(e.createdAt).toLocaleString()} · {e.reviewedAt?'Reviewed '+new Date(e.reviewedAt).toLocaleString():'Independent review pending'}</p><p>{e.result.passed}/{e.result.total} reference checks passed · {e.result.criticalFailures} critical failures · {e.result.regressions.length} regressions · {e.state}</p><p className="text-xs text-muted-foreground">{e.candidate.mode==='synthetic_contract'?'Synthetic contract evidence':'Operator-supplied provider observations; independent review required'} · {e.candidate.model??'Model not applicable / unknown'} · {e.candidate.promptVersion}. JSON validity and model confidence do not establish factual accuracy.</p>{e.canApprove&&<Button type="button" size="sm" variant="outline" disabled={busy} onClick={()=>void approve('run',e.id)}>Approve this result version</Button>}{!e.result.eligible&&<p className="text-destructive">Activation held: failed or regressed reference cases.</p>}</article>)}
  <ERPChildDialogForm open={open} onOpenChange={setOpen} title="Minimized evaluation dataset" mode="add" size="workbench" isDirty={!!code||!!title||cases.some(c=>!!c.expected)} isSubmitting={busy} closeDisabled={busy} onCancel={()=>setOpen(false)} onSubmit={save} submitDisabled={busy} submitLabel="Retain dataset revision">
  <fieldset disabled={busy} className="space-y-3"><p className="text-sm">Use synthetic aliases or independently reviewed minimized examples. Keep personal details, credentials and full business documents out of the dataset. A different authorised person approves each revision.</p><div className="grid gap-3 sm:grid-cols-3"><label className="text-sm">Dataset code<Input required pattern="[A-Z][A-Z0-9_-]{2,59}" value={code} onChange={e=>setCode(e.target.value)}/></label><label className="text-sm">Title<Input required maxLength={200} value={title} onChange={e=>setTitle(e.target.value)}/></label><label className="text-sm">Revision<Input required type="number" min={1} value={revision} onChange={e=>setRevision(Number(e.target.value))}/></label></div>
@@ -23,14 +37,101 @@ export function AiEvaluationEditor({datasets,evaluations,feedback,busy,saveDatas
  {selected&&<RunEditor key={selected.id} dataset={selected} evaluations={evaluations} busy={busy} run={run} close={()=>setSelected(null)}/>}
  </div>;
 }
+const caseLanguages = {en: 'English', ar: 'Arabic', bilingual: 'Bilingual'};
+const caseCategories = {
+  wrong_person: 'Wrong person',
+  wrong_document: 'Wrong document',
+  incorrect_value: 'Incorrect value',
+  unsupported_answer: 'Unsupported answer',
+  missing_result: 'Missing result',
+};
+
+function DatasetCaseReview({dataset, busy, approve}: {dataset: QualityDatasetRow; busy: boolean; approve: Props['approve']}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <details onToggle={event => setExpanded(event.currentTarget.open)}>
+      <summary className="cursor-pointer text-sm font-medium">Review minimized cases</summary>
+      {expanded && (
+        <div className="mt-3 space-y-3 text-sm">
+          <p>Dataset SHA-256 <code className="break-all">{dataset.sha256}</code></p>
+          <ol className="list-decimal space-y-2 ps-5">
+            {dataset.definition.cases.map(referenceCase => (
+              <li key={referenceCase.caseId} className="space-y-2 rounded border p-3">
+                <h4 dir="auto" className="whitespace-pre-wrap [overflow-wrap:anywhere] font-medium">{referenceCase.caseId}</h4>
+                <p className="text-muted-foreground">
+                  {caseLanguages[referenceCase.language]} · {caseCategories[referenceCase.category]} · <span>{referenceCase.critical ? 'Critical' : 'Noncritical'}</span>
+                </p>
+                <dl className="space-y-2">
+                  <div>
+                    <dt className="font-medium">Expected fact or outcome</dt>
+                    <dd dir="auto" lang={referenceCase.language === 'bilingual' ? undefined : referenceCase.language} className="whitespace-pre-wrap [overflow-wrap:anywhere]">{referenceCase.expected}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium">Expected evidence references</dt>
+                    <dd>
+                      {referenceCase.evidence.length > 0 ? (
+                        <ul className="list-disc ps-5">
+                          {referenceCase.evidence.map((evidence, index) => (
+                            <li key={index} dir="auto" className="whitespace-pre-wrap [overflow-wrap:anywhere]">{evidence}</li>
+                          ))}
+                        </ul>
+                      ) : <span className="text-muted-foreground">No expected evidence references</span>}
+                    </dd>
+                  </div>
+                </dl>
+              </li>
+            ))}
+          </ol>
+          {dataset.canApprove && (
+            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void approve('dataset', dataset.id)}>Approve minimized cases</Button>
+          )}
+        </div>
+      )}
+    </details>
+  );
+}
+
 function RunEditor({dataset,evaluations,busy,run,close}:{dataset:QualityDatasetRow;evaluations:QualityEvaluationRow[];busy:boolean;run:Props['run'];close:()=>void}){
  const [mode,setMode]=useState<QualityCandidate['mode']>('synthetic_contract'),[model,setModel]=useState(''),[prompt,setPrompt]=useState(''),[rules,setRules]=useState(''),[approval,setApproval]=useState(''),[baseline,setBaseline]=useState('');
  const [type,setType]=useState(''),[profileHash,setProfileHash]=useState(''),[schemaHash,setSchemaHash]=useState('');
- const [observations,setObservations]=useState<QualityObservations>(dataset.definition.cases.map(c=>({caseId:c.caseId,actual:'',evidence:[]})));
- return <ERPChildDialogForm open onOpenChange={v=>{if(!v)close();}} title={`Evaluate ${dataset.definition.title}`} mode="add" size="workbench" isDirty={observations.some(o=>!!o.actual)||!!prompt} isSubmitting={busy} closeDisabled={busy} onCancel={close} submitDisabled={busy} submitLabel="Retain comparison results" onSubmit={async()=>{await run({datasetId:dataset.id,baselineId:baseline?Number(baseline):null,candidate:{mode,model:model||null,promptVersion:prompt,rulesVersion:rules,documentTypeId:type?Number(type):null,profileRulesHash:profileHash||null,schemaHash:schemaHash||null,approvalReference:approval||null},observations,requestId:crypto.randomUUID()});}}>
+ const [observations,setObservations]=useState(() => dataset.definition.cases.map(c => ({caseId: c.caseId, actual: '', evidenceText: ''})));
+ const submit = async () => {
+   await run({
+     datasetId: dataset.id,
+     baselineId: baseline ? Number(baseline) : null,
+     candidate: {
+       mode, model: model || null, promptVersion: prompt, rulesVersion: rules,
+       documentTypeId: type ? Number(type) : null, profileRulesHash: profileHash || null,
+       schemaHash: schemaHash || null, approvalReference: approval || null,
+     },
+     observations: observations.map(({caseId, actual, evidenceText}) => ({caseId, actual, evidence: evidenceText.split('\n').filter(Boolean)})),
+     requestId: crypto.randomUUID(),
+   });
+ };
+ return <ERPChildDialogForm open onOpenChange={v=>{if(!v)close();}} title={`Evaluate ${dataset.definition.title}`} mode="add" size="workbench" isDirty={observations.some(o=>!!o.actual||!!o.evidenceText)||!!prompt} isSubmitting={busy} closeDisabled={busy} onCancel={close} submitDisabled={busy} submitLabel="Retain comparison results" onSubmit={submit}>
  <fieldset disabled={busy} className="space-y-3"><div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Evidence kind<select className="block w-full rounded border bg-background text-foreground p-2" value={mode} onChange={e=>setMode(e.target.value as typeof mode)}><option value="synthetic_contract">Synthetic contract checks</option><option value="reviewed_provider_results">Results from an approved provider evaluation</option></select></label><label className="text-sm">Recorded model<Input required={mode==='reviewed_provider_results'} value={model} maxLength={200} onChange={e=>setModel(e.target.value)}/></label><label className="text-sm">Prompt version<Input required value={prompt} maxLength={200} onChange={e=>setPrompt(e.target.value)}/></label><label className="text-sm">Rules version<Input required value={rules} maxLength={200} onChange={e=>setRules(e.target.value)}/></label><label className="text-sm">Approved sample and budget reference<Input required={mode==='reviewed_provider_results'} value={approval} maxLength={200} onChange={e=>setApproval(e.target.value)}/></label><label className="text-sm">Approved comparison baseline<select className="block w-full rounded border bg-background text-foreground p-2" value={baseline} onChange={e=>setBaseline(e.target.value)}><option value="">First baseline</option>{evaluations.filter(e=>e.datasetId===dataset.id&&e.state==='approved').map(e=><option key={e.id} value={e.id}>{e.reference}</option>)}</select></label></div>
  <details><summary className="text-sm">Bind a processing-profile evaluation</summary><div className="grid gap-3 sm:grid-cols-3"><label className="text-sm">Document type ID<Input type="number" min={1} value={type} onChange={e=>setType(e.target.value)}/></label><label className="text-sm">Exact rules hash<Input required={!!type} pattern="[a-f0-9]{64}" value={profileHash} onChange={e=>setProfileHash(e.target.value)}/></label><label className="text-sm">Exact schema hash<Input required={!!type} pattern="[a-f0-9]{64}" value={schemaHash} onChange={e=>setSchemaHash(e.target.value)}/></label></div><p className="text-xs text-muted-foreground">Use the hashes from the recorded profile revision. An unrelated or synthetic evaluation cannot enable a live processing profile.</p></details>
- {observations.map((o,index)=><fieldset key={o.caseId} className="space-y-2 rounded border p-3"><legend className="text-sm">{o.caseId} · {dataset.definition.cases[index].language}</legend><p className="text-sm">Expected: {dataset.definition.cases[index].expected}</p><label className="text-sm">Actual observed fact / outcome<Input required maxLength={200} value={o.actual} onChange={e=>setObservations(v=>v.map((r,i)=>i===index?{...r,actual:e.target.value}:r))}/></label><label className="text-sm">Actual evidence references (comma separated)<Input value={o.evidence.join(', ')} onChange={e=>setObservations(v=>v.map((r,i)=>i===index?{...r,evidence:e.target.value.split(',').map(x=>x.trim()).filter(Boolean)}:r))}/></label></fieldset>)}
+ {observations.map((observation, index) => (
+   <fieldset key={observation.caseId} className="space-y-2 rounded border p-3">
+     <legend className="text-sm"><bdi className="whitespace-pre-wrap">{observation.caseId}</bdi> · {dataset.definition.cases[index].language}</legend>
+     <p className="text-sm">Expected: <bdi className="whitespace-pre-wrap [overflow-wrap:anywhere]">{dataset.definition.cases[index].expected}</bdi></p>
+     <label className="text-sm">
+       Actual observed fact / outcome
+       <Input required dir="auto" maxLength={400} value={observation.actual} onChange={event => {
+         const actual = event.target.value;
+         setObservations(rows => rows.map((row, i) => i === index ? {...row, actual} : row));
+       }}/>
+     </label>
+     <label className="text-sm">
+       Actual evidence references (one per line)
+       <Textarea dir="auto" value={observation.evidenceText} onChange={event => {
+         const evidenceText = event.target.value;
+         setObservations(rows => rows.map((row, i) => i === index ? {...row, evidenceText} : row));
+       }}/>
+     </label>
+   </fieldset>
+ ))}
  <p className="text-xs text-muted-foreground">This records observations; it does not call a paid model. Results are recomputed against every case on the server and require a different authorised approver. Do not claim mocked outputs as real model quality.</p>
  </fieldset></ERPChildDialogForm>;
 }

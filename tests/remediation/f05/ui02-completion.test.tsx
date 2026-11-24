@@ -33,6 +33,25 @@ it('metadata required fields use the shared summary and cannot save empty values
 it('invalid JSON is reported and never silently converted to text',async()=>{metadata();await edit();fireEvent.change(screen.getByLabelText('Reference',{selector:'input'}),{target:{value:'Synthetic'}});fireEvent.change(screen.getByLabelText('Structured details',{selector:'textarea'}),{target:{value:'{broken'}});fireEvent.click(screen.getByRole('button',{name:'Save',exact:true}));expect(screen.getByRole('alert').textContent).toContain('valid JSON');expect(mocks.save).not.toHaveBeenCalled();});
 it('metadata save response loss keeps the draft and releases Save',async()=>{mocks.save.mockRejectedValue(new Error('private'));metadata();await edit();fireEvent.change(screen.getByLabelText('Reference',{selector:'input'}),{target:{value:'Keep this'}});fireEvent.click(screen.getByRole('button',{name:'Save',exact:true}));await screen.findByText(/The save could not be confirmed/);expect((screen.getByLabelText('Reference',{selector:'input'}) as HTMLInputElement).value).toBe('Keep this');expect(screen.getByRole('button',{name:'Save',exact:true}).hasAttribute('disabled')).toBe(false);});
 it('metadata confirmed save closes; valid JSON retains its typed value and reviewed snapshot',async()=>{metadata();await edit();fireEvent.change(screen.getByLabelText('Reference',{selector:'input'}),{target:{value:'Synthetic'}});fireEvent.change(screen.getByLabelText('Structured details',{selector:'textarea'}),{target:{value:'{"safe":true}'}});fireEvent.click(screen.getByRole('button',{name:'Save',exact:true}));await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());expect(mocks.save).toHaveBeenCalledWith(100,[{definition_id:1,value_text:'Synthetic'},{definition_id:2,value_json:{safe:true}}],{requestId:expect.stringMatching(/^[0-9a-f-]{36}$/),snapshot:'a'.repeat(64)});});
+it('preserves untouched saved metadata and includes an explicitly cleared field in the patch', async () => {
+  mocks.defs.mockResolvedValue({ success: true, data: [...defs,
+    { id: 3, field_label_en: 'Legacy date and time', field_type: 'datetime', is_required: false },
+  ] });
+  mocks.values.mockResolvedValue({ success: true, snapshot: 'a'.repeat(64), data: [
+    { definition_id: 1, value_text: 'Original reference' },
+    { definition_id: 2, value_json: { recorded: true } },
+    { definition_id: 3, value_datetime: '2026-11-23T09:10:11.123Z' },
+  ] });
+  metadata();
+  await edit();
+  fireEvent.change(screen.getByLabelText('Reference', { selector: 'input' }), { target: { value: 'Verified reference' } });
+  fireEvent.change(screen.getByLabelText('Structured details', { selector: 'textarea' }), { target: { value: '' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(mocks.save).toHaveBeenCalledWith(100, [
+    { definition_id: 1, value_text: 'Verified reference' }, { definition_id: 2, value_json: null },
+  ], { requestId: expect.any(String), snapshot: 'a'.repeat(64) });
+});
 it('read-only metadata has no edit affordance',async()=>{render(<Wrap><DmsDocumentMetadataSection documentId={100} documentTypeId={2} isViewing/></Wrap>);await screen.findByText('Reference');expect(screen.queryByRole('button',{name:'Edit metadata'})).toBeNull();});
 it('metadata document identity change does not expose the previous draft',async()=>{const view=metadata();await edit();fireEvent.change(screen.getByLabelText('Reference',{selector:'input'}),{target:{value:'Private draft A'}});view.rerender(<Wrap><DmsDocumentMetadataSection documentId={101} documentTypeId={2} isViewing={false}/></Wrap>);await edit();expect((screen.getByLabelText('Reference',{selector:'input'}) as HTMLInputElement).value).toBe('');});
 const batch={id:12,batch_code:'SYNTHETIC',status:'processing',total_files:1,processed_files:1} as DmsUploadBatchRow;

@@ -37,20 +37,20 @@ export const IMPACT={...HISTORICAL_RAW_IMPACT,
  'vendor/braces-3.0.3-algt-integrated-2.tgz':'3b42ddbff088317a60e6f10e14f907fff6cb7db5b14d9204cf63534d573339ee',
  // Reviewed F07 delta: one pinned saxes parser dependency and one runtime
  // parser file, with the worker's universal secret-safe logging seam.
- 'Dockerfile':'6b179dbc0116670735e4c945b93e1fe1346338ac017754dcacc5717f560f49af',
- '.dockerignore':'ec690044b506e5a5f258fd2ad4c94f1c3481d60b965009df3f5f179169803b69',
+ 'Dockerfile':'83a80997a7081457149bc26d91f08ca64b62a229676197b336e752243744a14b',
+ '.dockerignore':'4bd70c8da95b0898225de70f825e5f5b96908732c19d71c604967fe82889da8e',
  // Preserve the approved local UI stylesheet in the build, not the runtime tree.
  'vendor/shadcn/tailwind.css':'146941ac3ff65496fdf1cb306e697255328e4dadc7c105d66e36bb031b00f6d6',
  // DMS ZIP download declares the already locked jszip 3.10.1 directly.
  // Resolved package versions and integrity hashes stay pinned.
- 'package.json':'e6bf5c40af78d6d7907be2af32cf6af37f9b371423ad393bbef979889741a30a',
+ 'package.json':'8f97be6ea3668e48f77338a5400bbb3010d38c37a117a4536aa556f3622bba64',
  'package-lock.json':'cf4c62489254c74f6315950418e45b5f37a939e575a8c9a836485abf6b439679',
  'src/lib/branding/constants.ts':'70a0e8005ce9b8ec76334643b8a345a2908944169252b2fcd59db33f41236e14',
  // Reviewed Arabic OCR successor; preserve historical F06 hashes above.
  // The already-verified capacity changes instrument the same PDF parser and renderer.
  'src/lib/dms/file-content-extractor.ts':'a1434692f73309b078554424039855671f91bbd9258ad66b13b93e7b0d271c42',
  'src/lib/performance/trace.ts':'a573045f2e66767fa66ec164555f98186b88ac37109e2a6c3d0f80a72a2d5c4f',
- 'src/lib/dms/pdf-to-images.ts':'c687a287567d528b8082c9b8260e0eb58ca96f11cfa13f051fb713664e7e604e',
+ 'src/lib/dms/pdf-to-images.ts':'6c6fc989c2779cad3c757fa61a246de0016a60af00e0982b7778dfe0b0af5238',
  'src/lib/dms/pdf-text-quality.ts':'82c743f7785ab87c9a839044f46765d531bebbb75b3167fb10b8606d7438f737',
  'src/lib/logger.ts':'e7d552f81142e3bf6449694b8c14293c4353c0564e2f6c3697824e50a5226067',
  'src/lib/log-context.ts':'8b90e656f51f09d1342febe516ecce239a5f2b3f208da549962cdfd8b464f803',

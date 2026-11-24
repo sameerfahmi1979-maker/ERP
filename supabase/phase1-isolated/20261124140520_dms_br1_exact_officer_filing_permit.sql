@@ -41,9 +41,17 @@ BEGIN
     SELECT 1 FROM erp_private.ai_approval_plans a
     JOIN public.dms_upload_sessions u ON u.id=a.upload_session_id
     JOIN erp_private.dms_sharepoint_br1_filing_scope f ON f.filing_operation_id=a.operation_id
+    JOIN erp_private.dms_sharepoint_intake_origins o ON o.operation_id=f.source_operation_id AND o.upload_session_id=u.id
+    JOIN erp_private.dms_sharepoint_br1_review_scope e ON e.connection_id=o.connection_id AND e.officer_id=a.actor_id
+    JOIN public.user_profiles officer ON officer.id=a.actor_id
+      AND officer.status='active' AND NOT officer.must_change_password
+    JOIN auth.users account ON account.id=officer.auth_user_id AND account.deleted_at IS NULL
+      AND (account.banned_until IS NULL OR account.banned_until<=clock_timestamp())
+    JOIN auth.sessions session ON session.id=NEW.auth_session_id AND session.user_id=account.id
+      AND (session.not_after IS NULL OR session.not_after>clock_timestamp())
     WHERE (a.actor_id,a.operation_id,a.upload_session_id)=(NEW.officer_id,NEW.filing_operation_id,NEW.upload_session_id)
       AND a.approve_run_id=u.approve_run_id AND f.request_sha256=a.request_hash
-      AND f.expires_at>clock_timestamp()
+      AND f.expires_at>clock_timestamp() AND e.expires_at>clock_timestamp()
       AND (
         (NEW.phase='reserve' AND a.result IS NULL AND u.document_id IS NULL AND u.approve_status='processing')
         OR
@@ -104,6 +112,7 @@ BEGIN
   END IF;
   SELECT * INTO STRICT publication FROM erp_private.dms_sharepoint_br1_review_state
   WHERE operation_id=origin.operation_id;
+  PERFORM erp_private.ai_mod04_lock_profile_authority(plan.actor_id);
   PERFORM erp_private.dms_sharepoint_br1_check_object(origin,publication);
   PERFORM erp_private.f07_assert_intake_review(plan.upload_session_id,
     (plan.request_json->>'documentTypeId')::bigint,nullif(plan.request_json->>'expiryDate','')::date);

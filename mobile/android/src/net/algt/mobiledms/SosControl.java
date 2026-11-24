@@ -137,8 +137,9 @@ final class SosControl {
         }
         return true;
     }
-    private void down(long now) {
-        if(busy || state(saved()).equals("uncertain") || !ready() || !hold.begin(channel,now,true)) return;
+    private void down(long eventTime) {
+        if(busy || state(saved()).equals("uncertain") || !ready()
+                || !hold.begin(channel,eventTime,SystemClock.uptimeMillis(),true)) return;
         long generation=++gesture;
         availableFix=null;
         if(hasLocation(a)) IO.execute(()->{
@@ -156,16 +157,16 @@ final class SosControl {
                 if(!PttService.online(a)) status.setText("SOS not sent — no internet.");
                 return;
             }
-            if(hold.due(channel,now,true)) {command("send");return;}
+            if(hold.timerDue(channel,now,true)) {command("send");return;}
             long left=hold.remaining(now);
             String text="Keep holding · "+((left+999)/1000)+" · "+name;
             if(!text.contentEquals(trigger.getText()))trigger.setText(text);
-            MAIN.postDelayed(this,Math.min(100,left));
+            MAIN.postDelayed(this,Math.min(SosHold.TICK_MS,left));
         }
     };
     private void end(long now,boolean released) {
         MAIN.removeCallbacks(tick);
-        if(released && hold.holding() && hold.due(channel,now,current() && trigger.hasWindowFocus())) command("send");
+        if(released && hold.holding() && hold.release(channel,now,current() && trigger.hasWindowFocus())) command("send");
         hold.cancel();gesture++;availableFix=null;trigger.setText(label());pointer=-1;
     }
 

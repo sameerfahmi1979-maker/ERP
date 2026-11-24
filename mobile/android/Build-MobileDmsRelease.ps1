@@ -14,6 +14,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$versionName = '1.0'
+$releaseBuild = 1
+$versionCode = 14
 $employeeCertificate = '9a3131f646424868959a99c1e1f25ff00c52f7b6046dd58377dd9330ccccb234'
 $bundletoolSha256 = 'a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29'
 $wrapperSha256 = '81a82aaea5abcc8ff68b3dfcb58b3c3c429378efd98e7433460610fecd7ae45f'
@@ -35,6 +38,7 @@ if ($PlayUploadCertificateSha256) { $expectedUploadCertificate = $PlayUploadCert
 
 $buildTools = Join-Path $Sdk 'build-tools\36.0.0'
 $java = Join-Path $env:JAVA_HOME 'bin\java.exe'
+$javap = Join-Path $env:JAVA_HOME 'bin\javap.exe'
 $jarsigner = Join-Path $env:JAVA_HOME 'bin\jarsigner.exe'
 $keytool = Join-Path $env:JAVA_HOME 'bin\keytool.exe'
 $aapt = Join-Path $buildTools 'aapt2.exe'
@@ -47,7 +51,7 @@ $verifyNative = Join-Path $PSScriptRoot 'Verify-MobileDmsNative.py'
 
 foreach ($inputPath in @($SigningKey, $SigningPasswordFile, $UploadSigningKey,
         $UploadSigningPasswordFile, $PublicErpConfig, $Bundletool, $wrapper, $platform,
-        $java, $jarsigner, $keytool, $aapt, $zipalign, $apksigner, $gradle, $verifyNative)) {
+        $java, $javap, $jarsigner, $keytool, $aapt, $zipalign, $apksigner, $gradle, $verifyNative)) {
     if (!(Test-Path -LiteralPath $inputPath -PathType Leaf)) {
         throw 'Required Android build input is missing. Check the JDK, SDK, bundletool and protected signer arguments.'
     }
@@ -116,14 +120,20 @@ try {
     if ($Offline) { $gradleArgs += '--offline' }
     Invoke-Checked $gradle $gradleArgs
 
+    $releaseClasses = Join-Path $PSScriptRoot 'build\intermediates\javac\release\compileReleaseJavaWithJavac\classes'
+    $buildConfig = (Invoke-Checked $javap @('-constants', '-classpath', $releaseClasses, 'net.algt.mobiledms.BuildConfig')) -join [Environment]::NewLine
+    if ($buildConfig -notmatch "(?m)^\s*public static final int RELEASE_BUILD = $releaseBuild;\s*$") {
+        throw 'Public release build failed verification.'
+    }
     $apk = Get-OnlyArtifact (Join-Path $PSScriptRoot 'build\outputs\apk\release') '*-unsigned.apk'
     $aab = Get-OnlyArtifact (Join-Path $PSScriptRoot 'build\outputs\bundle\release') '*.aab'
     $runId = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
     $stage = Join-Path $PSScriptRoot "build\candidates\$runId"
     $null = New-Item -ItemType Directory -Path $stage
     $aligned = Join-Path $stage 'aligned-unsigned.apk'
-    $signedApk = Join-Path $stage 'ALGT-ERP-System-1.0-13-candidate.apk'
-    $signedAab = Join-Path $stage 'ALGT-ERP-System-1.0-13-upload-candidate.aab'
+    $artifactPrefix = "ALGT-ERP-System-$versionName-Build-$releaseBuild"
+    $signedApk = Join-Path $stage "$artifactPrefix-candidate.apk"
+    $signedAab = Join-Path $stage "$artifactPrefix-upload-candidate.aab"
     $splitSet = Join-Path $stage 'bundletool-verification.apks'
 
     Invoke-Checked $zipalign @('-f', '-P', '16', '4', $apk, $aligned)
@@ -154,7 +164,7 @@ try {
 
     $badging = (Invoke-Checked $aapt @('dump', 'badging', $signedApk)) -join [Environment]::NewLine
     foreach ($expected in @(
-        "(?m)^package: name='net.algt.mobiledms' versionCode='13' versionName='1[.]0'",
+        "(?m)^package: name='net.algt.mobiledms' versionCode='$versionCode' versionName='$([regex]::Escape($versionName))'",
         "(?m)^minSdkVersion:'26'", "(?m)^targetSdkVersion:'36'",
         "(?m)^application-label:'ALGT ERP System'",
         "(?m)^launchable-activity: .*label='ALGT ERP'")) {
@@ -173,8 +183,8 @@ try {
     $androidNamespace = 'http://schemas.android.com/apk/res/android'
     $manifestRoot = $manifest.DocumentElement
     if ($manifestRoot.GetAttribute('package') -ne 'net.algt.mobiledms' -or
-        $manifestRoot.GetAttribute('versionCode', $androidNamespace) -ne '13' -or
-        $manifestRoot.GetAttribute('versionName', $androidNamespace) -ne '1.0' -or
+        $manifestRoot.GetAttribute('versionCode', $androidNamespace) -ne [string]$versionCode -or
+        $manifestRoot.GetAttribute('versionName', $androidNamespace) -ne $versionName -or
         $manifestRoot.SelectSingleNode('uses-sdk').GetAttribute('minSdkVersion', $androidNamespace) -ne '26' -or
         $manifestRoot.SelectSingleNode('uses-sdk').GetAttribute('targetSdkVersion', $androidNamespace) -ne '36') {
         throw 'AAB identity or target SDK failed verification.'
@@ -193,8 +203,9 @@ try {
     $receipt = [ordered]@{
         status = 'local candidate'
         applicationId = 'net.algt.mobiledms'
-        versionName = '1.0'
-        versionCode = 13
+        versionName = $versionName
+        releaseBuild = $releaseBuild
+        versionCode = $versionCode
         compileSdk = 36
         targetSdk = 36
         minSdk = 26

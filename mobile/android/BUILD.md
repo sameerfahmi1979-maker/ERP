@@ -1,6 +1,6 @@
 # ALGT ERP Android build
 
-The Android project uses its existing Java and resource directories. Gradle builds the API 36 employee APK and Play app bundle from the same source. The candidate uses public version 1.0 and internal code 12. Check the highest Play version code before submitting.
+The Android project uses its existing Java and resource directories. Gradle builds the API 36 APK and Play app bundle from the same source. The public release label is **1.0 Build 1**, with Android internal `versionCode` 14 for updates from code 13. Check the highest Play version code before submitting.
 
 ## Toolchain and inputs
 

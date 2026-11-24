@@ -164,6 +164,10 @@ final class DmsCapture {
                 catch(ErpApi.Rejected e){if(e.status==401||e.status==403)throw e;put(r,"inspection","Current intake unavailable.");}
                 catch(IOException e){put(r,"inspection","The current intake could not be confirmed.");}
             }
+            if("duplicate".equals(str(r,"state"))&&r.optJSONObject("match")==null){
+                try{JSONObject match=q.scopedDuplicate(r);if(match!=null)put(r,"match",match);}
+                catch(IOException e){if(DmsWorkspace.accessDenied(e))throw e;}
+            }
             return r;},row->{
             JSONObject request=row.getJSONObject("request"),meta=request.getJSONObject("metadata");ui.line(meta,"original_filename","mime_type","file_size_bytes","sha256_hash");ui.line(row,"state");a.subtitle("Operation "+op);
             String state=str(row,"state");boolean same=ui.current.epoch==row.getLong("epoch");
@@ -192,7 +196,14 @@ final class DmsCapture {
                     if(row.optJSONObject("evidence")!=null&&proven)ui.action("Review evidence for original request",()->ui.requests.candidate(row.optJSONObject("evidence"),object("id",r.optLong("documentId")),here),false);
                     if(proven)ui.action("Finish this queue item",()->ui.work("Closing saved item",t->{new DmsQueue(t).finishVerified(op);return true;},v->parentBack.run(),null),false);}
             }
-            if(state.equals("duplicate")){JSONObject m=row.optJSONObject("match");if(m!=null){ui.line(m,"status","documentNo","sessionCode");if(m.optLong("documentId")>0)ui.action("Open existing document",()->ui.docs.detail(m.optLong("documentId"),request.optJSONObject("context"),here),false);}}
+            if(state.equals("duplicate")){
+                JSONObject match=row.optJSONObject("match");
+                if(match==null)a.subtitle("An identical saved document was detected by ERP.");
+                else{
+                    ui.line(match,"status","documentNo","sessionCode");
+                    if(match.optLong("documentId")>0)ui.action("Open existing document",()->ui.docs.detail(match.optLong("documentId"),request.optJSONObject("context"),here),false);
+                }
+            }
             if(state.equals("selected")||state.equals("duplicate"))ui.action("Remove from queue",()->ui.confirm("Remove this original?",str(meta,"original_filename"),()->ui.work("Removing encrypted original",t->{new DmsQueue(t).remove(op);return true;},v->parentBack.run(),null)),false);
         },null);
     }

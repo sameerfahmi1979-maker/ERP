@@ -6,6 +6,7 @@ import android.graphics.*;
 import android.graphics.pdf.PdfRenderer;
 import android.os.ParcelFileDescriptor;
 import android.view.Gravity;
+import android.view.View;
 import android.widget.*;
 import java.io.*;
 import java.util.concurrent.*;
@@ -44,6 +45,8 @@ final class HrFiles extends HrView {
 
     void avatar(LinearLayout panel,long employee,long dependent,String name,JSONObject source,int size){
         FrameLayout box=new FrameLayout(a);
+        // The adjacent record label already provides the person's name.
+        box.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         LinearLayout.LayoutParams layout=new LinearLayout.LayoutParams(a.dp(size),a.dp(size));
         panel.addView(box,0,layout);
         TextView fallback=new TextView(a);
@@ -52,7 +55,7 @@ final class HrFiles extends HrView {
         if(parts.length>1)initials+=parts[parts.length-1].substring(0,parts[parts.length-1].offsetByCodePoints(0,1));
         fallback.setText(initials.toUpperCase(java.util.Locale.ROOT));fallback.setGravity(Gravity.CENTER);
         fallback.setTextSize(size>48?28:18);fallback.setTextColor(0xff115ea3);fallback.setBackgroundColor(0xffebf3fc);
-        box.addView(fallback); box.setContentDescription(name);
+        box.addView(fallback);
         if(source==null)return;
         long ticket=generation;
         HrWorkspace.Screen screen=h.new Screen();
@@ -72,7 +75,7 @@ final class HrFiles extends HrView {
                 a.runOnUiThread(()->{
                     if(ticket!=generation || !screen.visible()) { image.recycle();return; }
                     ImageView photo=new ImageView(a);photo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                    photo.setImageBitmap(image);photo.setContentDescription("Photo of "+name);
+                    photo.setImageBitmap(image);
                     box.removeAllViews();box.addView(photo);
                 });
             }catch(Exception ex){

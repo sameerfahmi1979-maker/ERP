@@ -74,6 +74,11 @@ final class MobileCommunications {
         return feature != null && "held".equals(str(feature, "availability"));
     }
 
+    boolean chatManualRefresh() {
+        JSONObject chat = feature("chat");
+        return chat == null || !"live".equals(str(chat, "refreshMode"));
+    }
+
     void refreshAccess(Runnable complete) {
         if (checked || checking != null && checking.getAsBoolean()) return;
         ErpApi api = a.api;

@@ -2,6 +2,7 @@ package net.algt.mobiledms;
 
 import static net.algt.mobiledms.MobileRoute.Id.*;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import org.json.*;
 import java.util.*;
 import java.io.*;
@@ -73,6 +74,14 @@ final class DmsDocuments {
         versions(doc.optLong("id"),page,v->files(doc,v.optLong("id"),1,false,
             ()->versionFiles(doc,v.optInt("selectionPage",1),back)),back);
     }
+    static String offlineAttachmentPath(JSONObject doc, JSONObject file) throws IOException {
+        if (doc.has("selectedEmployee") || !"original".equals(str(file,"role")) || !DmsVisualPdf.supports(str(file,"mime"))
+                || !file.optBoolean("canPreview") || !file.optBoolean("canDownload")) return null;
+        long version = id(file,"versionId");
+        if (version != id(doc,"currentVersionId")) return null;
+        return "?fileId=" + id(file,"id") + "&disposition=attachment&expectedDocumentId=" + id(doc,"id")
+            + "&expectedVersionId=" + version + "&expectedSourceHash=" + hash(file,"sourceHash");
+    }
     void versions(long doc,int page,DmsWorkspace.Open select,Runnable back){
         if(!ui.page(DOCUMENT_FILES,"Choose document version",back,()->versions(doc,page,select,back)))return;
         ui.read(cmd("documentSources","documentId",doc,"kind","versions","page",page),r->{
@@ -84,9 +93,19 @@ final class DmsDocuments {
         if(!ui.page(DOCUMENT_FILES,share?"Choose file to share":"Document files",back,()->files(doc,version,page,share,back)))return;
         ui.read(fileRequest(doc,version,page),r->{
             for(JSONObject f:rows(r,"rows")){
-                DmsArchive.check(id(f,"versionId")==version);id(f,"id");id(f,"size");hash(f,"sourceHash");ui.card(str(f,"name"),str(f,"role")+" · "+str(f,"size")+" bytes",null);
+                DmsArchive.check(id(f,"versionId")==version);id(f,"id");id(f,"size");hash(f,"sourceHash");
+                LinearLayout card = a.card(str(f,"name"),str(f,"role")+" · "+str(f,"size")+" bytes",null);
                 if(share){if(f.optBoolean("canDownload")&&f.optBoolean("canPreview"))ui.action("Choose recipient",()->ui.sharing.recipients(doc,f,"",1,()->files(doc,version,page,true,back)),false);}
                 else{
+                    String offlinePath = a.capability("offline") ? offlineAttachmentPath(doc,f) : null;
+                    if (offlinePath != null) {
+                        DmsWorkspace.Ticket ticket = ui.current;
+                        card.addView(a.ui.icon(R.drawable.action_offline, "Save offline: " + str(f,"name"), () -> {
+                            if (ticket.visible() && !ticket.working) {
+                                a.mobile().saveOffline(doc.optLong("id"), f.optLong("id"), version, offlinePath, ticket::visible);
+                            }
+                        }), new LinearLayout.LayoutParams(a.dp(48), a.dp(48)));
+                    }
                     Runnable here=()->files(doc,version,page,false,back);
                     if(f.optBoolean("canPreview"))ui.action("Preview "+str(f,"name"),()->ui.sharing.file(doc,f,page,"preview",here),true);
                     if(f.optBoolean("canDownload")){ui.action("Save original",()->ui.sharing.file(doc,f,page,"save",here),false);ui.action("Share original file",()->ui.sharing.file(doc,f,page,"share",here),false);}

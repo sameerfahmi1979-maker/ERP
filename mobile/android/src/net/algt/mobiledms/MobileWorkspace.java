@@ -514,20 +514,30 @@ final class MobileWorkspace implements OfflineOrigin.Host {
     }
 
     void saveOffline(JSONObject document, JSONObject file) {
+        saveOffline(document.optLong("id"),file.optLong("id"),0,null,()->true);
+    }
+
+    void saveOffline(long documentId, long fileId, long version, String attachmentPath,
+                     java.util.function.BooleanSupplier current) {
         ErpApi api=a.api; String owner=api.user(); long generation=LocalSecurity.generation(a);
         a.dialogBuilder().setTitle("Save offline for")
             .setItems(new String[]{"1 day", "15 days", "30 days", "Permanent"}, (d, which) -> {
-                int days = new int[]{1, 15, 30, 0}[which]; long fileId = file.optLong("id");
+                if (!current.getAsBoolean()) return;
+                int days = new int[]{1, 15, 30, 0}[which];
                 a.run("Saving encrypted offline copy", () -> {
+                    DmsTransfer.local(current);
                     LocalSecurity.requireAccount(a,owner,generation);
                     OfflineDocuments storage=new OfflineDocuments(a,owner);
                     long epoch=api.hrSessionEpoch(), started=android.os.SystemClock.elapsedRealtime();
-                    JSONObject permit = api.get(object("op", "offlinePermit", "documentId", document.optLong("id"), "fileId", fileId, "days", days,"leaseVersion",2));
-                    if(permit.optLong("documentId")!=document.optLong("id") || permit.optLong("fileId")!=fileId)
+                    JSONObject permit = api.get(object("op", "offlinePermit", "documentId", documentId, "fileId", fileId, "days", days,"leaseVersion",2));
+                    if (permit.optLong("documentId") != documentId || permit.optLong("fileId") != fileId
+                            || (version != 0 && (permit.optLong("versionId") != version || permit.optLong("currentVersionId") != version)))
                         throw new java.io.IOException("The ERP returned a different original.");
                     File original = File.createTempFile("offline-download-", ".tmp", a.getCacheDir());
                     try {
-                        api.original(fileId, original);
+                        if (attachmentPath == null) api.original(fileId, original);
+                        else api.dmsFile(attachmentPath, null, original, current);
+                        DmsTransfer.local(current);
                         if(epoch<0 || api.hrSessionEpoch()!=epoch) throw new java.io.IOException("Your ERP session changed.");
                         storage.save(permit, original,days,started);
                     } finally { original.delete(); }
@@ -750,9 +760,8 @@ final class MobileWorkspace implements OfflineOrigin.Host {
                 new OfflineDocuments(a, a.api.user()).clear(); return null;
             }, ignored -> settings(library))).show(), false);
         a.section("Help and version");
-        try {
-            a.subtitle(a.getString(R.string.app_name) + " · Version " + a.getPackageManager().getPackageInfo(a.getPackageName(), 0).versionName);
-        } catch (android.content.pm.PackageManager.NameNotFoundException unavailable) { a.subtitle(a.getString(R.string.app_name)); }
+        a.subtitle(a.getString(R.string.app_release_label, a.getString(R.string.app_name),
+                BuildConfig.VERSION_NAME, BuildConfig.RELEASE_BUILD));
         a.subtitle("Contact your ERP administrator for account access or the current signed app.");
         a.action("Check for an app update", () -> PlayUpdates.check(a), false);
         a.action("Sign out", a::logout, false);

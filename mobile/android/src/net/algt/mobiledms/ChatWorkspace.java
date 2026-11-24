@@ -2,6 +2,7 @@ package net.algt.mobiledms;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.*;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -36,10 +37,10 @@ final class ChatWorkspace {
     boolean closed;
     ConnectivityManager watching;
     final ConnectivityManager.NetworkCallback connectivity=new ConnectivityManager.NetworkCallback(){
-        @Override public void onAvailable(Network network){main.post(()->resumeOutbox());}
+        @Override public void onAvailable(Network network){main.post(()->resumeForeground());}
     };
     final android.app.Application.ActivityLifecycleCallbacks lifecycle=new android.app.Application.ActivityLifecycleCallbacks(){
-        public void onActivityResumed(Activity activity){if(activity==a)main.post(()->resumeOutbox());}
+        public void onActivityResumed(Activity activity){if(activity==a)main.post(()->resumeForeground());}
         public void onActivityCreated(Activity activity,Bundle state){}
         public void onActivityStarted(Activity activity){}
         public void onActivityPaused(Activity activity){}
@@ -47,9 +48,15 @@ final class ChatWorkspace {
         public void onActivitySaveInstanceState(Activity activity,Bundle state){}
         public void onActivityDestroyed(Activity activity){}
     };
-    boolean pumping;
+    boolean pumping,pumpAgain;
+    void resumeForeground(){
+        Screen s=active;
+        if(s!=null && s.pilot && s.current() && s.refresh!=null)s.refresh.run();
+        resumeOutbox();
+    }
     void resumeOutbox(){
-        if(closed||pumping||a.api==null||!a.api.signedIn()||!a.communicationsSessionTicket().getAsBoolean()||!online())return;
+        if(closed||a.api==null||!a.api.signedIn()||!a.communicationsSessionTicket().getAsBoolean()||!online())return;
+        if(pumping){pumpAgain=true;return;}
         Screen s=new Screen(true);
         if(!s.current())return;
         pumping=true;
@@ -61,7 +68,13 @@ final class ChatWorkspace {
                     try{send(s,d);}catch(Exception error){if(!s.current()||!online())break;}
                 }
             }catch(Exception ignored){/* Existing draft and error details remain available in the outbox. */}
-            finally{operationStamp.remove();main.post(()->pumping=false);}
+            finally{
+                operationStamp.remove();
+                main.post(()->{
+                    pumping=false;
+                    if(pumpAgain){pumpAgain=false;resumeOutbox();}
+                });
+            }
         });
     }
     ChatWorkspace(LauncherActivity a) {
@@ -74,6 +87,39 @@ final class ChatWorkspace {
         });
     }
 
+    static long pollDelay(boolean manual, long interval) { return manual ? 0 : interval; }
+
+    /** Limits a connected pilot view locally and coalesces simultaneous resume/connectivity events. */
+    static final class PilotRefresh {
+        private static final long VIEW_LEASE_MS=60_000, EVENT_COALESCE_MS=2_000, ACTIVITY_INTERVAL_MS=30_000;
+        private long started, lastConnectedAttempt=-EVENT_COALESCE_MS, lastActivity=-ACTIVITY_INTERVAL_MS;
+        private long validUntil;
+        private boolean inFlight, offlineAvailable;
+
+        boolean begin(long now,boolean connected,boolean automatic){
+            if(inFlight || automatic && connected && now-lastConnectedAttempt<EVENT_COALESCE_MS)return false;
+            inFlight=true;
+            started=now;
+            if(connected)lastConnectedAttempt=now;
+            return true;
+        }
+        void complete(boolean authorized,boolean connected){
+            inFlight=false;
+            offlineAvailable=authorized;
+            validUntil=authorized&&connected?started+VIEW_LEASE_MS:0;
+        }
+        boolean visible(long now,boolean connected){ return connected ? now<validUntil : offlineAvailable; }
+        void suspend(){
+            complete(false,false);
+            lastConnectedAttempt=-EVENT_COALESCE_MS;
+        }
+        boolean beginActivity(long now){
+            if(now-lastActivity<ACTIVITY_INTERVAL_MS)return false;
+            lastActivity=now;
+            return true;
+        }
+    }
+
     final class Screen {
         final String owner;
         final long generation, epoch, logout;
@@ -83,6 +129,13 @@ final class ChatWorkspace {
         final CommunicationsApi api;
         boolean working;
         final boolean outboxOnly;
+        final boolean pilot=a.communications.chatManualRefresh();
+        final PilotRefresh pilotRefresh=new PilotRefresh();
+        Runnable refresh, hideProtected;
+        AlertDialog dialog;
+        final Runnable expire=()->{
+            if(active==this && (!current() || !historyVisible()))hide();
+        };
         Screen() {this(false);}
         Screen(boolean outboxOnly) {
             this.outboxOnly=outboxOnly;
@@ -97,6 +150,25 @@ final class ChatWorkspace {
             return (stamp==null || stamp==interruption) && !closed && (outboxOnly||active==this) && a.api==erp && epoch==erp.sessionEpoch() && owner.equals(erp.user())
                 && !(owner.equals(closingOwner)&&epoch==closingEpoch) && logout==store.logoutMarker()
                 && generation==LocalSecurity.generation(a) && shell.getAsBoolean() && LocalSecurity.unlocked(a);
+        }
+        boolean historyVisible(){ return !pilot || hideProtected==null || pilotRefresh.visible(SystemClock.elapsedRealtime(),online()); }
+        void hide(){
+            if(dialog!=null){dialog.dismiss();dialog=null;}
+            if(hideProtected!=null)hideProtected.run();
+        }
+        void completeRefresh(boolean authorized,boolean connected){
+            if(!pilot)return;
+            pilotRefresh.complete(authorized,connected);
+            main.removeCallbacks(expire);
+            if(authorized && connected)
+                main.postDelayed(expire,Math.max(0,pilotRefresh.validUntil-SystemClock.elapsedRealtime()));
+            if(!historyVisible())hide();
+        }
+        void suspend(){
+            if(!pilot)return;
+            main.removeCallbacks(expire);
+            pilotRefresh.suspend();
+            hide();
         }
     }
     interface Job<T> { T run() throws Exception; }
@@ -121,14 +193,14 @@ final class ChatWorkspace {
     void button(Screen s,String label,Runnable action) { a.action(label,()->{if(s.current()) action.run();},false); }
     void choice(Screen s,String title,List<String> names,Consumer<Integer> pick) {
         if(!s.current())return;
-        a.dialogBuilder().setTitle(title).setItems(names.toArray(new String[0]),(d,i)->{if(s.current()) pick.accept(i);}).show();
+        s.dialog=a.dialogBuilder().setTitle(title).setItems(names.toArray(new String[0]),(d,i)->{if(s.current()) pick.accept(i);}).show();
     }
     void confirm(Screen s,String title,String details,Runnable yes) {
-        a.dialogBuilder().setTitle(title).setMessage(details).setPositiveButton("Continue",(d,b)->{if(s.current())yes.run();}).setNegativeButton("Cancel",null).show();
+        s.dialog=a.dialogBuilder().setTitle(title).setMessage(details).setPositiveButton("Continue",(d,b)->{if(s.current())yes.run();}).setNegativeButton("Cancel",null).show();
     }
     void ask(Screen s,String title,String initial,Consumer<String> yes) {
         EditText input=new EditText(a);input.setText(initial);input.setSelectAllOnFocus(true);
-        a.dialogBuilder().setTitle(title).setView(input).setNegativeButton("Cancel",null).setPositiveButton("Continue",(d,b)->{
+        s.dialog=a.dialogBuilder().setTitle(title).setView(input).setNegativeButton("Cancel",null).setPositiveButton("Continue",(d,b)->{
             if(s.current()) yes.accept(input.getText().toString().trim());
         }).show();
     }
@@ -186,17 +258,32 @@ final class ChatWorkspace {
             if(!review && caps.optBoolean("isGlobalSystemAdmin"))button(s,"Named permissions",()->directory("Select employee",here,p->grant(p,here)));
         });
         LinearLayout chats=a.column();a.add(a.content,chats,8);
-        refreshManifest(s,chats,mode,archived,here,"",true);
+        if(s.pilot){
+            a.subtitle("Pilot mode · Refresh conversations to check for updates.");
+            s.hideProtected=chats::removeAllViews;
+            s.refresh=()->refreshManifest(s,chats,mode,archived,here,"",true,true);
+            button(s,"Refresh conversations",()->refreshManifest(s,chats,mode,archived,here,"",true,false));
+        }
+        refreshManifest(s,chats,mode,archived,here,"",true,false);
     }
-    void refreshManifest(Screen s,LinearLayout chats,String mode,boolean archived,Runnable here,String old,boolean first){
+    void refreshManifest(Screen s,LinearLayout chats,String mode,boolean archived,Runnable here,String old,boolean first,boolean automatic){
+        if(!s.current())return;
+        boolean connectedAtStart=online();
+        if(s.pilot && !s.pilotRefresh.begin(SystemClock.elapsedRealtime(),connectedAtStart,automatic))return;
+        if(!s.historyVisible())s.hide();
         run(s,()->{
-            boolean connected=online();
+            boolean connected=s.pilot?connectedAtStart:online();
             ChatManifest.Result manifest=ChatManifest.list(s,mode,archived,connected);
             if(connected && mode.equals("participant") && !s.store.conversationIds("review").isEmpty()){
                 try{ChatManifest.list(s,"review",false,true);}catch(Exception e){if(blockedAccess(e))s.store.clear("cache/review");else throw e;}
             }
             return manifest;
         },manifest->{
+            s.completeRefresh(true,connectedAtStart);
+            if(s.pilot && !s.historyVisible()){
+                if(!connectedAtStart && online())s.refresh.run();
+                return;
+            }
             String sign=(online()?"online":"offline")+manifest.signature();
             if(first||!sign.equals(old)){
                 chats.removeAllViews();
@@ -204,27 +291,38 @@ final class ChatWorkspace {
                 if(manifest.rows.isEmpty())chats.addView(a.text("No conversations.",16,a.getColor(R.color.erp_text_secondary),false));
                 showConversationRows(s,chats,manifest.rows,0,mode,here);
             }
-            if(online())run(s,()->{
+            if(online() && (!s.pilot||connectedAtStart))run(s,()->{
                 for(JSONObject c:manifest.all)ChatManifest.refreshPages(s,c,mode);
                 return true;
             },ok->{});
             if(mode.equals("participant")){
                 a.communications.updateUnread(s::current,(int)manifest.unread);
-                if(online())drain(s);
+                if(online()){
+                    if(!s.pilot)drain(s);
+                    else if(!automatic)resumeOutbox();
+                }
                 if(wifi())cacheIncoming(s,manifest.all);
             }
-            main.postDelayed(()->{if(active==s)refreshManifest(s,chats,mode,archived,here,sign,false);},20000);
-        },e->{notice(s,e);button(s,"Reload conversations",here);});
+            long delay=pollDelay(s.pilot||a.communications.chatManualRefresh(),20_000);
+            if(delay>0)main.postDelayed(()->{
+                if(s.current() && !a.communications.chatManualRefresh())refreshManifest(s,chats,mode,archived,here,sign,false,true);
+            },delay);
+        },e->{
+            s.completeRefresh(false,connectedAtStart);
+            if(s.pilot && !connectedAtStart && online()){s.refresh.run();return;}
+            notice(s,e);
+            if(!s.pilot)button(s,"Reload conversations",here);
+        });
     }
     void showConversationRows(Screen s,LinearLayout list,List<JSONObject> rows,int offset,String mode,Runnable here){
         int end=Math.min(rows.size(),offset+40);
         for(int n=offset;n<end;n++){
             JSONObject c=rows.get(n);int unread=c.optInt("unreadCount");
-            a.add(list,a.button(rowLabel(c)+(unread>0?" · "+unread+" unread":""),()->{if(s.current())thread(c,mode,"",here);},false),4);
+            a.add(list,a.button(rowLabel(c)+(unread>0?" · "+unread+" unread":""),()->{if(s.current()&&s.historyVisible())thread(c,mode,"",here);},false),4);
         }
         if(end<rows.size()){
             Button more=a.button("More conversations",()->{},false);
-            more.setOnClickListener(v->{if(s.current()){list.removeView(more);showConversationRows(s,list,rows,end,mode,here);}});
+            more.setOnClickListener(v->{if(s.current()&&s.historyVisible()){list.removeView(more);showConversationRows(s,list,rows,end,mode,here);}});
             a.add(list,more,4);
         }
     }
@@ -301,6 +399,7 @@ final class ChatWorkspace {
     void openConversation(String id,String message,Runnable back){
         Screen s=page(MobileRoute.Id.CHAT_CONVERSATION,"Open conversation",back);
         if(!ChatRules.uuid(id)||message!=null&&!message.isEmpty()&&!ChatRules.uuid(message)){a.message("Invalid message link.",true);return;}
+        if(s.pilot){thread(args("id",id),"participant",message==null?"":message,back);return;}
         run(s,()->findConversation(s,id,"participant"),c->thread(c,"participant",message==null?"":message,back));
     }
     JSONObject findConversation(Screen s,String cid,String mode)throws Exception{
@@ -316,19 +415,20 @@ final class ChatWorkspace {
     }
 
     void thread(JSONObject c,String mode,String focus,Runnable back){
-        Screen s=page(MobileRoute.Id.CHAT_CONVERSATION,rowLabel(c),back);
+        Screen s=page(MobileRoute.Id.CHAT_CONVERSATION,a.communications.chatManualRefresh()?"Conversation":rowLabel(c),back);
         try { new ThreadView(s,c,mode,focus,back).show(); }catch(Exception e){notice(s,e);}
     }
     final class ThreadView {
-        final Screen s; final JSONObject c; final String cid,mode,folder; final boolean review;
+        final Screen s; JSONObject c; final String cid,mode,folder; final boolean review;
         final Runnable back;
         String focus,reply="",self="",readThrough="",visibleJson="",dmsToken="";
         final LinkedHashSet<String> mentions=new LinkedHashSet<>();
         final Map<String,String> names=new HashMap<>();
-        LinearLayout rows; EditText editor; TextView activity,replyLabel;
+        LinearLayout rows; EditText editor; TextView activity,replyLabel,conversationTitle;
         String cursor="",pageStart=""; boolean polling, loading;
         volatile long typedAt;
         int lastLease;
+        final Runnable expireActivity=()->activity.setText("");
         ThreadView(Screen s,JSONObject c,String mode,String focus,Runnable back)throws Exception{
             this.s=s;this.c=c;this.mode=mode;this.focus=focus;this.back=back;
             cid=id(c,"id");folder=conversationFolder(mode,cid);review=mode.equals("review");
@@ -336,9 +436,27 @@ final class ChatWorkspace {
         Runnable here(){return ()->thread(c,mode,"",back);}
         void show(){
             if(review)a.subtitle("Authorized history review");
-            button(s,"Conversation details",()->details(c,mode,here()));
+            if(s.pilot){
+                conversationTitle=a.text("",18,a.getColor(R.color.erp_text),true);
+                a.add(a.content,conversationTitle,4);
+                a.subtitle("Pilot mode · Refresh messages to check for updates.");
+                button(s,"Refresh messages",()->load("",true));
+                if(!review)button(s,"Check activity",()->{if(online())pulse(true);});
+            }
+            button(s,"Conversation details",()->{
+                if(!s.historyVisible())return;
+                if(!s.pilot || !online()){details(c,mode,here());return;}
+                run(s,()->findConversation(s,cid,mode),latest->details(latest,mode,here()),e->{
+                    if(blockedAccess(e))s.completeRefresh(false,true);
+                    notice(s,e);
+                });
+            });
             activity=a.text("",14,a.getColor(R.color.erp_text_secondary),false); a.add(a.content,activity,4);
             rows=a.column();a.add(a.content,rows,8);
+            if(s.pilot){
+                s.hideProtected=this::hideHistory;
+                s.refresh=()->load(pageStart,true,true);
+            }
             if(!review){
                 replyLabel=a.text("",14,a.getColor(R.color.erp_text_secondary),false);a.add(a.content,replyLabel,8);
                 editor=a.field(a.content,"Message","",32000,android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);
@@ -347,7 +465,7 @@ final class ChatWorkspace {
                     public void afterTextChanged(Editable e){}
                     public void onTextChanged(CharSequence v,int start,int before,int count){
                         long now=SystemClock.elapsedRealtime();boolean wasIdle=now-typedAt>4000;typedAt=now;
-                        if(wasIdle && v.length()>0 && s.current() && online())pulse();
+                        if(wasIdle && v.length()>0 && s.current() && online())pulse(!s.pilot);
                     }
                 });
                 button(s,"Mention member",()->pickMember(s,cid,mode,"Mention",p->{
@@ -367,42 +485,68 @@ final class ChatWorkspace {
                 JSONObject caps=online()?s.api.call("chat.capabilities",args()):s.store.snapshot("cache","capabilities");
                 if(online())s.store.snapshot("cache","capabilities",caps);
                 return required(caps,"profileId");
-            },v->{self=v;if(online())pulse();});
+            },v->{self=v;if(!s.pilot&&online())pulse(true);});
             schedule();
         }
+        void hideHistory(){
+            rows.removeAllViews();
+            visibleJson="";
+            names.clear();
+            conversationTitle.setText("");
+            main.removeCallbacks(expireActivity);
+            activity.setText("");
+            if(replyLabel!=null && !reply.isEmpty())replyLabel.setText("Reply selected");
+        }
         void schedule(){
+            long delay=pollDelay(s.pilot||a.communications.chatManualRefresh(),12_000);
+            if(delay==0)return;
             main.postDelayed(()->{
-                if(active!=s)return;
+                if(active!=s || a.communications.chatManualRefresh())return;
                 if(lastLease!=interruption){loading=false;polling=false;lastLease=interruption;}
                 if(s.current()&&online()&&!loading){
-                    if(pageStart.isEmpty())load("",false);
-                    if(!review){pulse();drain(s);}
+                    if(pageStart.isEmpty())load("",false,true);
+                    if(!review){pulse(true);drain(s);}
                 }
                 schedule();
-            },12000);
+            },delay);
         }
-        void pulse(){
-            if(polling)return;polling=true;
+        void pulse(boolean activityRequested){
+            if(polling || !s.current() || !s.historyVisible())return;
+            if(s.pilot && !s.pilotRefresh.beginActivity(SystemClock.elapsedRealtime()))return;
+            polling=true;
             run(s,()->{
-                s.api.mutate("chat.pulse",args("conversationId",cid,"typing",typedAt>0&&SystemClock.elapsedRealtime()-typedAt<4500));
-                return s.api.call("chat.activity",args("conversationId",cid));
+                boolean typing=typedAt>0&&SystemClock.elapsedRealtime()-typedAt<4500;
+                if(activityRequested||typing)s.api.mutate("chat.pulse",args("conversationId",cid,"typing",typing));
+                return activityRequested?s.api.call("chat.activity",args("conversationId",cid)):null;
             },r->{
-                polling=false;JSONArray people=r.optJSONArray("items");int typing=0,connected=0;String typer="";
+                polling=false;
+                if(r==null || !s.historyVisible())return;
+                JSONArray people=r.optJSONArray("items");int typing=0,connected=0;String typer="";
                 if(people!=null)for(int i=0;i<people.length();i++){
                     JSONObject p=people.optJSONObject(i);if(p==null||self.equals(text(p,"profileId")))continue;
                     if(p.optBoolean("online"))connected++;if(p.optBoolean("typing")){typing++;typer=names.getOrDefault(text(p,"profileId"),"Someone");}
                 }
                 activity.setText(typing>0?(typing==1?typer+" is typing…":typing+" people are typing…"):connected>0?(connected+" online"):"");
+                if(s.pilot){
+                    main.removeCallbacks(expireActivity);
+                    main.postDelayed(expireActivity,typing>0?5_000:15_000);
+                }
             },e->{polling=false;activity.setText("");});
         }
-        void load(String start,boolean jump){
-            if(loading)return; loading=true;
+        void load(String start,boolean jump){load(start,jump,false);}
+        void load(String start,boolean jump,boolean automatic){
+            if(s.pilot && lastLease!=interruption){loading=false;polling=false;lastLease=interruption;}
+            if(!s.current() || loading)return;
+            boolean connectedAtStart=online();
+            if(s.pilot && !s.pilotRefresh.begin(SystemClock.elapsedRealtime(),connectedAtStart,automatic))return;
+            if(!s.historyVisible())s.hide();
+            loading=true;
             String requested=focus;
             run(s,()->{
-                boolean connected=online();
+                boolean connected=s.pilot?connectedAtStart:online();
                 JSONObject latest=connected?findConversation(s,cid,mode):s.store.snapshot(folder,"conversation");
                 String change=required(latest,"changeSeq");
-                if(connected)ChatManifest.refreshPages(s,latest,mode);
+                if(connected&&!s.pilot)ChatManifest.refreshPages(s,latest,mode);
                 String at=start;
                 Set<String> seen=new HashSet<>();
                 JSONObject data;
@@ -410,7 +554,12 @@ final class ChatWorkspace {
                     JSONObject args=args("conversationId",cid,"mode",mode,"limit",12);
                     if(!at.isEmpty())args.put("cursor",at);
                     String key="messages|"+at;
-                    data=connected?s.api.page("chat.messages",args):s.store.page(folder,key,change);
+                    try {
+                        data=connected?s.api.page("chat.messages",args):s.store.page(folder,key,change);
+                    }catch(Exception e){
+                        if(s.pilot && blockedAccess(e))s.store.clear(folder);
+                        throw e;
+                    }
                     JSONArray items=data.getJSONArray("items");
                     boolean found=false;
                     for(int i=0;i<items.length();i++){
@@ -424,9 +573,16 @@ final class ChatWorkspace {
                     if(next.isEmpty()||!seen.add(next))throw new IOException("The selected message is unavailable.");
                     at=next;
                 }while(s.current());
-                return args("page",data,"start",at,"online",connected);
+                return args("page",data,"start",at,"online",connected,"conversation",latest);
             },result->{
-                loading=false; pageStart=text(result,"start");
+                loading=false;
+                s.completeRefresh(true,result.optBoolean("online"));
+                if(!s.historyVisible()){
+                    if(!connectedAtStart && online())s.refresh.run();
+                    return;
+                }
+                if(s.pilot){c=result.optJSONObject("conversation");conversationTitle.setText(rowLabel(c));}
+                pageStart=text(result,"start");
                 JSONObject p=result.optJSONObject("page");
                 if(p==null)return;
                 cursor=text(p,"nextCursor");
@@ -441,7 +597,9 @@ final class ChatWorkspace {
                 focus="";
             },e->{
                 loading=false;
-                if(blockedAccess(e)){rows.removeAllViews();visibleJson="";run(s,()->{s.store.clear(folder);return true;},v->{});}
+                s.completeRefresh(false,connectedAtStart);
+                if(s.pilot && !connectedAtStart && online()){s.refresh.run();return;}
+                if(!s.pilot && blockedAccess(e)){rows.removeAllViews();visibleJson="";run(s,()->{s.store.clear(folder);return true;},v->{});}
                 notice(s,e);
             });
         }
@@ -481,7 +639,7 @@ final class ChatWorkspace {
             if(!pageStart.isEmpty())rows.addView(a.button("Latest messages",()->load("",true),false));
         }
         void messageMenu(JSONObject m){
-            if(!s.current())return;
+            if(!s.current() || !s.historyVisible())return;
             String mid=text(m,"id");
             LinkedHashMap<String,Runnable> actions=new LinkedHashMap<>();
             if(!review && !m.optBoolean("deleted")){
@@ -1165,14 +1323,16 @@ final class ChatWorkspace {
     final ThreadLocal<Integer> operationStamp=new ThreadLocal<>();
     void pause(){
         interruption++;
-        if(active!=null)active.working=false;
+        if(active!=null){active.working=false;active.suspend();}
         stopAudio();
     }
     void leaving(){
+        if(active!=null)active.suspend();
         active=null;external=null;micRequest=null;micThread=null;
         stopAudio();
     }
     void beforeSignOut(String account)throws IOException{
+        if(active!=null)active.suspend();
         active=null;
         closingEpoch=a.api.sessionEpoch();closingOwner=account;
         ChatStore.signOut(a,account);

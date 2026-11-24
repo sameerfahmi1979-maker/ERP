@@ -44,8 +44,10 @@ android {
         applicationId = packageId
         minSdk = 26
         targetSdk = 36
-        versionCode = 13
+        // Android uses this code to order upgrades from previously installed builds.
+        versionCode = 14
         versionName = '1.0'
+        buildConfigField 'int', 'RELEASE_BUILD', '1'
         buildConfigField 'boolean', 'FIREBASE_CLIENT_CONFIGURED', firebaseConfigured.toString()
     }
 

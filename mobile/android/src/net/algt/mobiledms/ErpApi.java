@@ -333,10 +333,17 @@ final class ErpApi {
         return result;
     }
 
-    String dmsFile(String path,String share,File target,java.util.function.BooleanSupplier current)throws Exception {
-        if(!path.matches("\\?share=1&disposition=(inline|attachment)") && !path.matches("\\?fileId=[1-9][0-9]{0,15}&disposition=(inline|attachment)(&expectedDocumentId=[1-9][0-9]{0,15}&expectedVersionId=[1-9][0-9]{0,15}&expectedSourceHash=[a-f0-9]{64})?"))
+    static void requireDmsFileSelection(String path,String share)throws IOException {
+        String id="[1-9][0-9]{0,15}";
+        String pin="&expectedDocumentId="+id+"&expectedVersionId="+id+"&expectedSourceHash=[a-f0-9]{64}";
+        String original="\\?fileId="+id+"&disposition=(inline|attachment)(?:"+pin+"(?:&expectedEmployeeId="+id+")?)?";
+        if(!path.matches("\\?share=1&disposition=(inline|attachment)") && !path.matches(original))
             throw new IOException("Invalid original file selection.");
         if(path.startsWith("?share")!=DmsRules.tokenValid(share))throw new IOException("Invalid file link.");
+    }
+
+    String dmsFile(String path,String share,File target,java.util.function.BooleanSupplier current)throws Exception {
+        requireDmsFileSelection(path,share);
         String token; synchronized(UploadJobs.LOCK){DmsArchive.check(current.getAsBoolean());token=access();}
         DmsArchive.check(current.getAsBoolean());
         HttpsURLConnection c=connect(new URL(ENDPOINT+path),"GET",token);

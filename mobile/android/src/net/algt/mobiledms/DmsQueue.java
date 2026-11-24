@@ -242,6 +242,14 @@ final class DmsQueue {
             t.api.dmsOriginal(cmd("complete","sessionId",session,"request",wire),t::visible);change(op,"state","uploaded");return load(op);
         }finally{file.remove();}
     }
+    JSONObject scopedDuplicate(JSONObject row)throws Exception{
+        JSONObject meta=row.getJSONObject("request").getJSONObject("metadata");
+        JSONObject match=t.api.duplicate(meta.getLong("file_size_bytes"),meta.getString("sha256_hash"));
+        t.require();
+        // Admission may already have created an intake for this original. Only a
+        // visible filed document identifies the duplicate that stopped admission.
+        return "existing_document".equals(str(match,"status"))?match:null;
+    }
     JSONObject intake(JSONObject row)throws Exception{
         JSONObject receipt=row.getJSONObject("receipt"),request=row.getJSONObject("request"),meta=request.getJSONObject("metadata");
         JSONObject r=t.api.dmsOnce(cmd("intake","code",receipt.getString("code")),t::visible);

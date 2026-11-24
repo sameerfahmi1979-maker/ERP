@@ -80,8 +80,14 @@ export async function reserveCommunicationBudget(
       (request.liabilityEndsAt !== null && (!(request.liabilityEndsAt instanceof Date) ||
         !Number.isFinite(request.liabilityEndsAt.getTime())))) return denied('invalid_reservation');
   if (!communicationFeatureEnabled(request.feature, dependencies.env)) return denied('feature_disabled');
+  const hostDeploymentId = (dependencies.env ?? process.env).RAILWAY_DEPLOYMENT_ID;
+  if (hostDeploymentId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(hostDeploymentId))
+    return denied('invalid_host_deployment');
+  const serverRequest = { ...request } as ReservationRequest & { hostDeploymentId?: unknown };
+  delete serverRequest.hostDeploymentId;
   const result = await execute('reserve', {
-    ...request, upperBoundMicros: request.upperBoundMicros.toString(),
+    ...serverRequest, ...(hostDeploymentId ? { hostDeploymentId: hostDeploymentId.toLowerCase() } : {}),
+    upperBoundMicros: request.upperBoundMicros.toString(),
     liabilityEndsAt: request.liabilityEndsAt?.toISOString() ?? null,
   }, dependencies);
   if (!result.ok) return result;

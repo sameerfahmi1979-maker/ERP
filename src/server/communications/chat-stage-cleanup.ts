@@ -101,3 +101,11 @@ export async function launchChatStageWorker(plan: Plan, deps = runtime): Promise
     return true;
   } catch { return false; }
 }
+
+/** Awaitable lifecycle for the finite supervisor. Never detach a possibly running poll on recovery. */
+export async function runSupervisedChatStageWorker(plan: Plan, deps = runtime): Promise<void> {
+  if (plan.kind !== "chat_stage" || plan.until - Date.now() <= busyMs + rpcMs || plan.registerBy - Date.now() <= rpcMs) return;
+  const coveredUntil = await deps.open(plan);
+  if (!Number.isFinite(coveredUntil) || Math.min(plan.until, coveredUntil) - Date.now() <= busyMs) return;
+  await runChatStagePolls(plan, coveredUntil, deps);
+}

@@ -56,3 +56,26 @@ export async function claimWorkerLaunch(plan: SignedWorkerBoot, used = started, 
   await time.wait(5001);
   return time.elapsed() - before >= 5000 && time.now() >= plan.notBefore && time.now() + 5000 < plan.registerBy;
 }
+
+type ManagedState = { kinds: Set<string>; boots: Set<string>; active: Set<string> };
+const managedGlobal = globalThis as typeof globalThis & { __erpManagedCommunicationWorkers?: ManagedState };
+const managed = managedGlobal.__erpManagedCommunicationWorkers ??= {kinds: new Set(), boots: new Set(), active: new Set()};
+
+/** Supervisors own a kind for this process. Release only after every local promise has definitively settled.
+ * Manual route behavior stays once-per-kind; it cannot overlap a managed kind or reclaim it after a crash.
+ */
+export async function claimSupervisedWorkerLaunch(plan: SignedWorkerBoot, local = managed, used = started, time = clock): Promise<(() => void) | null> {
+  const key = plan.kind + "/" + plan.boot;
+  if ((used.has(plan.kind) && !local.kinds.has(plan.kind)) || local.active.has(plan.kind) || local.boots.has(key)
+      || time.now() < plan.notBefore || time.now() + 10000 >= plan.registerBy) return null;
+  used.add(plan.kind); local.kinds.add(plan.kind); local.boots.add(key); local.active.add(plan.kind);
+  const before = time.elapsed();
+  try {
+    await time.wait(5001);
+    if (time.elapsed() - before < 5000 || time.now() < plan.notBefore || time.now() + 5000 >= plan.registerBy) {
+      local.active.delete(plan.kind); return null;
+    }
+    let released = false;
+    return () => { if (!released) {released = true; local.active.delete(plan.kind);} };
+  } catch { local.active.delete(plan.kind); return null; }
+}

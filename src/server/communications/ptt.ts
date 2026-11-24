@@ -1,6 +1,7 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { setTimeout as supervisedDelay } from 'node:timers/promises';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { CommunicationActor } from './access';
 import { authorizeCommunicationCleanup, confirmCommunicationCleanup, reserveCommunicationBudget } from './budget';
@@ -117,6 +118,29 @@ export async function launchPttWorker(grant:WorkerLaunch):Promise<boolean> {
     void runPttWorker(plan,async()=>window,cleanupPtt);
     return true;
   } catch { return false; }
+}
+
+/** Awaitable supervised boot. Its caller quarantines the expired SQL lease before considering a fresh boot. */
+export async function runSupervisedPttWorker(grant:WorkerLaunch,deps:{
+  start?:(plan:WorkerPlan)=>Promise<StartWindow>; tick?:typeof cleanupPtt; wait?:(ms:number)=>Promise<unknown>;
+}={}):Promise<void> {
+  const plan=pttWorkerSchedule(grant);
+  if (!plan) return;
+  try {
+    const start=deps.start??(async()=>z.object({coveredUntil:utc,cadenceSeconds:z.number().int().min(1).max(3600)}).parse(await providerRpc('startWorker',{
+      worker:plan.worker,boot:plan.boot,until:new Date(plan.until).toISOString(),maxPolls:plan.maxPolls,
+    },AbortSignal.timeout(4000))));
+    const window=await start(plan);
+    if (!Number.isFinite(Date.parse(window.coveredUntil)) || !Number.isInteger(window.cadenceSeconds) || window.cadenceSeconds<1 || window.cadenceSeconds>3600) return;
+    let cutoff=Math.min(plan.until,Date.parse(window.coveredUntil));
+    const cadence=window.cadenceSeconds*1000;
+    for (let remaining=plan.maxPolls; remaining>0 && Date.now()+maxCycleMs<cutoff; remaining--) {
+      const result=await (deps.tick??cleanupPtt)({...plan,until:cutoff});
+      cutoff=Math.min(cutoff,result.until);
+      if (!result.healthy || remaining===1 || Date.now()+cadence+maxCycleMs>=cutoff) return;
+      await (deps.wait??(ms=>supervisedDelay(ms,undefined,{ref:false})))(cadence);
+    }
+  } finally {runtime.__erpPttTickAt=undefined;}
 }
 
 function liveConfig() {

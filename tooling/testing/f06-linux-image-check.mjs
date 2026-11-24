@@ -48,7 +48,7 @@ export const IMPACT={...HISTORICAL_RAW_IMPACT,
  'src/lib/branding/constants.ts':'70a0e8005ce9b8ec76334643b8a345a2908944169252b2fcd59db33f41236e14',
  // Reviewed Arabic OCR successor; preserve historical F06 hashes above.
  // The already-verified capacity changes instrument the same PDF parser and renderer.
- 'src/lib/dms/file-content-extractor.ts':'a50b1481e98c0848136e06ca328badfba74dd047e7606ca12e5bf51d0611fe7e',
+ 'src/lib/dms/file-content-extractor.ts':'a1434692f73309b078554424039855671f91bbd9258ad66b13b93e7b0d271c42',
  'src/lib/performance/trace.ts':'a573045f2e66767fa66ec164555f98186b88ac37109e2a6c3d0f80a72a2d5c4f',
  'src/lib/dms/pdf-to-images.ts':'c687a287567d528b8082c9b8260e0eb58ca96f11cfa13f051fb713664e7e604e',
  'src/lib/dms/pdf-text-quality.ts':'82c743f7785ab87c9a839044f46765d531bebbb75b3167fb10b8606d7438f737',

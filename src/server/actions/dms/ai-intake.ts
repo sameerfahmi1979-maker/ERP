@@ -1,9 +1,14 @@
 "use server";
+import { randomUUID } from "node:crypto";
 import {discardRetainedIntake} from '@/server/dms-intake-discard';
 import {recoverNumberedAiApproval} from '@/server/dms-ai-approval-recovery';
-import {verifyAndAttestIntakeSource} from '@/server/dms-intake-source-attestation';
+import {prepareIntakeSource,verifyAndAttestIntakeSource} from '@/server/dms-intake-source-attestation';
 import {reviewedCall} from '@/server/dms-reviewed-updates';
 import {rerunRetainedIntakeMetadata} from "@/server/dms-intake-rereview";
+import { ALGT_DMS_PREVIEW_COMPANY, applyIntakeTrainingReview, trainingType, verifyTrainingOriginal } from "@/server/dms-training-profile-review";
+import { DMS_CONFIDENTIALITY_LEVELS } from "@/features/dms/documents/dms-document-constants";
+import { approvedProfileMissingRequiredFields, approvedProfilePreviewEnabled, applyIntakeApprovedProfile, mergeApprovedProfileFields, retainSpecialistProof, SPECIALIST_TRAINING_FIELDS, verifyApprovedProfile } from "@/server/dms-approved-profile-review";
+import { applyIntakeCicpaWording, CICPA_COMPANY_NUMBER_FIELD, cicpaWordingPreviewEnabled, isCicpaPassType } from "@/server/dms-cicpa-wording-review";
 import {prepareIntakeOutput} from '@/lib/dms/preparation/intake';
 import {checkDocumentConfidentialityAccess} from '@/lib/dms/document-access';
 import {dmsTraceId, traceOperation, traceSpan} from '@/lib/performance/trace';
@@ -184,6 +189,7 @@ export type IntakeSessionData = {
   discarded_at: string | null;
   discard_reason: string | null;
   uploaded_at: string;
+  updated_at?: string;
   ai_result?: IntakeAiResultRow | null;
   draft_values?: IntakeReviewValueRow[] | null;
   draft_snapshot?: string | null;
@@ -232,9 +238,18 @@ export async function startAiIntakeFromUploadSession(
   return traceOperation('dms.intake', () => runAiIntake(parsed.data), dmsTraceId(`upload:${parsed.data.uploadSessionId}`));
 }
 
-async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<ActionResult<{ sessionCode: string; status: string; message?: string }>> {
+async function runAiIntake(
+  input: z.output<typeof StartIntakeSchema>,
+  reset?: { sessionCode: string; updatedAt: string },
+): Promise<ActionResult<{ sessionCode: string; status: string; message?: string }>> {
   // Until an ordinary source read proves explicit NULL, failures are not legacy.
   let modernStart=true;
+  let attemptClaimed = false;
+  const attemptUnconfirmed = () => ({
+    success: false as const,
+    uncertain: true as const,
+    error: "AI review progress could not be confirmed. Check the original intake before retrying.",
+  });
   try {
     const { uploadSessionId, allowDuplicate, onlyIfUploaded } = input;
     const supabase = await createClient();
@@ -253,9 +268,13 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
       .is("deleted_at", null)
       .single();
 
-    if (sessionError || !session) return { success: false, error: "Upload session not found" };
+    if (sessionError || !session) return reset ? attemptUnconfirmed() : { success: false, error: "Upload session not found" };
 
     const typedSession = session as Record<string, unknown>;
+    if (reset && (session.session_code !== reset.sessionCode || session.updated_at !== reset.updatedAt ||
+      session.intake_status !== "uploaded" || session.batch_draft_operation_id !== null)) {
+      return attemptUnconfirmed();
+    }
     if (onlyIfUploaded && (typedSession.status !== "uploaded" || typedSession.intake_status !== "uploaded" ||
         typedSession.uploaded_by !== ctx.profile.id || typedSession.batch_draft_operation_id !== null ||
         typedSession.document_id !== null || typedSession.ai_result_id !== null || typedSession.is_duplicate === true)) {
@@ -325,8 +344,9 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
     // ── SPEED.2K: concurrency guard + stale-run sweeper ─────────────────────
     // A second "AI Fill" click while a run is in flight must NOT start a second
     // full pipeline (double OCR + double GPT cost, racing status updates).
-    const intakeStatusNow = typedSession.intake_status as string;
-    if (!modern && (intakeStatusNow === "ocr_processing" || intakeStatusNow === "ai_processing")) {
+    const intakeStatusNow = session.intake_status as string;
+    const staleLegacyRun = !modern && (intakeStatusNow === "ocr_processing" || intakeStatusNow === "ai_processing");
+    if (staleLegacyRun) {
       const updatedAtMs = typedSession.updated_at
         ? new Date(typedSession.updated_at as string).getTime()
         : 0;
@@ -344,27 +364,41 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
         };
       }
 
-      // Stale (no status progress for 5+ min): the previous run was killed
-      // mid-flight (server restart, dropped connection). Mark orphaned jobs
-      // failed and proceed with a fresh run.
-      await supabase
-        .from("dms_ai_extraction_jobs")
-        .update({
-          status: "failed",
-          error_message: "Stale run — superseded by a new AI Fill request",
-          completed_at: new Date().toISOString(),
-        })
-        .eq("upload_session_id", uploadSessionId)
-        .in("status", ["pending", "processing"]);
-      logger.warn("[ai-intake] stale processing session swept — starting fresh run", {
-        uploadSessionId,
-        staleForMs: ageMs,
-      });
     }
     // Duplicate detection is informational only — the UI shows a warning badge.
     // Admins may intentionally create a second document from the same file.
 
     const sessionCode = typedSession.session_code as string;
+
+    // Every synchronous status change must still own the revision it replaces.
+    // Retain Postgres's returned precision when sending the next comparison.
+    const transitionAttempt = async (from: string, revision: string, to: string): Promise<string | null> => {
+      if (typeof revision !== "string" || !Number.isFinite(Date.parse(revision))) return null;
+      const nextRevision = new Date(Math.max(Date.now(), Date.parse(revision) + 1)).toISOString();
+      let update = supabase.from("dms_upload_sessions")
+        .update({ intake_status: to, updated_at: nextRevision })
+        .eq("id", uploadSessionId).eq("session_code", sessionCode)
+        .eq("status", session.status).eq("intake_status", from).eq("updated_at", revision)
+        .eq("temp_storage_path", session.temp_storage_path)
+        .is("deleted_at", null).is("document_id", null).is("ai_result_id", null)
+        .is("approve_run_id", null).is("temp_cleaned_at", null).is("discarded_at", null);
+      if (modern) {
+        update = update.eq("batch_draft_operation_id", marker)
+          .eq("batch_id", session.batch_id).eq("admission_position", session.admission_position)
+          .eq("uploaded_by", ctx.profile!.id);
+      } else {
+        update = update.is("batch_draft_operation_id", null);
+      }
+      const { data, error } = await update.select("id,batch_draft_operation_id,intake_status,updated_at").retry(false);
+      const elected = z.array(z.object({
+        id: z.literal(uploadSessionId),
+        batch_draft_operation_id: z.literal(marker as string | null),
+        intake_status: z.literal(to),
+        updated_at: z.iso.datetime({ offset: true }),
+      }).strict()).length(1).safeParse(data);
+      if (error || !elected.success || Date.parse(elected.data[0].updated_at) <= Date.parse(revision)) return null;
+      return elected.data[0].updated_at;
+    };
 
     // ── Check AI provider ───────────────────────────────────────────────────
 
@@ -373,10 +407,7 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
     if (!provider.isConfigured()) {
       if(modern || onlyIfUploaded)return {success:false,data:{sessionCode,status:"provider_not_configured",message:"No AI provider configured. Please configure one in Administration → Settings → AI Settings."},error:"No AI provider configured"};
       // Mark as failed but return sessionCode so user can proceed manually
-      await supabase
-        .from("dms_upload_sessions")
-        .update({ intake_status: "failed", updated_at: new Date().toISOString() })
-        .eq("id", uploadSessionId);
+      if (!(await transitionAttempt(intakeStatusNow, session.updated_at, "failed"))) return attemptUnconfirmed();
 
       await logAudit({
         module_code: "DMS",
@@ -397,37 +428,32 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
     // ── Update status: processing ───────────────────────────────────────────
 
 
-    if(modern){
-      try{
-        const response=await supabase.from("dms_upload_sessions")
-          .update({intake_status:"ocr_processing",updated_at:new Date().toISOString()})
-          .eq("id",uploadSessionId).eq("batch_draft_operation_id",marker)
-          .eq("batch_id",typedSession.batch_id).eq("admission_position",typedSession.admission_position)
-          .eq("uploaded_by",ctx.profile.id).eq("intake_status","uploaded").eq("status",typedSession.status)
-          .eq("updated_at",typedSession.updated_at).is("deleted_at",null).is("document_id",null).is("ai_result_id",null).is("temp_cleaned_at",null)
-          .select("id,batch_draft_operation_id,intake_status").retry(false);
-        const elected=z.array(z.object({id:z.literal(uploadSessionId),batch_draft_operation_id:z.literal(marker as string),intake_status:z.literal("ocr_processing")}).strict()).length(1).safeParse(response.data);
-        if(response.error||!elected.success)return claimFailure();
-        // A new ordinary governed statement after the conditional UPDATE wait.
-        // Not a durable worker lease or DB protection against other direct DML.
-        const current=await modernPrepare();
-        if(!current||current.member.kind!=="analysis_required"||!current.member.processing)return claimFailure();
-      }catch{return claimFailure();}
-    }else{
-      const claimed = await supabase
-        .from("dms_upload_sessions")
-        .update({ intake_status: "ocr_processing", updated_at: new Date().toISOString() })
-        .eq("id", uploadSessionId)
-        .eq("status", session.status)
-        .eq("intake_status", session.intake_status)
-        .eq("updated_at", session.updated_at)
-        .is("deleted_at", null)
-        .is("batch_draft_operation_id", null)
-        .select("id")
-        .retry(false);
-      if (claimed.error || claimed.data?.length !== 1 || claimed.data[0].id !== uploadSessionId) {
-        return { success: false, uncertain: true, error: "Analysis start could not be confirmed. Check the original intake for progress." };
+    let staleJobIds: number[] = [];
+    if (staleLegacyRun) {
+      const previousJobs = await supabase.from("dms_ai_extraction_jobs")
+        .select("id").eq("upload_session_id", uploadSessionId).eq("run_source", "ai_intake")
+        .in("status", ["pending", "processing"]);
+      if (previousJobs.error) return attemptUnconfirmed();
+      staleJobIds = (previousJobs.data ?? []).map(job => job.id as number);
+    }
+
+    const ocrRevision = await transitionAttempt(intakeStatusNow, session.updated_at, "ocr_processing").catch(() => null);
+    if (!ocrRevision) return modern ? claimFailure() : attemptUnconfirmed();
+    attemptClaimed = true;
+    if (modern) {
+      // Recheck ordinary admission after the conditional update acquired the row.
+      const current = await modernPrepare().catch(() => null);
+      if (!current || current.member.kind !== "analysis_required" || !current.member.processing) return claimFailure();
+    }
+    if (staleLegacyRun) {
+      // Reclaim only jobs observed before election, so we cannot sweep a successor's jobs.
+      if (staleJobIds.length) {
+        await supabase.from("dms_ai_extraction_jobs")
+          .update({ status: "failed", error_message: "Stale run — superseded by a new AI Fill request", completed_at: new Date().toISOString() })
+          .eq("upload_session_id", uploadSessionId).eq("run_source", "ai_intake")
+          .in("id", staleJobIds).in("status", ["pending", "processing"]);
       }
+      logger.warn("[ai-intake] stale processing session swept — starting fresh run", { uploadSessionId });
     }
 
 
@@ -507,19 +533,14 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
     }
 
     if (!contentExtracted) {
-      await supabase
-        .from("dms_upload_sessions")
-        .update({ intake_status: "failed", updated_at: new Date().toISOString() })
-        .eq("id", uploadSessionId);
+      if (!(await transitionAttempt("ocr_processing", ocrRevision, "failed"))) return attemptUnconfirmed();
       return { success: false, error: "The uploaded file could not be fully read. Check the OCR provider, or split a long PDF into files of at most four pages and retry." };
     }
 
     // ── Update status: AI processing ────────────────────────────────────────
 
-    await supabase
-      .from("dms_upload_sessions")
-      .update({ intake_status: "ai_processing", updated_at: new Date().toISOString() })
-      .eq("id", uploadSessionId);
+    const aiRevision = await transitionAttempt("ocr_processing", ocrRevision, "ai_processing");
+    if (!aiRevision) return attemptUnconfirmed();
 
     // ── Create AI job record ────────────────────────────────────────────────
 
@@ -544,10 +565,7 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
       .single();
 
     if (jobErr || !job) {
-      await supabase
-        .from("dms_upload_sessions")
-        .update({ intake_status: "failed", updated_at: new Date().toISOString() })
-        .eq("id", uploadSessionId);
+      if (!(await transitionAttempt("ai_processing", aiRevision, "failed"))) return attemptUnconfirmed();
       return { success: false, error: "Failed to create AI job record" };
     }
 
@@ -594,10 +612,12 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
 
     // ── Mark job processing ────────────────────────────────────────────────
 
-    await supabase
+    const startedJob = await supabase
       .from("dms_ai_extraction_jobs")
       .update({ status: "processing", started_at: new Date().toISOString() })
-      .eq("id", jobId);
+      .eq("id", jobId).eq("upload_session_id", uploadSessionId).eq("created_by", ctx.profile.id)
+      .eq("status", "pending").select("id").retry(false).maybeSingle();
+    if (startedJob.error || startedJob.data?.id !== jobId) return attemptUnconfirmed();
 
     // ── Run AI ────────────────────────────────────────────────────────────
 
@@ -643,11 +663,8 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
       await supabase
         .from("dms_ai_extraction_jobs")
         .update({ status: "failed", error_message: (aiError ?? "").slice(0, 500), completed_at: completedAt, duration_ms: durationMs })
-        .eq("id", jobId);
-      await supabase
-        .from("dms_upload_sessions")
-        .update({ intake_status: "failed", updated_at: new Date().toISOString() })
-        .eq("id", uploadSessionId);
+        .eq("id", jobId).eq("upload_session_id", uploadSessionId).eq("status", "processing");
+      if (!(await transitionAttempt("ai_processing", aiRevision, "failed"))) return attemptUnconfirmed();
       await logAudit({
         module_code: "DMS",
         entity_name: "dms_upload_sessions",
@@ -679,8 +696,8 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
       }
     }
 
-    const suggestedTypeId = typeResolution.typeId;
-    const suggestedTypeCode = typeResolution.typeCode;
+    let suggestedTypeId = typeResolution.typeId;
+    let suggestedTypeCode = typeResolution.typeCode;
 
     if (typeResolution.source !== "ai" && typeResolution.typeCode) {
       aiOutput.classification.suggestedTypeCode = typeResolution.typeCode;
@@ -778,16 +795,84 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
     aiOutput.classification.suggestedTypeCode = suggestedTypeCode;
     aiOutput.classification.suggestedTypeId = suggestedTypeId;
 
+    let approvedReview = verifiedSource && approvedProfilePreviewEnabled(verifiedSource.plan.source.company)
+      ? await verifyApprovedProfile(verifiedSource.proof, firstSuggestion, null,
+        aiOutput.extraction.fields.map(field => ({ code: field.fieldCode, value: field.value })))
+      : undefined;
+    let registeredProfileType: { id: number; code: string } | null = null;
+    if (approvedReview?.state === "verified") {
+      const code = approvedReview.typeCode;
+      const ranked = typeRows.find(row => row.type_code === code);
+      if (ranked) {
+        registeredProfileType = { id: ranked.id, code };
+      } else {
+        const exact = await supabase.from("dms_document_types").select("id,type_code")
+          .eq("type_code", code).eq("is_active", true).is("deleted_at", null).maybeSingle();
+        if (!exact.error && exact.data?.type_code === code && Number.isSafeInteger(exact.data.id) && exact.data.id > 0) {
+          registeredProfileType = { id: exact.data.id, code };
+        }
+      }
+      if (registeredProfileType) {
+        suggestedTypeCode = aiOutput.classification.suggestedTypeCode = registeredProfileType.code;
+        suggestedTypeId = aiOutput.classification.suggestedTypeId = registeredProfileType.id;
+      } else {
+        approvedReview = { state: "held", reason: "type_unavailable" };
+      }
+    }
+
+    let trainingEvidence: ReturnType<typeof applyIntakeTrainingReview>["evidence"] | undefined;
+    let trainingReview: Awaited<ReturnType<typeof verifyTrainingOriginal>> | undefined;
+    const credentialType = trainingType(verifiedSource?.plan.source.company, suggestedTypeCode);
+    if (credentialType && verifiedSource) {
+      const review = await verifyTrainingOriginal(credentialType, [{
+        bytes: verifiedSource.bytes, sha256: verifiedSource.proof.sha256, mime: mimeType,
+      }], aiOutput);
+      trainingReview = review;
+      const verified = applyIntakeTrainingReview(aiOutput, review);
+      aiOutput = verified.output;
+      trainingEvidence = verified.evidence;
+      suggestedTypeCode = aiOutput.classification.suggestedTypeCode;
+      suggestedTypeId = aiOutput.classification.suggestedTypeId;
+    }
+
+    let cicpaReview: Awaited<ReturnType<typeof applyIntakeCicpaWording>>["review"] | undefined;
+    if (cicpaWordingPreviewEnabled() && verifiedSource?.plan.source.company === ALGT_DMS_PREVIEW_COMPANY && isCicpaPassType(suggestedTypeCode)) {
+      const verified = await applyIntakeCicpaWording(aiOutput, { sha256: verifiedSource.proof.sha256, mime: mimeType });
+      aiOutput = verified.output;
+      cicpaReview = verified.review;
+    }
+
+    let approvedEvidence: ReturnType<typeof mergeApprovedProfileFields> | undefined;
+    if (approvedReview) {
+      if (trainingReview && !trainingReview.prepared && approvedReview.state === "verified") {
+        approvedReview = { state: "held", reason: "specialist_conflict" };
+      }
+
+      const specialist = trainingEvidence ?? cicpaReview?.fields;
+      approvedEvidence = mergeApprovedProfileFields(approvedReview, specialist,
+        trainingReview ? SPECIALIST_TRAINING_FIELDS : cicpaReview?.controlledKeys);
+      const specialistType = specialist && Object.keys(specialist).length && retainSpecialistProof(approvedReview)
+        && suggestedTypeId && suggestedTypeCode
+        ? { code: suggestedTypeCode, id: suggestedTypeId }
+        : null;
+      const admissibleType = approvedReview.state === "verified" ? registeredProfileType : specialistType;
+      aiOutput = applyIntakeApprovedProfile(aiOutput, approvedReview, approvedEvidence, admissibleType);
+      suggestedTypeCode = aiOutput.classification.suggestedTypeCode;
+      suggestedTypeId = aiOutput.classification.suggestedTypeId;
+    }
+
     // ── Build extracted fields JSON ────────────────────────────────────────
 
     const extractedFieldsJson: Record<string, unknown> = {};
     const fieldConfidenceJson: Record<string, unknown> = {};
     for (const field of aiOutput.extraction.fields) {
       extractedFieldsJson[field.fieldCode] = field.value;
+      const proof = approvedEvidence?.[field.fieldCode] ?? trainingEvidence?.[field.fieldCode] ?? cicpaReview?.fields[field.fieldCode];
       fieldConfidenceJson[field.fieldCode] = {
         score: field.confidenceScore,
         label: field.confidenceLabel,
         source_snippet: field.sourceSnippet ?? null,
+        ...(proof && { source_page: proof.page, source_region: proof.region ?? null, source_bounds: proof.bounds ?? null, source_method: proof.method ?? null }),
       };
     }
     // Preserve everything else the AI read, so no information is lost.
@@ -844,9 +929,21 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
       const subject = await supabase.from('employee_dependents').select('id,dependent_name_en').eq('id',Number(typedSession.origin_entity_id)).is('deleted_at',null).maybeSingle();
       if (subject.data) verifiedSubject = {kind:'employee_dependent',id:subject.data.id,name:subject.data.dependent_name_en};
     }
-    const preparedType = suggestedTypeId ? await supabase.from("dms_document_types").select("name_en").eq("id",suggestedTypeId).is("deleted_at",null).maybeSingle() : null;
+    const preparedType = suggestedTypeId ? await (approvedReview?.state === "verified"
+      ? supabase.from("dms_document_types").select("name_en,default_confidentiality")
+      : supabase.from("dms_document_types").select("name_en"))
+      .eq("id", suggestedTypeId).is("deleted_at", null).maybeSingle() : null;
+    const registeredDefault = preparedType?.data && "default_confidentiality" in preparedType.data
+      ? preparedType.data.default_confidentiality
+      : null;
+    if (approvedReview?.state === "verified" && z.enum(DMS_CONFIDENTIALITY_LEVELS).safeParse(registeredDefault).success) {
+      extractedFieldsJson.confidentiality_level = registeredDefault;
+    }
     const prepared = prepareIntakeOutput(aiOutput,{typeCode:aiOutput.classification.suggestedTypeCode,typeName:preparedType?.data?.name_en??null,originalName:originalFilename,
       verifiedSubject,sourceHash:String(typedSession.sha256_hash??'')});
+    const approvedMissing = approvedReview && approvedEvidence
+      ? approvedProfileMissingRequiredFields(approvedReview, approvedEvidence)
+      : [];
     const resultPayload = {
         job_id: jobId,
         document_id: null,
@@ -867,7 +964,20 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
         review_action: null,
         reviewed_by: null,
         reviewed_at: null,
-        raw_response_json: {...sanitizedResponse,preparation:prepared},
+        raw_response_json: {...sanitizedResponse,preparation:prepared,
+          classification: {
+            ...sanitizedResponse.classification,
+            needs_human_review: aiOutput.classification.needsHumanReview ?? false,
+            review_reason: aiOutput.classification.reviewReason ?? null,
+          },
+          ...(cicpaReview && { warnings: aiOutput.warnings, cicpaLocations: { state: cicpaReview.wording.status },
+            cicpaCompanyNumber: { state: cicpaReview.fields[CICPA_COMPANY_NUMBER_FIELD] ? "verified" : "held" } }),
+          ...(approvedReview && { warnings: aiOutput.warnings, approvedProfile: approvedReview.state === "verified"
+            ? { state: approvedReview.state, profileId: approvedReview.profileId, typeCode: approvedReview.typeCode,
+              ...(approvedMissing.length ? { missingRequiredFields: approvedMissing } : {}) }
+            : approvedReview }),
+          ...(trainingReview && { warnings: aiOutput.warnings, trainingProfile: { profileId: trainingReview.profileId, state: trainingReview.prepared ? "verified" : "held", reasons: trainingReview.reasons } }),
+        },
         // For image-based docs (passports, Emirates IDs, certificates, scanned PDFs)
         // local OCR produces no text — use the AI's full_text_transcription instead.
         // For digital PDFs/DOCX, use the locally extracted text (more reliable).
@@ -888,78 +998,43 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
       await supabase
         .from("dms_ai_extraction_jobs")
         .update({ status: "failed", error_message: modern ? "AI result storage was not confirmed." : resultErr?.message ?? "Failed to store result", completed_at: completedAt, duration_ms: durationMs })
-        .eq("id", jobId);
-      await supabase
-        .from("dms_upload_sessions")
-        .update({ intake_status: "failed", updated_at: new Date().toISOString() })
-        .eq("id", uploadSessionId);
+        .eq("id", jobId).eq("upload_session_id", uploadSessionId).eq("status", "processing");
+      if (!(await transitionAttempt("ai_processing", aiRevision, "failed"))) return attemptUnconfirmed();
       return { success: false, error: modern ? "AI result storage was not confirmed. Retain this batch for reconciliation." : resultErr?.message ?? "Failed to store AI result" };
     }
 
     const resultId = result.id as number;
 
-    // ── Complete job + update session ──────────────────────────────────────
+    // ── Complete job and publish the attested result ────────────────────────
 
-    await supabase
+    const completedJob = await supabase
       .from("dms_ai_extraction_jobs")
       .update({ status: "complete", completed_at: completedAt, duration_ms: durationMs })
-      .eq("id", jobId);
+      .eq("id", jobId).eq("upload_session_id", uploadSessionId).eq("created_by", ctx.profile.id)
+      .eq("status", "processing").select("id,upload_session_id,status").retry(false).maybeSingle();
+    if (completedJob.error || completedJob.data?.id !== jobId ||
+      completedJob.data.upload_session_id !== uploadSessionId || completedJob.data.status !== "complete") return attemptUnconfirmed();
 
     if(!verifiedSource)return {success:false,error:'The exact original-file proof is missing. Retain this intake for reconciliation.'};
     const attestedAnalysis=await traceSpan('dms.publish', () => adminClient.rpc('f07_attest_intake_analysis',{
       p_session:uploadSessionId,p_actor:verifiedSource.plan.actorId,p_auth_session:verifiedSource.plan.authSessionId,
-      p_result:resultId,p_expected:resultPayload,
-    }));
+      p_result:resultId,p_expected:resultPayload,p_claim_at:aiRevision,
+    }).retry(false));
     if(attestedAnalysis.error)return {success:false,error:'The AI result could not be verified against its exact original file. Retain this intake; no approval was submitted.'};
 
-    await supabase
-      .from("dms_upload_sessions")
-      .update({
-        intake_status: "review_pending",
-        review_status: "pending",
-        ai_job_id: jobId,
-        ai_result_id: resultId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", uploadSessionId);
-
-    await logAudit({
-      module_code: "DMS",
-      entity_name: "dms_upload_sessions",
-      entity_id: uploadSessionId,
-      entity_reference: sessionCode,
-      action: "update",
-      new_values: {
-        event: "classification_completed",
-        job_id: jobId,
-        result_id: resultId,
-        duration_ms: durationMs,
-        suggested_type_code: suggestedTypeCode,
-        classification_score: aiOutput.classification.confidenceScore,
-        needs_human_review: aiOutput.classification.needsHumanReview ?? false,
-        prompt_version: PROMPT_VERSION,
-      },
-    });
-
-    if (
-      aiOutput.classification.needsHumanReview ||
-      (aiOutput.classification.confidenceScore != null &&
-        aiOutput.classification.confidenceScore < 0.6)
-    ) {
-      await logAudit({
-        module_code: "DMS",
-        entity_name: "dms_upload_sessions",
-        entity_id: uploadSessionId,
-        entity_reference: sessionCode,
-        action: "update",
-        new_values: {
-          event: "classification_low_confidence",
-          result_id: resultId,
-          classification_score: aiOutput.classification.confidenceScore,
-          review_reason: aiOutput.classification.reviewReason ?? null,
-        },
-      });
-    }
+    const publication = { p_session: uploadSessionId, p_code: sessionCode, p_claim_at: aiRevision, p_job: jobId, p_result: resultId };
+    const publish = async () => {
+      try {
+        const { data, error } = await traceSpan("dms.publish", () =>
+          supabase.rpc("dms_publish_intake_classification", publication).retry(false));
+        return !error && data?.id === uploadSessionId && data.session_code === sessionCode &&
+          data.intake_status === "review_pending" && data.review_status === "pending" &&
+          data.ai_job_id === jobId && data.ai_result_id === resultId;
+      } catch {
+        return false;
+      }
+    };
+    if (!(await publish()) && !(await publish())) return attemptUnconfirmed();
 
     // NOTE (SPEED.2L flash fix, 2026-08-03): do NOT call revalidatePath here.
     // This action runs for 30s+; the client's status poll redirects to
@@ -1009,6 +1084,7 @@ async function runAiIntake(input: z.output<typeof StartIntakeSchema>): Promise<A
       data: { sessionCode, status: "review_pending", message: "AI analysis complete" },
     };
   } catch (e) {
+    if (attemptClaimed) return attemptUnconfirmed();
     if(modernStart)return {success:false,error:"Analysis start is unconfirmed. Retain this batch for reconciliation."};
     if(input?.onlyIfUploaded === true)return {success:false,uncertain:true,error:"Analysis start could not be confirmed. Check the original intake for progress."};
     logger.error("startAiIntakeFromUploadSession error", e);
@@ -1081,6 +1157,7 @@ export async function getAiIntakeSession(
       discarded_at: typedSession.discarded_at as string | null,
       discard_reason: typedSession.discard_reason as string | null,
       uploaded_at: typedSession.uploaded_at as string ?? typedSession.created_at as string,
+      updated_at: typeof typedSession.updated_at === "string" ? typedSession.updated_at : undefined,
       ai_result: aiResult,
       draft_values: draft.data.values as unknown as IntakeReviewValueRow[],
       draft_snapshot: draft.data.snapshot,
@@ -1254,8 +1331,15 @@ export async function saveAiIntakeDraft(
 // ── retryAiIntake ─────────────────────────────────────────────────────────────
 
 export async function retryAiIntake(
-  uploadSessionId: number
+  uploadSessionId: number,
+  expectedUpdatedAt?: string,
 ): Promise<ActionResult<{ sessionCode: string; status: string }>> {
+  if (!Number.isSafeInteger(uploadSessionId) || uploadSessionId < 1) {
+    return { success: false, error: "Invalid upload session." };
+  }
+  const refreshMessage = "The original intake changed. Refresh it before retrying AI analysis.";
+  const unconfirmed = { success: false, uncertain: true, error: "The retry reset could not be confirmed. Check the original intake before retrying." } as const;
+  let resetDispatched = false;
   try {
     const supabase = await createClient();
     const ctx = await getAuthContext();
@@ -1263,22 +1347,83 @@ export async function retryAiIntake(
     if (!canStartIntake(ctx)) return { success: false, error: "Permission denied" };
 
     // Governed work cannot be reset: age/failed is not proof a provider is dead.
-    const source=await supabase.from("dms_upload_sessions").select("batch_draft_operation_id").eq("id",uploadSessionId).is("deleted_at",null).single();
+    const source=await supabase.from("dms_upload_sessions")
+      .select("session_code,batch_draft_operation_id,status,intake_status,review_status,updated_at,document_id,approve_run_id,ai_result_id,temp_cleaned_at,temp_storage_path,discarded_at,is_duplicate,owning_company_id,owning_branch_id,original_filename,mime_type,file_size_bytes,sha256_hash,uploaded_by,expires_at")
+      .eq("id",uploadSessionId).is("deleted_at",null).single();
     if(source.error||!source.data||source.data.batch_draft_operation_id!==null)
       return {success:false,error:"Use the retained batch recovery workflow. This analysis cannot be reset."};
-    // Reset only the explicit historical NULL route.
-    await supabase
-      .from("dms_upload_sessions")
-      .update({
-        intake_status: "uploaded",
-        review_status: "not_started",
-        ai_result_id: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", uploadSessionId).is("batch_draft_operation_id",null);
 
-    return startAiIntakeFromUploadSession({ uploadSessionId });
+    const intake = source.data;
+    if (!["failed", "review_pending", "review_in_progress"].includes(intake.intake_status) ||
+        !["uploaded", "processing", "ocr_queued", "ai_queued", "review_pending", "failed"].includes(intake.status) ||
+        ["approved", "discarded"].includes(intake.review_status) || intake.document_id !== null ||
+        intake.approve_run_id !== null || intake.temp_cleaned_at !== null || intake.discarded_at !== null ||
+        intake.is_duplicate !== false || !intake.temp_storage_path) {
+      return { success: false, error: "This intake is not eligible for a full AI retry. Check its current status or recover the retained approval." };
+    }
+    if (typeof intake.updated_at !== "string" || !Number.isFinite(Date.parse(intake.updated_at)) ||
+        (expectedUpdatedAt !== undefined && expectedUpdatedAt !== intake.updated_at)) {
+      return { success: false, error: refreshMessage };
+    }
+    const company = intake.owning_company_id as number | null;
+    const branch = intake.owning_branch_id as number | null;
+    if (company !== null && !["dms.documents.upload", "dms.documents.review_ai", "dms.documents.preview"].every(
+      code => hasPermissionInScope(ctx, code, company, branch) || hasPermissionInScope(ctx, "dms.admin", company, branch),
+    )) {
+      return { success: false, error: "Upload, AI review and preview permissions are required in this company or branch." };
+    }
+
+    const prepared = await prepareIntakeSource(supabase, uploadSessionId).catch(() => null);
+    if (!prepared || prepared.actorId !== ctx.profile.id) {
+      return { success: false, error: "The original intake is unavailable or outside your current access." };
+    }
+    const admitted = prepared.source;
+    if (admitted.company !== company || admitted.branch !== branch || admitted.owner !== intake.uploaded_by ||
+        admitted.name !== intake.original_filename || admitted.mime !== intake.mime_type || admitted.size !== intake.file_size_bytes ||
+        admitted.sha256 !== intake.sha256_hash || admitted.path !== intake.temp_storage_path || admitted.expiry !== intake.expires_at ||
+        (admitted.expiry !== null && !(Date.parse(admitted.expiry) > Date.now()))) {
+      return { success: false, error: refreshMessage };
+    }
+
+    const request = {
+      p_session: uploadSessionId,
+      p_operation: randomUUID(),
+      p_expected_updated_at: intake.updated_at,
+      p_expected_source: admitted,
+      p_expected_state: {
+        status: intake.status,
+        intake_status: intake.intake_status,
+        review_status: intake.review_status,
+        ai_result_id: intake.ai_result_id,
+      },
+    };
+    const receiptSchema = z.object({
+      id: z.literal(uploadSessionId),
+      session_code: z.literal(intake.session_code as string),
+      intake_status: z.literal("uploaded"),
+      updated_at: z.iso.datetime({ offset: true }),
+      outcome: z.enum(["reset", "advanced"]),
+    }).strict();
+    resetDispatched = true;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await (async () => {
+        try { return await supabase.rpc("dms_reset_intake_retry", request).retry(false); }
+        catch { return null; }
+      })();
+      if (!response) continue;
+      if (attempt === 0 && response.error?.code === "PT409") return { success: false, error: refreshMessage };
+      if (attempt === 0 && response.error?.code === "42501") {
+        return { success: false, error: "The original intake is unavailable or outside your current access." };
+      }
+      const receipt = receiptSchema.safeParse(response.data);
+      if (response.error || !receipt.success) continue;
+      if (receipt.data.outcome === "advanced") return { success: false, error: refreshMessage };
+      const reset = { sessionCode: receipt.data.session_code, updatedAt: receipt.data.updated_at };
+      return await traceOperation('dms.intake', () => runAiIntake({ uploadSessionId, allowDuplicate: false, onlyIfUploaded: false }, reset), dmsTraceId(`upload:${uploadSessionId}`));
+    }
+    return unconfirmed;
   } catch {
+    if (resetDispatched) return unconfirmed;
     return { success: false, error: "Analysis retry is unavailable. Retain the original request for reconciliation." };
   }
 }

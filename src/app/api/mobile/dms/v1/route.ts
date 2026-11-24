@@ -32,6 +32,7 @@ const id = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const page = z.number().int().min(1).max(100_000);
 const text = z.string().trim().max(100);
 const code = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
+const sharePointAdmissionReceipt = z.strictObject({ id, operationId: z.uuid(), replayed: z.boolean() });
 const legacyCommand = z.discriminatedUnion("op", [
   loginSchema.extend({ op: z.literal("login") }).strict(),
   z.strictObject({ op: z.literal("refresh"), refreshToken: z.string().min(1).max(4096) }),
@@ -48,6 +49,7 @@ const legacyCommand = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("scopes"), search: text, after: z.strictObject({ companyId: id, branchId: z.number().int().nonnegative() }).nullable() }),
   z.strictObject({ op: z.literal("records"), search: text, entityType: z.enum(["employee", "site"]) }),
   z.strictObject({ op: z.literal("admit"), request: singleUploadRequestSchema }),
+  z.strictObject({ op: z.literal("admitSharePoint"), request: singleUploadRequestSchema, sharePointLease: z.uuid() }),
   z.strictObject({ op: z.literal("complete"), request: singleUploadRequestSchema, sessionId: id }),
   z.strictObject({ op: z.literal("uploads"), beforeId: id.optional() }),
   z.strictObject({ op: z.literal("start"), sessionId: id }),
@@ -131,7 +133,7 @@ async function dispatch(input: Exclude<Command, { op: "login" | "refresh" }>, to
   }
   if (input.op === "profile") return ok({...await readMobileProfile(ctx),dmsContractVersion:"mobile-dms/5.0",
     dmsFeatures:{details:true,processing:true,comparison:true,requests:true,links:true,packs:true,collections:true,qr:true,...await readDmsFeatureAvailability()}});
-  if (["admit", "complete", "scopes", "start"].includes(input.op) && !capabilities.upload) return fail("Upload permission required.", 403);
+  if (["admit", "admitSharePoint", "complete", "scopes", "start"].includes(input.op) && !capabilities.upload) return fail("Upload permission required.", 403);
   if (["uploads", "intake", "intakeFile", "types", "fields"].includes(input.op) && !capabilities.upload && !capabilities.review && !capabilities.view) {
     return fail("DMS permission required.", 403);
   }
@@ -174,6 +176,18 @@ async function dispatch(input: Exclude<Command, { op: "login" | "refresh" }>, to
       if (!result.success || !result.data) return json({ success: false, error: result.error, uncertain: result.uncertain, recovery: result.recovery, cancelled: result.cancelled });
       const { session, signedUrl, uploadRequired, isDuplicate } = result.data;
       return ok({ id: session.id, code: session.session_code, uploadUrl: uploadRequired ? signedUrl : null, duplicate: isDuplicate });
+    }
+    case "admitSharePoint": {
+      if (process.env.DMS_AGENT_CENTER_SHAREPOINT_ADMISSION !== "1") return fail("SharePoint admission unavailable.", 404);
+      if (input.request.authUserId !== ctx.profile.auth_user_id) return fail("This draft belongs to another account.", 403);
+      const client = await createClient();
+      const result = await client.rpc("f07_admit_sharepoint_upload", { p_request: input.request, p_lease: input.sharePointLease });
+      if (result.error?.code === "42501") return fail("SharePoint admission unavailable.", 403);
+      const receipt = sharePointAdmissionReceipt.safeParse(result.data);
+      if (result.error || !receipt.success || receipt.data.operationId !== input.request.operationId) {
+        return fail("SharePoint admission could not be confirmed. Retry the same operation.", 503);
+      }
+      return ok(receipt.data);
     }
     case "complete": {
       if (input.request.authUserId !== ctx.profile.auth_user_id) return fail("This draft belongs to another account.", 403);

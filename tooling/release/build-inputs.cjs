@@ -42,6 +42,7 @@ function collectReleaseInputs(root, env = process.env) {
     return { name, sha256: sha(bytes), normalizedSha256: sha(normalize(name, bytes)) };
   });
   const publicConfig = publicConfiguration.map(name => [name, sha(JSON.stringify(env[name] ?? null))]);
+  publicConfig.push(["NEXT_PUBLIC_DMS_BR1_RENEWAL_PREPARATION_ENABLED", sha(JSON.stringify(env.NEXT_PUBLIC_DMS_BR1_RENEWAL_PREPARATION_ENABLED === "1"))]);
   const sourceFingerprint = sha(JSON.stringify(inputs.map(({name, normalizedSha256}) => [name, normalizedSha256])));
   const buildId = sha(JSON.stringify([sourceFingerprint, publicConfig]));
   return { format: 1, sourceFingerprint, buildId, publicConfig: Object.fromEntries(publicConfig), inputs };

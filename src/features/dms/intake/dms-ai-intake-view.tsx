@@ -33,6 +33,7 @@ export type IntakeViewProps={
 function formatBytes(bytes:number){return bytes<1024?bytes+' B':bytes<1024*1024?(bytes/1024).toFixed(1)+' KB':(bytes/(1024*1024)).toFixed(1)+' MB';}
 export function DmsAiIntakeView({session,displaySession,aiResult,documentTypes,formValues,handleFormChange,entityLinks,setEntityLinks,isReady,isFailed,isProcessing,isPending,retainedApproval,approvalBlocked,draftUncertain,approvalError,approvalLoading,retentionError,batchLoading,batchBlocked,handleRetry,handleSaveDraft,handleApprove,handleDiscard,handlePreview,isLoadingPreview,discardAnchor,setDiscardAnchor,discardReason,setDiscardReason,setFileReview,setReviewBlockReason,navigate,onAiResultPatch,savedDocument}:IntakeViewProps){
  const classificationConf=aiResult?.classification_confidence??null,classificationScore=aiResult?.classification_score??null;
+ const retryDisabled = isPending || retainedApproval || draftUncertain || (!savedDocument && approvalBlocked);
   return (
     <div data-intake-review className="flex flex-col min-h-0 gap-0">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
@@ -65,7 +66,7 @@ export function DmsAiIntakeView({session,displaySession,aiResult,documentTypes,f
               variant="outline"
               size="sm"
               onClick={handleRetry}
-              disabled={isPending || retainedApproval || draftUncertain}
+              disabled={retryDisabled}
             >
               <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
               Re-run AI
@@ -141,7 +142,7 @@ export function DmsAiIntakeView({session,displaySession,aiResult,documentTypes,f
             The AI could not analyze your document. You can retry the analysis or create the document manually.
           </p>
           <div className="flex gap-2">
-            <Button size="sm" onClick={handleRetry} disabled={isPending}>
+            <Button size="sm" onClick={handleRetry} disabled={retryDisabled}>
               <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
               Retry AI
             </Button>
@@ -291,7 +292,7 @@ export function DmsAiIntakeView({session,displaySession,aiResult,documentTypes,f
 
             {/* AI warnings */}
             {(() => {
-              const raw = aiResult?.raw_response_json as { warnings?: unknown } | null | undefined;
+              const raw = aiResult?.raw_response_json as { warnings?: unknown; retainedTypeReview?: boolean } | null | undefined;
               const warnings = Array.isArray(raw?.warnings)
                 ? (raw!.warnings as unknown[]).filter((w): w is string => typeof w === "string")
                 : [];
@@ -300,7 +301,7 @@ export function DmsAiIntakeView({session,displaySession,aiResult,documentTypes,f
                 <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 p-4 space-y-1.5">
                   <div className="flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-400">
                     <AlertTriangle className="h-4 w-4" />
-                    AI Notes
+                    {raw?.retainedTypeReview ? "Earlier AI notes" : "AI Notes"}
                   </div>
                   <ul className="list-disc list-inside space-y-0.5 text-[11px] text-amber-700 dark:text-amber-400">
                     {warnings.map((w, i) => <li key={i}>{w}</li>)}

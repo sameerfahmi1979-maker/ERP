@@ -44,6 +44,7 @@ export const ROUTE_ACCESS_REGISTRY: Record<string, RouteAccess> = {
   "/dashboard":                                   { requiredPermission: "dashboard.view" },
   "/notifications":                               { publicToAllActive: true },
   "/messages":                                    { publicToAllActive: true },
+  "/ai-agent-center":                             { requiredAnyPermissions: ["dms.documents.view", "dms.admin"] },
   "/modules/inventory":                          { requiredAnyPermissions: ["supply.setup", "supply.stock", "supply.approve", "supply.request", "supply.value"] },
   "/modules/procurement":                        { requiredAnyPermissions: ["supply.purchase", "supply.purchase.approve"] },
   "/modules/fleet/fuel":                         { requiredAnyPermissions: ["supply.fuel", "supply.approve"] },

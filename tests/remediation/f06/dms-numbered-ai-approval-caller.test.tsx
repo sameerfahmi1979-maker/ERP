@@ -1,19 +1,20 @@
 // @vitest-environment jsdom
 /* eslint-disable @typescript-eslint/no-explicit-any -- Controlled presentational components only; actual page, form, and recovery hook are mounted. */
 import React from 'react';
-import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {createWorkspaceDraftStore} from '@/lib/workspace/workspace-draft-store';
 import {input,prepared,receipt} from './dms-ai-approval-fixtures';
-const m=vi.hoisted(()=>({store:null as unknown,owner:'owner',approve:vi.fn(),batch:vi.fn(),recover:vi.fn(),definitions:vi.fn(),prepareReview:vi.fn(),confirmReview:vi.fn(),cacheOwner:{identity:{authUserId:'synthetic',scopeVersion:'one'},generation:1,isLive:()=>true,admits:()=>true},replace:vi.fn(),update:vi.fn(),rename:vi.fn(),success:vi.fn(),error:vi.fn(),rerun:vi.fn(),save:vi.fn(),discard:vi.fn()}));
+const m=vi.hoisted(()=>({store:null as unknown,owner:'owner',approve:vi.fn(),batch:vi.fn(),recover:vi.fn(),definitions:vi.fn(),prepareReview:vi.fn(),confirmReview:vi.fn(),cacheOwner:{identity:{authUserId:'synthetic',scopeVersion:'one'},generation:1,isLive:()=>true,admits:()=>true},replace:vi.fn(),update:vi.fn(),rename:vi.fn(),success:vi.fn(),error:vi.fn(),rerun:vi.fn(),refreshIntake:vi.fn(),save:vi.fn(),discard:vi.fn()}));
+const metadataFixture = vi.hoisted(() => ({ renderActual: false }));
 vi.mock('@/components/layout/read-cache-boundary',()=>({useReadCacheOwner:()=>m.cacheOwner}));
 vi.mock('@/components/workspace/workspace-draft-provider',()=>({useWorkspaceDraftStoreContext:()=>m.store}));
 vi.mock('@/hooks/use-workspace-form-owner',()=>({useWorkspaceFormOwner:()=>({id:m.owner})}));
 vi.mock('@/hooks/use-workspace',()=>({useWorkspace:()=>({activeTab:{id:m.owner},updateTabRoute:m.update,renameTab:m.rename,closeTab:vi.fn()})}));
 vi.mock('next/navigation',()=>({useRouter:()=>({replace:m.replace,push:vi.fn(),refresh:vi.fn()})}));
 vi.mock('sonner',()=>({toast:{success:m.success,error:m.error,info:vi.fn()}}));
-vi.mock('@/server/actions/dms/ai-intake',()=>({approveAiIntakeAndCreateDocument:m.approve,recoverAiIntakeApproval:m.recover,discardAiIntake:m.discard,retryAiIntake:m.rerun,saveAiIntakeDraft:m.save,getIntakeSessionSignedUrl:vi.fn(),rerunMetadataExtractionForIntakeSession:m.rerun}));
+vi.mock('@/server/actions/dms/ai-intake',()=>({approveAiIntakeAndCreateDocument:m.approve,recoverAiIntakeApproval:m.recover,discardAiIntake:m.discard,retryAiIntake:m.rerun,getAiIntakeSession:m.refreshIntake,saveAiIntakeDraft:m.save,getIntakeSessionSignedUrl:vi.fn(),rerunMetadataExtractionForIntakeSession:m.rerun}));
 vi.mock('@/server/actions/dms/batch-intake',()=>({finalizeDraftIntake:m.batch,discardDraftIntake:m.discard,recoverDraftFinalization:m.recover}));
 vi.mock('@/server/actions/dms/intake-review',()=>({prepareExactIntakeReview:m.prepareReview,confirmExactIntakeReview:m.confirmReview}));
 vi.mock('@/server/actions/dms/standard-file-name',()=>({previewDmsStandardFileName:vi.fn(async()=>({success:true,data:{validation:{valid:true}}}))}));
@@ -21,11 +22,15 @@ vi.mock('@/server/actions/dms/document-types',()=>({getDmsDocumentTypes:vi.fn()}
 vi.mock('@/server/actions/dms/document-metadata-values',()=>({getMetadataDefinitionsForType:m.definitions}));
 vi.mock('@/features/dms/orchestration',()=>({DmsOrchestrationProgressCard:()=>null}));
 vi.mock('@/features/dms/intake/dms-intake-link-panel',()=>({DmsIntakeLinkPanel:()=>null}));
-vi.mock('@/features/dms/intake/dms-ai-intake-metadata-section',()=>({DmsAiIntakeMetadataSection:({values,onChange}:any)=><input
- id="intake-metadata-10" aria-label="Access location" placeholder="Access location"
- value={values[10]?.rawValue??''} onChange={e=>onChange(10,'text',e.target.value)}/>}));
+vi.mock('@/features/dms/intake/dms-ai-intake-metadata-section',async importOriginal => {
+ const actual = await importOriginal<typeof import('@/features/dms/intake/dms-ai-intake-metadata-section')>();
+ return {...actual,DmsAiIntakeMetadataSection:(props:React.ComponentProps<typeof actual.DmsAiIntakeMetadataSection>) => metadataFixture.renderActual
+  ? <actual.DmsAiIntakeMetadataSection {...props}/>
+  : <input id="intake-metadata-10" aria-label="Access location" placeholder="Access location"
+      value={props.values[10]?.rawValue??''} onChange={e=>props.onChange(10,'text',e.target.value)}/>};
+});
 vi.mock('@/features/dms/intake/dms-ai-intake-classification-card',()=>({DmsAiIntakeClassificationCard:()=>null}));
-vi.mock('@/features/dms/intake/dms-ai-intake-field-row',()=>({DmsAiIntakeFieldRow:({label,children}:any)=><div data-testid={label}>{children}</div>}));
+vi.mock('@/features/dms/intake/dms-ai-intake-field-row',()=>({DmsAiIntakeFieldRow:({label,htmlFor,children}:any)=><div data-testid={label}>{htmlFor && <label htmlFor={htmlFor}>{label}</label>}{children}</div>}));
 vi.mock('@/features/dms/intake/dms-standard-file-name-field',()=>({DmsStandardFileNameField:({values,onChange}:any)=><input aria-label="Standard file name" value={values.standardFileName} onChange={e=>onChange({standardFileName:e.target.value})}/>}));
 vi.mock('@/components/erp/organizations/owner-company-select',()=>({OwnerCompanySelect:({value,onValueChange}:any)=><select aria-label="Owning Company" value={value??''} onChange={e=>onValueChange(Number(e.target.value))}><option value=""/><option value="2">Source company</option><option value="4">Destination company</option></select>}));
 vi.mock('@/components/erp/organizations/branch-select',()=>({BranchSelect:({value,onValueChange,disabled,ownerCompanyId}:any)=><select aria-label="Owning Branch" disabled={disabled} value={value??''} onChange={e=>onValueChange(Number(e.target.value))}><option value=""/>{ownerCompanyId===2?<option value="3">Source branch</option>:<option value="5">Destination branch</option>}</select>}));
@@ -44,7 +49,7 @@ async function submit(){
  fireEvent.click(screen.getAllByRole('button',{name:'Approve & Save'})[0]);
 }
 beforeEach(()=>{vi.resetAllMocks();m.store=createWorkspaceDraftStore();m.owner='owner';m.definitions.mockResolvedValue({success:true,data:[]});m.approve.mockImplementation(async(i,c)=>i.prepared?{success:true,data:receipt(c)}:{success:false,prepared:{operation_id:c.operationId,snapshot:{...prepared,source:{...prepared.source,ai_result_id:19},analysis_result_id:19,analysis_fingerprint:'d'.repeat(64)}}});m.recover.mockResolvedValue({success:true,data:null});m.prepareReview.mockImplementation(async i=>({success:true,data:{actorId:1,sessionId:i.sessionId,typeId:i.typeId,expiryDate:i.expiryDate??null,fingerprint:'a'.repeat(64),requiresOverride:false,canOverride:false,reason:null}}));m.confirmReview.mockResolvedValue({success:true});m.batch.mockResolvedValue({success:true,data:{documentId:77,documentNo:'DMS-77'}});});
-afterEach(cleanup);
+afterEach(() => { cleanup(); metadataFixture.renderActual = false; });
 it('names a missing required field after file verification and ignores prior-type metadata on approval',async()=>{
  m.definitions.mockResolvedValue({success:true,data:[{id:10,field_label_en:'Access location',field_type:'text',is_required:true}]});
  render(page({...session,draft_values:[{field_scope:'metadata',field_code:'99',field_type:'text',reviewed_value_json:'Previous type value'}]}));
@@ -69,3 +74,326 @@ it('batch document dispatch remains the existing finalizer without a new operati
 it('known preparation rejection unlocks correction and submits current values under the original operation',async()=>{m.approve.mockImplementationOnce(async(i,c)=>({success:false,uncertain:false,error:'Review the title',preparationRejected:{operation_id:c.operationId,upload_session_id:i.uploadSessionId}}));render(page());fill();await submit();await waitFor(()=>expect(m.error).toHaveBeenCalledWith('Review the title'));const original=structuredClone(m.approve.mock.calls[0]);expect(screen.queryByText(/An approval request is retained/)).toBeNull();const title=screen.getByTestId('Title').querySelector('input')!;await waitFor(()=>expect(title.closest('fieldset')?.disabled).toBe(false));fireEvent.change(title,{target:{value:'Corrected reviewed title'}});await submit();await waitFor(()=>expect(m.replace).toHaveBeenCalled());expect(m.approve.mock.calls[1][0].title).toBe('Corrected reviewed title');expect(m.approve.mock.calls[1][1]).toEqual(original[1]);expect(m.approve.mock.calls[2][1]).toEqual(original[1]);});
 it('uncertain request survives remount and retry uses its original scope/classification',async()=>{m.approve.mockImplementationOnce(async(_i,c)=>({success:false,prepared:{operation_id:c.operationId,snapshot:{...prepared,source:{...prepared.source,ai_result_id:19},analysis_result_id:19,analysis_fingerprint:'d'.repeat(64)}}})).mockRejectedValueOnce(Error('lost'));const h=render(page());fill();await submit();await waitFor(()=>expect(m.error).toHaveBeenCalled());const original=structuredClone(m.approve.mock.calls[1]);expect(m.replace).not.toHaveBeenCalled();h.unmount();render(page());await waitFor(()=>expect((screen.getAllByRole('button',{name:'Recover saved request'})[0] as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getAllByRole('button',{name:'Recover saved request'})[0]);await waitFor(()=>expect(m.replace).toHaveBeenCalled());expect(m.approve.mock.calls[2]).toEqual(original);expect(m.rerun).not.toHaveBeenCalled();});
 it.each(['owner','account','unmount'])('late preparation after %s change neither completes nor navigates',async kind=>{let finish!:(v:any)=>void;m.approve.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));const h=render(page());fill();submit();await waitFor(()=>expect(m.approve).toHaveBeenCalledOnce());if(kind==='unmount')h.unmount();else{if(kind==='owner')m.owner='other';else m.store=createWorkspaceDraftStore();h.rerender(page());}await act(async()=>finish({success:false,prepared:{operation_id:m.approve.mock.calls[0][1].operationId,snapshot:prepared}}));expect(m.approve).toHaveBeenCalledOnce();expect(m.replace).not.toHaveBeenCalled();expect(m.success).not.toHaveBeenCalled();});
+
+const intakeVersion = '2026-11-23T08:00:00Z';
+const officerDraft = {field_scope:'document',field_code:'title',reviewed_value_json:'Saved officer title'};
+const retrySession = {...session, ai_result_id:19, updated_at:intakeVersion, draft_values:[officerDraft]};
+const refreshedIntake = {
+  ...retrySession, ai_result_id:20, updated_at:'2026-11-23T08:01:00Z', draft_snapshot:'1'.repeat(64),
+  ai_result:{...session.ai_result,id:20,suggested_title:'New suggested title',suggested_description:'New extracted description'},
+};
+
+async function retryFromReview() {
+  const retry = screen.getByRole<HTMLButtonElement>('button', { name: 'Re-run AI' });
+  await waitFor(() => expect(retry.disabled).toBe(false));
+  await act(async () => fireEvent.click(retry));
+}
+
+it('approves the displayed metadata after a same-type CICPA AI rerun', async () => {
+  metadataFixture.renderActual = true;
+  const fields = [
+    {id:10, field_code:'pass_number', field_label_en:'Pass Number', field_type:'text', rawValue:'00001234'},
+    {id:11, field_code:'holder_name', field_label_en:'Holder Name', field_type:'text', rawValue:'Example Holder'},
+    {id:12, field_code:'company_name', field_label_en:'Company Name', field_type:'text', rawValue:'Example Company'},
+    {id:13, field_code:'expiry_date', field_label_en:'Pass Expiry Date', field_type:'date', rawValue:'2027-05-30'},
+  ] as const;
+  m.definitions.mockResolvedValue({success:true,data:fields.map(field => ({...field,is_required:true}))});
+  m.rerun.mockResolvedValue({success:true,data:{sessionCode:retrySession.session_code,status:'review_pending'}});
+  m.refreshIntake.mockResolvedValue({
+    success:true,
+    data:{
+      ...refreshedIntake,
+      ai_result:{
+        ...refreshedIntake.ai_result,
+        suggested_type:{type_code:'CICPA_PASS'},
+        extracted_fields_json:Object.fromEntries(fields.map(field => [field.field_code, field.rawValue])),
+      },
+    },
+  });
+  render(page({...retrySession, ai_result:{...retrySession.ai_result, suggested_type:{type_code:'CICPA_PASS'}}}));
+  await screen.findByLabelText('Pass Number');
+
+  await retryFromReview();
+  for (const field of fields) {
+    expect(screen.getByLabelText<HTMLInputElement>(field.field_label_en).value).toBe(field.rawValue);
+  }
+  fill();
+  await submit();
+
+  await waitFor(() => expect(m.approve).toHaveBeenCalled());
+  expect(m.approve.mock.calls[0][0].metadataValues).toEqual(fields.map(field => ({
+    definitionId:field.id, fieldType:field.field_type, rawValue:field.rawValue,
+  })));
+});
+
+const cicpaFields = [
+  {id:10, field_code:'pass_number', field_label_en:'Pass Number', field_type:'text', is_required:true},
+  {id:11, field_code:'cicpa_locations_arabic', field_label_en:'CICPA Location', field_type:'text', is_required:false},
+  {id:12, field_code:'expiry_date', field_label_en:'Pass Expiry Date', field_type:'date', is_required:true},
+];
+const cicpaLocations = 'جزيرة داس\nأبو ظبي';
+function renderCicpaReview(drafts: {
+  field_scope: string;
+  field_code: string;
+  field_type: string;
+  reviewed_value_json: string;
+}[] = []) {
+  metadataFixture.renderActual = true;
+  m.definitions.mockResolvedValue({success:true,data:cicpaFields});
+  const testSession={...session,draft_snapshot:'1'.repeat(64),draft_values:drafts,ai_result:{...session.ai_result,
+    suggested_type:{type_code:'CICPA_PASS'}, extracted_fields_json:{pass_number:'00001234',cicpa_locations_arabic:cicpaLocations, expiry_date:'2027-05-30'}}};
+  const cicpaTypes=[{...types[0],type_code:'CICPA_PASS',name_en:'CICPA Pass'}];
+  return render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><DmsAiIntakePageClient session={testSession} documentTypes={cicpaTypes}/></QueryClientProvider>);
+}
+
+it('CICPA: fresh extracted values reach approval exactly without rerun', async () => {
+  renderCicpaReview();
+  expect((await screen.findByLabelText<HTMLInputElement>('Pass Number')).value).toBe('00001234');
+  expect(screen.getByLabelText<HTMLTextAreaElement>('CICPA Location').value).toBe(cicpaLocations);
+  m.save.mockResolvedValue({ success: true, data: { snapshot: '2'.repeat(64) } });
+  const save = screen.getAllByRole<HTMLButtonElement>('button', { name: 'Save Draft' })[0];
+  await waitFor(() => expect(save.disabled).toBe(false));
+  fireEvent.click(save);
+  await waitFor(() => expect(m.success).toHaveBeenCalledWith('Draft saved'));
+  expect(m.save.mock.calls[0][1].filter((row: {fieldScope: string}) => row.fieldScope === 'metadata')).toEqual([
+    {fieldScope:'metadata',fieldCode:'10',fieldType:'text',reviewedValueJson:'00001234',reviewStatus:'edited'},
+    {fieldScope:'metadata',fieldCode:'11',fieldType:'text',reviewedValueJson:cicpaLocations,reviewStatus:'edited'},
+    {fieldScope:'metadata',fieldCode:'12',fieldType:'date',reviewedValueJson:'2027-05-30',reviewStatus:'edited'},
+  ]);
+  fill(); await submit();
+  await waitFor(() => expect(m.replace).toHaveBeenCalled());
+  const submitted=m.approve.mock.calls[0][0];
+  expect(submitted.metadataValues).toEqual([
+    {definitionId:10,fieldType:'text',rawValue:'00001234'},
+    {definitionId:11,fieldType:'text',rawValue:cicpaLocations},
+    {definitionId:12,fieldType:'date',rawValue:'2027-05-30'},
+  ]);
+  expect(submitted.standardFileName).toBe(input.standardFileName);
+  expect(m.rerun).not.toHaveBeenCalled();
+});
+
+it('CICPA: explicitly clearing required text blocks approval even with a nonblank suggestion', async () => {
+  renderCicpaReview();
+  fireEvent.change(await screen.findByLabelText('Pass Number'),{target:{value:''}});
+  fill(); await submit();
+  expect((await screen.findByRole('alert')).textContent).toContain('Complete required metadata before approving: Pass Number.');
+  expect(m.confirmReview).not.toHaveBeenCalled();
+  expect(m.approve).not.toHaveBeenCalled();
+  expect(m.rerun).not.toHaveBeenCalled();
+});
+
+it('CICPA: explicitly clearing optional Arabic locations omits the field from approval', async () => {
+  renderCicpaReview();
+  fireEvent.change(await screen.findByLabelText('CICPA Location'),{target:{value:''}});
+  fill(); await submit();
+  await waitFor(() => expect(m.replace).toHaveBeenCalled());
+  expect(m.approve.mock.calls[0][0].metadataValues).toEqual([
+    {definitionId:10,fieldType:'text',rawValue:'00001234'},
+    {definitionId:12,fieldType:'date',rawValue:'2027-05-30'},
+  ]);
+  expect(m.rerun).not.toHaveBeenCalled();
+});
+
+it('CICPA: reopening intake keeps exact saved officer metadata over earlier AI suggestions', async () => {
+  renderCicpaReview([{field_scope:'metadata',field_code:'10',field_type:'text',reviewed_value_json:'00009991'}]);
+  await screen.findByLabelText('Pass Number');
+  fill(); await submit();
+  await waitFor(() => expect(m.replace).toHaveBeenCalled());
+  expect(m.approve.mock.calls[0][0].metadataValues).toContainEqual({definitionId:10,fieldType:'text',rawValue:'00009991'});
+  expect(screen.getByLabelText<HTMLInputElement>('Pass Number').value).toBe('00009991');
+});
+
+it('CICPA: reopening intake must not restore a deliberately cleared required value', async () => {
+  renderCicpaReview([{field_scope:'metadata',field_code:'10',field_type:'text',reviewed_value_json:''}]);
+  await screen.findByLabelText('Pass Number');
+  fill(); await submit();
+  expect((await screen.findByRole('alert')).textContent).toContain('Complete required metadata before approving: Pass Number.');
+  expect(screen.getByLabelText<HTMLInputElement>('Pass Number').value).toBe('');
+  expect(m.approve).not.toHaveBeenCalled();
+});
+
+it('uses the latest type extraction after definitions load and preserves an officer-cleared field', async () => {
+  metadataFixture.renderActual = true;
+  const fields = [
+    { ...cicpaFields[0], id:20 },
+    { ...cicpaFields[1], id:21 },
+  ];
+  m.definitions.mockImplementation(async typeId => ({ success:true, data:typeId === 9 ? fields : [] }));
+  let finishExtraction!: (value:unknown) => void;
+  m.rerun.mockReturnValue(new Promise(resolve => { finishExtraction = resolve; }));
+  m.save.mockResolvedValue({ success:true, data:{ snapshot:'3'.repeat(64) } });
+  const targetType = { ...types[0], id:9, type_code:'CICPA_PASS', name_en:'CICPA Pass' };
+  const intake = {
+    ...session,
+    draft_snapshot:'1'.repeat(64),
+    ai_result:{
+      ...session.ai_result,
+      extracted_fields_json:{ pass_number:'00001234', cicpa_locations_arabic:cicpaLocations },
+    },
+  };
+  render(<QueryClientProvider client={new QueryClient()}>
+    <DmsAiIntakePageClient session={intake} documentTypes={[...types, targetType]} />
+  </QueryClientProvider>);
+
+  fireEvent.change(screen.getByLabelText('Document type'), { target:{ value:'9' } });
+  const dialog = within(await screen.findByRole('alertdialog'));
+  fireEvent.change(dialog.getByRole('combobox'), { target:{ value:'replace_ai_values' } });
+  fireEvent.click(dialog.getByRole('button', { name:'Apply & continue' }));
+  expect(m.rerun).toHaveBeenCalledExactlyOnceWith({
+    uploadSessionId:session.id, documentTypeId:9, mergeMode:'replace_ai_values',
+  });
+  expect((await screen.findByLabelText<HTMLInputElement>('Pass Number')).value).toBe('00001234');
+  fireEvent.change(screen.getByLabelText('CICPA Location'), { target:{ value:'' } });
+
+  await act(async () => finishExtraction({
+    success:true,
+    data:{
+      resultId:20,
+      extractedFieldsJson:{ pass_number:'00009991', cicpa_locations_arabic:'أبو ظبي' },
+      fieldConfidenceJson:{},
+      preparation:{},
+      draftSnapshot:'2'.repeat(64),
+    },
+  }));
+  expect(screen.getByLabelText<HTMLInputElement>('Pass Number').value).toBe('00009991');
+  expect(screen.getByLabelText<HTMLTextAreaElement>('CICPA Location').value).toBe('');
+
+  const save = screen.getAllByRole<HTMLButtonElement>('button', { name:'Save Draft' })[0];
+  await waitFor(() => expect(save.disabled).toBe(false));
+  fireEvent.click(save);
+  await waitFor(() => expect(m.success).toHaveBeenCalledWith('Draft saved'));
+  expect(m.save.mock.calls[0][1]).toEqual(expect.arrayContaining([
+    { fieldScope:'metadata', fieldCode:'20', fieldType:'text', reviewedValueJson:'00009991', reviewStatus:'edited' },
+    { fieldScope:'metadata', fieldCode:'21', fieldType:'text', reviewedValueJson:'', reviewStatus:'edited' },
+  ]));
+  expect(m.save.mock.calls[0][2].snapshot).toBe('2'.repeat(64));
+
+  fill();
+  await submit();
+  await waitFor(() => expect(m.approve).toHaveBeenCalled());
+  expect(m.approve.mock.calls[0][0]).toMatchObject({
+    aiResultId:20,
+    documentTypeId:9,
+    metadataValues:[{ definitionId:20, fieldType:'text', rawValue:'00009991' }],
+  });
+});
+
+it('reloads the confirmed same-intake retry and retains saved officer values', async () => {
+  m.rerun.mockResolvedValue({success:true,data:{sessionCode:retrySession.session_code,status:'review_pending'}});
+  m.refreshIntake.mockResolvedValue({success:true,data:refreshedIntake});
+  render(page(retrySession));
+
+  await retryFromReview();
+
+  expect(m.rerun).toHaveBeenCalledExactlyOnceWith(retrySession.id,intakeVersion);
+  expect(m.refreshIntake).toHaveBeenCalledExactlyOnceWith(retrySession.session_code);
+  expect(screen.getByTestId('Title').querySelector('input')?.value).toBe('Saved officer title');
+  expect(screen.getByTestId('Description').querySelector('textarea')?.value).toBe('New extracted description');
+  expect(m.approve).not.toHaveBeenCalled();
+});
+
+it.each(['draft saved', 'type extracted', 'draft changed elsewhere', 'result changed elsewhere'] as const)(
+  'checks the exact current review before full retry after %s',
+  async (previousAction) => {
+    const typeExtraction = previousAction === 'type extracted';
+    const newSnapshot = '2'.repeat(64);
+    const newRevision = '2026-11-23T08:00:30Z';
+    const source = { ...retrySession, draft_snapshot:'1'.repeat(64) };
+    const targetType = { ...types[0], id:9, type_code:'CICPA_PASS', name_en:'CICPA Pass' };
+    if (typeExtraction) {
+      m.rerun.mockResolvedValueOnce({
+        success:true,
+        data:{ resultId:20, extractedFieldsJson:{}, fieldConfidenceJson:{}, preparation:{}, draftSnapshot:newSnapshot },
+      });
+    }
+    m.rerun.mockResolvedValue({success:true,data:{sessionCode:source.session_code,status:'review_pending'}});
+    m.save.mockResolvedValue({ success:true, data:{ snapshot:newSnapshot } });
+    const currentAnalysis = { ...source.ai_result, id:typeExtraction || previousAction === 'result changed elsewhere' ? 20 : 19 };
+    m.refreshIntake.mockResolvedValueOnce({
+      success:true,
+      data:{
+        ...source,
+        updated_at:newRevision,
+        draft_snapshot:previousAction === 'draft changed elsewhere' ? 'a'.repeat(64) : newSnapshot,
+        ai_result_id:currentAnalysis.id,
+        ai_result:currentAnalysis,
+      },
+    }).mockResolvedValueOnce({
+      success:true,
+      data:{
+        ...refreshedIntake,
+        ai_result_id:21,
+        ai_result:{...refreshedIntake.ai_result,id:21},
+      },
+    });
+    render(<QueryClientProvider client={new QueryClient()}>
+      <DmsAiIntakePageClient session={source} documentTypes={[...types, targetType]} />
+    </QueryClientProvider>);
+
+    if (typeExtraction) {
+      fireEvent.change(screen.getByLabelText('Document type'), { target:{ value:'9' } });
+      const dialog = within(await screen.findByRole('alertdialog'));
+      fireEvent.click(dialog.getByRole('button', { name:'Apply & continue' }));
+      await waitFor(() => expect(m.success).toHaveBeenCalledWith('Metadata extraction updated for the selected type'));
+      m.rerun.mockClear();
+    } else {
+      const approve = screen.getAllByRole<HTMLButtonElement>('button', { name:'Approve & Save' })[0];
+      await waitFor(() => expect(approve.disabled).toBe(false));
+      const save = screen.getAllByRole<HTMLButtonElement>('button', { name:'Save Draft' })[0];
+      fireEvent.click(save);
+      await waitFor(() => expect(m.success).toHaveBeenCalledWith('Draft saved'));
+    }
+
+    await retryFromReview();
+    if (previousAction === 'draft changed elsewhere' || previousAction === 'result changed elsewhere') {
+      await waitFor(() => expect(m.error).toHaveBeenCalledWith(expect.stringContaining('Reopen the original intake')));
+      expect(m.rerun).not.toHaveBeenCalled();
+      expect(m.refreshIntake).toHaveBeenCalledExactlyOnceWith(source.session_code);
+      expect(screen.getByTestId('Title').querySelector('input')?.value).toBe('Saved officer title');
+      return;
+    }
+    await waitFor(() => expect(m.success).toHaveBeenCalledWith('AI analysis refreshed'));
+    expect(m.rerun).toHaveBeenCalledExactlyOnceWith(source.id,newRevision);
+    expect(m.refreshIntake.mock.calls).toEqual([[source.session_code],[source.session_code]]);
+  },
+);
+
+it('retains the reviewed values when the retry read returns the old row version', async () => {
+  m.rerun.mockResolvedValue({success:true,data:{sessionCode:retrySession.session_code,status:'review_pending'}});
+  m.refreshIntake.mockResolvedValue({success:true,data:{...refreshedIntake,updated_at:intakeVersion}});
+  render(page(retrySession));
+
+  await retryFromReview();
+
+  expect(m.refreshIntake).toHaveBeenCalledOnce();
+  expect(screen.getByTestId('Title').querySelector('input')?.value).toBe('Saved officer title');
+  expect(screen.getByTestId('Description').querySelector('textarea')?.value).toBe('');
+  expect(m.success).not.toHaveBeenCalled();
+  await waitFor(() => expect(m.error).toHaveBeenCalledWith(expect.stringContaining('Reopen the original intake')));
+});
+
+it('disables both retry controls until approval receipt recovery completes', async () => {
+  let finishRecovery!: (value: unknown) => void;
+  m.recover.mockReturnValue(new Promise(resolve => { finishRecovery = resolve; }));
+  m.rerun.mockResolvedValue({success:true,data:{sessionCode:retrySession.session_code,status:'review_pending'}});
+  m.refreshIntake.mockResolvedValue({success:true,data:refreshedIntake});
+  render(page({...retrySession, intake_status:'failed'}));
+
+  const header = screen.getByRole<HTMLButtonElement>('button', { name: 'Re-run AI' });
+  const fallback = screen.getByRole<HTMLButtonElement>('button', { name: 'Retry AI' });
+  expect(header.disabled).toBe(true);
+  expect(fallback.disabled).toBe(true);
+  fireEvent.click(header);
+  fireEvent.click(fallback);
+  expect(m.rerun).not.toHaveBeenCalled();
+
+  await act(async () => finishRecovery({success:true,data:null}));
+  expect(header.disabled).toBe(false);
+  expect(fallback.disabled).toBe(false);
+  await act(async () => fireEvent.click(fallback));
+
+  await waitFor(() => expect(m.success).toHaveBeenCalledWith('AI analysis refreshed'));
+  expect(m.rerun).toHaveBeenCalledExactlyOnceWith(retrySession.id, intakeVersion);
+  expect(m.refreshIntake).toHaveBeenCalledExactlyOnceWith(retrySession.session_code);
+  expect(m.approve).not.toHaveBeenCalled();
+});

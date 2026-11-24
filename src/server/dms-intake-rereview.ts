@@ -8,6 +8,7 @@ import {loadMetadataFieldsForDocumentType} from "@/lib/dms/ai/load-metadata-fiel
 import {prepareIntakeOutput} from "@/lib/dms/preparation/intake";
 import {preparationId,preparationHash} from "@/lib/dms/preparation/contracts";
 import {PROMPT_VERSION} from "@/lib/dms/ai/prompt-builders";
+import {FOREIGN_IMMIGRATION_TYPE, hasQatarResidencyPermitHeadings, readQatarWorkResidencyPermit} from "@/lib/dms/ai/qatar-residency-permit";
 import type {DmsAiOutput} from "@/lib/dms/ai/types";
 const request=z.strictObject({uploadSessionId:preparationId,documentTypeId:preparationId,mergeMode:z.enum(["fill_missing_only","replace_ai_values","keep_user_values"])});
 const receipt=z.object({resultId:preparationId,extractedFieldsJson:z.record(z.string(),z.unknown()),fieldConfidenceJson:z.record(z.string(),z.unknown()),preparation:z.record(z.string(),z.unknown()),draftSnapshot:preparationHash,skipped:z.literal(false)}).strict();
@@ -27,8 +28,15 @@ export async function rerunRetainedIntakeMetadata(raw:unknown){
   if(state.state==="completed"&&state.receipt)return {success:true as const,data:state.receipt};
   if(state.state!=="ready"||!state.source)return {success:false as const,uncertain:true,error:"The original extraction is unconfirmed. Retain the same review."};
   const preflight=state.source;
+  const isQatarPermit=preflight.typeCode===FOREIGN_IMMIGRATION_TYPE &&
+    (hasQatarResidencyPermitHeadings(preflight.text??"") ||
+      (preflight.existingFields?.issuer_country==="QA" && preflight.existingFields?.credential_kind==="residence_permit"));
+  const verifiedPermit=isQatarPermit ? readQatarWorkResidencyPermit(preflight.text??"") : null;
+  if(isQatarPermit&&!verifiedPermit)return {success:false as const,error:"Verify the Qatar work residency permit heading and both sides before rerunning AI Fill."};
   const isPortrait=["EMPLOYEE_PHOTO","DEPENDENT_PHOTO"].includes(preflight.typeCode);
   const defs=await loadMetadataFieldsForDocumentType(db,p.documentTypeId,"intake");
+  const allowed=new Set(defs.map(d=>d.fieldCode));
+  if(verifiedPermit?.some(field=>!allowed.has(field.fieldCode)))return {success:false as const,error:"The Qatar residency permit fields are unavailable for this review."};
   const configured=isPortrait?null:await getDmsAiProvider();
   if(!isPortrait&&(!preflight.text?.trim()||!configured?.provider.isConfigured()))return {success:false as const,error:"Retained text or the configured provider is unavailable. No paid request was started."};
   const begun=await db.rpc("ai_mod04_intake_stage",{p_action:"begin",p_data:{...p,expectedStageHash:preflight.stageHash}});
@@ -46,8 +54,15 @@ export async function rerunRetainedIntakeMetadata(raw:unknown){
    providerCode=configured.provider.providerCode;model=configured.provider.modelId??null;
    output=await configured.provider.analyze({ocrText:bound.text.slice(0,48000),imageFiles:[],currentTypeCode:bound.typeCode,typeCandidates:[{typeCode:bound.typeCode,nameEn:bound.typeName,description:null,categoryName:null}],metadataFields:defs,originalFilename:bound.filename});
   }
+  if(verifiedPermit){
+   const aiFields=new Map(output.extraction.fields.map(field=>[field.fieldCode,field]));
+   output.extraction.fields=verifiedPermit.map(({fieldCode,value,sourceLabel})=>{
+    const ai=aiFields.get(fieldCode);
+    const agrees=ai?.value.trim()===value;
+    return {fieldCode,value,confidenceScore:agrees?ai.confidenceScore:0,confidenceLabel:agrees?ai.confidenceLabel:"low",sourceSnippet:`Retained OCR · ${sourceLabel}`};
+   });
+  }
   const fields:Record<string,unknown>={},confidence:Record<string,unknown>={};
-  const allowed=new Set(defs.map(d=>d.fieldCode));
   for(const field of output.extraction.fields){if(!allowed.has(field.fieldCode))continue;fields[field.fieldCode]=field.value;confidence[field.fieldCode]={score:field.confidenceScore,label:field.confidenceLabel,source_snippet:field.sourceSnippet??null};}
   const preparation=prepareIntakeOutput(output,{typeCode:bound.typeCode,typeName:bound.typeName,originalName:bound.filename,verifiedSubject:null,sourceHash:bound.sourceHash});
   const published=await createAdminClient().rpc("ai_mod04_intake_stage",{p_action:"complete",p_data:{token:state.token,fields,confidence,preparation,provenance:{provider:providerCode,model,promptVersion:PROMPT_VERSION,durationMs:Date.now()-started,promptTokens:output.promptTokens??null,completionTokens:output.completionTokens??null,inputTruncated:(bound.text?.length??0)>48000}}});

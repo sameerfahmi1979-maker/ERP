@@ -3,10 +3,13 @@ import { z } from "zod";
 import { createHash } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { currentJobClaim } from "@/lib/dms/ai-jobs/claim-scope";
-import { preparationSnapshotSchema, modelPreparationSchema } from "@/lib/dms/preparation/contracts";
+import { preparationSnapshotSchema, modelPreparationSchema, type ModelPreparation } from "@/lib/dms/preparation/contracts";
 import { runPreparationStage } from "@/lib/dms/preparation/stages";
 import { buildPreparationCandidates, preparationPrompt, isPortraitPreparation } from "@/lib/dms/preparation/candidates";
 import { callCommonAiStructuredCompletion } from "@/lib/ai/common/provider-bridge";
+import { ALGT_DMS_PREVIEW_COMPANY, applySavedTrainingReview, trainingOutputFromPreparation, trainingPreviewEnabled, trainingType, verifyTrainingOriginal } from "@/server/dms-training-profile-review";
+import { approvedProfilePreviewConfigured, approvedProfilePreviewEnabled, mergeApprovedProfileFields, prepareSavedApprovedProfile, SPECIALIST_TRAINING_FIELDS, verifyApprovedProfile } from "@/server/dms-approved-profile-review";
+import { applySavedCicpaWording, cicpaWordingPreviewEnabled, isCicpaPassType } from "@/server/dms-cicpa-wording-review";
 import { readVerifiedIntakeSource } from "@/server/dms-verified-intake-source";
 import { getDmsAiProvider } from "@/lib/dms/ai/factory";
 import { routeOcr } from "@/lib/dms/ocr/ocr-router";
@@ -46,7 +49,7 @@ async function prepareDocument(documentId: number, claim: NonNullable<ReturnType
       z.strictObject({ success: z.literal(true), preparation: z.literal(false) }),
       z.strictObject({ success: z.literal(true), preparation: z.literal(true), context: z.object({
         source: preparationSnapshotSchema, mode: z.enum(["reuse_text", "reread_files"]), fileIds: z.array(z.number().int().positive()).min(1).max(10),
-        state: z.string(), resultId: z.number().int().positive().nullable(),
+        state: z.string(), resultId: z.number().int().positive().nullable(), target: targetSchema.nullable().optional(),
       }).passthrough() }),
     ]).parse(await rpc("context"));
     if (!read.preparation) return null;
@@ -56,6 +59,11 @@ async function prepareDocument(documentId: number, claim: NonNullable<ReturnType
     const source = { ...context.source, files: context.source.files.filter(f => context.fileIds.includes(f.id)).map(f => ({ ...f })) };
     if (source.files.length !== context.fileIds.length) throw Error("selected_source_unavailable");
     const portrait = isPortraitPreparation(source);
+    const originals = new Map<number, Awaited<ReturnType<typeof readVerifiedIntakeSource>>>();
+    const readOriginal = (file: typeof source.files[number]) => {
+      if (!file.bucket || !file.path) throw Error("source_location_unavailable");
+      return readVerifiedIntakeSource(db.storage.from(file.bucket), { path: file.path, name: file.name, mime: file.mime, size: file.size, sha256: file.sha256 });
+    };
     // Older retained reuse requests keep their original semantics. Requests
     // created with the verification flag require qualified text for reuse.
     const filesToRead = source.files.filter(file => context.mode === 'reread_files' || file.verifiedText === false);
@@ -69,8 +77,9 @@ async function prepareDocument(documentId: number, claim: NonNullable<ReturnType
       const { provider } = await getDmsAiProvider("ocr");
       for (const file of filesToRead) {
         const extracted = await runPreparationStage(rpc, `ocr:${file.id}`, ocrReceipt, async () => {
-          if (!file.bucket || !file.path) throw Error("source_location_unavailable");
-          const verified = await readVerifiedIntakeSource(db.storage.from(file.bucket), { path: file.path, name: file.name, mime: file.mime, size: file.size, sha256: file.sha256 });
+          const verified = await readOriginal(file);
+          if (context.mode === "reread_files" && source.files.length === 1 && (approvedProfilePreviewConfigured() ||
+            ((trainingPreviewEnabled() || cicpaWordingPreviewEnabled()) && file.mime === "application/pdf"))) originals.set(file.id, verified);
           // Candidate-only extraction; never call the old accepted-OCR writer.
           const result = await traceSpan('dms.ocr', () => routeOcr({ buffer: verified.bytes, mimeType: file.mime, fileName: file.name,
             featureFlags: { dmsOcr: true, dmsOcrRouter: true, dmsOcrAzure: false, dmsOcrGptVisionFallback: enabled.get("DMS_OCR_GPT_VISION_FALLBACK") === true },
@@ -118,24 +127,90 @@ async function prepareDocument(documentId: number, claim: NonNullable<ReturnType
       catch { throw new StructuredAiFailure("provider_output_invalid"); }
     };
     let analyzed = await analyze("analysis", source, types), working = source;
-    let target: z.infer<typeof targetSchema> | null = null;
+    let target = context.target ?? null;
     const code = analyzed.output.documentTypeCode;
-    if (code && code !== source.typeCode && types.some(t => t.code === code)) {
+    const suggestedType = code && code !== source.typeCode && types.some(t => t.code === code) ? code : null;
+    const reread = context.mode === "reread_files";
+    const trainingCandidate = reread ? trainingType(ALGT_DMS_PREVIEW_COMPANY, code, source.typeCode) : undefined;
+    const cicpaPreview = reread && cicpaWordingPreviewEnabled() && [source.typeCode, target?.typeCode, suggestedType].some(isCicpaPassType);
+    let previewCompany: number | null = null;
+    if (trainingCandidate || cicpaPreview || (reread && approvedProfilePreviewConfigured())) {
+      const scope = await db.from("dms_documents").select("owning_company_id").eq("id", documentId).is("deleted_at", null).maybeSingle();
+      if (scope.error || !scope.data) throw Error("source_changed");
+      previewCompany = scope.data.owning_company_id;
+    }
+    const readOnlyPreview = reread && approvedProfilePreviewEnabled(previewCompany);
+    const trainingCode = previewCompany === ALGT_DMS_PREVIEW_COMPANY ? trainingCandidate : undefined;
+    const getPreviewOriginal = async () => {
+      if (source.files.length !== 1) return undefined;
+      const [file] = source.files;
+      const original = originals.get(file.id) ?? await readOriginal(file);
+      if (original.proof.sha256 !== file.sha256) throw Error("source_changed");
+      originals.set(file.id, original);
+      return original;
+    };
+    if (target && readOnlyPreview) throw Error("preparation_outcome_unconfirmed");
+    const trainingOriginal = trainingCode ? await getPreviewOriginal() : undefined;
+    const trainingInputs = trainingOriginal ? [{ bytes: trainingOriginal.bytes, sha256: trainingOriginal.proof.sha256, mime: source.files[0].mime }] : [];
+    // Establish the specialist hold before adding an immutable type binding.
+    const preflightTraining = trainingCode && (suggestedType || target)
+      ? await verifyTrainingOriginal(trainingCode, trainingInputs, trainingOutputFromPreparation(analyzed.output)) : undefined;
+    if (target && preflightTraining && !preflightTraining.prepared) throw Error("preparation_outcome_unconfirmed");
+    if (!target && suggestedType && !readOnlyPreview && preflightTraining?.prepared !== false) {
       target = targetSchema.parse(await rpc("bind_type", { typeCode: code }));
+    }
+    if (target) {
+      if (target.typeCode !== code) throw Error("source_changed");
       if (target.canApply) {
         working = { ...source, documentTypeId: target.documentTypeId, categoryId: target.categoryId, typeName: target.typeName, typeCode: target.typeCode, fields: target.fields, profile: target.profile, profileHash: target.profileHash };
         analyzed = await analyze(`analysis:${target.documentTypeId}`, working, [{ code: target.typeCode, name: target.typeName }]);
         if (analyzed.output.documentTypeCode && analyzed.output.documentTypeCode !== target.typeCode) throw Error("type_comparison_unresolved");
       }
     }
-    const candidate = buildPreparationCandidates(working, analyzed.output);
+    let reviewed: ReturnType<typeof applySavedTrainingReview> | undefined;
+    let cicpaReview: Awaited<ReturnType<typeof applySavedCicpaWording>> | undefined;
+    let approvedSaved: { output: ModelPreparation; trusted?: NonNullable<Awaited<ReturnType<typeof applySavedCicpaWording>>["trusted"]> } | undefined;
+    const checkCicpa = cicpaPreview && isCicpaPassType(working.typeCode);
+    if (previewCompany === ALGT_DMS_PREVIEW_COMPANY) {
+      if (checkCicpa && preflightTraining?.prepared !== false) {
+        const original = await getPreviewOriginal();
+        cicpaReview = await applySavedCicpaWording(working, analyzed.output,
+          original ? { sha256: original.proof.sha256, mime: source.files[0].mime } : undefined);
+      } else if (trainingCode) {
+        const review = preflightTraining && !target?.canApply ? preflightTraining
+          : await verifyTrainingOriginal(trainingCode, trainingInputs, trainingOutputFromPreparation(analyzed.output));
+        if (target && !review.prepared) {
+          // The target and completed stages remain recoverable under the original operation.
+          throw Error("preparation_outcome_unconfirmed");
+        }
+        reviewed = applySavedTrainingReview(working, analyzed.output, review);
+      }
+      if (readOnlyPreview) {
+        const original = await getPreviewOriginal();
+        let approvedReview = await verifyApprovedProfile(original?.proof, code, source.typeCode, analyzed.output.fields);
+        if (reviewed?.held && approvedReview.state === "verified") approvedReview = { state: "held", reason: "specialist_conflict" };
+        const fields = mergeApprovedProfileFields(approvedReview, reviewed?.trusted?.fields ?? cicpaReview?.trusted?.fields,
+          reviewed ? SPECIALIST_TRAINING_FIELDS : cicpaReview?.controlledKeys);
+        const file = original ? source.files[0] : undefined;
+        approvedSaved = {
+          output: prepareSavedApprovedProfile(reviewed?.output ?? cicpaReview?.output ?? analyzed.output, approvedReview, fields),
+          ...(file && Object.keys(fields).length ? { trusted: { sha256: file.sha256, fileId: file.id, fields } } : {}),
+        };
+      }
+    }
+    const candidate = buildPreparationCandidates(working, approvedSaved?.output ?? reviewed?.output ?? cicpaReview?.output ?? analyzed.output,
+      approvedSaved ? approvedSaved.trusted : reviewed?.trusted ?? cicpaReview?.trusted);
+    if (approvedSaved) candidate.values = candidate.values.filter(value =>
+      value.key.startsWith("metadata:") || value.key === "issue_date" || value.key === "expiry_date",
+    );
     if(catalogue.data.length>200)candidate.warnings.push("The registered catalogue exceeds the bounded classification limit. This review used the current type only; it does not claim an app-wide type search.");
     candidate.profileHash = context.source.profileHash;
+    if (reviewed?.held) candidate.values = candidate.values.filter(value => value.key.startsWith("metadata:") && value.proposed === (value.current ?? ""));
     if (target) {
       const descriptor = {documentTypeId:target.documentTypeId,typeCode:target.typeCode,typeName:target.typeName,categoryId:target.categoryId,categoryName:target.categoryName,profileHash:target.profileHash,schemaHash:target.schemaHash,canApply:target.canApply,holdReason:target.holdReason};
       candidate.proposedType = descriptor;
       if (target.canApply) candidate.values.unshift({ key: "document_type_id", label: "Document type and registered category", current: String(source.documentTypeId), proposed: String(target.documentTypeId), evidence: [], confidence: null });
-    } else if (code && code !== source.typeCode) candidate.warnings.push("The suggested type was not in the verified catalogue. The existing type is retained.");
+    } else if (!approvedSaved && !reviewed && code && code !== source.typeCode) candidate.warnings.push("The suggested type was not in the verified catalogue. The existing type is retained.");
     if (source.files.some(f => (f.text?.length ?? 0) > 24000)) candidate.warnings.push("Analysis used bounded source excerpts. Review the original for material outside those excerpts.");
     const published = z.object({ success: z.literal(true), resultId: z.number().int().positive(), replayed: z.boolean() }).strict().parse(await traceSpan('dms.publish', () => rpc("publish", { candidate,
       provenance: { provider: analyzed.provider, model: analyzed.model, configId: analyzed.configId, promptVersion: analyzed.promptVersion, schemaVersion: analyzed.schemaVersion, inputHash: analyzed.inputHash, promptTokens: analyzed.promptTokens, completionTokens: analyzed.completionTokens, durationMs: analyzed.durationMs },

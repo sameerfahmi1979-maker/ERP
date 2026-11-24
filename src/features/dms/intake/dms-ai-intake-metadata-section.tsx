@@ -8,12 +8,22 @@ import { DmsAiIntakeFieldRow } from "./dms-ai-intake-field-row";
 import { DmsAiIntakeZeroDefinitionsNotice } from "./dms-ai-intake-zero-definitions-notice";
 import { getMetadataDefinitionsForType } from "@/server/actions/dms/document-metadata-values";
 import type { DmsMetadataDefinitionRow } from "@/server/actions/dms/document-metadata-values";
-import { groupMetadataDefinitionsByFieldGroup } from "@/lib/dms/metadata/metadata-definition-shared";
+import { groupMetadataDefinitionsByFieldGroup, parseMetadataOptions } from "@/lib/dms/metadata/metadata-definition-shared";
 import { Loader2 } from "lucide-react";
 
 interface MetadataValue {
   fieldType: string;
   rawValue: string;
+}
+
+export function resolveIntakeMetadataValue(
+  fieldType: string,
+  reviewedValue: MetadataValue | undefined,
+  extractedValue: unknown,
+): MetadataValue | undefined {
+  if (reviewedValue !== undefined) return reviewedValue;
+  if (extractedValue == null) return undefined;
+  return { fieldType, rawValue: String(extractedValue) };
 }
 
 interface FieldConfidenceEntry {
@@ -30,7 +40,7 @@ interface DmsAiIntakeMetadataSectionProps {
   fieldConfidenceJson: Record<string, unknown> | null;
   values: Record<number, MetadataValue>;
   onChange: (definitionId: number, fieldType: string, rawValue: string) => void;
-  /** Called ONCE with all AI-seeded values when definitions first load. */
+  /** The saved-document preparation form can retain suggestions in its draft. */
   onBulkSeed?: (seeded: Record<number, { fieldType: string; rawValue: string }>) => void;
   /** DMS AI META.2 Flow A — called after AI-suggested definitions are approved, so the parent can offer re-extraction. */
   onDefinitionsCreated?: (documentTypeId: number) => void;
@@ -44,7 +54,9 @@ function buildReviewWarning(
   const warnings: string[] = [];
   const trimmed = currentValue.trim();
   if (!trimmed && (def.is_required || def.review_required_if_missing)) {
-    warnings.push("Enter a value before approving.");
+    warnings.push(def.field_code === "visa_number"
+      ? "Use the visa number printed on the document. If it is absent, leave the intake pending and verify the document type."
+      : "Enter a value before approving.");
   }
   if (
     def.review_required_if_low_confidence &&
@@ -67,23 +79,36 @@ function MetadataFieldInput({
   onChange: (definitionId: number, fieldType: string, rawValue: string) => void;
 }) {
   const placeholder = def.placeholder_en ?? def.field_label_en;
-  if (def.field_type === "textarea") {
+  const options = def.field_type === "select" ? parseMetadataOptions(def.options_json) : [];
+  if (options.length) {
+    const unavailable = !!currentValue && !options.some(option => option.value === currentValue);
+    return (
+      <select
+        id={"intake-metadata-" + def.id} name={def.field_code} required={def.is_required}
+        aria-invalid={unavailable || (def.is_required && !currentValue) || undefined}
+        className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm focus-visible:outline-2 focus-visible:outline-primary"
+        value={currentValue}
+        onChange={(event) => onChange(def.id, def.field_type, event.target.value)}
+      >
+        <option value="">Select…</option>
+        {unavailable && <option value={currentValue} disabled>{currentValue} (unavailable)</option>}
+        {options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+    );
+  }
+  const arabicLocations = def.field_code === "cicpa_locations_arabic";
+  if (def.field_type === "textarea" || arabicLocations) {
     return (
       <Textarea
         id={`intake-metadata-${def.id}`} name={def.field_code} required={def.is_required}
         aria-invalid={def.is_required && !currentValue.trim() || undefined}
         value={currentValue}
         onChange={(e) => onChange(def.id, def.field_type, e.target.value)}
-        rows={2}
+        rows={arabicLocations ? 3 : 2}
         className="text-sm"
         placeholder={placeholder}
-        // Arabic/RTL content (e.g. AI-extracted Arabic name fields) must render
-        // right-to-left with correctly ordered word arrangement. dir="auto"
-        // lets the browser pick the direction per the first strong-direction
-        // character in the field's current value, and re-evaluates live as
-        // the value changes (AI seed or manual edit) — no per-field-code
-        // Arabic detection needed.
-        dir="auto"
+        dir={arabicLocations ? "rtl" : "auto"}
+        lang={arabicLocations ? "ar" : undefined}
       />
     );
   }
@@ -138,15 +163,11 @@ export function DmsAiIntakeMetadataSection({
   const definitions = documentTypeId ? definitionsQuery.data ?? [] : [];
   const isLoading = !!documentTypeId && definitionsQuery.isPending;
 
-  // Seed the parent formValues with AI-extracted values immediately after
-  // definitions load. All fields are collected first and emitted in ONE bulk
-  // call via onBulkSeed so the parent can merge them atomically. Calling
-  // onChange() per-field in a loop causes a stale-closure race: each call
-  // captures the same snapshot of values.metadataValues and the last call
-  // overwrites all previous ones (React 18 batching does not help here).
+  // Only saved-document preparation opts into seeding its draft. Ordinary
+  // intake resolves suggestions from the current extraction as it renders.
   useEffect(() => {
     if (!documentTypeId) { seededForTypeRef.current = null; return; }
-    if (!definitions.length || !documentTypeId) return;
+    if (!onBulkSeed || !definitions.length) return;
     if (seededForTypeRef.current === documentTypeId) return;
     seededForTypeRef.current = documentTypeId;
 
@@ -157,16 +178,7 @@ export function DmsAiIntakeMetadataSection({
         seeded[def.id] = { fieldType: def.field_type, rawValue: String(aiValue) };
       }
     }
-    if (Object.keys(seeded).length > 0) {
-      if (onBulkSeed) {
-        onBulkSeed(seeded);
-      } else {
-        // Fallback: per-field calls (legacy callers without onBulkSeed)
-        for (const [idStr, v] of Object.entries(seeded)) {
-          onChange(Number(idStr), v.fieldType, v.rawValue);
-        }
-      }
-    }
+    if (Object.keys(seeded).length > 0) onBulkSeed(seeded);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [definitions]);
 
@@ -212,7 +224,7 @@ export function DmsAiIntakeMetadataSection({
             const extracted = extractedFieldsJson?.[def.field_code];
             const aiValue = extracted == null ? null : String(extracted);
             const confEntry = fieldConfidenceJson?.[def.field_code] as FieldConfidenceEntry | undefined;
-            const currentValue = values[def.id]?.rawValue ?? aiValue ?? "";
+            const currentValue = resolveIntakeMetadataValue(def.field_type, values[def.id], aiValue)?.rawValue ?? "";
             const reviewWarning = buildReviewWarning(def, currentValue, confEntry);
             const label = def.field_label_ar
               ? `${def.field_label_en} / ${def.field_label_ar}`

@@ -88,14 +88,14 @@ describe("ERP messages", () => {
     const f = vi
       .fn()
       .mockResolvedValueOnce(ok({ uploadId: "u" }))
-      .mockResolvedValueOnce(ok({ state: "reserved" }))
+      .mockResolvedValueOnce(ok({ uploadId: "u", conversationId: "t", byteLength: 4, state: "reserved" }))
       .mockResolvedValueOnce(ok({ state: "failed" }));
     vi.stubGlobal("fetch", f);
     await expect(upload("t", file, false, key)).rejects.toThrow("verification");
     expect(f.mock.calls[2][0]).toBe(root + "/uploads/u");
     f.mockClear()
       .mockResolvedValueOnce(ok({ uploadId: "u" }))
-      .mockResolvedValueOnce(ok({ state: "verified" }));
+      .mockResolvedValueOnce(ok({ uploadId: "u", conversationId: "t", byteLength: 4, state: "verified" }));
     expect(await upload("t", file, false, key)).toBe("u");
     expect(f).toHaveBeenCalledTimes(2);
   });

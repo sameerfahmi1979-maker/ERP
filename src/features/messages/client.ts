@@ -80,6 +80,34 @@ export async function pages<T>(op: string, args: Args, signal?: AbortSignal) {
   } while (cursor);
   return items;
 }
+
+export class TerminalChatUploadError extends Error {
+  constructor(readonly uploadId: string) {
+    super("This attachment upload expired or failed. Retry the draft to reserve a new upload.");
+  }
+}
+
+type UploadStatus = {
+  uploadId: string;
+  conversationId: string;
+  byteLength: number;
+  state: "reserved" | "verified" | "attached" | "failed";
+  terminal?: boolean;
+};
+
+export async function chatUploadStatus(uploadId: string, conversationId: string, signal?: AbortSignal) {
+  const status = await command<UploadStatus>("chat.uploadStatus", { uploadId }, signal);
+  if (
+    status?.uploadId !== uploadId || status.conversationId !== conversationId ||
+    !Number.isSafeInteger(status.byteLength) || status.byteLength < 1 || status.byteLength > limitBytes ||
+    !["reserved", "verified", "attached", "failed"].includes(status.state) ||
+    (status.terminal !== undefined && typeof status.terminal !== "boolean") ||
+    (status.terminal && status.state === "attached") ||
+    (status.terminal === false && status.state === "failed")
+  ) throw Error("The ERP could not confirm this attachment upload.");
+  return { ...status, terminal: status.state === "failed" || status.terminal === true };
+}
+
 export async function upload(
   conversationId: string,
   file: File,
@@ -102,8 +130,10 @@ export async function upload(
     key,
     signal,
   );
-  const status = await command<{ state: string }>("chat.uploadStatus", { uploadId }, signal);
-  if (!["verified", "attached"].includes(status.state)) {
+  const status = await chatUploadStatus(uploadId, conversationId, signal);
+  if (status.byteLength !== file.size) throw Error("The reserved attachment size changed.");
+  if (status.terminal) throw new TerminalChatUploadError(uploadId);
+  if (status.state === "reserved") {
     const response = await check(
       await chatFetch(root + "/uploads/" + encodeURIComponent(uploadId), {
         method: "POST",

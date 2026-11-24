@@ -9,7 +9,8 @@ export function MessagesBadge() {
     "message-badge",
     async (s) => {
       const profile = await command<Profile>("communications.profile", {}, s);
-      if (!profile.chat.eligible || !profile.chat.configured) return null;
+      if (!profile.chat.eligible || !profile.chat.configured || profile.chat.refreshMode === "manual")
+        return null;
       return command<{ unreadMessages: number }>(
         "notifications.webList",
         { filter: "messages", limit: 1 },

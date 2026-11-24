@@ -1,6 +1,6 @@
 /* Only immutable application-owned public assets enter this cache. */
-const CACHE = "algt-chat-offline-shell-6aca13af9afb03339724";
-const EXPECTED = {"/messages-offline.html":"1af25411a6b5d5fe09c454056d8b1044f8e29a526385a73eee3b78747f9f457f","/messages-offline.css":"9b26c292989e1d768717b78ef9bc0f8a13e2724721959a6610dfe7aadb89040f","/messages-offline.mjs":"1e670cf8ee5b2147252f2ec5919f078168d9a5012a71b5fed90231020a7aae58"}; // Generated digests of public assets
+const CACHE = "algt-chat-offline-shell-9662c990878ef63f3f91";
+const EXPECTED = {"/messages-offline.html":"1af25411a6b5d5fe09c454056d8b1044f8e29a526385a73eee3b78747f9f457f","/messages-offline.css":"9b26c292989e1d768717b78ef9bc0f8a13e2724721959a6610dfe7aadb89040f","/messages-offline.mjs":"72b9a9a7c147ca09d648d1ce96a2579d70f1e30bf91c08f129059af580c4b1bc"}; // Generated digests of public assets
 const PUBLIC_FILES = ["/messages-offline.html","/messages-offline.css","/messages-offline.mjs"];
 self.addEventListener("install", event => event.waitUntil((async () => {
   const cache = await caches.open(CACHE);

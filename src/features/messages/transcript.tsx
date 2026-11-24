@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { command, mutate, pages, ChatError } from "./client";
 import { useLoad, useTask } from "./hooks";
 import { Issue } from "./controls";
@@ -280,6 +280,81 @@ interface View extends History {
   members: Member[];
   offline: boolean;
 }
+const PILOT_HISTORY_SCAN_PAGES = 3;
+
+type ActivityItem = { profileId: string; online: boolean; typing: boolean };
+
+function ConversationActivity({
+  id,
+  members,
+  viewer,
+  manualRefresh,
+}: {
+  id: string;
+  members: Member[];
+  viewer: string;
+  manualRefresh: boolean;
+}) {
+  async function check(signal: AbortSignal) {
+    await mutate(
+      "chat.pulse",
+      { conversationId: id, typing: false, pulseAt: new Date().toISOString() },
+      crypto.randomUUID(),
+      signal,
+    );
+    return command<{ items: ActivityItem[] }>("chat.activity", { conversationId: id }, signal);
+  }
+  const activity = useLoad(manualRefresh ? "" : id, check, 5000);
+  const [sample, setSample] = useState<ActivityItem[]>();
+  const [typing, setTyping] = useState(false);
+  const pending = useRef<AbortController | null>(null);
+  const task = useTask();
+  useEffect(() => () => pending.current?.abort(), []);
+  useEffect(() => {
+    if (!sample) return;
+    const typingExpiry = window.setTimeout(() => setTyping(false), 6000);
+    const onlineExpiry = window.setTimeout(() => setSample(undefined), 45000);
+    return () => {
+      window.clearTimeout(typingExpiry);
+      window.clearTimeout(onlineExpiry);
+    };
+  }, [sample]);
+  const shown = manualRefresh ? sample : activity.data?.items;
+  return (
+    <>
+      {manualRefresh && (
+        <button
+          disabled={task.busy}
+          onClick={() =>
+            void task.run(async () => {
+              setSample(undefined);
+              const controller = new AbortController();
+              pending.current = controller;
+              const result = await check(controller.signal);
+              controller.signal.throwIfAborted();
+              setTyping(true);
+              setSample(result.items);
+            })
+          }
+        >
+          Check activity
+        </button>
+      )}
+      <Issue text={task.issue} />
+      <small>
+        {shown
+          ?.filter((item) => item.profileId !== viewer)
+          .map((item) => {
+            const name = members.find((member) => member.profileId === item.profileId)?.name ?? "Member";
+            if (manualRefresh) return name + (typing && item.typing ? " was typing" : " was online");
+            return name + (item.typing ? " is typing…" : " is online");
+          })
+          .join(" · ")}
+      </small>
+    </>
+  );
+}
+
 export function Transcript({
   id,
   mode,
@@ -304,9 +379,13 @@ export function Transcript({
   const [details, setDetails] = useState(false),
     [reply, setReply] = useState<Message>(),
     [depth, setDepth] = useState(1),
+    [historyCursor, setHistoryCursor] = useState<string>(),
     [pinned, setPinned] = useState(false);
+  const manualRefresh = profile.chat.refreshMode === "manual";
+  const after = manualRefresh ? historyCursor : undefined;
+  const findJump = !after && jump;
   const log = useLoad<View>(
-    JSON.stringify([id, mode, depth, jump, pinned]),
+    JSON.stringify([id, mode, depth, findJump, pinned, after]),
     async (signal) => {
       const cacheKey = "cache/" + id + "/history";
       if (!navigator.onLine && mode === "participant") {
@@ -319,14 +398,15 @@ export function Transcript({
         const [conversation, members, first] = await Promise.all([
           command<Conversation>("chat.conversation", args, signal),
           pages<Member>("chat.members", args, signal),
-          command<Page<Message>>("chat.messages", args, signal),
+          command<Page<Message>>("chat.messages", { ...args, ...(after && { cursor: after }) }, signal),
         ]);
         let cursor = first.nextCursor;
         const messages = first.items.slice();
         const seen = new Set<string>();
         for (
           let n = 1;
-          cursor && (n < depth || pinned || (jump && !messages.some((m) => m.id === jump)));
+          cursor && (!manualRefresh || n < PILOT_HISTORY_SCAN_PAGES) &&
+            (n < depth || pinned || (findJump && !messages.some((m) => m.id === findJump)));
           n++
         ) {
           if (seen.has(cursor)) throw Error("History pagination did not advance.");
@@ -341,7 +421,7 @@ export function Transcript({
           messages: messages.reverse(),
           nextCursor: cursor,
         };
-        if (mode === "participant") {
+        if (mode === "participant" && !after) {
           signal.throwIfAborted();
           // Reconciled tombstones cannot retain an accessible cached media file.
           const prior = await vault.get<History>(cacheKey);
@@ -358,24 +438,34 @@ export function Transcript({
         throw e;
       }
     },
-    12000,
+    manualRefresh ? 0 : 12000,
+    manualRefresh ? "pilotProtected" : "window",
   );
   const latest = log.data?.messages.at(-1)?.seq;
+  const unread = !manualRefresh || (!after && Boolean(log.data?.conversation.unreadCount));
   const [readIssue, setReadIssue] = useState("");
   useEffect(() => {
-    if (!latest || mode !== "participant" || log.data?.offline) return;
+    if (!latest || !unread || mode !== "participant" || log.data?.offline) return;
     const control = new AbortController();
+    let reading = false;
+    let readThrough = false;
     const read = () => {
       if (document.hidden || !document.hasFocus()) return;
+      if (manualRefresh && (reading || readThrough)) return;
+      reading = true;
       void mutate("chat.read", { conversationId: id, upToSeq: latest }, crypto.randomUUID(), control.signal)
         .then(() => {
           if (!control.signal.aborted) {
+            readThrough = true;
             setReadIssue("");
             notify();
           }
         })
         .catch((e) => {
           if (!control.signal.aborted) setReadIssue(e.message);
+        })
+        .finally(() => {
+          reading = false;
         });
     };
     read();
@@ -386,24 +476,7 @@ export function Transcript({
       window.removeEventListener("focus", read);
       document.removeEventListener("visibilitychange", read);
     };
-  }, [id, latest, mode, log.data?.offline, notify]);
-  const activity = useLoad(
-    mode === "participant" && log.data && !log.data.offline ? id : "",
-    async (signal) => {
-      await mutate(
-        "chat.pulse",
-        { conversationId: id, typing: false, pulseAt: new Date().toISOString() },
-        crypto.randomUUID(),
-        signal,
-      );
-      return command<{ items: { profileId: string; online: boolean; typing: boolean }[] }>(
-        "chat.activity",
-        { conversationId: id },
-        signal,
-      );
-    },
-    5000,
-  );
+  }, [id, latest, mode, log.data?.offline, notify, manualRefresh, unread]);
   const found = Boolean(jump && log.data?.messages.some((m) => m.id === jump));
   useEffect(() => {
     if (found && jump) document.getElementById("message-" + jump)?.focus();
@@ -417,10 +490,11 @@ export function Transcript({
     <section className="chat-thread">
       <div className="chat-actions">
         <button onClick={back}>Back to inbox</button>
-        <button onClick={refresh}>Refresh conversation</button>
+        <button onClick={manualRefresh ? log.refresh : refresh}>Refresh conversation</button>
       </div>
       <Issue text={log.issue || readIssue} />
-      {!data && !log.issue && <p role="status">Loading conversation…</p>}
+      {log.expired && <p role="status">Refresh to continue viewing this conversation.</p>}
+      {!data && !log.issue && !log.expired && <p role="status">Loading conversation…</p>}
       {data && (
         <>
           <header className="chat-head">
@@ -435,17 +509,14 @@ export function Transcript({
                       ? "Group conversation"
                       : "Private conversation"}
               </small>
-              {mode === "participant" && (
-                <small>
-                  {activity.data?.items
-                    .filter((a) => a.profileId !== profile.profileId)
-                    .map(
-                      (a) =>
-                        (data.members.find((p) => p.profileId === a.profileId)?.name ?? "Member") +
-                        (a.typing ? " is typing…" : " is online"),
-                    )
-                    .join(" · ")}
-                </small>
+              {mode === "participant" && !data.offline && (
+                <ConversationActivity
+                  key={String(manualRefresh)}
+                  id={id}
+                  members={data.members}
+                  viewer={profile.profileId}
+                  manualRefresh={manualRefresh}
+                />
               )}
             </div>
             <button onClick={() => setDetails(!details)}>
@@ -464,12 +535,23 @@ export function Transcript({
             />
           ) : (
             <>
-              {jump && !found && <p role="status">The selected message is unavailable.</p>}
+              {findJump && !found && (
+                <p role="status">
+                  {manualRefresh && data.nextCursor
+                    ? "The selected message is outside the history loaded for this pilot view."
+                    : "The selected message is unavailable."}
+                </p>
+              )}
               <button onClick={() => setPinned(!pinned)}>
                 {pinned ? "Show all messages" : "Show pinned messages"}
               </button>
+              {after && !data.offline && (
+                <button onClick={() => setHistoryCursor(undefined)}>Latest messages</button>
+              )}
               {data.nextCursor && !data.offline && (
-                <button onClick={() => setDepth((n) => n + 1)}>Load earlier messages</button>
+                <button onClick={() => manualRefresh ? setHistoryCursor(data.nextCursor!) : setDepth((n) => n + 1)}>
+                  Load earlier messages
+                </button>
               )}
               <div className="chat-transcript" aria-label="Message history">
                 {data.messages
@@ -500,6 +582,7 @@ export function Transcript({
                   resetReply={() => setReply(undefined)}
                   accepted={accepted}
                   termsVersion={termsVersion}
+                  manualRefresh={manualRefresh}
                   refresh={refresh}
                 />
               )}

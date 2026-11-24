@@ -8,11 +8,13 @@ import secrets
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import uuid
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 MIGRATION = ROOT / "supabase/migrations/20261123094907_erp_communications_chat_v1.sql"
+UPLOAD_RETRY_MIGRATION = ROOT / "supabase/migrations/20261124152200_erp_chat_upload_retry_status.sql"
 PGBIN = pathlib.Path(os.environ.get("PG_BIN", "C:/Program Files/PostgreSQL/17/bin"))
 EXE = ".exe" if os.name == "nt" else ""
 
@@ -23,7 +25,7 @@ def pg(tool, *args, **options):
     return subprocess.run([str(PGBIN / (tool + EXE)), *map(str, args)], check=True, text=True,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, **options).stdout
 
-def run():
+def run(without_upload_retry_status=False):
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
@@ -67,7 +69,10 @@ def run():
 
     try:
         sql((ROOT/"tests/communications/chat_fixture.sql").read_text())
-        for migration in [MIGRATION, ROOT/"supabase/migrations/20261123095158_erp_communication_budget_v1.sql"]:
+        migrations = [MIGRATION, ROOT/"supabase/migrations/20261123095158_erp_communication_budget_v1.sql"]
+        if not without_upload_retry_status:
+            migrations.append(UPLOAD_RETRY_MIGRATION)
+        for migration in migrations:
             contents=migration.read_bytes()
             sql(contents.decode("utf-8-sig"))
             print("Applied synthetic",migration.name,hashlib.sha256(contents).hexdigest(),flush=True)
@@ -131,11 +136,20 @@ def run():
         denied(lambda:mutation(3,"groupChange",conversationId=group_id,action="promote",targetProfileId="6",expectedRevision=group["revision"]))
         assert request(6,"messages",conversationId=group_id,mode="participant")["items"]
         denied(lambda:request(5,"messages",conversationId=group_id,mode="review"))
+        group_stage = mutation(6,"uploadBegin",conversationId=group_id,filename="group.ogg",mime="audio/ogg",byteLength=4)["uploadId"]
+        sql(f"UPDATE erp_private.chat_uploads SET stage_expires_at=clock_timestamp()-interval '1 second' WHERE id='{group_stage}'")
+        assert request(6,"uploadStatus",uploadId=group_stage)["terminal"] is True
         group_change(2,"remove",6)
+        denied(lambda:request(6,"uploadStatus",uploadId=group_stage))
         denied(lambda:request(6,"messages",conversationId=group_id,mode="participant"))
         denied(lambda:request(5,"messages",conversationId=group_id,mode="review"))
         media=mutation(2,"uploadBegin",conversationId=c,filename="note.ogg",mime="audio/ogg",byteLength=4,kind="voice")
         upload=media["uploadId"]
+        assert request(2,"uploadStatus",uploadId=upload)=={"uploadId":upload,"conversationId":c,"byteLength":4,"state":"reserved","terminal":False}
+        denied(lambda:request(3,"uploadStatus",uploadId=upload))
+        sql(f"UPDATE erp_private.chat_uploads SET reserving_session=gen_random_uuid() WHERE id='{upload}'")
+        denied(lambda:request(2,"uploadStatus",uploadId=upload))
+        sql(f"UPDATE erp_private.chat_uploads SET reserving_session=lpad('2',32,'0')::uuid WHERE id='{upload}'")
         def rpc(role,actor,call,feature,op,args):
             ticket=permit(actor,feature,{"op":op,"args":args})
             call=call[:-1]+f",'{ticket}')"
@@ -175,7 +189,13 @@ def run():
         denied(lambda:rpc("authenticated",2,confirm,"media_upload","chat.uploadVerified",verified_args))
         sql(f"""INSERT INTO storage.objects(bucket_id,name,metadata) VALUES('erp-chat-media','{upload}','{{"size":4,"mimetype":"audio/ogg"}}')""")
         assert rpc("service_role",2,confirm,"media_upload","chat.uploadVerified",verified_args)["state"]=="verified"
-        original=mutation(2,"send",conversationId=c,body="Voice note",uploadIds=[upload])
+        assert request(2,"uploadStatus",uploadId=upload)["terminal"] is False
+        send_args={"conversationId":c,"body":"Voice note","uploadIds":[upload],"clientMutationId":str(uuid.uuid4())}
+        original=request(2,"send",**send_args)
+        sql(f"UPDATE erp_private.chat_uploads SET stage_expires_at=clock_timestamp()-interval '1 second' WHERE id='{upload}'")
+        attached=request(2,"uploadStatus",uploadId=upload)
+        assert attached["state"]=="attached" and attached["terminal"] is False
+        assert request(2,"send",**send_args)==original
         first=request(2,"messages",conversationId=c,mode="participant")["items"][0]
         att=first["attachments"][0]["id"]
         assert rpc("authenticated",3,f"public.erp_chat_attachment_bind('{att}','participant')","media_download","chat.attachmentBind",{"attachmentId":att,"mode":"participant"})["path"]==upload
@@ -268,6 +288,8 @@ def run():
         # No file was written before the request failed; reconciling an absent object closes the obligation.
         missed=new_stage("never-written")
         assert abort_stage(missed)
+        failed=request(2,"uploadStatus",uploadId=missed)
+        assert failed["state"]=="failed" and failed["terminal"] is True
         assert cleanup_claim() is None  # active write lease fences the potentially delayed upload
         make_due(missed)
         job=cleanup_claim()
@@ -277,6 +299,8 @@ def run():
         abandoned=new_stage("unattached",True,True)
         assert not abort_stage(abandoned)  # a delayed failure callback cannot undo successful verification
         make_due(abandoned)
+        expired=request(2,"uploadStatus",uploadId=abandoned)
+        assert expired["state"]=="verified" and expired["terminal"] is True
         sql("INSERT INTO erp_private.comms_blocks(blocker_id,blocked_id) VALUES(2,3)")
         job=cleanup_claim()
         assert job["uploadId"]==abandoned and not finish_job(job,True)  # catalog still present
@@ -458,6 +482,7 @@ def run():
         sql("UPDATE erp_private.comms_policy_versions SET is_current=false")
         denied(lambda:mutation(2,"send",conversationId=c,body="Requires current terms"))
         assert request(2,"messages",conversationId=c,mode="participant")["items"]
+        print("PASS terminal attachment status, actor/session/member denial, compatibility and exact attached send replay")
         print("PASS chat sessions, cross-company reviewer, membership history, moderation, replay, simultaneous sends, independent media, presence, receipts, sync and exports")
     finally:
         pg("pg_ctl","-D",cluster,"-m","fast","-w","stop")
@@ -465,7 +490,7 @@ def run():
 
 if __name__=="__main__":
     try:
-        run()
+        run("--without-upload-retry-status" in sys.argv[1:])
     except subprocess.CalledProcessError as error:
         print(error.stderr)
         raise

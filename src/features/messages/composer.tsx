@@ -17,6 +17,7 @@ export function Composer({
   resetReply,
   accepted,
   termsVersion,
+  manualRefresh,
   refresh,
 }: {
   id: string;
@@ -26,6 +27,7 @@ export function Composer({
   resetReply: () => void;
   accepted: boolean;
   termsVersion?: string;
+  manualRefresh: boolean;
   refresh: () => void;
 }) {
   const [draft, setDraft] = useState<Draft>(blank),
@@ -201,12 +203,18 @@ export function Composer({
             maxLength={32000}
             value={draft.body}
             onChange={(e) => {
-              update({ body: e.target.value, replyId });
-              if (online && Date.now() - typingAt.current > 3500) {
-                typingAt.current = Date.now();
+              const body = e.target.value;
+              const starting = !draftRef.current.body.trim() && Boolean(body.trim());
+              const now = Date.now();
+              update({ body, replyId });
+              const shouldPulse = manualRefresh
+                ? accepted && starting && now - typingAt.current >= 60_000
+                : now - typingAt.current > 3500;
+              if (online && shouldPulse) {
+                typingAt.current = now;
                 void mutate(
                   "chat.pulse",
-                  { conversationId: id, typing: true, pulseAt: new Date().toISOString() },
+                  { conversationId: id, typing: true, pulseAt: new Date(now).toISOString() },
                   crypto.randomUUID(),
                 ).catch(() => {});
               }

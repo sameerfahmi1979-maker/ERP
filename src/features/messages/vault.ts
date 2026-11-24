@@ -3,7 +3,7 @@ import { continuing, enrollContinuation } from "./continuation";
 import type { OfflineBinding } from "./offline-session";
 import { cacheKey, rememberCacheKey, messagingSessionTag, communicationSignal } from "./offline-session";
 import { type Message, type Conversation, type Args, type Profile, limitBytes } from "./model";
-import { ChatError, command, mutate, upload } from "./client";
+import { ChatError, TerminalChatUploadError, chatUploadStatus, command, mutate, upload } from "./client";
 
 const dbName = "algt-messages-v1";
 function request<T>(r: IDBRequest<T>): Promise<T> {
@@ -116,6 +116,17 @@ export interface Intent {
   issue?: string;
   preparedArgs?: Args;
 }
+
+async function renewedUploadKey(session: string, intentId: MutationKey, item: UploadItem, stage: string): Promise<MutationKey> {
+  const seed = JSON.stringify(["algt-chat-upload-retry-v1", session, intentId, item.id, item.uploadKey, stage]);
+  const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(seed)));
+  // UUIDv8 preserves a stable replacement key across concurrent tabs.
+  bytes[6] = (bytes[6] & 0x0f) | 0x80;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes.subarray(0, 16), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export class Vault {
   constructor(
     readonly account: string,
@@ -260,6 +271,19 @@ export class Vault {
       conversation.id !== intent.conversationId
     )
       throw Error("Review your session, access and terms before sending.");
+    const reusable = new Map<number, string>();
+    const rotated = new Set<number>();
+    const rotateUploads = async (stages: ReadonlyMap<number, string>) => {
+      const uploads = await Promise.all(intent.uploads.map(async (item, index) => {
+        const stage = stages.get(index);
+        if (stage === undefined) return item;
+        rotated.add(index);
+        return { ...item, uploadKey: await renewedUploadKey(this.session, intent.id, item, stage) };
+      }));
+      signal.throwIfAborted();
+      intent = { ...intent, uploadSession: this.session, preparedArgs: undefined, uploads };
+      await this.save(intent);
+    };
     if (intent.preparedArgs) {
       try {
         await mutate("chat.send", intent.preparedArgs, intent.id, signal);
@@ -267,22 +291,27 @@ export class Vault {
         return;
       } catch (error) {
         if (
-          !(error instanceof ChatError) ||
-          error.status !== 404 ||
-          !intent.uploads.length ||
-          intent.uploadSession === this.session
-        )
-          throw error;
+          !(error instanceof ChatError) || error.status !== 404 ||
+          !intent.uploads.length || intent.uploadSession !== this.session
+        ) throw error;
+        const ids = intent.preparedArgs.uploadIds;
+        if (!Array.isArray(ids) || ids.length !== intent.uploads.length) throw error;
+        const expired = new Map<number, string>();
+        // A committed send atomically attaches every stage. Only exact authorized
+        // terminal evidence permits rewriting arguments under the same message key.
+        for (const [index, id] of ids.entries()) {
+          if (typeof id !== "string") throw error;
+          const status = await chatUploadStatus(id, conversation.id, signal);
+          if (status.terminal) expired.set(index, id);
+          else if (status.state === "verified") reusable.set(index, id);
+          else throw error;
+        }
+        if (!expired.size) throw error;
+        await rotateUploads(expired);
       }
     }
     if (intent.uploadSession !== this.session) {
-      intent = {
-        ...intent,
-        uploadSession: this.session,
-        preparedArgs: undefined,
-        uploads: intent.uploads.map((i) => ({ ...i, uploadKey: crypto.randomUUID() })),
-      };
-      await this.save(intent);
+      await rotateUploads(new Map(intent.uploads.map((_, index) => [index, ""] as const)));
     }
     const args: Args = {
       conversationId: conversation.id,
@@ -293,18 +322,23 @@ export class Vault {
     if (intent.dmsToken)
       args.dmsRef = await command("chat.resolveDmsReference", { token: intent.dmsToken }, signal);
     const uploadIds = [];
-    for (const item of intent.uploads) {
+    for (const [index, item] of intent.uploads.entries()) {
+      const existing = reusable.get(index);
+      if (existing) {
+        uploadIds.push(existing);
+        continue;
+      }
       const data = await this.readBytes("payload/" + intent.id + "/" + item.id);
       if (!data) throw Error("A local attachment could not be recovered.");
-      uploadIds.push(
-        await upload(
-          conversation.id,
-          new File([data], item.name, { type: item.mime }),
-          item.voice,
-          item.uploadKey ?? item.id,
-          signal,
-        ),
-      );
+      const file = new File([data], item.name, { type: item.mime });
+      try {
+        uploadIds.push(await upload(conversation.id, file, item.voice, item.uploadKey ?? item.id, signal));
+      } catch (error) {
+        if (!(error instanceof TerminalChatUploadError) || rotated.has(index)) throw error;
+        await rotateUploads(new Map([[index, error.uploadId]]));
+        const replacement = intent.uploads[index];
+        uploadIds.push(await upload(conversation.id, file, replacement.voice, replacement.uploadKey ?? replacement.id, signal));
+      }
     }
     args.uploadIds = uploadIds;
     await this.save({ ...intent, preparedArgs: args });

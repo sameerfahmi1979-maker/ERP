@@ -204,58 +204,58 @@ var m, h, oe, se = o((() => {
 })), le = o((() => {})), ue = o((() => {})), de = o((() => {})), fe = o((() => {
 	le(), ue(), de(), ce();
 })), pe = /* @__PURE__ */ c({
-	continuationState: () => g,
-	continuing: () => y,
-	enrollContinuation: () => ye,
-	markRetired: () => ge,
-	recoverContinuation: () => be,
-	retireContinuation: () => _e
+	continuationState: () => _,
+	continuing: () => b,
+	enrollContinuation: () => ve,
+	markRetired: () => he,
+	recoverContinuation: () => ye,
+	retireContinuation: () => ge
 });
-function me() {
-	return x ||= new Promise((e, t) => {
+function g() {
+	return S ||= new Promise((e, t) => {
 		let n = indexedDB.open("algt-chat-continuation-v1", 1);
 		n.onupgradeneeded = () => n.result.createObjectStore("guard"), n.onsuccess = () => e(n.result), n.onerror = () => t(n.error);
 	}).catch((e) => {
-		throw x = void 0, e;
-	}), x;
+		throw S = void 0, e;
+	}), S;
 }
-async function g() {
-	let e = (await me()).transaction("guard").objectStore("guard");
+async function _() {
+	let e = (await g()).transaction("guard").objectStore("guard");
 	return new Promise((t, n) => {
 		let r = e.get("current");
-		r.onsuccess = () => t(r.result ?? b), r.onerror = () => n(r.error);
+		r.onsuccess = () => t(r.result ?? x), r.onerror = () => n(r.error);
 	});
 }
-async function he(e) {
-	let t = (await me()).transaction("guard", "readwrite"), n = t.objectStore("guard");
+async function me(e) {
+	let t = (await g()).transaction("guard", "readwrite"), n = t.objectStore("guard");
 	return new Promise((r, i) => {
 		let a, o = n.get("current");
 		o.onsuccess = () => {
 			try {
-				n.put(e(o.result ?? b), "current");
+				n.put(e(o.result ?? x), "current");
 			} catch (e) {
 				a = e, t.abort();
 			}
 		}, t.oncomplete = () => r(), t.onabort = () => i(a ?? t.error), t.onerror = () => i(t.error);
 	});
 }
-function ge(e) {
+function he(e) {
 	try {
 		localStorage.setItem("algt-chat-retired/" + e, "1");
 	} catch {}
 }
-function _(e) {
+function v(e) {
 	if (localStorage.getItem("algt-chat-retired/" + e)) throw Error("Sign in again to unlock messages.");
 }
-function _e(e) {
-	return !e || typeof indexedDB > "u" ? Promise.resolve() : (ge(e), he((t) => t.enrollment && t.enrollment.session !== e ? t : {
+function ge(e) {
+	return !e || typeof indexedDB > "u" ? Promise.resolve() : (he(e), me((t) => t.enrollment && t.enrollment.session !== e ? t : {
 		epoch: crypto.randomUUID(),
 		retired: e
 	}));
 }
-async function ve(e, t) {
+async function _e(e, t) {
 	if (!/^sb-[a-zA-Z0-9_-]+-auth-token$/.test(e)) throw Error("Local ERP session is unavailable.");
-	_(t.session);
+	v(t.session);
 	let n = new Map(f(document.cookie).map((e) => [e.name, e.value])), r = await ne(e, (e) => n.get(e));
 	if (!r) throw Error("Sign in online to unlock cached messages.");
 	let i = JSON.parse(r.startsWith("base64-") ? ie(r.slice(7)) : r);
@@ -264,51 +264,51 @@ async function ve(e, t) {
 	if (a.length !== 3 || !a[2]) throw Error("The local ERP session is incomplete.");
 	let o = JSON.parse(ie(a[1]));
 	if (o.sub !== t.account || typeof o.session_id != "string") throw Error("The ERP account changed.");
-	if (Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", S(o.session_id))), (e) => e.toString(16).padStart(2, "0")).join("") !== t.session) throw Error("The ERP session changed. Sign in online.");
-	let s = S(JSON.stringify([i.refresh_token, a[2]]));
+	if (Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", C(o.session_id))), (e) => e.toString(16).padStart(2, "0")).join("") !== t.session) throw Error("The ERP session changed. Sign in online.");
+	let s = C(JSON.stringify([i.refresh_token, a[2]]));
 	try {
 		return await crypto.subtle.importKey("raw", s, "HKDF", !1, ["deriveKey"]);
 	} finally {
 		s.fill(0);
 	}
 }
-async function v(e) {
+async function y(e) {
 	return crypto.subtle.deriveKey({
 		name: "HKDF",
 		hash: "SHA-256",
 		salt: e.salt,
-		info: S("ALGT ERP offline chat v1/" + e.account + "/" + e.session)
-	}, await ve(e.cookieName, e), {
+		info: C("ALGT ERP offline chat v1/" + e.account + "/" + e.session)
+	}, await _e(e.cookieName, e), {
 		name: "AES-KW",
 		length: 256
 	}, !1, ["wrapKey", "unwrapKey"]);
 }
-async function ye(e, t, n, r, i) {
+async function ve(e, t, n, r, i) {
 	let a = {
 		...t,
 		cookieName: n,
 		salt: crypto.getRandomValues(/* @__PURE__ */ new Uint8Array(32)),
 		wrapped: /* @__PURE__ */ new ArrayBuffer(0)
 	};
-	a.wrapped = await crypto.subtle.wrapKey("raw", r, await v(a), "AES-KW"), i.throwIfAborted(), await he((n) => {
-		if (i.throwIfAborted(), _(t.session), n.epoch !== e || n.retired === t.session) throw Error("The ERP session changed during offline enrollment.");
+	a.wrapped = await crypto.subtle.wrapKey("raw", r, await y(a), "AES-KW"), i.throwIfAborted(), await me((n) => {
+		if (i.throwIfAborted(), v(t.session), n.epoch !== e || n.retired === t.session) throw Error("The ERP session changed during offline enrollment.");
 		return {
 			epoch: n.enrollment?.session === t.session ? n.epoch : crypto.randomUUID(),
 			enrollment: a
 		};
 	});
 }
-async function y(e, t) {
-	_(e);
-	let n = await g();
+async function b(e, t) {
+	v(e);
+	let n = await _();
 	if (n.enrollment?.session !== e || n.enrollment.account !== t) throw Error("The local ERP session was retired.");
-	await crypto.subtle.unwrapKey("raw", n.enrollment.wrapped, await v(n.enrollment), "AES-KW", "AES-GCM", !1, ["decrypt"]), _(e);
+	await crypto.subtle.unwrapKey("raw", n.enrollment.wrapped, await y(n.enrollment), "AES-KW", "AES-GCM", !1, ["decrypt"]), v(e);
 }
-async function be() {
-	let e = await g(), t = e.enrollment;
+async function ye() {
+	let e = await _(), t = e.enrollment;
 	if (!t) throw Error("Connect and open Messages with your ERP account to enable offline access.");
-	let n = await crypto.subtle.unwrapKey("raw", t.wrapped, await v(t), "AES-KW", "AES-GCM", !1, ["encrypt", "decrypt"]), r = await g();
-	if (_(t.session), r.epoch !== e.epoch || r.enrollment?.session !== t.session) throw Error("The local ERP session changed.");
+	let n = await crypto.subtle.unwrapKey("raw", t.wrapped, await y(t), "AES-KW", "AES-GCM", !1, ["encrypt", "decrypt"]), r = await _();
+	if (v(t.session), r.epoch !== e.epoch || r.enrollment?.session !== t.session) throw Error("The local ERP session changed.");
 	return {
 		binding: {
 			account: t.account,
@@ -318,73 +318,73 @@ async function be() {
 		key: n
 	};
 }
-var b, x, S, C = o((() => {
-	fe(), b = { epoch: "initial" }, S = (e) => new TextEncoder().encode(e);
+var x, S, C, w = o((() => {
+	fe(), x = { epoch: "initial" }, C = (e) => new TextEncoder().encode(e);
 }));
 // src/features/messages/offline-session.ts
-C();
-var w = new AbortController();
-function T(e) {
-	return e ? AbortSignal.any([w.signal, e]) : w.signal;
+w();
+var T = new AbortController();
+function E(e) {
+	return e ? AbortSignal.any([T.signal, e]) : T.signal;
 }
-var E, D;
-function xe(e) {
-	E !== e && A(), E = e;
+var D, O;
+function be(e) {
+	D !== e && Ce(), D = e;
 }
-function O() {
-	return E;
+function k() {
+	return D;
 }
-function Se(e, t, n) {
-	if (!t || t !== E) throw Error("The messaging session changed.");
-	(D?.account !== e || D.session !== t) && (D = {
+function xe(e, t, n) {
+	if (!t || t !== D) throw Error("The messaging session changed.");
+	(O?.account !== e || O.session !== t) && (O = {
 		account: e,
 		session: t,
 		key: n
 	});
 }
-function k(e, t) {
-	if (D?.account !== e || D.session !== t) throw Error("Sign in online with this ERP account to unlock this device.");
-	return D.key;
+function A(e, t) {
+	if (O?.account !== e || O.session !== t) throw Error("Sign in online with this ERP account to unlock this device.");
+	return O.key;
+}
+function Se() {
+	O = void 0;
 }
 function Ce() {
-	D = void 0;
-}
-function A() {
-	let e = E;
+	let e = D;
 	if (e && typeof localStorage < "u") {
 		try {
 			localStorage.setItem("algt-chat-retired/" + e, "1");
 		} catch {}
-		Promise.resolve().then(() => (C(), pe)).then((t) => t.retireContinuation(e)).catch(() => {});
+		Promise.resolve().then(() => (w(), pe)).then((t) => t.retireContinuation(e)).catch(() => {});
 	}
-	w.abort(), w = new AbortController(), E = void 0, Ce();
+	T.abort(), T = new AbortController(), D = void 0, Se();
 }
 var j = "/api/mobile/communications/v1";
 // src/features/messages/client.ts
-function we(e, t) {
-	let n = new Headers(t.headers), r = O();
+function M(e, t) {
+	let n = new Headers(t.headers), r = k();
 	r && n.set("X-ERP-Communication-Session", r);
-	let i = T(t.signal ?? void 0);
+	let i = E(t.signal ?? void 0);
 	return i.throwIfAborted(), fetch(e, {
 		...t,
 		headers: n,
 		signal: i
 	});
 }
-var M = class extends Error {
+var N = class extends Error {
 	constructor(e, t) {
 		super(t), this.status = e;
 	}
 };
-async function Te(e) {
+async function P(e) {
 	if (!e.ok) {
 		let t = await e.json().catch(() => null);
-		throw new M(e.status, t?.error?.message || "The ERP could not complete this request.");
+		throw new N(e.status, t?.error?.message || "The ERP could not complete this request.");
 	}
 	return e;
 }
-async function N(e, t = {}, n) {
-	let r = await (await Te(await we(j, {
+async function F(e, t = {}, n) {
+	let r = await (await P(await M(j, {
 		method: "POST",
 		credentials: "same-origin",
 		cache: "no-store",
@@ -398,39 +398,59 @@ async function N(e, t = {}, n) {
 	if (r.success !== !0) throw Error("The ERP did not confirm this operation.");
 	return r.data;
 }
-var P = /* @__PURE__ */ new Map();
-async function F(e, t, n, r) {
-	if (r = T(r), n) return N(e, {
+var I = /* @__PURE__ */ new Map();
+async function L(e, t, n, r) {
+	if (r = E(r), n) return F(e, {
 		...t,
 		clientMutationId: n
 	}, r);
 	let i = new TextEncoder().encode(JSON.stringify([
-		O(),
+		k(),
 		e,
 		t
-	])), a = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", i)), (e) => e.toString(16).padStart(2, "0")).join(""), o = P.get(a) ?? crypto.randomUUID();
-	P.set(a, o);
+	])), a = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", i)), (e) => e.toString(16).padStart(2, "0")).join(""), o = I.get(a) ?? crypto.randomUUID();
+	I.set(a, o);
 	try {
-		let n = await N(e, {
+		let n = await F(e, {
 			...t,
 			clientMutationId: o
 		}, r);
-		return P.delete(a), n;
+		return I.delete(a), n;
 	} catch (e) {
-		throw e instanceof M && e.status < 500 && P.delete(a), e;
+		throw e instanceof N && e.status < 500 && I.delete(a), e;
 	}
+}
+var we = class extends Error {
+	constructor(e) {
+		super("This attachment upload expired or failed. Retry the draft to reserve a new upload."), this.uploadId = e;
+	}
+};
+async function Te(e, t, n) {
+	let r = await F("chat.uploadStatus", { uploadId: e }, n);
+	if (r?.uploadId !== e || r.conversationId !== t || !Number.isSafeInteger(r.byteLength) || r.byteLength < 1 || r.byteLength > 52428800 || ![
+		"reserved",
+		"verified",
+		"attached",
+		"failed"
+	].includes(r.state) || r.terminal !== void 0 && typeof r.terminal != "boolean" || r.terminal && r.state === "attached" || r.terminal === !1 && r.state === "failed") throw Error("The ERP could not confirm this attachment upload.");
+	return {
+		...r,
+		terminal: r.state === "failed" || r.terminal === !0
+	};
 }
 async function Ee(e, t, n, r, i) {
 	if (!t.size || t.size > 52428800) throw Error("Each file must contain data and be 50 MiB or smaller.");
-	let a = (t.type || "application/octet-stream").split(";")[0], { uploadId: o } = await F("chat.uploadBegin", {
+	let a = (t.type || "application/octet-stream").split(";")[0], { uploadId: o } = await L("chat.uploadBegin", {
 		conversationId: e,
 		filename: t.name,
 		mime: a,
 		byteLength: t.size,
 		...n && { kind: "voice" }
-	}, r, i), s = await N("chat.uploadStatus", { uploadId: o }, i);
-	if (!["verified", "attached"].includes(s.state)) {
-		let e = await (await Te(await we(j + "/uploads/" + encodeURIComponent(o), {
+	}, r, i), s = await Te(o, e, i);
+	if (s.byteLength !== t.size) throw Error("The reserved attachment size changed.");
+	if (s.terminal) throw new we(o);
+	if (s.state === "reserved") {
+		let e = await (await P(await M(j + "/uploads/" + encodeURIComponent(o), {
 			method: "POST",
 			credentials: "same-origin",
 			cache: "no-store",
@@ -444,46 +464,59 @@ async function Ee(e, t, n, r, i) {
 }
 // src/features/messages/vault.ts
 var De = "algt-messages-v1";
-function I(e) {
+function R(e) {
 	return new Promise((t, n) => {
 		e.onsuccess = () => t(e.result), e.onerror = () => n(e.error);
 	});
 }
-var L;
-function R() {
-	if (!L) {
+var z;
+function B() {
+	if (!z) {
 		let e = indexedDB.open(De, 1);
 		e.onupgradeneeded = () => {
 			e.result.createObjectStore("keys"), e.result.createObjectStore("records");
-		}, L = I(e).catch((e) => {
-			throw L = void 0, e;
+		}, z = R(e).catch((e) => {
+			throw z = void 0, e;
 		});
 	}
-	return L;
+	return z;
 }
-async function z(e, t) {
-	let n = (await R()).transaction(e, "readwrite"), r = new Promise((e, t) => {
+async function V(e, t) {
+	let n = (await B()).transaction(e, "readwrite"), r = new Promise((e, t) => {
 		n.oncomplete = () => e(), n.onabort = () => t(n.error), n.onerror = () => t(n.error);
 	});
 	return t(n.objectStore(e)), r;
 }
-var Oe = class {
+async function Oe(e, t, n, r) {
+	let i = JSON.stringify([
+		"algt-chat-upload-retry-v1",
+		e,
+		t,
+		n.id,
+		n.uploadKey,
+		r
+	]), a = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(i)));
+	a[6] = a[6] & 15 | 128, a[8] = a[8] & 63 | 128;
+	let o = Array.from(a.subarray(0, 16), (e) => e.toString(16).padStart(2, "0")).join("");
+	return `${o.slice(0, 8)}-${o.slice(8, 12)}-${o.slice(12, 16)}-${o.slice(16, 20)}-${o.slice(20)}`;
+}
+var ke = class {
 	constructor(e, t, n, r = !1) {
 		this.account = e, this.session = t, this.profileId = n, this.enforceDeviceEpoch = r;
 	}
 	async current() {
-		this.enforceDeviceEpoch && await y(this.session, this.account);
+		this.enforceDeviceEpoch && await b(this.session, this.account);
 	}
 	path(e) {
 		return this.account + "/" + e;
 	}
 	async encrypt(e, t) {
-		let n = this.path(e), r = crypto.getRandomValues(/* @__PURE__ */ new Uint8Array(12)), i = k(this.account, this.session), a = await crypto.subtle.encrypt({
+		let n = this.path(e), r = crypto.getRandomValues(/* @__PURE__ */ new Uint8Array(12)), i = A(this.account, this.session), a = await crypto.subtle.encrypt({
 			name: "AES-GCM",
 			iv: r,
 			additionalData: new TextEncoder().encode(n)
 		}, i, t);
-		if (k(this.account, this.session) !== i) throw Error("The messaging session changed.");
+		if (A(this.account, this.session) !== i) throw Error("The messaging session changed.");
 		return await this.current(), {
 			iv: r,
 			cipher: a
@@ -491,19 +524,19 @@ var Oe = class {
 	}
 	async bytes(e, t) {
 		let n = await this.encrypt(e, t);
-		await z("records", (t) => {
+		await V("records", (t) => {
 			t.put(n, this.path(e));
 		});
 	}
 	async readBytes(e) {
-		let t = this.path(e), n = await I((await R()).transaction("records").objectStore("records").get(t));
+		let t = this.path(e), n = await R((await B()).transaction("records").objectStore("records").get(t));
 		if (!n) return null;
-		let r = k(this.account, this.session), i = await crypto.subtle.decrypt({
+		let r = A(this.account, this.session), i = await crypto.subtle.decrypt({
 			name: "AES-GCM",
 			iv: n.iv,
 			additionalData: new TextEncoder().encode(t)
 		}, r, n.cipher);
-		if (k(this.account, this.session) !== r) throw Error("The messaging session changed.");
+		if (A(this.account, this.session) !== r) throw Error("The messaging session changed.");
 		return await this.current(), i;
 	}
 	async put(e, t) {
@@ -515,16 +548,16 @@ var Oe = class {
 	}
 	async list(e) {
 		let t = this.path(e);
-		return (await I((await R()).transaction("records").objectStore("records").getAllKeys(IDBKeyRange.bound(t, t + "￿")))).map((e) => String(e).slice(this.account.length + 1));
+		return (await R((await B()).transaction("records").objectStore("records").getAllKeys(IDBKeyRange.bound(t, t + "￿")))).map((e) => String(e).slice(this.account.length + 1));
 	}
 	async clear(e) {
 		let t = this.path(e);
-		await z("records", (e) => {
+		await V("records", (e) => {
 			e.delete(IDBKeyRange.bound(t, t + "￿"));
 		});
 	}
 	async drop(e) {
-		await z("records", (t) => {
+		await V("records", (t) => {
 			t.delete(this.path(e));
 		});
 	}
@@ -544,7 +577,7 @@ var Oe = class {
 		if (t.length !== e.uploads.length || t.some((e) => !e.size || e.size > 52428800)) throw Error("Each file must contain data and be 50 MiB or smaller.");
 		for (let [n, r] of t.entries()) await this.bytes("payload/" + e.id + "/" + e.uploads[n].id, await r.arrayBuffer());
 		let r = "out/" + e.conversationId + "/" + e.id, i = await this.encrypt(r, new TextEncoder().encode(JSON.stringify(e)).buffer);
-		await z("records", (t) => {
+		await V("records", (t) => {
 			t.add(i, this.path(r)), n && t.delete(this.path(n));
 			for (let n of e.uploads) t.delete(this.path("compose-file/" + e.conversationId + "/" + n.id));
 		});
@@ -556,161 +589,193 @@ var Oe = class {
 		await this.drop("out/" + e.conversationId + "/" + e.id), await this.clear("payload/" + e.id + "/");
 	}
 	async send(e, t) {
-		if (t = T(t), O() !== this.session || e.session !== this.session || e.state !== "queued") throw Error("Review this device draft before sending.");
+		if (t = E(t), k() !== this.session || e.session !== this.session || e.state !== "queued") throw Error("Review this device draft before sending.");
 		let [n, r, i] = await Promise.all([
-			N("communications.profile", {}, t),
-			N("chat.conversation", {
+			F("communications.profile", {}, t),
+			F("chat.conversation", {
 				conversationId: e.conversationId,
 				mode: "participant"
 			}, t),
-			N("policy.status", {}, t)
+			F("policy.status", {}, t)
 		]);
 		if (n.profileId !== this.profileId || !n.chat.configured || !n.chat.eligible || !i.accepted || !i.currentVersion || i.currentVersion !== e.termsVersion || r.id !== e.conversationId) throw Error("Review your session, access and terms before sending.");
-		if (e.preparedArgs) try {
-			await F("chat.send", e.preparedArgs, e.id, t), await this.remove(e);
-			return;
-		} catch (t) {
-			if (!(t instanceof M) || t.status !== 404 || !e.uploads.length || e.uploadSession === this.session) throw t;
-		}
-		e.uploadSession !== this.session && (e = {
-			...e,
-			uploadSession: this.session,
-			preparedArgs: void 0,
-			uploads: e.uploads.map((e) => ({
+		let a = /* @__PURE__ */ new Map(), o = /* @__PURE__ */ new Set(), s = async (n) => {
+			let r = await Promise.all(e.uploads.map(async (t, r) => {
+				let i = n.get(r);
+				return i === void 0 ? t : (o.add(r), {
+					...t,
+					uploadKey: await Oe(this.session, e.id, t, i)
+				});
+			}));
+			t.throwIfAborted(), e = {
 				...e,
-				uploadKey: crypto.randomUUID()
-			}))
-		}, await this.save(e));
-		let a = {
+				uploadSession: this.session,
+				preparedArgs: void 0,
+				uploads: r
+			}, await this.save(e);
+		};
+		if (e.preparedArgs) try {
+			await L("chat.send", e.preparedArgs, e.id, t), await this.remove(e);
+			return;
+		} catch (n) {
+			if (!(n instanceof N) || n.status !== 404 || !e.uploads.length || e.uploadSession !== this.session) throw n;
+			let i = e.preparedArgs.uploadIds;
+			if (!Array.isArray(i) || i.length !== e.uploads.length) throw n;
+			let o = /* @__PURE__ */ new Map();
+			for (let [e, s] of i.entries()) {
+				if (typeof s != "string") throw n;
+				let i = await Te(s, r.id, t);
+				if (i.terminal) o.set(e, s);
+				else if (i.state === "verified") a.set(e, s);
+				else throw n;
+			}
+			if (!o.size) throw n;
+			await s(o);
+		}
+		e.uploadSession !== this.session && await s(new Map(e.uploads.map((e, t) => [t, ""])));
+		let c = {
 			conversationId: r.id,
 			...e.body && { body: e.body },
 			mentionProfileIds: e.mentions,
 			...e.replyId && { replyToMessageId: e.replyId }
 		};
-		e.dmsToken && (a.dmsRef = await N("chat.resolveDmsReference", { token: e.dmsToken }, t));
-		let o = [];
-		for (let n of e.uploads) {
-			let i = await this.readBytes("payload/" + e.id + "/" + n.id);
-			if (!i) throw Error("A local attachment could not be recovered.");
-			o.push(await Ee(r.id, new File([i], n.name, { type: n.mime }), n.voice, n.uploadKey ?? n.id, t));
+		e.dmsToken && (c.dmsRef = await F("chat.resolveDmsReference", { token: e.dmsToken }, t));
+		let l = [];
+		for (let [n, i] of e.uploads.entries()) {
+			let c = a.get(n);
+			if (c) {
+				l.push(c);
+				continue;
+			}
+			let u = await this.readBytes("payload/" + e.id + "/" + i.id);
+			if (!u) throw Error("A local attachment could not be recovered.");
+			let d = new File([u], i.name, { type: i.mime });
+			try {
+				l.push(await Ee(r.id, d, i.voice, i.uploadKey ?? i.id, t));
+			} catch (i) {
+				if (!(i instanceof we) || o.has(n)) throw i;
+				await s(/* @__PURE__ */ new Map([[n, i.uploadId]]));
+				let a = e.uploads[n];
+				l.push(await Ee(r.id, d, a.voice, a.uploadKey ?? a.id, t));
+			}
 		}
-		a.uploadIds = o, await this.save({
+		c.uploadIds = l, await this.save({
 			...e,
-			preparedArgs: a
-		}), await F("chat.send", a, e.id, t), await this.remove(e);
+			preparedArgs: c
+		}), await L("chat.send", c, e.id, t), await this.remove(e);
 	}
 };
 // src/features/messages/offline-entry.ts
-C();
-var B = document.getElementById("work"), V = 0, H, U, W = /* @__PURE__ */ new Set();
-function G() {
-	V++, H = void 0, U &&= (U.onstop = null, U.stream.getTracks().forEach((e) => e.stop()), U.state !== "inactive" && U.stop(), void 0);
-	for (let e of W) URL.revokeObjectURL(e);
-	W.clear(), B.replaceChildren();
+w();
+var H = document.getElementById("work"), U = 0, W, G, K = /* @__PURE__ */ new Set();
+function q() {
+	U++, W = void 0, G &&= (G.onstop = null, G.stream.getTracks().forEach((e) => e.stop()), G.state !== "inactive" && G.stop(), void 0);
+	for (let e of K) URL.revokeObjectURL(e);
+	K.clear(), H.replaceChildren();
 }
-function K(e, t, n = B) {
+function J(e, t, n = H) {
 	let r = document.createElement(e);
 	return t !== void 0 && (r.textContent = t), n.append(r), r;
 }
-function q(e) {
-	K("p", e instanceof Error ? e.message : "Cached chat is unavailable.").setAttribute("role", "alert");
+function Y(e) {
+	J("p", e instanceof Error ? e.message : "Cached chat is unavailable.").setAttribute("role", "alert");
 }
-function J(e, t, n = B) {
-	let r = K("button", e, n);
+function X(e, t, n = H) {
+	let r = J("button", e, n);
 	return r.type = "button", r.onclick = () => {
-		r.disabled = !0, Promise.resolve().then(t).catch(q).finally(() => {
+		r.disabled = !0, Promise.resolve().then(t).catch(Y).finally(() => {
 			r.disabled = !1;
 		});
 	}, r;
 }
-async function Y(e) {
-	if (!H || e !== V || document.hidden) throw Error("Open Messages again to verify this device.");
-	if (await y(H.session, H.account), e !== V || document.hidden) throw Error("The session changed.");
+async function Z(e) {
+	if (!W || e !== U || document.hidden) throw Error("Open Messages again to verify this device.");
+	if (await b(W.session, W.account), e !== U || document.hidden) throw Error("The session changed.");
 }
-function ke() {
-	K("h1", "Messages"), K("p", "Offline · cached on this device"), J("Reconnect to ERP", () => location.reload());
+function Ae() {
+	J("h1", "Messages"), J("p", "Offline · cached on this device"), X("Reconnect to ERP", () => location.reload());
 }
-async function Ae(e, t, n, r) {
-	J(t.filename, async () => {
-		await Y(n);
+async function je(e, t, n, r) {
+	X(t.filename, async () => {
+		await Z(n);
 		let i = await e.readBytes("cache/" + t.conversationId + "/media/" + e.session + "/" + t.id);
 		if (!i) throw Error("This file has not been downloaded on this device.");
-		await Y(n);
+		await Z(n);
 		let a = URL.createObjectURL(new Blob([i], { type: t.mime }));
-		if (W.add(a), ["audio", "voice"].includes(t.kind)) {
-			let e = K("audio", void 0, r);
+		if (K.add(a), ["audio", "voice"].includes(t.kind)) {
+			let e = J("audio", void 0, r);
 			e.controls = !0, e.src = a;
 		} else if (t.kind === "video") {
-			let e = K("video", void 0, r);
+			let e = J("video", void 0, r);
 			e.controls = !0, e.src = a;
 		} else if (t.kind === "image") {
-			let e = K("img", void 0, r);
+			let e = J("img", void 0, r);
 			e.alt = t.filename, e.src = a;
 		} else {
-			let e = K("a", "Save cached file", r);
+			let e = J("a", "Save cached file", r);
 			e.href = a, e.download = t.filename, e.click();
 		}
 	}, r);
 }
-async function X(e, t, n) {
-	await Y(n);
+async function Q(e, t, n) {
+	await Z(n);
 	let [r, i, a] = await Promise.all([
 		e.get("cache/" + t.id + "/history"),
 		e.get("policy"),
 		e.intents(t.id)
 	]);
-	if (await Y(n), !r || r.session !== e.session) throw Error("Open this conversation online before using it offline.");
-	B.replaceChildren(), ke(), J("Back to inbox", () => Z(!1)), K("h2", t.title);
+	if (await Z(n), !r || r.session !== e.session) throw Error("Open this conversation online before using it offline.");
+	H.replaceChildren(), Ae(), X("Back to inbox", () => $(!1)), J("h2", t.title);
 	for (let t of r.messages) {
-		let r = K("article");
-		K("strong", t.senderName ?? "System notice", r), K("small", " · " + new Date(t.sentAt).toLocaleString(), r), t.reply && K("blockquote", t.reply.deleted ? "Message deleted" : t.reply.body ?? "Reply to attachment", r);
-		let i = K("p", t.deleted ? "Message deleted" : t.body, r);
-		if (i.dir = "auto", !t.deleted) for (let i of t.attachments) await Ae(e, i, n, r);
+		let r = J("article");
+		J("strong", t.senderName ?? "System notice", r), J("small", " · " + new Date(t.sentAt).toLocaleString(), r), t.reply && J("blockquote", t.reply.deleted ? "Message deleted" : t.reply.body ?? "Reply to attachment", r);
+		let i = J("p", t.deleted ? "Message deleted" : t.body, r);
+		if (i.dir = "auto", !t.deleted) for (let i of t.attachments) await je(e, i, n, r);
 	}
 	for (let t of a) {
-		let n = K("article");
-		K("strong", t.state === "queued" && t.session === e.session ? "Pending delivery" : "Device draft · review online before sending", n), K("p", t.body, n), K("p", t.uploads.map((e) => e.name).join(", "), n);
+		let n = J("article");
+		J("strong", t.state === "queued" && t.session === e.session ? "Pending delivery" : "Device draft · review online before sending", n), J("p", t.body, n), J("p", t.uploads.map((e) => e.name).join(", "), n);
 	}
 	if (i?.session !== e.session || !i.policy.accepted || !i.policy.currentVersion) {
-		K("p", "Connect to ERP to check the current communication terms before sending.");
+		J("p", "Connect to ERP to check the current communication terms before sending.");
 		return;
 	}
-	let o = i.policy.currentVersion, s = K("fieldset");
-	K("legend", "Queue a message", s);
-	let c = K("textarea", void 0, K("label", "Message", s));
+	let o = i.policy.currentVersion, s = J("fieldset");
+	J("legend", "Queue a message", s);
+	let c = J("textarea", void 0, J("label", "Message", s));
 	c.dir = "auto", c.maxLength = 32e3;
 	let l = "cold-compose/" + t.id;
 	c.value = await e.get(l) ?? "";
 	let u = Promise.resolve();
 	c.oninput = () => {
 		let t = c.value;
-		u = u.catch(() => {}).then(() => e.put(l, t)).catch(q);
+		u = u.catch(() => {}).then(() => e.put(l, t)).catch(Y);
 	};
-	let d = K("input", void 0, K("label", "Attachments · 50 MiB each", s));
+	let d = J("input", void 0, J("label", "Attachments · 50 MiB each", s));
 	d.type = "file", d.multiple = !0;
-	let f, p = J("Record voice note", async () => {
-		if (U?.state === "recording") {
-			U.stop();
+	let f, p = X("Record voice note", async () => {
+		if (G?.state === "recording") {
+			G.stop();
 			return;
 		}
-		if (await Y(n), typeof MediaRecorder > "u" || !navigator.mediaDevices?.getUserMedia) throw Error("Voice recording is unavailable here.");
+		if (await Z(n), typeof MediaRecorder > "u" || !navigator.mediaDevices?.getUserMedia) throw Error("Voice recording is unavailable here.");
 		let e = ["audio/webm", "audio/mp4"].find((e) => MediaRecorder.isTypeSupported(e));
 		if (!e) throw Error("No supported recording format.");
 		let t = await navigator.mediaDevices.getUserMedia({ audio: !0 });
 		try {
-			await Y(n), U = new MediaRecorder(t, { mimeType: e });
+			await Z(n), G = new MediaRecorder(t, { mimeType: e });
 		} catch (e) {
 			throw t.getTracks().forEach((e) => e.stop()), e;
 		}
-		let r = U, i = [], a = 0;
+		let r = G, i = [], a = 0;
 		p.textContent = "Stop recording", r.ondataavailable = (e) => {
 			a += e.data.size, a > 52428800 ? r.state === "recording" && r.stop() : i.push(e.data);
 		}, r.onstop = () => {
-			t.getTracks().forEach((e) => e.stop()), U = void 0, n === V && (p.textContent = "Record voice note", a > 52428800 || !a ? q(Error("Recording unavailable or over 50 MiB.")) : (f = new File(i, e === "audio/webm" ? "Voice note.webm" : "Voice note.m4a", { type: e }), K("p", "Voice note attached.", s)));
+			t.getTracks().forEach((e) => e.stop()), G = void 0, n === U && (p.textContent = "Record voice note", a > 52428800 || !a ? Y(Error("Recording unavailable or over 50 MiB.")) : (f = new File(i, e === "audio/webm" ? "Voice note.webm" : "Voice note.m4a", { type: e }), J("p", "Voice note attached.", s)));
 		}, r.start(1e3);
 	}, s);
-	J("Queue on this device", async () => {
-		if (await Y(n), U) throw Error("Stop recording before queuing this message.");
+	X("Queue on this device", async () => {
+		if (await Z(n), G) throw Error("Stop recording before queuing this message.");
 		await u;
 		let r = Array.from(d.files ?? []);
 		if (f && r.push(f), !c.value.trim() && !r.length) throw Error("Write a message or attach a file.");
@@ -730,40 +795,40 @@ async function X(e, t, n) {
 				voice: e === f
 			}))
 		};
-		await e.persistIntent(i, r, l), await X(e, t, n);
+		await e.persistIntent(i, r, l), await Q(e, t, n);
 	}, s);
 }
-async function Z(e = !0) {
-	G();
-	let t = V;
-	ke();
+async function $(e = !0) {
+	q();
+	let t = U;
+	Ae();
 	try {
-		let n = await be();
-		if (t !== V || document.hidden) return;
-		H = n.binding, xe(H.session), Se(H.account, H.session, n.key);
-		let r = new Oe(H.account, H.session, H.expectedProfile, !0), i = await Promise.all([!1, !0].map((e) => r.get("cache/inbox/" + e)));
-		await Y(t);
+		let n = await ye();
+		if (t !== U || document.hidden) return;
+		W = n.binding, be(W.session), xe(W.account, W.session, n.key);
+		let r = new ke(W.account, W.session, W.expectedProfile, !0), i = await Promise.all([!1, !0].map((e) => r.get("cache/inbox/" + e)));
+		await Z(t);
 		let a = i.flatMap((e) => e?.session === r.session ? e.items : []), o = new URL(location.href).searchParams.get("conversationId"), s = e && a.find((e) => e.id === o);
 		if (s) {
-			await X(r, s, t);
+			await Q(r, s, t);
 			return;
 		}
-		K("h2", "Cached conversations");
-		for (let e of a) J(e.title + (e.archived ? " · Archived" : ""), () => X(r, e, t));
-		a.length || K("p", "No conversations are cached for this session.");
+		J("h2", "Cached conversations");
+		for (let e of a) X(e.title + (e.archived ? " · Archived" : ""), () => Q(r, e, t));
+		a.length || J("p", "No conversations are cached for this session.");
 	} catch (e) {
-		t === V && q(e);
+		t === U && Y(e);
 	}
 }
-function Q() {
-	G(), A(), K("p", "Your ERP account or session changed. Reconnect to continue.");
+function Me() {
+	q(), Ce(), J("p", "Your ERP account or session changed. Reconnect to continue.");
 }
 window.addEventListener("storage", (e) => {
-	H && e.key === "algt-chat-retired/" + H.session && Q();
+	W && e.key === "algt-chat-retired/" + W.session && Me();
 });
-var $ = typeof BroadcastChannel < "u" ? new BroadcastChannel("algt-auth-state") : null;
-$ && ($.onmessage = Q), document.addEventListener("visibilitychange", () => {
-	document.hidden ? (G(), K("p", "Messages locked while this window is hidden.")) : Z();
+var Ne = typeof BroadcastChannel < "u" ? new BroadcastChannel("algt-auth-state") : null;
+Ne && (Ne.onmessage = Me), document.addEventListener("visibilitychange", () => {
+	document.hidden ? (q(), J("p", "Messages locked while this window is hidden.")) : $();
 }), window.addEventListener("online", () => {
-	G(), location.reload();
-}), location.pathname === "/messages" ? Z() : location.replace("/messages");
+	q(), location.reload();
+}), location.pathname === "/messages" ? $() : location.replace("/messages");

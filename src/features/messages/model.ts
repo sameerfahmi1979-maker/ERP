@@ -67,7 +67,13 @@ export interface Profile {
   canCreateGroup: boolean;
   canReviewHistory: boolean;
   isGlobalSystemAdmin: boolean;
-  chat: { eligible: boolean; configured: boolean; availability: string; reason: string };
+  chat: {
+    eligible: boolean;
+    configured: boolean;
+    availability: string;
+    reason: string;
+    refreshMode?: "manual" | "live";
+  };
 }
 export interface Policy {
   accepted: boolean;

@@ -151,6 +151,7 @@ export function Messages({
   const enabled = Boolean(
     actor.data?.chat.eligible && actor.data.chat.configured && actor.data.chat.availability !== "held",
   );
+  const manualRefresh = actor.data?.chat.refreshMode === "manual";
   const policy = useLoad(
     actor.data ? session : "",
     async (s) => {
@@ -167,7 +168,7 @@ export function Messages({
   );
   const scope = mode === "participant" || Boolean(actor.data?.canReviewHistory);
   const list = useLoad(
-    enabled && scope ? JSON.stringify([session, mode, archived]) : "",
+    enabled && scope && (!manualRefresh || tab === "inbox") ? JSON.stringify([session, mode, archived]) : "",
     async (s) => {
       const cache = "cache/inbox/" + String(archived);
       if (!navigator.onLine && mode === "participant") {
@@ -191,7 +192,8 @@ export function Messages({
         throw e;
       }
     },
-    12000,
+    manualRefresh ? 0 : 12000,
+    manualRefresh ? "pilotProtected" : "window",
   );
   const refresh = list.refresh;
   const notify = useCallback(() => {
@@ -259,6 +261,12 @@ export function Messages({
                 </button>
               ))}
           </nav>
+          {enabled && manualRefresh && (
+            <p>
+              During the pilot, refresh to see new messages and alerts. Check activity to see who was
+              online or typing.
+            </p>
+          )}
           <Issue text={task.issue || policy.issue} />
           {tab === "settings" ? (
             <>
@@ -313,7 +321,7 @@ export function Messages({
               }
             />
           ) : tab === "alerts" ? (
-            <Alerts open={open} />
+            <Alerts open={open} manualRefresh={manualRefresh} />
           ) : tab === "stars" ? (
             <Stars open={open} />
           ) : (
@@ -335,8 +343,11 @@ export function Messages({
                   </label>
                 )}
                 <Issue text={list.issue} />
-                {list.issue && <button onClick={refresh}>Retry inbox</button>}
-                {!list.data && !list.issue && <p role="status">Loading conversations…</p>}
+                {(manualRefresh || list.issue) && (
+                  <button onClick={refresh}>{list.issue ? "Retry inbox" : "Refresh inbox"}</button>
+                )}
+                {list.expired && <p role="status">Refresh to continue viewing your conversations.</p>}
+                {!list.data && !list.issue && !list.expired && <p role="status">Loading conversations…</p>}
                 {list.data && (
                   <ul>
                     {list.data
@@ -375,7 +386,7 @@ export function Messages({
                   back={() => {
                     setId("");
                     setJump(undefined);
-                    refresh();
+                    if (!manualRefresh) refresh();
                   }}
                   notify={notify}
                   jump={jump}

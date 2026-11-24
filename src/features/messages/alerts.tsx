@@ -29,7 +29,7 @@ const labels: Record<string, string> = {
   vibrate: "Vibration",
   sound: "Sound",
 };
-export function Alerts({ open }: { open: Open }) {
+export function Alerts({ open, manualRefresh = false }: { open: Open; manualRefresh?: boolean }) {
   const [filter, setFilter] = useState("messages"),
     [cursor, setCursor] = useState(""),
     [reply, setReply] = useState(""),
@@ -42,9 +42,15 @@ export function Alerts({ open }: { open: Open }) {
         { filter, ...(cursor && { cursor }) },
         s,
       ),
-    20000,
+    manualRefresh ? 0 : 20000,
+    manualRefresh ? "pilot" : "window",
   );
-  const prefs = useLoad("prefs", (s) => command<Record<string, boolean>>("notifications.preferences", {}, s));
+  const prefs = useLoad(
+    "prefs",
+    (s) => command<Record<string, boolean>>("notifications.preferences", {}, s),
+    0,
+    manualRefresh ? "pilot" : "window",
+  );
   const task = useTask();
   const act = (op: string, id: string, extra = {}) =>
     void task.run(async () => {
@@ -72,6 +78,7 @@ export function Alerts({ open }: { open: Open }) {
         </select>
       </label>
       <Issue text={list.issue || task.issue} />
+      {manualRefresh && <button onClick={list.refresh}>Refresh alerts</button>}
       <ul className="chat-list">
         {list.data?.items.map((a) => (
           <li key={a.eventId}>

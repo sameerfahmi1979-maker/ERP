@@ -103,9 +103,15 @@ it('bounds unhealthy startup and never prints renderer response bodies or privat
  const h=harness();h.fetcher.mockRejectedValue(Error('PRIVATE renderer URL and token'));
  await expect(ensureLocalPdfService(h.options)).rejects.toThrow('30 seconds');expect(h.state.time).toBe(30000);expect(JSON.stringify(h.log.mock.calls)).not.toContain('PRIVATE');
 });
-it('hooks only local dev; production build/start commands and Next dev arguments remain intact',()=>{
+it('limits renderer setup to predev and preserves the offline Messages build check',()=>{
  const {scripts}=JSON.parse(fs.readFileSync('package.json','utf8'));
- expect(scripts.predev).toBe('node tooling/local/ensure-pdf-service.mjs');expect(scripts.dev).toContain('next dev');
- expect(scripts.prestart).toBeUndefined();expect(scripts.prebuild).toBeUndefined();expect(scripts.start).toContain('next start');
- expect(scripts.build).not.toContain('ensure-pdf-service');expect(scripts.dev).not.toContain('ensure-pdf-service');
+ expect(scripts.predev).toBe('node tooling/local/ensure-pdf-service.mjs');
+ expect(scripts.prebuild).toBe('node tooling/local/build-chat-offline.mjs --check');
+ expect(scripts.prestart).toBeUndefined();
+ expect(scripts.dev).toContain('next dev');
+ expect(scripts.build).toContain('next build --webpack');
+ expect(scripts.start).toContain('next start');
+ for(const command of [scripts.dev,scripts.build,scripts.start]){
+  expect(command).not.toContain('ensure-pdf-service');
+ }
 });

@@ -106,6 +106,8 @@ it('bounds unhealthy startup and never prints renderer response bodies or privat
 it('hooks only local dev; production build/start commands and Next dev arguments remain intact',()=>{
  const {scripts}=JSON.parse(fs.readFileSync('package.json','utf8'));
  expect(scripts.predev).toBe('node tooling/local/ensure-pdf-service.mjs');expect(scripts.dev).toContain('next dev');
- expect(scripts.prestart).toBeUndefined();expect(scripts.prebuild).toBeUndefined();expect(scripts.start).toContain('next start');
+ expect(scripts.prestart).toBeUndefined();
+ expect(scripts.prebuild).toBe('node tooling/local/build-chat-offline.mjs --check');
+ expect(scripts.build).toContain('next build');expect(scripts.start).toContain('next start');
  expect(scripts.build).not.toContain('ensure-pdf-service');expect(scripts.dev).not.toContain('ensure-pdf-service');
 });

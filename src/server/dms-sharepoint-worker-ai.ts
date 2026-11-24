@@ -10,6 +10,8 @@ import { loadMetadataFieldsForDocumentType } from "@/lib/dms/ai/load-metadata-fi
 import { SOURCE_ROLE_PROMPT_VERSION } from "@/lib/dms/ai/prompt-builders";
 import type { DmsExtractedField } from "@/lib/dms/ai/types";
 import { extractFileContent } from "@/lib/dms/file-content-extractor";
+import { readSinglePdfPageForVerification } from "@/lib/dms/pdf-to-images";
+import { containsMixedIdentityCredentials } from "@/lib/dms/phase2/mixed-identity";
 import { prepareIntakeOutput } from "@/lib/dms/preparation/intake";
 
 const permitType = "LABOUR_CARD";
@@ -78,6 +80,13 @@ export async function analyzeSharePointWorkPermit({ client, bytes, filename, sha
   if (!/\.pdf$/iu.test(filename) || bytes.length < 1 || bytes.length > 3 * 1024 * 1024 ||
     createHash("sha256").update(bytes).digest("hex") !== sha256) {
     throw Error("The work permit original fingerprint is invalid.");
+  }
+
+  const original = await readSinglePdfPageForVerification(bytes);
+  if (original.status === "not_single_page") throw Error("A single-page work permit is required.");
+  if (original.status === "unreadable") throw Error("The work permit original PDF could not be fully read.");
+  if (containsMixedIdentityCredentials([original])) {
+    throw Error("Passport and Emirates ID evidence must arrive in separate PDFs.");
   }
 
   const content = await extractFileContent(bytes, "application/pdf", filename, { retainPdfTextForVerification: true });

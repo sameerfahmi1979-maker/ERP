@@ -26,6 +26,82 @@ const RENDER_SCALE = 3.0;
 
 /** Max pages to convert per call (keep AI payload small). */
 const DEFAULT_MAX_PAGES = 4;
+const VERIFICATION_TEXT_LIMIT = 100_000;
+const VERIFICATION_ITEM_LIMIT = 20_000;
+const VERIFICATION_PIXEL_LIMIT = 25_000_000;
+
+async function loadLocalPdf(buffer: Buffer, stopAtErrors = false) {
+  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfRoot = path.resolve(process.cwd(), "node_modules/pdfjs-dist");
+  const assetDirectory = (name: string) => path.resolve(pdfRoot, name).replace(/\\/g, "/") + "/";
+
+  // Use an absolute worker URL because a Next.js server chunk has a different base path.
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pathToFileURL(path.resolve(pdfRoot, "legacy/build/pdf.worker.mjs")).href;
+  return pdfjsLib.getDocument({
+    data: new Uint8Array(buffer),
+    disableFontFace: true,
+    standardFontDataUrl: assetDirectory("standard_fonts"),
+    cMapUrl: assetDirectory("cmaps"),
+    cMapPacked: true,
+    wasmUrl: assetDirectory("wasm"),
+    verbosity: 0,
+    stopAtErrors,
+  });
+}
+
+type SinglePdfPage = { status: "read"; text: string } | { status: "not_single_page" } | { status: "unreadable" };
+
+/** Reads the complete embedded text of page 1 only after verifying the actual page count. */
+export async function readSinglePdfPageForVerification(buffer: Buffer): Promise<SinglePdfPage> {
+  let loadingTask: Awaited<ReturnType<typeof loadLocalPdf>> | undefined;
+  try {
+    loadingTask = await loadLocalPdf(buffer, true);
+    const pdf = await loadingTask.promise;
+    if (pdf.numPages !== 1) return { status: "not_single_page" };
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: RENDER_SCALE });
+    const pixelCount = Math.ceil(viewport.width) * Math.ceil(viewport.height);
+    if (page.pageNumber !== 1 || !Number.isFinite(pixelCount) || pixelCount < 1 || pixelCount > VERIFICATION_PIXEL_LIMIT) {
+      return { status: "unreadable" };
+    }
+
+    const reader = page.streamTextContent().getReader();
+    const fragments: string[] = [];
+    let characterCount = 0;
+    let itemCount = 0;
+    let previousY: number | undefined;
+    let limitExceeded = false;
+    try {
+      for (let part = await reader.read(); !part.done; part = await reader.read()) {
+        // Drain without buffering on overflow. PDF.js can race a local cancel with its worker close.
+        if (limitExceeded) continue;
+        for (const item of part.value.items) {
+          if (!("str" in item)) continue;
+          itemCount += 1;
+          const y: number = item.transform[5];
+          const prefix = previousY !== undefined && previousY !== y ? "\n" : "";
+          const suffix = item.hasEOL ? "\n" : "";
+          characterCount += prefix.length + item.str.length + suffix.length;
+          if (itemCount > VERIFICATION_ITEM_LIMIT || characterCount > VERIFICATION_TEXT_LIMIT) {
+            limitExceeded = true;
+            break;
+          }
+          fragments.push(prefix + item.str + suffix);
+          previousY = item.hasEOL ? undefined : y;
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    const text = limitExceeded ? "" : fragments.join("").trim();
+    return text ? { status: "read", text } : { status: "unreadable" };
+  } catch {
+    return { status: "unreadable" };
+  } finally {
+    await loadingTask?.destroy().catch(() => undefined);
+  }
+}
 
 /**
  * Converts the first N pages of a PDF buffer to PNG images.
@@ -36,32 +112,8 @@ export async function convertPdfPagesToImages(
   maxPages: number = DEFAULT_MAX_PAGES
 ): Promise<PdfPageImage[]> {
   try {
-    // Dynamic imports — both packages are ESM-friendly in Node.js
-    const [pdfjsLib, { createCanvas }] = await Promise.all([
-      import("pdfjs-dist/legacy/build/pdf.mjs"),
-      import("@napi-rs/canvas"),
-    ]);
-
-    // Point the worker to the real file on disk via an absolute file:// URL.
-    // In Next.js server-side rendering, pdfjs resolves workerSrc relative to its
-    // compiled chunk path (inside .next/), causing a "Cannot find module" error.
-    // Using process.cwd() always resolves from the project root.
-    const workerAbsPath = path.resolve(process.cwd(), "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs");
-    pdfjsLib.GlobalWorkerOptions.workerSrc = pathToFileURL(workerAbsPath).href;
-    const assetDirectory = (name: string) => path.resolve(process.cwd(), "node_modules/pdfjs-dist", name).replace(/\\/g, "/") + "/";
-
-    const loadingTask = pdfjsLib.getDocument({
-      data: new Uint8Array(buffer),
-      disableFontFace: true,
-      // Node has no browser font fallback. Without these local resources,
-      // ordinary Helvetica/Times glyphs can become boxes in the OCR image.
-      standardFontDataUrl: assetDirectory("standard_fonts"),
-      cMapUrl: assetDirectory("cmaps"),
-      cMapPacked: true,
-      wasmUrl: assetDirectory("wasm"),
-      // Verbosity 0 = suppress pdfjs console noise
-      verbosity: 0,
-    });
+    const { createCanvas } = await import("@napi-rs/canvas");
+    const loadingTask = await loadLocalPdf(buffer);
 
     const pdf = await loadingTask.promise;
     const numPages = Math.min(pdf.numPages, maxPages);

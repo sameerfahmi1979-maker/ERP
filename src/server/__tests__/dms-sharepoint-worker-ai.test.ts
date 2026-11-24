@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { jsPDF } from "jspdf";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DmsAiOutput, DmsExtractedField } from "@/lib/dms/ai/types";
@@ -20,10 +21,33 @@ const ocrText = [
   "Passport Number", "SYN00009999", "Passport Expiry Date", "17/12/2030",
 ].join("\n");
 
-const bytes = Buffer.from("%PDF-1.7\nsynthetic-verified-input\n%%EOF\n");
+function createPdf(pageLines: string[][], format: number[] = [210, 297]) {
+  const pdf = new jsPDF({ format });
+  for (const [index, lines] of pageLines.entries()) {
+    if (index) pdf.addPage();
+    if (lines.length) pdf.text(lines, 10, 20);
+  }
+  return Buffer.from(pdf.output("arraybuffer"));
+}
+
+const bytes = createPdf([["Synthetic Work Permit", "Passport Number: SYN00009999"]]);
 const sha256 = createHash("sha256").update(bytes).digest("hex");
 const reserveProviderAttempt = vi.fn();
 const input = { client: {} as SupabaseClient, bytes, sha256, filename: "BR1 synthetic permit.pdf", reserveProviderAttempt };
+
+function originalInput(bytes: Buffer) {
+  return { ...input, bytes, sha256: createHash("sha256").update(bytes).digest("hex") };
+}
+
+function pdfOriginal(pageLines: string[][]) {
+  return originalInput(createPdf(pageLines));
+}
+
+function densePdfOriginal() {
+  const pdf = new jsPDF().setFontSize(2).setLineHeightFactor(0.6);
+  pdf.text(Array.from({ length: 510 }, () => "A".repeat(200)), 10, 20);
+  return originalInput(Buffer.from(pdf.output("arraybuffer")));
+}
 
 function field(fieldCode: string, value: string, sourceSnippet: string): DmsExtractedField {
   return { fieldCode, value, sourceSnippet, confidenceScore: 0.97, confidenceLabel: "high" };
@@ -61,6 +85,23 @@ beforeEach(() => {
 });
 
 describe("SharePoint Work Permit AI Fill", () => {
+  it.each([
+    { kind: "mixed credentials on one page", candidate: pdfOriginal([["Synthetic Work Permit", "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<", "Emirates ID", "784-1990-0000001-0"]]), message: /separate pdfs/iu },
+    { kind: "actual multiple pages", candidate: pdfOriginal([["Synthetic Work Permit"], ["Another page"]]), message: /single.page/iu },
+    { kind: "malformed exact bytes", candidate: originalInput(Buffer.from("%PDF-1.7\nsynthetic-verified-input\n%%EOF\n")), message: /original pdf could not be fully read/iu },
+    { kind: "truncated exact bytes", candidate: originalInput(bytes.subarray(0, 100)), message: /original pdf could not be fully read/iu },
+    { kind: "blank page", candidate: pdfOriginal([[]]), message: /original pdf could not be fully read/iu },
+    { kind: "excessive page dimensions", candidate: originalInput(createPdf([["Synthetic Work Permit"]], [900, 900])), message: /original pdf could not be fully read/iu },
+    { kind: "excessive embedded text", candidate: densePdfOriginal(), message: /original pdf could not be fully read/iu },
+  ])("holds $kind before classifier setup or provider spend", async ({ candidate, message }) => {
+    await expect(analyzeSharePointWorkPermit(candidate)).rejects.toThrow(message);
+    expect(mocks.extract).not.toHaveBeenCalled();
+    expect(mocks.candidates).not.toHaveBeenCalled();
+    expect(mocks.provider).not.toHaveBeenCalled();
+    expect(reserveProviderAttempt).not.toHaveBeenCalled();
+    expect(mocks.analyze).not.toHaveBeenCalled();
+  });
+
   it("waits for a durable reservation for the exact provider configuration and prompt before dispatching", async () => {
     reserveProviderAttempt.mockImplementation(async () => {
       expect(mocks.analyze).not.toHaveBeenCalled();

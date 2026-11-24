@@ -773,7 +773,9 @@ final class MobileWorkspace implements OfflineOrigin.Host {
         walkieTalkie.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.nav_walkie_talkie, 0, 0, 0);
         walkieTalkie.setCompoundDrawablePadding(a.dp(8));
         a.add(entries, walkieTalkie, 8);
-        a.communications.bindRows(entries, messages, walkieTalkie);
+        android.widget.Button budget = a.button("Communications budget", a.communications.budgetEntry(this::settings), false);
+        a.add(entries, budget, 8);
+        a.communications.bindRows(entries, messages, walkieTalkie, budget);
     }
 
     EditText dateField(LinearLayout parent, String label, String value) {

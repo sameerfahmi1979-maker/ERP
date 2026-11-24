@@ -128,6 +128,7 @@ public final class LauncherActivity extends Activity {
         hr = new HrWorkspace(this);
         communications.mount(new ChatWorkspace(this), new PttWorkspace(this));
         communications.mountNotifications(new NotificationWorkspace(this));
+        communications.mountBudget(new CommunicationBudgetWorkspace(this));
         if (LocalSecurity.enabled(this)) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
         primary = getColor(R.color.erp_primary);
         primarySurface = getColor(R.color.erp_primary_surface);

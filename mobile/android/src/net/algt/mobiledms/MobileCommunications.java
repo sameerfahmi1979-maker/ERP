@@ -34,6 +34,7 @@ final class MobileCommunications {
     private int unread = -1;
     private boolean checked;
     private Notifications notifications;
+    private CommunicationBudgetWorkspace budget;
     private String pendingId = "", pendingAccount = "", pendingPttEpoch = "";
 
     ChatWorkspace chat;
@@ -52,7 +53,11 @@ final class MobileCommunications {
         drain();
     }
 
-    boolean available() { return eligible("chat") || eligible("ptt"); }
+    void mountBudget(CommunicationBudgetWorkspace controller) { budget = controller; updateEntries(); }
+
+    private boolean servicesAvailable() { return eligible("chat") || eligible("ptt"); }
+
+    boolean available() { return servicesAvailable() || eligible("budget"); }
 
     private JSONObject feature(String name) {
         return features != null && verified != null && a.routeScope().matches(verified)
@@ -61,7 +66,7 @@ final class MobileCommunications {
 
     private boolean eligible(String name) {
         JSONObject feature = feature(name);
-        return feature != null && feature.optBoolean("eligible");
+        return feature != null && ("budget".equals(name) ? Boolean.TRUE.equals(feature.opt("eligible")) : feature.optBoolean("eligible"));
     }
 
     private boolean held(String name) {
@@ -102,7 +107,7 @@ final class MobileCommunications {
         });
     }
 
-    void bindRows(LinearLayout rows, Button messages, Button walkieTalkie) {
+    void bindRows(LinearLayout rows, Button messages, Button walkieTalkie, Button budgetButton) {
         BooleanSupplier current = a.communicationsViewTicket();
         rows.setVisibility(View.GONE);
         refreshRows = () -> {
@@ -110,6 +115,7 @@ final class MobileCommunications {
             rows.setVisibility(available() ? View.VISIBLE : View.GONE);
             messages.setVisibility(eligible("chat") ? View.VISIBLE : View.GONE);
             walkieTalkie.setVisibility(eligible("ptt") ? View.VISIBLE : View.GONE);
+            budgetButton.setVisibility(eligible("budget") && budget != null ? View.VISIBLE : View.GONE);
             String label = unread > 0 ? "Messages (" + unread + ")" : "Messages";
             String spoken = unread > 0 ? "Messages, " + unread + " unread" : "Messages";
             messages.setText(held("chat") ? label + " · Service on hold" : label);
@@ -124,7 +130,7 @@ final class MobileCommunications {
         button.setVisibility(View.GONE);
         refreshHeader = () -> {
             if (current.getAsBoolean())
-                button.setVisibility(available() && notifications != null ? View.VISIBLE : View.GONE);
+                button.setVisibility(servicesAvailable() && notifications != null ? View.VISIBLE : View.GONE);
         };
         updateEntries();
     }
@@ -153,8 +159,15 @@ final class MobileCommunications {
         if (eligible("ptt") && ptt != null && a.communicationsSessionTicket().getAsBoolean()) ptt.home(back);
     }
 
+    Runnable budgetEntry(Runnable back) {
+        BooleanSupplier current = a.communicationsTicket();
+        return () -> {
+            if (current.getAsBoolean() && eligible("budget") && budget != null) budget.home(back);
+        };
+    }
+
     void openNotifications(Runnable back) {
-        if (available() && notifications != null && a.communicationsSessionTicket().getAsBoolean())
+        if (servicesAvailable() && notifications != null && a.communicationsSessionTicket().getAsBoolean())
             notifications.home(back);
     }
 
@@ -232,7 +245,7 @@ final class MobileCommunications {
             return;
         }
         if (notifications == null) return;
-        if (!available()) return;
+        if (!servicesAvailable()) return;
         String event = pendingId;
         discardPending();
         notifications.openEvent(event, a.mobile()::home);
@@ -268,6 +281,7 @@ final class MobileCommunications {
     }
 
     void close() {
+        if (budget != null) budget.close();
         worker.shutdownNow();
         lock();
     }

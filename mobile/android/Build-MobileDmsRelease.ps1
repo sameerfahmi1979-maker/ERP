@@ -122,8 +122,8 @@ try {
     $stage = Join-Path $PSScriptRoot "build\candidates\$runId"
     $null = New-Item -ItemType Directory -Path $stage
     $aligned = Join-Path $stage 'aligned-unsigned.apk'
-    $signedApk = Join-Path $stage 'ALGT-ERP-System-1.0-12-candidate.apk'
-    $signedAab = Join-Path $stage 'ALGT-ERP-System-1.0-12-upload-candidate.aab'
+    $signedApk = Join-Path $stage 'ALGT-ERP-System-1.0-13-candidate.apk'
+    $signedAab = Join-Path $stage 'ALGT-ERP-System-1.0-13-upload-candidate.aab'
     $splitSet = Join-Path $stage 'bundletool-verification.apks'
 
     Invoke-Checked $zipalign @('-f', '-P', '16', '4', $apk, $aligned)
@@ -154,7 +154,7 @@ try {
 
     $badging = (Invoke-Checked $aapt @('dump', 'badging', $signedApk)) -join [Environment]::NewLine
     foreach ($expected in @(
-        "(?m)^package: name='net.algt.mobiledms' versionCode='12' versionName='1[.]0'",
+        "(?m)^package: name='net.algt.mobiledms' versionCode='13' versionName='1[.]0'",
         "(?m)^minSdkVersion:'26'", "(?m)^targetSdkVersion:'36'",
         "(?m)^application-label:'ALGT ERP System'",
         "(?m)^launchable-activity: .*label='ALGT ERP'")) {
@@ -173,7 +173,7 @@ try {
     $androidNamespace = 'http://schemas.android.com/apk/res/android'
     $manifestRoot = $manifest.DocumentElement
     if ($manifestRoot.GetAttribute('package') -ne 'net.algt.mobiledms' -or
-        $manifestRoot.GetAttribute('versionCode', $androidNamespace) -ne '12' -or
+        $manifestRoot.GetAttribute('versionCode', $androidNamespace) -ne '13' -or
         $manifestRoot.GetAttribute('versionName', $androidNamespace) -ne '1.0' -or
         $manifestRoot.SelectSingleNode('uses-sdk').GetAttribute('minSdkVersion', $androidNamespace) -ne '26' -or
         $manifestRoot.SelectSingleNode('uses-sdk').GetAttribute('targetSdkVersion', $androidNamespace) -ne '36') {
@@ -194,7 +194,7 @@ try {
         status = 'local candidate'
         applicationId = 'net.algt.mobiledms'
         versionName = '1.0'
-        versionCode = 12
+        versionCode = 13
         compileSdk = 36
         targetSdk = 36
         minSdk = 26

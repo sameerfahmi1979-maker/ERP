@@ -126,7 +126,28 @@ describe("shared authorization and command transport",()=>{
     expect(fake.permit).not.toHaveBeenCalled();
     fake.permit.mockResolvedValue({ok:false,reason:"feature_disabled"});
     await expect(dispatchChat({op:"chat.activity",args:{conversationId:conversation}},actor)).rejects.toThrow("feature_disabled");
-    expect(fake.rpc).toHaveBeenCalledTimes(2);
+    expect(fake.rpc).toHaveBeenCalledTimes(3);
+  });
+  it.each([true,false])("uses current authenticated budget-monitor authority for the owner entry (%s)",async canMonitor=>{
+    fake.rpc.mockImplementation(async(name:string)=>ok(name==="erp_comm_budget_operator"
+      ? {scope:"communications",canMonitor,canApprove:canMonitor}
+      : {profileId:actor.profileId,isGlobalSystemAdmin:false,canReviewHistory:false,canCreateGroup:true,canCreatePttChannel:false}));
+    const p=await communicationProfile({},actor);
+    expect(p).toHaveProperty("budget",{eligible:canMonitor});
+    expect(fake.rpc).toHaveBeenCalledWith("erp_comm_budget_operator",{p_profile:actor.profileId,p_session:actor.authSessionId,
+      p_op:"budget.status",p_args:{scope:"communications"}});
+    expect(fake.permit).not.toHaveBeenCalled();
+  });
+  it("hides the budget entry on unavailable or malformed authority without hiding existing workspaces",async()=>{
+    const caps={profileId:actor.profileId,isGlobalSystemAdmin:false,canReviewHistory:false,canCreateGroup:true,canCreatePttChannel:false};
+    for(const budget of [{scope:"communications",canMonitor:"true"},{scope:"another",canMonitor:true},null]){
+      fake.rpc.mockImplementation(async(name:string)=>ok(name==="erp_comm_budget_operator"?budget:caps));
+      const p=await communicationProfile({},actor);
+      expect(p).toHaveProperty("budget",{eligible:false});
+      expect(p.chat.eligible&&p.ptt.eligible).toBe(true);
+    }
+    fake.rpc.mockImplementation(async(name:string)=>{if(name==="erp_comm_budget_operator")throw Error("Unavailable");return ok(caps);});
+    expect(await communicationProfile({},actor)).toHaveProperty("budget",{eligible:false});
   });
   it("bounds the actual body even with no content length and rejects invalid UTF-8",async()=>{
     await expect(boundedBytes(stream(Buffer.alloc(9)),8)).rejects.toMatchObject({status:413});

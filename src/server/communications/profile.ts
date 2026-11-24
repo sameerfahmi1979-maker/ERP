@@ -22,9 +22,11 @@ function webCache(request:Request | undefined,actor:CommunicationActor) {
 /** Read-only navigation status. Each content/provider operation performs its own admission. */
 export async function communicationProfile(args: Record<string,unknown>, actor: CommunicationActor,request?:Request) {
   if (Object.keys(args).length) throw new CommunicationHttpError("invalid_request");
-  const [chat,ptt] = await Promise.all([
+  const [chat,ptt,budget] = await Promise.all([
     userRpc("erp_chat_v1",{p_request:{op:"communications.profile",args:{}}}),
     userRpc("erp_ptt_v1",{p_request:{op:"ptt.capabilities",args:{}}}),
+    userRpc("erp_comm_budget_operator",{p_profile:actor.profileId,p_session:actor.authSessionId,
+      p_op:"budget.status",p_args:{scope:"communications"}}).catch(()=>null),
   ]);
   const flags=caps.parse(chat);
   const creation=z.object({profileId:decimal,canCreatePttChannel:z.boolean()}).parse(ptt);
@@ -36,5 +38,7 @@ export async function communicationProfile(args: Record<string,unknown>, actor: 
     return { eligible:true, configured, availability:configured ? "requiresAdmission" : "held",
       reason:configured ? "operation_admission_required" : "feature_disabled" };
   };
-  return { ...flags, ...webCache(request,actor), canCreatePttChannel:creation.canCreatePttChannel, chat:workspace("chat"), ptt:workspace("ptt_live") };
+  const budgetAccess=z.object({scope:z.literal("communications"),canMonitor:z.boolean()}).safeParse(budget);
+  return { ...flags, ...webCache(request,actor), canCreatePttChannel:creation.canCreatePttChannel,
+    chat:workspace("chat"), ptt:workspace("ptt_live"),budget:{eligible:budgetAccess.success&&budgetAccess.data.canMonitor} };
 }

@@ -59,6 +59,23 @@ test('holds duplicate or omitted page numbers instead of accepting an incomplete
   });
 });
 
+test('holds a sparse inspection list even when its length matches the original', () => {
+  const input = fixture();
+  delete input.proof.inspectedPages[1];
+  assert.deepEqual(assessPacketAdmission(input), {
+    status: 'held', reason: 'packet_inspection_incomplete',
+  });
+});
+
+test('requires complete inspection before asking for a corrected original', () => {
+  const input = fixture(3);
+  input.proof.sourceReview = { outcome: 'held', profileId: null, reasons: ['mixed_passport_and_emirates_id'] };
+  input.proof.inspectedPages = [1, 2];
+  assert.deepEqual(assessPacketAdmission(input), {
+    status: 'held', reason: 'packet_inspection_incomplete',
+  });
+});
+
 test('keeps all pages of a reviewed standalone credential', () => {
   const input = fixture();
   assert.deepEqual(assessPacketAdmission(input), { status: 'ready', bytes: input.bytes });

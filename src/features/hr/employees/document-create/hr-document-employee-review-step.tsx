@@ -51,8 +51,9 @@ type Props = {
   onResolveConflict: (fieldName: string, value: string, docId: number) => void;
   duplicates: DuplicateCheckResult[];
   identityDocDuplicates: DuplicateCheckResult[];
-  onNext: () => void;
-  onBack: () => void;
+  onNext?: () => void;
+  onBack?: () => void;
+  fixedScope?: boolean;
 };
 
 function SuggestedField({
@@ -108,6 +109,7 @@ export function HrDocumentEmployeeReviewStep({
   identityDocDuplicates,
   onNext,
   onBack,
+  fixedScope = false,
 }: Props) {
   const { options: companyOptions } = useOwnerCompaniesQuery();
   const { options: countryOptions } = useCountriesQuery();
@@ -358,6 +360,7 @@ export function HrDocumentEmployeeReviewStep({
               placeholder="Select company..."
               searchPlaceholder="Search..."
               required
+              disabled={fixedScope}
             />
           </div>
           <div className="col-span-6">
@@ -380,7 +383,7 @@ export function HrDocumentEmployeeReviewStep({
               placeholder={form.owner_company_id ? "Select branch..." : "Select company first"}
               searchPlaceholder="Search..."
               allowClear
-              disabled={!form.owner_company_id}
+              disabled={fixedScope || !form.owner_company_id}
             />
           </div>
           <div className="col-span-6">
@@ -465,14 +468,14 @@ export function HrDocumentEmployeeReviewStep({
         </div>
       </div>
 
-      <div className="flex justify-between pt-2">
-        <Button variant="outline" size="sm" onClick={onBack}>
+      {(onBack || onNext) && <div className="flex justify-between pt-2">
+        {onBack && <Button variant="outline" size="sm" onClick={onBack}>
           Back
-        </Button>
-        <Button size="sm" onClick={onNext} disabled={!isValid || unresolvedConflicts.length > 0}>
+        </Button>}
+        {onNext && <Button size="sm" onClick={onNext} disabled={!isValid || unresolvedConflicts.length > 0}>
           Review Compliance Records
-        </Button>
-      </div>
+        </Button>}
+      </div>}
     </div></QueryReadBoundary>
   );
 }

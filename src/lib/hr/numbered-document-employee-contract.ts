@@ -61,7 +61,7 @@ export const documentEmployeeReceiptSchema=z.object({employeeId:documentEmployee
 export type DocumentEmployeeInput=z.input<typeof documentEmployeeInputSchema>;
 export type DocumentEmployeeContract=z.infer<typeof documentEmployeeContractSchema>;
 export type DocumentEmployeeReceipt=z.infer<typeof documentEmployeeReceiptSchema>;
-export type DocumentEmployeeReview=HrDocumentToEmployeeReviewPayload&{duplicates:DuplicateCheckResult[];reviewedSources:z.infer<typeof documentEmployeeSourcesSchema>};
+export type DocumentEmployeeReview=HrDocumentToEmployeeReviewPayload&{duplicates:DuplicateCheckResult[];reviewedSources:z.infer<typeof documentEmployeeSourcesSchema>;sharedDraftAvailable?:boolean};
 export type DocumentEmployeeResult={success:boolean;data?:DocumentEmployeeReceipt;error?:string;uncertain?:boolean};
 export function canStartDocumentEmployee(ctx:AuthContext){return hasGlobalPermission(ctx,'numbering.rules.generate')&&hasPermission(ctx,'hr.employees.create')&&(hasPermission(ctx,'dms.documents.view')||hasPermission(ctx,'dms.admin'))&&hasPermission(ctx,'dms.documents.preview')&&hasPermission(ctx,'dms.documents.edit');}
 /** Display admission only: exact new subject/self/team authority stays in F03 RLS. */

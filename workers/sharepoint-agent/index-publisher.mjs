@@ -73,6 +73,9 @@ export async function publishAgentIndex({ projectionInput, destination, authoriz
   // A lost response may have committed the approved bytes. Read before deciding
   // whether a later invocation needs a new precondition.
   const readBack = await readIndex(transport, target);
+  if (readBack.etag === remote.etag && !readBack.body.equals(remote.body)) {
+    throw new Error('index_invalid_read_back');
+  }
   const outcome = compareRead(candidate, body, readBack);
   if (outcome === 'unchanged') return { state: writeConfirmed ? 'published' : 'recovered', revision: candidate.revision };
   if (outcome === 'stale' || outcome === 'conflict') return { state: outcome, revision: readBack.manifest.revision };

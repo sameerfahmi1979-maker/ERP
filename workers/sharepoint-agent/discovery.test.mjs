@@ -142,3 +142,28 @@ test('downloads the pinned PDF only in the approved subtree without forwarding t
   await assert.rejects(connection.readApprovedPdf('sample', 'metadata'), /pilot_source_unverified/);
   assert.equal(calls.filter(([url]) => url.endsWith('/content')).length, 2);
 });
+
+test('reads a pinned PDF at 3 MiB and refuses the next byte before download', async () => {
+  const limit = 3 * 1024 * 1024;
+  const raw = Buffer.alloc(limit);
+  raw.write('%PDF-1.7\n');
+  let size = raw.length;
+  let downloads = 0;
+  const connection = createSharePointConnection(config, { fetch: async url => {
+    const address = String(url);
+    if (address.startsWith('https://login.microsoftonline.com')) return Response.json({
+      access_token: 'fixture', token_type: 'Bearer', expires_in: 3600,
+    });
+    if (address.endsWith('/content')) {
+      downloads++;
+      return new Response(raw);
+    }
+    return Response.json({ ...file('sample', 'source'), size });
+  } });
+
+  const accepted = await connection.readDiscoveredPdf('sample', 'c:bytes', undefined, 'metadata');
+  assert.ok(accepted.bytes.equals(raw));
+  size = limit + 1;
+  await assert.rejects(connection.readDiscoveredPdf('sample', 'c:bytes', undefined, 'metadata'), /pilot_source_unverified/);
+  assert.equal(downloads, 1);
+});

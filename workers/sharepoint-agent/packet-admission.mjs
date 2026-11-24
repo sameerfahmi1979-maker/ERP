@@ -4,8 +4,10 @@ const mixedIdentity = 'mixed_passport_and_emirates_id';
 const held = reason => ({ status: 'held', reason });
 
 function coversOriginal(pages, pageCount) {
-  return Array.isArray(pages) && pages.length === pageCount && new Set(pages).size === pageCount
-    && pages.every(page => Number.isSafeInteger(page) && page >= 1 && page <= pageCount);
+  if (!Array.isArray(pages) || pages.length !== pageCount) return false;
+  const uniquePages = new Set(pages);
+  return uniquePages.size === pageCount
+    && [...uniquePages].every(page => Number.isSafeInteger(page) && page >= 1 && page <= pageCount);
 }
 
 /**
@@ -23,11 +25,11 @@ export function assessPacketAdmission({ item, bytes, proof }) {
   }
 
   const { pageCount, inspectedPages, sourceReview } = proof;
-  if (Array.isArray(sourceReview?.reasons) && sourceReview.reasons.includes(mixedIdentity)) {
-    return { status: 'correction_required', reason: mixedIdentity };
-  }
   if (!Number.isSafeInteger(pageCount) || pageCount < 1 || !coversOriginal(inspectedPages, pageCount)) {
     return held('packet_inspection_incomplete');
+  }
+  if (Array.isArray(sourceReview?.reasons) && sourceReview.reasons.includes(mixedIdentity)) {
+    return { status: 'correction_required', reason: mixedIdentity };
   }
   if (sourceReview?.outcome !== 'prepared' || !sourceReview.profileId
       || !Array.isArray(sourceReview.reasons) || sourceReview.reasons.length) {

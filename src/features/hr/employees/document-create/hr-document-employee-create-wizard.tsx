@@ -8,7 +8,8 @@ import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import type { HrDmsDocumentSelection, HrComplianceRecordSuggestion, HrDocumentConflict } from "@/lib/hr/document-to-record/types";
 import type { DuplicateCheckResult } from "@/lib/hr/document-to-record/duplicate-checks";
 import type {AuthContext} from '@/lib/rbac/check';
-import {canSaveDocumentEmployee,documentEmployeeInputSchema,type DocumentEmployeeInput,type DocumentEmployeeReview,type DocumentEmployeeReceipt} from '@/lib/hr/numbered-document-employee-contract';
+import {canStartDocumentEmployee,canSaveDocumentEmployee,documentEmployeeInputSchema,type DocumentEmployeeInput,type DocumentEmployeeReview,type DocumentEmployeeReceipt} from '@/lib/hr/numbered-document-employee-contract';
+import { hrReadIdentity } from "@/lib/reads/hr-read-identity";
 import {useDocumentEmployeeSession} from './use-document-employee-session';
 import {Button} from '@/components/ui/button';
 import { HrDocumentPickerStep } from "./hr-document-picker-step";
@@ -16,6 +17,7 @@ import { HrDocumentEmployeeReviewStep } from "./hr-document-employee-review-step
 import type { EmployeeFormState } from "./hr-document-employee-review-step";
 import { HrDocumentComplianceReviewStep } from "./hr-document-compliance-review-step";
 import { HrDocumentCreateSummaryStep } from "./hr-document-create-summary-step";
+import { SharedDocumentEmployeeReview } from "./shared-document-employee-review";
 
 type Step = "pick" | "employee-review" | "compliance-review" | "confirm";
 
@@ -53,6 +55,20 @@ const EMPTY_FORM: EmployeeFormState = {
   emergency_contact_name: "",
   emergency_contact_mobile: "",
 };
+
+function formFromReviewedDocuments(payload: DocumentEmployeeReview): EmployeeFormState {
+  const draft = payload.employeeDraft;
+  return {
+    ...EMPTY_FORM,
+    full_name_en: draft.full_name_en?.userValue ?? "",
+    full_name_ar: draft.full_name_ar?.userValue ?? "",
+    gender: (draft.gender?.userValue as EmployeeFormState["gender"]) ?? "",
+    date_of_birth: draft.date_of_birth?.userValue ?? "",
+    nationality_id: draft.nationality_id?.userValue ? Number(draft.nationality_id.userValue) : null,
+    mobile_number: draft.mobile_number?.userValue ?? "",
+    personal_email: draft.personal_email?.userValue ?? "",
+  };
+}
 
 export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen, authContext }: Props) {
   const router = useRouter();
@@ -103,27 +119,8 @@ export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen
   const handleAggregated = useCallback(
     (payload: DocumentEmployeeReview) => {
       setReviewPayload(payload);
-      // Pre-populate form from draft suggestions
-      const d = payload.employeeDraft;
-      setFormState({
-        full_name_en: d.full_name_en?.userValue ?? "",
-        full_name_ar: d.full_name_ar?.userValue ?? "",
-        gender: (d.gender?.userValue as "male" | "female" | "") ?? "",
-        date_of_birth: d.date_of_birth?.userValue ?? "",
-        nationality_id: d.nationality_id?.userValue ? Number(d.nationality_id.userValue) : null,
-        mobile_number: d.mobile_number?.userValue ?? "",
-        personal_email: d.personal_email?.userValue ?? "",
-        owner_company_id: null,
-        branch_id: null,
-        department_id: null,
-        designation_id: null,
-        employee_category_id: null,
-        employment_type_id: null,
-        joining_date: "",
-        emergency_contact_name: "",
-        emergency_contact_mobile: "",
-      });
-      setConflicts(d.conflicts ?? []);
+      setFormState(formFromReviewedDocuments(payload));
+      setConflicts(payload.employeeDraft.conflicts ?? []);
       // The shared HR.14B mapper supplies historical medical defaults. HR.14A
       // requires the reviewer to choose these facts explicitly for this save.
       setComplianceSuggestions(payload.complianceSuggestions.map(s=>s.kind==='medical_insurance'?{...s,fields:{...s.fields,employee_covered:null,dependent_coverage_included:null}}:s));
@@ -272,6 +269,21 @@ export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen
   };
 
   const currentStepIndex = STEPS.indexOf(step);
+  const employeeReview = step === "employee-review" && reviewPayload ? {
+    authContext,
+    draft: reviewPayload.employeeDraft,
+    form,
+    setForm,
+    conflicts,
+    onResolveConflict: handleResolveConflict,
+    duplicates,
+    identityDocDuplicates,
+    onNext: () => setStep("compliance-review"),
+    onBack: () => setStep("pick"),
+  } : null;
+  const canOpenSharedDraft = open && reviewPayload?.sharedDraftAvailable === true &&
+    canStartDocumentEmployee(authContext) && selectedDocIds.length === reviewPayload.reviewedSources.length &&
+    reviewPayload.reviewedSources.every(source => selectedDocIds.includes(source.documentId));
 
   return (
     <>
@@ -330,20 +342,14 @@ export function HrDocumentEmployeeCreateWizard({ open, onOpenChange, onChildOpen
         />
       )}
 
-      {step === "employee-review" && reviewPayload && (
-        <HrDocumentEmployeeReviewStep
-          authContext={authContext}
-          draft={reviewPayload.employeeDraft}
-          form={form}
-          setForm={setForm}
-          conflicts={conflicts}
-          onResolveConflict={handleResolveConflict}
-          duplicates={duplicates}
-          identityDocDuplicates={identityDocDuplicates}
-          onNext={() => setStep("compliance-review")}
-          onBack={() => setStep("pick")}
-        />
-      )}
+      {employeeReview && reviewPayload && (canOpenSharedDraft
+        ? <SharedDocumentEmployeeReview
+            key={JSON.stringify([hrReadIdentity(authContext), reviewPayload.reviewedSources])}
+            review={employeeReview}
+            reviewedSources={reviewPayload.reviewedSources}
+            initialForm={formFromReviewedDocuments(reviewPayload)}
+          />
+        : <HrDocumentEmployeeReviewStep {...employeeReview} />)}
 
       {step === "compliance-review" && (
         <HrDocumentComplianceReviewStep

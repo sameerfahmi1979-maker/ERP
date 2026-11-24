@@ -22,7 +22,8 @@ const ocrText = [
 
 const bytes = Buffer.from("%PDF-1.7\nsynthetic-verified-input\n%%EOF\n");
 const sha256 = createHash("sha256").update(bytes).digest("hex");
-const input = { client: {} as SupabaseClient, bytes, sha256, filename: "BR1 synthetic permit.pdf" };
+const reserveProviderAttempt = vi.fn();
+const input = { client: {} as SupabaseClient, bytes, sha256, filename: "BR1 synthetic permit.pdf", reserveProviderAttempt };
 
 function field(fieldCode: string, value: string, sourceSnippet: string): DmsExtractedField {
   return { fieldCode, value, sourceSnippet, confidenceScore: 0.97, confidenceLabel: "high" };
@@ -53,13 +54,27 @@ beforeEach(() => {
     scoredTypes: [{ id: 16, type_code: "LABOUR_CARD", name_en: "Labour Card" }],
   });
   mocks.fields.mockResolvedValue(["full_name_en", "labour_card_number", "expiry_date"].map(fieldCode => ({ fieldCode, isRequired: true })));
-  mocks.provider.mockResolvedValue({ configId: 3, configCode: "DEFAULT_DMS_CLASSIFIER", provider: {
+  mocks.provider.mockResolvedValue({ configId: 3, configCode: "DEFAULT_DMS_CLASSIFIER", configUpdatedAt: "2026-11-23T00:00:00Z", provider: {
     providerCode: "openai", modelId: "gpt-6.1-sol", isConfigured: () => true, analyze: mocks.analyze,
   } });
   mocks.analyze.mockResolvedValue(modelOutput());
 });
 
 describe("SharePoint Work Permit AI Fill", () => {
+  it("waits for a durable reservation for the exact provider configuration and prompt before dispatching", async () => {
+    reserveProviderAttempt.mockImplementation(async () => {
+      expect(mocks.analyze).not.toHaveBeenCalled();
+      throw Error("Operator allowance exhausted");
+    });
+
+    await expect(analyzeSharePointWorkPermit(input)).rejects.toThrow("Operator allowance exhausted");
+    expect(reserveProviderAttempt).toHaveBeenCalledExactlyOnceWith({
+      provider: "openai", model: "gpt-6.1-sol", configId: 3, configUpdatedAt: "2026-11-23T00:00:00Z",
+      promptVersion: "v3.7-source-dates",
+    });
+    expect(mocks.analyze).not.toHaveBeenCalled();
+  });
+
   it("binds three labelled values, dates and canonical officer review to the exact original", async () => {
     const output = await analyzeSharePointWorkPermit(input);
     expect(mocks.analyze).toHaveBeenCalledOnce();
@@ -143,6 +158,7 @@ describe("SharePoint Work Permit AI Fill", () => {
     await expect(analyzeSharePointWorkPermit(input)).rejects.toThrow(/single.page/i);
     mocks.extract.mockResolvedValueOnce({ text: ocrText.replace("Card Expiry Date", "Expiry Date"), images: [], pageCount: 1 });
     await expect(analyzeSharePointWorkPermit(input)).rejects.toThrow(/layout/i);
+    expect(reserveProviderAttempt).not.toHaveBeenCalled();
     expect(mocks.analyze).not.toHaveBeenCalled();
   });
 });

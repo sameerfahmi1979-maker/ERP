@@ -42,6 +42,11 @@ const claimSchema = sourceSchema.extend({
   processingRevision: z.iso.datetime({ offset: true }),
   started: z.boolean(),
 });
+const reservationSchema = identity.extend({
+  attemptId: z.uuid(),
+  processingRevision: z.iso.datetime({ offset: true }),
+  expiresAt: z.iso.datetime({ offset: true }),
+});
 const receiptSchema = identity.extend({
   state: z.literal("review_pending"),
   resultId: id,
@@ -61,6 +66,12 @@ function blockedBy(error: { code?: string } | null) {
   if (error?.code === "42501") return unavailable(403);
   if (["55000", "PT409", "55P03"].includes(error?.code ?? "")) return unavailable(409);
   return unavailable(503);
+}
+
+class ProviderReservationDenied extends Error {
+  constructor(readonly response: Response) {
+    super("SharePoint provider reservation unavailable.");
+  }
 }
 
 async function readCommand(request: Request) {
@@ -152,9 +163,23 @@ async function advance(input: z.infer<typeof commandSchema>, token: string) {
       claim.data.actorId !== plan.actorId || claim.data.authSessionId !== plan.authSessionId ||
       claim.data.companyId !== plan.companyId || claim.data.branchId !== plan.branchId) return unavailable(409);
 
-  const output = await analyzeSharePointWorkPermit({ client, bytes: verified.bytes, filename: plan.filename, sha256: plan.sha256 });
+  const attempt = { ...authority, p_attempt: claim.data.attemptId, p_claim_at: claim.data.processingRevision };
+  const output = await analyzeSharePointWorkPermit({
+    client, bytes: verified.bytes, filename: plan.filename, sha256: plan.sha256,
+    reserveProviderAttempt: async pin => {
+      const reserved = await admin.rpc("f07_reserve_sharepoint_worker_provider_attempt", {
+        ...attempt, p_provider: pin.provider, p_config: pin.configId, p_config_updated_at: pin.configUpdatedAt,
+        p_model: pin.model, p_prompt: pin.promptVersion,
+      }).retry(false);
+      if (reserved.error) throw new ProviderReservationDenied(blockedBy(reserved.error));
+      const permit = reservationSchema.safeParse(reserved.data);
+      if (!permit.success || !exact(permit.data, input) || permit.data.attemptId !== attempt.p_attempt ||
+          permit.data.processingRevision !== attempt.p_claim_at) throw new ProviderReservationDenied(unavailable(503));
+      if (Date.parse(permit.data.expiresAt) <= Date.now()) throw new ProviderReservationDenied(unavailable(409));
+    },
+  });
   const published = await admin.rpc("f07_publish_sharepoint_worker_review", {
-    ...authority, p_attempt: claim.data.attemptId, p_claim_at: claim.data.processingRevision, p_output: output,
+    ...attempt, p_output: output,
   }).retry(false);
   if (published.error) return blockedBy(published.error);
   const receipt = receiptSchema.safeParse(published.data);
@@ -175,7 +200,7 @@ export async function POST(request: Request) {
   if (!parsed?.success) return unavailable(400);
   try {
     return await withMobileToken(token, () => advance(parsed.data, token));
-  } catch {
-    return unavailable(503);
+  } catch (error) {
+    return error instanceof ProviderReservationDenied ? error.response : unavailable(503);
   }
 }

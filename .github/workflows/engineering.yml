@@ -370,6 +370,44 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
 
+  sharepoint-worker-image:
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_CANDIDATE_SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.23.4'
+      - run: npm install --global npm@10.9.9
+      - name: Test SharePoint worker and HR source reconciliation
+        run: |
+          npm ci --prefix workers/sharepoint-agent --omit=dev --ignore-scripts --no-audit --no-fund
+          npm test --prefix workers/sharepoint-agent
+          node --test tooling/dms/hr-inventory-reconciliation.test.mjs tooling/dms/hr-verified-review-bindings.test.mjs
+      - name: Build and smoke-test the exact worker image without network access at runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=algt-sharepoint-worker-ci
+          docker build --tag "$image" --label "org.opencontainers.image.revision=$EXPECTED_CANDIDATE_SHA" workers/sharepoint-agent
+          docker run --rm --network none --entrypoint node "$image" --check worker.mjs
+          docker run --rm --network none --entrypoint node "$image" -e 'require("pg"); if (process.getuid() === 0) process.exit(1)'
+          actual_revision=$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")
+          test "$actual_revision" = "$EXPECTED_CANDIDATE_SHA"
+          docker image inspect --format '{{.Id}} {{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image" > "$RUNNER_TEMP/sharepoint-worker-image.txt"
+      - name: Retain worker image identity
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sharepoint-worker-image-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sharepoint-worker-image.txt
+          if-no-files-found: error
+
   # Preserve the stable required-check name. The aggregate always executes and
   # fails closed for a failed, cancelled, skipped or missing constituent result.
   # No successful subset of a matrix can turn the complete candidate green.
@@ -387,6 +425,7 @@ jobs:
       - security
       - lint
       - production-image
+      - sharepoint-worker-image
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -405,3 +444,4 @@ jobs:
           test '${{ needs.security.result }}' = success
           test '${{ needs.lint.result }}' = success
           test '${{ needs.production-image.result }}' = success
+          test '${{ needs.sharepoint-worker-image.result }}' = success

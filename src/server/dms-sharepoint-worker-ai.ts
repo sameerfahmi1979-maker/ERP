@@ -24,6 +24,13 @@ const printedCaption = /^(?:Person Name|Person Code|Passport Number|Passport Iss
 const nextCaption = /^(?:Person Code|Passport|Card|Work Permit|Establishment|Nationality|Occupation|Profession|Gender|Sex|Date of Birth|Work Site|Issue Date|Expiry Date|Transaction No|Electronic Work Permit Information)\b/iu;
 
 type PrintedField = { value: string; snippet: string };
+type SharePointProviderPin = {
+  provider: "openai";
+  model: string;
+  configId: number;
+  configUpdatedAt: string;
+  promptVersion: typeof SOURCE_ROLE_PROMPT_VERSION;
+};
 
 function normalizeLine(line: string): string {
   return line.normalize("NFKC").split("|")[0].trim().replace(/\s+/gu, " ");
@@ -60,12 +67,13 @@ function snippetKey(text: string): string {
   return text.normalize("NFKC").toLowerCase().replace(/[\s:]+/gu, " ").trim();
 }
 
-/** Prepares one source-bound Work Permit for officer review. Database claim and publication are caller-owned. */
-export async function analyzeSharePointWorkPermit({ client, bytes, filename, sha256 }: {
+/** Prepares one source-bound Work Permit after a durable provider-attempt reservation. */
+export async function analyzeSharePointWorkPermit({ client, bytes, filename, sha256, reserveProviderAttempt }: {
   client: SupabaseClient;
   bytes: Buffer;
   filename: string;
   sha256: string;
+  reserveProviderAttempt: (pin: SharePointProviderPin) => Promise<void>;
 }) {
   if (!/\.pdf$/iu.test(filename) || bytes.length < 1 || bytes.length > 3 * 1024 * 1024 ||
     createHash("sha256").update(bytes).digest("hex") !== sha256) {
@@ -101,11 +109,11 @@ export async function analyzeSharePointWorkPermit({ client, bytes, filename, sha
     full_name_en: holder, labour_card_number: card, expiry_date: { ...expiry, value: expiryDate },
   };
 
-  const [{ provider, configId, configCode }, registeredFields] = await Promise.all([
+  const [{ provider, configId, configCode, configUpdatedAt }, registeredFields] = await Promise.all([
     getDmsAiProvider("analysis"), loadMetadataFieldsForDocumentType(client, permit.id, "intake"),
   ]);
   if (configCode !== "DEFAULT_DMS_CLASSIFIER" || provider.providerCode !== "openai" || !provider.isConfigured() ||
-    !provider.modelId || !configId || !Number.isSafeInteger(configId) || configId < 1) {
+    !provider.modelId || !configId || !Number.isSafeInteger(configId) || configId < 1 || !configUpdatedAt) {
     throw Error("The approved Work Permit classifier configuration is unavailable.");
   }
   if (Object.keys(captions).some(code => !registeredFields.some(field => field.fieldCode === code))) {
@@ -117,6 +125,11 @@ export async function analyzeSharePointWorkPermit({ client, bytes, filename, sha
       `Read the printed ${caption} only. Include that caption and the full printed value in the source snippet.`].filter(Boolean).join(" ") } : field;
   });
 
+  const pin: SharePointProviderPin = {
+    provider: provider.providerCode, model: provider.modelId, configId, configUpdatedAt,
+    promptVersion: SOURCE_ROLE_PROMPT_VERSION,
+  };
+  await reserveProviderAttempt(pin);
   const startedAt = Date.now();
   const output = await provider.analyze({
     ocrText: content.text, imageFiles: content.images, currentTypeCode: null, typeCandidates,
@@ -154,9 +167,9 @@ export async function analyzeSharePointWorkPermit({ client, bytes, filename, sha
   const reason = classification.reason.slice(0, 500);
   return {
     job: {
-      provider: provider.providerCode, model: provider.modelId,
+      provider: pin.provider, model: pin.model,
       inputTextHash: createHash("sha256").update(content.text, "utf8").digest("hex"),
-      promptVersion: SOURCE_ROLE_PROMPT_VERSION, providerConfigId: configId, durationMs: Math.max(0, Date.now() - startedAt),
+      promptVersion: pin.promptVersion, providerConfigId: pin.configId, durationMs: Math.max(0, Date.now() - startedAt),
     },
     result: {
       classificationConfidence: classification.confidenceLabel, classificationScore: classification.confidenceScore,

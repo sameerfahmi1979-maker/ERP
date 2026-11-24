@@ -16,6 +16,17 @@ describe("retained intake type review service",()=>{
  it("holds uncertain admitted work without another paid call",async()=>{mock.rpc.mockResolvedValue(envelope("uncertain"));expect(await rerunRetainedIntakeMetadata(p)).toMatchObject({success:false,uncertain:true});expect(mock.analyze).not.toHaveBeenCalled();});
  it("checks dependencies before admitting a paid stage",async()=>{mock.rpc.mockResolvedValue(envelope("ready",{source}));mock.provider.mockResolvedValue({provider:{isConfigured:()=>false}});expect((await rerunRetainedIntakeMetadata(p)).success).toBe(false);expect(mock.rpc).toHaveBeenCalledTimes(1);expect(mock.publish).not.toHaveBeenCalled();});
  it("does not pay if source changed between read and admission",async()=>{mock.rpc.mockResolvedValueOnce(envelope("ready",{source})).mockResolvedValueOnce({error:{code:"PT409"}});expect((await rerunRetainedIntakeMetadata(p)).success).toBe(false);expect(mock.analyze).not.toHaveBeenCalled();expect(mock.rpc.mock.calls[1][1].p_data.expectedStageHash).toBe(hash);});
+ it.each([
+  {stageHash:"b".repeat(64)}, {sourceHash:"b".repeat(64)}, {resultId:8}, {typeCode:"EMIRATES_ID"},
+  {typeName:"Unmatched credential"}, {filename:"DIFFERENT.pdf"}, {text:"Different retained evidence"},
+ ])("holds a started receipt whose source differs from the preflight %j",async difference=>{
+  mock.rpc.mockResolvedValueOnce(envelope("ready",{source}))
+    .mockResolvedValueOnce(envelope("started",{source:{...source,...difference},token}));
+  expect(await rerunRetainedIntakeMetadata(p)).toMatchObject({success:false,uncertain:true});
+  expect(mock.analyze).not.toHaveBeenCalled();
+  expect(mock.publish).not.toHaveBeenCalled();
+  expect(mock.rpc).toHaveBeenCalledTimes(2);
+ });
  it("publishes once and rechecks authorized delivery",async()=>{mock.rpc.mockResolvedValueOnce(envelope("ready",{source})).mockResolvedValueOnce(envelope("started",{source,token})).mockResolvedValueOnce(envelope("completed",{receipt}));mock.publish.mockResolvedValue({data:{state:"completed",receipt},error:null});expect((await rerunRetainedIntakeMetadata(p)).success).toBe(true);expect(mock.analyze).toHaveBeenCalledTimes(1);expect(mock.publish).toHaveBeenCalledTimes(1);});
  it("retains a lost post-commit response and recovers without repeating the provider",async()=>{mock.rpc.mockResolvedValueOnce(envelope("ready",{source})).mockResolvedValueOnce(envelope("started",{source,token}));mock.publish.mockRejectedValue(Error("lost after commit"));expect(await rerunRetainedIntakeMetadata(p)).toMatchObject({success:false,uncertain:true});mock.rpc.mockResolvedValue(envelope("completed",{receipt}));expect((await rerunRetainedIntakeMetadata(p)).success).toBe(true);expect(mock.analyze).toHaveBeenCalledTimes(1);});
  it("does not return candidates after owner delivery access is revoked",async()=>{mock.rpc.mockResolvedValueOnce(envelope("ready",{source})).mockResolvedValueOnce(envelope("started",{source,token})).mockResolvedValueOnce({error:{code:"42501"}});mock.publish.mockResolvedValue({data:{state:"completed",receipt},error:null});const result=await rerunRetainedIntakeMetadata(p);expect(result.success).toBe(false);expect(result).not.toHaveProperty("data");});

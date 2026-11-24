@@ -42,6 +42,8 @@ export function readDmsPilotConfig(env) {
     const version = env.PILOT_GRAPH_VERSION;
     if (!/^[1-9]\d*$/.test(branch) || !Number.isSafeInteger(Number(branch)) ||
         !/^[A-Za-z0-9_!-]{1,256}$/.test(config.itemId ?? '') || !fingerprint.test(config.sha256 ?? '') ||
+        typeof config.etag !== 'string' || !config.etag.trim() || config.etag.length > 512 || config.etag === '*' ||
+        /[\u0000-\u001f\u007f]/u.test(config.etag) ||
         typeof version !== 'string' || version.length > 512 || !/^[ce]:[^\u0000-\u001f\u007f]+$/u.test(version)) {
       throw new ConnectionError('sharepoint_pilot_source_or_branch_unavailable');
     }

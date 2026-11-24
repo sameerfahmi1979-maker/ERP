@@ -18,7 +18,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission, hasPermission } from "@/lib/rbac/check";
 import { checkDocumentConfidentialityAccess } from "@/lib/dms/document-access";
 import { extractFileContent } from "@/lib/dms/file-content-extractor";
 import { getDmsAiProvider } from "@/lib/dms/ai/factory";
@@ -583,11 +583,8 @@ export async function adminSemanticIndexBackfill(input: {
   forceRebuild?:          boolean;
 }): Promise<ActionResult<SemanticIndexBackfillResult>> {
   const ctx = await getAuthContext();
-  if (
-    !hasPermission(ctx, "dms.admin") &&
-    !ctx.roleCodes.includes("system_admin")
-  ) {
-    return { success: false, error: "Admin permission required." };
+  if (!hasGlobalPermission(ctx, "dms.admin")) {
+    return { success: false, error: "Global DMS admin permission required." };
   }
 
   const effectiveMode: SemanticIndexBackfillMode = input.mode ?? "dry_run";
@@ -705,11 +702,8 @@ export async function adminSemanticIndexBackfill(input: {
  */
 export async function getSemanticIndexQueueSummary(): Promise<ActionResult<SemanticIndexQueueSummary>> {
   const ctx = await getAuthContext();
-  if (
-    !hasPermission(ctx, "dms.admin") &&
-    !ctx.roleCodes.includes("system_admin")
-  ) {
-    return { success: false, error: "Admin permission required." };
+  if (!hasGlobalPermission(ctx, "dms.admin")) {
+    return { success: false, error: "Global DMS admin permission required." };
   }
 
   try {
@@ -730,9 +724,12 @@ export async function getSemanticIndexQueueSummary(): Promise<ActionResult<Seman
           .select("id", { count: "exact", head: true })
           .eq("job_type", DMS_AI_JOB_TYPE.SEMANTIC_DOCUMENT_INDEX)
           .eq("job_status", status)
-          .then(({ count }) => ({ status, count: count ?? 0 }))
+          .then(({ count, error }) => ({ status, count, error }))
       )
     );
+    if (counts.some(({ count, error }) => error || count === null)) {
+      return { success: false, error: "Semantic index queue status unavailable." };
+    }
 
     const map = Object.fromEntries(counts.map((c) => [c.status, c.count])) as Record<string, number>;
 
@@ -766,7 +763,7 @@ export async function getDmsDocumentSemanticIndexStatus(documentId: number): Pro
   isStale:         boolean;
 }>> {
   const ctx = await getAuthContext();
-  if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin") && !ctx.roleCodes.includes("system_admin")) {
+  if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
     return { success: false, error: "Permission denied." };
   }
 
@@ -778,7 +775,7 @@ export async function getDmsDocumentSemanticIndexStatus(documentId: number): Pro
     const admin = createAdminClient();
 
     // Get chunk counts per status
-    const [totalRes, embeddedRes, pendingRes, failedRes, contentRes] = await Promise.all([
+    const [totalRes, embeddedRes, pendingRes, failedRes, contentRes, chunkHashRes] = await Promise.all([
       admin
         .from("dms_document_content_chunks")
         .select("id", { count: "exact", head: true })
@@ -811,57 +808,64 @@ export async function getDmsDocumentSemanticIndexStatus(documentId: number): Pro
         .select("content_text_sha256")
         .eq("document_id", documentId)
         .maybeSingle(),
+      admin
+        .from("dms_document_content_chunks")
+        .select("content_hash")
+        .eq("document_id", documentId)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .limit(1)
+        .maybeSingle(),
     ]);
 
-    // Get chunk's content_hash to check staleness
-    const { data: chunkHashRow } = await admin
-      .from("dms_document_content_chunks")
-      .select("content_hash")
-      .eq("document_id", documentId)
-      .eq("is_active", true)
-      .is("deleted_at", null)
-      .limit(1)
-      .maybeSingle();
+    if (totalRes.error || embeddedRes.error || pendingRes.error || failedRes.error || contentRes.error || chunkHashRes.error ||
+      totalRes.count === null || embeddedRes.count === null || pendingRes.count === null || failedRes.count === null) {
+      return { success: false, error: "Semantic index status unavailable." };
+    }
 
     const currentContentHash = (contentRes.data as { content_text_sha256?: string | null } | null)?.content_text_sha256 ?? null;
-    const chunkContentHash   = (chunkHashRow as { content_hash?: string | null } | null)?.content_hash ?? null;
+    const chunkContentHash   = (chunkHashRes.data as { content_hash?: string | null } | null)?.content_hash ?? null;
     const isStale = currentContentHash !== null && chunkContentHash !== null && currentContentHash !== chunkContentHash;
+    if (!(await checkDocumentConfidentialityAccess(caller, documentId, ctx)).allowed) {
+      return { success: false, error: "Document unavailable or access denied." };
+    }
 
     return {
       success: true,
       data: {
         documentId,
-        totalChunks:     totalRes.count    ?? 0,
-        embeddedChunks:  embeddedRes.count ?? 0,
-        pendingChunks:   pendingRes.count  ?? 0,
-        failedChunks:    failedRes.count   ?? 0,
+        totalChunks:     totalRes.count,
+        embeddedChunks:  embeddedRes.count,
+        pendingChunks:   pendingRes.count,
+        failedChunks:    failedRes.count,
         lastContentHash: chunkContentHash,
         isStale,
       },
     };
-  } catch (err) {
-    return { success: false, error: String(err).slice(0, 200) };
+  } catch {
+    return { success: false, error: "Semantic index status unavailable." };
   }
 }
 
 /**
  * Enqueues a single semantic_document_index job for a specific document.
  * Used by the document Semantic tab UI admin Rebuild button.
- * Requires dms.admin or system_admin.
+ * Requires current dms.admin authority over the target document.
  */
 export async function enqueueDmsDocumentSemanticIndex(
   documentId: number,
   forceRebuild = false
 ): Promise<ActionResult<{ jobId: number | undefined; skipped: boolean }>> {
   const ctx = await getAuthContext();
-  if (
-    !hasPermission(ctx, "dms.admin") &&
-    !ctx.roleCodes.includes("system_admin")
-  ) {
+  if (!hasPermission(ctx, "dms.admin")) {
     return { success: false, error: "Admin permission required." };
   }
 
   try {
+    const caller = await createClient();
+    if (!(await checkDocumentConfidentialityAccess(caller, documentId, ctx, "dms.admin")).allowed) {
+      return { success: false, error: "Document unavailable or access denied." };
+    }
     const admin  = createAdminClient();
     const flags  = await loadSemanticBackfillFlags(admin);
 
@@ -872,6 +876,9 @@ export async function enqueueDmsDocumentSemanticIndex(
       return { success: false, error: "DMS_AI_JOB_QUEUE must be enabled." };
     }
 
+    if (!(await checkDocumentConfidentialityAccess(caller, documentId, ctx, "dms.admin")).allowed) {
+      return { success: false, error: "Document unavailable or access denied." };
+    }
     const result = await enqueueUniqueDmsAiJob({
       jobType:           DMS_AI_JOB_TYPE.SEMANTIC_DOCUMENT_INDEX,
       payload:           { documentId, source: "manual_rebuild", forceRebuild },

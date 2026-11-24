@@ -29,6 +29,7 @@ import { runDuplicateChecks, runIdentityDocumentDuplicateChecks, type DuplicateC
 import { isHrAiFeatureEnabled } from "@/lib/hr/ai/feature-flags";
 import {canSaveDocumentEmployee,documentEmployeeContractSchema,documentEmployeeInputSchema,documentEmployeePreparedSourcesSchema,type DocumentEmployeeReview,type DocumentEmployeeResult} from '@/lib/hr/numbered-document-employee-contract';
 import {saveNumberedDocumentEmployee} from '@/server/numbered-document-employee-save';
+import { isSharedDocumentEmployeeDraftEnabled } from "@/server/hr-shared-document-draft-feature";
 
 export type ActionResult<T = unknown> = {
   success: boolean;
@@ -308,6 +309,7 @@ export async function aggregateEmployeeDraftFromDmsDocuments(
         identityDocDuplicates,
         duplicates,
         reviewedSources:sources.data.map(({documentId,fingerprint})=>({documentId,fingerprint})),
+        ...(isSharedDocumentEmployeeDraftEnabled() ? { sharedDraftAvailable: true } : {}),
       },
     };
   } catch (err) {

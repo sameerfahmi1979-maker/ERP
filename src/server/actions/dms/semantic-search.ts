@@ -19,8 +19,9 @@ import {markRetryProviderStarted} from "@/server/mobile/dms-v5/orchestration-rec
 
 import {filterSearchCandidateIds} from "@/server/actions/ai/search-candidates";
 import { z } from "zod";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { canUseApplication, getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { logAudit } from "@/server/actions/audit";
 import { getDmsEmbeddingProvider } from "@/lib/dms/ai/factory";
 import { revalidatePath } from "next/cache";
@@ -63,29 +64,18 @@ function isAdminUser(ctx: Awaited<ReturnType<typeof getAuthContext>>) {
 
 // ── Feature flags ──────────────────────────────────────────────────────────────
 
-async function isSemanticSearchEnabled(): Promise<boolean> {
+async function isSemanticFlagEnabled(
+  featureCode: "DMS_SEMANTIC_SEARCH" | "DMS_SEMANTIC_SEARCH_CHUNKS"
+): Promise<boolean> {
   try {
-    const supabase = await createClient();
-    const { data } = await supabase
+    // DMS callers have already passed their action's permission gate. AI
+    // settings visibility is independent of access to these runtime features.
+    const { data, error } = await createAdminClient()
       .from("erp_ai_feature_flags")
       .select("is_enabled")
-      .eq("feature_code", "DMS_SEMANTIC_SEARCH")
+      .eq("feature_code", featureCode)
       .single();
-    return (data as { is_enabled?: boolean } | null)?.is_enabled ?? false;
-  } catch {
-    return false;
-  }
-}
-
-async function isChunkSearchEnabled(): Promise<boolean> {
-  try {
-    const supabase = await createClient();
-    const { data } = await supabase
-      .from("erp_ai_feature_flags")
-      .select("is_enabled")
-      .eq("feature_code", "DMS_SEMANTIC_SEARCH_CHUNKS")
-      .single();
-    return (data as { is_enabled?: boolean } | null)?.is_enabled ?? false;
+    return !error && data?.is_enabled === true;
   } catch {
     return false;
   }
@@ -355,13 +345,13 @@ export async function generateDmsDocumentEmbedding(
     const parsed = z.number().int().positive().safeParse(documentId);
     if (!parsed.success) return { success: false, error: "Invalid document ID" };
 
-    if (!(await isSemanticSearchEnabled())) {
-      return { success: false, error: "DMS Semantic Search feature is not enabled." };
-    }
-
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canRunAi(ctx)) return { success: false, error: "Permission denied" };
+    if (!canUseApplication(ctx) || !canRunAi(ctx)) return { success: false, error: "Permission denied" };
+
+    if (!(await isSemanticFlagEnabled("DMS_SEMANTIC_SEARCH"))) {
+      return { success: false, error: "DMS Semantic Search feature is not enabled." };
+    }
 
     const result = await runEmbeddingForDocument({
       documentId,
@@ -393,13 +383,13 @@ export async function regenerateDmsDocumentEmbedding(
     const parsed = z.number().int().positive().safeParse(documentId);
     if (!parsed.success) return { success: false, error: "Invalid document ID" };
 
-    if (!(await isSemanticSearchEnabled())) {
-      return { success: false, error: "DMS Semantic Search feature is not enabled." };
-    }
-
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!canRunAi(ctx)) return { success: false, error: "Permission denied" };
+    if (!canUseApplication(ctx) || !canRunAi(ctx)) return { success: false, error: "Permission denied" };
+
+    if (!(await isSemanticFlagEnabled("DMS_SEMANTIC_SEARCH"))) {
+      return { success: false, error: "DMS Semantic Search feature is not enabled." };
+    }
 
     const result = await runEmbeddingForDocument({
       documentId,
@@ -449,9 +439,9 @@ export async function bulkGenerateMissingDmsEmbeddings(
 
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!isAdminUser(ctx)) return { success: false, error: "Permission denied — requires dms.admin" };
+    if (!canUseApplication(ctx) || !isAdminUser(ctx)) return { success: false, error: "Permission denied — requires dms.admin" };
 
-    if (!(await isSemanticSearchEnabled())) {
+    if (!(await isSemanticFlagEnabled("DMS_SEMANTIC_SEARCH"))) {
       return { success: false, error: "DMS Semantic Search feature is not enabled." };
     }
 
@@ -567,8 +557,7 @@ export async function semanticSearchDmsDocuments(
   try {
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!ctx.isAccountActive || ctx.profile.must_change_password) return {success:false,error:"Permission denied."};
-    if (!hasPermission(ctx, "dms.documents.view") && !isAdminUser(ctx)) {
+    if (!canUseApplication(ctx) || (!hasPermission(ctx, "dms.documents.view") && !isAdminUser(ctx))) {
       return { success: false, error: "Permission denied." };
     }
 
@@ -576,7 +565,7 @@ export async function semanticSearchDmsDocuments(
       return { success: false, error: "Please enter a search phrase (at least 3 characters)." };
     }
 
-    if (!(await isSemanticSearchEnabled())) {
+    if (!(await isSemanticFlagEnabled("DMS_SEMANTIC_SEARCH"))) {
       return { success: false, error: "DMS Semantic Search feature is not enabled." };
     }
 
@@ -606,7 +595,7 @@ export async function semanticSearchDmsDocuments(
     const supabase = await createClient();
 
     // ── Phase 11: Try chunk-level search first, fall back to document-level ───
-    const useChunkSearch = await isChunkSearchEnabled();
+    const useChunkSearch = await isSemanticFlagEnabled("DMS_SEMANTIC_SEARCH_CHUNKS");
     let results: DmsSemanticSearchResult[] = [];
     let usedChunkSearch = false;
 
@@ -762,11 +751,11 @@ export async function findSimilarDmsDocuments(
 
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
-    if (!hasPermission(ctx, "dms.documents.view") && !isAdminUser(ctx)) {
+    if (!canUseApplication(ctx) || (!hasPermission(ctx, "dms.documents.view") && !isAdminUser(ctx))) {
       return { success: false, error: "Permission denied." };
     }
 
-    if (!(await isSemanticSearchEnabled())) {
+    if (!(await isSemanticFlagEnabled("DMS_SEMANTIC_SEARCH"))) {
       return { success: false, error: "DMS Semantic Search feature is not enabled." };
     }
 

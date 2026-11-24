@@ -2,10 +2,26 @@ import {beforeEach,expect,it,vi} from "vitest";
 import {getDmsOrchestrationStatus,retryDmsOrchestrationStep} from "@/server/actions/dms/orchestration";
 import {withMobileStepReceipt,retryProviderEffect} from "../orchestration-receipt";
 const f=vi.hoisted(()=>({text:"",summary:"",embed:vi.fn(),steps:[] as Array<{step:string;status:string;safeErrorMessage?:string}>,paid:vi.fn(),write:vi.fn()}));
-vi.mock("@/lib/rbac/check",()=>({getAuthContext:async()=>({profile:{id:7},roleCodes:[]}),hasPermission:()=>true}));
+vi.mock("@/lib/rbac/check",async()=>({
+ canUseApplication:(await import("@/lib/rbac/scope")).canUseApplication,
+ getAuthContext:async()=>({profile:{id:7,must_change_password:false},isAccountActive:true,roleCodes:[]}),
+ hasPermission:()=>true,
+}));
 vi.mock("next/cache",()=>({revalidatePath:vi.fn()}));
 vi.mock("@/server/actions/audit",()=>({logAudit:vi.fn()}));
-vi.mock("@/lib/supabase/admin",()=>({createAdminClient:()=>({rpc:f.write})}));
+vi.mock("@/lib/supabase/admin",()=>({createAdminClient:()=>({
+ rpc:f.write,
+ from:(table:string)=>{
+  expect(table).toBe("erp_ai_feature_flags");
+  return {select:(columns:string)=>{
+   expect(columns).toBe("is_enabled");
+   return {eq:(column:string,value:string)=>{
+    expect([column,value]).toEqual(["feature_code","DMS_SEMANTIC_SEARCH"]);
+    return {single:async()=>({data:{is_enabled:true},error:null})};
+   }};
+  }};
+ },
+})}));
 vi.mock("@/lib/dms/ai/factory",()=>({getDmsAiProvider:async()=>({provider:{isConfigured:()=>true,summarize:f.paid},configId:null}),getDmsEmbeddingProvider:async()=>({provider:{isConfigured:()=>true,embedText:f.embed},modelId:"offline-model",configId:null})}));
 vi.mock("@/lib/supabase/server",()=>({createClient:async()=>({from:(table:string)=>{
  const rows:Record<string,unknown>={erp_ai_feature_flags:{is_enabled:true},dms_upload_sessions:{id:22,uploaded_by:7,document_id:10,session_code:"fixture",orchestration_steps_json:f.steps},dms_documents:{id:10,document_no:"T10",title:"Synthetic",confidentiality_level:"internal",ai_summary:f.summary,ai_summary_status:f.summary?"complete":"pending",summary_embedding_status:"pending"},dms_document_content:{content_text:f.text}};

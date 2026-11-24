@@ -6,7 +6,7 @@ export default defineConfig({
     environment: "node",
     globals: true,
     setupFiles: ["tests/unit/server-only.ts"],
-    include: ["src/**/__tests__/**/*.test.ts", "src/**/*.test.ts"],
+    include: ["src/**/__tests__/**/*.test.ts", "src/**/*.test.ts", "tests/integration/dms/**/*.test.ts"],
     exclude: ["node_modules", ".next", "tests/e2e"],
   },
   resolve: {

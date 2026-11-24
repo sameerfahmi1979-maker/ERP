@@ -31,6 +31,13 @@ const source = {
 const receipt = {
   operationId, sessionId: 42, state: "review_pending", resultId: 19, reviewId: 20, notificationEventId: 8,
 };
+const processingRevision = "2026-11-23T00:01:00Z";
+const claim = { ...source, state: "processing", attemptId, processingRevision, started: true };
+const providerPin = {
+  provider: "openai", model: "gpt-6.1-sol", configId: 3, configUpdatedAt: "2026-11-23T00:00:00Z",
+  promptVersion: "v3.7-source-dates",
+};
+const reservation = { operationId, sessionId: 42, attemptId, processingRevision, expiresAt: "2099-01-01T00:00:00Z" };
 
 function post(body: unknown) {
   return POST(new Request("https://fixture.invalid/api/internal/agents/sharepoint-intake", {
@@ -82,19 +89,68 @@ describe("supervised SharePoint intake boundary", () => {
   });
 
   it("uses the exact claimed attempt and cannot publish after a pause during AI Fill", async () => {
-    const processingRevision = "2026-11-23T00:01:00Z";
     mocks.user.mockResolvedValue({ data: { ...source, state: "staged" } });
     mocks.admin
-      .mockResolvedValueOnce({ data: { ...source, state: "processing", attemptId, processingRevision, started: true } })
+      .mockResolvedValueOnce({ data: claim })
+      .mockResolvedValueOnce({ data: reservation })
       .mockResolvedValueOnce({ error: { code: "55000" } });
     const extracted = { classification: "synthetic" };
-    mocks.analyze.mockResolvedValue(extracted);
+    mocks.analyze.mockImplementation(async ({ reserveProviderAttempt }) => {
+      await reserveProviderAttempt(providerPin);
+      return extracted;
+    });
     const response = await post({ op: "reviewSharePoint", operationId, sharePointLease, sessionId: 42 });
     expect(response.status).toBe(409);
     expect(mocks.analyze).toHaveBeenCalledTimes(1);
+    expect(mocks.admin).toHaveBeenNthCalledWith(2, "f07_reserve_sharepoint_worker_provider_attempt", {
+      p_operation: operationId, p_session: 42, p_lease: sharePointLease, p_actor: source.actorId,
+      p_auth_session: authSessionId, p_attempt: attemptId, p_claim_at: processingRevision,
+      p_provider: "openai", p_config: 3, p_config_updated_at: providerPin.configUpdatedAt,
+      p_model: "gpt-6.1-sol", p_prompt: "v3.7-source-dates",
+    });
     expect(mocks.admin).toHaveBeenLastCalledWith("f07_publish_sharepoint_worker_review", expect.objectContaining({
       p_actor: source.actorId, p_auth_session: authSessionId, p_attempt: attemptId, p_claim_at: processingRevision, p_output: extracted,
     }));
+  });
+
+  it.each([
+    [{ error: { code: "PT409" } }, 409],
+    [{ error: { code: "42501" } }, 403],
+    [{ data: null }, 503],
+    [{ data: { ...reservation, attemptId: sharePointLease } }, 503],
+    [{ data: { ...reservation, expiresAt: "2020-01-01T00:00:00Z" } }, 409],
+  ])("stops before provider dispatch and publication when the reservation cannot authorize this request", async (native, status) => {
+    mocks.user.mockResolvedValue({ data: { ...source, state: "staged" } });
+    mocks.admin.mockResolvedValueOnce({ data: claim }).mockResolvedValueOnce(native);
+    const dispatch = vi.fn();
+    mocks.analyze.mockImplementation(async ({ reserveProviderAttempt }) => {
+      await reserveProviderAttempt(providerPin);
+      dispatch();
+    });
+
+    const response = await post({ op: "reviewSharePoint", operationId, sharePointLease, sessionId: 42 });
+    expect(response.status).toBe(status);
+    expect(mocks.admin).toHaveBeenCalledTimes(2);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("does not dispatch when the reservation response is lost or its original lease is replayed", async () => {
+    mocks.user.mockResolvedValue({ data: { ...source, state: "processing" } });
+    mocks.admin.mockResolvedValueOnce({ data: claim }).mockRejectedValueOnce(new Error("Disconnected"))
+      .mockResolvedValueOnce({ data: { ...claim, started: false } });
+    const dispatch = vi.fn();
+    mocks.analyze.mockImplementation(async ({ reserveProviderAttempt }) => {
+      await reserveProviderAttempt(providerPin);
+      dispatch();
+    });
+    const command = { op: "reviewSharePoint", operationId, sharePointLease, sessionId: 42 };
+
+    expect((await post(command)).status).toBe(503);
+    expect((await post(command)).status).toBe(409);
+    expect(mocks.admin.mock.calls.map(([rpc]) => rpc)).toEqual([
+      "f07_claim_sharepoint_worker_review", "f07_reserve_sharepoint_worker_provider_attempt", "f07_claim_sharepoint_worker_review",
+    ]);
+    expect(dispatch).not.toHaveBeenCalled();
   });
 
   it("refuses mismatched bytes before storage and refuses a second provider claim", async () => {

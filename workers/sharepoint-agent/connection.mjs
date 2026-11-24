@@ -179,12 +179,14 @@ export function createSharePointConnection(config, { fetch = globalThis.fetch, n
 
   async function readApprovedPdf(id, etag, shutdown, version) {
     if (!itemId.test(id)) throw new ConnectionError('pilot_item_invalid');
+    if (version === undefined && !etag) throw new ConnectionError('pilot_source_unverified');
     const deadline = AbortSignal.timeout(45_000);
     const signal = shutdown ? AbortSignal.any([shutdown, deadline]) : deadline;
     const first = await readItem(id, signal);
     const observedVersion = first && (first.cTag ? `c:${first.cTag}` : `e:${first.eTag}`);
     if (first?.file?.mimeType !== 'application/pdf' || typeof first.eTag !== 'string' || !first.eTag ||
-        (version ? observedVersion !== version : first.eTag !== etag) ||
+        (version !== undefined && observedVersion !== version) ||
+        (etag !== undefined && first.eTag !== etag) ||
         !Number.isSafeInteger(first.size) || first.size < 1 || first.size > 3 * 1024 * 1024 ||
         !await resolveAncestry(first, new Map(), signal)) {
       throw new ConnectionError('pilot_source_unverified');
@@ -221,7 +223,7 @@ export function createSharePointConnection(config, { fetch = globalThis.fetch, n
       chunks.push(chunk);
     }
     const last = await readItem(id, signal);
-    if (size !== first.size || last?.size !== first.size || last.eTag !== first.eTag || last.name !== first.name ||
+    if (size !== first.size || last?.size !== first.size || last.eTag !== first.eTag || last.cTag !== first.cTag || last.name !== first.name ||
         last.parentReference?.id !== first.parentReference.id || !await resolveAncestry(last, new Map(), signal)) {
       throw new ConnectionError('pilot_source_changed');
     }
@@ -232,11 +234,11 @@ export function createSharePointConnection(config, { fetch = globalThis.fetch, n
     verifyFolders,
     readChangePage,
     readApprovedPdf,
-    readDiscoveredPdf: (id, version, signal) => {
+    readDiscoveredPdf: (id, version, signal, etag) => {
       if (typeof version !== 'string' || !/^[ce]:.+$/.test(version)) {
         throw new ConnectionError('pilot_source_version_invalid');
       }
-      return readApprovedPdf(id, undefined, signal, version);
+      return readApprovedPdf(id, etag, signal, version);
     },
     async probe() {
       await verifyFolders();

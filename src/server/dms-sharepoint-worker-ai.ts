@@ -10,6 +10,8 @@ import { loadMetadataFieldsForDocumentType } from "@/lib/dms/ai/load-metadata-fi
 import { SOURCE_ROLE_PROMPT_VERSION } from "@/lib/dms/ai/prompt-builders";
 import type { DmsExtractedField } from "@/lib/dms/ai/types";
 import { extractFileContent } from "@/lib/dms/file-content-extractor";
+import { readSinglePdfPageForVerification } from "@/lib/dms/pdf-to-images";
+import { containsMixedIdentityCredentials } from "@/lib/dms/phase2/mixed-identity";
 import { prepareIntakeOutput } from "@/lib/dms/preparation/intake";
 
 const permitType = "LABOUR_CARD";
@@ -20,9 +22,17 @@ const captions = {
   expiry_date: "Card Expiry Date",
 };
 const namePattern = /^[A-Za-z][A-Za-z .’'-]{1,119}$/u;
-const nextCaption = /^(?:Person Code|Passport|Card|Work Permit|Establishment|Nationality|Occupation|Profession|Gender|Sex|Date of Birth|Work Site)\b/iu;
+const printedCaption = /^(?:Person Name|Person Code|Passport Number|Passport Issue Date|Passport Expiry Date|Card Number|Card Type|Card Issuance Date|Card Expiry Date|Work Permit|Establishment Name|Nationality|Occupation|Profession|Gender|Sex|Date of Birth|Work Site|Issue Date|Expiry Date|Transaction No|Electronic Work Permit Information)(?:\s*:|$)/iu;
+const nextCaption = /^(?:Person Code|Passport|Card|Work Permit|Establishment|Nationality|Occupation|Profession|Gender|Sex|Date of Birth|Work Site|Issue Date|Expiry Date|Transaction No|Electronic Work Permit Information)\b/iu;
 
 type PrintedField = { value: string; snippet: string };
+type SharePointProviderPin = {
+  provider: "openai";
+  model: string;
+  configId: number;
+  configUpdatedAt: string;
+  promptVersion: typeof SOURCE_ROLE_PROMPT_VERSION;
+};
 
 function normalizeLine(line: string): string {
   return line.normalize("NFKC").split("|")[0].trim().replace(/\s+/gu, " ");
@@ -36,11 +46,16 @@ function readCaption(lines: string[], caption: string, allowNameContinuation = f
   const index = indexes[0];
   const inline = lines[index].slice(caption.length).replace(/^:\s*/u, "").trim();
   const first = inline || lines[index + 1];
-  if (!first) throw Error("The work permit source evidence is missing a printed value.");
-  const continuation = lines[index + (inline ? 1 : 2)];
+  if (!first || (allowNameContinuation && printedCaption.test(first))) {
+    throw Error("The work permit source evidence is missing a printed value.");
+  }
+  const continuationIndex = index + (inline ? 1 : 2);
+  const continuation = lines[continuationIndex];
+  const following = lines[continuationIndex + 1];
   const parts = [first];
   if (allowNameContinuation && continuation && /^[A-Z]/u.test(continuation) && continuation === continuation.toUpperCase() &&
-    namePattern.test(continuation) && !nextCaption.test(continuation)) parts.push(continuation);
+    namePattern.test(continuation) && !nextCaption.test(continuation) &&
+    !(following && printedCaption.test(`${continuation} ${following}`))) parts.push(continuation);
   return { value: parts.join(" "), snippet: [caption, ...parts].join("\n") };
 }
 
@@ -54,16 +69,24 @@ function snippetKey(text: string): string {
   return text.normalize("NFKC").toLowerCase().replace(/[\s:]+/gu, " ").trim();
 }
 
-/** Prepares one source-bound Work Permit for officer review. Database claim and publication are caller-owned. */
-export async function analyzeSharePointWorkPermit({ client, bytes, filename, sha256 }: {
+/** Prepares one source-bound Work Permit after a durable provider-attempt reservation. */
+export async function analyzeSharePointWorkPermit({ client, bytes, filename, sha256, reserveProviderAttempt }: {
   client: SupabaseClient;
   bytes: Buffer;
   filename: string;
   sha256: string;
+  reserveProviderAttempt: (pin: SharePointProviderPin) => Promise<void>;
 }) {
   if (!/\.pdf$/iu.test(filename) || bytes.length < 1 || bytes.length > 3 * 1024 * 1024 ||
     createHash("sha256").update(bytes).digest("hex") !== sha256) {
     throw Error("The work permit original fingerprint is invalid.");
+  }
+
+  const original = await readSinglePdfPageForVerification(bytes);
+  if (original.status === "not_single_page") throw Error("A single-page work permit is required.");
+  if (original.status === "unreadable") throw Error("The work permit original PDF could not be fully read.");
+  if (containsMixedIdentityCredentials([original])) {
+    throw Error("Passport and Emirates ID evidence must arrive in separate PDFs.");
   }
 
   const content = await extractFileContent(bytes, "application/pdf", filename, { retainPdfTextForVerification: true });
@@ -87,7 +110,7 @@ export async function analyzeSharePointWorkPermit({ client, bytes, filename, sha
   const issuance = readCaption(lines, "Card Issuance Date");
   const expiryDate = isoPrintedDate(expiry.value);
   const issueDate = isoPrintedDate(issuance.value);
-  if (!namePattern.test(holder.value) || !/^[A-Z0-9][A-Z0-9-]{2,39}$/iu.test(card.value) ||
+  if (!namePattern.test(holder.value) || printedCaption.test(holder.value) || !/^[A-Z0-9][A-Z0-9-]{2,39}$/iu.test(card.value) ||
     !expiryDate || !issueDate || issueDate > expiryDate) {
     throw Error("The work permit source evidence does not establish the critical fields.");
   }
@@ -95,11 +118,11 @@ export async function analyzeSharePointWorkPermit({ client, bytes, filename, sha
     full_name_en: holder, labour_card_number: card, expiry_date: { ...expiry, value: expiryDate },
   };
 
-  const [{ provider, configId, configCode }, registeredFields] = await Promise.all([
+  const [{ provider, configId, configCode, configUpdatedAt }, registeredFields] = await Promise.all([
     getDmsAiProvider("analysis"), loadMetadataFieldsForDocumentType(client, permit.id, "intake"),
   ]);
   if (configCode !== "DEFAULT_DMS_CLASSIFIER" || provider.providerCode !== "openai" || !provider.isConfigured() ||
-    !provider.modelId || !configId || !Number.isSafeInteger(configId) || configId < 1) {
+    !provider.modelId || !configId || !Number.isSafeInteger(configId) || configId < 1 || !configUpdatedAt) {
     throw Error("The approved Work Permit classifier configuration is unavailable.");
   }
   if (Object.keys(captions).some(code => !registeredFields.some(field => field.fieldCode === code))) {
@@ -111,6 +134,11 @@ export async function analyzeSharePointWorkPermit({ client, bytes, filename, sha
       `Read the printed ${caption} only. Include that caption and the full printed value in the source snippet.`].filter(Boolean).join(" ") } : field;
   });
 
+  const pin: SharePointProviderPin = {
+    provider: provider.providerCode, model: provider.modelId, configId, configUpdatedAt,
+    promptVersion: SOURCE_ROLE_PROMPT_VERSION,
+  };
+  await reserveProviderAttempt(pin);
   const startedAt = Date.now();
   const output = await provider.analyze({
     ocrText: content.text, imageFiles: content.images, currentTypeCode: null, typeCandidates,
@@ -148,9 +176,9 @@ export async function analyzeSharePointWorkPermit({ client, bytes, filename, sha
   const reason = classification.reason.slice(0, 500);
   return {
     job: {
-      provider: provider.providerCode, model: provider.modelId,
+      provider: pin.provider, model: pin.model,
       inputTextHash: createHash("sha256").update(content.text, "utf8").digest("hex"),
-      promptVersion: SOURCE_ROLE_PROMPT_VERSION, providerConfigId: configId, durationMs: Math.max(0, Date.now() - startedAt),
+      promptVersion: pin.promptVersion, providerConfigId: pin.configId, durationMs: Math.max(0, Date.now() - startedAt),
     },
     result: {
       classificationConfidence: classification.confidenceLabel, classificationScore: classification.confidenceScore,

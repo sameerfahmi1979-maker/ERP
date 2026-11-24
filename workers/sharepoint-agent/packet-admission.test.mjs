@@ -26,34 +26,73 @@ test('asks for a corrected original when both identity credentials were detected
   });
 });
 
-test('returns one unchanged original when all medical support pages belong to the assessment', () => {
+function medicalFixture() {
   const input = fixture(3);
   input.proof.sourceReview = {
     outcome: 'prepared', profileId: 'medical-fitness', reasons: [],
     packet: { certificatePages: [2], supportingPages: [1, 3] },
   };
-  input.proof.linkedSupportingPages = [1, 3];
+  input.proof.medicalPageEvidence = [
+    { page: 1, method: 'verified-transcription', kind: 'supporting-test', text: 'Blood Test Report\nAssessment ID: AS-101\nPatient ID: PT-01' },
+    { page: 2, method: 'verified-transcription', kind: 'certificate', text: 'Medical Fitness Certificate\nAssessment ID: AS-101\nPatient ID: PT-01' },
+    { page: 3, method: 'verified-transcription', kind: 'supporting-test', text: 'Audiometry Report\nAssessment ID: AS-101\nPatient ID: PT-01' },
+  ];
+  return input;
+}
+
+test('returns one unchanged original when every test has the same exact assessment and patient IDs', () => {
+  const input = medicalFixture();
   const result = assessPacketAdmission(input);
   assert.equal(result.status, 'ready');
   assert.equal(result.bytes, input.bytes);
   assert.equal(createHash('sha256').update(result.bytes).digest('hex'), input.proof.sourceSha256);
 });
 
-test('holds unlinked medical support even when the packet reader lists it', () => {
-  const input = fixture(3);
-  input.proof.sourceReview = {
-    outcome: 'prepared', profileId: 'medical-fitness', reasons: [],
-    packet: { certificatePages: [2], supportingPages: [1, 3] },
-  };
-  input.proof.linkedSupportingPages = [1];
+test('holds medical support when the proof supplies only an asserted list of linked pages', () => {
+  const input = medicalFixture();
+  delete input.proof.medicalPageEvidence;
+  input.proof.linkedSupportingPages = [1, 3];
   assert.deepEqual(assessPacketAdmission(input), {
     status: 'held', reason: 'medical_packet_evidence_incomplete',
   });
 });
 
+for (const [name, edit] of [
+  ['another patient', page => { page.text = page.text.replace('PT-01', 'PT-02'); }],
+  ['another assessment', page => { page.text = page.text.replace('AS-101', 'AS-1010'); }],
+  ['contradictory assessment IDs', page => { page.text += '\nAssessment ID: AS-102'; }],
+  ['unlabelled assessment reference', page => { page.text = page.text.replace('Assessment ID:', 'Result:'); }],
+  ['OCR alone', page => { page.method = 'ocr'; }],
+  ['unverified page role', page => { page.kind = 'other'; }],
+  ['duplicate page evidence', page => { page.page = 3; }],
+]) {
+  test(`holds a medical packet with ${name}`, () => {
+    const input = medicalFixture();
+    edit(input.proof.medicalPageEvidence[0]);
+    assert.deepEqual(assessPacketAdmission(input), { status: 'held', reason: 'medical_packet_evidence_incomplete' });
+  });
+}
+
 test('holds duplicate or omitted page numbers instead of accepting an incomplete inspection', () => {
   const input = fixture();
   input.proof.inspectedPages = [1, 1];
+  assert.deepEqual(assessPacketAdmission(input), {
+    status: 'held', reason: 'packet_inspection_incomplete',
+  });
+});
+
+test('holds a sparse inspection list even when its length matches the original', () => {
+  const input = fixture();
+  delete input.proof.inspectedPages[1];
+  assert.deepEqual(assessPacketAdmission(input), {
+    status: 'held', reason: 'packet_inspection_incomplete',
+  });
+});
+
+test('requires complete inspection before asking for a corrected original', () => {
+  const input = fixture(3);
+  input.proof.sourceReview = { outcome: 'held', profileId: null, reasons: ['mixed_passport_and_emirates_id'] };
+  input.proof.inspectedPages = [1, 2];
   assert.deepEqual(assessPacketAdmission(input), {
     status: 'held', reason: 'packet_inspection_incomplete',
   });
@@ -81,4 +120,11 @@ test('fails closed for missing and unresolved source evidence', () => {
   assert.deepEqual(assessPacketAdmission(input), {
     status: 'held', reason: 'packet_review_required',
   });
+});
+
+test('holds an original larger than the Graph admission limit even when its digest matches', () => {
+  const input = medicalFixture();
+  input.bytes = Buffer.alloc(3 * 1024 * 1024 + 1, '%PDF-');
+  input.proof.sourceSha256 = createHash('sha256').update(input.bytes).digest('hex');
+  assert.deepEqual(assessPacketAdmission(input), { status: 'held', reason: 'packet_source_mismatch' });
 });

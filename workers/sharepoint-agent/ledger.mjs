@@ -55,11 +55,17 @@ export function openAgentCenterHeartbeatLedger(env) {
   };
 }
 
-export function openDiscoveryLedger(env, graphConfig) {
+export function openDiscoveryLedger(env, graphConfig, { pilot } = {}) {
   const companyId = env.AGENT_CENTER_TELEMETRY_COMPANY_ID === undefined
     ? null
     : readCompanyId(env, 'AGENT_CENTER_TELEMETRY_COMPANY_ID');
-  const pool = openLedgerPool(env, { loopbackOnly: companyId !== null });
+  const supervised = pilot?.agentCenterSharePointFlow === true;
+  if (companyId !== null && supervised && pilot.companyId !== companyId) {
+    throw new ConnectionError('agent_center_telemetry_scope_mismatch');
+  }
+  // Only the normal supervised worker can request hosted telemetry. Its native
+  // RPC still checks the enrolled connection, login and branch on each cycle.
+  const pool = openLedgerPool(env, { loopbackOnly: companyId !== null && !supervised });
   const fields = [env.AGENT_CONNECTION_ID, graphConfig.tenantId, graphConfig.clientId,
     graphConfig.driveId, graphConfig.sourceId, graphConfig.indexId];
   async function recordWorkerCycle(cycleId, revision, caughtUp) {

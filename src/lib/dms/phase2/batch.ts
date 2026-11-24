@@ -3,6 +3,7 @@ import { readQatarWorkResidencyPermit } from "@/lib/dms/ai/qatar-residency-permi
 import { resolveStandardFileName } from "@/lib/dms/resolve-standard-file-name";
 import { PHASE2_CATALOG, type Phase2FieldRule, type Phase2Profile } from "./catalog";
 import { parseCicpaEvidence, type CicpaEvidenceRegion } from "./cicpa";
+import { containsMixedIdentityCredentials } from "./mixed-identity";
 import { normalizePassportIssuer, verifyPassportMrz } from "./passport";
 
 export type SourcePage = CicpaEvidenceRegion;
@@ -160,12 +161,6 @@ function readFields(profile: Phase2Profile, pages: readonly SourcePage[], passpo
   return { fields, reasons };
 }
 
-function isMixedIdentity(pages: readonly SourcePage[]) {
-  const passport = pages.some(page => /(?:^|\n)\s*P<[A-Z<]{3}[A-Z<]{12,}/u.test(page.text));
-  return passport && pages.some(page => /(?:emirates\s+id|الهوية\s+الإماراتية)/iu.test(page.text)
-    && /\b784[-\s]?\d{4}[-\s]?\d{7}[-\s]?\d\b/u.test(normalizeDigits(page.text)));
-}
-
 function passportRead(pages: readonly SourcePage[]) {
   const candidates = pages.flatMap(page => {
     const found = verifyPassportMrz(page.text);
@@ -188,7 +183,7 @@ export function analyzePhase2Source(source: SourceEntry): BatchResult {
     result.reasons.push(`source:${source.status}`);
     return result;
   }
-  if (isMixedIdentity(source.pages)) {
+  if (containsMixedIdentityCredentials(source.pages)) {
     result.reasons.push("mixed_passport_and_emirates_id");
     return result;
   }

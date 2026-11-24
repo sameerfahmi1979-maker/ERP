@@ -22,3 +22,19 @@ it("never reflects an unknown path or unsafe build/event/digest",()=>{
   reportSafeDiagnostic({digest:"private-token"},{route:"/unregistered/private-person",source:"client",build:"PRIVATE_BUILD",event:"secret in message"});
   expect(String(vi.mocked(console.error).mock.calls[0][0])).not.toMatch(/private|PRIVATE|secret/);
 });
+
+it.each([
+  ["/api/mobile/communications/v1/attachments/private-attachment", "/api/mobile/communications/v1/attachments/[attachmentId]"],
+  ["/api/mobile/communications/v1/avatars/private-profile", "/api/mobile/communications/v1/avatars/[profileId]"],
+  ["/api/mobile/communications/v1/ptt/recordings/private-recording", "/api/mobile/communications/v1/ptt/recordings/[id]"],
+  ["/api/mobile/communications/v1/ptt/uploads/private-ptt-upload", "/api/mobile/communications/v1/ptt/uploads/[id]"],
+  ["/api/mobile/communications/v1/uploads/private-upload", "/api/mobile/communications/v1/uploads/[uploadId]"],
+])("masks communications route values for %s", (path, template) => {
+  reportSafeDiagnostic(new Error("private error"), {
+    route: path + "?private-query#private-fragment",
+    source: "server",
+  });
+  const payload = JSON.parse(String(vi.mocked(console.error).mock.calls[0][0]));
+  expect(payload.route).toBe(template);
+  expect(JSON.stringify(payload)).not.toContain("private");
+});

@@ -52,7 +52,7 @@ export const IMPACT={...HISTORICAL_RAW_IMPACT,
  // The already-verified capacity changes instrument the same PDF parser and renderer.
  'src/lib/dms/file-content-extractor.ts':'a1434692f73309b078554424039855671f91bbd9258ad66b13b93e7b0d271c42',
  'src/lib/performance/trace.ts':'a573045f2e66767fa66ec164555f98186b88ac37109e2a6c3d0f80a72a2d5c4f',
- 'src/lib/dms/pdf-to-images.ts':'c687a287567d528b8082c9b8260e0eb58ca96f11cfa13f051fb713664e7e604e',
+ 'src/lib/dms/pdf-to-images.ts':'6c6fc989c2779cad3c757fa61a246de0016a60af00e0982b7778dfe0b0af5238',
  'src/lib/dms/pdf-text-quality.ts':'82c743f7785ab87c9a839044f46765d531bebbb75b3167fb10b8606d7438f737',
  'src/lib/logger.ts':'e7d552f81142e3bf6449694b8c14293c4353c0564e2f6c3697824e50a5226067',
  'src/lib/log-context.ts':'8b90e656f51f09d1342febe516ecce239a5f2b3f208da549962cdfd8b464f803',

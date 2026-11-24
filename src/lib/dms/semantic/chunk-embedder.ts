@@ -20,7 +20,7 @@ import { logDmsAiUsage } from "@/lib/ai/observability/log-dms-ai-usage";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-const EXPECTED_EMBEDDING_DIM = 1536;
+export const EXPECTED_EMBEDDING_DIM = 1536;
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -58,7 +58,7 @@ async function isEmbeddingsEnabled(): Promise<boolean> {
 
 // ── Error sanitizer ─────────────────────────────────────────────────────────────
 
-function safeEmbedErrorCode(err: unknown): { code: string; message: string } {
+export function safeEmbedErrorCode(err: unknown): { code: string; message: string } {
   const msg = err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200);
   if (/timeout|ETIMEDOUT/i.test(msg))    return { code: "provider_timeout",    message: "Request timed out." };
   if (/rate.?limit|429/i.test(msg))      return { code: "provider_rate_limit", message: "Rate limit reached." };
@@ -97,6 +97,7 @@ export async function embedPendingDocumentChunks(
       .eq("document_id", documentId)
       .eq("embedding_status", "pending")
       .eq("is_active", true)
+      .is("f07_source_version_id", null)
       .is("deleted_at", null);
     result.pendingRemaining = count ?? 0;
     result.skipped = result.pendingRemaining;
@@ -114,6 +115,7 @@ export async function embedPendingDocumentChunks(
       .eq("document_id", documentId)
       .eq("embedding_status", "pending")
       .eq("is_active", true)
+      .is("f07_source_version_id", null)
       .is("deleted_at", null);
     result.pendingRemaining = count ?? 0;
     result.skipped = result.pendingRemaining;
@@ -135,6 +137,7 @@ export async function embedPendingDocumentChunks(
     .eq("document_id", documentId)
     .eq("embedding_status", "pending")
     .eq("is_active", true)
+    .is("f07_source_version_id", null)
     .is("deleted_at", null)
     .order("chunk_index", { ascending: true })
     .limit(maxChunks + 1);
@@ -175,7 +178,8 @@ export async function embedPendingDocumentChunks(
             embedding_error_message: errMsg,
             updated_at:              now,
           })
-          .eq("id", chunk.id);
+          .eq("id", chunk.id)
+          .is("f07_source_version_id", null);
         result.failed++;
         continue;
       }
@@ -195,7 +199,8 @@ export async function embedPendingDocumentChunks(
           embedding_error_message: null,
           updated_at:              now,
         })
-        .eq("id", chunk.id);
+        .eq("id", chunk.id)
+        .is("f07_source_version_id", null);
 
       result.embedded++;
     } catch (err) {
@@ -208,7 +213,8 @@ export async function embedPendingDocumentChunks(
           embedding_error_message: message,
           updated_at:              now,
         })
-        .eq("id", chunk.id);
+        .eq("id", chunk.id)
+        .is("f07_source_version_id", null);
       result.failed++;
       logger.warn("[chunk-embedder] chunk embed failed", {
         documentId,

@@ -9,11 +9,12 @@ import { communicationFeatureEnabled } from "./providers/config";
 type Env = Readonly<Record<string,string|undefined>>;
 const oauthEndpoint="https://oauth2.googleapis.com/token";
 const scope="https://www.googleapis.com/auth/firebase.messaging";
+const privateKeyLabel="PRIVATE KEY";
 function sender(env:Env) {
   const project=env.ERP_FCM_PROJECT_ID, email=env.ERP_FCM_CLIENT_EMAIL, key=env.ERP_FCM_PRIVATE_KEY?.replace(/\\n/g,"\n");
   if ((!communicationFeatureEnabled("push",env) && env.ERP_COMM_CONTROL_PUSH_ENABLED!=="true") || !project || !/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(project) ||
       !email || !/^[a-zA-Z0-9._-]+@[a-z0-9.-]+\.gserviceaccount\.com$/.test(email) ||
-      !key?.startsWith("-----BEGIN PRIVATE KEY-----") || !key.trimEnd().endsWith("-----END PRIVATE KEY-----")) return null;
+      !key?.startsWith(`-----BEGIN ${privateKeyLabel}-----`) || !key.trimEnd().endsWith(`-----END ${privateKeyLabel}-----`)) return null;
   return {project,email,key};
 }
 export function pushConfigured(env:Env=process.env) {return communicationFeatureEnabled("push",env) && sender(env)!==null;}

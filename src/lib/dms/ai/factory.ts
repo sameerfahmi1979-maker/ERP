@@ -120,7 +120,9 @@ export async function getDmsAiProvider(operation: "analysis" | "ocr" = "analysis
   provider: IDmsAiProvider;
   configCode: string | null;
   configId: number | null;
+  configUpdatedAt: string | null;
 }> {
+  const unavailable = { provider: getNoopProvider(), configCode: null, configId: null, configUpdatedAt: null };
   try {
     // Use admin client: erp_ai_provider_configs requires settings.ai.view which
     // regular DMS users don't have. Reading provider config is an internal
@@ -145,7 +147,7 @@ export async function getDmsAiProvider(operation: "analysis" | "ocr" = "analysis
       .order("config_code"); // consistent ordering
 
     if (error || !data || data.length === 0) {
-      return { provider: getNoopProvider(), configCode: null, configId: null };
+      return unavailable;
     }
 
     // Sort by priority
@@ -173,14 +175,17 @@ export async function getDmsAiProvider(operation: "analysis" | "ocr" = "analysis
         if (operation === "ocr" && config.providerType !== "openai" && config.providerType !== "azure_openai") continue;
         const provider = createDmsAdapter(config);
         if (provider.isConfigured()) {
-          return { provider, configCode: code, configId: config.id };
+          return {
+            provider, configCode: code, configId: config.id,
+            configUpdatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
+          };
         }
       }
     }
 
-    return { provider: getNoopProvider(), configCode: null, configId: null };
+    return unavailable;
   } catch {
-    return { provider: getNoopProvider(), configCode: null, configId: null };
+    return unavailable;
   }
 }
 

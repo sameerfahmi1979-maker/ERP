@@ -197,6 +197,7 @@ const protectedEnv = {
   PILOT_ERP_EMAIL: 'worker@example.invalid',
   PILOT_ERP_PASSWORD: 'synthetic',
   PILOT_GRAPH_ITEM_ID: config.itemId,
+  PILOT_GRAPH_ETAG: config.etag,
   PILOT_GRAPH_VERSION: 'c:pinned-version',
   PILOT_FILE_SHA256: config.sha256,
 };
@@ -211,6 +212,7 @@ test('protected worker startup requires explicit continuous admission, branch an
     { AGENT_DMS_PILOT: 'one_file' }, { PILOT_AGENT_CENTER_ADMISSION: '0' },
     { PILOT_ERP_BRANCH_ID: '0' }, { PILOT_ERP_BRANCH_ID: '1.2' }, { PILOT_ERP_BRANCH_ID: '01' },
     { PILOT_GRAPH_ITEM_ID: undefined }, { PILOT_GRAPH_VERSION: undefined }, { PILOT_GRAPH_VERSION: 'not-versioned' },
+    { PILOT_GRAPH_ETAG: undefined }, { PILOT_GRAPH_ETAG: '*' }, { PILOT_GRAPH_ETAG: 'tag\n' },
     { PILOT_FILE_SHA256: 'changed' },
   ]) assert.throws(() => run(changed), /pilot|sharepoint|branch|continuous/i);
 });

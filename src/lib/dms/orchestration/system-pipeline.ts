@@ -95,7 +95,7 @@ async function tryEnqueueSemanticIndexJob(documentId: number): Promise<void> {
 
     if (!semanticQueueEnabled || !jobQueueEnabled) return;
 
-    await enqueueUniqueDmsAiJob({
+    const receipt = await enqueueUniqueDmsAiJob({
       jobType:           DMS_AI_JOB_TYPE.SEMANTIC_DOCUMENT_INDEX,
       payload:           { documentId, source: "post_approve_orchestration", forceRebuild: false },
       idempotencyKey:    `semantic_document_index:doc:${documentId}`,
@@ -103,7 +103,13 @@ async function tryEnqueueSemanticIndexJob(documentId: number): Promise<void> {
       relatedDocumentId: documentId,
     });
 
-    logger.info("[system-pipeline] semantic_document_index job enqueued", { documentId });
+    if (!receipt.success) {
+      logger.warn("[system-pipeline] semantic_document_index admission unconfirmed", { documentId });
+      return;
+    }
+    logger.info("[system-pipeline] semantic_document_index admission confirmed", {
+      documentId, jobId: receipt.jobId, replay: receipt.skipped === true,
+    });
   } catch (err) {
     // Semantic indexing is optional; never fail the main orchestration
     const safeMsg = err instanceof Error ? err.message.slice(0, 100) : String(err).slice(0, 100);

@@ -17,8 +17,10 @@
 import {captureQuestionParents,publishQuestionArtifact,questionTextHash} from "@/server/dms-question-publication";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
+import { currentJobClaim } from "@/lib/dms/ai-jobs/claim-scope";
 import { buildSemanticChunkDrafts } from "./chunk-builder";
 import { embedPendingDocumentChunks } from "./chunk-embedder";
+import { indexClaimedDmsDocument } from "./semantic-publication";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -93,6 +95,8 @@ export async function indexDmsDocumentSemantically(
   };
 
   try {
+    if (currentJobClaim()) return await indexClaimedDmsDocument(input, baseResult);
+
     // ── Feature flags ──────────────────────────────────────────────────────────
     const flags = await loadSemanticFlags();
     if (!flags.chunkingEnabled) {
@@ -162,6 +166,7 @@ export async function indexDmsDocumentSemantically(
       .select("id, content_hash")
       .eq("document_id", documentId)
       .eq("is_active", true)
+      .is("f07_source_version_id", null)
       .is("deleted_at", null)
       .limit(1);
 
@@ -197,6 +202,7 @@ export async function indexDmsDocumentSemantically(
         .update({ is_active: false, updated_at: new Date().toISOString() })
         .eq("document_id", documentId)
         .eq("is_active", true)
+        .is("f07_source_version_id", null)
         .is("deleted_at", null);
     }
 

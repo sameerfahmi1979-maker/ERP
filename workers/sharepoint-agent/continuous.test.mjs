@@ -109,7 +109,7 @@ test('keeps the exact protected source and operation pinned across a lost stage 
   const bytes = Buffer.from('%PDF-representative-worker');
   const { createHash } = await import('node:crypto');
   const hash = createHash('sha256').update(bytes).digest('hex');
-  const config = { itemId: 'pinned-item', sourceVersion: 'c:approved', sha256: hash, agentCenterSharePointFlow: true };
+  const config = { itemId: 'pinned-item', sourceVersion: 'c:approved', etag: 'approved-metadata', sha256: hash, agentCenterSharePointFlow: true };
   const steps = [];
   const claims = [];
   const admissions = [];
@@ -123,8 +123,8 @@ test('keeps the exact protected source and operation pinned across a lost stage 
         return step === 'inspect' ? 'download' : step === 'defer' ? 'deferred' : 'ready';
       },
     },
-    graph: { readDiscoveredPdf: async (item, version) => {
-      downloads.push([item, version]);
+    graph: { readDiscoveredPdf: async (item, version, _signal, etag) => {
+      downloads.push([item, version, etag]);
       return { name: 'fixture.pdf', bytes: item === 'pinned-item' && version === 'c:approved' ? bytes : Buffer.from('%PDF-other-worker') };
     } },
     runPilot: async request => {
@@ -143,7 +143,7 @@ test('keeps the exact protected source and operation pinned across a lost stage 
   assert.deepEqual(firstRun, ['deferred', 'deferred', 'deferred']);
   const secondRun = await runContinuousIntake(fixture([{ ...current, lease_token: secondLease }]));
   assert.deepEqual(secondRun, ['review_pending']);
-  assert.deepEqual(downloads, [['pinned-item','c:approved'], ['pinned-item','c:approved']]);
+  assert.deepEqual(downloads, [['pinned-item', 'c:approved', 'approved-metadata'], ['pinned-item', 'c:approved', 'approved-metadata']]);
   assert.deepEqual(claims, [firstLease, secondLease]);
   assert.deepEqual(admissions, [[operationId, hash], [operationId, hash]]);
   assert.deepEqual(steps, [

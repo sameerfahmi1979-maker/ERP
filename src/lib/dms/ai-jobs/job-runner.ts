@@ -4,7 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
 import { currentJobClaim, runWithJobClaim, type JobClaim } from "./claim-scope";
 import { getDmsAiJobHandler } from "./job-registry";
-import { type DmsAiJobQueueRow, type DmsAiJobHandlerResult } from "./job-types";
+import { DMS_AI_JOB_TYPE, type DmsAiJobQueueRow, type DmsAiJobHandlerResult } from "./job-types";
+import { confirmSemanticPublication } from "@/lib/dms/semantic/semantic-publication";
 
 export { enqueueDmsAiJob, enqueueUniqueDmsAiJob, type EnqueueResult } from "./job-admission";
 export interface ProcessResult { processed: number; completed: number; failed: number; retryScheduled: number; durationMs: number }
@@ -32,15 +33,26 @@ export async function runDmsAiJob(job: ClaimedJob, claim: JobClaim): Promise<str
     // No provider execution if the claim/source/actor has already expired.
     const checked = await db.rpc("f07_ai_worker", { p_action: "assert", p_data: { jobId: job.id, token: claim.token } });
     if (checked.error || checked.data?.success !== true) return null;
-    result = await runWithJobClaim(claim, async () => {
+    const evaluation = await runWithJobClaim(claim, async () => {
       const handler = getDmsAiJobHandler(job.job_type);
-      if (!handler) return { success: false, errorCode: "handler_not_found", retryable: false };
+      if (!handler) return { result: { success: false, errorCode: "handler_not_found", retryable: false } };
       let outcome: DmsAiJobHandlerResult;
       try { outcome = await handler.handle(job.payload_json, { ...claim }); }
       catch (error) { outcome = { success: false, errorCode: sanitizeJobError(error).code, retryable: true }; }
       const scope = currentJobClaim();
-      return scope?.failed ? { success: false, errorCode: "publication_rejected", retryable: !scope.uncertainWrite } : outcome;
+      return {
+        result: scope?.failed ? { success: false, errorCode: "publication_rejected", retryable: !scope.uncertainWrite } : outcome,
+        publication: scope?.semanticPublication,
+      };
     });
+    result = evaluation.result;
+    if (evaluation.publication) {
+      const exact = job.job_type === DMS_AI_JOB_TYPE.SEMANTIC_DOCUMENT_INDEX &&
+        job.payload_json.documentId === evaluation.publication.documentId &&
+        await confirmSemanticPublication(db, claim, evaluation.publication);
+      if (!exact) return null; // Keep the lease until the database can recover this uncertain publication.
+      result = { success: true };
+    }
   } catch (error) { result = { success: false, errorCode: sanitizeJobError(error).code, retryable: true }; }
   try {
     // Outside the handler scope: settling a failed poisoned attempt remains

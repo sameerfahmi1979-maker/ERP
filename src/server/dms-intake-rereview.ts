@@ -44,9 +44,14 @@ export async function rerunRetainedIntakeMetadata(raw:unknown){
   state=admission.parse(begun.data);
   if(state.state==="completed"&&state.receipt)return {success:true as const,data:state.receipt};
   if(state.state!=="started"||!state.source||!state.token)return {success:false as const,uncertain:true,error:"The original extraction is unconfirmed. Its source and request are retained; do not start another paid analysis."};
-  const bound=state.source,portrait=["EMPLOYEE_PHOTO","DEPENDENT_PHOTO"].includes(bound.typeCode);
+  const bound=state.source;
+  if (bound.stageHash !== preflight.stageHash || bound.sourceHash !== preflight.sourceHash ||
+      bound.resultId !== preflight.resultId || bound.typeCode !== preflight.typeCode ||
+      bound.typeName !== preflight.typeName || bound.filename !== preflight.filename || bound.text !== preflight.text) {
+    return {success:false as const,uncertain:true,error:"The retained extraction could not be matched to the checked evidence. Reconcile the existing request before running AI again."};
+  }
   let output:DmsAiOutput;let providerCode="not_applicable",model:string|null=null;const started=Date.now();
-  if(portrait){
+  if(isPortrait){
    output={classification:{suggestedTypeCode:bound.typeCode,suggestedTypeId:p.documentTypeId,confidenceScore:1,confidenceLabel:"high",reason:"Registered portrait type; no OCR or identity inference.",alternativeDocumentTypes:[]},extraction:{suggestedTitle:null,suggestedDescription:null,issueDateSuggestion:null,expiryDateSuggestion:null,fields:[],additionalFields:[],fullTextTranscription:null},suggestedLinks:[],detectedEntities:[],warnings:[],preparation:{summary:null,tagNames:[],bundle:"single"}};
   }else{
    if(!bound.text?.trim())throw Error("Retained text unavailable");

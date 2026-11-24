@@ -6,13 +6,48 @@ export type QualitySource=z.infer<typeof qualitySourceSchema>;
 export const feedbackCategories=['wrong_person','wrong_document','incorrect_value','unsupported_answer','missing_result'] as const;
 export const feedbackRequestSchema=z.strictObject({source:qualitySourceSchema,requestId:z.uuid(),category:z.enum(feedbackCategories),correction:z.string().trim().min(1).max(1000),shareForReview:z.boolean()});
 export const feedbackReviewSchema=z.strictObject({id,decision:z.enum(['accepted','disagreed','rejected']),note:label,requestId:z.uuid()});
-export const referenceCaseSchema=z.strictObject({caseId:label,language:z.enum(['en','ar','bilingual']),category:z.enum(feedbackCategories),expected:label,evidence:z.array(label).max(20),critical:z.boolean()});
-export const datasetSchema=z.strictObject({code:z.string().regex(/^[A-Z][A-Z0-9_-]{2,59}$/),revision:id,title:label,cases:z.array(referenceCaseSchema).min(1).max(100),feedbackIds:z.array(id).max(20),minimized:z.literal(true)}).superRefine((v,c)=>{if(new Set(v.cases.map(r=>r.caseId)).size!==v.cases.length||new Set(v.feedbackIds).size!==v.feedbackIds.length)c.addIssue({code:'custom',message:'Case and feedback references must be unique.'});});
+function referenceCaseWithLabels(text: z.ZodString) {
+  return z.strictObject({
+    caseId: text,
+    language: z.enum(['en', 'ar', 'bilingual']),
+    category: z.enum(feedbackCategories),
+    expected: text,
+    evidence: z.array(text).max(20),
+    critical: z.boolean(),
+  });
+}
+export const referenceCaseSchema = referenceCaseWithLabels(label);
+
+function datasetWithLabels(text: z.ZodString, referenceCase: typeof referenceCaseSchema) {
+  return z.strictObject({
+    code: z.string().regex(/^[A-Z][A-Z0-9_-]{2,59}$/),
+    revision: id,
+    title: text,
+    cases: z.array(referenceCase).min(1).max(100),
+    feedbackIds: z.array(id).max(20),
+    minimized: z.literal(true),
+  }).superRefine((definition, ctx) => {
+    if (new Set(definition.cases.map(row => row.caseId)).size !== definition.cases.length ||
+        new Set(definition.feedbackIds).size !== definition.feedbackIds.length) {
+      ctx.addIssue({code: 'custom', message: 'Case and feedback references must be unique.'});
+    }
+  });
+}
+export const datasetSchema = datasetWithLabels(label, referenceCaseSchema);
+
+// Preserve retained strings for review of the hashed definition. PostgreSQL counts Unicode code points.
+const retainedLabel = z.string().min(1).regex(/^[^\u0000-\u001f\u007f]*$/)
+  .refine(value => value.length <= 200 || Array.from(value).length <= 200);
+export const retainedDatasetSchema = datasetWithLabels(retainedLabel, referenceCaseWithLabels(retainedLabel));
 export type QualityDataset=z.infer<typeof datasetSchema>;
 const hash=z.string().regex(/^[a-f0-9]{64}$/).nullable();
 export const candidateSchema=z.strictObject({mode:z.enum(['synthetic_contract','reviewed_provider_results']),model:label.nullable(),promptVersion:label,rulesVersion:label,documentTypeId:id.nullable(),profileRulesHash:hash,schemaHash:hash,approvalReference:label.nullable()}).superRefine((v,c)=>{if(v.mode==='reviewed_provider_results'&&(!v.model||!v.approvalReference))c.addIssue({code:'custom',message:'Record the actual model and approved sample/budget reference.'});if(v.documentTypeId!==null&&(!v.profileRulesHash||!v.schemaHash))c.addIssue({code:'custom',message:'The exact profile rules and schema are required.'});});
 export type QualityCandidate=z.infer<typeof candidateSchema>;
-export const observationsSchema=z.array(z.strictObject({caseId:label,actual:label,evidence:z.array(label).max(20)})).min(1).max(100);
+function observationsWithLabels(text: z.ZodString) {
+  return z.array(z.strictObject({caseId: text, actual: text, evidence: z.array(text).max(20)})).min(1).max(100);
+}
+export const observationsSchema = observationsWithLabels(label);
+export const retainedObservationsSchema = observationsWithLabels(retainedLabel);
 export type QualityObservations=z.infer<typeof observationsSchema>;
 export const operationControlSchema=z.strictObject({feature:z.enum(['assistant','dms_jobs']),companyId:id.nullable(),expectedRevision:z.number().int().nonnegative(),paused:z.boolean(),dailyLimit:z.number().int().min(1).max(10000).nullable(),dailyUsd:z.number().finite().positive().max(1000000).nullable().default(null),reason:label,requestId:z.uuid()});
 export type OperationControl=z.infer<typeof operationControlSchema>;

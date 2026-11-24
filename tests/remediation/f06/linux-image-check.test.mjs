@@ -36,7 +36,7 @@ test('unchanged explicit directory/file/symlink inventories are valid',()=>{cons
 for(const[name,change]of [['missing root',v=>delete v.files[TRUST_ROOTS[0]]],['introduced store',v=>v.files[TRUST_ROOTS[0]]={kind:'directory'}],['unknown root',v=>v.files['/unrelated']={kind:'absent'}],['contradictory absence',v=>v.files[TRUST_ROOTS[0]+'/ca']={kind:'file',sha256:'a'.repeat(64)}],['unknown fields',v=>v.files[TRUST_ROOTS[0]]={kind:'absent',ignored:true}]])test('trust inventory rejects '+name,()=>{const b=trust(),v=trust();change(v);assert.throws(()=>validateTrust(b,v));});
 test('cleanup identity binds exact image, container, name and CI owner',()=>{const ref={id:'b'.repeat(64),image:image().Id,name:'algt-f06-test'};const v={Id:ref.id,Image:ref.image,Name:'/'+ref.name,Config:{Image:ref.image,Labels:{'algt.f06.ci-owner':'1-1'}}};validateOwnership(v,ref,'1-1');for(const change of [v=>v.Image='sha256:'+'c'.repeat(64),v=>v.Id='c'.repeat(64),v=>v.Name='/foreign',v=>v.Config.Labels['algt.f06.ci-owner']='other']){const wrong=structuredClone(v);change(wrong);assert.throws(()=>validateOwnership(wrong,ref,'1-1'));}});
 test('native execution uses readonly source/fixture mounts, no network and UID1000',()=>{const a=nativeArguments('/checkout','/evidence/verification');assert.equal(a[a.indexOf('--network')+1],'none');assert.equal(a[a.indexOf('--user')+1],'1000');assert.ok(a.includes('--read-only'));assert.ok(a.includes('type=bind,src=/checkout/src,dst=/app/src,readonly'));assert.ok(a.includes('type=bind,src=/evidence/verification,dst=/app/verification,readonly'));assert.ok(!a.includes('--privileged')&&!a.includes('--publish'));assert.match(BASE,/@sha256:[a-f0-9]{64}$/);});
-const requiredJobs=['core-tests','remediation-tests','f06-tests','f09-tests','performance-phases','performance-compatibility','integration-tests','build-types','security','lint','production-image'];
+const requiredJobs=['core-tests','remediation-tests','f06-tests','f09-tests','performance-phases','performance-compatibility','integration-tests','build-types','security','lint','production-image','sharepoint-worker-image'];
 const candidateRef='${{ github.event.pull_request.head.sha || github.sha }}';
 const offlineSchemaFiles=['migration-contract.test.cjs','native-fixture.test.cjs','schema-receipt.test.cjs','schema-rejection-witnesses.test.cjs','document-lineage.test.cjs','reconciled-receipt.test.cjs','branding-acl.test.cjs','template-set.test.cjs'].map(file=>'tests/integration/f00-f06/schema/'+file);
 const offlineAffordanceFiles=['employee-affordance.test.mjs','dms-affordance.test.mjs','report-permission-regression.test.mjs'].map(file=>'tests/integration/f00-f06/'+file);
@@ -87,6 +87,23 @@ function validateEngineeringWorkflow(workflow){
  assert.equal(affordanceSteps[0].if,undefined,'Offline affordance gate must not skip');
  assert.equal(affordanceSteps[0]['continue-on-error'],undefined,'Offline affordance gate must remain blocking');
  assert.deepEqual(affordanceSteps[0].run.trim().split(/\s+/),['node','--test',...offlineAffordanceFiles],'All three exact affordance suites must execute without filtering');
+ const workerSteps=workflow.jobs['sharepoint-worker-image'].steps;
+ const workerTests=workerSteps.find(step=>step.name==='Test SharePoint worker and HR source reconciliation');
+ const workerImage=workerSteps.find(step=>step.name==='Build and smoke-test the exact worker image without network access at runtime');
+ for(const step of [workerTests,workerImage]){
+  assert.equal(step.if,undefined,'SharePoint gate must not skip');
+  assert.equal(step['continue-on-error'],undefined,'SharePoint gate must remain blocking');
+ }
+ assert.deepEqual(workerTests.run.trim().split(/\r?\n/),[
+  'npm ci --prefix workers/sharepoint-agent --omit=dev --ignore-scripts --no-audit --no-fund',
+  'npm test --prefix workers/sharepoint-agent',
+  'node --test tooling/dms/hr-inventory-reconciliation.test.mjs tooling/dms/hr-verified-review-bindings.test.mjs',
+ ]);
+ assert.equal(workerImage.shell,'bash');
+ assert.match(workerImage.run,/^set -euo pipefail\n/);
+ assert.match(workerImage.run,/^docker build --tag "\$image" --label "org\.opencontainers\.image\.revision=\$EXPECTED_CANDIDATE_SHA" workers\/sharepoint-agent$/m);
+ assert.match(workerImage.run,/^docker run --rm --network none --entrypoint node "\$image" --check worker\.mjs$/m);
+ assert.match(workerImage.run,/^test "\$actual_revision" = "\$EXPECTED_CANDIDATE_SHA"$/m);
  const aggregate=workflow.jobs.verify;
  assert.equal(aggregate.if,'always()');
  assert.deepEqual([...aggregate.needs].sort(),[...requiredJobs].sort());
@@ -98,11 +115,22 @@ function validateEngineeringWorkflow(workflow){
   'set -euo pipefail',...requiredJobs.map(name=>`test '\${{ needs.${name}.result }}' = success`)
  ]);
 }
-test('workflow retains every original gate, adds F09/F10 contracts and pins all eleven executable jobs to candidate head',()=>{
+test('workflow retains every original gate and pins the app and worker gates to candidate head',()=>{
  const s=fs.readFileSync('.github/workflows/engineering.yml','utf8');
  validateEngineeringWorkflow(yaml.load(s));
  for(const key of ['  verify:','  lint:','  production-image:','npm test','npm run test:remediation','npm run security:dependencies','npm run lint','node tooling/testing/f06-linux-image-check.mjs','include-hidden-files: true'])assert.ok(s.includes(key));
  assert.doesNotMatch(s,/docker rm --force/);assert.ok(fs.readFileSync('.gitattributes','utf8').includes('/'+NATIVE+' text eol=lf'));
+});
+test('worker test and image gates are required and use the exact candidate and offline runtime',()=>{
+ const baseline=yaml.load(fs.readFileSync('.github/workflows/engineering.yml','utf8'));
+ for(const mutate of [
+  steps=>{steps.find(step=>step.name?.startsWith('Test SharePoint')).run='true';},
+  steps=>{steps.find(step=>step.name?.startsWith('Build and smoke-test')).if='false';},
+  steps=>{const image=steps.find(step=>step.name?.startsWith('Build and smoke-test'));image.run=image.run.replaceAll('--network none','--network bridge');},
+ ]){
+  const changed=structuredClone(baseline);mutate(changed.jobs['sharepoint-worker-image'].steps);
+  assert.throws(()=>validateEngineeringWorkflow(changed));
+ }
 });
 test('F09/F10 Node, type and actual Deno contracts cannot be removed, substituted, filtered or waived',()=>{
  const baseline=yaml.load(fs.readFileSync('.github/workflows/engineering.yml','utf8'));

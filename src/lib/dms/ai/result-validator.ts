@@ -8,6 +8,7 @@
 import { confidenceLabelFromScore } from "./types";
 import type {
   DmsAiOutput,
+  DmsAiDateEvidenceMode,
   DmsClassificationResult,
   DmsExtractedField,
   DmsExtractionResult,
@@ -17,7 +18,7 @@ import type {
   ConfidenceLabel,
 } from "./types";
 import { parseExtendedClassification } from "./classification-output";
-import { applyDateSanityCorrections } from "./date-sanity";
+import { applyDateSanityCorrections, flagReportedDateConflict } from "./date-sanity";
 
 export interface ValidateResult {
   ok: boolean;
@@ -107,7 +108,8 @@ function buildPartialOutput(rawText: string, transcription: string): DmsAiOutput
   };
 }
 
-export function validateAiOutput(rawText: string): ValidateResult {
+export function validateAiOutput(rawText: string, dateEvidenceMode?: DmsAiDateEvidenceMode): ValidateResult {
+  const sourceRoles = dateEvidenceMode === "source_roles";
   const jsonStr = extractJson(rawText);
 
   let parsed: Record<string, unknown>;
@@ -177,11 +179,15 @@ export function validateAiOutput(rawText: string): ValidateResult {
   function parseDate(val: unknown): string | null {
     if (typeof val !== "string" || !val.trim()) return null;
     const v = val.trim();
-    // Already YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
-    // DD/MM/YYYY or DD-MM-YYYY
     const dmy = v.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-    if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
+    const fullDate = /^\d{4}-\d{2}-\d{2}$/.test(v) ? v
+      : dmy ? `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}` : null;
+    if (fullDate) {
+      if (!sourceRoles) return fullDate;
+      const utc = Date.parse(fullDate);
+      return Number.isFinite(utc) && new Date(utc).toISOString().startsWith(fullDate + "T") ? fullDate : null;
+    }
+    if (sourceRoles) return null;
     // MM/YYYY or MM-YYYY
     const my = v.match(/^(\d{1,2})[\/\-](\d{4})$/);
     if (my) return `${my[2]}-${my[1].padStart(2, "0")}-01`;
@@ -222,7 +228,7 @@ export function validateAiOutput(rawText: string): ValidateResult {
   };
 
   // 2. Fall back: look for issue date in the fields array
-  if (!extraction.issueDateSuggestion) {
+  if (!sourceRoles && !extraction.issueDateSuggestion) {
     const issueField = fields.find((f) =>
       ["issue_date", "issued_date", "date_issued", "start_date"].includes(f.fieldCode.toLowerCase())
     );
@@ -230,7 +236,7 @@ export function validateAiOutput(rawText: string): ValidateResult {
   }
 
   // 3. Fall back: look for expiry date in the fields array
-  if (!extraction.expiryDateSuggestion) {
+  if (!sourceRoles && !extraction.expiryDateSuggestion) {
     const expiryField = fields.find((f) =>
       ["expiry_date", "expiry", "valid_until", "validity_date", "end_date", "date_expiry"].includes(f.fieldCode.toLowerCase())
     );
@@ -289,9 +295,8 @@ export function validateAiOutput(rawText: string): ValidateResult {
     };
   }
 
-  // Smart catching: deterministic guards for AI date mistakes (e.g. Emirates ID
-  // issue/expiry swap). Mutates output in place and appends warnings.
-  applyDateSanityCorrections(output);
+  if (sourceRoles) flagReportedDateConflict(output);
+  else applyDateSanityCorrections(output);
 
   return { ok: true, output, rawText };
 }

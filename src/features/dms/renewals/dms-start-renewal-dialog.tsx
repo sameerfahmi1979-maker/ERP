@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ERPChildDialogForm } from "@/components/erp/erp-child-dialog-form";
 import { createDmsRenewalRequest } from "@/server/actions/dms/renewals";
 import { invalidateDmsRenewals, invalidateDmsExpiry } from "@/lib/query/invalidation";
+import { isBr1RenewalPreparationEnabled, DmsBr1RenewalPreparationDialog } from "./dms-br1-renewal-preparation-dialog";
 
 type Priority = "normal" | "high" | "urgent";
 
@@ -19,10 +20,25 @@ interface DmsStartRenewalDialogProps {
   documentId: number;
   documentNo: string;
   documentTitle: string;
+  recordedExpiry?: string | null;
   onSuccess?: () => void;
 }
 
-export function DmsStartRenewalDialog({
+export function DmsStartRenewalDialog(props: DmsStartRenewalDialogProps) {
+  if (isBr1RenewalPreparationEnabled(props.documentId)) {
+    return (
+      <DmsBr1RenewalPreparationDialog
+        open={props.open}
+        onOpenChange={props.onOpenChange}
+        documentNo={props.documentNo}
+        recordedExpiry={props.recordedExpiry}
+      />
+    );
+  }
+  return <DmsCreateRenewalDialog {...props} />;
+}
+
+function DmsCreateRenewalDialog({
   open,
   onOpenChange,
   documentId,

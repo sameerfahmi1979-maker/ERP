@@ -5,6 +5,7 @@ export const reportRunWorkspacePattern = /^\/admin\/reports\/run\/([A-Za-z0-9_-]
 
 /** Implemented screen metadata only. This registry never grants route access. */
 const lists: [string, string][] = [
+  ["/ai-agent-center", "AI Agent Center"],
   ["/admin/ai/audit-explainer", "Audit explanations"], ["/admin/ai/compliance", "Compliance findings"],
   ["/admin/ai/dashboard", "AI daily dashboard"], ["/admin/ai/data-quality", "Data quality"],
   ["/admin/ai/duplicates", "Duplicate candidates"], ["/admin/ai/risk", "Risk scores"],

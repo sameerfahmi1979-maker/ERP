@@ -62,6 +62,12 @@ export function resolveStandardFileNameInput(
 ): BuildDmsStandardFileNameInput {
   const fields = mergeFieldMaps(ctx.extractedFields, ctx.metadataValues);
   const extension = getExtensionFromFilename(ctx.originalFilename, ctx.mimeType);
+  const code = ctx.typeCode.trim().toUpperCase();
+  const isQatarPermit = code === "FOREIGN_IMMIGRATION_CREDENTIAL" && fields.issuer_country === "QA"
+    && fields.credential_kind === "residence_permit";
+  const typeCode = isQatarPermit ? "QATAR_RESIDENCY_PERMIT" : ctx.typeCode;
+  const specificHolder = isQatarPermit ? fields.holder_name_printed_en
+    : code === "RESIDENCE_VISA" ? fields.holder_name_en : undefined;
 
   // Owner resolution — priority order:
   // 1. Explicit ownerName from DB entity lookup (party/employee/vehicle)
@@ -70,6 +76,7 @@ export function resolveStandardFileNameInput(
   // 4. Final fallback: "Unknown_Owner"
   let ownerName =
     ctx.ownerName?.trim() ||
+    (typeof specificHolder === "string" && specificHolder.trim()) ||
     resolveOwnerFromAiContext(fields, ctx.aiOwnerHints) ||
     resolveOwnerFromExistingFilename(ctx.originalFilename, ctx.typeCode) ||
     "Unknown_Owner";
@@ -89,18 +96,17 @@ export function resolveStandardFileNameInput(
   // 2. AI description prose (e.g. "ID: 784-…" patterns)
   // 3. Existing filename parsing
   // 4. DMS internal document_no fallback (already handled inside resolveDocNoFromFields)
-  let docNo = resolveDocNoFromFields(ctx.typeCode, fields, ctx.documentNo ?? null);
-  if (docNo === "DMS-Unknown") {
-    const fromDesc = resolveDocNoFromDescription(ctx.aiOwnerHints?.suggestedDescription);
-    if (fromDesc) docNo = fromDesc;
-  }
-  if (docNo === "DMS-Unknown") {
-    const fromFilename = resolveDocNoFromExistingFilename(ctx.originalFilename, ctx.typeCode);
-    if (fromFilename) docNo = fromFilename;
+  let docNo = resolveDocNoFromFields(typeCode, fields, ctx.documentNo ?? null);
+  // Residence Visa has a dedicated visa number. Narrative and legacy filenames
+  // may contain a supporting passport or personal identifier in that position.
+  if (docNo === "DMS-Unknown" && code !== "RESIDENCE_VISA" && !isQatarPermit) {
+    docNo = resolveDocNoFromDescription(ctx.aiOwnerHints?.suggestedDescription)
+      ?? resolveDocNoFromExistingFilename(ctx.originalFilename, ctx.typeCode)
+      ?? docNo;
   }
 
   return {
-    typeCode: ctx.typeCode,
+    typeCode,
     ownerName,
     docNo,
     expiryDate: ctx.expiryDate ?? null,

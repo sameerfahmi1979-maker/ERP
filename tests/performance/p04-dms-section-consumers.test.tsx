@@ -2,7 +2,7 @@
 import React from "react";
 import "../remediation/f05/setup";
 import {afterEach,beforeEach,expect,it,vi} from "vitest";
-import {act,cleanup,render,waitFor,fireEvent,screen} from "@testing-library/react";
+import {act,cleanup,render,waitFor,fireEvent,screen,within} from "@testing-library/react";
 import {QueryClient,QueryClientProvider} from "@tanstack/react-query";
 import {FluentProvider,webLightTheme} from "@fluentui/react-components";
 import {WorkspaceUiMemoryProvider} from "@/hooks/use-persistent-ui-state";
@@ -56,12 +56,52 @@ const cases=[
 ] as const;
 let client:QueryClient;const calls:{kind?:string;args?:unknown[];mode?:string;documentId?:number}[]=[];
 beforeEach(()=>{client=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}});calls.length=0;serverReads.create.mockClear();vi.stubGlobal("fetch",vi.fn(async (_url,init)=>{expect(init.signal).toBeInstanceOf(AbortSignal);expect(init.cache).toBe("no-store");calls.push(JSON.parse(init.body));return new Response(JSON.stringify({success:false,error:"Permission denied"}),{status:403});}));});
-afterEach(()=>{cleanup();client.clear();vi.unstubAllGlobals();});
+afterEach(()=>{cleanup();client.clear();vi.unstubAllGlobals();vi.unstubAllEnvs();});
 function wrap(element:React.ReactNode,active=true){return <FluentProvider theme={webLightTheme}><QueryClientProvider client={client}><WorkspaceUiMemoryProvider><DmsSectionActivity value={active}>{element}</DmsSectionActivity></WorkspaceUiMemoryProvider></QueryClientProvider></FluentProvider>;}
 for(const [name,element] of cases){
  it(name+" executes its actual read consumer and shows a safe denied state",async()=>{render(wrap(element));if(name==="mapping")fireEvent.click(screen.getByRole("button",{name:"ERP Mapping Preview"}));await waitFor(()=>{expect(calls.length).toBeGreaterThan(0);expect(document.body.textContent).toMatch(/could not|unavailable|access|restricted/i);});expect(calls.every(c=>name==="approval"?c.mode==="state"&&c.documentId===9:!!c.kind&&Array.isArray(c.args))).toBe(true);expect(document.body.textContent).not.toContain("private backend");});
  it(name+" does not start reads while its retained section is inactive",async()=>{render(wrap(element,false));await new Promise(r=>setTimeout(r,20));expect(calls).toHaveLength(0);expect(serverReads.create).not.toHaveBeenCalled();});
 }
+
+it("keeps ordinary renewal available when the BR1 preparation pilot is disabled", () => {
+  vi.stubEnv("NEXT_PUBLIC_DMS_BR1_RENEWAL_PREPARATION_ENABLED", "0");
+  render(wrap(<DmsDocumentExpirySection
+    documentId={127}
+    documentNo="DMS-2026-000127"
+    documentTitle="Synthetic predecessor"
+    issueDate={null}
+    expiryDate="2026-10-22"
+    documentStatus="active"
+    canManage
+    requiresExpiryTracking
+  />, false));
+  expect(screen.getByRole("button", { name: "Start Renewal" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Prepare renewal" })).toBeNull();
+});
+
+it("allows a manager to read the pilot's renewal steps from the predecessor without creating a request", () => {
+  vi.stubEnv("NEXT_PUBLIC_DMS_BR1_RENEWAL_PREPARATION_ENABLED", "1");
+  render(wrap(<DmsDocumentExpirySection
+    documentId={127}
+    documentNo="DMS-2026-000127"
+    documentTitle="Synthetic predecessor"
+    issueDate={null}
+    expiryDate="2026-10-22"
+    documentStatus="active"
+    canManage
+    requiresExpiryTracking
+  />, false));
+  fireEvent.click(screen.getByRole("button", { name: "Prepare renewal" }));
+  const dialog = within(screen.getByRole("dialog", { name: "Prepare Labour Card Renewal" }));
+  expect(dialog.getByText(/22 October 2026/)).toBeTruthy();
+  expect(dialog.getByText(/Request renewal/)).toBeTruthy();
+  expect(dialog.getByText(/strictly later/)).toBeTruthy();
+  expect(dialog.getByText(/Confirm fulfil/)).toBeTruthy();
+  expect(dialog.getAllByRole("button").every(button => button.textContent === "Close" || button.getAttribute("aria-label") === "Close")).toBe(true);
+  expect(serverReads.create).not.toHaveBeenCalled();
+  fireEvent.click(dialog.getAllByRole("button", { name: "Close" })[0]);
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
 it("metadata editor hides its portal on a denied recheck and restores the retained draft after retry",async()=>{
  let denied=false;
  vi.stubGlobal("fetch",vi.fn(async (_url,init)=>{

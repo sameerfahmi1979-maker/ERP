@@ -23,6 +23,7 @@ import {
 } from "@/server/actions/dms/renewals";
 import { DmsRenewalStatusBadge } from "./dms-renewal-status-badge";
 import { DmsCompleteRenewalDialog } from "./dms-complete-renewal-dialog";
+import { isBr1RenewalPreparationEnabled, DmsBr1RenewalPreparationDialog } from "./dms-br1-renewal-preparation-dialog";
 import { invalidateDmsRenewals } from "@/lib/query/invalidation";
 import { ReadError } from "@/lib/reads/client";
 
@@ -30,6 +31,8 @@ interface DmsRenewalRequestsTableProps {
   filter?: RenewalRequestsFilter;
   canManage?: boolean;
 }
+
+const CLOSED_RENEWAL_STATUSES = ["renewed", "cancelled", "rejected"];
 
 const DMS_LIST_FIELDS: DmsListField[] = [
   {
@@ -133,6 +136,13 @@ export function DmsRenewalRequestsTable({ filter = {}, canManage = false }: DmsR
   const denied = read.error instanceof ReadError && [401, 403].includes(read.error.status);
   if (completeDialog && (completeDialog.owner !== owner || !canManage || denied ||
       (!isLoading && !isError && !visibleRenewals.some(row => row.id === completeDialog.renewal.id && row.document_id === completeDialog.renewal.document_id)))) setCompleteDialog(null);
+  const openedRenewal = completeDialog?.renewal;
+  const isPilotDialog = isBr1RenewalPreparationEnabled(openedRenewal?.document_id);
+  const currentPilotRenewal = isPilotDialog
+    ? visibleRenewals.find(row => row.id === openedRenewal?.id
+      && isBr1RenewalPreparationEnabled(row.document_id)
+      && !CLOSED_RENEWAL_STATUSES.includes(row.status))
+    : undefined;
 
   const handleCancel = async (id: number) => {
     if (!canManage || isError || isLoading || !visibleRenewals.some(row => row.id === id)) return;
@@ -216,7 +226,7 @@ export function DmsRenewalRequestsTable({ filter = {}, canManage = false }: DmsR
                           <ExternalLink className="h-3 w-3" />
                         </Button>
                       )}
-                      {canManage && !["renewed", "cancelled", "rejected"].includes(r.status) && (
+                      {canManage && !CLOSED_RENEWAL_STATUSES.includes(r.status) && (
                         <>
                           <Button
                             type="button"
@@ -226,7 +236,7 @@ export function DmsRenewalRequestsTable({ filter = {}, canManage = false }: DmsR
                             onClick={() => setCompleteDialog({ renewal: r, owner })}
                           >
                             <CheckCircle2 className="h-3 w-3 text-green-500" />
-                            Complete
+                            {isBr1RenewalPreparationEnabled(r.document_id) ? "Prepare renewal" : "Complete"}
                           </Button>
                           <Button
                             type="button"
@@ -260,14 +270,24 @@ export function DmsRenewalRequestsTable({ filter = {}, canManage = false }: DmsR
         </div>
 
       {canManage && completeDialog && completeDialog.owner === owner && !denied && (
-        <DmsCompleteRenewalDialog
-          open={!isError && !isLoading}
-          onOpenChange={(v) => { if (!v) setCompleteDialog(null); }}
-          renewalId={completeDialog.renewal.id}
-          renewalNo={completeDialog.renewal.renewal_no ?? `#${completeDialog.renewal.id}`}
-          documentId={completeDialog.renewal.document_id}
-          onSuccess={() => setCompleteDialog(null)}
-        />
+        isPilotDialog ? currentPilotRenewal && (
+          <DmsBr1RenewalPreparationDialog
+            open
+            onOpenChange={(open) => { if (!open) setCompleteDialog(null); }}
+            documentNo={currentPilotRenewal.document?.document_no}
+            recordedExpiry={currentPilotRenewal.document?.expiry_date}
+            renewalNo={currentPilotRenewal.renewal_no ?? `#${currentPilotRenewal.id}`}
+          />
+        ) : (
+          <DmsCompleteRenewalDialog
+            open={!isError && !isLoading}
+            onOpenChange={(v) => { if (!v) setCompleteDialog(null); }}
+            renewalId={completeDialog.renewal.id}
+            renewalNo={completeDialog.renewal.renewal_no ?? `#${completeDialog.renewal.id}`}
+            documentId={completeDialog.renewal.document_id}
+            onSuccess={() => setCompleteDialog(null)}
+          />
+        )
       )}
     </>
   );

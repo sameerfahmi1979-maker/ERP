@@ -34,13 +34,13 @@ function OwnedFixture({handle,children}:{handle:QueryClient;children:React.React
 
 import {WorkspaceUiMemoryProvider,usePersistentUiState} from "@/hooks/use-persistent-ui-state";
 import {ReadError} from "@/lib/reads/client";
-const mocks=vi.hoisted(()=>({read:vi.fn(),cancel:vi.fn(),renewals:vi.fn(),override:vi.fn()}));
+const mocks=vi.hoisted(()=>({read:vi.fn(),cancel:vi.fn(),renewals:vi.fn(),override:vi.fn(),createRenewal:vi.fn()}));
 vi.mock("@/lib/reads/client",async importOriginal=>({...await importOriginal<typeof import("@/lib/reads/client")>(),readJson:(resource:string,params:unknown,signal:AbortSignal)=>resource==="dms-expiry-page"?mocks.read(params,signal):mocks.renewals(params,signal)}));
 vi.mock("@/features/dms/expiry/dms-expiry-outputs",()=>({DmsExpiryOutputs:({ready}:{ready:boolean})=><button disabled={!ready}>Complete output</button>}));
 vi.mock("@/server/actions/dms/expiry-reminders",()=>({getDmsExpiringDocuments:mocks.read,generateDmsExpiryRemindersForDocument:vi.fn(),setDmsExpiryTrackingOverride:mocks.override}));
-vi.mock("@/server/actions/dms/renewals",()=>({getDmsRenewalRequests:mocks.renewals,cancelDmsRenewalRequest:mocks.cancel}));
+vi.mock("@/server/actions/dms/renewals",()=>({getDmsRenewalRequests:mocks.renewals,cancelDmsRenewalRequest:mocks.cancel,createDmsRenewalRequest:mocks.createRenewal}));
 vi.mock("@/features/dms/renewals/dms-complete-renewal-dialog",()=>({DmsCompleteRenewalDialog:function Dialog({open}:{open:boolean}){const [draft,setDraft]=React.useState("");return open?<div>Complete renewal dialog<input aria-label="Synthetic completion draft" value={draft} onChange={event=>setDraft(event.target.value)}/></div>:null;}}));
-vi.mock("@/components/erp/erp-child-dialog-form",()=>({ERPChildDialogForm:({open,children,onSubmit,isDirty}:{open:boolean;children:React.ReactNode;onSubmit:()=>void;isDirty?:boolean})=>open?<div role="dialog" data-dirty={isDirty}>{children}<button onClick={onSubmit}>Confirm synthetic action</button></div>:null}));
+vi.mock("@/components/erp/erp-child-dialog-form",()=>({ERPChildDialogForm:({open,children,onSubmit,isDirty,title}:{open:boolean;children:React.ReactNode;onSubmit?:()=>void;isDirty?:boolean;title:string})=>open?<div role="dialog" aria-label={title} data-dirty={isDirty}>{children}{onSubmit&&<button onClick={onSubmit}>Confirm synthetic action</button>}</div>:null}));
 import {DmsExpiringDocumentsTable} from "@/features/dms/expiry/dms-expiring-documents-table";
 import {DmsRenewalRequestsTable} from "@/features/dms/renewals/dms-renewal-requests-table";
 const expiry={id:1,document_no:"SYNTH-1",title:"Synthetic expiry",expiry_date:"2026-01-01",issue_date:null,status:"active",confidentiality:"company",days_remaining:-20,document_type:"Synthetic type",category:"Test",is_renewable:true,owner:null,latest_reminder_status:null,expiry_tracking_override:null,expiry_override_reason:null};
@@ -52,7 +52,7 @@ const expiryRows=(page=1)=>Array.from({length:25},(_,index)=>({...expiry,id:(pag
 const renewalPage=(rows=[renewal],page=1,totalCount=rows.length)=>({success:true,data:{rows,page,pageSize:25,totalCount}});
 const expiryPage=(rows=[expiry],page=1,totalCount=rows.length)=>({success:true,data:{rows,page,pageSize:25,totalCount}});
 beforeEach(()=>{mocks.read.mockResolvedValue(expiryPage([]));mocks.renewals.mockResolvedValue(renewalPage());mocks.cancel.mockResolvedValue({success:true});mocks.override.mockResolvedValue({success:true});});
-afterEach(()=>{cleanup();ownedCaches.forEach(cache=>cache.clear());ownedCaches.clear();vi.resetAllMocks();});
+afterEach(()=>{cleanup();ownedCaches.forEach(cache=>cache.clear());ownedCaches.clear();vi.resetAllMocks();vi.unstubAllEnvs();});
 it("expiry search and filter tools remain available on initial loading and genuine zero",async()=>{
  let resolve!:(v:unknown)=>void;mocks.read.mockReturnValue(new Promise(r=>{resolve=r;}));render(wrap(client(),<DmsExpiringDocumentsTable view="expired"/>));
  expect(screen.getByPlaceholderText("Search documents…")).toBeTruthy();expect(screen.getByRole("button",{name:/Edit filters/i})).toBeTruthy();
@@ -78,6 +78,50 @@ it("explicit managers can open completion but lose the dialog when the capabilit
  const cache=client(),view=render(wrap(cache,<DmsRenewalRequestsTable canManage/>));await screen.findByText("SYNTH-RENEW");fireEvent.click(screen.getByRole("button",{name:"Complete"}));expect(screen.getByText("Complete renewal dialog")).toBeTruthy();
  view.rerender(wrap(cache,<DmsRenewalRequestsTable canManage={false}/>));expect(screen.queryByText("Complete renewal dialog")).toBeNull();expect(screen.queryByRole("button",{name:"Complete"})).toBeNull();
 });
+
+it("routes the guarded pilot to read-only renewal preparation and retains ordinary completion", async () => {
+  vi.stubEnv("NEXT_PUBLIC_DMS_BR1_RENEWAL_PREPARATION_ENABLED", "1");
+  const pilot = {
+    ...renewal,
+    id: 2,
+    renewal_no: "SYNTH-PILOT",
+    document_id: 127,
+    document: { ...renewal.document, id: 127, document_no: "DMS-2026-000127", expiry_date: "2026-10-22", document_type_id: 16 },
+  };
+  mocks.renewals.mockResolvedValue(renewalPage([renewal, pilot]));
+  const cache = client();
+  const view = render(wrap(cache, <DmsRenewalRequestsTable canManage />));
+  fireEvent.click(await screen.findByRole("button", { name: "Prepare renewal" }));
+
+  const preparation = screen.getByRole("dialog", { name: "Prepare Labour Card Renewal" });
+  expect(preparation.textContent).toContain("SYNTH-PILOT");
+  expect(preparation.textContent).toContain("22 October 2026");
+  expect(preparation.textContent).toContain("Choose existing evidence");
+  expect(preparation.textContent).toContain("Confirm fulfil");
+  expect(screen.queryByText("Complete renewal dialog")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Confirm synthetic action" })).toBeNull();
+  expect(screen.getAllByRole("button", { name: "Complete" })).toHaveLength(1);
+  expect(mocks.cancel).not.toHaveBeenCalled();
+
+  view.rerender(wrap(cache, <DmsRenewalRequestsTable />));
+  expect(screen.queryByRole("dialog", { name: "Prepare Labour Card Renewal" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Prepare renewal" })).toBeNull();
+});
+it("routes the expiry worklist's pilot through the shared read-only renewal dialog", async () => {
+  vi.stubEnv("NEXT_PUBLIC_DMS_BR1_RENEWAL_PREPARATION_ENABLED", "1");
+  mocks.read.mockResolvedValue(expiryPage([{ ...expiry, id: 127, document_no: "DMS-2026-000127" }]));
+  const cache = client();
+  const view = render(wrap(cache, <DmsExpiringDocumentsTable view="expired" canRenew />));
+  fireEvent.click(await screen.findByRole("button", { name: "Renew" }));
+  const preparation = screen.getByRole("dialog", { name: "Prepare Labour Card Renewal" });
+  expect(preparation.textContent).toContain("Choose existing evidence");
+  expect(screen.queryByRole("button", { name: "Confirm synthetic action" })).toBeNull();
+  expect(mocks.createRenewal).not.toHaveBeenCalled();
+
+  view.rerender(wrap(cache, <DmsExpiringDocumentsTable view="expired" />));
+  expect(screen.queryByRole("dialog", { name: "Prepare Labour Card Renewal" })).toBeNull();
+});
+
 it.each(["expiry","renewals"])("missing successful %s payload is an error, not empty",async which=>{
  mocks.read.mockResolvedValue({success:true});mocks.renewals.mockResolvedValue({success:true});render(wrap(client(),which==="expiry"?<DmsExpiringDocumentsTable view="expired"/>:<DmsRenewalRequestsTable/>));
  await screen.findByRole("alert");expect(screen.queryByText("No expired documents")).toBeNull();expect(screen.queryByText("No renewal requests found")).toBeNull();

@@ -9,7 +9,7 @@ import {aiApprovalRecoverySchema,aiApprovalSnapshotSchema,type AiApprovalRecover
 const unavailable:AiApprovalRecoveryResult={success:false,error:'The original approval could not be recovered with your current access. Reopen the intake or discard it from the Inbox; do not upload it again.'};
 /** Read only. The privileged lookup never authorizes a replay or releases data
  * to the browser: invoker RLS/current linked-record checks must pass first. */
-export async function recoverNumberedAiApproval(sessionId:number):Promise<AiApprovalRecoveryResult>{
+export async function recoverNumberedAiApproval(sessionId:number,completedOperationId?:string):Promise<AiApprovalRecoveryResult>{
  if(!z.number().int().positive().max(Number.MAX_SAFE_INTEGER).safeParse(sessionId).success)return unavailable;
  try{
   const ctx=await getAuthContext();
@@ -17,6 +17,7 @@ export async function recoverNumberedAiApproval(sessionId:number):Promise<AiAppr
   const client=await createClient();
   const source=await client.from('dms_upload_sessions').select('id,status,document_id').eq('id',sessionId).is('deleted_at',null).maybeSingle();
   if(source.error||!source.data||source.data.status==='cancelled')return unavailable;
+  if(completedOperationId&&(source.data.status!=='completed'||source.data.document_id==null))return unavailable;
   const token=mobileAccessToken();
   const claims=token?await client.auth.getClaims(token):await client.auth.getClaims();
   const session=z.string().uuid().safeParse(claims.data?.claims.session_id);
@@ -26,6 +27,7 @@ export async function recoverNumberedAiApproval(sessionId:number):Promise<AiAppr
   if(found.data===null)return {success:true,data:null};
   const original=aiApprovalRecoverySchema.safeParse(found.data);
   if(!original.success||original.data.input.uploadSessionId!==sessionId)return unavailable;
+  if(completedOperationId&&(!original.data.receipt||original.data.contract.operationId!==completedOperationId))return unavailable;
   if(original.data.receipt){
    const receipt=original.data.receipt;
    // The completed receipt uses current approval authority. The original

@@ -124,35 +124,45 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
  let prepareCount:number;
  let hidden=false;
  let resultWriteError=false;
+ let retryResetResult: "committed-lost" | "lost-race" | "advanced" | "advanced-before-read" | undefined;
+ let retryReceipt: Record<string, unknown> | undefined;
+ let publicationLost: boolean;
  const real=()=>vi.importActual<typeof import("@/server/actions/dms/ai-intake")>("@/server/actions/dms/ai-intake");
  function query(table:string){
   const op:Operation={table,action:"read",payload:undefined,filters:{},selection:undefined,retry:undefined};
   const execute=async()=>{
    operations.push(structuredClone(op));
    if(!["dms_upload_sessions","dms_ai_extraction_jobs","dms_ai_extraction_results"].includes(table)){ai.unexpected(table,op);throw Error("Unexpected offline table");}
-   if(op.action==="read")return {data:table==="dms_upload_sessions"&&!hidden?structuredClone(row):null,error:null};
+   if(op.action==="read")return {data:table==="dms_upload_sessions"&&!hidden?structuredClone(row):table==="dms_ai_extraction_jobs"?[{id:70}]:null,error:null};
    if(op.action==="update"&&op.payload?.intake_status==="ocr_processing"){
     if(claimResult==="committed-lost"){Object.assign(row,op.payload);throw Error("W22_PRIVATE_LOST");}
     if(claimResult instanceof Error)throw claimResult;
     if(claimResult!==undefined)return claimResult;
     const matches=Object.entries(op.filters).every(([key,value])=>row[key]===value);
     if(matches)Object.assign(row,op.payload);
-    return {data:matches?[{id:17,batch_draft_operation_id:row.batch_draft_operation_id,intake_status:"ocr_processing"}]:[],error:null};
+    return {data:matches?[{id:17,batch_draft_operation_id:row.batch_draft_operation_id,intake_status:"ocr_processing",updated_at:row.updated_at}]:[],error:null};
+   }
+   if(op.action==="update" && table==="dms_upload_sessions" && op.selection){
+    const matches=Object.entries(op.filters).every(([key,value])=>row[key]===value);
+    if(matches)Object.assign(row,op.payload);
+    return {data:matches?[{id:17,batch_draft_operation_id:row.batch_draft_operation_id,intake_status:row.intake_status,updated_at:row.updated_at}]:[],error:null};
    }
    if(op.action==="insert")return table==="dms_ai_extraction_results"&&resultWriteError?{data:null,error:{code:"08007",message:"W22_PRIVATE_RESULT",details:"W22_PRIVATE_DETAILS",hint:"W22_PRIVATE_HINT"}}:{data:{id:table==="dms_ai_extraction_jobs"?71:72},error:null};
+   if(op.action==="update" && table==="dms_ai_extraction_jobs" && op.selection)return {data:{id:71,upload_session_id:17,status:op.payload?.status},error:null};
    if(table==="dms_upload_sessions"&&op.payload)Object.assign(row,op.payload);
    return {data:null,error:null};
   };
-  const q={select:vi.fn((value:string)=>{op.selection=value;return q;}),eq:vi.fn((key:string,value:unknown)=>{op.filters[key]=value;return q;}),is:vi.fn((key:string,value:unknown)=>{op.filters[key]=value;return q;}),in:vi.fn(()=>q),retry:vi.fn((value:unknown)=>{op.retry=value;return q;}),update:vi.fn((value:Record<string,unknown>)=>{op.action="update";op.payload=value;return q;}),insert:vi.fn((value:Record<string,unknown>)=>{op.action="insert";op.payload=value;return q;}),single:vi.fn(execute),maybeSingle:vi.fn(execute),then:(ok:(v:unknown)=>unknown,bad:(e:unknown)=>unknown)=>execute().then(ok,bad)};
+  const q={select:vi.fn((value:string)=>{op.selection=value;return q;}),eq:vi.fn((key:string,value:unknown)=>{op.filters[key]=value;return q;}),is:vi.fn((key:string,value:unknown)=>{op.filters[key]=value;return q;}),in:vi.fn((key:string,value:unknown)=>{op.filters[key]=value;return q;}),retry:vi.fn((value:unknown)=>{op.retry=value;return q;}),update:vi.fn((value:Record<string,unknown>)=>{op.action="update";op.payload=value;return q;}),insert:vi.fn((value:Record<string,unknown>)=>{op.action="insert";op.payload=value;return q;}),single:vi.fn(execute),maybeSingle:vi.fn(execute),then:(ok:(v:unknown)=>unknown,bad:(e:unknown)=>unknown)=>execute().then(ok,bad)};
   return q;
  }
  beforeEach(()=>{
   row={id:17,session_code:"D".repeat(32),batch_id:6,admission_position:0,batch_draft_operation_id:durableOperation,uploaded_by:5,owning_company_id:20,owning_branch_id:21,status:"uploaded",intake_status:"uploaded",updated_at:"2026-10-05T00:00:00.000Z",deleted_at:null,document_id:null,ai_result_id:null,temp_cleaned_at:null,temp_storage_path:"sessions/"+"D".repeat(32)+"/a.pdf",original_filename:"a.pdf",mime_type:"application/pdf"};
   Object.assign(row,{file_size_bytes:actualPdf.length,sha256_hash:createHash('sha256').update(actualPdf).digest('hex'),expires_at:'2027-01-01T00:00:00Z'});
-  operations=[];claimResult=undefined;postGuard=undefined;prepareCount=0;hidden=false;resultWriteError=false;
+  Object.assign(row,{approve_run_id:null,discarded_at:null,is_duplicate:false,review_status:"not_started"});
+  operations=[];claimResult=undefined;postGuard=undefined;prepareCount=0;hidden=false;resultWriteError=false;retryResetResult=undefined;retryReceipt=undefined;publicationLost=false;
   m.auth.mockResolvedValue({profile:{id:5,auth_user_id:durableAuth},isAccountActive:true});m.usable.mockReturnValue(true);
   m.from.mockImplementation(query);
-  m.rpc.mockImplementation(async(name:string)=>{
+  m.rpc.mockImplementation(async(name:string,args:Record<string,unknown>)=>{
    if(name==='f07_prepare_intake_source')return {data:{actorId:5,authSessionId:durableAuth,source:{id:17,name:row.original_filename,mime:row.mime_type,size:row.file_size_bytes,sha256:row.sha256_hash,path:row.temp_storage_path,owner:row.uploaded_by,company:row.owning_company_id,branch:row.owning_branch_id,expiry:row.expires_at}},error:null};
    if(name==="read_dms_upload_batch_admission")return {data:durableReceipt(),error:null};
    if(name==="prepare_recoverable_dms_batch_draft"){
@@ -160,6 +170,26 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
     if(prepareCount>1&&postGuard instanceof Error)throw postGuard;
     if(prepareCount>1&&postGuard!==undefined)return postGuard;
     return {data:durablePrepare("analysis_required",row.intake_status==="ocr_processing"||row.intake_status==="ai_processing"),error:null};
+   }
+   if(name==="dms_reset_intake_retry"){
+    if(retryResetResult==="lost-race")Object.assign(row,{intake_status:"approved",document_id:99});
+    if(retryReceipt)return {data:retryReceipt,error:null};
+    if(row.intake_status==="approved" || row.updated_at!==args.p_expected_updated_at)return {data:null,error:{code:"PT409"}};
+    const revision=new Date().toISOString().replace("Z","123+00:00");
+    Object.assign(row,{intake_status:"uploaded",review_status:"not_started",ai_result_id:null,updated_at:revision});
+    retryReceipt={id:17,session_code:row.session_code,intake_status:"uploaded",updated_at:revision,outcome:retryResetResult==="advanced"?"advanced":"reset"};
+    if(retryResetResult==="advanced-before-read")Object.assign(row,{intake_status:"review_pending",ai_result_id:81,updated_at:"2026-10-06T00:00:00.000Z"});
+    if(retryResetResult==="committed-lost")throw Error("PRIVATE_RESET_RESPONSE");
+    return {data:retryReceipt,error:null};
+   }
+   if(name==="dms_publish_intake_classification"){
+    if(row.intake_status==="ai_processing" && row.updated_at===args.p_claim_at){
+     Object.assign(row,{intake_status:"review_pending",review_status:"pending",ai_job_id:args.p_job,ai_result_id:args.p_result});
+     if(publicationLost)throw Error("PRIVATE_PUBLICATION_RESPONSE");
+    }
+    return row.intake_status==="review_pending" && row.ai_job_id===args.p_job && row.ai_result_id===args.p_result
+     ? {data:{id:17,session_code:row.session_code,intake_status:row.intake_status,review_status:row.review_status,ai_job_id:row.ai_job_id,ai_result_id:row.ai_result_id},error:null}
+     : {data:null,error:{code:"PT409"}};
    }
    ai.unexpected(name);throw Error("unexpected business RPC");
   });
@@ -170,8 +200,11 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
   ai.reviewEnabled.mockResolvedValue(false);
   m.download.mockReturnValue({asStream:async()=>({data:new Blob([actualPdf]).stream(),error:null})});
   m.info.mockResolvedValue({data:{id:'00000000-0000-4000-8000-000000000020',version:'v1',lastModified:'2026-10-17T00:00:00Z'},error:null});
-  ai.attest.mockImplementation(async(name:string)=>{if(!['f07_attest_intake_source','f07_attest_intake_analysis'].includes(name)){ai.unexpected(name);throw Error('Unexpected privileged port');}return {data:null,error:null};});
-  m.admin.mockReturnValue({rpc:ai.attest,storage:{from:(bucket:string)=>{expect(bucket).toBe("dms-temp");return {download:m.download,info:m.info};}}});
+  ai.attest.mockImplementation(async(name:string,args:Record<string,unknown>)=>{
+   if(!['f07_attest_intake_source','f07_attest_intake_analysis'].includes(name)){ai.unexpected(name);throw Error('Unexpected privileged port');}
+   return {data:null,error:name==='f07_attest_intake_analysis'&&args.p_claim_at!==row.updated_at?{code:"PT409"}:null};
+  });
+  m.admin.mockReturnValue({rpc:(...args:unknown[])=>{const response=ai.attest(...args);return Object.assign(response,{retry:(value:boolean)=>{expect(value).toBe(false);return response;}});},storage:{from:(bucket:string)=>{expect(bucket).toBe("dms-temp");return {download:m.download,info:m.info};}}});
  });
  function noPipeline(){
   expect(m.download).not.toHaveBeenCalled();expect(ai.extract).not.toHaveBeenCalled();expect(ai.route).not.toHaveBeenCalled();expect(ai.analyze).not.toHaveBeenCalled();expect(ai.load).not.toHaveBeenCalled();expect(ai.usage).not.toHaveBeenCalled();expect(m.audit).not.toHaveBeenCalled();expect(ai.approval).not.toHaveBeenCalled();
@@ -196,6 +229,53 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
   expect(row.intake_status).toBe("ocr_processing");
   expect(operations.filter(operation => operation.action === "update")).toHaveLength(1);
   noPipeline();
+ });
+ it("an OCR response from a superseded attempt cannot advance the replacement attempt", async () => {
+  Object.assign(row,{batch_draft_operation_id:null,batch_id:null});
+  ai.extract.mockImplementation(async()=>{
+   row.updated_at="2026-10-06T00:00:00.000Z";
+   return {text:"older attempt",images:[],method:"offline"};
+  });
+  const result=await (await real()).startAiIntakeFromUploadSession(input);
+  expect(result).toMatchObject({success:false,uncertain:true});
+  expect(row).toMatchObject({intake_status:"ocr_processing",updated_at:"2026-10-06T00:00:00.000Z"});
+  expect(ai.analyze).not.toHaveBeenCalled();
+ });
+ it("an AI failure from a superseded attempt cannot fail the replacement attempt", async () => {
+  Object.assign(row,{batch_draft_operation_id:null,batch_id:null});
+  ai.analyze.mockImplementation(async()=>{
+   Object.assign(row,{intake_status:"ai_processing",updated_at:"2026-10-06T00:00:00.000Z"});
+   throw Error("Older attempt failed");
+  });
+  const result=await (await real()).startAiIntakeFromUploadSession(input);
+  expect(result).toMatchObject({success:false,uncertain:true});
+  expect(row).toMatchObject({intake_status:"ai_processing",updated_at:"2026-10-06T00:00:00.000Z"});
+  expect(m.audit.mock.calls.some(([v])=>v.new_values?.event==="ai_intake_ai_failed")).toBe(false);
+ });
+ it("a late valid classifier response cannot publish to a replacement attempt", async () => {
+  Object.assign(row,{batch_draft_operation_id:null,batch_id:null});
+  const analyze=ai.analyze.getMockImplementation()!;
+  ai.analyze.mockImplementation(async(...args)=>{
+   Object.assign(row,{intake_status:"ai_processing",updated_at:"2026-10-06T00:00:00.000Z"});
+   return analyze(...args);
+  });
+  expect(await (await real()).startAiIntakeFromUploadSession(input)).toMatchObject({success:false});
+  expect(row).toMatchObject({intake_status:"ai_processing",updated_at:"2026-10-06T00:00:00.000Z",ai_result_id:null});
+  expect(m.rpc.mock.calls.some(([name])=>name==="dms_publish_intake_classification")).toBe(false);
+ });
+ it("replays only the identical classification publication after a lost receipt",async()=>{
+  Object.assign(row,{batch_draft_operation_id:null,batch_id:null});
+  publicationLost=true;
+  const result=await (await real()).startAiIntakeFromUploadSession(input);
+  expect(result).toMatchObject({success:true,data:{status:"review_pending"}});
+  const publications=m.rpc.mock.calls.filter(([name])=>name==="dms_publish_intake_classification");
+  expect(publications).toHaveLength(2);
+  expect(publications[1]).toEqual(publications[0]);
+  const aiClaim=operations.find(operation=>operation.payload?.intake_status==="ai_processing");
+  expect(publications[0][1]).toMatchObject({p_session:17,p_job:71,p_result:72,p_claim_at:aiClaim?.payload?.updated_at});
+  expect(ai.attest.mock.calls[1]?.[1]).toMatchObject({p_claim_at:aiClaim?.payload?.updated_at});
+  expect(ai.analyze).toHaveBeenCalledOnce();
+  expect(operations.some(operation=>operation.payload?.intake_status==="review_pending")).toBe(false);
  });
  it("requires the upload, preview and review grants in the same upload scope", async () => {
   row.batch_draft_operation_id = null;
@@ -226,7 +306,7 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
   const claims=operations.filter(o=>o.payload?.intake_status==="ocr_processing");
   expect(claims).toHaveLength(2);
   for(const claim of claims){
-   expect(claim).toMatchObject({table:"dms_upload_sessions",action:"update",selection:"id,batch_draft_operation_id,intake_status",retry:false,filters:{id:17,batch_draft_operation_id:durableOperation,batch_id:6,admission_position:0,uploaded_by:5,intake_status:"uploaded",status:"uploaded",updated_at:"2026-10-05T00:00:00.000Z",deleted_at:null,document_id:null,ai_result_id:null,temp_cleaned_at:null}});
+   expect(claim).toMatchObject({table:"dms_upload_sessions",action:"update",selection:"id,batch_draft_operation_id,intake_status,updated_at",retry:false,filters:{id:17,batch_draft_operation_id:durableOperation,batch_id:6,admission_position:0,uploaded_by:5,intake_status:"uploaded",status:"uploaded",updated_at:"2026-10-05T00:00:00.000Z",deleted_at:null,document_id:null,ai_result_id:null,temp_cleaned_at:null}});
    expect(claim.payload).toEqual({intake_status:"ocr_processing",updated_at:expect.any(String)});
   }
   expect(m.download).toHaveBeenCalledExactlyOnceWith("sessions/"+"D".repeat(32)+"/a.pdf",{},expect.objectContaining({signal:expect.any(AbortSignal),cache:'no-store'}));expect(ai.extract).toHaveBeenCalledOnce();expect(ai.analyze).toHaveBeenCalledOnce();expect(ai.usage).toHaveBeenCalledOnce();
@@ -239,7 +319,7 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
   expect(ai.attest.mock.calls.map(([n])=>n)).toEqual(['f07_attest_intake_source','f07_attest_intake_analysis']);
  });
  it.each(["zero","duplicate","wrong-id","wrong-marker","wrong-state","missing","40003","08007","throw"])("claim %s outcome never dispatches or retries",async kind=>{
-  const returned={id:17,batch_draft_operation_id:durableOperation,intake_status:"ocr_processing"};
+  const returned={id:17,batch_draft_operation_id:durableOperation,intake_status:"ocr_processing",updated_at:"2026-10-06T00:00:00.000Z"};
   claimResult=kind==="throw"?Error("W22_PRIVATE_MESSAGE"):kind==="40003"||kind==="08007"?{data:null,error:{code:kind,message:"W22_PRIVATE_MESSAGE",details:"W22_PRIVATE_DETAILS",hint:"W22_PRIVATE_HINT"}}:{data:kind==="zero"?[]:kind==="duplicate"?[returned,returned]:kind==="missing"?null:[{...returned,...(kind==="wrong-id"?{id:99}:kind==="wrong-marker"?{batch_draft_operation_id:contract.operationId}:{intake_status:"uploaded"})}],error:null};
   const result=await (await real()).startAiIntakeFromUploadSession(input);
   expect(result).toMatchObject({success:false});expect(JSON.stringify(result)).not.toMatch(/W22_PRIVATE/);noPipeline();
@@ -268,14 +348,74 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
   row.intake_status=state;if(state==="missing")delete row.batch_draft_operation_id;
   if(state==="hidden")hidden=true;
   expect(await (await real()).retryAiIntake(17)).toMatchObject({success:false});noPipeline();expect(ai.factory).not.toHaveBeenCalled();expect(operations.every(o=>o.action==="read")).toBe(true);
-  expect(operations).toHaveLength(1);expect(operations[0]).toMatchObject({table:"dms_upload_sessions",action:"read",selection:"batch_draft_operation_id",filters:{id:17,deleted_at:null}});
+  expect(operations).toHaveLength(1);expect(operations[0]).toMatchObject({table:"dms_upload_sessions",action:"read",selection:expect.stringContaining("batch_draft_operation_id"),filters:{id:17,deleted_at:null}});
  });
- it("explicit NULL legacy reset keeps original payload with a NULL database predicate",async()=>{
-  row.batch_draft_operation_id=null;ai.configured.mockReturnValue(false);
+ it("retries a failed legacy intake after confirming the exact guarded reset",async()=>{
+  Object.assign(row,{batch_draft_operation_id:null,intake_status:"failed"});ai.configured.mockReturnValue(false);
   await (await real()).retryAiIntake(17);
-  const reset=operations.find(o=>o.payload?.intake_status==="uploaded");
-  expect(reset).toMatchObject({table:"dms_upload_sessions",filters:{id:17,batch_draft_operation_id:null},payload:{intake_status:"uploaded",review_status:"not_started",ai_result_id:null,updated_at:expect.any(String)}});
-  expect(m.rpc).not.toHaveBeenCalled();expect(ai.factory).toHaveBeenCalledOnce();expect(m.download).not.toHaveBeenCalled();
+  expect(m.rpc.mock.calls).toEqual([["f07_prepare_intake_source",{p_session:17}],["dms_reset_intake_retry",expect.objectContaining({
+   p_session:17,p_operation:expect.any(String),p_expected_updated_at:"2026-10-05T00:00:00.000Z",
+   p_expected_state:{status:"uploaded",intake_status:"failed",review_status:"not_started",ai_result_id:null},
+   p_expected_source:expect.objectContaining({id:17,path:row.temp_storage_path,owner:5,company:20,branch:21}),
+  })]]);
+  expect(ai.factory).toHaveBeenCalledOnce();expect(m.download).not.toHaveBeenCalled();
+ });
+ it.each([
+  {intake_status:"ocr_processing"}, {intake_status:"approved",document_id:99},
+  {status:"completed",intake_status:"failed"}, {intake_status:"review_pending",approve_run_id:81},
+  {intake_status:"review_pending",temp_cleaned_at:"2026-10-17T00:00:00Z"},
+ ])("does not reset a protected legacy intake: %j",async override=>{
+  Object.assign(row,{batch_draft_operation_id:null,...override});
+  expect(await (await real()).retryAiIntake(17)).toMatchObject({success:false});
+  expect(operations.every(o=>o.action==="read")).toBe(true);expect(ai.factory).not.toHaveBeenCalled();noPipeline();
+ });
+ it("does not reset a newer legacy review after an earlier retry",async()=>{
+  Object.assign(row,{batch_draft_operation_id:null,intake_status:"review_pending",ai_result_id:72});
+  expect(await (await real()).retryAiIntake(17,"2026-10-04T00:00:00.000Z")).toMatchObject({success:false});
+  expect(operations.every(o=>o.action==="read")).toBe(true);expect(ai.factory).not.toHaveBeenCalled();noPipeline();
+ });
+ it("requires retry authority in the intake's actual scope",async()=>{
+  Object.assign(row,{batch_draft_operation_id:null,intake_status:"failed"});
+  m.permission.mockImplementation((_ctx,code,company,branch)=>company===undefined ||
+   (company===20 && branch===21 && code==="dms.documents.upload"));
+  expect(await (await real()).retryAiIntake(17)).toMatchObject({success:false});
+  expect(operations.every(o=>o.action==="read")).toBe(true);expect(ai.factory).not.toHaveBeenCalled();noPipeline();
+ });
+ it.each(["expired","native-denied","native-source-changed"])("a %s legacy source stays unchanged before a retry",async state=>{
+  Object.assign(row,{batch_draft_operation_id:null,intake_status:"review_pending",ai_result_id:72});
+  if(state==="expired")row.expires_at="2020-01-01T00:00:00.000Z";
+  const readRpc=m.rpc.getMockImplementation()!;
+  m.rpc.mockImplementation(async(name:string,...args:unknown[])=>{
+   if(name==="f07_prepare_intake_source" && state==="native-denied")return {data:null,error:{code:"42501",message:"PRIVATE_NATIVE_SOURCE"}};
+   const result=await readRpc(name,...args);
+   if(name==="f07_prepare_intake_source" && state==="native-source-changed")return {...result,data:{...result.data,source:{...result.data.source,path:"different.pdf"}}};
+   return result;
+  });
+  const result=await (await real()).retryAiIntake(17);
+  expect(result).toMatchObject({success:false});expect(JSON.stringify(result)).not.toContain("PRIVATE_NATIVE_SOURCE");
+  expect(operations.every(o=>o.action==="read")).toBe(true);
+  expect(row).toMatchObject({ai_result_id:72,intake_status:"review_pending"});
+  expect(ai.factory).not.toHaveBeenCalled();noPipeline();
+ });
+ it.each(["lost-race","advanced","advanced-before-read"] as const)("a %s retry reset leaves the original intake for reconciliation",async mode=>{
+  Object.assign(row,{batch_draft_operation_id:null,intake_status:"review_pending",ai_result_id:72});
+  retryResetResult=mode;
+  const result=await (await real()).retryAiIntake(17);
+  expect(result).toMatchObject({success:false,...(mode==="advanced-before-read"?{uncertain:true}:{})});
+  expect(JSON.stringify(result)).not.toContain("PRIVATE_RESET_RESPONSE");
+  expect(operations.filter(o=>o.action==="update")).toHaveLength(0);
+  expect(row.intake_status).toBe(mode==="lost-race"?"approved":mode==="advanced-before-read"?"review_pending":"uploaded");
+  expect(ai.factory).not.toHaveBeenCalled();noPipeline();
+ });
+ it("recovers a committed retry reset with identical arguments before starting a single pipeline",async()=>{
+  Object.assign(row,{batch_draft_operation_id:null,intake_status:"review_pending",ai_result_id:19});
+  retryResetResult="committed-lost";
+  expect(await (await real()).retryAiIntake(17)).toMatchObject({success:true,data:{status:"review_pending"}});
+  const resets=m.rpc.mock.calls.filter(([name])=>name==="dms_reset_intake_retry");
+  expect(resets).toHaveLength(2);
+  expect(resets[1]).toEqual(resets[0]);
+  expect(operations.find(operation=>operation.payload?.intake_status==="ocr_processing")?.filters.updated_at).toBe(retryReceipt?.updated_at);
+  expect(ai.analyze).toHaveBeenCalledOnce();
  });
  it("committed claim with lost response never reads back ownership, resets or dispatches",async()=>{
   claimResult="committed-lost";
@@ -296,8 +436,17 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
  it("explicit NULL aged legacy processing preserves existing sweeper and pipeline",async()=>{
   row.batch_draft_operation_id=null;row.intake_status="ocr_processing";
   expect(await (await real()).startAiIntakeFromUploadSession(input)).toMatchObject({success:true,data:{status:"review_pending"}});
-  expect(operations).toContainEqual(expect.objectContaining({table:"dms_ai_extraction_jobs",action:"update",payload:expect.objectContaining({status:"failed",error_message:"Stale run — superseded by a new AI Fill request"})}));
-  expect(ai.analyze).toHaveBeenCalledOnce();expect(m.rpc.mock.calls.every(([n])=>n==='f07_prepare_intake_source')).toBe(true);expect(ai.attest).toHaveBeenCalledTimes(2);expect(ai.warn).toHaveBeenCalledOnce();
+  const swept=operations.find(operation=>operation.payload?.error_message==="Stale run — superseded by a new AI Fill request");
+  expect(swept).toMatchObject({table:"dms_ai_extraction_jobs",action:"update",filters:{id:[70],upload_session_id:17,run_source:"ai_intake",status:["pending","processing"]},payload:{status:"failed"}});
+  expect(operations.indexOf(swept!)).toBeGreaterThan(operations.findIndex(operation=>operation.payload?.intake_status==="ocr_processing"));
+  expect(ai.analyze).toHaveBeenCalledOnce();expect(m.rpc.mock.calls.map(([n])=>n)).toEqual(['f07_prepare_intake_source','f07_prepare_intake_source','dms_publish_intake_classification']);expect(ai.attest).toHaveBeenCalledTimes(2);expect(ai.warn).toHaveBeenCalledOnce();
+ });
+ it("a lost replacement election never sweeps pending jobs",async()=>{
+  Object.assign(row,{batch_draft_operation_id:null,intake_status:"ai_processing"});
+  claimResult={data:[],error:null};
+  expect(await (await real()).startAiIntakeFromUploadSession(input)).toMatchObject({success:false,uncertain:true});
+  expect(operations.filter(operation=>operation.table==="dms_ai_extraction_jobs").map(operation=>operation.action)).toEqual(["read"]);
+  noPipeline();
  });
  it("actual durable wrapper delegates one real start; unconfirmed claim never consumes",async()=>{
   claimResult="committed-lost";

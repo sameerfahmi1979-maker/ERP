@@ -8,6 +8,7 @@ import { useNumberedAiApproval } from "@/hooks/use-numbered-ai-approval";
 import {useRetainedBatchFinalization} from '@/hooks/use-retained-batch-finalization';
 import { toast } from "sonner";
 import {DmsAiIntakeView} from "./dms-ai-intake-view";
+import { resolveIntakeMetadataValue } from "./dms-ai-intake-metadata-section";
 import { buildInitialReviewValues } from "./dms-ai-intake-review-form";
 import type { ReviewFormValues } from "./dms-ai-intake-review-form";
 import type { IntakeSessionData, IntakeAiResultRow } from "@/server/actions/dms/ai-intake";
@@ -15,6 +16,7 @@ import {
   approveAiIntakeAndCreateDocument,
   recoverAiIntakeApproval,
   discardAiIntake,
+  getAiIntakeSession,
   retryAiIntake,
   saveAiIntakeDraft,
   getIntakeSessionSignedUrl,
@@ -24,6 +26,7 @@ import { previewDmsStandardFileName } from "@/server/actions/dms/standard-file-n
 import { getMetadataDefinitionsForType } from "@/server/actions/dms/document-metadata-values";
 import type { DmsDocumentTypeRow } from "@/server/actions/dms/document-types";
 import { aiApprovalInputSchema, type AiApprovalInput } from "@/lib/dms/numbered-ai-approval";
+import { canAssignQatarPermitNumberOnApproval } from "@/lib/dms/standard-file-name";
 import { type IntakeLinkChip } from "@/features/dms/intake/dms-intake-link-panel";
 import {confirmExactIntakeReview} from '@/server/actions/dms/intake-review';
 import type {IntakeReviewConfirmation} from '@/lib/dms/intake-review';
@@ -47,7 +50,7 @@ export function DmsAiIntakePageClient({
   const router = useRouter();
   const { activeTab, updateTabRoute, renameTab, closeTab } = useWorkspace();
   const previewOwner = useReadCacheOwner();
-  const [session] = useState<IntakeSessionData>(initialSession);
+  const [session, setSession] = useState<IntakeSessionData>(initialSession);
   const approval = useNumberedAiApproval(String(initialSession.id), approveAiIntakeAndCreateDocument,session.document_id?undefined:recoverAiIntakeApproval);
   const batchApproval=useRetainedBatchFinalization({enabled:!!session.document_id,sessionId:session.id,recover:recoverDraftFinalization,submit:finalizeDraftIntake});
   const retainedApproval = session.document_id?batchApproval.pending:approval.pendingSessionIds.includes(session.id);
@@ -116,7 +119,7 @@ export function DmsAiIntakePageClient({
 
   // ── Validate before approve ───────────────────────────────────────────────
 
-  const validate = async (): Promise<{ error: string; fieldId?: number } | { metadataValues: AiApprovalInput["metadataValues"] }> => {
+  const validate = async (): Promise<{ error: string; fieldId?: number } | { metadataValues: AiApprovalInput["metadataValues"]; useReservedNumber?: boolean }> => {
     if (!formValues.title.trim()) return { error: "Title is required" };
     if (!formValues.documentTypeId) return { error: "Document type is required" };
     if (!formValues.standardFileName.trim()) return { error: "Standard file name is required" };
@@ -125,23 +128,27 @@ export function DmsAiIntakePageClient({
     if (!definitions.success || !definitions.data) {
       return { error: "The metadata requirements could not be checked. Keep this review and try approving again." };
     }
-    // Metadata from a previous type may still be in the draft. Submit only fields
-    // defined for the selected type and check the required values before approval.
-    const missing = definitions.data.filter(field => field.is_required && !formValues.metadataValues[field.id]?.rawValue.trim());
+    // Use the same values as the review inputs, including freshly displayed AI
+    // suggestions, while retaining explicit reviewer edits and cleared values.
+    const fields = definitions.data.map(field => ({
+      field,
+      value: resolveIntakeMetadataValue(
+        field.field_type,
+        formValues.metadataValues[field.id],
+        aiResult?.extracted_fields_json?.[field.field_code],
+      ),
+    }));
+    const missing = fields.filter(({ field, value }) => field.is_required && !value?.rawValue.trim());
     if (missing.length) return {
-      error: `Complete required metadata before approving: ${missing.map(field => field.field_label_en).join(", ")}.`,
-      fieldId: missing[0].id,
+      error: `Complete required metadata before approving: ${missing.map(({ field }) => field.field_label_en).join(", ")}.`,
+      fieldId: missing[0].field.id,
     };
-    const changedField = definitions.data.find(field => {
-      const value = formValues.metadataValues[field.id];
-      return value?.rawValue.trim() && value.fieldType !== field.field_type;
-    });
+    const changedField = fields.find(({ field, value }) => value?.rawValue.trim() && value.fieldType !== field.field_type)?.field;
     if (changedField) return {
       error: `The configuration for ${changedField.field_label_en} changed. Review and re-enter its value before approving.`,
       fieldId: changedField.id,
     };
-    const metadata = aiApprovalInputSchema.shape.metadataValues.safeParse(definitions.data.flatMap(field => {
-      const value = formValues.metadataValues[field.id];
+    const metadata = aiApprovalInputSchema.shape.metadataValues.safeParse(fields.flatMap(({ field, value }) => {
       if (!value?.rawValue.trim()) return [];
       return [{ definitionId: field.id, fieldType: field.field_type, rawValue: value.rawValue }];
     }));
@@ -163,6 +170,9 @@ export function DmsAiIntakePageClient({
         suggestedTitle: formValues.title || session.ai_result?.suggested_title || null,
       });
       if (preview.success && preview.data && !preview.data.validation.valid) {
+        if (!session.document_id && canAssignQatarPermitNumberOnApproval(docType.type_code, preview.data.fileName, preview.data.validation)) {
+          return { metadataValues, useReservedNumber: true };
+        }
         return { error: `Standard file name is incomplete (missing: ${preview.data.validation.missing.join(", ")})` };
       }
     }
@@ -171,22 +181,49 @@ export function DmsAiIntakePageClient({
 
   const draftSnapshot = useRef(session.draft_snapshot ?? null);
   const draftRequest = useRef<{values:Parameters<typeof saveAiIntakeDraft>[1];review:{requestId:string;snapshot:string}}|null>(null);
+  const retryRevisionNeedsRead = useRef(false);
   const [draftUncertain,setDraftUncertain]=useState(false);
 
   // ── Save draft ────────────────────────────────────────────────────────────
 
   const handleSaveDraft = () => {
-    if (retainedApproval || approvalBlocked) return;
+    if (retainedApproval || approvalBlocked || isPending) return;
     startTransition(async () => {
-      if(!draftSnapshot.current){toast.error("Reload the saved review before saving.");return;}
-      draftRequest.current ??= {values:buildDraftPayload(formValues),review:{requestId:crypto.randomUUID(),snapshot:draftSnapshot.current}};
+      const snapshot = draftSnapshot.current;
+      if (!snapshot) { toast.error("Reload the saved review before saving."); return; }
+      const isCurrent = session.document_id ? batchApproval.isCurrent : approval.isCurrent;
+      if (!draftRequest.current) {
+        const metadataValues = { ...formValues.metadataValues };
+        const extracted = aiResult?.extracted_fields_json;
+        if (formValues.documentTypeId && extracted && Object.keys(extracted).length) {
+          const definitions = await getMetadataDefinitionsForType(formValues.documentTypeId, "intake").catch(() => null);
+          if (!isCurrent()) return;
+          if (!definitions?.success || !definitions.data) {
+            toast.error("The metadata fields could not be checked. Keep this review and try saving again.");
+            return;
+          }
+          for (const field of definitions.data) {
+            const value = resolveIntakeMetadataValue(field.field_type, metadataValues[field.id], extracted[field.field_code]);
+            if (value && value.rawValue !== "") metadataValues[field.id] = value;
+          }
+        }
+        if (!draftRequest.current && draftSnapshot.current !== snapshot) {
+          toast.error("The review changed while preparing the draft. Check the current values and try saving again.");
+          return;
+        }
+        draftRequest.current ??= {
+          values: buildDraftPayload({ ...formValues, metadataValues }),
+          review: { requestId: crypto.randomUUID(), snapshot },
+        };
+      }
       const original=draftRequest.current;
       let result;
       try { result=await saveAiIntakeDraft(session.id,original.values,original.review); }
       catch { setDraftUncertain(true);toast.error("Draft save is unconfirmed. Retry Save draft to recover the same values.");return; }
-      if(session.document_id?!batchApproval.isCurrent():!approval.isCurrent())return;
+      if (!isCurrent()) return;
       if (result.success) {
         draftSnapshot.current=result.data?.snapshot??null;draftRequest.current=null;setDraftUncertain(false);
+        retryRevisionNeedsRead.current = true;
         toast.success("Draft saved");
       } else {
         setDraftUncertain(result.uncertain===true);if(!result.uncertain)draftRequest.current=null;
@@ -242,7 +279,10 @@ export function DmsAiIntakePageClient({
       // Both paths approve exactly one document — never in bulk.
       const result = session.document_id
         ? await batchApproval.run(sharedPayload)
-        : await approval.run(sharedPayload);
+        : await approval.run({
+          ...sharedPayload,
+          standardFileName: validated.useReservedNumber ? null : sharedPayload.standardFileName,
+        });
 
       // A response from a closed/replaced owner must not navigate a new tab or
       // another account. Batch dispatch and its existing lifecycle stay unchanged.
@@ -271,15 +311,66 @@ export function DmsAiIntakePageClient({
   // ── Retry AI ──────────────────────────────────────────────────────────────
 
   const handleRetry = () => {
-    if (retainedApproval || approvalBlocked || draftUncertain) return;
+    if (retainedApproval || approvalBlocked || draftUncertain || isPending) return;
+    const isCurrent = session.document_id ? batchApproval.isCurrent : approval.isCurrent;
+    const reopenMessage = "Reopen the original intake to check its current review.";
     startTransition(async () => {
-      const result = await retryAiIntake(session.id);
-      if (result.success) {
-        toast.success("AI analysis re-started. Refreshing…");
-        router.refresh();
-      } else {
-        toast.error(result.error ?? "Failed to retry AI analysis");
+      const readIntake = async () => {
+        const response = await getAiIntakeSession(session.session_code).catch(() => null);
+        return response?.success ? response.data : undefined;
+      };
+      let expectedRevision = session.updated_at;
+      const expectedResultId = displaySession.ai_result_id;
+      if (retryRevisionNeedsRead.current && session.document_id === null) {
+        const knownSnapshot = draftSnapshot.current;
+        const current = await readIntake();
+        if (!isCurrent()) return;
+        // Local draft and type-extraction receipts bind the source, draft and result.
+        // Adopt the row revision only when the scoped read matches that receipt.
+        if (!knownSnapshot || draftSnapshot.current !== knownSnapshot ||
+          !current || current.id !== session.id || current.session_code !== session.session_code ||
+          current.draft_snapshot !== knownSnapshot || current.ai_result_id !== expectedResultId ||
+          (current.ai_result?.id ?? null) !== expectedResultId ||
+          current.document_id !== null || current.is_duplicate !== false || current.discarded_at ||
+          ["approved", "discarded"].includes(current.review_status) ||
+          !["review_pending", "review_in_progress"].includes(current.intake_status) ||
+          !current.updated_at || !Number.isFinite(Date.parse(current.updated_at)) || current.updated_at === expectedRevision) {
+          toast.error(`The current AI review could not be confirmed. ${reopenMessage}`);
+          return;
+        }
+        expectedRevision = current.updated_at;
       }
+      const result = await retryAiIntake(session.id, expectedRevision).catch(() => null);
+      if (!isCurrent()) return;
+      if (!result?.success) {
+        toast.error(result?.error ?? `The AI retry could not be confirmed. ${reopenMessage}`);
+        return;
+      }
+      if (!result.data || result.data.sessionCode !== session.session_code || result.data.status !== "review_pending") {
+        toast.error(`The new AI review is still unconfirmed. ${reopenMessage}`);
+        return;
+      }
+
+      const current = await readIntake();
+      if (!isCurrent()) return;
+      if (!current || current.id !== session.id || current.session_code !== session.session_code ||
+          !current.updated_at || current.updated_at === expectedRevision || current.document_id !== null ||
+          !current.ai_result || current.ai_result_id !== current.ai_result.id || current.ai_result_id === expectedResultId ||
+          !current.draft_snapshot || !["review_pending", "review_in_progress"].includes(current.intake_status)) {
+        toast.error(`The latest AI review could not be loaded. ${reopenMessage}`);
+        return;
+      }
+
+      setSession(current);
+      setAiResultPatch(null);
+      setFormValues(buildInitialReviewValues(current));
+      draftSnapshot.current = current.draft_snapshot;
+      retryRevisionNeedsRead.current = false;
+      setEntityLinks([]);
+      setFileReview(null);
+      setReviewBlockReason(null);
+      setApprovalError(null);
+      toast.success("AI analysis refreshed");
     });
   };
 
@@ -351,7 +442,14 @@ export function DmsAiIntakePageClient({
   return <DmsAiIntakeView {...{session,displaySession,aiResult,documentTypes,formValues,handleFormChange,entityLinks,setEntityLinks,isReady,isFailed,isProcessing,isPending,retainedApproval,approvalBlocked,draftUncertain,handleRetry,handleSaveDraft,handleApprove,handleDiscard,handlePreview,isLoadingPreview,discardAnchor,setDiscardAnchor,discardReason,setDiscardReason,setFileReview,setReviewBlockReason}}
     approvalError={approvalError}
     approvalLoading={approval.loading} retentionError={approval.retentionError} batchLoading={batchApproval.loading} batchBlocked={batchApproval.blocked} navigate={url=>router.push(url)}
-    onAiResultPatch={(patch,snapshot)=>{setAiResultPatch(prev=>({...prev,...patch}));setFileReview(null);if(snapshot)draftSnapshot.current=snapshot;}}/>;
+    onAiResultPatch={(patch, snapshot) => {
+      setAiResultPatch(prev => ({ ...prev, ...patch }));
+      setFileReview(null);
+      if (snapshot) {
+        draftSnapshot.current = snapshot;
+        retryRevisionNeedsRead.current = true;
+      }
+    }}/>;
 }
 
 // ── Build draft payload ────────────────────────────────────────────────────────

@@ -13,22 +13,25 @@
 
 import type { DmsAiOutput } from "./types";
 
-const ISSUE_FIELD_CODES = new Set([
+const ISSUE_ROLE_CODES = [
   "issue_date",
   "issued_date",
   "date_issued",
   "issuing_date",
-  "start_date",
-]);
+] as const;
 
-const EXPIRY_FIELD_CODES = new Set([
+const EXPIRY_ROLE_CODES = [
   "expiry_date",
   "expiry",
   "valid_until",
   "validity_date",
-  "end_date",
   "date_expiry",
-]);
+] as const;
+
+const ISSUE_FIELD_CODES = new Set<string>([...ISSUE_ROLE_CODES, "start_date"]);
+const EXPIRY_FIELD_CODES = new Set<string>([...EXPIRY_ROLE_CODES, "end_date"]);
+const ISSUE_ROLE_FIELDS = new Set<string>(ISSUE_ROLE_CODES);
+const EXPIRY_ROLE_FIELDS = new Set<string>(EXPIRY_ROLE_CODES);
 
 /** Parse a date string in the formats the AI returns; null when unparseable. */
 function parseFlexibleDate(val: string | null | undefined): number | null {
@@ -47,6 +50,23 @@ function parseFlexibleDate(val: string | null | undefined): number | null {
 
   const ts = Date.parse(iso);
   return Number.isNaN(ts) ? null : ts;
+}
+
+/** Flag reported chronology conflicts without changing the roles or evidence. */
+export function flagReportedDateConflict(output: DmsAiOutput): void {
+  const { issueDateSuggestion, expiryDateSuggestion, fields } = output.extraction;
+  const issueField = fields.find(field => ISSUE_ROLE_FIELDS.has(field.fieldCode.toLowerCase()));
+  const expiryField = fields.find(field => EXPIRY_ROLE_FIELDS.has(field.fieldCode.toLowerCase()));
+  const conflict = [[issueDateSuggestion, expiryDateSuggestion], [issueField?.value, expiryField?.value]]
+    .some(([issue, expiry]) => {
+      const start = parseFlexibleDate(issue);
+      const end = parseFlexibleDate(expiry);
+      return start !== null && end !== null && start > end;
+    });
+  if (!conflict) return;
+  const warning = "Reported issue and expiry dates conflict. Verify their printed roles.";
+  output.classification.needsHumanReview = true;
+  output.warnings = [...(output.warnings ?? []), warning];
 }
 
 /**

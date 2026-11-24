@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { getExpiryState, getDaysRemaining } from "../dms-expiry-badge";
 import { DmsReminderScheduleTable } from "@/features/dms/expiry/dms-reminder-schedule-table";
 import { DmsStartRenewalDialog } from "@/features/dms/renewals/dms-start-renewal-dialog";
+import { isBr1RenewalPreparationEnabled } from "@/features/dms/renewals/dms-br1-renewal-preparation-dialog";
 import { generateDmsExpiryRemindersForDocument, rebuildDmsExpiryReminders } from "@/server/actions/dms/expiry-reminders";
 import { invalidateDmsDocumentExpiry, invalidateDmsRenewals } from "@/lib/query/invalidation";
 import { useWorkspace } from "@/hooks/use-workspace";
@@ -49,6 +50,7 @@ export function DmsDocumentExpirySection({
   const [rebuilding, setRebuilding] = useState(false);
   const [showRenewalDialog, setShowRenewalDialog] = useState(false);
   const isSuperseded = documentStatus === "superseded";
+  const isRenewalPilot = isBr1RenewalPreparationEnabled(documentId);
 
   const handleGenerateReminders = async () => {
     setGenerating(true);
@@ -164,7 +166,7 @@ export function DmsDocumentExpirySection({
               onClick={() => setShowRenewalDialog(true)}
             >
               <Plus className="h-3 w-3" />
-              Start Renewal
+              {isRenewalPilot ? "Prepare renewal" : "Start Renewal"}
             </Button>
           )}
         </div>
@@ -260,11 +262,12 @@ export function DmsDocumentExpirySection({
 
       {/* Start Renewal dialog */}
       <DmsStartRenewalDialog
-        open={showRenewalDialog}
+        open={showRenewalDialog && (!isRenewalPilot || (canManage && isRenewable && !isSuperseded))}
         onOpenChange={setShowRenewalDialog}
         documentId={documentId}
         documentNo={documentNo}
         documentTitle={documentTitle}
+        recordedExpiry={expiryDate}
         onSuccess={() => {
           setShowRenewalDialog(false);
           invalidateDmsRenewals(queryClient);

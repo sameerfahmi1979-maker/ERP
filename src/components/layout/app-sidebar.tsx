@@ -139,6 +139,7 @@ const navSections: NavSection[] = [
     children: [
       { label: "Dashboard",     icon: LayoutDashboard, path: "/dashboard" },
       { label: "Notifications", icon: Bell,            path: "/notifications" },
+      { label: "AI Agent Center", icon: Sparkles, path: "/ai-agent-center" },
     ],
   },
   {

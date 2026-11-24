@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { modelPreparationSchema, preparationHash, preparationEvidenceSchema, type ModelPreparation, type PreparationEvidence, type PreparationSnapshot } from "./contracts";
 
+import type { Evidence } from "@/lib/dms/phase2/provider-evidence";
+
+type VerifiedOriginalFields = { fields: Record<string, Evidence>; sha256: string; fileId: number };
+
 export type PreparedValue = { key: string; label: string; current: string | null; proposed: string; evidence: PreparationEvidence[]; confidence: number | null };
 export type PreparationCandidates = {
   version: 1; sourceSnapshot: string; profileHash: string; values: PreparedValue[];
@@ -25,7 +29,7 @@ export function readablePreparationTitle(typeName: string | null, subject: Prepa
   return (suggested?.trim() || typeName?.trim() || original.replace(/\.[^.]+$/, "") || "Document").slice(0, 500);
 }
 /** The model cannot fabricate IDs, source excerpts, boxes, relationships or approved values. */
-export function buildPreparationCandidates(source: PreparationSnapshot, raw: unknown): PreparationCandidates {
+export function buildPreparationCandidates(source: PreparationSnapshot, raw: unknown, verified?: VerifiedOriginalFields): PreparationCandidates {
   const output = modelPreparationSchema.parse(raw), profile = source.profile;
   const portrait = isPortraitPreparation(source);
   const warnings = [...output.warnings];
@@ -36,9 +40,16 @@ export function buildPreparationCandidates(source: PreparationSnapshot, raw: unk
   add("title", "Title", source.current.title, readablePreparationTitle(profile?.titlePattern==="suggested"&&!portrait?null:source.typeName, source.subject, output.title, source.files[0]?.name ?? "Document", !!portrait));
   if (!portrait) {
     add("description", "Description", source.current.description, output.description);
-    add("issue_date", "Issue date", source.current.issue_date, output.issueDate);
+    const original = verified ? source.files.find(file => file.id === verified.fileId && file.sha256 === verified.sha256) : undefined;
+    const evidenceFor = (key: string): PreparationEvidence[] => {
+      const field = verified?.fields[key];
+      if (!original || !field?.raw) return [];
+      return [{ fileId: original.id, versionId: original.versionId, sha256: original.sha256, page: field.page,
+        snippet: clean(field.raw).slice(0, 2000), box: null, locationPrecision: "page" }];
+    };
+    add("issue_date", "Issue date", source.current.issue_date, output.issueDate, evidenceFor("issue_date"));
     if (!output.expiryDate || !output.issueDate || output.expiryDate >= output.issueDate)
-      add("expiry_date", "Expiry date", source.current.expiry_date, output.expiryDate);
+      add("expiry_date", "Expiry date", source.current.expiry_date, output.expiryDate, evidenceFor("expiry_date"));
     else warnings.push("The suggested expiry precedes the issue date. Review the original; expiry was withheld.");
     const seen = new Set<string>();
     for (const f of output.fields) {
@@ -49,6 +60,12 @@ export function buildPreparationCandidates(source: PreparationSnapshot, raw: unk
       const evidence: PreparationEvidence[] = f.snippet && file.text?.includes(f.snippet) ? [{ fileId: file.id, versionId: file.versionId, sha256: file.sha256, page: null, snippet: f.snippet, box: null, locationPrecision: "snippet" }] : [];
       if (f.value?.trim() && !evidence.length) { warnings.push(`Source evidence is missing for ${def.label}; its suggestion was withheld.`); continue; }
       add(`metadata:${def.id}`, def.label, def.current, f.value, evidence, f.confidence);
+    }
+    if (original && verified) {
+      for (const def of source.fields) {
+        const field = verified.fields[def.code];
+        if (field && !seen.has(def.code)) add("metadata:" + def.id, def.label, def.current, field.value, evidenceFor(def.code), 1);
+      }
     }
     for (const code of profile?.requiredFields ?? []) {
       const def = source.fields.find(f => f.code === code);

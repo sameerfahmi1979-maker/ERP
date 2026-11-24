@@ -152,7 +152,7 @@ describe("DMS semantic search settings visibility", () => {
       findSimilarDmsDocuments(42),
       generateDmsDocumentEmbedding(42),
       regenerateDmsDocumentEmbedding(42),
-      bulkGenerateMissingDmsEmbeddings({}),
+      bulkGenerateMissingDmsEmbeddings({ batchSize: 1, dryRun: true }),
     ]);
 
     expect(attempts).toEqual(attempts.map(() => ({

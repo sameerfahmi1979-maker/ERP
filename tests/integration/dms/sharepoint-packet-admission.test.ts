@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { jsPDF } from "jspdf";
 import { expect, it } from "vitest";
-import { assessPacketAdmission } from "../../../../../workers/sharepoint-agent/packet-admission.mjs";
-import { analyzePhase2Source, type SourcePage } from "../batch";
+import { assessPacketAdmission } from "../../../workers/sharepoint-agent/packet-admission.mjs";
+import { analyzePhase2Source, type SourcePage } from "@/lib/dms/phase2/batch";
 
 const require = createRequire(import.meta.url);
 type PdfPage = { pageNumber: number; getTextContent(): Promise<{ items: { str: string }[] }> };

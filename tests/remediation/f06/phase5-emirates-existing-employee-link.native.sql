@@ -250,6 +250,19 @@ BEGIN
     RAISE EXCEPTION 'Roll back competing identity' USING ERRCODE='P0004';
   EXCEPTION WHEN SQLSTATE 'P0004' THEN NULL;
   END;
+  BEGIN
+    PERFORM set_config('request.jwt.claims','{}',true);
+    UPDATE public.dms_document_files SET integrity_status='failed' WHERE id=original;
+    PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',reviewer_user,'session_id',reviewer_session,'role','authenticated')::text,true);
+    EXECUTE 'SET LOCAL ROLE authenticated';
+    BEGIN
+      EXECUTE statement USING true;
+      RAISE EXCEPTION 'An original with failed integrity linked';
+    EXCEPTION WHEN SQLSTATE 'PT409' THEN NULL;
+    END;
+    RAISE EXCEPTION 'Roll back failed integrity marker' USING ERRCODE='P0004';
+  EXCEPTION WHEN SQLSTATE 'P0004' THEN NULL;
+  END;
   PERFORM set_config('test.reject_phase5_receipt','on',true);
   EXECUTE 'SET LOCAL ROLE authenticated';
   BEGIN

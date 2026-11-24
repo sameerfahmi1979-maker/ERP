@@ -193,7 +193,7 @@ BEGIN
     JOIN public.dms_document_versions AS v ON v.id = permit.version_id AND v.document_id = document.id AND v.is_current
     JOIN public.dms_document_files AS f ON f.id = permit.file_id AND f.version_id = v.id AND f.document_id = document.id
       AND f.file_role = 'original' AND f.sha256_hash = permit.sha256 AND f.mime_type = 'application/pdf'
-      AND f.storage_bucket = 'dms-documents' AND f.storage_path = p.storage_path
+      AND f.storage_bucket = 'dms-documents' AND f.storage_path = p.storage_path AND f.integrity_status <> 'failed'
       AND f.file_size_bytes = s.file_size_bytes AND f.file_size_bytes > 0 AND f.deleted_at IS NULL
     JOIN erp_private.ai_approval_verified_copies AS proof ON proof.actor_id = p.actor_id
       AND proof.operation_id = p.operation_id AND proof.request_hash = p.request_hash

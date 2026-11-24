@@ -61,3 +61,9 @@ it("limits transitive grounding and publication helpers to their fixed receipt b
  expect(migrations[3]).not.toContain("dms_question_writer_parent");
  for(const caller of ["src/server/actions/dms/ai-summary.ts","src/server/actions/dms/document-content.ts","src/lib/dms/semantic/semantic-indexer.ts","src/lib/dms/ocr/persist-file-ocr-result.ts"])expect(read(caller)).toContain("captureQuestionParents");
 });
+
+it("revalidates every queue duplicate with the current bearer before displaying its match",()=>{
+ const capture=readFileSync(join(process.cwd(),"mobile/android/src/net/algt/mobiledms/DmsCapture.java"),"utf8");
+ expect(capture).toMatch(/if\("duplicate"\.equals\(str\(r,"state"\)\)\)\{\s*r\.remove\("match"\);[\s\S]*?q\.scopedDuplicate\(r\)/);
+ expect(capture).toContain('if(match==null)a.subtitle("ERP detected a possible duplicate.");');
+});

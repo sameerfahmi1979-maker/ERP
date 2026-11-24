@@ -43,3 +43,11 @@ it.each(['/api/mobile/dms/v1','/api/mobile/hr/v1'])('keeps bearer endpoint %s be
  await proxy(new NextRequest('https://erp.invalid'+path+'/child'));
  expect(state.refresh).toHaveBeenCalledOnce();
 });
+it.each(['/api/internal/communications/worker-launch','/api/internal/communications/supervisor-launch','/api/internal/communications/refresh-baseline','/api/internal/communications/notification-tick'])('gates exact signed POST %s before Auth and leaves rejection to its offline verifier',async path=>{
+ const request=()=>new NextRequest('https://erp.invalid'+path,{method:'POST',headers:{authorization:'Bearer malformed',cookie:'sb-auth-token=untrusted'}});
+ expect((await proxy(request())).status).toBe(503);expect(state.refresh).not.toHaveBeenCalled();
+ vi.stubEnv('ERP_MAINTENANCE_MODE','0');
+ expect((await proxy(request())).status).toBe(200);expect(state.refresh).not.toHaveBeenCalled();
+ await proxy(new NextRequest('https://erp.invalid'+path,{method:'GET'}));expect(state.refresh).toHaveBeenCalledOnce();
+ await proxy(new NextRequest('https://erp.invalid'+path+'/child',{method:'POST'}));expect(state.refresh).toHaveBeenCalledTimes(2);
+});

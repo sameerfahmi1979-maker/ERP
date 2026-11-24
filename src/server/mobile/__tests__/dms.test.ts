@@ -76,10 +76,39 @@ describe("offline authorization",()=>{
  const file={id:2,document_id:1,version_id:4,file_name:"passport.pdf",mime_type:"application/pdf",file_role:"original",sha256_hash:"a".repeat(64),file_size_bytes:123};
  const version={id:4,document_id:1,version_number:2,version_label:null};
  function db(record:unknown=file,permit:unknown=true){const from=vi.fn((table:string)=>query({data:table==="dms_document_files"?record:version,error:null}));const rpc=vi.fn(()=>Promise.resolve({data:permit,error:null}));mocks.createClient.mockResolvedValue({from,rpc});mocks.record.mockResolvedValue({success:true,data:{id:1,title:"Passport",document_no:"DMS-1",expiry_date:"2027-01-01",current_version_id:4,updated_at:"2026-11-20T12:00:00Z"}});return {from,rpc};}
- it("pins original membership/version and a maximum 7-day millisecond grant",async()=>{db();const before=Date.now();const result=await authorizeOfflineDocument({documentId:1,fileId:2,days:7},ctx(["dms.documents.download","dms.documents.preview"]));expect(result).toMatchObject({documentId:1,fileId:2,versionId:4,currentVersionId:4,authUserId:"11111111-1111-4111-8111-111111111111",version:"2026-11-20T12:00:00Z",size:123});expect(result.authorizedAt).toBeGreaterThanOrEqual(before);expect(result.expiresAt-result.authorizedAt).toBe(604800000);});
+ it.each([1,3,7] as const)("keeps the old client's %i-day response",async days=>{
+   db(); const result=await authorizeOfflineDocument({documentId:1,fileId:2,days},ctx(["dms.documents.download","dms.documents.preview"]));
+   expect(result).toMatchObject({documentId:1,fileId:2,versionId:4,currentVersionId:4,authUserId:"11111111-1111-4111-8111-111111111111",version:"2026-11-20T12:00:00Z",size:123});
+   expect(result.expiresAt).toBe(result.authorizedAt+days*86400000);
+   expect(result).not.toHaveProperty("leaseVersion");
+ });
+ it.each([0,1,15,30] as const)("negotiates a v2 %i-day grant through the installed API route",async days=>{
+   db(); mocks.auth.mockResolvedValue(ctx(["dms.documents.download","dms.documents.preview"]));
+   const response=await POST(request({op:"offlinePermit",documentId:1,fileId:2,days,leaseVersion:2}));
+   expect(response.status).toBe(200);
+   const {data}=await response.json();
+   expect(data).toMatchObject({leaseVersion:2,days,retention:days===0?"permanent":"timed",expiresAt:days===0?null:data.authorizedAt+days*86400000});
+ });
+ it.each([3,7,2,31,-1,null,"0"])("rejects invalid v2 choice %s before authentication",async days=>{
+   const result=await POST(request({op:"offlinePermit",documentId:1,fileId:2,leaseVersion:2,days}));
+   expect(result.status).toBe(400); expect(mocks.auth).not.toHaveBeenCalled();
+ });
+ it("keeps an uncertain protected document lookup retriable",async()=>{
+   db(); mocks.record.mockResolvedValue({success:false,error:"Document record is unavailable or outside your access. Please retry."});
+   await expect(authorizeOfflineDocument({documentId:1,fileId:2,leaseVersion:2,days:0},ctx(["dms.documents.download","dms.documents.preview"]))).rejects.toMatchObject({status:503});
+ });
+ it("revokes a permanent copy on a confirmed confidentiality denial",async()=>{
+   db(); mocks.record.mockResolvedValue({success:false,error:"Document access is restricted."});
+   await expect(authorizeOfflineDocument({documentId:1,fileId:2,leaseVersion:2,days:0},ctx(["dms.documents.download","dms.documents.preview"]))).rejects.toMatchObject({status:403});
+ });
+ it("refuses a permit when the document version changes during original verification",async()=>{
+   db(); const doc={id:1,title:"Passport",current_version_id:4,updated_at:"2026-11-20T12:00:00Z"};
+   mocks.record.mockResolvedValueOnce({success:true,data:doc}).mockResolvedValueOnce({success:true,data:{...doc,current_version_id:5}});
+   await expect(authorizeOfflineDocument({documentId:1,fileId:2,leaseVersion:2,days:0},ctx(["dms.documents.download","dms.documents.preview"]))).rejects.toMatchObject({status:409});
+ });
  it.each([{...file,document_id:9},{...file,file_role:"preview"}])("rejects unrelated or derived files",async bad=>{db(bad);await expect(authorizeOfflineDocument({documentId:1,fileId:2,days:1},ctx(["dms.documents.download","dms.documents.preview"]))).rejects.toMatchObject({status:404});});
  it("requires both current preview and download permission",async()=>{db(file,false);await expect(authorizeOfflineDocument({documentId:1,fileId:2,days:3},ctx(["dms.documents.download","dms.documents.preview"]))).rejects.toMatchObject({status:403});});
- it.each([1,3] as const)("uses exactly %s day without confusing document expiry",async days=>{db();const r=await authorizeOfflineDocument({documentId:1,fileId:2,days},ctx(["dms.documents.download","dms.documents.preview"]));expect(r.expiresAt-r.authorizedAt).toBe(days*86400000);expect(r.expiry).toBe("2027-01-01");});
+ it.each([1,3] as const)("uses exactly %s day without confusing document expiry",async days=>{db();const r=await authorizeOfflineDocument({documentId:1,fileId:2,days},ctx(["dms.documents.download","dms.documents.preview"]));expect(r.expiresAt).toBe(r.authorizedAt+days*86400000);expect(r.expiry).toBe("2027-01-01");});
  it("rejects a version that belongs to another document",async()=>{const base=db();base.from.mockImplementation((table:string)=>query({data:table==="dms_document_files"?file:{...version,document_id:8},error:null}));await expect(authorizeOfflineDocument({documentId:1,fileId:2,days:1},ctx(["dms.documents.download","dms.documents.preview"]))).rejects.toMatchObject({status:404});});
  it("rejects permission revocation during the permit read",async()=>{const base=db();base.rpc.mockResolvedValueOnce({data:true,error:null}).mockResolvedValueOnce({data:true,error:null}).mockResolvedValueOnce({data:false,error:null});await expect(authorizeOfflineDocument({documentId:1,fileId:2,days:1},ctx(["dms.documents.download","dms.documents.preview"]))).rejects.toMatchObject({status:403});});
  it("rejects concurrent original-file rebinding",async()=>{const base=db();base.from.mockImplementationOnce(()=>query({data:file,error:null})).mockImplementationOnce(()=>query({data:version,error:null})).mockImplementationOnce(()=>query({data:{...file,version_id:8},error:null}));await expect(authorizeOfflineDocument({documentId:1,fileId:2,days:1},ctx(["dms.documents.download","dms.documents.preview"]))).rejects.toMatchObject({status:409});});
@@ -96,15 +125,25 @@ describe("offline authorization",()=>{
  it("normalizes the verified SHA and retains historical/current version distinction",async()=>{db({...file,sha256_hash:"AB".repeat(32)});mocks.record.mockResolvedValue({success:true,data:{id:1,title:"Passport",document_no:"DMS-1",expiry_date:"2027-01-01",current_version_id:8,updated_at:"2026-11-20T12:00:00Z"}});expect(await authorizeOfflineDocument({documentId:1,fileId:2,days:1},ctx(["dms.documents.download","dms.documents.preview"]))).toMatchObject({versionId:4,currentVersionId:8,sha256:"ab".repeat(32)});});
 });
 describe("partial search",()=>{
- it("includes a permitted employee known-name alias as document search evidence",async()=>{const employee=query({data:[{id:4,full_name_en:"Sameer Fahmi",employee_code:"EMP-4",known_name:"Abu Ali"}],count:1,error:null});employee.maybeSingle=vi.fn(()=>Promise.resolve({data:{id:4},error:null}));const doc={id:5,title:"Permit",document_no:"DMS-5",description:null,expiry_date:null,status:"active",document_type_id:4,document_type:null};mocks.createClient.mockResolvedValue({from:vi.fn((table:string)=>table==="employees"?employee:query({data:[doc],count:1,error:null})),rpc:vi.fn((name:string)=>query(name==="read_dms_entity_document_links"?{data:[{id:1,document_id:5}],count:1,error:null}:{data:[],count:0,error:null}))});expect(await readMobileDocuments({search:"Abu Ali",page:1,validity:"all",personal:false},ctx(["dms.documents.view","hr.employees.view"]))).toMatchObject({total:1,rows:[{id:5,title:"Permit"}]});});
+ it("finds a document by its permitted type label when its own metadata does not match",async()=>{
+  const doc={id:5,title:"Permit A",document_no:"DMS-5",description:null,expiry_date:null,status:"active",document_type_id:4,document_type:{name_en:"Trade licence"}};
+  const matchesType=query({data:[{id:4}],count:1,error:null});
+  let requestedType=false;
+  const documents=query({data:[],count:0,error:null});
+  documents.or=vi.fn((filter:string)=>{requestedType=filter.split(",").includes("document_type_id.in.(4)");return documents;});
+  documents.then=(resolve:(result:unknown)=>unknown)=>Promise.resolve(resolve({data:requestedType?[doc]:[],count:requestedType?1:0,error:null}));
+  mocks.createClient.mockResolvedValue({from:vi.fn((table:string)=>table==="dms_document_types"?matchesType:documents),rpc:vi.fn(()=>query({data:[],count:0,error:null}))});
+  await expect(readMobileDocuments({search:"licen",page:1,validity:"all",personal:false},ctx(["dms.documents.view"]))).resolves.toMatchObject({total:1,rows:[{id:5,type:"Trade licence"}]});
+ });
+ it("includes a permitted employee known-name alias as document search evidence",async()=>{const employee=query({data:[{id:4,full_name_en:"Sameer Fahmi",employee_code:"EMP-4",known_name:"Abu Ali"}],count:1,error:null});employee.maybeSingle=vi.fn(()=>Promise.resolve({data:{id:4},error:null}));const doc={id:5,title:"Permit",document_no:"DMS-5",description:null,expiry_date:null,status:"active",document_type_id:4,document_type:null};mocks.createClient.mockResolvedValue({from:vi.fn((table:string)=>table==="employees"?employee:table==="dms_document_types"?query({data:[],count:0,error:null}):query({data:[doc],count:1,error:null})),rpc:vi.fn((name:string)=>query(name==="read_dms_entity_document_links"?{data:[{id:1,document_id:5}],count:1,error:null}:{data:[],count:0,error:null}))});expect(await readMobileDocuments({search:"Abu Ali",page:1,validity:"all",personal:false},ctx(["dms.documents.view","hr.employees.view"]))).toMatchObject({total:1,rows:[{id:5,title:"Permit"}]});});
  it("offers bounded similar authorized names without choosing a filing target",async()=>{const q=query({data:[{id:4,full_name_en:"Sameer Fahmi",employee_code:"EMP-4",known_name:null},{id:8,full_name_en:"Samuel",employee_code:"EMP-8",known_name:null}],count:2,error:null});mocks.createClient.mockResolvedValue({from:vi.fn(()=>q)});const suggestions=await suggestMobileRecords("samer",ctx(["dms.documents.view","hr.employees.view"]));expect(suggestions).toEqual([{id:4,label:"Sameer Fahmi",code:"EMP-4",entityType:"employee"}]);expect(q.or).toHaveBeenCalled();});
  it("does not offer staff names to an employee-only actor",async()=>{expect(await suggestMobileRecords("samer",ctx(["dms.documents.view","hr.employees.view.self"]))).toEqual([]);expect(mocks.createClient).not.toHaveBeenCalled();});
  it("pages ordinary browsing above 5000 records without collecting the dataset",async()=>{const rows=Array.from({length:25},(_,n)=>({id:n+1,title:`Document ${n+1}`,document_no:`DMS-${n+1}`,expiry_date:null,status:"active",document_type:null}));mocks.documents.mockResolvedValue({success:true,data:{rows,totalCount:6025}});const r=await readMobileDocuments({search:"",page:1,validity:"all",personal:false},ctx(["dms.documents.view"]));expect(r).toMatchObject({total:6025,more:true});expect(r.rows).toHaveLength(25);expect(mocks.documents).toHaveBeenCalledWith(expect.objectContaining({page:1,pageSize:25}),expect.anything());expect(mocks.createClient).not.toHaveBeenCalled();});
  it("pages valid-only browsing above 5000 records at the database",async()=>{const rows=Array.from({length:25},(_,n)=>({id:n+1,title:`Document ${n+1}`,document_no:`DMS-${n+1}`,description:null,expiry_date:null,status:"active",document_type_id:4,document_type:null})),q=query({data:rows,count:6025,error:null});mocks.createClient.mockResolvedValue({from:vi.fn(()=>q)});const r=await readMobileDocuments({search:"",page:1,validity:"valid",personal:false},ctx(["dms.documents.view"]));expect(r).toMatchObject({total:6025,more:true});expect(r.rows).toHaveLength(25);expect(q.range).toHaveBeenCalledExactlyOnceWith(0,24);});
  it("matches same to sameer with stable relevance and complete counts",async()=>{
   const docs=[{id:2,title:"Sameer Passport",document_no:"DMS-2",description:null,expiry_date:null,status:"active",document_type_id:4,document_type:{name_en:"Passport"}},{id:1,title:"Same",document_no:"DMS-1",description:null,expiry_date:null,status:"active",document_type_id:4,document_type:{name_en:"Passport"}}];
-  const from=vi.fn(()=>query({data:docs,count:2,error:null}));mocks.createClient.mockResolvedValue({from,rpc:vi.fn(()=>query({data:[],count:0,error:null}))});
+  const from=vi.fn((table:string)=>query(table==="dms_document_types"?{data:[],count:0,error:null}:{data:docs,count:2,error:null}));mocks.createClient.mockResolvedValue({from,rpc:vi.fn(()=>query({data:[],count:0,error:null}))});
   const result=await readMobileDocuments({search:"same",page:1,validity:"all",personal:false},ctx(["dms.documents.view"]));expect(result.total).toBe(2);expect(result.rows.map(r=>r.id)).toEqual([1,2]);
  });
- it("fails explicitly on incomplete protected results",async()=>{mocks.createClient.mockResolvedValue({from:vi.fn(()=>query({data:[],count:2,error:null})),rpc:vi.fn(()=>query({data:[],count:0,error:null}))});await expect(readMobileDocuments({search:"same",page:1,validity:"all",personal:false},ctx(["dms.documents.view"]))).rejects.toThrow();});
+ it("fails explicitly on incomplete protected results",async()=>{mocks.createClient.mockResolvedValue({from:vi.fn((table:string)=>query({data:[],count:table==="dms_document_types"?0:2,error:null})),rpc:vi.fn(()=>query({data:[],count:0,error:null}))});await expect(readMobileDocuments({search:"same",page:1,validity:"all",personal:false},ctx(["dms.documents.view"]))).rejects.toThrow();});
 });

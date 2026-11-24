@@ -9,6 +9,7 @@
   "scripts": {
     "predev": "node tooling/local/ensure-pdf-service.mjs",
     "dev": "cross-env NODE_OPTIONS=\"--use-system-ca --max-old-space-size=16384\" next dev",
+    "prebuild": "node tooling/local/build-chat-offline.mjs --check",
     "build": "cross-env NODE_OPTIONS=--max-old-space-size=16384 next build --webpack",
     "start": "cross-env NODE_OPTIONS=--max-old-space-size=16384 next start",
     "lint": "node tooling/quality/lint.cjs",

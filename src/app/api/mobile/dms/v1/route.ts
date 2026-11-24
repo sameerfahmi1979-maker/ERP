@@ -44,7 +44,7 @@ const legacyCommand = z.discriminatedUnion("op", [
   mobileApprovalCriteria.safeExtend({op:z.literal("approvalAction")}),
   z.strictObject({op:z.literal("renewalRequest"),documentId:id,priority:z.enum(["normal","high"]),notes:z.string().trim().max(4000)}),
   z.strictObject({op:z.literal("renewalComplete"),requestId:id,replacementDocumentId:id,notes:z.string().trim().max(4000)}),
-  offlinePermitCriteria.extend({op:z.literal("offlinePermit")}),
+  offlinePermitCriteria.safeExtend({op:z.literal("offlinePermit")}),
   z.strictObject({ op: z.literal("document"), id }),
   z.strictObject({ op: z.literal("scopes"), search: text, after: z.strictObject({ companyId: id, branchId: z.number().int().nonnegative() }).nullable() }),
   z.strictObject({ op: z.literal("records"), search: text, entityType: z.enum(["employee", "site"]) }),
@@ -150,7 +150,7 @@ async function dispatch(input: Exclude<Command, { op: "login" | "refresh" }>, to
       return json(await createDmsRenewalRequest({document_id:input.documentId,priority:input.priority,notes:input.notes}));
     }
     case "renewalComplete": return json(await completeMobileRenewal(input,ctx));
-    case "offlinePermit": return ok(await authorizeOfflineDocument({documentId:input.documentId,fileId:input.fileId,days:input.days},ctx));
+    case "offlinePermit": return ok(await authorizeOfflineDocument({documentId:input.documentId,fileId:input.fileId,days:input.days,leaseVersion:input.leaseVersion},ctx));
     case "document": {
       const result = await getDmsDocumentRecordData(input.id);
       if (!result.success || !result.data) return fail("Document unavailable.", 404);

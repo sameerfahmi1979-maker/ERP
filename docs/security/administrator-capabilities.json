@@ -1,5 +1,31 @@
 {
   "version": "2026-10-25.v1",
+  "communicationsReservedAuthority": {
+    "administratorScope": "global",
+    "rolePermissionRows": false,
+    "source": "supabase/migrations/20261123094907_erp_communications_chat_v1.sql",
+    "nativeFixtures": [
+      "src/server/communications/__tests__/access_native.py",
+      "tests/communications/chat_native.py"
+    ],
+    "operations": {
+      "chat.namedGrant": "Only the current reserved system_admin with an active null/null assignment may change the named groupCreate and historyReview designations.",
+      "chat.groupCreate": "An explicit active groupCreate designation enables creation across companies. Appointment as group owner or admin gives management rights only inside that group.",
+      "historyReview": "The exact reserved system_admin may review all history. Other reviewers need an explicit historyReview designation and current ERP assignment coverage for every participant's recorded real-company scopes."
+    },
+    "ownerSpending": "The verified spending owner is an independent identity binding. Global System, named communication grants and monitoring selections confer no expenditure approval."
+  },
+  "communicationsModerationAuthority": {
+    "administratorScope": "global",
+    "rolePermissionRows": false,
+    "source": "supabase/migrations/20261123101744_erp_communications_policy_v1.sql",
+    "nativeFixtures": ["tests/communications/policy_native.py"],
+    "operations": {
+      "policy.setModerator": "Only the exact active reserved system_admin with an active null/null assignment may appoint or revoke named case moderators.",
+      "policy.case": "Active named moderators receive limited case metadata. Current independently authorized history scope gates protected conversation references and content actions.",
+      "policy.moderate": "Case dispositions use the explicit named grant and current evidence scope. Moderation confers no HR or DMS access, history-review designation, or approval authority."
+    }
+  },
   "state": "classification_reviewed_release_pending",
   "permissions": [
     {

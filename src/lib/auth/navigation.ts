@@ -7,6 +7,7 @@ export function safeAuthDestination(value: string | null | undefined, fallback =
     const url = new URL(value, "https://erp.invalid");
     if (url.origin !== "https://erp.invalid" || url.username || url.password || url.hash) return fallback;
     const allowed = ["/start", "/dashboard", "/admin", "/profile", "/settings", "/notifications", "/dms", "/reports", "/workspace"];
+    if(url.pathname==="/messages")return url.pathname+url.search;
     if (!getOperationalAccessPath(url.pathname)
       && !allowed.some(path => url.pathname === path || url.pathname.startsWith(path + "/"))) return fallback;
     return url.pathname + url.search;

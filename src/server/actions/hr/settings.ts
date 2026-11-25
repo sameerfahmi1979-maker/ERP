@@ -8,7 +8,8 @@ import {isHrLookupTable} from "@/lib/hr/settings-save-contract";
 import {isHrSpecializedTable,hrSpecializedSchemas} from "@/lib/hr/specialized-settings-contract";
 import {saveHrLookup} from "@/server/hr-lookup-save";
 import { readAllPages } from "@/server/reads/all-pages";
-import { literalContains } from "@/lib/reads/search";
+import { literalContains, literalLike } from "@/lib/reads/search";
+import { hrSettingsListOptions, type HrSettingsListOptions } from "@/lib/hr/settings-list";
 
 // ============================================================================
 // Shared result type
@@ -189,7 +190,7 @@ function canManage(ctx: AuthCtx): boolean {
 // List params
 // ============================================================================
 
-export type HrSettingsListParams = {
+export type HrSettingsListParams = HrSettingsListOptions & {
   /** Explicit complete catalogue; never combined with a paged request. */
   complete?: boolean;
   search?: string;
@@ -198,6 +199,53 @@ export type HrSettingsListParams = {
   page_size?: number;
 };
 
+const settingsReadFailure = { success: false as const, error: "HR records could not be completely loaded. Please retry." };
+
+type SettingsPageResponse = {
+  data: unknown;
+  count: number | null;
+  error: { code?: string } | null;
+  status: number;
+};
+
+function settingsPageWindow(params?: { page?: number; page_size?: number }) {
+  const page = params?.page ?? 1;
+  const size = params?.page_size ?? 50;
+  const from = (page - 1) * size;
+  const to = from + size - 1;
+  if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(size) || size < 1 || !Number.isSafeInteger(to)) {
+    throw Error("Invalid HR settings page");
+  }
+  return { from, to };
+}
+
+function settingsRowId(row: { id: number }) {
+  if (!Number.isSafeInteger(row?.id) || row.id < 1) throw Error("Invalid HR settings row");
+  return row.id;
+}
+
+async function readSettingsPage<T extends { id: number }>(
+  result: PromiseLike<SettingsPageResponse>,
+  readCount: () => PromiseLike<Pick<SettingsPageResponse, "count" | "error">>,
+  from: number,
+  to: number,
+): Promise<ActionResult<{ data: T[]; total: number }>> {
+  const response = await result;
+  // URL-offset ranges may return 416 with an empty JSON array instead of PGRST103.
+  // A fresh identically filtered exact HEAD must prove the range is out of bounds.
+  if (from > 0 && response.status === 416 && (!response.error?.code || response.error.code === "PGRST103")) {
+    const { count, error } = await readCount();
+    if (error || count === null || !Number.isSafeInteger(count) || count < 0 || count > from) return settingsReadFailure;
+    return { success: true, data: { data: [], total: count } };
+  }
+
+  const { data, count, error } = response;
+  if (error || count === null || !Number.isSafeInteger(count) || count < 0 || !Array.isArray(data) ||
+      data.length !== Math.min(to - from + 1, Math.max(0, count - from))) return settingsReadFailure;
+  const rows = data as T[];
+  if (new Set(rows.map(settingsRowId)).size !== rows.length) return settingsReadFailure;
+  return { success: true, data: { data: rows, total: count } };
+}
 // ============================================================================
 // Schemas
 // ============================================================================
@@ -282,7 +330,7 @@ const approvalS = hrSpecializedSchemas.hr_approval_workflows;
 // Generic helpers
 // ============================================================================
 
-async function hrl<T>(
+async function hrl<T extends { id: number }>(
   table: string,
   params: HrSettingsListParams = {},
   joinSelect?: string
@@ -292,36 +340,66 @@ async function hrl<T>(
         (params.complete && (params.page !== undefined || params.page_size !== undefined))) {
       return { success: false, error: "Choose a complete list or a page, not both." };
     }
+    const options = hrSettingsListOptions.safeParse({
+      tableSearch:params.tableSearch, columnFilters:params.columnFilters, sorting:params.sorting,
+    });
+    const training = table === "hr_training_types";
+    if (!options.success || !training && (options.data.columnFilters?.training_category !== undefined ||
+        options.data.sorting?.some(column=>column.id==="training_category"))) return settingsReadFailure;
+
     const ctx = await getAuthContext();
     if (!canView(ctx)) return { success: false, error: "Permission denied" };
     const supabase = await createClient();
-    const ps = params.page_size ?? 50;
-    const from = ((params.page ?? 1) - 1) * ps;
-    const to = from + ps - 1;
+    const { from, to } = settingsPageWindow(params);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sb = supabase as any;
-    const sel = joinSelect ? `*, ${joinSelect}` : "*";
-    const search = params.search ? ["code", "name_en", "name_ar"].map(column => `${column}.ilike.${literalContains(params.search!)}`).join(",") : null;
-    const pageQuery = (start: number, end: number) => {
-      let query = sb.from(table).select(sel, { count: "exact" }).retry(false).is("deleted_at", null)
-        .order("sort_order", { ascending: true }).order("name_en", { ascending: true }).order("id", { ascending: true }).range(start, end);
+    const {columnFilters = {},sorting=[],tableSearch} = options.data;
+    const categoryFilter = training && columnFilters.training_category;
+    const categorySearch = training && tableSearch;
+    const join = categoryFilter ? joinSelect?.replace("hr_training_categories(", "hr_training_categories!inner(") : joinSelect;
+
+    const catalogueSearch = params.search ? ["code", "name_en", "name_ar"].map(column => `${column}.ilike.${literalContains(params.search!)}`) : [];
+    const activeTextMatches = (value:string) => ["false","true"].filter(label=>label.includes(value.toLowerCase()));
+    const tableTerms = tableSearch ? [
+      ...["code","name_en"].map(column=>`${column}.ilike.${literalContains(tableSearch)}`),
+      ...activeTextMatches(tableSearch).map(label=>`is_active.eq.${label}`),
+      ...(categorySearch ? ["training_category_match.not.is.null"] : []),
+    ] : [];
+    const search = catalogueSearch.length && tableTerms.length
+      ? `and(or(${catalogueSearch.join(",")}),or(${tableTerms.join(",")}))`
+      : [...catalogueSearch,...tableTerms].join(",");
+    const activeFilter = columnFilters.is_active ? activeTextMatches(columnFilters.is_active) : undefined;
+    const base = (head=false) => {
+      const projection = [head?"id":"*",join,...(categorySearch?["training_category_match:hr_training_categories()"]:[])].filter(Boolean).join(",");
+      let query = sb.from(table).select(projection,{count:"exact",head}).retry(false).is("deleted_at",null);
       if (search) query = query.or(search);
-      if (params.is_active !== undefined) query = query.eq("is_active", params.is_active);
+      if (params.is_active !== undefined) query = query.eq("is_active",params.is_active);
+      if (activeFilter?.length===1) query = query.eq("is_active",activeFilter[0]==="true");
+      if (activeFilter?.length===0) query = query.eq("id",0);
+      if (columnFilters.code) query = query.ilike("code",literalLike(columnFilters.code));
+      if (columnFilters.name_en) query = query.ilike("name_en",literalLike(columnFilters.name_en));
+      if (categoryFilter) query = query.ilike("training_category.name_en",literalLike(categoryFilter));
+      if (categorySearch) query = query.ilike("training_category_match.name_en",literalLike(categorySearch));
       return query;
     };
+    const pageQuery = (start:number,end:number) => {
+      let query = base();
+      if (sorting.length) {
+        for (const {id,desc} of sorting) {
+          query = query.order(id==="training_category"?"training_category(name_en)":id,{ascending:!desc,nullsFirst:!desc});
+        }
+      } else {
+        query = query.order("sort_order",{ascending:true}).order("name_en",{ascending:true});
+      }
+      return query.order("id",{ascending:true}).range(start,end);
+    };
     if (params.complete) {
-      const rows = await readAllPages<T & { id: number }>(async (start, end) => pageQuery(start, end), { identity: row => row.id });
-      return { success: true, data: { data: rows, total: rows.length } };
+      const rows = await readAllPages<T>(async (start,end)=>pageQuery(start,end),{identity:settingsRowId});
+      return {success:true,data:{data:rows,total:rows.length}};
     }
-    const q = pageQuery(from, to);
-    let cq = sb.from(table).select("id", { count: "exact", head: true }).is("deleted_at", null);
-    if (search) cq = cq.or(search);
-    if (params.is_active !== undefined) cq = cq.eq("is_active", params.is_active);
-    const [{ data, error }, { count, error: ce }] = await Promise.all([q, cq]);
-    if (error || ce) return { success: false, error: "HR records could not be completely loaded. Please retry." };
-    return { success: true, data: { data: (data ?? []) as T[], total: count ?? 0 } };
+    return await readSettingsPage<T>(pageQuery(from,to),()=>base(true),from,to);
   } catch {
-    return { success: false, error: "HR records could not be completely loaded. Please retry." };
+    return settingsReadFailure;
   }
 }
 
@@ -579,14 +657,30 @@ export async function updateHrPayrollGroup(id: number, input: Partial<z.infer<ty
 // 13. MOHRE Establishments
 // ============================================================================
 
-export async function listHrMohreEstablishments(params?: {
+const mohreListColumn = z.enum(["establishment_name", "establishment_number"]);
+const mohreListOptions = z.object({
+  tableSearch: z.string().max(200).optional(),
+  sorting: z.array(z.object({ id: mohreListColumn, desc: z.boolean() }).strict()).max(2)
+    .refine(items => new Set(items.map(item => item.id)).size === items.length).optional(),
+  columnFilters: z.partialRecord(mohreListColumn, z.string().max(200)).optional(),
+}).strict();
+
+type MohreListParams = HrSettingsWorklistParams & {
   complete?: boolean;
   owner_company_id?: number;
   status?: string;
   search?: string;
+};
+
+export type HrSettingsWorklistParams = {
   page?: number;
   page_size?: number;
-}): Promise<ActionResult<{ data: HrMohreEstablishmentRow[]; total: number }>> {
+  tableSearch?: string;
+  sorting?: Array<{ id: string; desc: boolean }>;
+  columnFilters?: Record<string, string>;
+};
+
+export async function listHrMohreEstablishments(params?: MohreListParams): Promise<ActionResult<{ data: HrMohreEstablishmentRow[]; total: number }>> {
   try {
     if ((params?.complete !== undefined && typeof params.complete !== "boolean") ||
         (params?.complete && (params.page !== undefined || params.page_size !== undefined))) {
@@ -594,36 +688,42 @@ export async function listHrMohreEstablishments(params?: {
     }
     const ctx = await getAuthContext();
     if (!canView(ctx)) return { success: false, error: "Permission denied" };
+    const parsed = mohreListOptions.safeParse({ tableSearch: params?.tableSearch, sorting: params?.sorting, columnFilters: params?.columnFilters });
+    if (!parsed.success) return settingsReadFailure;
     const supabase = await createClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sb = supabase as any;
-    const ps = params?.page_size ?? 50;
-    const from = ((params?.page ?? 1) - 1) * ps;
-    const to = from + ps - 1;
+    const { from, to } = settingsPageWindow(params);
     const search = params?.search ? ["establishment_number", "establishment_name"].map(column => `${column}.ilike.${literalContains(params.search!)}`).join(",") : null;
+    const { tableSearch, sorting, columnFilters } = parsed.data;
+    const tableClause = tableSearch?.trim() ? mohreListColumn.options.map(column => `${column}.ilike.${literalContains(tableSearch.trim())}`).join(",") : null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filtered = (query: any) => {
+      let q = query.is("deleted_at", null);
+      if (params?.owner_company_id) q = q.eq("owner_company_id", params.owner_company_id);
+      if (params?.status) q = q.eq("status", params.status);
+      if (search) q = q.or(search);
+      if (tableClause) q = q.or(tableClause);
+      for (const [column, value] of Object.entries(columnFilters ?? {})) {
+        if (value?.trim()) q = q.ilike(column, literalLike(value.trim()));
+      }
+      return q;
+    };
     const pageQuery = (start: number, end: number) => {
-      let query = sb.from("hr_mohre_establishments")
-        .select("*, owner_company:owner_companies(id,legal_name_en), emirate:emirates(id,name_en)", { count: "exact" }).retry(false)
-        .is("deleted_at", null).order("establishment_name").order("id").range(start, end);
-      if (params?.owner_company_id) query = query.eq("owner_company_id", params.owner_company_id);
-      if (params?.status) query = query.eq("status", params.status);
-      if (search) query = query.or(search);
-      return query;
+      let q = filtered(sb.from("hr_mohre_establishments")
+        .select("*, owner_company:owner_companies(id,legal_name_en), emirate:emirates(id,name_en)", { count: "exact" }).retry(false));
+      if (sorting?.length) for (const { id, desc } of sorting) q = q.order(id, { ascending: !desc });
+      else q = q.order("establishment_name");
+      return q.order("id").range(start, end);
     };
     if (params?.complete) {
-      const rows = await readAllPages<HrMohreEstablishmentRow>(async (start, end) => pageQuery(start, end), { identity: row => row.id });
+      const rows = await readAllPages<HrMohreEstablishmentRow>(async (start, end) => pageQuery(start, end), { identity: settingsRowId });
       return { success: true, data: { data: rows, total: rows.length } };
     }
-    const q = pageQuery(from, to);
-    let cq = sb.from("hr_mohre_establishments").select("id", { count: "exact", head: true }).is("deleted_at", null);
-    if (params?.owner_company_id) cq = cq.eq("owner_company_id", params.owner_company_id);
-    if (params?.status) cq = cq.eq("status", params.status);
-    if (search) cq = cq.or(search);
-    const [{ data, error }, { count, error: ce }] = await Promise.all([q, cq]);
-    if (error || ce) return { success: false, error: "HR records could not be completely loaded. Please retry." };
-    return { success: true, data: { data: (data ?? []) as HrMohreEstablishmentRow[], total: count ?? 0 } };
+    return await readSettingsPage<HrMohreEstablishmentRow>(pageQuery(from, to), () =>
+      filtered(sb.from("hr_mohre_establishments").select("id", { count: "exact", head: true }).retry(false)), from, to);
   } catch {
-    return { success: false, error: "HR records could not be completely loaded. Please retry." };
+    return settingsReadFailure;
   }
 }
 export async function createHrMohreEstablishment(input: z.infer<typeof mohreS>, contract?:WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
@@ -670,20 +770,18 @@ export async function listHrReadinessRuleTemplates(params?: HrSettingsListParams
     const supabase = await createClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sb = supabase as any;
-    const ps = params?.page_size ?? 50;
-    const from = ((params?.page ?? 1) - 1) * ps;
-    const to = from + ps - 1;
-    let q = sb.from("hr_readiness_rule_templates").select("*,required_document:hr_identity_document_types(id,name_en),required_training:hr_training_types(id,name_en),required_access_card:hr_access_card_types(id,name_en),required_medical:hr_medical_record_types(id,name_en),category:hr_employee_categories(id,name_en),designation:designations(id,designation_name_en,owner_company:owner_companies(legal_name_en)),work_site:work_sites(id,site_name,owner_company:owner_companies(legal_name_en))").is("deleted_at", null).order("sort_order").order("rule_name_en").order("id").range(from, to);
+    const { from, to } = settingsPageWindow(params);
+    let q = sb.from("hr_readiness_rule_templates").select("*,required_document:hr_identity_document_types(id,name_en),required_training:hr_training_types(id,name_en),required_access_card:hr_access_card_types(id,name_en),required_medical:hr_medical_record_types(id,name_en),category:hr_employee_categories(id,name_en),designation:designations(id,designation_name_en,owner_company:owner_companies(legal_name_en)),work_site:work_sites(id,site_name,owner_company:owner_companies(legal_name_en))", { count: "exact" }).retry(false).is("deleted_at", null).order("sort_order").order("rule_name_en").order("id").range(from, to);
     if (params?.search) q = q.ilike("rule_name_en", `%${params.search}%`);
     if (params?.is_active !== undefined) q = q.eq("is_active", params.is_active);
-    let cq = sb.from("hr_readiness_rule_templates").select("id", { count: "exact", head: true }).is("deleted_at", null);
-    if (params?.search) cq = cq.ilike("rule_name_en", `%${params.search}%`);
-    if (params?.is_active !== undefined) cq = cq.eq("is_active", params.is_active);
-    const [{ data, error }, { count, error: ce }] = await Promise.all([q, cq]);
-    if (error || ce) return { success: false, error: (error ?? ce)?.message };
-    return { success: true, data: { data: (data ?? []) as HrReadinessRuleRow[], total: count ?? 0 } };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
+    return await readSettingsPage<HrReadinessRuleRow>(q, () => {
+      let cq = sb.from("hr_readiness_rule_templates").select("id", { count: "exact", head: true }).retry(false).is("deleted_at", null);
+      if (params?.search) cq = cq.ilike("rule_name_en", `%${params.search}%`);
+      if (params?.is_active !== undefined) cq = cq.eq("is_active", params.is_active);
+      return cq;
+    }, from, to);
+  } catch {
+    return settingsReadFailure;
   }
 }
 export async function createHrReadinessRuleTemplate(input: z.infer<typeof readinessS>, contract?:WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
@@ -724,20 +822,18 @@ export async function listHrRoleRequirementMatrix(params?: { is_active?: boolean
     const supabase = await createClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sb = supabase as any;
-    const ps = params?.page_size ?? 50;
-    const from = ((params?.page ?? 1) - 1) * ps;
-    const to = from + ps - 1;
+    const { from, to } = settingsPageWindow(params);
     let q = sb.from("hr_role_requirement_matrix")
-      .select("*, employee_category:hr_employee_categories(id,name_en,code), readiness_rule:hr_readiness_rule_templates(id,rule_name_en,rule_code),designation:designations(id,designation_name_en,owner_company:owner_companies(legal_name_en))")
+      .select("*, employee_category:hr_employee_categories(id,name_en,code), readiness_rule:hr_readiness_rule_templates(id,rule_name_en,rule_code),designation:designations(id,designation_name_en,owner_company:owner_companies(legal_name_en))", { count: "exact" }).retry(false)
       .is("deleted_at", null).order("id", { ascending: false }).range(from, to);
     if (params?.is_active !== undefined) q = q.eq("is_active", params.is_active);
-    let cq = sb.from("hr_role_requirement_matrix").select("id", { count: "exact", head: true }).is("deleted_at", null);
-    if (params?.is_active !== undefined) cq = cq.eq("is_active", params.is_active);
-    const [{ data, error }, { count, error: ce }] = await Promise.all([q, cq]);
-    if (error || ce) return { success: false, error: (error ?? ce)?.message };
-    return { success: true, data: { data: (data ?? []) as HrRoleReqMatrixRow[], total: count ?? 0 } };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
+    return await readSettingsPage<HrRoleReqMatrixRow>(q, () => {
+      let cq = sb.from("hr_role_requirement_matrix").select("id", { count: "exact", head: true }).retry(false).is("deleted_at", null);
+      if (params?.is_active !== undefined) cq = cq.eq("is_active", params.is_active);
+      return cq;
+    }, from, to);
+  } catch {
+    return settingsReadFailure;
   }
 }
 export async function createHrRoleRequirementMatrix(input: z.infer<typeof hrSpecializedSchemas.hr_role_requirement_matrix>, contract?:WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
@@ -774,22 +870,20 @@ export async function listHrSiteRequirementMatrix(params?: { work_site_id?: numb
     const supabase = await createClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sb = supabase as any;
-    const ps = params?.page_size ?? 50;
-    const from = ((params?.page ?? 1) - 1) * ps;
-    const to = from + ps - 1;
+    const { from, to } = settingsPageWindow(params);
     let q = sb.from("hr_site_requirement_matrix")
-      .select("*, work_site:work_sites(id,site_name,owner_company:owner_companies(legal_name_en)), access_card_type:hr_access_card_types(id,name_en,code),training_type:hr_training_types(id,name_en),medical_record_type:hr_medical_record_types(id,name_en),readiness_rule:hr_readiness_rule_templates(id,rule_name_en)")
+      .select("*, work_site:work_sites(id,site_name,owner_company:owner_companies(legal_name_en)), access_card_type:hr_access_card_types(id,name_en,code),training_type:hr_training_types(id,name_en),medical_record_type:hr_medical_record_types(id,name_en),readiness_rule:hr_readiness_rule_templates(id,rule_name_en)", { count: "exact" }).retry(false)
       .is("deleted_at", null).order("id", { ascending: false }).range(from, to);
     if (params?.work_site_id) q = q.eq("work_site_id", params.work_site_id);
     if (params?.is_active !== undefined) q = q.eq("is_active", params.is_active);
-    let cq = sb.from("hr_site_requirement_matrix").select("id", { count: "exact", head: true }).is("deleted_at", null);
-    if (params?.work_site_id) cq = cq.eq("work_site_id", params.work_site_id);
-    if (params?.is_active !== undefined) cq = cq.eq("is_active", params.is_active);
-    const [{ data, error }, { count, error: ce }] = await Promise.all([q, cq]);
-    if (error || ce) return { success: false, error: (error ?? ce)?.message };
-    return { success: true, data: { data: (data ?? []) as HrSiteReqMatrixRow[], total: count ?? 0 } };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
+    return await readSettingsPage<HrSiteReqMatrixRow>(q, () => {
+      let cq = sb.from("hr_site_requirement_matrix").select("id", { count: "exact", head: true }).retry(false).is("deleted_at", null);
+      if (params?.work_site_id) cq = cq.eq("work_site_id", params.work_site_id);
+      if (params?.is_active !== undefined) cq = cq.eq("is_active", params.is_active);
+      return cq;
+    }, from, to);
+  } catch {
+    return settingsReadFailure;
   }
 }
 export async function createHrSiteRequirementMatrix(input: z.infer<typeof hrSpecializedSchemas.hr_site_requirement_matrix>, contract?:WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {
@@ -810,22 +904,20 @@ export async function listHrApprovalWorkflows(params?: { workflow_type?: string;
     const supabase = await createClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sb = supabase as any;
-    const ps = params?.page_size ?? 50;
-    const from = ((params?.page ?? 1) - 1) * ps;
-    const to = from + ps - 1;
+    const { from, to } = settingsPageWindow(params);
     let q = sb.from("hr_approval_workflows")
-      .select("*, approval_role:approval_roles!hr_approval_workflows_approval_role_id_fkey(id,role_name,owner_company:owner_companies(legal_name_en)),escalation_role:approval_roles!hr_approval_workflows_escalation_role_id_fkey(id,role_name,owner_company:owner_companies(legal_name_en))")
+      .select("*, approval_role:approval_roles!hr_approval_workflows_approval_role_id_fkey(id,role_name,owner_company:owner_companies(legal_name_en)),escalation_role:approval_roles!hr_approval_workflows_escalation_role_id_fkey(id,role_name,owner_company:owner_companies(legal_name_en))", { count: "exact" }).retry(false)
       .is("deleted_at", null).order("workflow_code").order("approval_step").order("id").range(from, to);
     if (params?.workflow_type) q = q.eq("workflow_type", params.workflow_type);
     if (params?.is_active !== undefined) q = q.eq("is_active", params.is_active);
-    let cq = sb.from("hr_approval_workflows").select("id", { count: "exact", head: true }).is("deleted_at", null);
-    if (params?.workflow_type) cq = cq.eq("workflow_type", params.workflow_type);
-    if (params?.is_active !== undefined) cq = cq.eq("is_active", params.is_active);
-    const [{ data, error }, { count, error: ce }] = await Promise.all([q, cq]);
-    if (error || ce) return { success: false, error: (error ?? ce)?.message };
-    return { success: true, data: { data: (data ?? []) as HrApprovalWorkflowRow[], total: count ?? 0 } };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
+    return await readSettingsPage<HrApprovalWorkflowRow>(q, () => {
+      let cq = sb.from("hr_approval_workflows").select("id", { count: "exact", head: true }).retry(false).is("deleted_at", null);
+      if (params?.workflow_type) cq = cq.eq("workflow_type", params.workflow_type);
+      if (params?.is_active !== undefined) cq = cq.eq("is_active", params.is_active);
+      return cq;
+    }, from, to);
+  } catch {
+    return settingsReadFailure;
   }
 }
 export async function createHrApprovalWorkflow(input: z.infer<typeof approvalS>, contract?:WorkspaceSaveContract): Promise<ActionResult<{ id: number }>> {

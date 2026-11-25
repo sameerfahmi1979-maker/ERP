@@ -278,14 +278,18 @@ function mapRow(row: Record<string, unknown>): ReviewQueueItem {
 // ── getDmsReviewQueueItems ────────────────────────────────────────────────────
 
 export async function getDmsReviewQueueItems(
-  filters: ReviewQueueFilters = {}
+  filters: ReviewQueueFilters = {},
+  signal?: AbortSignal
 ): Promise<ActionResult<{ items: ReviewQueueItem[]; total: number; page: number; pageSize: number }>> {
   try {
+    signal?.throwIfAborted();
     const flagError = await guardReviewEnabled();
+    signal?.throwIfAborted();
     if (flagError) return { success: false, error: flagError };
 
     const supabase = await createClient();
     const ctx      = await getAuthContext();
+    signal?.throwIfAborted();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
     if (!ctx.isAccountActive || ctx.profile.must_change_password || !canViewQueue(ctx)) return { success: false, error: "Permission denied" };
 
@@ -332,9 +336,12 @@ export async function getDmsReviewQueueItems(
       query = query.eq("assigned_to", filters.assignedTo);
     }
 
+    if (signal) query = query.abortSignal(signal);
     let result=await query;
+    signal?.throwIfAborted();
     if(result.status===416&&result.error?.code==="PGRST103") {
      const check=await query.range(0,0);
+     signal?.throwIfAborted();
      if(!check.error&&Number.isSafeInteger(check.count)&&check.count!==null&&check.count>=0&&from>=check.count&&check.data?.length===Math.min(1,check.count)) result={...check,data:[]};
     }
     const { data, error, count } = result;
@@ -361,25 +368,29 @@ export async function getDmsReviewQueueItems(
         pageSize,
       },
     };
-  } catch (err) {
-    return { success: false, error: String(err).slice(0, 200) };
+  } catch {
+    signal?.throwIfAborted();
+    return { success: false, error: "Review records could not be loaded. Please retry." };
   }
 }
 
 // ── getDmsReviewQueueCounts ───────────────────────────────────────────────────
 
-export async function getDmsReviewQueueCounts(): Promise<ActionResult<ReviewQueueCounts>> {
+export async function getDmsReviewQueueCounts(signal?: AbortSignal): Promise<ActionResult<ReviewQueueCounts>> {
   try {
+    signal?.throwIfAborted();
     const flagError = await guardReviewEnabled();
+    signal?.throwIfAborted();
     if (flagError) return { success: false, error: flagError };
 
     const supabase = await createClient();
     const ctx      = await getAuthContext();
+    signal?.throwIfAborted();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
     if (!ctx.isAccountActive || ctx.profile.must_change_password || !canViewQueue(ctx)) return { success: false, error: "Permission denied" };
 
     const restricted=!canViewConfidential(ctx);
-    const counted=()=>{let q=supabase.from("dms_review_queue").select("id,document:dms_documents!document_id(id,confidentiality_level)",{count:"exact",head:true}).or("document_id.not.is.null,upload_session_id.not.is.null");if(restricted)q=q.not("document.confidentiality_level","in",'("hr","legal","executive")').or("document_id.is.null,document.not.is.null");return q;};
+    const counted=()=>{let q=supabase.from("dms_review_queue").select("id,document:dms_documents!document_id(id,confidentiality_level)",{count:"exact",head:true}).or("document_id.not.is.null,upload_session_id.not.is.null");if(restricted)q=q.not("document.confidentiality_level","in",'("hr","legal","executive")').or("document_id.is.null,document.not.is.null");return signal ? q.abortSignal(signal) : q;};
     const now = new Date().toISOString();
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -394,6 +405,7 @@ export async function getDmsReviewQueueCounts(): Promise<ActionResult<ReviewQueu
       counted().in("status", ["resolved", "dismissed"]).gte("resolved_at", todayStart.toISOString()).is("deleted_at", null),
     ]);
 
+    signal?.throwIfAborted();
     if([openRes,assignedRes,inReviewRes,assignedToMeRes,urgentHighRes,overdueRes,resolvedTodayRes].some(r=>r.error||r.count===null||!Number.isSafeInteger(r.count)||r.count<0)) return {success:false,error:"Review summary could not be verified"};
     return {
       success: true,
@@ -408,31 +420,37 @@ export async function getDmsReviewQueueCounts(): Promise<ActionResult<ReviewQueu
         resolvedToday: resolvedTodayRes.count ?? 0,
       },
     };
-  } catch (err) {
-    return { success: false, error: String(err).slice(0, 200) };
+  } catch {
+    signal?.throwIfAborted();
+    return { success: false, error: "Review records could not be loaded. Please retry." };
   }
 }
 
 // ── getDmsReviewQueueItem ─────────────────────────────────────────────────────
 
 export async function getDmsReviewQueueItem(
-  id: number
+  id: number,
+  signal?: AbortSignal
 ): Promise<ActionResult<ReviewQueueItem>> {
   try {
+    signal?.throwIfAborted();
     const flagError = await guardReviewEnabled();
+    signal?.throwIfAborted();
     if (flagError) return { success: false, error: flagError };
 
     const supabase = await createClient();
     const ctx      = await getAuthContext();
+    signal?.throwIfAborted();
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
     if (!ctx.isAccountActive || ctx.profile.must_change_password || !canViewQueue(ctx)) return { success: false, error: "Permission denied" };
 
-    const { data, error } = await supabase
+    const source = supabase
       .from("dms_review_queue")
       .select(QUEUE_SELECT)
       .eq("id", id)
-      .is("deleted_at", null)
-      .single();
+      .is("deleted_at", null);
+    const { data, error } = await (signal ? source.abortSignal(signal) : source).single();
+    signal?.throwIfAborted();
 
     if (error || !data) return { success: false, error: error?.message ?? "Item not found" };
 
@@ -453,13 +471,14 @@ export async function getDmsReviewQueueItem(
     // Linked detail must belong to this source, not merely be independently readable.
     if (item.validationFindingId) {
       try {
-        const { data: findingData, error: findingError } = await supabase
+        const finding = supabase
           .from("dms_ai_validation_findings")
           .select(FINDING_DETAIL_SELECT)
           .eq("id", item.validationFindingId)
           .or(item.documentId?`document_id.eq.${item.documentId}`:`upload_session_id.eq.${item.uploadSessionId}`)
-          .is("deleted_at", null)
-          .single();
+          .is("deleted_at", null);
+        const { data: findingData, error: findingError } = await (signal ? finding.abortSignal(signal) : finding).single();
+        signal?.throwIfAborted();
         if (findingError) return {success:false,error:"Review finding unavailable"};
         if (findingData) {
           const f = findingData as Record<string, unknown>;
@@ -477,19 +496,20 @@ export async function getDmsReviewQueueItem(
             confidence:           (f.confidence as number | null) ?? null,
           };
         }
-      } catch { return {success:false,error:"Review detail unavailable"}; }
+      } catch { signal?.throwIfAborted(); return {success:false,error:"Review detail unavailable"}; }
     }
 
     // Preserve the same source boundary for entity matching.
     if (item.entityMatchCandidateId) {
       try {
-        const { data: candidateData, error: candidateError } = await supabase
+        const candidate = supabase
           .from("dms_ai_entity_match_candidates")
           .select(CANDIDATE_DETAIL_SELECT)
           .eq("id", item.entityMatchCandidateId)
           .or(item.documentId?`document_id.eq.${item.documentId}`:`upload_session_id.eq.${item.uploadSessionId}`)
-          .is("deleted_at", null)
-          .single();
+          .is("deleted_at", null);
+        const { data: candidateData, error: candidateError } = await (signal ? candidate.abortSignal(signal) : candidate).single();
+        signal?.throwIfAborted();
         if (candidateError) return {success:false,error:"Review candidate unavailable"};
         if (candidateData) {
           const c = candidateData as Record<string, unknown>;
@@ -505,12 +525,13 @@ export async function getDmsReviewQueueItem(
             status:            c.status as string,
           };
         }
-      } catch { return {success:false,error:"Review detail unavailable"}; }
+      } catch { signal?.throwIfAborted(); return {success:false,error:"Review detail unavailable"}; }
     }
 
     return { success: true, data: item };
-  } catch (err) {
-    return { success: false, error: String(err).slice(0, 200) };
+  } catch {
+    signal?.throwIfAborted();
+    return { success: false, error: "Review records could not be loaded. Please retry." };
   }
 }
 

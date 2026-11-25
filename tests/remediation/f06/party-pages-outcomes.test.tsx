@@ -4,7 +4,7 @@ import type {AuthContext} from '@/lib/rbac/check';
 const m=vi.hoisted(()=>({ctx:{} as AuthContext,read:vi.fn(),filtered:vi.fn(),detail:vi.fn(),redirect:vi.fn(),notFound:vi.fn()}));
 vi.mock('@/lib/rbac/check',async()=>({...await import('@/lib/rbac/scope'),getAuthContext:async()=>m.ctx}));
 vi.mock('next/navigation',()=>({redirect:(href:string)=>{m.redirect(href);throw Error('REDIRECT');},notFound:()=>{m.notFound();throw Error('NOT_FOUND');}}));
-vi.mock('@/server/actions/master-data/parties',()=>({getParties:m.read,getPartiesByTypeCode:m.filtered,getPartyById:m.detail}));
+vi.mock('@/server/actions/master-data/parties',()=>({getPartyById:m.detail,getPartyCataloguePage:(input:{typeCode?:string})=>input.typeCode ? m.filtered(input) : m.read(input)}));
 vi.mock('@/features/master-data/parties/parties-table',()=>({PartiesTable:()=>null}));
 vi.mock('@/features/master-data/parties/party-workspace-form',()=>({PartyWorkspaceForm:()=>null}));
 import AllPage from '@/app/(protected)/admin/master-data/parties/page';
@@ -20,7 +20,7 @@ async function elements(node:unknown):Promise<ReactElement<Record<string,unknown
 }
 const filtered=(typeSlug='customers')=>FilteredPage({params:Promise.resolve({typeSlug})});
 const detail=(id='8')=>RecordPage({params:Promise.resolve({id}),searchParams:Promise.resolve({mode:'view'})});
-beforeEach(()=>{vi.clearAllMocks();const codes=['master_data.parties.view'];m.ctx={profile:{id:1},isAccountActive:true,roleCodes:[],permissionCodes:codes,globalPermissionCodes:codes,roleAssignments:[{roleCode:'test',ownerCompanyId:null,branchId:null,permissionCodes:codes}]} as unknown as AuthContext;m.read.mockResolvedValue({success:true,data:[]});m.filtered.mockResolvedValue({success:true,data:[]});m.detail.mockResolvedValue({success:true,data:{id:8}});});
+beforeEach(()=>{vi.clearAllMocks();const codes=['master_data.parties.view'];m.ctx={profile:{id:1},isAccountActive:true,roleCodes:[],permissionCodes:codes,globalPermissionCodes:codes,roleAssignments:[{roleCode:'test',ownerCompanyId:null,branchId:null,permissionCodes:codes}]} as unknown as AuthContext;m.read.mockResolvedValue({success:true,data:{rows:[],totalCount:0}});m.filtered.mockResolvedValue({success:true,data:{rows:[],totalCount:0}});m.detail.mockResolvedValue({success:true,data:{id:8}});});
 it.each(['all','filtered','detail'])('%s failed read renders retry instead of empty/not-found',async kind=>{
  m.read.mockResolvedValue({success:false,kind:'failed'});m.filtered.mockResolvedValue({success:false,kind:'failed'});m.detail.mockResolvedValue({success:false,kind:'failed'});
  const nodes=await elements(await (kind==='all'?AllPage():kind==='filtered'?filtered():detail()));
@@ -40,4 +40,15 @@ it('known missing detail is not confused with service failure',async()=>{m.detai
 it('revoked read access renders access-denied',async()=>{m.detail.mockResolvedValue({success:false,kind:'forbidden'});await expect(detail()).rejects.toThrow('REDIRECT');expect(m.redirect).toHaveBeenCalledWith('/access-denied');});
 it.each(['customers','vendors','subcontractors','consultants','recruitment-agencies','government-authorities','insurance-companies','license-issuers'])('retains %s filtering, initial type and genuine empty results',async slug=>{
  const nodes=await elements(await filtered(slug)),table=nodes.find(n=>n.type===PartiesTable);expect(table?.props.parties).toEqual([]);expect(table?.props.defaultTypeCode).toBe(slug.replaceAll('-','_').replace(/ies$/,'y').replace(/s$/,'').toUpperCase());
+});
+it('typed first paint passes 25 rows and the actual complete count to the existing table',async()=>{
+ const rows=Array.from({length:25},(_,index)=>({id:index+1}));
+ m.filtered.mockResolvedValue({success:true,data:{rows,totalCount:1250}});
+ const nodes=await elements(await filtered());
+ expect(m.filtered).toHaveBeenCalledWith({typeCode:'CUSTOMER'});
+ expect(nodes.find(node=>node.type===PartiesTable)?.props).toMatchObject({parties:rows,totalCount:1250});
+ expect(nodes.some(node=>node.props.description==='1250 customers found')).toBe(true);
+});
+it.each(['missing','constructor','__proto__'])('unknown typed slug %s cannot fall back to the all-Party reader',async slug=>{
+ await expect(filtered(slug)).rejects.toThrow('NOT_FOUND');expect(m.read).not.toHaveBeenCalled();expect(m.filtered).not.toHaveBeenCalled();
 });

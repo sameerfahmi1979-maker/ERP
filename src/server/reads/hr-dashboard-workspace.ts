@@ -16,6 +16,7 @@ interface Query extends PromiseLike<Result> {
 const id=z.number().int().positive().refine(Number.isSafeInteger);
 const rowSchema=z.object({id}).catchall(z.unknown());
 type Row=z.infer<typeof rowSchema>;
+const attendanceRowSchema=z.object({id,employee_id:id,attendance_date:z.iso.date(),approval_status:z.string(),is_missing_punch:z.boolean()});
 const employeeSchema=z.object({id,employee_code:z.string().nullable(),full_name_en:z.string(),employee_status:z.string(),joining_date:z.string().nullable(),owner_company_id:id.nullable(),branch_id:id.nullable(),department_id:id.nullable(),employee_category_id:id.nullable(),primary_work_site_id:id.nullable()}).strip();
 type Employee=z.infer<typeof employeeSchema>;
 const integer=(value:unknown)=>id.parse(value);
@@ -110,6 +111,18 @@ export async function readHrDashboardWorkspace(input:unknown,context?:AuthContex
    },rowSchema));
    return rows;
   });
+  const attendanceTable='employee_attendance_daily_summary';
+  const dayAttendance=(q:Query)=>q.eq('attendance_date',today);
+  const shareAttendance=request.mode==='overview'&&can('attendance')&&covers('attendance');
+  let attendanceRead:Promise<z.infer<typeof attendanceRowSchema>[]|null>|undefined;
+  const sharedAttendance=()=>{
+   if(!shareAttendance)return Promise.resolve(null);
+   // The overview already needs every authorized attendance row to count distinct
+   // employees. Reuse that date band for pending and missing-punch previews.
+   return attendanceRead??=subjectRows(attendanceTable,'attendance_date,approval_status,is_missing_punch',dayAttendance,false)
+    .then(rows=>z.array(attendanceRowSchema).parse(rows))
+    .catch(error=>{if(signal?.aborted)throw error;return null;});
+  };
   const employeeItem=(e:Employee,section='profile',detail=e.employee_status):DashboardRow=>({key:`employee-${e.id}`,label:can('employees')?e.full_name_en:'Employee record',reference:can('employees')?e.employee_code??'Employee': 'Employee',detail,date:null,href:`/admin/hr/employees/record/${e.id}?section=${section}`});
   const pageSize=request.mode==='records'?25:5;
   const offset=request.mode==='records'?(request.page-1)*25:0;
@@ -122,7 +135,7 @@ export async function readHrDashboardWorkspace(input:unknown,context?:AuthContex
     if(!covers(d.key==='leave_today'?'leave':d.key==='payroll_missing'?'payroll':'attendance'))return unavailable('The selected employee scope is not fully covered by this permission.');
     const rows=d.key==='leave_today'?await subjectRows('employee_leave_requests','start_date,end_date',q=>q.eq('approval_status','approved').lte('start_date',today).gte('end_date',today)):
      d.key==='payroll_missing'?await subjectRows('employee_payroll_profiles','id',q=>q):
-     await subjectRows('employee_attendance_daily_summary','attendance_date',q=>q.eq('attendance_date',today),false);
+     (await sharedAttendance())??await subjectRows(attendanceTable,'attendance_date',dayAttendance,false);
     const ids=new Set(rows.map(r=>integer(r.employee_id)));
     return people(active.filter(e=>['attendance_missing','payroll_missing'].includes(d.key)?!ids.has(e.id):ids.has(e.id)),d.section,d.label);
    }
@@ -191,8 +204,10 @@ export async function readHrDashboardWorkspace(input:unknown,context?:AuthContex
     if(scoped&&d.scope==='interview')batches=chunks((await candidates()).map(r=>r.id)).map(ids=>({column:'candidate_id',ids}));
     if(scope.siteId!==undefined&&d.scope==='offer')batches=chunks((await requisitions()).map(r=>r.id)).map(ids=>({column:'requisition_id',ids}));
     if(scoped&&d.scope==='onboarding')batches=[...chunks((await candidates()).map(r=>r.id)).map(ids=>({column:'candidate_id',ids})),...chunks(employees.map(e=>e.id)).map(ids=>({column:'employee_id',ids,employeeOnly:true}))];
-    let total=0;const selected:Row[]=[];
-    for(const batch of batches) {
+    const attendance=d.key==='attendance_pending'||d.key==='missing_punches'?await sharedAttendance():null;
+    const matched=attendance?.filter(r=>d.key==='attendance_pending'?r.approval_status==='pending':r.is_missing_punch);
+    let total=matched?.length??0;const selected:Row[]=matched?.slice(0,pageSize)??[];
+    for(const batch of matched?[]:batches) {
      const query=(head=false)=>{let q=base(head);if(batch.column&&batch.ids)q=q.in(batch.column,batch.ids);if(batch.employeeOnly)q=q.is('candidate_id',null);return q.order(d.idColumn??'id');};
      // Stable batch/id order permits true paging without collecting every child record.
      const from=Math.max(0,offset-total),needed=pageSize-selected.length;

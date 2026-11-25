@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest';
+import { createClient } from '@supabase/supabase-js';
 import { completeReportRead, REPORT_READ_MAX_ROWS } from '@/lib/report-center/complete-read';
 function fixture(total = 1251) {
   const calls: Array<{from:number;to:number;scope:number[];limit?:number}> = [];
@@ -28,3 +29,30 @@ it.each([
  ['oversized workload',{count:REPORT_READ_MAX_ROWS+1},/20,000/],
 ] as const)('fails closed on %s',async(_name,result,error)=>{const f=fixture();f.fault.mockReturnValue(result);await expect(completeReportRead(f.q)).rejects.toThrow(error);});
 it('rejects a changed count on a later page without returning the first page',async()=>{const f=fixture();f.fault.mockImplementation(offset=>offset?{count:1252}:{});await expect(completeReportRead(f.q)).rejects.toThrow('changed during collection');});
+
+it.each([0, 500, 1_201, REPORT_READ_MAX_ROWS])(
+  "uses one exact PostgREST count and verifies the retained %i-row bound",
+  async total => {
+    const counted: boolean[] = [];
+    const db = createClient("http://localhost:54321", "synthetic-local-key", {
+      auth: { autoRefreshToken: false, persistSession: false },
+      global: { fetch: async (url, init) => {
+        const { searchParams } = new URL(String(url));
+        const headers = new Headers(init?.headers);
+        const exact = headers.get("Prefer") === "count=exact";
+        counted.push(exact);
+        expect(searchParams.get("company")).toBe("eq.7");
+        expect(searchParams.get("order")).toBe("id.asc");
+        const offset = Number(searchParams.get("offset"));
+        const length = Math.min(total - offset, Number(searchParams.get("limit")));
+        return new Response(JSON.stringify(Array.from({ length }, (_, index) => ({ id: offset + index + 1 }))), {
+          headers: { "Content-Range": length ? `${offset}-${offset + length - 1}/${exact ? total : "*"}` : "*/0" },
+        });
+      } },
+    });
+    const result = await completeReportRead(db.from("source").select("id", { count: "exact" }).eq("company", 7), { generationFenced: true });
+    expect(result.count).toBe(total);
+    expect(result.data?.map(row => row.id)).toEqual(Array.from({ length: total }, (_, index) => index + 1));
+    expect(counted).toEqual(Array.from({ length: Math.max(1, Math.ceil(total / 500)) }, (_, index) => index === 0));
+  },
+);

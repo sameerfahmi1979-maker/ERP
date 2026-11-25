@@ -16,6 +16,10 @@ export async function proxy(request: NextRequest) {
 async function proxyImpl(request: NextRequest) {
   const release = releaseResponse(request);
   if (release) return release;
+  if (request.method === "POST" && request.nextUrl.pathname === "/api/reads/dms-inbox") {
+    // The Route Handler checks Auth and the live ERP session and can refresh cookies.
+    return NextResponse.next({ request: { headers: request.headers } });
+  }
   if (skipsSessionRefresh(request.nextUrl.pathname, request.method)) return NextResponse.next();
   return updateSession(request);
 }

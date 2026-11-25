@@ -71,6 +71,7 @@ type UsersTableProps = {
   noRoleFilter?: boolean;
   roles?: Role[];
   canAssignGlobal?: boolean;
+  roleChoicesAvailable?: boolean;
   companies?: OwnerCompany[];
   branches?: Branch[];
   userProfileId?: number | string;
@@ -111,6 +112,7 @@ export function UsersTable({
   noRoleFilter = false,
   roles = [],
   canAssignGlobal = false,
+  roleChoicesAvailable = true,
   companies = [],
   branches = [],
   userProfileId,
@@ -133,11 +135,13 @@ export function UsersTable({
     setIsChangingStatus(true);
     const result = await adminUpdateUserProfile({
       id: statusChangeTarget.user.id,
+      expected_updated_at: statusChangeTarget.user.updated_at,
       status: statusChangeTarget.newStatus,
     });
     setIsChangingStatus(false);
     if (result.success) {
-      toast.success(`User marked as ${statusChangeTarget.newStatus}`);
+      if (result.warning) toast.warning(result.warning);
+      else toast.success(`User marked as ${statusChangeTarget.newStatus}`);
       setStatusChangeTarget(null);
       router.refresh();
     } else {
@@ -290,7 +294,7 @@ export function UsersTable({
                   <Pencil className="mr-2 h-4 w-4" />
                   Edit Profile
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setAssigningRoleUser(user)}>
+                <DropdownMenuItem disabled={!roleChoicesAvailable} onClick={() => setAssigningRoleUser(user)}>
                   <UserPlus className="mr-2 h-4 w-4" />
                   Assign Role
                 </DropdownMenuItem>
@@ -373,7 +377,7 @@ export function UsersTable({
         pageSizeOptions={[10, 25, 50, 100]}
       />
 
-      {assigningRoleUser && (
+      {roleChoicesAvailable && assigningRoleUser && (
         <AssignRoleDialog
           user={assigningRoleUser}
           canAssignGlobal={canAssignGlobal}

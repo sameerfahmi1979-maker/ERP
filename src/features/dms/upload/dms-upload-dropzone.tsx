@@ -316,6 +316,9 @@ export function DmsUploadDropzone({
                 {multiple ? `Drag and drop up to ${maxFiles} files here` : "Drag and drop a file here"}
               </p>
               <p className="text-xs text-muted-foreground mt-1">or click to browse</p>
+              {!disabled && <p className="text-xs text-muted-foreground mt-1">
+                {multiple ? "Files stay selected until you start the batch upload." : "Upload starts after validation. Review any duplicate warning first."}
+              </p>}
             </div>
             <Button
               type="button"

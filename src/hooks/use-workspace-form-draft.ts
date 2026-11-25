@@ -160,14 +160,11 @@ export function useWorkspaceFormDraft({
     (fieldName: string, serverFallback = false): boolean => {
       if (retired.current) return false;
       if (Object.hasOwn(redactedFields.current, fieldName)) return ["true", "on"].includes(redactedFields.current[fieldName]);
-      if (!enabled) return serverFallback;
+      if (!enabled || !isDraftFieldAllowed(fieldName)) return serverFallback;
       // Read from the frozen snapshot — stable across all renders of this instance.
       const frozen = frozenDefaults;
-      if (fieldName in frozen) {
-        const v = frozen[fieldName];
-        return v === "true" || v === "on";
-      }
-      return serverFallback;
+      if (!Object.hasOwn(frozen, fieldName)) return serverFallback;
+      return frozen[fieldName] === "true" || frozen[fieldName] === "on";
     },
 
     [enabled, frozenDefaults]

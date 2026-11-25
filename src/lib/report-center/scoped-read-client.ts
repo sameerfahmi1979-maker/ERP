@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { assertAccountActive, hasGlobalPermission, hasPermissionInScope, type AuthContext } from "@/lib/rbac/check";
 import { getAuthorizedReportEmployees, getLinkedEmployeeId, hasEmployeePermission, type EmployeeSubject } from "@/lib/rbac/employee-access";
 import { completeReportRead, REPORT_READ_MAX_ROWS } from "./complete-read";
-import { isRecruitmentReport } from "./recruitment-reports";
+import { isRecruitmentReport, usesFreshAnalyticalExport } from "./recruitment-reports";
 import { reportAuthorityIdentity } from "./result-identity";
 import { z } from "zod";
 import { businessDateStart, dubaiBusinessDate } from "@/lib/dubai-calendar";
@@ -49,6 +49,11 @@ const workforceRequestRow = workforceIdentity.extend({
 });
 const collectionGuards=new WeakMap<ReportReadClient,(fresh:AuthContext)=>Promise<void>>();
 const revisionsSchema = z.record(z.string(), z.string().regex(/^\d+$/));
+
+/** The report runners verify this client's private generation guard before returning any rows. */
+export function hasReportSourceGenerationGuard(client: ReportReadClient): boolean {
+ return collectionGuards.has(client);
+}
 /** Internal collection admission, not a callable HTTP authorization parameter. */
 export async function revalidateScopedReportReadClient(client:ReportReadClient,fresh:AuthContext){
  const verify=collectionGuards.get(client);if(!verify)throw Error('Report collection authority could not be verified.');await verify(fresh);
@@ -294,7 +299,9 @@ export async function createScopedReportReadClient(requestContext:AuthContext, r
       if(/\bemployees\s*(?:![\w]+\s*)?\(/.test(args[0]??'') && /\*|\bblood_group\b/.test(args[0]??'')) throw new Error('Sensitive employee columns require separate authorization');
       const query=target.select(args[0],{...args[1],count:'exact'});
       // postgrest-js appends filters, so additional caller filters can only narrow this result.
-      return completeReportRead(scope?query.in(scope.column,scope.ids.length?scope.ids:[-1]):query);
+      return completeReportRead(scope?query.in(scope.column,scope.ids.length?scope.ids:[-1]):query, {
+        generationFenced: usesFreshAnalyticalExport(reportCode) && hasReportSourceGenerationGuard(client),
+      });
     };
    }});
   },

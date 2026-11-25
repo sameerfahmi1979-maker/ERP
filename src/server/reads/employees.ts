@@ -4,7 +4,6 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { type AuthContext } from "@/lib/rbac/check";
 import { canBrowseEmployees } from "@/lib/rbac/employee-access";
-import { EMPLOYEE_PUBLIC_FIELDS } from "@/lib/hr/employee-public-fields";
 import { literalContains } from "@/lib/reads/search";
 import type { ActionResult, EmployeeListRow } from "@/server/actions/hr/employees";
 
@@ -21,9 +20,16 @@ export const employeeReadSchema = z.object({
   sortDir: z.enum(["asc","desc"]).default("asc"),
 }).strict();
 export type EmployeeReadParams = z.input<typeof employeeReadSchema>;
-export type EmployeeReadPage = {rows:EmployeeListRow[];totalCount:number;page:number;pageSize:number;updatedAt:number};
+export type EmployeeRegisterRow = Pick<EmployeeListRow, "id" | "employee_code" | "full_name_en" | "full_name_ar" | "employee_status" | "workspace_revision"> & {
+  nationality: { name_en: string } | null;
+  owner_company: { company_code: string } | null;
+  department: { department_name_en: string } | null;
+  designation: { designation_name_en: string } | null;
+};
+export type EmployeeReadPage = {rows:EmployeeRegisterRow[];totalCount:number;page:number;pageSize:number;updatedAt:number};
 const orderColumns = {employee_code:"employee_code",full_name_en:"full_name_en",nationality:"nationality(name_en)",department:"department(department_name_en)",designation:"designation(designation_name_en)",employee_status:"employee_status",company:"owner_company(company_code)"};
-const joins = "nationality:countries(id,name_en),owner_company:owner_companies!employees_owner_company_id_fkey(id,legal_name_en,company_code),branch:branches(id,branch_name_en,branch_code),department:departments(id,department_name_en),designation:designations(id,designation_name_en),employee_category:hr_employee_categories(id,name_en),employment_type:hr_employment_types(id,name_en),primary_work_site:work_sites(id,site_name),mohre_establishment:hr_mohre_establishments!employees_mohre_establishment_id_fkey(id,establishment_name,establishment_number)";
+const fields = "id,employee_code,full_name_en,full_name_ar,employee_status,workspace_revision";
+const joins = "nationality:countries(name_en),owner_company:owner_companies!employees_owner_company_id_fkey(company_code),department:departments(department_name_en),designation:designations(designation_name_en)";
 
 /** Context may only come from a current server request; never from client parameters or a shared cache. */
 export async function readEmployees(params: EmployeeReadParams = {}, context?: AuthContext): Promise<ActionResult<EmployeeReadPage>> {
@@ -34,7 +40,7 @@ export async function readEmployees(params: EmployeeReadParams = {}, context?: A
     if(!parsed.success) return {success:false,error:"Invalid employee search or page"};
     const p=parsed.data;
     const db=await createClient();
-    let query=db.from("employees").select(`${EMPLOYEE_PUBLIC_FIELDS},${joins}`,{count:"exact"}).is("deleted_at",null);
+    let query=db.from("employees").select(`${fields},${joins}`,{count:"exact"}).is("deleted_at",null);
     const searchFilter=p.search?.trim()? ["employee_code","full_name_en","full_name_ar","known_name","mobile_number","personal_email"].map(c=>`${c}.ilike.${literalContains(p.search!.trim())}`).join(","):null;
     const qualityFilter=p.quality==='missing-emergency'?'emergency_contact_name.is.null,emergency_contact_name.eq."",emergency_contact_mobile.is.null,emergency_contact_mobile.eq.""':null;
     // One explicit AND tree avoids ambiguity when both filters contain ORs.
@@ -46,6 +52,6 @@ export async function readEmployees(params: EmployeeReadParams = {}, context?: A
     const from=(p.page-1)*p.pageSize;
     const {data,error,count}=await query.order(orderColumns[p.sortKey],{ascending:p.sortDir==="asc",nullsFirst:false}).order("id",{ascending:true}).range(from,from+p.pageSize-1);
     if(error || count===null || !Number.isSafeInteger(count) || count<0 || !Array.isArray(data) || data.length!==Math.min(p.pageSize,Math.max(0,count-from))) return {success:false,error:"Employees could not be loaded. Please retry."};
-    return {success:true,data:{rows:(data??[]).map(row=>({...row as unknown as Omit<EmployeeListRow,"blood_group">,blood_group:null})),totalCount:count,page:p.page,pageSize:p.pageSize,updatedAt:Date.now()}};
+    return {success:true,data:{rows:data as unknown as EmployeeRegisterRow[],totalCount:count,page:p.page,pageSize:p.pageSize,updatedAt:Date.now()}};
   } catch {return {success:false,error:"Employees could not be loaded. Please retry."};}
 }

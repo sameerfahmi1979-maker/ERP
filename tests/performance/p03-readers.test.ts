@@ -32,7 +32,7 @@ it("rejects arbitrary columns and injected filters",async()=>{
 it("employee sort/filter/search/count is before page range and never selects medical columns",async()=>{
  responses=[{data:[{id:26}],count:26,error:null}];
  const r=await readEmployees({page:2,search:'_%"',ownerCompanyId:3,departmentId:4,sortKey:"department",sortDir:"desc"});
- expect(r.data?.totalCount).toBe(26);expect(r.data?.rows[0].blood_group).toBeNull();
+ expect(r.data?.totalCount).toBe(26);expect(r.data?.rows[0]).not.toHaveProperty("blood_group");
  expect(operations).toContainEqual({table:"employees",method:"eq",args:["owner_company_id",3]});
  expect(operations).toContainEqual({table:"employees",method:"range",args:[25,49]});
  expect(operations).toContainEqual({table:"employees",method:"order",args:["department(department_name_en)",{ascending:false,nullsFirst:false}]});

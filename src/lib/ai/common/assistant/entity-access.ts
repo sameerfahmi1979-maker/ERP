@@ -1,4 +1,5 @@
 import "server-only";
+import { observeAssistantSource } from "./publication-reads";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { canUseApplication } from "@/lib/rbac/scope";
@@ -27,15 +28,71 @@ export type AuthorizedAssistantEntity = {
   version: string;
 };
 
+export type AssistantEntityReadRequest = {
+  context: Awaited<ReturnType<typeof getAuthContext>>;
+  db: Awaited<ReturnType<typeof createClient>>;
+};
+
+export function assistantSourceKey({ entityType, entityId }: AiEntityReference) {
+  return `${entityType}:${entityId}`;
+}
+
+/** Exact version reads through the same user RLS as single record lookups. */
+export async function readAuthorizedAssistantSourceVersions(
+  references: readonly AiEntityReference[],
+  { context, db }: AssistantEntityReadRequest,
+) {
+  const versions = new Map<string, string | Error>();
+  if (!canUseApplication(context)) return versions;
+
+  const idsByType = new Map<Exclude<AiEntityReference["entityType"], "dms_document">, Set<number>>();
+  for (const input of references) {
+    const parsed = entityReferenceSchema.safeParse(input);
+    if (!parsed.success || parsed.data.entityType === "dms_document") continue;
+    const { entityType, entityId } = parsed.data;
+    const source = sources[entityType];
+    if (!source.permissions.some(code => hasPermission(context, code))) continue;
+    let ids = idsByType.get(entityType);
+    if (!ids) {
+      ids = new Set();
+      idsByType.set(entityType, ids);
+    }
+    ids.add(entityId);
+  }
+
+  await Promise.all([...idsByType].map(async ([entityType, ids]) => {
+    let lookup = db.from(sources[entityType].table).select("id,updated_at").in("id", [...ids]);
+    if (entityType === "employee" || entityType === "dependent") lookup = lookup.is("deleted_at", null);
+    const { data, error } = await lookup;
+    // Associate an outage with the requested keys so replay can keep its
+    // existing order and fail only if it reaches an affected source.
+    if (error || !Array.isArray(data)) {
+      const unavailable = new Error("Record authority unavailable");
+      for (const entityId of ids) versions.set(assistantSourceKey({ entityType, entityId }), unavailable);
+      return;
+    }
+    for (const row of data) {
+      if (typeof row.id === "number" && ids.has(row.id) && typeof row.updated_at === "string") {
+        versions.set(assistantSourceKey({ entityType, entityId: row.id }), row.updated_at);
+      }
+    }
+  }));
+  return versions;
+}
+
 /** Minimal row read through the user client and current RLS; never a service key. */
-export async function readAuthorizedAssistantEntity(entityType: string, entityId: number): Promise<AuthorizedAssistantEntity | null> {
+export async function readAuthorizedAssistantEntity(
+  entityType: string,
+  entityId: number,
+  request?: AssistantEntityReadRequest,
+): Promise<AuthorizedAssistantEntity | null> {
   const reference = normalizeAssistantReference(entityType, entityId);
   if (!reference || !(reference.entityType in sources)) return null;
-  const ctx = await getAuthContext();
+  const ctx = request?.context ?? await getAuthContext();
   if (!canUseApplication(ctx)) return null;
   const source = sources[reference.entityType as keyof typeof sources];
   if (!source.permissions.some(code => hasPermission(ctx, code))) return null;
-  const db = await createClient();
+  const db = request?.db ?? await createClient();
   if (reference.entityType === "dms_document") {
     const allowed = await db.rpc("f03_has_document_permission", { document_id: entityId, permission_code: "dms.documents.view" });
     if (allowed.error) throw new Error("Document authority unavailable");
@@ -47,6 +104,7 @@ export async function readAuthorizedAssistantEntity(entityType: string, entityId
   if (error) throw new Error("Record authority unavailable");
   const row = data as Record<string, unknown> | null;
   if (!row || row.id !== entityId || typeof row.updated_at !== "string") return null;
+  observeAssistantSource(reference, row.updated_at);
   const label = row[source.label], code = row[source.code];
   return { reference, label: typeof label === "string" && label.trim() ? label.slice(0, 200) : "Record", businessCode: typeof code === "string" ? code.slice(0, 100) : null, version: row.updated_at };
 }

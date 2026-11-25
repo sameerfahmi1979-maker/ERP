@@ -3,7 +3,7 @@
 import { ERPDataTable } from "@/components/erp/table/erp-data-table";
 import type { ColumnDef } from "@tanstack/react-table";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,12 +35,20 @@ import {
 } from "@/server/actions/master-data/party-bank-details";
 import type { PartyBankDetail } from "./party-types";
 import type { AuthContext } from "@/lib/rbac/check";
+import { partyIbanCandidate } from "@/lib/master-data/party-iban";
 
 type PartyBankDetailsTabProps = {
   partyId: number;
   disabled?: boolean;
   authContext: AuthContext;
   onChildOpen?: (open: boolean) => void;
+};
+
+type IbanAdvisoryRequest = {
+  iban: string;
+  partyId: number;
+  profileId: number | undefined;
+  detailId: number | null;
 };
 
 const emptyForm = {
@@ -75,7 +83,13 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
   const lifecycle=usePartyChildLifecycle({entity:'party_bank_details',onSaved:()=>{invalidatePartyBankDetails(queryClient,partyId);},onOpenChange:onChildOpen});
   const lifecycleOpen=lifecycle.isOpen;
   const [verifying,setVerifying]=useState<PartyBankDetail|null>(null);
-  const setDialogOpen = (open: boolean) => { setIsDialogOpen(open); onChildOpen?.(open); };
+  const [ibanRequest, setIbanRequest] = useState<IbanAdvisoryRequest | null>(null);
+  const [ibanAdvisory, setIbanAdvisory] = useState<{ request: IbanAdvisoryRequest; warning: string } | null>(null);
+  const setDialogOpen = (open: boolean) => {
+    if (!open) setIbanRequest(null);
+    setIsDialogOpen(open);
+    onChildOpen?.(open);
+  };
   const [editing, setEditing] = useState<PartyBankDetail | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -94,7 +108,26 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
       invalidatePartyBankDetails(queryClient, partyId);
     },
   });
-  const [ibanWarning, setIbanWarning] = useState<string | null>(null);
+  const activeIbanRequest = isDialogOpen && canManage && !disabled && ibanRequest?.partyId === partyId
+    && ibanRequest.profileId === authContext.profile?.id && ibanRequest.detailId === (editing?.id ?? null)
+    ? ibanRequest : null;
+  const ibanWarning = ibanAdvisory?.request === activeIbanRequest ? ibanAdvisory.warning : null;
+  useEffect(() => {
+    if (!activeIbanRequest) return;
+    let retired = false;
+    const { iban, detailId } = activeIbanRequest;
+    const timer = setTimeout(() => {
+      void checkDuplicateIban(iban, detailId).then(result => {
+        if (retired || !result.success || !result.data?.isDuplicate) return;
+        const names = result.data.existingParties.map(party => `${party.party_code} – ${party.display_name}`).join(", ");
+        setIbanAdvisory({
+          request: activeIbanRequest,
+          warning: `This IBAN is already assigned to: ${names}. Please confirm before saving.`,
+        });
+      }).catch(() => { /* Advisory failure leaves the current edit available. */ });
+    }, 300);
+    return () => { retired = true; clearTimeout(timer); };
+  }, [activeIbanRequest]);
 
   if (!canView) {
     return (
@@ -105,30 +138,24 @@ export function PartyBankDetailsTab({ partyId, disabled, authContext, onChildOpe
     );
   }
 
-  const handleIbanChange = async (value: string) => {
+  const handleIbanChange = (value: string) => {
     setForm((f) => ({ ...f, iban: value }));
-    setIbanWarning(null);
-    if (value.trim().length > 10) {
-      const result = await checkDuplicateIban(value, editing?.id ?? null);
-      if (result.success && result.data?.isDuplicate) {
-        const names = result.data.existingParties.map((p) => `${p.party_code} – ${p.display_name}`).join(", ");
-        setIbanWarning(`This IBAN is already assigned to: ${names}. Please confirm before saving.`);
-      }
-    }
+    const iban = partyIbanCandidate(value);
+    setIbanRequest(iban ? { iban, partyId, profileId: authContext.profile?.id, detailId: editing?.id ?? null } : null);
   };
 
   const openAdd = () => {
     if(lifecycleOpen)return;
     setEditing(null);
     setForm({ ...emptyForm });
-    setIbanWarning(null);
+    setIbanRequest(null);
     setDialogOpen(true);
   };
 
   const openEdit = (item: PartyBankDetail) => {
     if(lifecycleOpen)return;
     setEditing(item);
-    setIbanWarning(null);
+    setIbanRequest(null);
     setForm({
       bank_id: item.bank_id,
       bank_name_text: item.bank_name_text ?? "",

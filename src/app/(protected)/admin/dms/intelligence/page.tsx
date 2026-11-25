@@ -17,22 +17,6 @@ export default async function DmsIntelligencePage() {
 
   const statsResult = await getDmsIntelligenceAdminStats();
 
-  const defaultStats = {
-    totalDocuments: 0,
-    documentsWithExtractedText: 0,
-    documentsMissingExtractedText: 0,
-    documentsWithAiSummary: 0,
-    documentsMissingAiSummary: 0,
-    documentsWithCompletenessScore: 0,
-    highRiskDocuments: 0,
-    criticalRiskDocuments: 0,
-    pendingTagSuggestions: 0,
-    pendingLinkSuggestions: 0,
-    documentsWithEmbedding: 0,
-    documentsMissingEmbedding: 0,
-    failedEmbeddings: 0,
-  };
-
   return (
     <div className="p-6 space-y-4">
       <ERPPageHeader
@@ -45,14 +29,14 @@ export default async function DmsIntelligencePage() {
         ]}
       />
 
-      {!statsResult.success && (
-        <div className="rounded-md bg-destructive/10 border border-destructive/30 p-3 text-sm text-destructive">
-          Failed to load intelligence stats: {statsResult.error}
+      {(!statsResult.success || !statsResult.data) && (
+        <div role="alert" className="rounded-md bg-destructive/10 border border-destructive/30 p-3 text-sm text-destructive">
+          Failed to load intelligence stats. Refresh to retry.
         </div>
       )}
 
       <DmsIntelligenceAdminPageClient
-        stats={statsResult.data ?? defaultStats}
+        stats={statsResult.success ? statsResult.data ?? null : null}
         canOpenAiObservability={canViewDmsAiObservability(ctx)}
       />
     </div>

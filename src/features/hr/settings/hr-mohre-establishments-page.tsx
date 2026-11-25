@@ -2,7 +2,6 @@
 import { RecordCollection } from "@/components/erp/table/record-collection";
 
 import { useState, useRef, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { ERPSectionCard } from "@/components/erp/section-card";
 import { ERPEmptyState } from "@/components/erp/empty-state";
@@ -17,6 +16,7 @@ import { Plus, Pencil, Building } from "lucide-react";
 import { toast } from "sonner";
 import { useOwnerCompaniesQuery } from "@/hooks/lookups/use-org-queries";
 import { useEmiratesQuery } from "@/hooks/lookups/use-geography-queries";
+import { useHrSettingsWorklist, type ListHrSettingsPage } from "./use-hr-settings-worklist";
 import type { ERPComboboxOption } from "@/components/erp/combobox";
 import {createWorkspaceSaveAttempt,type WorkspaceSaveContract} from '@/lib/workspace/save-contract';
 import {hrLookupSaveReceipt} from '@/lib/hr/settings-save-contract';
@@ -62,18 +62,27 @@ function companyLegalNameEn(
   return raw?.legal_name_en ?? opt.description ?? opt.label ?? "";
 }
 
+const worklistFields = [
+  { id: "establishment_name", path: "establishment_name", label: "Establishment Name" },
+  { id: "establishment_number", path: "establishment_number", label: "Establishment Number" },
+];
+const worklistFilters = worklistFields.map(({ id, label }) => ({ id, label, type: "text" as const }));
+
 type Props = {
   principalId?: number;
   initialData: MohreRow[];
+  initialTotal: number;
+  readIdentity?: string;
+  onList: ListHrSettingsPage<MohreRow>;
   canManage: boolean;
   onCreate: (input: Parameters<typeof createHrMohreEstablishment>[0],contract?:WorkspaceSaveContract) => Promise<ActionResult<{ id: number }>>;
   onUpdate: (id: number, input: Parameters<typeof updateHrMohreEstablishment>[1],contract?:WorkspaceSaveContract) => Promise<ActionResult>;
 };
 
-export function HrMohreEstablishmentsPage(props:Props){return <MohreSession key={`${props.principalId??'unknown'}:${props.canManage}`} {...props}/>;}
-function MohreSession({ initialData, canManage, onCreate, onUpdate }: Props) {
-  const router = useRouter();
-  const rows = initialData;
+export function HrMohreEstablishmentsPage(props:Props){return <MohreSession key={`${props.readIdentity??props.principalId??'unknown'}:${props.canManage}`} {...props}/>;}
+function MohreSession({ initialData, initialTotal, onList, canManage, onCreate, onUpdate }: Props) {
+  const read = useHrSettingsWorklist(initialData, initialTotal, onList, worklistFilters);
+  const rows = read.rows;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<MohreRow | null>(null);
   const [form, setForm] = useState<FormState>(blank);
@@ -84,10 +93,13 @@ function MohreSession({ initialData, canManage, onCreate, onUpdate }: Props) {
   const pending=useRef<{id:number|null;payload:Parameters<typeof createHrMohreEstablishment>[0];contract:WorkspaceSaveContract;hadUnknown:boolean}|null>(null),activation=useRef({retired:false});
   useEffect(()=>{const current={retired:false};activation.current=current;return()=>{current.retired=true;};},[]);
 
-  const companies = useOwnerCompaniesQuery();
-  const emirates = useEmiratesQuery();
+  const editingReferences = canManage && dialogOpen;
+  const choosingCompany = editingReferences && !editing;
+  const companies = useOwnerCompaniesQuery({ enabled: choosingCompany });
+  const emirates = useEmiratesQuery({ enabled: editingReferences });
   const companyOptions=companies.options,emirateOptions=emirates.options;
-  const lookupFailed=!!(companies.error||emirates.error);
+  const lookupFailed=!!((choosingCompany && companies.error) || (editingReferences && emirates.error));
+  const lookupLoading=(choosingCompany && companies.isLoading) || (editingReferences && emirates.isLoading);
   const currentCompanies=editing&&!companyOptions.some(o=>o.value===editing.owner_company_id)?[...companyOptions,{value:editing.owner_company_id,label:editing.owner_company?.legal_name_en??editing.establishment_name}]:companyOptions;
   const currentEmirates=editing?.emirate_id&&!emirateOptions.some(o=>o.value===editing.emirate_id)?[...emirateOptions,{value:editing.emirate_id,label:editing.emirate?.name_en??'Existing emirate (details unavailable)'}]:emirateOptions;
 
@@ -146,13 +158,13 @@ function MohreSession({ initialData, canManage, onCreate, onUpdate }: Props) {
       confirmed=true;attempt.current.resolved();pending.current=null;retry.current=null;setUncertain(false);setDialogOpen(false);
       try{toast.success(!receipt.data.changed?'No changes to save':request.id!==null?'Establishment updated':'Establishment created');}catch{setSaveError('Saved. The confirmation message could not be displayed.');}
       if(active.retired)return;
-      try{router.refresh();}catch{setSaveError('Saved. The list could not refresh; reopen it when the connection returns.');}
+      try{read.refresh();}catch{setSaveError('Saved. The list could not refresh; reopen it when the connection returns.');}
     }catch{if(active.retired)return;if(confirmed){setSaveError('Saved. Reopen the list to refresh the display.');return;}if(pending.current)pending.current.hadUnknown=true;setUncertain(true);setSaveError('Save unconfirmed. Retry the same unchanged entries.');}
     finally{if(!active.retired&&activation.current===active){flight.current=false;setIsSubmitting(false);}}
   }
   async function handleSubmit(){
     if(uncertain){await retry.current?.();return;}
-    if(lookupFailed)return;
+    if(lookupFailed||lookupLoading)return;
     const parsed=hrSpecializedSchemas.hr_mohre_establishments.safeParse({...form,notes:form.notes.trim()||null});
     if(!parsed.success){setSaveError('Check the company, establishment number and required details. Your entries are retained.');return;}
     await run(parsed.data);
@@ -169,7 +181,7 @@ function MohreSession({ initialData, canManage, onCreate, onUpdate }: Props) {
           { label: "MOHRE Establishments" },
         ]}
         actions={canManage ? (
-          <Button size="sm" disabled={archiveBusy||isSubmitting||uncertain} onClick={openAdd}>
+          <Button size="sm" disabled={archiveBusy||isSubmitting||uncertain||read.status!=="ready"} onClick={openAdd}>
             <Plus className="h-4 w-4 mr-1" />
             Add Establishment
           </Button>
@@ -180,10 +192,13 @@ function MohreSession({ initialData, canManage, onCreate, onUpdate }: Props) {
 
       <ERPSectionCard
         title="Registered Establishments"
-        description={`${rows.length} establishment${rows.length !== 1 ? "s" : ""}`}
+        description={read.total === null ? undefined : `${read.total} establishment${read.total !== 1 ? "s" : ""}`}
         noPadding
       >
-        {rows.length === 0 ? (
+        {read.status === "failed" && <div role="alert" className="p-4 text-sm text-destructive">
+          Establishments could not be verified. <Button variant="outline" size="sm" onClick={read.refresh}>Retry records</Button>
+        </div>}
+        {read.total === 0 && !read.serverRead.globalFilter && read.serverRead.columnFilters.length === 0 ? (
           <ERPEmptyState
             icon={Building}
             title="No MOHRE establishments configured"
@@ -195,7 +210,7 @@ function MohreSession({ initialData, canManage, onCreate, onUpdate }: Props) {
           />
         ) : (
           <div className="divide-y">
-            <RecordCollection presentation="worklist" id="hr.hr-mohre-establishments-page.HrMohreEstablishmentsPage.rows" rows={rows} fields={[{"id":"establishment_name","path":"establishment_name","label":"Establishment Name"},{"id":"establishment_number","path":"establishment_number","label":"Establishment Number"}]} renderRecord={(row) => (
+            <RecordCollection presentation="worklist" id="hr.hr-mohre-establishments-page.HrMohreEstablishmentsPage.rows" rows={rows} fields={worklistFields} serverRead={read.serverRead} isLoading={read.status === "loading"} renderRecord={(row) => (
               <div key={row.id} className="flex items-center justify-between px-4 py-3">
                 <div className="flex flex-col gap-0.5">
                   <div className="flex items-center gap-2">
@@ -224,7 +239,7 @@ function MohreSession({ initialData, canManage, onCreate, onUpdate }: Props) {
           </div>
         )}
       </ERPSectionCard>
-      {canManage&&<HrSettingsLifecycle entity="hr_mohre_establishments" target={archiveTarget} onTargetChange={setArchiveTarget} onBusyChange={setArchiveBusy} disabled={dialogOpen||isSubmitting||uncertain} onChanged={()=>router.refresh()}/>}
+      {canManage&&<HrSettingsLifecycle entity="hr_mohre_establishments" target={archiveTarget} onTargetChange={setArchiveTarget} onBusyChange={setArchiveBusy} disabled={dialogOpen||isSubmitting||uncertain||read.status!=="ready"} onChanged={read.refresh}/>}
 
       {/* Add / Edit Dialog */}
       {canManage&&<ERPChildDialogForm
@@ -237,12 +252,12 @@ function MohreSession({ initialData, canManage, onCreate, onUpdate }: Props) {
         size="md"
         isSubmitting={isSubmitting}
         closeDisabled={uncertain}
-        submitDisabled={lookupFailed&&!uncertain}
+        submitDisabled={(lookupFailed||lookupLoading)&&!uncertain}
         submitLabel={uncertain?'Retry same save':undefined}
         onSubmit={handleSubmit}
       >
         {saveError&&<p role="alert" className="rounded-sm border border-destructive p-3 text-sm text-destructive">{saveError}</p>}
-        {lookupFailed&&<div role="alert" className="text-sm text-destructive">Reference choices could not load. Your entries are retained. <Button variant="outline" size="sm" onClick={()=>{companies.refetch();emirates.refetch();}}>Retry choices</Button></div>}
+        {lookupFailed&&<div role="alert" className="text-sm text-destructive">Reference choices could not load. Your entries are retained. <Button variant="outline" size="sm" onClick={()=>{if(choosingCompany)void companies.refetch();if(editingReferences)void emirates.refetch();}}>Retry choices</Button></div>}
         <fieldset disabled={isSubmitting||uncertain} className="grid min-w-0 grid-cols-12 gap-4">
 
           {/* Company — establishment name follows company legal name */}

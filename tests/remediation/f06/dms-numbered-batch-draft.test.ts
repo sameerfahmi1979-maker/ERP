@@ -57,7 +57,7 @@ const call=startAiIntakeAndCreateDraft as (...args:unknown[])=>Promise<{success:
 function read(data:unknown){const chain={select:vi.fn(),eq:vi.fn(),is:vi.fn(),single:vi.fn(),maybeSingle:vi.fn()};for(const name of ['select','eq','is'] as const)chain[name].mockReturnValue(chain);chain.single.mockResolvedValue({data,error:null});chain.maybeSingle.mockResolvedValue({data,error:null});return chain;}
 beforeEach(()=>{
  vi.resetAllMocks();m.auth.mockResolvedValue({profile:{id:5},roleCodes:[],permissionCodes:[]});m.permission.mockReturnValue(true);
- m.client.mockResolvedValue({from:m.from,rpc:(...args:unknown[])=>{const result=Promise.resolve(m.rpc(...args));return Object.assign(result,{retry:(value:boolean)=>{expect(value).toBe(false);return result;}});}});m.admin.mockReturnValue({from:m.from});
+ m.client.mockResolvedValue({from:m.from,rpc:(...args:unknown[])=>{const result=Promise.resolve(args[0]==='dms_upload_batch_readiness'?{data:null,error:{code:'PGRST202'}}:m.rpc(...args));return Object.assign(result,{retry:(value:boolean)=>{expect(value).toBe(false);return result;}});}});m.admin.mockReturnValue({from:m.from});
  m.from.mockImplementation((table:string)=>read(table==='erp_ai_feature_flags'?{is_enabled:true}:table==='dms_upload_sessions'?{id:17,session_code:'S17',document_id:42,intake_status:'review_pending',batch_id:null,batch_draft_operation_id:null,original_filename:'Synthetic.pdf'}:{id:42,document_no:'DMS-42',status:'pending_ai_review'}));
  m.analysis.mockResolvedValue({success:true,data:{sessionCode:'S17',status:'review_pending'}});
 });
@@ -126,7 +126,8 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
  let resultWriteError=false;
  let retryResetResult: "committed-lost" | "lost-race" | "advanced" | "advanced-before-read" | undefined;
  let retryReceipt: Record<string, unknown> | undefined;
- let publicationLost: boolean;
+ let publicationFault: "job" | "session" | "stale" | "lost-response" | "lost-transport" | null;
+ let publications: number;
  const real=()=>vi.importActual<typeof import("@/server/actions/dms/ai-intake")>("@/server/actions/dms/ai-intake");
  function query(table:string){
   const op:Operation={table,action:"read",payload:undefined,filters:{},selection:undefined,retry:undefined};
@@ -148,7 +149,10 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
     return {data:matches?[{id:17,batch_draft_operation_id:row.batch_draft_operation_id,intake_status:row.intake_status,updated_at:row.updated_at}]:[],error:null};
    }
    if(op.action==="insert")return table==="dms_ai_extraction_results"&&resultWriteError?{data:null,error:{code:"08007",message:"W22_PRIVATE_RESULT",details:"W22_PRIVATE_DETAILS",hint:"W22_PRIVATE_HINT"}}:{data:{id:table==="dms_ai_extraction_jobs"?71:72},error:null};
-   if(op.action==="update" && table==="dms_ai_extraction_jobs" && op.selection)return {data:{id:71,upload_session_id:17,status:op.payload?.status},error:null};
+   if(op.action==="update" && table==="dms_ai_extraction_jobs" && op.selection){
+    if(op.payload?.status==="complete" && publicationFault==="job")return {data:null,error:{code:"42501",message:"PRIVATE_JOB"}};
+    return {data:{id:71,upload_session_id:17,status:op.payload?.status},error:null};
+   }
    if(table==="dms_upload_sessions"&&op.payload)Object.assign(row,op.payload);
    return {data:null,error:null};
   };
@@ -159,7 +163,7 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
   row={id:17,session_code:"D".repeat(32),batch_id:6,admission_position:0,batch_draft_operation_id:durableOperation,uploaded_by:5,owning_company_id:20,owning_branch_id:21,status:"uploaded",intake_status:"uploaded",updated_at:"2026-10-05T00:00:00.000Z",deleted_at:null,document_id:null,ai_result_id:null,temp_cleaned_at:null,temp_storage_path:"sessions/"+"D".repeat(32)+"/a.pdf",original_filename:"a.pdf",mime_type:"application/pdf"};
   Object.assign(row,{file_size_bytes:actualPdf.length,sha256_hash:createHash('sha256').update(actualPdf).digest('hex'),expires_at:'2027-01-01T00:00:00Z'});
   Object.assign(row,{approve_run_id:null,discarded_at:null,is_duplicate:false,review_status:"not_started"});
-  operations=[];claimResult=undefined;postGuard=undefined;prepareCount=0;hidden=false;resultWriteError=false;retryResetResult=undefined;retryReceipt=undefined;publicationLost=false;
+  operations=[];claimResult=undefined;postGuard=undefined;prepareCount=0;hidden=false;resultWriteError=false;retryResetResult=undefined;retryReceipt=undefined;publicationFault=null;publications=0;
   m.auth.mockResolvedValue({profile:{id:5,auth_user_id:durableAuth},isAccountActive:true});m.usable.mockReturnValue(true);
   m.from.mockImplementation(query);
   m.rpc.mockImplementation(async(name:string,args:Record<string,unknown>)=>{
@@ -169,7 +173,7 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
     prepareCount++;
     if(prepareCount>1&&postGuard instanceof Error)throw postGuard;
     if(prepareCount>1&&postGuard!==undefined)return postGuard;
-    return {data:durablePrepare("analysis_required",row.intake_status==="ocr_processing"||row.intake_status==="ai_processing"),error:null};
+    return {data:row.intake_status==="review_pending"?durablePrepare():durablePrepare("analysis_required",row.intake_status==="ocr_processing"||row.intake_status==="ai_processing"),error:null};
    }
    if(name==="dms_reset_intake_retry"){
     if(retryResetResult==="lost-race")Object.assign(row,{intake_status:"approved",document_id:99});
@@ -183,9 +187,14 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
     return {data:retryReceipt,error:null};
    }
    if(name==="dms_publish_intake_classification"){
+    expect(args).toMatchObject({p_session:17,p_code:row.session_code,p_claim_at:expect.any(String),p_job:71,p_result:72});
+    if(publicationFault==="session")return {data:null,error:{code:"42501",message:"PRIVATE_SESSION"}};
+    if(publicationFault==="stale")return {data:null,error:{code:"PT409",message:"PRIVATE_STALE_SCOPE"}};
     if(row.intake_status==="ai_processing" && row.updated_at===args.p_claim_at){
+     publications++;
      Object.assign(row,{intake_status:"review_pending",review_status:"pending",ai_job_id:args.p_job,ai_result_id:args.p_result});
-     if(publicationLost)throw Error("PRIVATE_PUBLICATION_RESPONSE");
+     if(publicationFault==="lost-response")return {data:null,error:{code:"08007"}};
+     if(publicationFault==="lost-transport")throw Error("PRIVATE_PUBLICATION_RESPONSE");
     }
     return row.intake_status==="review_pending" && row.ai_job_id===args.p_job && row.ai_result_id===args.p_result
      ? {data:{id:17,session_code:row.session_code,intake_status:row.intake_status,review_status:row.review_status,ai_job_id:row.ai_job_id,ai_result_id:row.ai_result_id},error:null}
@@ -218,6 +227,21 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
   expect(results.filter(result => result.success)).toHaveLength(1);
   expect(ai.analyze).toHaveBeenCalledOnce();
   expect(row.intake_status).toBe("review_pending");
+ });
+ it.each([
+  ["started","ai_intake_started"],
+  ["unconfigured","ai_intake_failed"],
+  ["provider failure","ai_intake_ai_failed"],
+ ] as const)("audits the authorized upload scope for %s",async (branch,event)=>{
+  row.batch_draft_operation_id=null;
+  row.batch_id=null;
+  m.auth.mockResolvedValue({profile:{id:5,auth_user_id:durableAuth,owner_company_id:80,branch_id:81},isAccountActive:true});
+  if(branch==="unconfigured")ai.configured.mockReturnValue(false);
+  if(branch==="provider failure")ai.analyze.mockRejectedValue(Error("fixture analysis failure"));
+  await (await real()).startAiIntakeFromUploadSession(input);
+  const events=m.audit.mock.calls.filter(([entry])=>entry.new_values?.event===event);
+  expect(events).toHaveLength(1);
+  expect(events[0]?.[0]).toMatchObject({entity_name:"dms_upload_sessions",entity_id:17,owner_company_id:20,branch_id:21});
  });
  it("recovers an uncertain mobile claim without restarting processing", async () => {
   row.batch_draft_operation_id = null;
@@ -265,7 +289,7 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
  });
  it("replays only the identical classification publication after a lost receipt",async()=>{
   Object.assign(row,{batch_draft_operation_id:null,batch_id:null});
-  publicationLost=true;
+  publicationFault="lost-transport";
   const result=await (await real()).startAiIntakeFromUploadSession(input);
   expect(result).toMatchObject({success:true,data:{status:"review_pending"}});
   const publications=m.rpc.mock.calls.filter(([name])=>name==="dms_publish_intake_classification");
@@ -460,6 +484,25 @@ describe("W22 actual AI modern single-winner gate (offline ports)",()=>{
   expect(result).toMatchObject({success:false,code:"unconfirmed",uncertain:true});expect(result).not.toHaveProperty("receipt");expect(m.analysis).toHaveBeenCalledExactlyOnceWith(input);
   expect(row.intake_status).toBe("ocr_processing");expect(ai.analyze).not.toHaveBeenCalled();expect(m.audit).not.toHaveBeenCalled();expect(m.download).toHaveBeenCalledOnce();
   expect(m.rpc.mock.calls.some(([name])=>name==="create_numbered_dms_batch_draft")).toBe(false);
+ });
+ it.each(["job","session","stale"] as const)("holds review acknowledgement after a %s publication fault",async fault=>{
+  publicationFault=fault;
+  const result=await (await real()).startAiIntakeFromUploadSession(input);
+  expect(result).toMatchObject({success:false,uncertain:true});
+  expect(JSON.stringify(result)).not.toContain("PRIVATE_");
+  expect(ai.analyze).toHaveBeenCalledOnce();
+  expect(row.ai_result_id).toBeNull();
+  expect(m.audit.mock.calls.some(([entry])=>entry.new_values?.event==="classification_completed")).toBe(false);
+ });
+ it("recovers a lost publication acknowledgement with the original receipt and model call",async()=>{
+  publicationFault="lost-response";
+  const start=(await real()).startAiIntakeFromUploadSession;
+  expect(await start(input)).toMatchObject({success:true,data:{status:"review_pending"}});
+  const calls=m.rpc.mock.calls.filter(([name])=>name==="dms_publish_intake_classification");
+  expect(calls).toHaveLength(2);expect(calls[0]).toEqual(calls[1]);
+  expect(await start(input)).toMatchObject({success:true,data:{status:"review_pending"}});
+  expect(ai.analyze).toHaveBeenCalledOnce();expect(publications).toBe(1);
+  expect(m.audit.mock.calls.some(([entry])=>entry.new_values?.event==="classification_completed")).toBe(false);
  });
  it.each(["provider","result-write","extraction","empty-extraction"])("modern %s diagnostics never leak to response/log/persisted error",async boundary=>{
   if(boundary==="provider")ai.analyze.mockRejectedValue(Error("W22_PRIVATE_PROVIDER"));

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
+import { renderToReadableStream } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkQueueWorkspace } from "@/features/operations/work-queues/work-queue-workspace";
 import { workQueuePage, workQueueQuery } from "@/lib/operations/work-queue-contract";
@@ -17,15 +18,21 @@ const row = {
 const data = { as_of: "2026-11-20", total: 30, page: 1, page_size: 25, rows: [row] };
 
 afterEach(() => {
-  cleanup();
+  document.body.replaceChildren();
   vi.resetAllMocks();
 });
+
+async function renderWorkspace(props: Parameters<typeof WorkQueueWorkspace>[0]) {
+  const stream = await renderToReadableStream(await WorkQueueWorkspace(props));
+  await stream.allReady;
+  document.body.innerHTML = await new Response(stream).text();
+}
 
 describe("T19 work queues", () => {
   it("shows accountable work, masked evidence and source links with exact paging", async () => {
     reads.scopes.mockResolvedValue({ status: "ok", data: [scope] });
     reads.page.mockResolvedValue({ status: "ok", data });
-    render(await WorkQueueWorkspace({ params: { scope: "17.22", kind: "pro", q: "Visa" } }));
+    await renderWorkspace({ params: { scope: "17.22", kind: "pro", q: "Visa" } });
     expect(reads.page).toHaveBeenCalledWith({ company: 17, branch: 22, kind: "pro", query: "Visa", page: 1 });
     expect(screen.getByText("30 matching items")).toBeTruthy();
     expect(screen.getByText("Assigned officer")).toBeTruthy();
@@ -40,17 +47,17 @@ describe("T19 work queues", () => {
   it("distinguishes an authorized zero, restricted scope and a failed read", async () => {
     reads.scopes.mockResolvedValue({ status: "ok", data: [scope] });
     reads.page.mockResolvedValueOnce({ status: "ok", data: { ...data, total: 0, rows: [] } });
-    render(await WorkQueueWorkspace({ params: {} }));
+    await renderWorkspace({ params: {} });
     expect(screen.getByText("No open work matches these filters.")).toBeTruthy();
-    cleanup();
+    document.body.replaceChildren();
 
-    render(await WorkQueueWorkspace({ params: { scope: "17.55" } }));
+    await renderWorkspace({ params: { scope: "17.55" } });
     expect(screen.getByRole("alert").textContent).toContain("That scope or queue is restricted.");
     expect(reads.page).toHaveBeenCalledTimes(1);
-    cleanup();
+    document.body.replaceChildren();
 
     reads.page.mockResolvedValueOnce({ status: "failed" });
-    render(await WorkQueueWorkspace({ params: {} }));
+    await renderWorkspace({ params: {} });
     expect(screen.getByRole("alert").textContent).toContain("Work items could not be loaded.");
   });
 

@@ -36,48 +36,72 @@ export function FineActionForm({
   const original = useRef<{ operation: string; target: number; action: string; data: Record<string, unknown> } | null>(null);
   const [pending, setPending] = useState(false);
   const [retry, setRetry] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
   const [message, setMessage] = useState<{ error: boolean; text: string }>();
+
+  function refresh() {
+    try {
+      router.refresh();
+      setRefreshFailed(false);
+    } catch {
+      setRefreshFailed(true);
+    }
+  }
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (inFlight.current) return;
+    if (inFlight.current || refreshFailed || (unavailable && !retry)) return;
     const form = event.currentTarget;
     original.current ??= { operation: crypto.randomUUID(), target, action, data: values(new FormData(form)) };
     inFlight.current = true;
     setPending(true);
     setMessage(undefined);
+    let reply: Awaited<ReturnType<typeof saveFleetFine>>;
     try {
-      const reply = await saveFleetFine(original.current);
-      setRetry(!reply.ok && reply.uncertain);
-      if (reply.ok || !reply.uncertain) original.current = null;
-      setMessage(reply.ok ? {
-        error: false, text: reply.replayed ? "The original save was confirmed." : "Saved.",
-      } : { error: true, text: reply.error });
-      if (reply.ok) {
-        form.reset();
-        router.refresh();
-      }
+      reply = await saveFleetFine(original.current);
     } catch {
       setRetry(true);
       setMessage({ error: true, text: "Save unconfirmed. Retry the original request." });
+      return;
     } finally {
       setPending(false);
       inFlight.current = false;
     }
+
+    if (reply.ok) {
+      original.current = null;
+      setRetry(false);
+      setMessage({ error: false, text: reply.replayed ? "The original save was confirmed." : "Saved." });
+      form.reset();
+      refresh();
+      return;
+    }
+
+    const unresolved = retry || reply.uncertain;
+    if (!unresolved) original.current = null;
+    setRetry(unresolved);
+    setMessage({ error: true, text: reply.error });
   }
 
   return <form onSubmit={save} className="space-y-3 rounded-md border bg-card p-3">
-    {children && <fieldset disabled={pending || retry} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    {children && <fieldset disabled={pending || retry || refreshFailed} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {children}
     </fieldset>}
     <div className="flex flex-wrap items-center gap-2">
-      <Button type="submit" size="sm" disabled={pending || (unavailable && !retry)}>
+      <Button type="submit" size="sm" disabled={pending || refreshFailed || (unavailable && !retry)}>
         {pending ? "Saving…" : retry ? "Retry original request" : label}
       </Button>
+      {!children && !unavailable && !pending && !retry && !refreshFailed && <span className="text-xs text-muted-foreground">
+        This action saves the case immediately.
+      </span>}
       {message && <p role={message.error ? "alert" : "status"} className={message.error ? "text-sm text-destructive" : "text-sm"}>
         {message.text}
       </p>}
     </div>
+    {refreshFailed && <div role="alert" className="flex flex-wrap items-center gap-2 text-sm">
+      <span>The save was confirmed. The current view could not be refreshed.</span>
+      <Button type="button" size="sm" variant="outline" onClick={refresh}>Retry refresh</Button>
+    </div>}
   </form>;
 }
 

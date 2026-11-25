@@ -10,13 +10,22 @@ export const metadata = {
   description: "Document Management System — Admin Overview",
 };
 
+async function OverviewContent() {
+  const result = await getDmsAdminOverviewStats();
+  return result.success && result.data ? (
+    <DmsOverviewClient stats={result.data} />
+  ) : (
+    <div role="alert" className="text-center py-8 text-destructive text-sm">
+      Failed to load DMS overview. Refresh to retry.
+    </div>
+  );
+}
+
 export default async function DmsAdminPage() {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
     redirect("/access-denied");
   }
-
-  const result = await getDmsAdminOverviewStats();
 
   return (
     <div className="p-6 space-y-4">
@@ -30,13 +39,7 @@ export default async function DmsAdminPage() {
       />
 
       <Suspense fallback={<div className="text-sm text-muted-foreground py-8 text-center">Loading stats...</div>}>
-        {result.success && result.data ? (
-          <DmsOverviewClient stats={result.data} />
-        ) : (
-          <div className="text-center py-8 text-destructive text-sm">
-            Failed to load DMS overview: {result.error}
-          </div>
-        )}
+        <OverviewContent />
       </Suspense>
     </div>
   );

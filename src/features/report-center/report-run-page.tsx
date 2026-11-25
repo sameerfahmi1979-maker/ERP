@@ -28,7 +28,7 @@ import {usesOfficialDocumentSurface} from '@/lib/report-center/output-surface';
 import {usesFreshAnalyticalExport} from '@/lib/report-center/recruitment-reports';
 import { exportToPDF } from "@/lib/export/pdf";
 import { exportToPrint } from "@/lib/export/print";
-import type { ReportRegistryEntry, ReportRunResult } from "@/lib/report-center/types";
+import { FIRST_REPORT_SCREEN_PAGE, type ReportRegistryEntry, type ReportRunResult, type ReportScreenPageQuery } from "@/lib/report-center/types";
 import type {AuthContext} from "@/lib/rbac/check";
 import {useReportCriteria} from "@/hooks/use-report-criteria";
 import { runReportAction } from "@/server/actions/reports/runner";
@@ -50,7 +50,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ReportExportToolbar } from "./report-export-toolbar";
 import { ReportFilterPanel } from "./report-filter-panel";
@@ -85,7 +85,10 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
   const [filterPrincipal, setFilterPrincipal] = useState(principal);
   const [initialFiltersRetired, setInitialFiltersRetired] = useState(false);
   const priorFilters = useRef({principal, setFilters});
-  const filters = filterPrincipal === principal ? storedFilters : {};
+  const filters = useMemo(() => filterPrincipal === principal ? storedFilters : {}, [filterPrincipal, principal, storedFilters]);
+  const cleanFilters = useMemo(() => Object.fromEntries(Object.entries(filters)
+    .filter(([, value]) => value !== "" && value !== null && value !== undefined)), [filters]);
+  const analytical = usesFreshAnalyticalExport(registryEntry.report_code);
   useEffect(() => {
     if (priorFilters.current.principal !== principal) {
       priorFilters.current.setFilters({}); setFilters({}); setFilterPrincipal(principal); setInitialFiltersRetired(true);
@@ -96,8 +99,11 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
   const configuredFilterKeys = reportFilterKeys(registryEntry.report_code, registryEntry.filter_schema_json);
   const entityKeys = ENTITY_FILTER_KEYS.filter(k => configuredFilterKeys.includes(k)) as FilterLookupKey[];
   const filterRevision = useRef(0), savedApplySequence = useRef(0);
+  const [filterEpoch, setFilterEpoch] = useState(0);
+  const [runEpoch, setRunEpoch] = useState<number | null>(null);
+  const advanceFilters = useCallback(() => setFilterEpoch(++filterRevision.current), []);
   const handleFilterChange = useCallback((key: string, value: string) => {
-    filterRevision.current++;
+    advanceFilters();
     setFilters((prev) => {
       const next = {...prev, [key]: value};
       if (prev[key] === value) return next;
@@ -106,7 +112,7 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
       for (const field of downstream[key] ?? []) delete next[field];
       return next;
     });
-  }, [setFilters]);
+  }, [advanceFilters, setFilters]);
   const criteria = useReportCriteria(authContext, registryEntry.report_code, entityKeys, filters, handleFilterChange);
   const baseReadIdentity = JSON.stringify([reportCriteriaIdentity(authContext), registryEntry.report_code, registryEntry.required_permissions, registryEntry.filter_schema_json, criteria.ownerDenied]);
   const savedFilterRead = useReportSavedFilters(authContext, registryEntry.report_code, {enabled: !criteria.ownerDenied, generation: baseReadIdentity});
@@ -128,7 +134,7 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
   const loadSavedFilters = () => void savedFilterRead.refresh();
   const handleReset = useCallback(() => {
     if (!isCurrent()) return;
-    filterRevision.current++; savedApplySequence.current++;
+    advanceFilters(); savedApplySequence.current++;
     setViewField("isApplyingFilter", false);
     runSequence.current++;
     setViewField("isRunning", false); setViewField("resolvedBranding", undefined);
@@ -136,7 +142,7 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
     setViewField("runResult", null);
     setViewField("error", null);
     setVisibleColumns(null);
-  }, [initialFilters, initialFiltersRetired, filterPrincipal, principal, setFilters, setVisibleColumns, isCurrent, setViewField]);
+  }, [advanceFilters, initialFilters, initialFiltersRetired, filterPrincipal, principal, setFilters, setVisibleColumns, isCurrent, setViewField]);
 
   const handleApplySavedFilter = async (filter: ReportSavedFilterRow) => {
     if (!isCurrent() || ownerDenied) return;
@@ -149,7 +155,7 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
         if (result.kind !== "retired") toast.error(result.kind === "unavailable" ? "This saved filter is no longer available." : "This saved filter could not be loaded. Try again.");
         return;
       }
-      filterRevision.current++;
+      advanceFilters();
       setFilters(result.data.filters_json as Record<string, string>);
       toast.success(`Loaded filter: ${result.data.filter_name}`);
     } finally {
@@ -219,18 +225,12 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
     setViewField("isRunning", true);
     setViewField("error", null);
     try {
-      const cleanFilters: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(filters)) {
-        if (v !== "" && v !== null && v !== undefined) {
-          cleanFilters[k] = v;
-        }
-      }
-
       const result = await runReportAction({
         reportCode: registryEntry.report_code,
         outputFormat: "screen",
         filters: cleanFilters,
         templateId: templateIdForRun,
+        ...(analytical ? {screenPage: FIRST_REPORT_SCREEN_PAGE} : {}),
       });
       if (!latest()) return;
 
@@ -250,6 +250,7 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
       const runResult = result.data as ReportRunResult;
 
       acceptedFilterRevision.current=revision;
+      setRunEpoch(revision);
       setViewField("runResult", runResult);
       setVisibleColumns(previous => previous?.filter(column => runResult.data?.columns.includes(column)) ?? null);
 
@@ -275,6 +276,58 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
     }
   };
 
+  const loadPage = useCallback(async (query: ReportScreenPageQuery, isPageCurrent: () => boolean) => {
+    const receipt = runResult?.screenPage?.receipt;
+    const current = () => isPageCurrent() && isCurrent() && !ownerDenied &&
+      runSequence.current === outputSequence && acceptedFilterRevision.current === filterRevision.current;
+    if (!receipt || !current()) return null;
+    try {
+      const result = await runReportAction({
+        reportCode: registryEntry.report_code,
+        outputFormat: "screen",
+        filters: cleanFilters,
+        templateId: selectedTemplateId,
+        screenPage: {...query, receipt},
+      });
+      if (!current()) return null;
+      if (!result.success || !result.data?.data || result.data.screenPage?.receipt !== receipt) {
+        throw Error(result.error ?? "This report page could not be verified. Run the report again.");
+      }
+      return {data: result.data.data, page: result.data.screenPage};
+    } catch (failure) {
+      if (current()) {
+        runSequence.current++;
+        acceptedFilterRevision.current = null;
+        setViewField("runResult", null);
+        setViewField("resolvedBranding", undefined);
+        setViewField("error", failure instanceof Error ? failure.message : "Report page unavailable. Run the report again.");
+      }
+      return null;
+    }
+  }, [cleanFilters, isCurrent, outputSequence, ownerDenied, registryEntry.report_code, runResult, selectedTemplateId, setViewField]);
+
+  const loadFreshOutput = async (format: "pdf" | "excel" | "csv" | "print" | "email") => {
+    if (!canUseOutput()) throw Error("Run the report again before exporting.");
+    const fresh = await runReportAction({
+      reportCode: registryEntry.report_code,
+      outputFormat: format,
+      filters: cleanFilters,
+      templateId: runResult?.resolvedTemplateId ?? selectedTemplateId,
+    });
+    if (!canUseOutput()) throw Error("Run the report again before exporting.");
+    if (!fresh.success || !fresh.data?.data) throw Error(fresh.error ?? "Current report export authority could not be verified.");
+    if (fresh.data.resolvedTemplateId !== runResult?.resolvedTemplateId ||
+        fresh.data.analyticalBrandingVersion !== runResult?.analyticalBrandingVersion) {
+      throw Error("Report branding changed. Run the report again.");
+    }
+    if (fresh.data.analyticalBrandingCanSign !== true && resolvedBranding &&
+        (resolvedBranding.showStamp || resolvedBranding.showSignatory || resolvedBranding.stampUrl ||
+          resolvedBranding.signatureUrl || resolvedBranding.signatoryName || resolvedBranding.signatoryTitleEn)) {
+      throw Error("Report signing access changed. Run the report again.");
+    }
+    return {data: fresh.data.data, runId: fresh.data.runId};
+  };
+
   const handleExport = async (format: "pdf" | "excel" | "csv" | "print") => {
     if (!canUseOutput()) return;
     if(usesOfficialDocumentSurface(registryEntry)){toast.error('Use the employee Letters & Forms section for governed document previews and originals.');return;}
@@ -289,7 +342,7 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
       return;
     }
 
-    const rowCount = runResult.data.rows.length;
+    const rowCount = runResult.rowCount ?? runResult.data.rows.length;
 
     if ((format === "pdf" || format === "print") && rowCount > LARGE_EXPORT_PDF_THRESHOLD) {
       toast.warning(
@@ -301,17 +354,10 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
     setViewField("isExporting", true);
     try {
       let data = runResult.data;
-      if (usesFreshAnalyticalExport(registryEntry.report_code)) {
-        const fresh = await runReportAction({
-          reportCode: registryEntry.report_code,
-          outputFormat: format,
-          filters: Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== "" && value !== null && value !== undefined)),
-          templateId: runResult.resolvedTemplateId ?? selectedTemplateId,
-        });
+      if (analytical) {
+        const fresh = await loadFreshOutput(format);
         if (!canUseOutput()) return;
-        if (!fresh.success || !fresh.data?.data) throw Error(fresh.error ?? "Current report export authority could not be verified.");
-        if (fresh.data.resolvedTemplateId !== runResult.resolvedTemplateId) throw Error("Report branding changed. Run the report again.");
-        data = fresh.data.data;
+        data = fresh.data;
       }
       const { columns, rows } = data;
 
@@ -408,8 +454,11 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
     }
   })();
 
-  const rowCount = runResult?.data?.rows.length ?? 0;
-  const allColumns = runResult?.data?.columns ?? [];
+  const rowCount = runResult?.rowCount ?? runResult?.data?.rows.length ?? 0;
+  const allColumns = useMemo(() => runResult?.data?.columns ?? [], [runResult?.data?.columns]);
+  const resultColumns = useMemo(() => visibleColumns
+    ? allColumns.filter(column => visibleColumns.includes(column)) : allColumns, [allColumns, visibleColumns]);
+  const showResults = !!runResult?.data && (!runResult.screenPage || runEpoch === filterEpoch);
 
   return (
     <div className="flex flex-col gap-4 h-full">
@@ -442,7 +491,7 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
       </div>
 
       {/* Branding preview */}
-      {runResult && resolvedBranding && (
+      {showResults && resolvedBranding && (
         <ReportPreviewHeader
           branding={resolvedBranding}
           reportCode={registryEntry.report_code}
@@ -555,7 +604,7 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
       )}
 
       {/* Results */}
-      {runResult?.data && (
+      {showResults && runResult?.data && (
         <>
           {/* Large export warning */}
           {rowCount > LARGE_EXPORT_PDF_THRESHOLD && (
@@ -613,6 +662,7 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
             isExporting={isExporting}
             runId={runResult.runId}
             resolvedBranding={resolvedBranding}
+            loadEmailReport={analytical ? () => loadFreshOutput("email") : undefined}
           />
           {runResult.redactionSummary?.wasRedacted && (
             <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex items-center gap-2">
@@ -621,19 +671,21 @@ export function ReportRunPage({ authContext, registryEntry, initialFilters = {} 
             </div>
           )}
           <ReportResultsTable
+            key={runResult.screenPage?.receipt}
             data={{
               ...runResult.data,
-              columns: visibleColumns
-                ? allColumns.filter((c) => visibleColumns.includes(c))
-                : allColumns,
-              rows: runResult.data.rows,
+              columns: resultColumns,
             }}
+            initialColumns={allColumns}
+            initialPage={runResult.screenPage}
+            loadPage={runResult.screenPage ? loadPage : undefined}
+            preferenceKey={stateKey ? `${stateKey}:result-list` : undefined}
             isLoading={false}
           />
         </>
       )}
 
-      {!runResult && !isRunning && !error && (
+      {!showResults && !isRunning && !error && (
         <div className="border rounded-lg bg-muted/20 p-12 text-center">
           <FileText className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
           <p className="text-sm text-muted-foreground">Set filters above and click <strong>Run Report</strong> to see results.</p>

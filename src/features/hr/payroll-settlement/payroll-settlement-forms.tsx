@@ -1,8 +1,9 @@
 "use client";
 
 import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { PayrollRefreshNotice } from "@/features/hr/payroll/payroll-refresh-notice";
+import { usePayrollCommand } from "@/hooks/use-payroll-command";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -86,56 +87,38 @@ function CommandForm({ scope, label, build, children }: {
   build: (data: FormData) => { action: PayrollSettlementAction; data: unknown } | null;
   children?: ReactNode;
 }) {
-  const router = useRouter();
-  const original = useRef<PayrollSettlementRequest | null>(null);
-  const inFlight = useRef(false);
-  const [busy, setBusy] = useState(false);
-  const [retry, setRetry] = useState(false);
   const [resetKey, setResetKey] = useState(0);
-  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const mutation = usePayrollCommand<PayrollSettlementRequest, Awaited<ReturnType<typeof savePayrollSettlementCommand>>>(
+    savePayrollSettlementCommand,
+    {
+      target: "settlement",
+      onSuccess(request) {
+        setResetKey(key => key + 1);
+        return confirmation[request.action];
+      },
+      unconfirmed: "The outcome could not be confirmed. Retry the same request.",
+    },
+  );
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (inFlight.current) return;
-    if (!original.current) {
-      const request = build(new FormData(event.currentTarget));
+    const form = event.currentTarget;
+    return mutation.submit(() => {
+      const request = build(new FormData(form));
       const parsed = payrollSettlementRequest.safeParse(request && { ...scope, ...request, operation: crypto.randomUUID() });
       if (!parsed.success) {
-        setMessage({ text: "Check the required evidence and exact amounts.", error: true });
-        return;
+        mutation.setMessage({ text: "Check the required evidence and exact amounts.", error: true });
+        return null;
       }
-      original.current = parsed.data;
-    }
-
-    const request = original.current;
-    inFlight.current = true;
-    setBusy(true);
-    setMessage(null);
-    try {
-      const result = await savePayrollSettlementCommand(request);
-      if (!result.ok) {
-        setMessage({ text: result.error, error: true });
-        setRetry(result.uncertain);
-        if (!result.uncertain) original.current = null;
-        return;
-      }
-      original.current = null;
-      setRetry(false);
-      setResetKey(key => key + 1);
-      setMessage({ text: confirmation[request.action], error: false });
-      router.refresh();
-    } catch {
-      setRetry(true);
-      setMessage({ text: "The outcome could not be confirmed. Retry the same request.", error: true });
-    } finally {
-      inFlight.current = false;
-      setBusy(false);
-    }
+      return parsed.data;
+    });
   }
 
+  const { busy, locked, retry, refreshError, message } = mutation;
   return <form onSubmit={submit} aria-label={label} className="space-y-3">
-    <fieldset key={resetKey} disabled={busy || retry} className="min-w-0 space-y-3">{children}</fieldset>
-    <Button type="submit" size="sm" disabled={busy}>{busy ? "Saving…" : retry ? "Retry same request" : label}</Button>
+    <fieldset key={resetKey} disabled={locked} className="min-w-0 space-y-3">{children}</fieldset>
+    <Button type="submit" size="sm" disabled={busy || refreshError}>{busy ? "Saving…" : retry ? "Retry same request" : label}</Button>
+    {refreshError && <PayrollRefreshNotice busy={busy} retry={() => void mutation.retryRefresh()} />}
     {message && <p role={message.error ? "alert" : "status"}
       className={message.error ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>{message.text}</p>}
   </form>;

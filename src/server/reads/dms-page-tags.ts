@@ -9,15 +9,18 @@ const tagDetails = z.object({
 });
 const tagGroups = z.array(z.object({document_id: id, tags: z.array(tagDetails).nonempty()}));
 
-export async function readDmsPageTags(db: Awaited<ReturnType<typeof createClient>>, documentIds: number[]) {
+export async function readDmsPageTags(db: Awaited<ReturnType<typeof createClient>>, documentIds: number[], signal?: AbortSignal) {
+  signal?.throwIfAborted();
   const tags = new Map<number, Array<{tag_id: number; tag?: {tag_name: string; color_hex: string | null}}>>();
   if (!documentIds.length) return tags;
   const requested = new Set(documentIds);
   if (requested.size > 100 || !z.array(id).safeParse(documentIds).success) {
     throw Error("Invalid document tag page");
   }
-  const result = await db.rpc("dms_tag_details_for_documents", {document_ids: [...requested]},
+  const query = db.rpc("dms_tag_details_for_documents", {document_ids: [...requested]},
     {get: true, count: "exact"}).order("document_id").range(0, requested.size - 1);
+  const result = await (signal ? query.abortSignal(signal) : query);
+  signal?.throwIfAborted();
   const parsed = tagGroups.safeParse(result.data);
   if (result.error || !parsed.success || result.count !== parsed.data.length) {
     throw Error("Document tag page unavailable");

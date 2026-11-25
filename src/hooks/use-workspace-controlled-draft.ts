@@ -30,10 +30,19 @@ export function useWorkspaceControlledDraft<T>({formId, initialValue, codec, ena
   const {writeDraftField, clearDraft, retireDraft, redactDraft} = draft;
   const setValue = useCallback((update: SetStateAction<T>) => {
     if (retired.current || !enabled) return;
-    const updated = typeof update === "function" ? (update as (old: T) => T)(current.current) : update;
+    const previous = current.current;
+    const updated = typeof update === "function" ? (update as (old: T) => T)(previous) : update;
     const next = Object.keys(redactions.current).length ? {...updated, ...redactions.current} : updated;
+    if (Object.is(previous, next)) return;
+    const previousFields = codec.encode(previous);
     current.current = next;
-    for (const [field, fieldValue] of Object.entries(codec.encode(next))) writeDraftField(field, fieldValue);
+    for (const [field, fieldValue] of Object.entries(codec.encode(next))) {
+      // If redaction ran before the first edit, the newly retained draft still
+      // needs its explicit cleared field to suppress an older server fallback.
+      if (fieldValue !== previousFields[field] || Object.hasOwn(redactions.current, field)) {
+        writeDraftField(field, fieldValue);
+      }
+    }
     setInternal(next);
   }, [codec, enabled, writeDraftField]);
   const acceptSaved = useCallback((submitted: T) => {

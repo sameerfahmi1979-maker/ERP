@@ -11,7 +11,7 @@ import { useWorkspace } from "@/hooks/use-workspace";
 import { useWorkspaceTableState } from "@/hooks/use-workspace-table-state";
 import type { AuthContext } from "@/lib/rbac/check";
 import { hasPermission } from "@/lib/rbac/scope";
-import type { EmployeeListRow } from "@/server/actions/hr/employees";
+import type { EmployeeRegisterRow } from "@/server/reads/employees";
 import {EmployeeArchiveDialog} from './employee-archive-dialog';
 import {EmployeeRecoveryInbox}from './employee-recovery-inbox';
 import {hrReadIdentity} from '@/lib/reads/hr-read-identity';
@@ -79,10 +79,10 @@ type EmployeeFilters = {
 
 
 type Props = {
-  initialRows: EmployeeListRow[];
+  initialRows: EmployeeRegisterRow[];
   initialTotal: number;
   initialUpdatedAt: number;
-  initialReadIdentity: ServerPageSeed<EmployeeListRow>["identity"];
+  initialReadIdentity: ServerPageSeed<EmployeeRegisterRow>["identity"];
   initialStatus?: string;
   authContext: AuthContext;
   documentWizardEnabled?: boolean;
@@ -135,7 +135,7 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
     ]
   );
 
-  const [archiveTarget, setArchiveTarget] = useState<EmployeeListRow | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<EmployeeRegisterRow | null>(null);
   const archivePrincipal=hrReadIdentity(authContext);
   const [archiveIdentity,setArchiveIdentity]=useState(archivePrincipal);
   if(archiveIdentity!==archivePrincipal){setArchiveIdentity(archivePrincipal);setArchiveTarget(null);}
@@ -193,8 +193,8 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
     []
   );
 
-  const seed = useMemo<ServerPageSeed<EmployeeListRow>>(() => ({identity:initialReadIdentity,params:{page:1,pageSize:25,sortKey:"employee_code",sortDir:"asc",...(initialStatus?{employeeStatus:initialStatus}:{})},data:{rows:initialRows,totalCount:initialTotal,page:1,pageSize:25},updatedAt:initialUpdatedAt}),[initialRows,initialTotal,initialUpdatedAt,initialReadIdentity,initialStatus]);
-  const uiReadEmployees=useServerPage<EmployeeListRow>({resource:"employees",params:{page,pageSize,search:search.trim()||undefined,quality:filters.quality??undefined,employeeStatus:filters.status??undefined,ownerCompanyId:filters.companyId??undefined,departmentId:filters.departmentId??undefined,designationId:filters.designationId??undefined,nationalityId:filters.nationalityId??undefined,sortKey:sortKey??"employee_code",sortDir},seed});
+  const seed = useMemo<ServerPageSeed<EmployeeRegisterRow>>(() => ({identity:initialReadIdentity,params:{page:1,pageSize:25,sortKey:"employee_code",sortDir:"asc",...(initialStatus?{employeeStatus:initialStatus}:{})},data:{rows:initialRows,totalCount:initialTotal,page:1,pageSize:25},updatedAt:initialUpdatedAt}),[initialRows,initialTotal,initialUpdatedAt,initialReadIdentity,initialStatus]);
+  const uiReadEmployees=useServerPage<EmployeeRegisterRow>({resource:"employees",params:{page,pageSize,search:search.trim()||undefined,quality:filters.quality??undefined,employeeStatus:filters.status??undefined,ownerCompanyId:filters.companyId??undefined,departmentId:filters.departmentId??undefined,designationId:filters.designationId??undefined,nationalityId:filters.nationalityId??undefined,sortKey:sortKey??"employee_code",sortDir},seed});
   const rows=uiReadEmployees.data?.rows??[];
   const totalCount=uiReadEmployees.data?.totalCount??0;
   const fetching=uiReadEmployees.isBusy;
@@ -262,7 +262,7 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
     });
   };
 
-  const openView = (emp: EmployeeListRow) => {
+  const openView = (emp: EmployeeRegisterRow) => {
     openTab({
       route: `/admin/hr/employees/record/${emp.id}?mode=view`,
       title: `${emp.employee_code} — ${emp.full_name_en}`,
@@ -275,7 +275,7 @@ export function EmployeesTable({ initialRows, initialTotal, initialUpdatedAt, in
     });
   };
 
-  const openEdit = (emp: EmployeeListRow) => {
+  const openEdit = (emp: EmployeeRegisterRow) => {
     openTab({
       route: `/admin/hr/employees/record/${emp.id}?mode=edit`,
       title: `${emp.employee_code} — ${emp.full_name_en}`,

@@ -9,6 +9,7 @@ import type {FormPrefetchDeclaration} from '@/lib/query/form-prefetch-types';
 import {QueryClient} from '@tanstack/react-query';
 import {prefetchPartyFormData} from '@/features/master-data/parties/party-form-prefetch';
 import {registerPrivateCache} from '@/lib/query/private-cache';
+import {queryKeys} from '@/lib/query/query-keys';
 const port=vi.hoisted(()=>({client:vi.fn()}));
 vi.mock('@/lib/supabase/client',()=>({createClient:port.client}));
 vi.mock('@/server/actions/master-data/parties',()=>Object.fromEntries(['getPartyNatures','getPartyStatuses','getPartyTypes','getPartyLicenseTypes','getPartyLicenseStatuses','getPartyTaxStatuses','getPartyContactRoles','getPartyContactDepartments','getPartyAddressTypes','getPartyDocumentTypes','getPartyDocumentStatuses','getPaymentMethods'].map(name=>[name,async()=>({success:true,data:[]})])));
@@ -42,7 +43,28 @@ it('every finance prefetch declaration forwards the exact signal',async()=>{
  const declarations:FormPrefetchDeclaration[]=[ORGANIZATION_FORM_PREFETCH,templates.VENDOR_FORM_PREFETCH_TEMPLATE,templates.SUBCONTRACTOR_FORM_PREFETCH_TEMPLATE,templates.CONSULTANT_FORM_PREFETCH_TEMPLATE,templates.GOVERNMENT_AUTHORITY_FORM_PREFETCH_TEMPLATE,templates.RECRUITMENT_AGENCY_FORM_PREFETCH_TEMPLATE];
  let tested=0;for(const d of declarations)for(const q of d.masterQueries){if(!['currencies','payment_terms','tax_types'].includes(String(q.queryKey[1])))continue;calls=[];const signal=new AbortController().signal;await q.queryFn(signal);expect(calls.length).toBe(2);expect(calls.every(c=>c.signal===signal)).toBe(true);tested++;}expect(tested).toBeGreaterThan(5);
 });
-it('active party finance prefetches abort together on retirement and never repopulate late rows',async()=>{
- let release!:()=>void;barrier=new Promise(resolve=>{release=resolve;});const qc=new QueryClient({defaultOptions:{queries:{retry:false}}}),dispose=registerPrivateCache(qc);
- try{const pending=prefetchPartyFormData(qc);await vi.waitFor(()=>expect(calls.filter(c=>/\/(currencies|payment_terms|tax_types)$/.test(c.url.pathname))).toHaveLength(3));const finance=calls.filter(c=>/\/(currencies|payment_terms|tax_types)$/.test(c.url.pathname));dispose();expect(finance.every(c=>c.signal?.aborted)).toBe(true);release();await pending;expect(qc.getQueryCache().getAll()).toEqual([]);expect(calls.filter(c=>/\/(currencies|payment_terms|tax_types)$/.test(c.url.pathname))).toHaveLength(3);}finally{release();dispose();qc.clear();}
+it('initial Party choices defer Finance and a retired cache cancels active Finance reads',async()=>{
+ const qc=new QueryClient({defaultOptions:{queries:{retry:false}}});
+ const dispose=registerPrivateCache(qc);
+ const financeCalls=()=>calls.filter(c=>/\/(currencies|payment_terms|tax_types)$/.test(c.url.pathname));
+ const activeChoices=[
+  {queryKey:queryKeys.currencies(),queryFn:({signal}:{signal:AbortSignal})=>fetchCurrencies(false,signal)},
+  {queryKey:queryKeys.paymentTerms(),queryFn:({signal}:{signal:AbortSignal})=>fetchPaymentTerms(false,signal)},
+  {queryKey:queryKeys.taxTypes(),queryFn:({signal}:{signal:AbortSignal})=>fetchTaxTypes(false,signal)},
+ ];
+ let release!:()=>void;
+ barrier=new Promise(resolve=>{release=resolve;});
+ try {
+  await prefetchPartyFormData(qc);
+  expect(financeCalls()).toEqual([]);
+  const pending=Promise.allSettled(activeChoices.map(choice=>qc.fetchQuery<unknown>(choice)));
+  await vi.waitFor(()=>expect(financeCalls()).toHaveLength(3));
+  const finance=financeCalls();
+  dispose();
+  expect(finance.every(c=>c.signal?.aborted)).toBe(true);
+  release();
+  await pending;
+  expect(qc.getQueryCache().getAll()).toEqual([]);
+  expect(financeCalls()).toHaveLength(3);
+ } finally {release();dispose();qc.clear();}
 });

@@ -23,7 +23,11 @@ export async function getPartyBankDetails(partyId: number): Promise<ActionResult
     const supabase = access.client;
     const { data, error } = await supabase
       .from("party_bank_details")
-      .select(`*, banks!bank_id(bank_name_en), currencies!currency_id(currency_code), countries!country_id(name_en)`)
+      .select(`id, bank_detail_code, party_id, bank_id, bank_name_text, account_holder_name, account_number,
+        iban, swift_code, currency_id, branch_name, country_id, is_primary, is_verified, verified_by,
+        verified_at, verification_document_id, is_active, remarks, created_at, created_by, updated_at, updated_by,
+        archived_at, archived_by, workspace_revision, banks!bank_id(bank_name_en), currencies!currency_id(currency_code),
+        countries!country_id(name_en)`)
       .eq("party_id", partyId)
       .order("is_primary", { ascending: false })
       .order("created_at");

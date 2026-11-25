@@ -24,6 +24,7 @@ type AssignRoleDialogProps = {
   user: UserWithRoles;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSaved?: () => void;
   roles?: Role[];
   canAssignGlobal?: boolean;
   companies?: UserCompanyOption[];
@@ -42,6 +43,7 @@ function AssignRoleDialogFields({
   user,
   open,
   onOpenChange,
+  onSaved,
   roles = [],
   canAssignGlobal = false,
   companies = [],
@@ -116,10 +118,19 @@ function AssignRoleDialogFields({
     try {
       const result = await assignRoleToUser(data);
       if (result.success) {
-        toast.success("Role assigned successfully");
+        const companyLabel = companyOptions.find(company => company.value === ownerCompanyId)?.label;
+        const branchLabel = branchOptions.find(branch => branch.value === branchId)?.label;
+        const scope = selectedScope === "global" ? "Global System" : [companyLabel, branchLabel].filter(Boolean).join(" / ");
+        toast.success(`Assigned ${administratorRoleLabel(selectedRole.role_code, selectedRole.role_name)} · ${scope}`);
+        if (result.warning) toast.warning(result.warning);
+        onSaved?.();
         if (addAnotherScope && selectedScope !== 'global') { setOwnerCompanyId(''); setBranchId(''); }
         else onOpenChange(false);
-        router.refresh();
+        try {
+          router.refresh();
+        } catch {
+          toast.warning("Role assigned. Reload this user to see the assignment.");
+        }
       } else {
         toast.error(result.error || "Failed to assign role");
       }
@@ -144,7 +155,7 @@ function AssignRoleDialogFields({
       submitLabel="Assign Role"
     >
       <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">Each assignment adds access only to its selected company or branch. Existing assignments remain unchanged.</p>
+        <p className="text-sm text-muted-foreground">Assign Role saves this assignment immediately.</p>
         {selectedScope !== 'global' && <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={addAnotherScope} onChange={event => setAddAnotherScope(event.target.checked)} />
           Keep open to add another company or branch

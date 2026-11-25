@@ -44,13 +44,37 @@ it.skipIf(!enabled)("renders the exact declared technical catalogue and long syn
     verification: { publicUrl: "https://example.invalid/f08-synthetic-no-public-token", qrDataUrl: qr! },
   });
   const receipts: Array<Record<string, unknown>> = [];
+  const nameOnly = new Set([
+    "HR_EMPLOYMENT_CONFIRMATION",
+    "HR_SALARY_CERT_WITH_AMOUNT",
+    "HR_SALARY_CERT_GENERAL",
+    "HR_WARNING_LETTER",
+    "HR_EMBASSY_LETTER",
+    "HR_LEAVE_CONFIRMATION",
+  ]);
   async function render(name: string, definition: OfficialDocumentDefinition, ctx: OfficialDocumentRenderContext, long = false) {
     const html = renderOfficialDocumentHtml(definition, ctx);
     expect(renderOfficialDocumentHtml(definition, structuredClone(ctx))).toBe(html);
     expect(html).not.toMatch(/src="https?:/); // All test assets are embedded; renderer cannot fetch the ERP.
     const output = await renderOfficialHtmlToPdf(renderOfficialDocumentPrintPackage(definition, ctx));
     const parsed = await parse(output.buffer);
-    expect(parsed.text).toContain("F08-SYNTHETIC-001");
+    const identifiers = parsed.text.replace(/-\s+/g, "-");
+    if (nameOnly.has(definition.documentCode)) {
+      // These approved documents identify the employee by name. Long
+      // confirmation fixtures replace that narrative with page markers.
+      expect(identifiers).not.toContain("F08-SYNTHETIC-001");
+      if (!long) {
+        if (ctx.language === "ar") {
+          // The PDF parser does not reconstruct the Arabic ligatures in this font.
+          expect(html).toContain("موظف اختباري");
+          expect(parsed.text).toContain(String(ctx.row.company_name));
+        } else {
+          expect(parsed.text.replace(/\s+/g, " ")).toContain("F08 Synthetic Employee");
+        }
+      }
+    } else {
+      expect(identifiers).toContain("F08-SYNTHETIC-001");
+    }
     expect(parsed.text).toContain("F08-SYNTHETIC-NOT-ISSUED");
     for (let page = 1; page <= parsed.numpages; page++) expect(parsed.text).toContain(`Page ${page} of ${parsed.numpages}`);
     if (long) { expect(parsed.numpages).toBeGreaterThan(1); expect(parsed.text).toContain("F08-END-079"); }
@@ -61,6 +85,7 @@ it.skipIf(!enabled)("renders the exact declared technical catalogue and long syn
       visualAcceptance: "PENDING_SEPARATE_FILE_INSPECTION", officialIssued: false });
   }
   const definitions = listOfficialDocumentDefinitions();
+  expect(definitions.filter(def => def.status === "published")).toHaveLength(14);
   for (const definition of definitions.filter(def => def.status === "published")) {
     for (const language of definition.supportedLanguages) await render(`${definition.documentCode}-${language}`, definition, context(language));
   }
@@ -92,8 +117,8 @@ it.skipIf(!enabled)("renders the exact declared technical catalogue and long syn
   fs.writeFileSync(path.join(folder,'draft-canonical-long-bilingual.pdf'),draftOutput.buffer,{flag:'wx'});
   expect(draftParsed.numpages).toBeGreaterThan(1);expect(draftParsed.text).toContain('F08-DRAFT-23');expect(draftParsed.text.toLowerCase().replace(/[^a-z]/g,'')).toContain('draftnotofficiallyissued');
   receipts.push({name:'draft-canonical-long-bilingual',code:confirmation.documentCode,language:'bilingual',pages:draftParsed.numpages,bytes:draftOutput.fileSizeBytes,sha256:draftOutput.sha256,htmlSha256:createHash('sha256').update(draftPackage.html).digest('hex'),officialIssued:false,serial:null,qr:false,officialMarks:false,visualAcceptance:'PENDING_SEPARATE_FILE_INSPECTION'});
-  expect(receipts).toHaveLength(31);
+  expect(receipts).toHaveLength(60);
   fs.writeFileSync(path.join(folder, "manifest.json"), JSON.stringify({ state: "PASS_BACKEND_RENDERER_AND_PARSE_NOT_OFFICIAL_ACCEPTANCE",
     outputs: receipts, disabled: definitions.filter(def => def.status !== "published").map(def => def.documentCode),
-    limitations: ["All wording still requires genuine recorded owner approval.", "Four wording-pending templates were not rendered or enabled.", "No new languages were invented for English-only definitions.", "No official issuance/storage/reprint or browser/device acceptance is inferred."] }, null, 2), { flag: "wx" });
+    limitations: ["All wording still requires genuine recorded owner approval.", "Source-workflow holds still apply independently of printable wording.", "No new languages were invented for English-only definitions.", "No official issuance/storage/reprint or browser/device acceptance is inferred."] }, null, 2), { flag: "wx" });
 }, 180000);

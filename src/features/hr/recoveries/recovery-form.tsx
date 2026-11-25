@@ -1,8 +1,8 @@
 
 "use client";
 
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { OperationsCommandStatus, useOperationsCommand } from "@/features/operations/use-operations-command";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { RecoveryAction, RecoveryEvidence } from "@/lib/hr/recovery-contract";
@@ -13,46 +13,26 @@ export const selectClass = "min-h-9 rounded-md border border-input bg-background
 export function RecoveryForm({ action, target, basis, label, children }: {
   action: RecoveryAction; target: number; basis?: string | null; label: string; children?: ReactNode;
 }) {
-  const router = useRouter();
-  const nonce = useRef<string | null>(null);
-  const pending = useRef(false);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
+  const command = useOperationsCommand(({ operation, record, nonce, payload }: {
+    operation: RecoveryAction; record: number; nonce: string; payload: FormData;
+  }) => saveRecovery(operation, record, nonce, payload), form => form.reset());
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending.current) return;
-    pending.current = true;
-    setBusy(true);
+    if (command.blocked) return;
     const form = event.currentTarget;
-    nonce.current ??= crypto.randomUUID();
     const payload = new FormData(form);
     if (basis) payload.set("basis", basis);
-    try {
-      const result = await saveRecovery(action, target, nonce.current, payload);
-      if (!result.ok) {
-        setMessage({ text: result.error, error: true });
-        return;
-      }
-      nonce.current = null;
-      form.reset();
-      setMessage({ text: "Saved." });
-      router.refresh();
-    } catch {
-      setMessage({ text: "The save could not be confirmed. Retry with the same details.", error: true });
-    } finally {
-      pending.current = false;
-      setBusy(false);
-    }
+    void command.submit({ operation: action, record: target, nonce: crypto.randomUUID(), payload }, form);
   }
 
-  return <form onSubmit={submit} onChange={() => { if (!pending.current) nonce.current = null; }} className="space-y-3">
-    <fieldset disabled={busy} className="space-y-3">
+  return <form onSubmit={submit} className="space-y-3">
+    <fieldset disabled={command.blocked} className="space-y-3">
       {children}
       <label className="grid gap-1 text-sm">Reason<Input name="reason" required maxLength={2000} /></label>
-      <Button size="sm" type="submit">{busy ? "Saving…" : label}</Button>
+      <Button size="sm" type="submit">{command.busy ? "Saving…" : label}</Button>
     </fieldset>
-    {message && <p role={message.error ? "alert" : "status"} className={message.error ? "text-sm text-destructive" : "text-sm"}>{message.text}</p>}
+    <OperationsCommandStatus command={command} saved={command.receipt ? `Saved reference #${command.receipt.id}` : undefined} />
   </form>;
 }
 

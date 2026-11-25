@@ -8,12 +8,18 @@ import {
 const authId = "3b3ae7b3-960f-432e-a5a3-6d1596e0b21a";
 const authSession = "4bf70ed0-254a-4144-b91b-1256c89d7940";
 const bearer = "test.access.token";
+const serviceKey = "test-server-only-key";
+const authUserPath = "/auth/v1/user";
+const liveSessionPath = "/rest/v1/rpc/f03_current_session_valid";
+const authGraphPath = "/rest/v1/rpc/erp_current_auth_graph";
+const chatPath = "/rest/v1/rpc/erp_chat_v1";
 const calls: string[] = [];
 let validSession: boolean;
 let forcedPassword: boolean;
 let status: string;
 let actorProfile: string;
 let roleCode: string;
+let reservedAdmin: boolean;
 let directoryData: unknown;
 let failure: string | undefined;
 let linked: unknown;
@@ -26,13 +32,14 @@ const run = <T>(fn: () => Promise<T>) => withMobileToken(bearer, fn);
 beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://communications-test.invalid");
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "test-publishable-key");
-  vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-server-only-key");
+  vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", serviceKey);
   vi.stubEnv("ERP_COMM_CHAT_ENABLED","true");
   validSession = true;
   forcedPassword = false;
   status = "active";
   actorProfile = "19";
   roleCode = "group_admin";
+  reservedAdmin = false;
   failure = undefined;
   calls.length = 0;
   directoryData = { items: [], nextCursor: null };
@@ -47,29 +54,40 @@ beforeEach(() => {
     const path = new URL(req.url).pathname;
     calls.push(path);
     const json = (value: unknown) => Response.json(value);
-    if (path === "/auth/v1/user") {
+    if (path === authUserPath) {
       expect(req.headers.get("authorization")).toBe(`Bearer ${bearer}`);
       return json({ id: authId, aud: "authenticated", role: "authenticated" });
     }
-    if (path === "/rest/v1/rpc/f03_current_session_valid") return json(validSession);
-    if (path === "/rest/v1/user_profiles") {
-      expect(new URL(req.url).searchParams.get("auth_user_id")).toBe(`eq.${authId}`);
-      return json({ id: 19, auth_user_id: authId, must_change_password: forcedPassword, status });
+    if (path === liveSessionPath) {
+      expect(req.headers.get("authorization")).toBe(`Bearer ${bearer}`);
+      return json(validSession);
     }
-    if (path === "/rest/v1/user_roles") return json([
-      { role_id: 7, owner_company_id: null, branch_id: null },
-      { role_id: 8, owner_company_id: 10, branch_id: 11 },
-      { role_id: 8, owner_company_id: 20, branch_id: 21 },
-    ]);
-    if (path === "/rest/v1/roles") return json([{ id: 7, role_code: roleCode }, { id: 8, role_code: "staff" }]);
-    if (path === "/rest/v1/role_permissions") return json([]);
+    if (path === authGraphPath) {
+      expect(req.headers.get("authorization")).toBe(`Bearer ${serviceKey}`);
+      expect(await req.json()).toEqual({ p_auth_user_id: authId });
+      const activeAccount = status === "active" && !forcedPassword;
+      return json({
+        profile: {
+          id: 19, auth_user_id: authId, owner_company_id: 10, branch_id: 11,
+          must_change_password: forcedPassword, status,
+        },
+        assignments: activeAccount ? [
+          { role_id: 7, owner_company_id: null, branch_id: null },
+          { role_id: 8, owner_company_id: 10, branch_id: 11 },
+          { role_id: 8, owner_company_id: 20, branch_id: 21 },
+        ] : [],
+        roles: activeAccount ? [{ id: 7, role_code: roleCode }, { id: 8, role_code: "staff" }] : [],
+        links: [],
+        permissions: [],
+      });
+    }
     if (path === "/rest/v1/rpc/erp_comm_budget_command") {
       const {p_command,p_payload}=await req.json();
       expect(p_command).toBe("reserve");
       expect(p_payload).toMatchObject({actorId:actorProfile,scope:"communications",feature:"chat",binding:{actorSessionId:authSession}});
       return json({ok:true,permitId:"42b145be-047f-48e4-8212-eaba638a0f8d",newReservation:true,expiresAt:new Date(Date.now()+120000).toISOString()});
     }
-    if (path === "/rest/v1/rpc/erp_chat_v1") {
+    if (path === chatPath) {
       expect(req.headers.get("authorization")).toBe(`Bearer ${bearer}`);
       const { p_request: command } = await req.json();
       if (command.op!=="chat.actor") expect(command._budgetPermitId).toBe("42b145be-047f-48e4-8212-eaba638a0f8d");
@@ -78,7 +96,7 @@ beforeEach(() => {
         case "chat.actor":
           expect(command.args).toEqual({});
           return json({ profileId: actorProfile, authUserId: authId, authSessionId: authSession,
-            isGlobalSystemAdmin: roleCode === "system_admin" });
+            isGlobalSystemAdmin: reservedAdmin });
         case "chat.directory": return json(directoryData);
         case "chat.linkedIdentity": expect(command.args).toEqual({ employeeId: "313" }); return json(linked);
         case "chat.avatarBinding": return json(avatarBindings.shift() ?? null);
@@ -94,12 +112,12 @@ describe("ERP communication actor", () => {
     expect(await run(requireCommunicationActor)).toEqual({
       profileId: "19", authUserId: authId, authSessionId: authSession, isGlobalSystemAdmin: false,
     });
-    expect(calls).toContain("/rest/v1/rpc/f03_current_session_valid");
-    expect(calls.indexOf("/auth/v1/user")).toBeLessThan(calls.indexOf("/rest/v1/rpc/erp_chat_v1"));
+    expect(calls).toEqual([authUserPath, liveSessionPath, authGraphPath, chatPath]);
   });
-  it("uses the SQL result for the reserved administrator", async () => {
+  it.each([false, true])("uses the SQL result %s for the reserved administrator", async sqlResult => {
     roleCode = "system_admin";
-    expect((await run(requireCommunicationActor)).isGlobalSystemAdmin).toBe(true);
+    reservedAdmin = sqlResult;
+    expect((await run(requireCommunicationActor)).isGlobalSystemAdmin).toBe(sqlResult);
   });
   it("denies a mixed actor response", async () => {
     actorProfile = "18";
@@ -108,13 +126,13 @@ describe("ERP communication actor", () => {
   it("rejects an ended Auth session before loading any privileged profile", async () => {
     validSession = false;
     await expect(run(requireCommunicationActor)).rejects.toMatchObject({ status: 401 });
-    expect(calls).not.toContain("/rest/v1/user_profiles");
+    expect(calls).toEqual([authUserPath, liveSessionPath]);
   });
   it.each(["inactive", "suspended", "forced"])("denies %s before communications SQL", async reason => {
     forcedPassword = reason === "forced";
     status = forcedPassword ? "active" : reason;
     await expect(run(requireCommunicationActor)).rejects.toMatchObject({ status: 403 });
-    expect(calls).not.toContain("/rest/v1/rpc/erp_chat_v1");
+    expect(calls).toEqual([authUserPath, liveSessionPath, authGraphPath]);
   });
 });
 

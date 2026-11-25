@@ -1,7 +1,8 @@
+import { LoadError } from "@/components/erp/load-error";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { RolesTable } from "@/features/roles/roles-table";
 import { AddRoleButton } from "@/features/roles/add-role-button";
-import { getAuthContext, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission, hasPermission, isGlobalAdmin } from "@/lib/rbac/check";
 import { listRoles } from "@/server/queries/roles";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -30,8 +31,8 @@ export default async function AdminRolesPage() {
     );
   }
 
-  const roles = await listRoles();
-  const canManage = hasPermission(ctx, "roles.manage");
+  const roles = await listRoles(ctx).catch(() => null);
+  const canManage = hasGlobalPermission(ctx, "roles.manage");
   const isAdmin = isGlobalAdmin(ctx);
 
   return (
@@ -46,7 +47,7 @@ export default async function AdminRolesPage() {
         ]}
         actions={canManage ? <AddRoleButton /> : null}
       />
-      <RolesTable 
+      {roles === null ? <LoadError title="Roles" retryHref="/admin/roles" /> : <RolesTable
         data={roles}
         canManage={canManage}
         isGlobalAdmin={isAdmin}
@@ -57,7 +58,7 @@ export default async function AdminRolesPage() {
           filename: "roles",
           generatedBy: ctx.profile?.full_name || ctx.profile?.display_name || "System User",
         }}
-      />
+      />}
     </div>
   );
 }

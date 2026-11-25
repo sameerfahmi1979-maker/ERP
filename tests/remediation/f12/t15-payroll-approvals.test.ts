@@ -114,12 +114,13 @@ it("directs a legacy open recovery review back to Accounts for recalculation", a
 });
 
 it("passes the identical exact approval on retry and limits invalidation to payroll", async () => {
+  const receipt = { review: reviewId, run, version, digest, state: "approved", claims_count: 0, action: "approve" };
   mock.rpc.mockRejectedValueOnce(new Error("transport lost after operation"))
-    .mockResolvedValueOnce({ data: { review: reviewId, state: "approved", replayed: true }, error: null });
+    .mockResolvedValueOnce({ data: { ...receipt, replayed: true }, error: null });
   const form = command();
   form.set("recovery_schedule_digest", scheduleDigest);
   await expect(savePayrollReviewCommand("approve", 9, 2, operation, form)).resolves.toMatchObject({ ok: false, uncertain: true });
-  await expect(savePayrollReviewCommand("approve", 9, 2, operation, form)).resolves.toEqual({ ok: true, review: reviewId, state: "approved" });
+  await expect(savePayrollReviewCommand("approve", 9, 2, operation, form)).resolves.toEqual({ ok: true, ...receipt });
   expect(mock.rpc.mock.calls[0]).toEqual(mock.rpc.mock.calls[1]);
   expect(mock.rpc.mock.calls[0]).toEqual(["t15_payroll_review_command", {
     p_operation: operation, p_company: 9, p_branch: 2, p_action: "approve",

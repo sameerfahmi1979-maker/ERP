@@ -25,7 +25,7 @@ export async function mobileBytes(request:Request,kind:"photo"|"issued-file") {
       if(!ctx.profile)return failure(401,"Sign in with your ERP account.");
       if(!canUseApplication(ctx))return failure(403,"Current account required.");
       const q=input.data;
-      const response="issuanceId" in q ? await deliverIssuedFile(q.issuanceId,q,request.method==="HEAD") : await deliverSubjectPhoto(q.employeeId,q.dependentId??null,q.mode,q);
+      const response="issuanceId" in q ? await deliverIssuedFile(q.issuanceId,q,request.method==="HEAD",request.signal) : await deliverSubjectPhoto(q.employeeId,q.dependentId??null,q.mode,q);
       for(const [key,value] of Object.entries(headers))response.headers.set(key,value);
       return response;
     });

@@ -1,7 +1,13 @@
 import {afterEach,expect,it,vi} from "vitest";
 const s=vi.hoisted(()=>({permissions:["notifications.admin","reports.history.view","dms.admin"],scopedOnly:false,active:true,calls:[] as unknown[][],results:[] as unknown[],auth:0}));
 vi.mock("@/lib/rbac/check",async()=>({...await import("@/lib/rbac/scope"),getAuthContext:async()=>{s.auth++;return {profile:{id:6,must_change_password:false},permissionCodes:s.permissions,globalPermissionCodes:s.scopedOnly?[]:s.permissions,roleCodes:[],roleAssignments:[],isAccountActive:s.active};}}));
-vi.mock("@/lib/supabase/server",()=>({createClient:async()=>({from:(...args:unknown[])=>{s.calls.push(["from",...args]);const value=s.results.shift();const q:Record<string,unknown>={then:(f:(value:unknown)=>unknown)=>Promise.resolve(value).then(f)};
+vi.mock("@/lib/supabase/server",()=>({createClient:async()=>({
+ rpc:(...args:unknown[])=>{
+   s.calls.push(["rpc",...args]);const value=s.results.shift();
+   const q={then:(f:(v:unknown)=>unknown)=>Promise.resolve(value).then(f),
+     abortSignal:(signal:AbortSignal)=>{s.calls.push(["abortSignal",signal]);return q;}};
+   return q;
+ },from:(...args:unknown[])=>{s.calls.push(["from",...args]);const value=s.results.shift();const q:Record<string,unknown>={then:(f:(value:unknown)=>unknown)=>Promise.resolve(value).then(f)};
  for(const key of ["select","or","eq","neq","ilike","is","order","range","abortSignal"])q[key]=(...args:unknown[])=>{s.calls.push([key,...args]);return q;};return q;}})}));
 import {readNotificationDeliveries} from "@/server/reads/notification-deliveries";
 import {readNotificationTemplates,readNotificationTemplateDetail} from "@/server/reads/notification-templates";
@@ -21,32 +27,92 @@ const families=[
  {name:"dms",reader:readDmsNotifications,route:dmsRoute,row:dms,table:"f10_dms_personal_notification_read",columns:"id,document_id,recipient_user_id,subject,message,channel,status,scheduled_for,read_at,bridge_status,global_notification_id,global_email_queue_id,visible_document_id,document_no"},
  {name:"report-deliveries",reader:readReportDeliveries,route:reportsRoute,row:delivery,table:"erp_report_delivery_logs",columns:"id,run_id,delivery_type,recipient_to,subject,attachment_format,attachment_filename,provider,delivery_status,sent_at,created_at,error_message"},
 ];
+const viewCriteria={search:"Synthetic"};
 const result=(rows:unknown[],count=rows.length)=>({data:rows,count,error:null});
 afterEach(()=>Object.assign(s,{permissions:["notifications.admin","reports.history.view","dms.admin"],scopedOnly:false,active:true,calls:[],results:[],auth:0}));
 for(const f of families){
  it(f.name+" reads bounded exact complete pages beyond the previous cap and strips unknown private fields",async()=>{
   s.results=[result([{...f.row,metadata_json:{secret:"PRIVATE_METADATA"},html_template:"PRIVATE_HTML"}],1101)];
-  const r=await f.reader({page:12,pageSize:100});expect(r.success).toBe(true);expect(r.data?.totalCount).toBe(1101);expect(s.calls).toContainEqual(["range",1100,1199]);
+  const r=await f.reader({page:12,pageSize:100,...(f.name==="dms"?viewCriteria:{})});
+  if (!r.success) throw new Error("Expected a successful supplemental read");
+  expect(r.data?.totalCount).toBe(1101);expect(s.calls).toContainEqual(["range",1100,1199]);
   expect(s.calls).toContainEqual(["from",f.table]);expect(s.calls).toContainEqual(["select",f.columns,{count:"exact",head:false}]);expect(JSON.stringify(r)).not.toContain("PRIVATE");
  });
  it(f.name+" denies before database access",async()=>{s.permissions=[];expect(await f.reader({})).toMatchObject({success:false,error:"Permission denied"});expect(s.calls).toEqual([]);});
  it(f.name+" rejects suspended principals",async()=>{s.active=false;expect((await f.reader({})).success).toBe(false);expect(s.calls).toEqual([]);});
  it.each([{page:0},{pageSize:101},{page:100001},{search:"a".repeat(201)},{unexpected:true}])(f.name+" rejects invalid criteria %j",async input=>{expect((await f.reader(input)).success).toBe(false);expect(s.calls).toEqual([]);expect(s.auth).toBe(0);});
  it.each(["count","short","duplicate","error"])(f.name+" rejects invalid result %s",async kind=>{
-  s.results=[kind==="error"?{error:{message:"PRIVATE_PROVIDER"},data:null,count:null}:kind==="count"?result([],NaN):kind==="short"?result([f.row],3):result([f.row,f.row])];const r=await f.reader({});expect(r.success).toBe(false);expect(JSON.stringify(r)).not.toContain("PRIVATE");
+  s.results=[kind==="error"?{error:{message:"PRIVATE_PROVIDER"},data:null,count:null}:kind==="count"?result([],NaN):kind==="short"?result([f.row],3):result([f.row,f.row])];const r=await f.reader(f.name==="dms"?viewCriteria:{});expect(r.success).toBe(false);expect(JSON.stringify(r)).not.toContain("PRIVATE");
  });
- it(f.name+" supports exhausted page recount but not missing counts",async()=>{s.results=[{data:null,count:null,status:416,error:{code:"PGRST103"}},{data:null,count:7,error:null}];const r=await f.reader({page:3,pageSize:25});expect(r).toMatchObject({success:true,data:{rows:[],totalCount:7,page:3}});});
+ it(f.name+" supports exhausted page recount but not missing counts",async()=>{s.results=[{data:null,count:null,status:416,error:{code:"PGRST103"}},{data:null,count:7,error:null}];const r=await f.reader({page:3,pageSize:25,...(f.name==="dms"?viewCriteria:{})});expect(r).toMatchObject({success:true,data:{rows:[],totalCount:7,page:3}});});
  it(f.name+" propagates cancellation without auth",async()=>{const c=new AbortController();c.abort();await expect(f.reader({},undefined,c.signal)).rejects.toMatchObject({name:"AbortError"});expect(s.auth).toBe(0);});
  it(f.name+" routes have private opaque failure responses",async()=>{s.results=[{error:{message:"PRIVATE"},data:null,count:null}];const r=await f.route(new Request("http://localhost/api/reads/test",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}));expect(r.status).toBe(503);expect(r.headers.get("Cache-Control")).toContain("private, no-store");expect(r.headers.get("Vary")).toBe("Cookie");expect(await r.text()).not.toContain("PRIVATE");});
 }
 it("DMS uses the current profile, masks wrong recipients and cannot accept caller-provided recipient IDs",async()=>{
- s.results=[result([dms])];expect((await readDmsNotifications({})).success).toBe(true);expect(s.calls).toContainEqual(["eq","recipient_user_id",6]);
- s.results=[result([{...dms,recipient_user_id:7}])];expect((await readDmsNotifications({})).success).toBe(false);
+ s.results=[result([dms])];expect((await readDmsNotifications(viewCriteria)).success).toBe(true);expect(s.calls).toContainEqual(["eq","recipient_user_id",6]);
+ s.results=[result([{...dms,recipient_user_id:7}])];expect((await readDmsNotifications(viewCriteria)).success).toBe(false);
  expect((await readDmsNotifications({recipient_user_id:7})).success).toBe(false);
 });
 it("view-only DMS users cannot request all notifications",async()=>{s.permissions=["dms.notifications.view"];expect(await readDmsNotifications({audience:"all"})).toMatchObject({success:false,error:"Permission denied"});expect(s.calls).toEqual([]);});
 it("DMS unread filters use canonical pending state, excluding archived/failed operational rows",async()=>{s.results=[result([])];await readDmsNotifications({unreadOnly:true,bridgeStatus:"not_bridged",channel:"email_ready"});expect(s.calls).toContainEqual(["eq","status","pending"]);expect(s.calls).toContainEqual(["eq","channel","email_ready"]);});
 it('DMS admin operational view retains producer/bridge history, separate from personal delivery',async()=>{s.results=[result([])];await readDmsNotifications({audience:'all'});expect(s.calls).toContainEqual(['from','perf_dms_notification_read']);});
+it("global administrator personal notifications use the recipient-bound view and exact current recipient", async () => {
+ const global = { profile:{id:6,must_change_password:false}, roleCodes:["system_admin"], permissionCodes:[],
+  roleAssignments:[{roleId:1,roleCode:"system_admin",ownerCompanyId:null,branchId:null,permissionCodes:[]}],
+  isAccountActive:true } as unknown as Parameters<typeof readDmsNotifications>[1];
+ s.results=[result([dms]),result([])];
+ expect(await readDmsNotifications({unreadOnly:true,...viewCriteria},global)).toMatchObject({success:true,data:{totalCount:1}});
+ expect(s.calls).toContainEqual(["from","perf_dms_my_notification_read"]);
+ expect(s.calls).toContainEqual(["eq","recipient_user_id",6]);
+ expect(s.calls).toContainEqual(["eq","status","pending"]);
+ s.calls=[];
+ expect((await readDmsNotifications({audience:"all"},global)).success).toBe(true);
+ expect(s.calls).toContainEqual(["from","perf_dms_notification_read"]);
+});
+const personalResult=(rows:unknown[],totalCount=rows.length)=>({data:{rows,totalCount},error:null});
+it("My and Unread send only bounded personal page criteria for database-side labels",async()=>{
+ const controller=new AbortController();
+ s.results=[personalResult([{...dms,visible_document_id:null,document_no:null,private:"PRIVATE"}])];
+ const read=await readDmsNotifications({unreadOnly:true,pageSize:1},undefined,controller.signal);
+ expect(read).toMatchObject({success:true,data:{rows:[{visible_document_id:null,document_no:null}],totalCount:1}});
+ expect(s.calls).toEqual([
+  ["rpc","perf_dms_personal_notification_page",{p_page:1,p_page_size:1,p_unread_only:true},{get:true}],
+  ["abortSignal",controller.signal],
+ ]);
+ expect(JSON.stringify(read)).not.toContain("PRIVATE");
+});
+it("personal default-sort deep pages retain the exact count when empty",async()=>{
+ s.results=[personalResult([],1101)];
+ expect(await readDmsNotifications({page:100000,pageSize:25})).toMatchObject({
+  success:true,data:{page:100000,pageSize:25,rows:[],totalCount:1101}});
+ expect(s.calls).toEqual([["rpc","perf_dms_personal_notification_page",{p_page:100000,p_page_size:25,p_unread_only:false},{get:true}]]);
+});
+it.each([
+ [{...dms,recipient_user_id:7}],
+ [{...dms,visible_document_id:3}],
+ [{...dms,visible_document_id:null}],
+])("personal page rejects mismatched authority or a label without a visible document: %j",async row=>{
+ s.results=[personalResult([row])];
+ expect((await readDmsNotifications({})).success).toBe(false);
+});
+it("a failed personal read preserves opaque failure and does not try a broader projection",async()=>{
+ s.results=[{data:null,error:{code:"42501",message:"PRIVATE"}}];
+ const read=await readDmsNotifications({});
+ expect(read.success).toBe(false);expect(JSON.stringify(read)).not.toContain("PRIVATE");
+ expect(s.calls.filter(c=>c[0]==="from")).toEqual([]);
+});
+it("an explicitly missing personal RPC preserves the previous reader during rollout",async()=>{
+ s.results=[{data:null,error:{code:"PGRST202",message:"missing cache"}},result([dms])];
+ expect((await readDmsNotifications({})).success).toBe(true);
+ expect(s.calls).toContainEqual(["from","f10_dms_personal_notification_read"]);
+});
+it("document-number sort uses the original authorized projection before paging",async()=>{
+ s.results=[result([dms])];
+ expect((await readDmsNotifications({sorting:[{id:"document_no",desc:false}]})).success).toBe(true);
+ expect(s.calls).toContainEqual(["from","f10_dms_personal_notification_read"]);
+ expect(s.calls).toContainEqual(["order","document_no",{ascending:true,nullsFirst:false}]);
+ expect(s.calls.every(c=>c[0]!=="rpc")).toBe(true);
+});
 it("template list does not load wording and detail requires view AND management",async()=>{
  s.permissions=["notifications.templates.view"];expect(await readNotificationTemplateDetail({id:1})).toMatchObject({success:false,error:"Permission denied"});expect(s.calls).toEqual([]);
  s.permissions=["notifications.templates.manage"];expect((await readNotificationTemplateDetail({id:1})).success).toBe(false);

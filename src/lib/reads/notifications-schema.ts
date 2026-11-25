@@ -30,3 +30,9 @@ export type NotificationCriteria = z.infer<typeof notificationCriteriaSchema>;
 export type NotificationPage = z.infer<typeof notificationPageSchema>;
 export type NotificationReadRow = z.infer<typeof notificationRowSchema>;
 export const unreadCountSchema = z.object({count: z.number().int().nonnegative().refine(Number.isSafeInteger)}).strict();
+
+export const notificationPreviewSchema = z.object({
+  rows: z.array(notificationRowSchema.pick({
+    id: true, title: true, message: true, severity: true, createdAt: true, actionUrl: true, actionLabel: true,
+  })).max(10),
+}).strict().refine(v => new Set(v.rows.map(row => row.id)).size === v.rows.length, "Repeated notification");

@@ -1,5 +1,7 @@
 "use server";
 
+import { readAllPages } from "@/server/reads/all-pages";
+
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext } from "@/lib/rbac/check";
 import { canManageDmsNotificationSettings, canViewDmsNotificationSettings } from "@/lib/notifications/access";
@@ -164,34 +166,20 @@ export async function getDmsNotificationRecipientOptions(): Promise<
     if (!ctx.profile) return { success: false, error: "Not authenticated" };
     if (!canManageDmsNotificationSettings(ctx)) return { success: false, error: "Permission denied" };
 
-    const [rolesResult, usersResult] = await Promise.all([
-      supabase
+    const [roleRows, userRows] = await Promise.all([
+      readAllPages(async (from, to) => await supabase
         .from("roles")
-        .select("role_code, role_name")
-        .order("role_name"),
-      supabase
+        .select("role_code, role_name", { count: "exact" })
+        .order("role_name").order("role_code").range(from, to), { identity: row => row.role_code }),
+      readAllPages(async (from, to) => await supabase
         .from("user_profiles")
-        .select("id, full_name, display_name")
+        .select("id, full_name, display_name", { count: "exact" })
         .eq("status", "active")
-        .order("full_name"),
+        .order("full_name").order("id").range(from, to), { identity: row => row.id }),
     ]);
 
-    const roles: RoleOption[] = (rolesResult.data ?? []).map((r) => {
-      const row = r as Record<string, unknown>;
-      return { role_code: row.role_code as string, role_name: row.role_name as string };
-    });
-
-    const users: UserOption[] = (usersResult.data ?? []).map((u) => {
-      const row = u as Record<string, unknown>;
-      return {
-        id: row.id as number,
-        full_name: row.full_name as string | null,
-        display_name: row.display_name as string | null,
-      };
-    });
-
-    return { success: true, data: { roles, users } };
-  } catch (e) {
-    return { success: false, error: String(e) };
+    return { success: true, data: { roles: roleRows, users: userRows } };
+  } catch {
+    return { success: false, error: "Notification recipient choices could not be loaded. Please retry." };
   }
 }

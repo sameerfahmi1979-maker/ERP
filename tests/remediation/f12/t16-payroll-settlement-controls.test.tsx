@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { AllocationForm, HandoffForm, ReversePaymentForm } from "@/features/hr/payroll-settlement/payroll-settlement-forms";
+import { AllocationForm, HandoffForm, PrepareFiles, ReversePaymentForm } from "@/features/hr/payroll-settlement/payroll-settlement-forms";
 
 const mock = vi.hoisted(() => ({ options: vi.fn(), save: vi.fn(), refresh: vi.fn() }));
 vi.mock("@/server/actions/hr/payroll-settlement", () => ({
   listPayrollEvidenceOptions: mock.options, savePayrollSettlementCommand: mock.save,
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mock.refresh }) }));
+vi.mock("@/server/actions/hr/payroll-workspace-refresh", () => ({ refreshPayrollWorkspace: mock.refresh }));
 
 const scope = { company: 17, branch: 22 };
 const batch = "6371156a-70da-4044-a9c2-d17f1287678a";
@@ -40,7 +40,8 @@ it("records submission separately and retries the exact selected evidence withou
     },
   });
   fireEvent.click(screen.getByRole("button", { name: "Retry same request" }));
-  await waitFor(() => expect(mock.refresh).toHaveBeenCalledOnce());
+  await screen.findByText("Bank submission recorded.");
+  expect(mock.refresh).not.toHaveBeenCalled();
   expect(mock.save.mock.calls[1][0]).toEqual(mock.save.mock.calls[0][0]);
 });
 
@@ -100,3 +101,55 @@ it("uses explicit zero for a documented recovery shortfall while keeping ordinar
     lines: [], close_recoveries: [{ line, amount: "0.00" }], document: 81, version: 82, file: 83,
   } });
 });
+
+it("retries a failed workspace refresh without running a confirmed bank command again", async () => {
+  const review = "4d7b2841-3765-47f7-99fb-28cbc2d875c1";
+  mock.save.mockResolvedValueOnce({ ok: true, receipt: { batch, state: "prepared" }, refreshRequired: true });
+  mock.refresh.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+  render(<PrepareFiles scope={scope} sealed={{ review, version: wpsFile, digest: "5".repeat(64) }} />);
+  fireEvent.click(screen.getByRole("button", { name: "Prepare WPS files" }));
+  await screen.findByRole("alert");
+  expect(screen.getByText("Payroll files prepared.")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Retry same request" })).toBeNull();
+  expect((screen.getByRole("button", { name: "Prepare WPS files" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Retry refreshing" }));
+  await waitFor(() => expect(mock.refresh).toHaveBeenCalledOnce());
+  expect(await screen.findByRole("button", { name: "Retry refreshing" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Retry refreshing" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  expect(mock.refresh.mock.calls).toEqual([["settlement"], ["settlement"]]);
+  expect(mock.save).toHaveBeenCalledOnce();
+});
+
+it.each(["Current payroll scope is unavailable.", "The selected version changed."])(
+  "retains the operation after loss and a later rejection (%s)", async denied => {
+    const review = "4d7b2841-3765-47f7-99fb-28cbc2d875c1";
+    const saved = new Map<string, { batch: string; state: string }>();
+    let mayReadReceipt = true;
+    mock.save.mockImplementation(async (request: { operation: string }) => {
+      if (!mayReadReceipt) return { ok: false, error: denied, uncertain: false };
+      const retained = saved.get(request.operation);
+      if (retained) return { ok: true, receipt: retained };
+      saved.set(request.operation, { batch, state: "prepared" });
+      throw new Error("Command response lost after commit");
+    });
+    render(<PrepareFiles scope={scope} sealed={{ review, version: wpsFile, digest: "5".repeat(64) }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Prepare WPS files" }));
+    await screen.findByText("The outcome could not be confirmed. Retry the same request.");
+    const original = mock.save.mock.calls[0][0];
+    expect(saved.size).toBe(1);
+
+    mayReadReceipt = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry same request" }));
+    await screen.findByText(denied);
+    expect(screen.queryByText("Payroll files prepared.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Prepare WPS files" })).toBeNull();
+    expect(saved.size).toBe(1);
+
+    mayReadReceipt = true;
+    fireEvent.click(screen.getByRole("button", { name: "Retry same request" }));
+    await screen.findByText("Payroll files prepared.");
+    expect(mock.save.mock.calls).toEqual([[original], [original], [original]]);
+    expect(saved.size).toBe(1);
+  },
+);

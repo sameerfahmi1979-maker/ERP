@@ -275,7 +275,7 @@ export interface NotificationEventPorts {
  canContinue?:()=>boolean;
  recipientLimit?:number;
  prepare?:(event:NotificationEvent)=>Promise<{ready:false}|{ready:true;recipients:Recipient[]}>;
- authorize?:(event:NotificationEvent,profile:number)=>Promise<boolean>;
+ authorize?:(event:NotificationEvent,profile:number,action:'record'|'resume_channel')=>Promise<boolean>;
 }
 /** Failed resolution never becomes empty success; one recipient cannot erase
  * prior committed recipients. Replays always use the frozen original roster. */
@@ -300,7 +300,7 @@ export async function runNotificationEventBatch(ports:NotificationEventPorts){
      if(recipient.state==='created'){
       if(['in_app_created_email_held_no_verified_mailbox','email_only_held_no_verified_mailbox'].includes(recipient.outcome??'')&&ports.resumeChannel){
        if(remaining===0||ports.canContinue?.()===false){yielded=true;break;}
-       const allowed=ports.authorize?await ports.authorize(event,recipient.profile_id):current.includes(recipient.profile_id);
+       const allowed=ports.authorize?await ports.authorize(event,recipient.profile_id,'resume_channel'):current.includes(recipient.profile_id);
        const result=await ports.resumeChannel(event,recipient.profile_id,allowed);remaining--;
        held||=result.state!=='created'||!!result.outcome?.includes('_held_');
       }else held||=!!recipient.outcome?.includes('_held_');
@@ -308,7 +308,7 @@ export async function runNotificationEventBatch(ports:NotificationEventPorts){
      }
      if(recipient.state==='held'){held=true;continue;}
      if(remaining===0||ports.canContinue?.()===false){yielded=true;break;}
-     const allowed=ports.authorize?await ports.authorize(event,recipient.profile_id):current.includes(recipient.profile_id);
+     const allowed=ports.authorize?await ports.authorize(event,recipient.profile_id,'record'):current.includes(recipient.profile_id);
      const r=await ports.record(event,recipient.profile_id,allowed);
      remaining--;
      held||=r.state!=='created'||!!r.outcome?.includes('_held_');
@@ -358,7 +358,13 @@ export async function processNotificationEvents(limit=10){
    }
    return {ready:false};
   },
-  authorize:async(event,profile)=>(await resolveNotificationRecipients(event,db,undefined,{candidateIds:[profile]})).includes(profile),
+  authorize:async(event,profile,action)=>{
+   // The T19 recorder locks the lease, policy, source and profile authority,
+   // then rechecks current eligibility before writing the in-app receipt.
+   if(action==='record'&&positive.safeParse(event.source_snapshot.t19_policy_id).success&&
+      ['fleet_asset_evidence','employee_identity_documents','employee_medical_insurances'].includes(event.source_table))return true;
+   return (await resolveNotificationRecipients(event,db,undefined,{candidateIds:[profile]})).includes(profile);
+  },
   resolve:async event=>{
    const considered=new Set<number>();
    const ids=await resolveNotificationRecipients(event,db,considered);

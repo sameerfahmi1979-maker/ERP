@@ -1,11 +1,10 @@
 import { redirect } from "next/navigation";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 
-import { getDmsNewDocumentDefaults } from "@/server/actions/dms/documents";
 import { isDmsBatchIntakeEnabled, findDmsBatchAdmission } from "@/server/actions/dms/batch-intake";
 import { isDmsAiAutoStartEnabled } from "@/server/actions/dms/ai-intake";
 import { DmsUploadInboxPageClient } from "@/features/dms/upload/dms-upload-inbox-page-client";
-import type { DmsDocumentTypeOption, DmsEntityContext } from "@/features/dms/upload/dms-create-document-from-upload-dialog";
+import type { DmsEntityContext } from "@/features/dms/upload/dms-create-document-from-upload-dialog";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import {parseDmsUploadContext} from '@/lib/dms/upload-context';
 import { DmsLoadError } from "@/features/dms/documents/dms-load-error";
@@ -20,10 +19,9 @@ export default async function DmsInboxPage({
 }) {
   const authContext = await getAuthContext();
 
-  if (!hasPermission(authContext, "dms.documents.upload") && !hasPermission(authContext, "dms.admin")) {
-    if (!hasPermission(authContext, "dms.documents.view")) {
-      redirect("/access-denied");
-    }
+  const canViewInbox = hasPermission(authContext, "dms.documents.view") || hasPermission(authContext, "dms.admin");
+  if (!canViewInbox && !hasPermission(authContext, "dms.documents.upload")) {
+    redirect("/access-denied");
   }
 
   const params = await searchParams;
@@ -37,13 +35,11 @@ export default async function DmsInboxPage({
   if(recoveryReceipt&&parsedContext.context&&JSON.stringify({type:parsedContext.context.entityType,id:parsedContext.context.entityId})!==JSON.stringify(originalContext))return <div role="alert" className="p-6">This recovery link conflicts with the original batch subject. No replacement was created.</div>;
   const entityContext:DmsEntityContext|null=originalContext?{entityType:originalContext.type,entityId:originalContext.id}:parsedContext.context;
 
-  const [defaultsResult, batchEnabled, autoStartEnabled] = await Promise.all([
-    getDmsNewDocumentDefaults(),
+  const [batchEnabled, autoStartEnabled] = await Promise.all([
     isDmsBatchIntakeEnabled(),
     isDmsAiAutoStartEnabled(),
   ]);
 
-  const documentTypes = (defaultsResult.data?.documentTypes ?? []) as DmsDocumentTypeOption[];
 
   return (
     <div className="p-6 space-y-4">
@@ -53,11 +49,10 @@ export default async function DmsInboxPage({
         breadcrumbs={[{ label: "DMS", href: "/dms" }, { label: "Upload Inbox" }]}
       />
 
-      {!defaultsResult.success ? <DmsLoadError /> : <DmsUploadInboxPageClient
+      {!canViewInbox ? <DmsLoadError /> : <DmsUploadInboxPageClient
         key={recoveryReceipt?.operation_id??'inbox'}
         initialSessions={[]}
         documents={[]}
-        documentTypes={documentTypes}
         entityContext={entityContext}
         isAdmin={hasPermission(authContext, "dms.admin")}
         batchEnabled={batchEnabled}

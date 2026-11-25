@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { Button } from "@/components/ui/button";
@@ -100,6 +101,15 @@ function WorkQueueResults({ data, scope, filters }: { data: WorkQueuePage; scope
   </section>;
 }
 
+async function WorkQueueOutcome({ scope, query }: { scope: WorkQueueScope; query: WorkQueueQuery }) {
+  const result = await readWorkQueue(query);
+  if (result.status === "ok") return <WorkQueueResults data={result.data} scope={scope} filters={query} />;
+  if (result.status === "restricted") return <p role="alert">That scope or queue is restricted.</p>;
+  return <p role="alert">
+    Work items could not be loaded. <Link className={linkClass} href={queueHref(scope, query)}>Retry</Link>
+  </p>;
+}
+
 export async function WorkQueueWorkspace({ params }: { params: Params }) {
   const scopesResult = await readWorkQueueScopes();
   const choices = scopesResult.status === "ok" ? scopesResult.data : [];
@@ -114,7 +124,7 @@ export async function WorkQueueWorkspace({ params }: { params: Params }) {
   });
   const restrictedSelection = (params.scope !== undefined && !activeScope)
     || (activeScope && kind.success && kind.data !== "all" && !activeScope.kinds.includes(kind.data));
-  const result = activeScope && !restrictedSelection && query.success ? await readWorkQueue(query.data) : undefined;
+
 
   return <main className="space-y-5">
     <ERPPageHeader title="Work queues" description="Review open work by employer, branch and workflow."
@@ -145,11 +155,9 @@ export async function WorkQueueWorkspace({ params }: { params: Params }) {
         </label>
         <Button type="submit">Apply filters</Button>
       </form>
-      {result?.status === "restricted" && <p role="alert">That scope or queue is restricted.</p>}
-      {result?.status === "failed" && <p role="alert">
-        Work items could not be loaded. <Link className={linkClass} href={queueHref(activeScope, query.data)}>Retry</Link>
-      </p>}
-      {result?.status === "ok" && <WorkQueueResults data={result.data} scope={activeScope} filters={query.data} />}
+      <Suspense fallback={<p role="status" className="text-sm">Loading work items…</p>}>
+        <WorkQueueOutcome scope={activeScope} query={query.data} />
+      </Suspense>
     </>}
   </main>;
 }

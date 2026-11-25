@@ -17,7 +17,8 @@ export default async function WorkshopJobIndex({ searchParams }: { searchParams:
   if (admission === "overview") return <OperationsAdminOverview route={path} requestedScope={params.scope} canOperate={canOperate} />;
   if (admission === "denied") notFound();
   const before = fleetId.safeParse(Number(params.before)).data;
-  const rows = await listWorkshopWork(before);
+  const page = await listWorkshopWork(before);
+  const rows = page?.rows;
   return <main className="space-y-4">
     <ERPPageHeader title="Workshop job work" breadcrumbs={[{ label: "Workshop" }, { label: "Job work" }]} />
     {!rows ? <p role="alert">Job cards could not be loaded.</p> :
@@ -30,6 +31,6 @@ export default async function WorkshopJobIndex({ searchParams }: { searchParams:
           <p>{row.title} · {row.state.replaceAll("-", " ")}</p>
         </li>)}
       </ul>}
-    {rows?.length === 40 && <Link className="text-primary hover:underline" href={`${path}?before=${rows[39].id}`}>Older job cards</Link>}
+    {page?.next_before && <Link className="text-primary hover:underline" href={`${path}?before=${page.next_before}`}>Older job cards</Link>}
   </main>;
 }

@@ -5,6 +5,7 @@
  * All queries respect RLS. No mutations.
  */
 
+import { observeAssistantQuery } from "./publication-reads";
 import { createClient } from "@/lib/supabase/server";
 import { readAuthorizedAssistantEntity, normalizeAssistantReference } from "./entity-access";
 import type { AiEntityReference } from "@/lib/ai/foundation/contracts";
@@ -51,10 +52,11 @@ export async function getComplianceFindingsForHandler(
     .eq("entity_id", entityId)
     .is("deleted_at", null)
     .in("status", ["open", "pending_review"])
-    .order("severity", { ascending: true })
+    .order("severity", { ascending: true }).order("id")
     .limit(limit);
 
   if (error || !Array.isArray(data)) throw new AssistantReadUnavailable();
+  observeAssistantQuery(() => ({kind: "compliance", reference: ref, limit, result: data.map(row => [row.id,row.severity,row.ai_reason ?? row.recommended_action ?? row.finding_type,row.status])}));
   return data.map(row => ({ id: row.id, severity: row.severity, finding_text: row.ai_reason ?? row.recommended_action ?? row.finding_type, status: row.status }));
 }
 
@@ -71,7 +73,7 @@ export async function getDuplicateCandidatesForHandler(
     .or(`and(entity_type_a.eq.${ref.entityType},entity_id_a.eq.${entityId}),and(entity_type_b.eq.${ref.entityType},entity_id_b.eq.${entityId})`)
     .eq("status", "pending")
     .is("deleted_at", null)
-    .order("confidence_score", { ascending: false })
+    .order("confidence_score", { ascending: false }).order("id")
     .limit(limit);
 
   if (error || !Array.isArray(data)) throw new AssistantReadUnavailable();
@@ -89,5 +91,6 @@ export async function getDuplicateCandidatesForHandler(
     }
     items.push({ id: row.id, similarity_score: row.confidence_score, status: row.status, sourceReferences: [a, b] });
   }
+  observeAssistantQuery(() => ({kind: "duplicates", reference: ref, limit, result: data.map(row => [row.id,row.confidence_score,row.status,row.entity_type_a,row.entity_id_a,row.entity_type_b,row.entity_id_b])}));
   return items;
 }

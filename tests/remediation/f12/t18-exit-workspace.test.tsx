@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { ExitSettlementWorkspace } from "@/features/hr/exit-settlement/exit-settlement-workspace";
 
@@ -123,7 +123,8 @@ it("opens clearance against the existing case and keeps the server scope", async
   chooseAction("Open exit clearance");
   fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Open verified exit clearance" } });
   fireEvent.click(screen.getByRole("button", { name: "Open exit clearance" }));
-  await waitFor(() => expect(ports.refresh).toHaveBeenCalledOnce());
+  await screen.findByText("Settlement action recorded.");
+  expect(ports.refresh).not.toHaveBeenCalled();
   expect(ports.change.mock.calls[0][0]).toEqual({
     company: 17, branch: 22, eos: 73, operation: expect.any(String), action: "activate",
     data: { reason: "Open verified exit clearance" },
@@ -138,7 +139,8 @@ it("keeps a recovery decision explicit and sends its current case fingerprint", 
   fireEvent.change(screen.getByLabelText("Case disposition"), { target: { value: "separate" } });
   fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "The authority review remains open." } });
   fireEvent.click(screen.getByRole("button", { name: "Recommend disposition" }));
-  await waitFor(() => expect(ports.refresh).toHaveBeenCalledOnce());
+  await screen.findByText("Settlement action recorded.");
+  expect(ports.refresh).not.toHaveBeenCalled();
   expect(ports.change.mock.calls[0][0].data).toEqual({
     case: 8, fingerprint, disposition: "separate", reason: "The authority review remains open.",
   });
@@ -158,7 +160,8 @@ it("keeps an unconfirmed exact GM approval frozen and retries the same operation
     data: { version, digest, reason: "Reviewed the exact settlement version and evidence." },
   });
   fireEvent.click(screen.getByRole("button", { name: "Retry same request" }));
-  await waitFor(() => expect(ports.refresh).toHaveBeenCalledOnce());
+  await screen.findByText("Settlement action recorded.");
+  expect(ports.refresh).not.toHaveBeenCalled();
   expect(ports.change.mock.calls[1][0]).toEqual(ports.change.mock.calls[0][0]);
 });
 
@@ -186,7 +189,8 @@ it("closes a reconciled exit through the exact approved version", async () => {
   chooseAction("Close exit case");
   fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Clearance and exact payment verified." } });
   fireEvent.click(screen.getByRole("button", { name: "Close exit case" }));
-  await waitFor(() => expect(ports.refresh).toHaveBeenCalledOnce());
+  await screen.findByText("Settlement action recorded.");
+  expect(ports.refresh).not.toHaveBeenCalled();
   expect(ports.change.mock.calls[0][0]).toMatchObject({
     company: 17, branch: 22, eos: 73, action: "close-exit",
     data: { version, digest, reason: "Clearance and exact payment verified." },
@@ -212,7 +216,8 @@ it("records an approved bank outcome with exact amount and separate verified evi
   fireEvent.change(screen.getByLabelText("DMS version ID"), { target: { value: proof.version } });
   fireEvent.change(screen.getByLabelText("DMS file ID"), { target: { value: proof.file } });
   fireEvent.click(screen.getByRole("button", { name: "Record payment outcome" }));
-  await waitFor(() => expect(ports.refresh).toHaveBeenCalledOnce());
+  await screen.findByText("Settlement action recorded.");
+  expect(ports.refresh).not.toHaveBeenCalled();
   expect(ports.change.mock.calls[0][0]).toMatchObject({ action: "payment-receipt", data: {
     settlement_version: version, digest, reference: "FUND-425", outcome: "partial",
     amount: "425.10", currency: "AED", paid_on: "2026-11-20", ...proof,
@@ -244,7 +249,8 @@ it("allocates verified cash only to approved lines from an explicitly actionable
   fireEvent.change(screen.getByLabelText("Allocation for Unused annual leave"), { target: { value: "425.10" } });
   fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Matched payment against verified leave value." } });
   fireEvent.click(screen.getByRole("button", { name: "Allocate payment" }));
-  await waitFor(() => expect(ports.refresh).toHaveBeenCalledOnce());
+  await screen.findByText("Settlement action recorded.");
+  expect(ports.refresh).not.toHaveBeenCalled();
   expect(ports.change.mock.calls[0][0]).toMatchObject({ action: "payment-allocate", data: {
     settlement_version: version, digest, payment: movement, revision: 0,
     lines: [{ line, amount: "425.10" }],
@@ -269,7 +275,8 @@ it("proposes a dated settlement policy using explicit verified inputs", async ()
   })) fireEvent.change(form.getByLabelText(name), { target: { value } });
   fireEvent.click(form.getByLabelText("Bank transfer"));
   fireEvent.click(form.getByRole("button", { name: "Propose calculation policy" }));
-  await waitFor(() => expect(ports.refresh).toHaveBeenCalledOnce());
+  await screen.findByText("Settlement action recorded.");
+  expect(ports.refresh).not.toHaveBeenCalled();
   expect(ports.config.mock.calls[0][0]).toMatchObject({ domain: "policy", company: 17, branch: 22, action: "propose",
     data: { from: "2026-12-01", until: "2027-01-01", facts: policyFacts, reason: "Uses the verified employer terms." },
   });
@@ -284,7 +291,8 @@ it("shows the exact proposed policy and sends its digest for independent approva
   fireEvent.change(form.getByLabelText("Decision"), { target: { value: "approve" } });
   fireEvent.change(form.getByLabelText("Reason"), { target: { value: "Independently reviewed this rule set." } });
   fireEvent.click(form.getByRole("button", { name: "Decide policy 19" }));
-  await waitFor(() => expect(ports.refresh).toHaveBeenCalledOnce());
+  await screen.findByText("Settlement action recorded.");
+  expect(ports.refresh).not.toHaveBeenCalled();
   expect(ports.config.mock.calls[0][0]).toMatchObject({ domain: "policy", action: "approve",
     data: { policy: 19, digest, reason: "Independently reviewed this rule set." },
   });
@@ -303,7 +311,8 @@ it("verifies only the exact pending adjustment and preserves the scoped retry", 
   fireEvent.click(form.getByRole("button", { name: "Review adjustment 31" }));
   await screen.findByRole("alert");
   fireEvent.click(screen.getByRole("button", { name: "Retry same request" }));
-  await waitFor(() => expect(ports.refresh).toHaveBeenCalledOnce());
+  await screen.findByText("Settlement action recorded.");
+  expect(ports.refresh).not.toHaveBeenCalled();
   expect(ports.config.mock.calls[0][0]).toMatchObject({ domain: "adjustment", action: "verify", company: 17, branch: 22, eos: 73,
     data: { adjustment: 31, digest, reason: "Verified the adjustment original." },
   });
@@ -331,3 +340,16 @@ it("preserves the complete selected record through the server read adapter and r
   expect(await server.readExitWorkspace({ company: 17, branch: 22, eos: 74 })).toBeNull();
 });
 
+
+it("validates an exact native payment receipt against the approved settlement version", async () => {
+  const server = await vi.importActual<typeof import("@/server/actions/hr/final-settlement")>("@/server/actions/hr/final-settlement");
+  const input = {
+    operation: version, company: 17, branch: 22, eos: 73, action: "payment-start",
+    data: { settlement_version: version, digest, channel: "exit-bank-transfer" },
+  };
+  const receipt = { version, payment: null, state: "handoff-pending", revision: 0 };
+  ports.rpc.mockResolvedValueOnce({ data: { ...receipt, payment: movement }, error: null })
+    .mockResolvedValueOnce({ data: receipt, error: null });
+  await expect(server.changeExitSettlement(input)).resolves.toMatchObject({ ok: false, uncertain: true });
+  await expect(server.changeExitSettlement(input)).resolves.toEqual({ ok: true, receipt });
+});

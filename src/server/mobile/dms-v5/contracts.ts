@@ -61,6 +61,7 @@ export const mobileDmsV5Command=z.discriminatedUnion("op",[
  command("requiredChecklist",{parent,page}),
  command("documentRequestOptions",{parent,kind,documentId:id.optional(),sourceHash:hash.optional(),search,page}).refine(v=>(v.kind==="renewal")===(v.documentId!==undefined)&&(v.kind==="renewal"||v.sourceHash===undefined)),
  command("documentRequests",{audience:z.enum(["mine","assigned","parent"]),parent:parent.optional(),status:requestStatus.optional(),page}).refine(v=>(v.audience==="parent")===(v.parent!==undefined)),
+ command("documentRequestEvidence",{kind,parent,requestId:id,revision:id,documentTypeId:id}),
  command("documentShareRecipients",{...pageDoc,sourceHash:hash,search}),
  command("documentShares",pageDoc),
  command("documentShareResolve",{token:shareToken}),

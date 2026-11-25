@@ -1064,7 +1064,7 @@ export async function adminListApprovalWorkflows(): Promise<ActionResult<Workflo
     if (!(hasPermission(ctx, "dms.admin") || hasPermission(ctx, "dms.approvals.admin"))) return { success: false, error: "Permission denied" };
 
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const data = await readAllPages(async (from, to) => await supabase
       .from("dms_document_workflows")
       .select(`
         id, workflow_code, name_en, name_ar, description, is_active, owner_company_id, branch_id, configuration_version,
@@ -1074,13 +1074,13 @@ export async function adminListApprovalWorkflows(): Promise<ActionResult<Workflo
           doc_type:dms_document_types!document_type_id(name_en)
         ),
         steps:dms_document_workflow_steps!workflow_id(id, is_active)
-      `)
+      `, { count: "exact" })
       .is("deleted_at", null)
-      .order("name_en");
+      .order("name_en")
+      .order("id")
+      .range(from, to), { identity: row => row.id });
 
-    if (error) return { success: false, error: error.message };
-
-    const rows: WorkflowRow[] = (data ?? []).map((w) => {
+    const rows: WorkflowRow[] = data.map((w) => {
       const wf = w as unknown as {
         id: number; workflow_code: string; name_en: string; name_ar: string | null;
         description: string | null; is_active: boolean;

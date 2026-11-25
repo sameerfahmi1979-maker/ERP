@@ -1,5 +1,7 @@
 "use server";
 
+import { readAllPages } from "@/server/reads/all-pages";
+
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
@@ -99,23 +101,21 @@ export async function getDmsMetadataDefinitions(
 ): Promise<ActionResult<DmsMetadataDefinitionRow[]>> {
   try {
     const supabase = await createClient();
-    let query = supabase
-      .from("dms_metadata_definitions")
-      .select(`*, document_type:dms_document_types(type_code, name_en)`)
-      .is("deleted_at", null);
+    const data = await readAllPages(async (from, to) => {
+      let query = supabase
+        .from("dms_metadata_definitions")
+        .select("*, document_type:dms_document_types(type_code, name_en)", { count: "exact" })
+        .is("deleted_at", null);
 
-    if (filters?.document_type_id !== undefined) query = query.eq("document_type_id", filters.document_type_id);
-    if (filters?.field_type !== undefined) query = query.eq("field_type", filters.field_type);
-    if (filters?.is_required !== undefined) query = query.eq("is_required", filters.is_required);
-    if (filters?.is_ai_extractable !== undefined) query = query.eq("is_ai_extractable", filters.is_ai_extractable);
-    if (filters?.is_active !== undefined) query = query.eq("is_active", filters.is_active);
+      if (filters?.document_type_id !== undefined) query = query.eq("document_type_id", filters.document_type_id);
+      if (filters?.field_type !== undefined) query = query.eq("field_type", filters.field_type);
+      if (filters?.is_required !== undefined) query = query.eq("is_required", filters.is_required);
+      if (filters?.is_ai_extractable !== undefined) query = query.eq("is_ai_extractable", filters.is_ai_extractable);
+      if (filters?.is_active !== undefined) query = query.eq("is_active", filters.is_active);
 
-    const { data, error } = await query
-      .order("document_type_id", { ascending: true })
-      .order("sort_order", { ascending: true })
-      .order("field_label_en", { ascending: true });
-    if (error) return { success: false, error: error.message };
-    const rows = (data ?? []).map((row) => ({
+      return await query.order("document_type_id").order("sort_order").order("field_label_en").order("id").range(from, to);
+    }, { identity: row => row.id });
+    const rows = data.map((row) => ({
       ...mapMetadataDefinitionRow(row as Record<string, unknown>),
       is_active: (row as { is_active: boolean }).is_active,
       created_at: (row as { created_at: string }).created_at,

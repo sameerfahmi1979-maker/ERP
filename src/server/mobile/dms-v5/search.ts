@@ -1,15 +1,16 @@
 import {z} from "zod";
 import type {AuthContext} from "@/lib/rbac/check";
 import {createClient} from "@/lib/supabase/server";
-import {askDmsDocumentsQuestion} from "@/server/actions/dms/ai-search";
+import {askDmsDocumentsQuestion,searchDmsDocumentsByIntent} from "@/server/actions/dms/ai-search";
 import {compareDocumentSources} from "@/server/ai/document-comparison";
 import {askVerifiedDmsQuestion} from "@/server/actions/dms/document-qa";
 import {readDmsNotifications} from "@/server/reads/dms-notifications";
 import {markDmsNotificationRead,dismissDmsNotification} from "@/server/actions/dms/notifications";
-import {admitMobileDmsSource,verifyMobileDmsDelivery,verifySession,DmsError,rpc,unavailable,invalid} from "./access";
-import {id,summary,completePage,type CommandFor} from "./contracts";
+import {admitMobileDmsSource,verifyMobileDmsDelivery,verifySession,DmsError,rpc,unavailable,invalid,conflict} from "./access";
+import {hash,id,summary,completePage,type CommandFor} from "./contracts";
 const fields="id,title,document_no,status,expiry_date,document_type:dms_document_types(name_en)";
 const safeRow=z.object({id,title:z.string(),document_no:z.string(),status:z.string(),expiry_date:z.string().nullable(),document_type:z.object({name_en:z.string().nullable()}).nullable()});
+const searchSource=z.strictObject({documentId:id,versionId:id,sourceHash:hash});
 function documentSummary(raw:unknown){const r=safeRow.parse(raw);return summary.parse({id:r.id,title:r.title,number:r.document_no,status:r.status,expiry:r.expiry_date,type:r.document_type?.name_en??null});}
 export function parseQr(payload:string){
  const match=/^ALGT:DMS:1:([1-9][0-9]{0,15})$/.exec(payload);
@@ -39,18 +40,37 @@ export async function search(input:CommandFor<"documentQrLookup"|"documentNatura
   }
   case "documentNaturalSearch":{
    const parentCheck=async()=>{if(input.subject)await rpc("mobile_dms_document",{p_action:"search_parent",p_data:{parent:input.subject}},z.literal(true));};
+   const paging={page:input.page,pageSize:25};
+   const subject=input.subject?{type:input.subject.entityType,id:input.subject.entityId}:undefined;
    await parentCheck();
-   const r=await askDmsDocumentsQuestion(input.query,{},{page:input.page,pageSize:25},input.subject?{type:input.subject.entityType,id:input.subject.entityId}:undefined,true);
+   const r=await askDmsDocumentsQuestion(input.query,{},paging,subject,true);
    if(!r.success||!r.data){
     if(r.error?.startsWith("Choose the exact person or business record"))return {outcome:"clarification_required",rows:[],totalCount:null,hasMore:false,asOf:new Date().toISOString(),message:"Choose the exact person or site to continue."};
     throw new DmsError(503,"natural_search_unavailable","Natural-language document search is unavailable.");
    }
-   const bounds=await Promise.all(r.data.results.map(hit=>admitMobileDmsSource(ctx,{documentId:hit.documentId})));
+   const {intent,results,totalCount}=r.data;
+   const selections=results.map(({documentId})=>({documentId}));
+   const bounds=selections.length?await rpc("mobile_dms_search_sources",{p_sources:selections,p_recheck:false},z.array(searchSource).length(selections.length)):[];
+   if(bounds.some((bound,i)=>bound.documentId!==selections[i].documentId))conflict();
    const result=bounds.length?await db.from("dms_documents").select(fields).in("id",bounds.map(s=>s.documentId)).is("deleted_at",null):{data:[],error:null};
-   if(result.error||result.data?.length!==bounds.length)unavailable();const summaries=result.data.map(documentSummary);
-   const rows=bounds.map((s,i)=>{const doc=summaries.find(d=>d.id===s.documentId);const origin=r.data!.results[i].matchSource;if(!doc||!origin)unavailable();return {...doc,sourceHash:s.sourceHash,matchSource:origin,snippet:null};});
-   const page=completePage(rows,input.page,25,r.data.totalCount,row=>row.id);
-   await Promise.all(bounds.map(s=>verifyMobileDmsDelivery(ctx,s)));await parentCheck();
+   if(result.error||result.data?.length!==bounds.length)unavailable();
+   const summaries=new Map(result.data.map(raw=>{const doc=documentSummary(raw);return [doc.id,doc];}));
+   const rows=bounds.map((s,i)=>{const doc=summaries.get(s.documentId);const origin=results[i].matchSource;if(!doc||!origin)unavailable();return {...doc,sourceHash:s.sourceHash,matchSource:origin,snippet:null};});
+   const page=completePage(rows,input.page,25,totalCount,row=>row.id);
+   // Source fingerprints exclude searchable content. Recheck the authorized
+   // ordered page, origins and exact count using the already classified intent.
+   const current=await searchDmsDocumentsByIntent(intent,paging,{},subject,true);
+   if(!current.success||!current.data)unavailable();
+   const currentTotal=current.totalCount??(current.data.length===0?0:null);
+   if(currentTotal!==totalCount||current.data.length!==results.length||current.data.some((hit,i)=>
+    hit.documentId!==results[i].documentId||hit.matchSource!==results[i].matchSource))conflict();
+   if(bounds.length){
+    await rpc("mobile_dms_search_sources",{p_sources:bounds,p_recheck:true},z.literal(true));
+   }
+   await parentCheck();
+   // A view-only binding can remain valid after a scoped preview revocation.
+   // Do not deliver content-dependent origins or totals under a changed scope.
+   await verifySession(ctx,true);
    return {outcome:page.totalCount?"available":"no_matches",rows,totalCount:page.totalCount,hasMore:page.hasMore,asOf:page.asOf};
   }
   case "documentNotifications":{

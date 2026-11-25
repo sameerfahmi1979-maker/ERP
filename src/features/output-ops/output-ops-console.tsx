@@ -155,14 +155,17 @@ function OutputOpsSession() {
       if(!current() || request!==latest.current)return;
       setLoadFailed(!m.success || !l.success);
       if (m.success && m.data) setMetrics(m.data);
-      else if (m.error) toast.error("Metrics failed", { description: m.error });
+      else {
+        setMetrics(null);
+        if (m.error) toast.error("Metrics failed", { description: m.error });
+      }
       if (l.success && l.data) {
         setRows(l.data.rows);
         setTotal(l.data.total);
         setCanRetry(l.data.canRetry);
         setCanRevoke(l.data.canRevoke);
       } else if (l.error) toast.error("History failed", { description: l.error });
-      } catch { if(current() && request===latest.current){setLoadFailed(true);setCanRetry(false);setCanRevoke(false);} }
+      } catch { if(current() && request===latest.current){setLoadFailed(true);setMetrics(null);setCanRetry(false);setCanRevoke(false);} }
     });
   }, [page, stateFilter, classFilter, search, capture]);
 
@@ -231,6 +234,7 @@ function OutputOpsSession() {
   };
 
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const missingMetrics = isLoading ? "…" : "Unavailable";
   const stateEntries = useMemo(
     () => Object.entries(metrics?.stateCounts ?? {}).sort((a, b) => b[1] - a[1]),
     [metrics]
@@ -260,7 +264,7 @@ function OutputOpsSession() {
         <div className="rounded-lg border bg-card p-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><HeartPulse className="h-3.5 w-3.5" />Renderer</div>
           <div className="mt-1 flex items-center gap-1.5 text-sm font-semibold">
-            {metrics == null ? "…" : metrics.rendererHealthy ? (
+            {metrics == null ? missingMetrics : metrics.rendererHealthy ? (
               <><CheckCircle2 className="h-4 w-4 text-emerald-500 dark:text-emerald-300" /> Healthy</>
             ) : (
               <><ShieldAlert className="h-4 w-4 text-red-500 dark:text-red-300" /> Unreachable</>
@@ -269,48 +273,31 @@ function OutputOpsSession() {
         </div>
         <div className="rounded-lg border bg-card p-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Activity className="h-3.5 w-3.5" />Issued 24h</div>
-          <div className="mt-1 text-sm font-semibold">{metrics?.issuedLast24h ?? "…"}</div>
+          <div className="mt-1 text-sm font-semibold">{metrics?.issuedLast24h ?? missingMetrics}</div>
         </div>
         <div className="rounded-lg border bg-card p-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><FileWarning className="h-3.5 w-3.5" />Failed 24h</div>
-          <div className="mt-1 text-sm font-semibold">{metrics?.failedLast24h ?? "…"}</div>
+          <div className="mt-1 text-sm font-semibold">{metrics?.failedLast24h ?? missingMetrics}</div>
         </div>
         <div className="rounded-lg border bg-card p-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Clock className="h-3.5 w-3.5" />Avg render 24h</div>
-          <div className="mt-1 text-sm font-semibold">{metrics ? fmtMs(metrics.avgRenderMsLast24h) : "…"}</div>
+          <div className="mt-1 text-sm font-semibold">{metrics ? fmtMs(metrics.avgRenderMsLast24h) : missingMetrics}</div>
         </div>
         <div className="rounded-lg border bg-card p-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><AlertTriangle className="h-3.5 w-3.5" />Stuck in-flight</div>
-          <div className="mt-1 text-sm font-semibold">{metrics?.stuckInFlight.length ?? "…"}</div>
+          <div className="mt-1 text-sm font-semibold">{metrics?.stuckCount ?? missingMetrics}</div>
         </div>
         <div className="rounded-lg border bg-card p-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Ban className="h-3.5 w-3.5" />Voided serials</div>
-          <div className="mt-1 text-sm font-semibold">{metrics?.voidedSerials ?? "…"}</div>
+          <div className="mt-1 text-sm font-semibold">{metrics?.voidedSerials ?? missingMetrics}</div>
         </div>
         <div className="rounded-lg border bg-card p-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><CalendarClock className="h-3.5 w-3.5" />Schedule runs</div>
           <div className="mt-1 text-sm font-semibold">
-            {metrics == null ? "…" : (
-              <span>
-                {metrics.scheduleRuns.succeededLast24h} ok
-                {metrics.scheduleRuns.retryable > 0 && <span className="ml-1.5 text-amber-600 dark:text-amber-300">{metrics.scheduleRuns.retryable} retrying</span>}
-                {metrics.scheduleRuns.terminal > 0 && <span className="ml-1.5 text-red-600 dark:text-red-300">{metrics.scheduleRuns.terminal} failed</span>}
-              </span>
-            )}
+            {metrics == null ? missingMetrics : "Restricted"}
           </div>
         </div>
       </div>
-
-      {(metrics?.scheduleRuns.terminalRecent.length ?? 0) > 0 && (
-        <div className="rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/30 p-3 text-xs">
-          <span className="font-semibold text-red-700 dark:text-red-300">
-            {metrics!.scheduleRuns.terminalRecent.length} schedule run(s) failed terminally:
-          </span>{" "}
-          {metrics!.scheduleRuns.terminalRecent
-            .map((r) => `run #${r.id} (schedule ${r.schedule_id}): ${r.failure_reason ?? "no reason recorded"}`)
-            .join(" · ")}
-        </div>
-      )}
 
       {stateEntries.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
@@ -332,7 +319,7 @@ function OutputOpsSession() {
       {(metrics?.reconciliationRequired.length ?? 0) > 0 && (
         <div className="rounded-lg border border-orange-300 bg-orange-50 dark:bg-orange-950/30 p-3 text-xs">
           <span className="font-semibold text-orange-700 dark:text-orange-300">
-            {metrics!.reconciliationRequired.length} issuance(s) require reconciliation:
+            {metrics!.reconciliationCount} issuance(s) require reconciliation. Latest {metrics!.reconciliationRequired.length}.
           </span>{" "}
           {metrics!.reconciliationRequired.map((r) => `#${r.id} ${r.output_code ?? ""}`).join(", ")}
         </div>
@@ -436,7 +423,7 @@ function OutputOpsSession() {
                 <td data-column="duration" className="px-3 py-2">{fmtMs(r.total_duration_ms)}</td>
                 <td data-column="actions" className="px-3 py-2 text-right">
                   <div className="flex items-center gap-1 justify-end">
-                    {canRetry && !loadFailed && !isLoading && !r.revoked_at && !r.superseded_by_id && (["pending","rendering","uploaded","failed_retryable","reconciliation_required"].includes(r.lifecycle_state ?? "") || (r.lifecycle_state === "issued" && r.qr_status === "pending_activation")) && (
+                    {canRetry && r.canRetry && !loadFailed && !isLoading && !r.revoked_at && !r.superseded_by_id && (["pending","rendering","uploaded","failed_retryable","reconciliation_required"].includes(r.lifecycle_state ?? "") || (r.lifecycle_state === "issued" && r.qr_status === "pending_activation")) && (
                       <Button
                         variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
                         onClick={() => { setActionReason(""); setActionTarget({ kind: "retry", row: r }); }}
@@ -444,7 +431,7 @@ function OutputOpsSession() {
                         <RotateCcw className="h-3 w-3" /> Recover original
                       </Button>
                     )}
-                    {canRetry && !loadFailed && !isLoading && ["pending","rendering","uploaded","failed_retryable","reconciliation_required"].includes(r.lifecycle_state ?? "") && (
+                    {canRetry && r.canRetry && !loadFailed && !isLoading && ["pending","rendering","uploaded","failed_retryable","reconciliation_required"].includes(r.lifecycle_state ?? "") && (
                       <Button
                         variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
                         onClick={() => { setActionReason(""); setActionTarget({ kind: "cancel", row: r }); }}
@@ -452,7 +439,7 @@ function OutputOpsSession() {
                         <Ban className="h-3 w-3" /> Cancel
                       </Button>
                     )}
-                    {canRevoke && !loadFailed && !isLoading && r.lifecycle_state === "issued" && !r.revoked_at && (
+                    {canRevoke && r.canRevoke && !loadFailed && !isLoading && r.lifecycle_state === "issued" && !r.revoked_at && (
                       <Button
                         variant="outline" size="sm"
                         className="h-6 px-2 text-[10px] gap-1 text-red-600 hover:text-red-700 dark:text-red-300 dark:hover:text-red-200"

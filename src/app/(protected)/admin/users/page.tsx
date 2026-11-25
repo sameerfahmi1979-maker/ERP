@@ -1,5 +1,6 @@
 import { isGlobalAdmin } from "@/lib/rbac/scope";
 import { Suspense } from "react";
+import { LoadError } from "@/components/erp/load-error";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { UsersTable } from "@/features/users/users-table";
 import { AddUserDialog } from "@/features/users/add-user-dialog";
@@ -66,6 +67,11 @@ export default async function AdminUsersPage({
   const roleId = sp.role ? parsePositiveInt(sp.role, 0) : undefined;
   const mustChangePassword = sp.mcp === "1" ? true : undefined;
   const noRoleFilter = sp.no_role === "1";
+  const retryParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(sp)) {
+    if (typeof value === "string") retryParams.set(key, value);
+  }
+  const retryHref = retryParams.size ? `/admin/users?${retryParams}` : "/admin/users";
 
   const [usersResult, roles, organizations, branches] = await Promise.all([
     listUsersPaginated({
@@ -77,13 +83,14 @@ export default async function AdminUsersPage({
       branchId: branchId || undefined,
       roleId: roleId || undefined,
       mustChangePassword,
-    }),
-    listRoles(),
-    listOrganizations(),
-    listBranches(),
+    }).catch(() => null),
+    listRoles().catch(() => null),
+    listOrganizations().catch(() => null),
+    listBranches().catch(() => null),
   ]);
 
   const canManage = canManageUsers(ctx);
+  const roleChoicesAvailable = roles !== null && organizations !== null && branches !== null;
 
   return (
     <div className="p-6 space-y-4">
@@ -97,7 +104,9 @@ export default async function AdminUsersPage({
         ]}
         actions={canManage ? <AddUserDialog /> : null}
       />
-      <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading users…</div>}>
+      {!roleChoicesAvailable && <LoadError title="User filter and role choices" retryHref={retryHref} />}
+      {usersResult === null ? <LoadError title="Users and their role assignments" retryHref={retryHref} /> :
+        <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading users…</div>}>
         <UsersTable
           canAssignGlobal={isGlobalAdmin(ctx)}
           data={usersResult.rows}
@@ -111,9 +120,10 @@ export default async function AdminUsersPage({
           roleFilter={sp.role ?? ""}
           mcpFilter={sp.mcp ?? ""}
           noRoleFilter={noRoleFilter}
-          roles={roles}
-          companies={organizations}
-          branches={branches}
+          roles={roles ?? []}
+          companies={organizations ?? []}
+          branches={branches ?? []}
+          roleChoicesAvailable={roleChoicesAvailable}
           userProfileId={ctx.profile?.id || "default"}
           exportConfig={{
             title: "Users Report",
@@ -122,7 +132,7 @@ export default async function AdminUsersPage({
             generatedBy: ctx.profile?.full_name || ctx.profile?.display_name || "System User",
           }}
         />
-      </Suspense>
+        </Suspense>}
     </div>
   );
 }

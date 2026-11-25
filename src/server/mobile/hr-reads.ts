@@ -19,8 +19,11 @@ const dubaiTimestamp=(value:string)=>{
 const choice=z.object({id,label:z.string()});
 export const pageRows=<T>(rows:T[])=>({rows:rows.slice(0,25),more:rows.length>25});
 export const choicePage=(raw:unknown)=>pageRows(z.array(choice).max(26).parse(raw));
-export async function rpc(db:Db,name:string,args:Record<string,unknown>,write=false){
-  const {data,error}=await db.rpc(name,args);
+export async function rpc(db:Db,name:string,args:Record<string,unknown>,write=false,signal?:AbortSignal){
+  signal?.throwIfAborted();
+  const query = db.rpc(name,args);
+  const {data,error}=await (signal ? query.abortSignal(signal) : query);
+  signal?.throwIfAborted();
   if(error) throw rpcFailure(error.code,write,error.message);
   return data as unknown;
 }
@@ -103,18 +106,23 @@ export async function evidencePage(db:Db,i:Input<"evidence">){
   const raw=await rpc(db,"mobile_hr_evidence",{p_employee:i.employeeId,p_page:i.page,p_purpose:i.purpose});
   return pageRows(z.array(z.object({id,label:z.string(),versionId:id})).max(26).parse(raw));
 }
-export async function profile(db:Db,ctx:AuthContext,employeeId?:number){
+export async function readProfileAccess(db:Db,ctx:AuthContext,employeeId?:number){
   const [raw,own,{expanded,...staff}]=await Promise.all([rpc(db,"mobile_hr_profile",{p_employee:employeeId??null}),ownAccess(db),staffCapabilities(db,employeeId??null,employeeId===undefined)]);
   const menu=(a?:Access,selected=expanded)=>({...capabilities(ctx,a),...staff,...selected,profile:!!a,requests:own?.mine===true,
     approvals:staff.approvalsGeneral||staff.approvalsLeave||staff.approvalsProposal});
   if(raw==null){
     if(employeeId!=null||own)throw denied();
-    return {employeeId:null,name:null,own:false,revision:null,fields:[],capabilities:menu()};
+    return {record:null,capabilities:menu()};
   }
   const p=profileSchema.parse(raw);
   if(employeeId!=null && p.id!==employeeId)throw denied();
   const a={subject:p,own:p.own,allows:(code:string)=>hasEmployeePermission(ctx,p,own?.employeeId??null,code)};
-  return {employeeId:p.id,name:p.full_name_en,own:p.own,revision:p.workspace_revision,capabilities:menu(a),fields:[
+  return {record:p,capabilities:menu(a)};
+}
+export async function profile(db:Db,ctx:AuthContext,employeeId?:number){
+  const {record:p,capabilities}=await readProfileAccess(db,ctx,employeeId);
+  if(!p)return {employeeId:null,name:null,own:false,revision:null,fields:[],capabilities};
+  return {employeeId:p.id,name:p.full_name_en,own:p.own,revision:p.workspace_revision,capabilities,fields:[
     field("Employee code",p.employee_code),field("Company",p.owner_company),field("Branch",p.branch),field("Department",p.department),
     field("Designation",p.designation),field("Manager",p.manager),field("Work site",p.site),field("Employment status",p.employee_status),field("Joining date",p.joining_date),
     ...(p.contacts?[field("Mobile number",p.contacts.mobile_number),field("Personal email",p.contacts.personal_email),

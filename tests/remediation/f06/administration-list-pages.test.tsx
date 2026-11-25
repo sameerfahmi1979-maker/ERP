@@ -41,10 +41,10 @@ it('organization statistics distinguish visible organization counts from unqueri
     const stat = within(screen.getByRole('region', { name: title })); expect(stat.getByText('Not available')).toBeTruthy(); expect(stat.queryByText('0')).toBeNull();
   }
 });
-it('branch choice-projection failure is visible and retryable without guessing creation authority', async () => {
+it('branch choice-projection failure preserves loaded rows and pauses creation with its own retry', async () => {
   m.branches.mockResolvedValue([{ id: 101 }]); m.choices.mockRejectedValue(Error('PRIVATE CHOICE DETAIL'));
   render(await BranchesPage());
   expect(within(screen.getByRole('alert')).getByRole('heading', { name: 'Branch company choices could not be loaded' })).toBeTruthy();
-  expect(screen.queryByRole('button', { name: 'Add Branch' })).toBeNull(); expect(screen.queryByTestId('loaded-table')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Add Branch' })).toBeNull(); expect(screen.getByTestId('loaded-table').textContent).toBe('Branch rows');
   expect(screen.queryByText('PRIVATE CHOICE DETAIL')).toBeNull(); expect(screen.getByRole('link', { name: 'Try loading again' }).getAttribute('href')).toBe('/admin/branches');
 });

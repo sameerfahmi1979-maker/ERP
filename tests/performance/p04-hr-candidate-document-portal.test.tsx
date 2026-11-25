@@ -137,13 +137,20 @@ async function assertPaused(dialog:HTMLElement,retainedSubmit:()=>void|Promise<u
   await act(async()=>{await retainedSubmit();await state.dialogSubmit?.();});
   expect(state.mutate).not.toHaveBeenCalled();
 }
+function confirmedLink() {
+  const [candidateId, request, operationId] = state.mutate.mock.calls.at(-1)!;
+  return {success:true,data:{id:880111,candidate_id:candidateId,dms_document_id:request.dms_document_id,operation_id:operationId,outcome:'linked',replayed:false}};
+}
+
 async function submitOne(dialog:HTMLElement) {
   const submit=within(dialog).getByRole('button',{name:'Link Document'}) as HTMLButtonElement;
   await waitFor(()=>expect(submit.disabled).toBe(false));
-  state.mutate.mockResolvedValue({success:true,data:{id:880111}});
+  state.mutate.mockImplementation(async (candidateId, request, operationId) => ({
+    success:true,data:{id:880111,candidate_id:candidateId,dms_document_id:request.dms_document_id,operation_id:operationId,outcome:'linked',replayed:false}
+  }));
   fireEvent.click(submit);
   await waitFor(()=>expect(state.mutate).toHaveBeenCalledTimes(1));
-  expect(state.mutate).toHaveBeenCalledWith(880100,{dms_document_id:880112,document_purpose:null,notes:'DIALOG SYNTHETIC DRAFT'});
+  expect(state.mutate).toHaveBeenCalledWith(880100,{dms_document_id:880112,document_purpose:null,notes:'DIALOG SYNTHETIC DRAFT'},expect.any(String));
   await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
 }
 
@@ -232,8 +239,8 @@ it('permitted dialog dispatches only once on rapid repeated submission and prese
   const directSubmit=state.dialogSubmit!;
   await act(async()=>{fireEvent.click(submit);fireEvent.click(submit);await directSubmit();});
   expect(state.mutate).toHaveBeenCalledTimes(1);
-  expect(state.mutate).toHaveBeenCalledWith(880100,{dms_document_id:880112,document_purpose:null,notes:'DIALOG SYNTHETIC DRAFT'});
-  await act(async()=>finish({success:true,data:{id:880111}}));
+  expect(state.mutate).toHaveBeenCalledWith(880100,{dms_document_id:880112,document_purpose:null,notes:'DIALOG SYNTHETIC DRAFT'},expect.any(String));
+  await act(async()=>finish(confirmedLink()));
   await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
   expect(state.success).toHaveBeenCalledWith('Document linked');
 });
@@ -268,7 +275,7 @@ it.each(['success','failure'] as const)('an already-dispatched link keeps its ac
   state.read.mockImplementation((route,input)=>input.kind==='record'?Promise.reject(new ReadError('Synthetic denied subject',403)):reply(route,input));
   await act(async()=>{await view.client.invalidateQueries({queryKey:recordKey});});
   await screen.findByText(/Candidate information is unavailable for this session\./);
-  await act(async()=>finish(outcome==='success'?{success:true,data:{id:880111}}:{success:false,error:'Synthetic actual rejection'}));
+  await act(async()=>finish(outcome==='success'?confirmedLink():{success:false,error:'Synthetic actual rejection'}));
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(state.mutate).toHaveBeenCalledTimes(1);
   if(outcome==='success')expect(state.success).toHaveBeenCalledWith('Document linked');
@@ -289,4 +296,32 @@ it('a lost response after terminal denial remains explicitly unconfirmed rather 
   expect(state.success).not.toHaveBeenCalled();
   expect(state.error).toHaveBeenCalledWith(expect.stringContaining('The operation could not be confirmed.'));
   expect(state.mutate).toHaveBeenCalledTimes(1);
+});
+
+it('retries a lost link response using the same operation and keeps confirmed refresh separate', async () => {
+  mount();
+  await ready();
+  const dialog = await openFilledDocumentDialog();
+  state.mutate.mockRejectedValueOnce(new Error('Private response loss'));
+  state.mutate.mockImplementation(async (candidateId, request, operationId) => ({
+    success: true, refreshPending: true,
+    data: {id: 880111, candidate_id: candidateId, dms_document_id: request.dms_document_id,
+      operation_id: operationId, outcome: 'linked', replayed: true},
+  }));
+
+  fireEvent.click(within(dialog).getByRole('button', {name: 'Link Document'}));
+  const retry = await within(dialog).findByRole('button', {name: 'Retry link'});
+  expect(within(dialog).getByLabelText('DMS Document ID').matches(':disabled')).toBe(true);
+  expect(within(dialog).getByLabelText('Notes').matches(':disabled')).toBe(true);
+  expect(document.body.textContent).not.toContain('Private response loss');
+  assertDraft(dialog);
+
+  await waitFor(() => expect(retry.matches(':disabled')).toBe(false));
+  fireEvent.click(retry);
+  await waitFor(() => expect(state.mutate).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(state.mutate.mock.calls[1]).toEqual(state.mutate.mock.calls[0]);
+  expect(state.success).toHaveBeenCalledWith('Document linked');
+  await screen.findByText(/Document link confirmed. The record could not refresh/);
+  expect(state.mutate).toHaveBeenCalledTimes(2);
 });

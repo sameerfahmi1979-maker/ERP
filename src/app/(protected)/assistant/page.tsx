@@ -31,11 +31,6 @@ export default async function AssistantPage({
   }
 
   const enabled = await isAssistantEnabled();
-  const params = await searchParams;
-
-  const sessionsResult = await getAssistantSessions({ limit: 20 });
-  const initialSessions = sessionsResult.data ?? [];
-
   if (!enabled) {
     return (
       <div className="flex-1 space-y-4 p-4 md:p-6">
@@ -58,6 +53,9 @@ export default async function AssistantPage({
       </div>
     );
   }
+
+  const [params, sessionsResult] = await Promise.all([searchParams, getAssistantSessions({ limit: 20 })]);
+  const initialSessions = sessionsResult.data ?? [];
 
   return (
     <div className="flex-1 space-y-4 p-4 md:p-6">

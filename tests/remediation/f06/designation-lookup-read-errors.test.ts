@@ -3,7 +3,7 @@ import type {AuthContext} from '@/lib/rbac/check';
 
 type Reply={data:unknown;error:unknown;count?:number|null};
 type QueryCall={table:string;steps:[string,...unknown[]][]};
-const port=vi.hoisted(()=>({auth:vi.fn(),client:vi.fn(),log:vi.fn(),replies:[] as (Reply|Error)[],calls:[] as QueryCall[]}));
+const port=vi.hoisted(()=>({auth:vi.fn(),client:vi.fn(),log:vi.fn(),replies:[] as (Reply|Error)[],calls:[] as QueryCall[],replyTo:null as ((call:QueryCall)=>Reply)|null}));
 vi.mock('@/lib/rbac/check',async()=>({...await import('@/lib/rbac/scope'),getAuthContext:port.auth}));
 vi.mock('@/lib/supabase/server',()=>({createClient:port.client}));
 vi.mock('@/lib/logger',()=>({logger:{error:port.log}}));
@@ -32,13 +32,14 @@ function builder(table:string){
   const step=(name:string)=>(...args:unknown[])=>{call.steps.push([name,...args]);return query;};
   const query={select:step('select'),eq:step('eq'),is:step('is'),order:step('order'),limit:step('limit'),or:step('or'),range:step('range'),
     then:(resolve:(value:Reply)=>unknown,reject?:(reason:unknown)=>unknown)=>{
-      const reply=port.replies[index];
+      const reply=port.replyTo?.(call) ?? port.replies[index];
       return (reply instanceof Error?Promise.reject(reply):Promise.resolve(reply)).then(resolve,reject);
     }};
   return query;
 }
 beforeEach(()=>{
-  vi.resetAllMocks();port.calls=[];port.replies=[{data:[],count:0,error:null},{data:[],error:null},{data:[],error:null}];
+  vi.resetAllMocks();port.calls=[];port.replyTo=null;
+  port.replies=[{data:[],count:0,error:null},...Array.from({length:5},()=>({data:null,count:0,error:null})),{data:[],error:null}];
   port.auth.mockResolvedValue(context(['common_md.view','master_data.dashboard.view']));
   port.client.mockResolvedValue({from:builder});
 });
@@ -107,29 +108,50 @@ describe('designation collection outcome',()=>{
   });
 });
 
-describe('dashboard all-three-read boundary',()=>{
-  for(const stage of [0,1,2]){
-    it.each([false,true])(`stage ${stage}: resolved error wins over data=%s and stops downstream reads`,async withData=>{
-      port.replies[stage]={data:withData?[{id:1,is_active:true,is_locked:false,category:{category_name_en:'Valid-looking'}}]:null,error:{code:'42501',message:secret}};
-      safeFailure(await getLookupDashboardStats(),dashboardFailure);expect(port.calls).toHaveLength(stage+1);
+describe('dashboard counts and recent-read boundary',()=>{
+  it('counts beyond the REST collection limit without fetching status rows',async()=>{
+    const categories=Array.from({length:1250},(_,i)=>({id:i+1,is_active:i%5!==0,is_locked:i%10===0}));
+    const values=Array.from({length:2705},(_,i)=>({id:i+1,is_active:i%5!==0,is_locked:i%10===0}));
+    port.replyTo=({table,steps})=>{
+      if(steps.some(([method])=>method==='limit'))return {data:[],error:null};
+      const rows=table==='global_lookup_categories'?categories:values;
+      const status=steps.find(([method])=>method==='eq')?.[1];
+      const matched=rows.filter(row=>status==='is_active'?row.is_active:status==='is_locked'?row.is_locked:true);
+      return steps.some(([method,,options])=>method==='select' && (options as {head?:boolean}|undefined)?.head)
+        ? {data:null,count:matched.length,error:null}
+        : {data:matched.slice(0,1000),error:null};
+    };
+    expect(await getLookupDashboardStats()).toEqual({success:true,data:{total_categories:1250,active_categories:1000,inactive_categories:250,locked_categories:125,
+      total_values:2705,active_values:2164,inactive_values:541,locked_values:271,recently_updated:[]}});
+    expect(port.calls.filter(({steps})=>steps.some(([method,,options])=>method==='select' && (options as {head?:boolean}|undefined)?.head))).toHaveLength(6);
+  });
+  for(const stage of [0,1,2,3,4,5,6]){
+    it.each([false,true])(`read ${stage}: resolved error wins over data=%s`,async withData=>{
+      port.replies[stage]={data:withData?[{id:1,is_active:true,is_locked:false,category:{category_name_en:'Valid-looking'}}]:null,
+        count:withData?0:null,error:{code:'42501',message:secret}};
+      safeFailure(await getLookupDashboardStats(),dashboardFailure);
     });
-    it.each([null,undefined,{},'not an array'])(`stage ${stage}: malformed %j is not zero/partial success`,async data=>{
-      port.replies[stage]={data,error:null};safeFailure(await getLookupDashboardStats(),dashboardFailure);expect(port.calls).toHaveLength(stage+1);
-    });
-    it(`stage ${stage}: thrown read is sanitized and stops downstream reads`,async()=>{
-      port.replies[stage]=new Error(secret);safeFailure(await getLookupDashboardStats(),dashboardFailure);expect(port.calls).toHaveLength(stage+1);
+    it(`read ${stage}: thrown read is sanitized`,async()=>{
+      port.replies[stage]=new Error(secret);safeFailure(await getLookupDashboardStats(),dashboardFailure);
     });
   }
-  it('only three confirmed empty arrays produce exactly eight zeros and an empty recent list',async()=>{
+  it.each([null,undefined,-1,0.5,Number.MAX_SAFE_INTEGER+1])('rejects a malformed exact count %s',async count=>{
+    port.replies[0]={data:null,count,error:null};safeFailure(await getLookupDashboardStats(),dashboardFailure);
+  });
+  it.each([null,undefined,{},'not an array'])('rejects malformed recent data %j',async data=>{
+    port.replies[6]={data,error:null};safeFailure(await getLookupDashboardStats(),dashboardFailure);
+  });
+  it.each([1,2,4,5])('rejects a count at index %s that exceeds its total',async index=>{
+    port.replies[index]={data:null,count:1,error:null};safeFailure(await getLookupDashboardStats(),dashboardFailure);
+  });
+  it('confirmed empty counts and recent data produce exactly eight zeros and an empty recent list',async()=>{
     expect(await getLookupDashboardStats()).toEqual({success:true,data:{total_categories:0,active_categories:0,inactive_categories:0,locked_categories:0,
       total_values:0,active_values:0,inactive_values:0,locked_values:0,recently_updated:[]}});
-    expect(port.calls.map(c=>c.table)).toEqual(['global_lookup_categories','global_lookup_values','global_lookup_values']);
   });
-  it('keeps all counts, false values, join shapes, dates and the exact original query sequence',async()=>{
+  it('uses the same visible data for exact counts and retains recent join shapes and dates',async()=>{
     const date='2026-09-30T23:45:00+04:00';
     port.replies=[
-      {data:[{id:1,is_active:true,is_locked:true},{id:2,is_active:true,is_locked:false},{id:3,is_active:false,is_locked:false}],error:null},
-      {data:[{id:4,is_active:true,is_locked:false},{id:5,is_active:false,is_locked:true},{id:6,is_active:false,is_locked:true},{id:7,is_active:false,is_locked:false}],error:null},
+      ...[3,2,1,4,1,2].map(count=>({data:null,count,error:null})),
       {data:[{value_label_en:'Object label',updated_at:date,category:{category_name_en:'Object category'}},
         {value_label_en:'Array label',updated_at:date,category:[{category_name_en:'Array category'}]},
         {value_label_en:'Retained unknown',updated_at:date,category:null}],error:null},
@@ -142,9 +164,13 @@ describe('dashboard all-three-read boundary',()=>{
         {category_name:'Unknown',value_label:'Retained unknown',updated_at:date,updated_by_name:null},
       ]}});
     expect(port.replies).toEqual(before);
+    const head=['select','id',{count:'exact',head:true}];
     expect(port.calls.map(c=>({...c,steps:c.steps.map(([method,...args])=>[method,...args.map(v=>typeof v==='string'?v.replace(/\s+/g,' ').trim():v)])}))).toEqual([
-      {table:'global_lookup_categories',steps:[['select','id, is_active, is_locked']]},
-      {table:'global_lookup_values',steps:[['select','id, is_active, is_locked']]},
+      ...['global_lookup_categories','global_lookup_values'].flatMap(table=>[
+        {table,steps:[head]},
+        {table,steps:[head,['eq','is_active',true]]},
+        {table,steps:[head,['eq','is_locked',true]]},
+      ]),
       {table:'global_lookup_values',steps:[['select','value_label_en, updated_at, category:global_lookup_categories!inner(category_name_en)'],['order','updated_at',{ascending:false}],['limit',10]]},
     ]);
   });

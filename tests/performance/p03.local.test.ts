@@ -69,7 +69,7 @@ it("independent employee actors retain self/team/company/branch/combined scope",
  for(const [actor,total]of Object.entries({admin:1107,company:1103,none:0,self:1,manager:2,branch:1051,other:4,combined:1051})){
   state.client=clients.get(actor)!;const r=await readEmployees({pageSize:25});
   samples.push({scenario:"employees.scope."+actor,success:r.success,total:r.data?.totalCount});
-  if(actor==="none")expect(r.success).toBe(false);else {expect(r.success,actor).toBe(true);expect(r.data?.totalCount).toBe(total);expect(r.data?.rows.every(row=>row.blood_group===null)).toBe(true);}
+  if(actor==="none")expect(r.success).toBe(false);else {expect(r.success,actor).toBe(true);expect(r.data?.totalCount).toBe(total);expect(r.data?.rows.every(row=>!("blood_group" in row))).toBe(true);}
  }
  state.client=clients.get("company")!;const tail=await readEmployees({page:12,pageSize:100});expect(tail.data?.rows).toHaveLength(3);
 });

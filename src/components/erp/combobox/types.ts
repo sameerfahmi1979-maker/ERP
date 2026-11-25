@@ -71,11 +71,12 @@ export interface ERPComboboxProps {
   onDirtyMark?: () => void;
 
   /**
-   * If set, limits visible options to this count when the search field is empty.
-   * When the list is truncated, a "Showing N of M — type to search" hint is shown.
+   * If set, limits visible options before and after a search is entered.
+   * The matching selected option is retained inside the limit.
    * Phase 002F.3E.3B.6C — large-list preparation.
    */
   maxVisibleOptions?: number;
+  onOpenChange?: (open: boolean) => void;
 
   /**
    * Called when the user types in the combobox search field.

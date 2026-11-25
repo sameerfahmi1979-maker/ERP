@@ -37,10 +37,12 @@ import {
 } from "@/lib/dms/orchestration/pipeline-runner";
 import type {
   DmsAiOrchestrationRunResult,
+  DmsAiOrchestrationStatus,
   DmsAiOrchestrationStatusRow,
   DmsAiOrchestrationStepCode,
   DmsAiOrchestrationStepResult,
 } from "@/lib/dms/orchestration/types";
+import type { Tables, TablesUpdate } from "@/types/database";
 
 // Existing DMS AI server actions — called as regular async functions
 import { evaluateDmsDocumentIntelligence } from "@/server/actions/dms/ai-intelligence";
@@ -58,18 +60,15 @@ type ActionResult<T = undefined> = T extends undefined
 
 // ── Feature flag helper ───────────────────────────────────────────────────────
 
-async function isDmsAiOrchestrationEnabled(): Promise<boolean> {
-  try {
-    const supabase = await createClient();
-    const { data } = await supabase
-      .from("erp_ai_feature_flags")
-      .select("is_enabled")
-      .eq("feature_code", "DMS_AI_ORCHESTRATION")
-      .single();
-    return (data as { is_enabled?: boolean } | null)?.is_enabled === true;
-  } catch {
-    return false;
-  }
+async function isDmsAiOrchestrationEnabled(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<boolean | null> {
+  const { data, error } = await supabase
+    .from("erp_ai_feature_flags")
+    .select("is_enabled")
+    .eq("feature_code", "DMS_AI_ORCHESTRATION")
+    .maybeSingle();
+  return !error && typeof data?.is_enabled === "boolean" ? data.is_enabled : null;
 }
 
 // ── Permission helper ─────────────────────────────────────────────────────────
@@ -219,7 +218,7 @@ export async function runDmsAiOrchestrationPostDraft(input: {
     const supabase = await createClient();
     const { data: session, error: sessErr } = await supabase
       .from("dms_upload_sessions")
-      .select("id, session_code, document_id, uploaded_by, intake_status, orchestration_status, deleted_at")
+      .select("id, document_id, uploaded_by, ai_result_id, intake_status, orchestration_status, orchestration_steps_json")
       .eq("session_code", sessionCode)
       .is("deleted_at", null)
       .single();
@@ -228,17 +227,19 @@ export async function runDmsAiOrchestrationPostDraft(input: {
       return { success: false, error: "Upload session not found." };
     }
 
-    const typedSession = session as Record<string, unknown>;
+    const typedSession = session as Pick<Tables<"dms_upload_sessions">,
+      "id" | "document_id" | "uploaded_by" | "ai_result_id" | "intake_status" |
+      "orchestration_status" | "orchestration_steps_json">;
 
     // Verify ownership
     const isAdmin = hasPermission(ctx, "dms.admin") || ctx.roleCodes.includes("system_admin");
-    const isOwner = (typedSession.uploaded_by as number | null) === ctx.profile.id;
+    const isOwner = typedSession.uploaded_by === ctx.profile.id;
     if (!isOwner && !isAdmin) {
       return { success: false, error: "Access denied to this upload session." };
     }
 
-    const documentId = typedSession.document_id as number | null;
-    const uploadSessionId = typedSession.id as number;
+    const documentId = typedSession.document_id;
+    const uploadSessionId = typedSession.id;
     if (!documentId) {
       return {
         success: false,
@@ -246,60 +247,69 @@ export async function runDmsAiOrchestrationPostDraft(input: {
       };
     }
 
-    // Check if already complete
-    const currentOrchStatus = (typedSession.orchestration_status as string) ?? "pending";
-    if (currentOrchStatus === "complete") {
-      // Already done — return existing status
-      const statusResult = await getDmsOrchestrationStatus({ sessionCode });
-      if (statusResult.success && statusResult.data) {
-        return {
-          success: true,
-          data: {
-            sessionCode,
-            documentId,
-            orchestrationStatus: "complete",
-            steps: statusResult.data.steps,
-            durationMs: 0,
-            completedStepCount: statusResult.data.steps.filter((s) => s.status === "completed").length,
-            failedStepCount: 0,
-            skippedStepCount: statusResult.data.steps.filter((s) => s.status === "skipped").length,
-          },
-        };
-      }
+    const currentStatus = typedSession.orchestration_status as DmsAiOrchestrationStatus;
+    const existingOutcome = (status: DmsAiOrchestrationStatus, steps: DmsAiOrchestrationStepResult[]) => ({
+      ...buildRunResult({ sessionCode, documentId, steps, startMs: Date.now() }),
+      orchestrationStatus: status,
+      durationMs: 0,
+    });
+    if (["complete", "complete_with_warnings", "queued", "running"].includes(currentStatus)) {
+      const steps = (typedSession.orchestration_steps_json as DmsAiOrchestrationStepResult[] | null) ?? [];
+      return { success: true, data: existingOutcome(currentStatus, steps) };
     }
 
-    // Check feature flag
-    const flagEnabled = await isDmsAiOrchestrationEnabled();
+    const flagEnabled = await isDmsAiOrchestrationEnabled(supabase);
+    if (flagEnabled === null) {
+      return { success: false, error: "AI pipeline availability could not be verified. Try again." };
+    }
+
+    const writeStatus = async (
+      expectedStatus: DmsAiOrchestrationStatus,
+      updates: TablesUpdate<"dms_upload_sessions">,
+      startedAt?: string,
+    ) => {
+      let query = supabase.from("dms_upload_sessions")
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq("id", uploadSessionId)
+        .eq("session_code", sessionCode)
+        .eq("document_id", documentId)
+        .eq("intake_status", typedSession.intake_status)
+        .eq("orchestration_status", expectedStatus)
+        .is("deleted_at", null);
+      query = typedSession.uploaded_by === null
+        ? query.is("uploaded_by", null)
+        : query.eq("uploaded_by", typedSession.uploaded_by);
+      query = typedSession.ai_result_id === null
+        ? query.is("ai_result_id", null)
+        : query.eq("ai_result_id", typedSession.ai_result_id);
+      if (startedAt !== undefined) query = query.eq("orchestration_started_at", startedAt);
+      const { data, error } = await query.select("orchestration_status").maybeSingle();
+      return !error && data?.orchestration_status === updates.orchestration_status;
+    };
+
     if (!flagEnabled) {
-      await updateSessionOrchestration(sessionCode, {
-        orchestration_status: "skipped_feature_disabled",
-      });
-      return {
-        success: true,
-        data: buildRunResult({
-          sessionCode,
-          documentId,
-          steps: buildInitialSteps().map((s) => ({
-            ...s,
-            status: "skipped" as const,
-            safeErrorMessage: "DMS AI Orchestration feature is not enabled.",
-          })),
-          startMs: Date.now(),
-        }),
-      };
+      const skipped = "skipped_feature_disabled";
+      if (currentStatus !== skipped && !await writeStatus(currentStatus, { orchestration_status: skipped })) {
+        return { success: false, error: "Upload session changed or its AI status could not be saved. Refresh and try again." };
+      }
+      const steps = buildInitialSteps().map(step => ({
+        ...step,
+        status: "skipped" as const,
+        safeErrorMessage: "DMS AI Orchestration feature is not enabled.",
+      }));
+      return { success: true, data: existingOutcome(skipped, steps) };
     }
 
-    // Start pipeline
     const startMs = Date.now();
-    const startedAt = new Date().toISOString();
-
-    await updateSessionOrchestration(sessionCode, {
+    const startedAt = new Date(startMs).toISOString();
+    let steps = buildInitialSteps();
+    if (!await writeStatus(currentStatus, {
       orchestration_status: "running",
       orchestration_started_at: startedAt,
-      orchestration_steps_json: buildInitialSteps(),
-    });
-
-    let steps = buildInitialSteps();
+      orchestration_steps_json: steps.map(step => ({ ...step })),
+    })) {
+      return { success: false, error: "Upload session changed or the AI pipeline could not start. Refresh and try again." };
+    }
     const markRunning = (code: DmsAiOrchestrationStepCode) => {
       steps = mergeStepResult(steps, { step: code, status: "running", startedAt: new Date().toISOString() });
     };
@@ -363,11 +373,13 @@ export async function runDmsAiOrchestrationPostDraft(input: {
     // ── Finalize ──────────────────────────────────────────────────────────────
     const runResult = buildRunResult({ sessionCode, documentId, steps, startMs });
 
-    await updateSessionOrchestration(sessionCode, {
+    if (!await writeStatus("running", {
       orchestration_status: runResult.orchestrationStatus,
-      orchestration_steps_json: steps,
+      orchestration_steps_json: steps.map(step => ({ ...step })),
       orchestration_completed_at: new Date().toISOString(),
-    });
+    }, startedAt)) {
+      return { success: false, error: "AI pipeline completion could not be confirmed. Check the current status before retrying." };
+    }
 
     // Safe audit event
     const auditAction = runResult.failedStepCount > 0
@@ -478,7 +490,11 @@ async function runCanonicalRetry(input:{sessionCode:string;stepCode:DmsAiOrchest
     if (!canRunOrchestration(ctx)) return { success: false, error: "Permission denied." };
 
     // Phase 5: honour the DMS_AI_ORCHESTRATION feature flag on retry as well
-    const orchestrationEnabled = await isDmsAiOrchestrationEnabled();
+    const supabase = await createClient();
+    const orchestrationEnabled = await isDmsAiOrchestrationEnabled(supabase);
+    if (orchestrationEnabled === null) {
+      return { success: false, error: "AI pipeline availability could not be verified. Try again." };
+    }
     if (!orchestrationEnabled) {
       return {
         success: false,
@@ -491,7 +507,6 @@ async function runCanonicalRetry(input:{sessionCode:string;stepCode:DmsAiOrchest
     }
 
     // Load session + document
-    const supabase = await createClient();
     const { data: session } = await supabase
       .from("dms_upload_sessions")
       .select("id, document_id, uploaded_by, orchestration_steps_json")

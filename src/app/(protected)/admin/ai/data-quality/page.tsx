@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission, hasPermission } from "@/lib/rbac/check";
 import {
   isDataQualityMonitorEnabled,
   getDataQualitySummary,
@@ -17,10 +17,9 @@ export default async function DataQualityPage() {
   const ctx = await getAuthContext();
 
   const canView =
-    hasPermission(ctx, "ai.data_quality.view") ||
-    hasPermission(ctx, "ai.common.view") ||
-    hasPermission(ctx, "ai.common.admin") ||
-    ctx.roleCodes.includes("system_admin");
+    hasGlobalPermission(ctx, "ai.data_quality.view") ||
+    hasGlobalPermission(ctx, "ai.common.view") ||
+    hasGlobalPermission(ctx, "ai.common.admin");
 
   if (!canView) {
     redirect("/access-denied");
@@ -55,7 +54,9 @@ export default async function DataQualityPage() {
   const initialSummary = summaryResult.data ?? null;
 
   return (
-    <><AiQualityPanel/><AiDataQualityPageClient
+    <><AiQualityPanel/>
+      {summaryResult.error && <p role="status" className="text-sm text-muted-foreground">Data quality summary could not be loaded. Reload to try again.</p>}
+      <AiDataQualityPageClient
       initialSummary={initialSummary}
       permissions={permissions}
       isEnabled={isEnabled}

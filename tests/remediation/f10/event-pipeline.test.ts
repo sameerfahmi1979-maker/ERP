@@ -65,7 +65,7 @@ it('a frozen prepared roster rechecks only each unfinished recipient before deli
  p.prepare=vi.fn().mockResolvedValue({ready:true,recipients:[{profile_id:2,state:'created'},{profile_id:3,state:'pending'}]});
  p.authorize=vi.fn().mockResolvedValue(true);
  expect((await runNotificationEventBatch(p)).results[0].outcome).toBe('complete');
- expect(p.authorize).toHaveBeenCalledExactlyOnceWith(event,3);expect(p.resolve).not.toHaveBeenCalled();expect(p.plan).not.toHaveBeenCalled();
+ expect(p.authorize).toHaveBeenCalledExactlyOnceWith(event,3,'record');expect(p.resolve).not.toHaveBeenCalled();expect(p.plan).not.toHaveBeenCalled();
 });
 it('revocation between durable qualification and delivery is held',async()=>{
  p.prepare=vi.fn().mockResolvedValue({ready:true,recipients:[{profile_id:2,state:'pending'}]});

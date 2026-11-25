@@ -1,3 +1,5 @@
+import { HR_SETTINGS_FIRST_PAGE } from "@/lib/hr/settings-list";
+import { hrReadIdentity } from "@/lib/reads/hr-read-identity";
 import type {HrLookupFormInput} from "@/lib/hr/settings-save-contract";
 import type {WorkspaceSaveContract} from "@/lib/workspace/save-contract";
 import { LoadError } from "@/components/erp/load-error";
@@ -10,9 +12,9 @@ export default async function HrPayrollGroupsPage() {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "hr.settings.view") && !hasPermission(ctx, "hr.settings.manage") && !hasPermission(ctx, "hr.admin")) redirect("/admin/hr/settings");
   const canManage = hasGlobalPermission(ctx, "hr.settings.manage") || hasGlobalPermission(ctx, "hr.admin");
-const result = await listHrPayrollGroups({complete:true});
-  if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/settings/payroll-groups" />;
-  const data = result.data?.data ?? [];
+const result = await listHrPayrollGroups(HR_SETTINGS_FIRST_PAGE);
+  if (!result.success || !result.data) return <LoadError title="HR records" retryHref="/admin/hr/settings/payroll-groups" />;
+  const { data, total } = result.data;
 
   async function create(input: HrLookupFormInput, contract?: WorkspaceSaveContract) {
     "use server";
@@ -36,6 +38,8 @@ const result = await listHrPayrollGroups({complete:true});
       description="Payroll payment cycle groups: monthly WPS, weekly, manual, etc."
       breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: "HR Settings", href: "/admin/hr/settings" }, { label: "Payroll Groups" }]}
       initialData={data}
+      initialTotal={total}
+      readIdentity={hrReadIdentity(ctx)}
       canManage={canManage}
       onList={listHrPayrollGroups}
       onCreate={create}

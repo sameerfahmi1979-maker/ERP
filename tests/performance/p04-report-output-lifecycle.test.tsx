@@ -26,7 +26,7 @@ vi.mock("@/lib/export/pdf", () => ({exportToPDF: vi.fn()}));
 vi.mock("@/lib/export/print", () => ({exportToPrint: vi.fn()}));
 vi.mock("@/components/report-center/report-template-select-dialog", () => ({ReportTemplateSelectDialog: () => null}));
 vi.mock("@/components/report-center/report-preview-header", () => ({ReportPreviewHeader: ({branding}: {branding: unknown}) => <div data-testid="branding">{JSON.stringify(branding)}</div>}));
-vi.mock("@/features/report-center/report-results-table", () => ({ReportResultsTable: ({data}: {data: ReportDataResult}) => <div data-testid="results">{JSON.stringify(data)}</div>}));
+vi.mock("@/features/report-center/report-results-table", () => ({ReportResultsTable: ({data, loadPage}: {data: ReportDataResult; loadPage?: (query: unknown, current: () => boolean) => Promise<unknown>}) => <div data-testid="results">{JSON.stringify(data)}{loadPage && <button onClick={() => void loadPage({pageIndex: 1, pageSize: 25, sorting: [], globalFilter: "", columnFilters: []}, () => true)}>Next report page</button>}</div>}));
 vi.mock("@/features/report-center/report-export-toolbar", () => ({ReportExportToolbar: ({onExport, canUseData}: {onExport: (format: "excel") => Promise<void>; canUseData: () => boolean}) => {m.export = onExport; m.canUseData = canUseData; return <button onClick={() => void onExport("excel")}>Export synthetic result</button>;}}));
 vi.mock("next/navigation", () => ({useRouter: () => ({back: vi.fn()}), usePathname: () => "/admin/reports/run/SYNTHETIC_OUTPUT"}));
 import {ReportRunPage} from "@/features/report-center/report-run-page";
@@ -64,6 +64,39 @@ it.each(["HR_CANDIDATE_PIPELINE", "HR_WPS_READINESS"])("%s export requires a fre
   m.run.mockResolvedValueOnce(result("CURRENTLY_AUTHORIZED_ROW"));
   await act(async () => {await m.export!("excel");});
   expect(m.excel).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({data:[{name:"CURRENTLY_AUTHORIZED_ROW"}]}));
+});
+it("requests a bounded preview and retires its rows and exports when page authority is lost", async () => {
+  const context = {...auth, permissionCodes:[...auth.permissionCodes,"reports.export"], globalPermissionCodes:[...auth.globalPermissionCodes,"reports.export"]};
+  const preview = result();
+  m.run.mockResolvedValueOnce({...preview, data: {...preview.data, rowCount: 501, analyticalBrandingVersion: "v1",
+    screenPage: {pageIndex: 0, pageSize: 25, totalCount: 501, receipt: "synthetic-page", filters: [], sortDescFirst: []}}});
+  mount({...registry, report_code: "HR_WPS_READINESS"}, context);
+  await run();
+  expect(m.run).toHaveBeenCalledWith(expect.objectContaining({screenPage: expect.objectContaining({pageIndex: 0, pageSize: 25})}));
+  await screen.findByTestId("branding");
+  expect(screen.getByText(/501 rows returned/)).toBeTruthy();
+  const oldExport = m.export!;
+  m.run.mockResolvedValueOnce({success: false, error: "Current report access changed."});
+  fireEvent.click(screen.getByRole("button", {name: "Next report page"}));
+  await screen.findByText("Current report access changed.");
+  expect(m.run).toHaveBeenLastCalledWith(expect.objectContaining({screenPage: expect.objectContaining({pageIndex: 1, receipt: "synthetic-page"})}));
+  expect(screen.queryByTestId("results")).toBeNull();
+  expect(screen.queryByTestId("branding")).toBeNull();
+  await act(async () => {await oldExport("excel");});
+  expect(m.excel).not.toHaveBeenCalled();
+});
+it("blocks cached signing assets when the fresh report loses signing authority at the same branding revision", async () => {
+  const context = {...auth, permissionCodes:[...auth.permissionCodes,"reports.export","reports.sign"], globalPermissionCodes:[...auth.globalPermissionCodes,"reports.export","reports.sign"]};
+  const preview = result();
+  m.branding.mockResolvedValueOnce({success: true, data: {stampUrl: "https://example.invalid/synthetic", showStamp: true}});
+  m.run.mockResolvedValueOnce({...preview, data: {...preview.data, analyticalBrandingVersion: "same", analyticalBrandingCanSign: true}});
+  mount({...registry, report_code: "HR_WPS_READINESS"}, context);
+  await run();
+  await screen.findByTestId("branding");
+  m.run.mockResolvedValueOnce({...preview, data: {...preview.data, analyticalBrandingVersion: "same", analyticalBrandingCanSign: false}});
+  await act(async () => {await m.export!("excel");});
+  expect(m.run).toHaveBeenLastCalledWith(expect.objectContaining({outputFormat: "excel"}));
+  expect(m.excel).not.toHaveBeenCalled();
 });
 const replacements = {
   account: {...auth, profile: {...auth.profile!, id: 32, auth_user_id: "synthetic-b"}},

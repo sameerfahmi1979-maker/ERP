@@ -105,7 +105,9 @@ const submitPayload = decisionPayload.omit({ review: true }).extend({
 const commandAction = z.union([z.literal("submit"), reviewDecision]);
 
 export const payrollReviewCommandHeader = z.object({ company: id, branch: id, operation: receiptId });
-export const payrollReviewReceipt = z.object({ review: receiptId, state: reviewState });
+export const payrollReviewReceipt = z.object({
+  review: receiptId, run: receiptId, version: receiptId, digest, state: reviewState, claims_count: count, action: commandAction,
+});
 
 export type PayrollReviewAction = z.infer<typeof commandAction>;
 export type PayrollReviewScope = z.infer<typeof payrollReviewScopes>[number];

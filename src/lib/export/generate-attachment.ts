@@ -10,11 +10,9 @@
  * All PDF output is vector text — < 300 KB regardless of content language.
  */
 
-import ExcelJS from "exceljs";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
-import { installJsPdfShaper } from "bidi-shaper/jspdf";
+import type jsPDF from "jspdf";
 import { format } from "date-fns";
+import { loadPdfExportEngine } from "./load-pdf-export-engine";
 
 import type { ERPExportOptions } from "./export-types";
 import type { EmailAttachment } from "../email/email-types";
@@ -29,9 +27,6 @@ import {
   stringToBase64Utf8,
   arrayBufferToBase64,
 } from "../email/attachment-utils";
-
-// Install bidi-shaper plugin (idempotent — safe to call in both pdf.ts and here)
-installJsPdfShaper(jsPDF.API as Parameters<typeof installJsPdfShaper>[0]);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Arabic detection + font loader (same logic as pdf.ts, local copy avoids
@@ -134,6 +129,7 @@ export async function generateExcelAttachment<T>(
 ): Promise<EmailAttachment> {
   const { columns, data, filename, title, subtitle, generatedBy, generatedAt, filters, branding } = options;
 
+  const { default: ExcelJS } = await import("exceljs");
   const workbook = new ExcelJS.Workbook();
   if (generatedBy) workbook.creator = generatedBy;
   if (generatedAt) workbook.created = generatedAt;
@@ -209,6 +205,7 @@ export async function generatePDFAttachment<T>(
 
   const hasArabic = exportDataHasArabic(options);
 
+  const { jsPDF, autoTable } = await loadPdfExportEngine();
   const doc = new jsPDF({
     orientation: branding?.templateOrientation ?? orientation,
     unit: "mm",

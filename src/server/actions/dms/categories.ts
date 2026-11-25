@@ -1,5 +1,7 @@
 "use server";
 
+import { readAllPages } from "@/server/reads/all-pages";
+
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
@@ -51,14 +53,15 @@ function revalidateDmsCategories() {
 export async function getDmsCategories(): Promise<ActionResult<DmsCategoryRow[]>> {
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const data = await readAllPages(async (from, to) => await supabase
       .from("dms_document_categories")
-      .select("*")
+      .select("*", { count: "exact" })
       .is("deleted_at", null)
       .order("sort_order", { ascending: true })
-      .order("name_en", { ascending: true });
-    if (error) return { success: false, error: error.message };
-    return { success: true, data: (data ?? []) as DmsCategoryRow[] };
+      .order("name_en", { ascending: true })
+      .order("id")
+      .range(from, to), { identity: row => row.id });
+    return { success: true, data };
   } catch (err) {
     return { success: false, error: String(err) };
   }

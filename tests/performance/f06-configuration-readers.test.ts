@@ -91,7 +91,8 @@ it("active party country descriptor forwards cancellation without weakening part
  expect(qc.getQueryData(queryKeys.countries(false,false))).toBeUndefined();
  expect(qc.getQueryState(["party_natures"])?.status).toBe("error");
  expect(qc.getQueryState(["party_statuses"])?.status).toBe("error");
- expect(qc.getQueryState(queryKeys.currencies(false))?.status).toBe("success");
+ expect(qc.getQueryState(queryKeys.currencies(false))).toBeUndefined();
+ expect(state.calls.some(call=>call.table==="currencies")).toBe(false);
 });
 it("master prefetch reports only successful siblings and never raw provider details",async()=>{
  const qc=cache(),receipt=await prefetchMasterDataQueries(qc,[

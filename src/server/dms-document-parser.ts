@@ -2,6 +2,7 @@ import 'server-only';
 import {spawn} from 'node:child_process';
 import path from 'node:path';
 
+export const DMS_DOCUMENT_PARSER_CONCURRENCY = 2;
 let active=0;
 const LARGE_PDF_BYTES = 10 * 1024 * 1024;
 const DEFAULT_PARSE_TIMEOUT_MS = 10_000;
@@ -10,7 +11,7 @@ const LARGE_PDF_PARSE_TIMEOUT_MS = 30_000;
  * no ERP credentials/environment, a bounded heap, finite deadline and concurrency.
  * Only static trusted parsers run; no document content is executed. */
 export async function validateDmsDocument(bytes:Buffer,mime:string):Promise<void>{
- if(active>=2)throw Error('Document validation is busy. Retain the upload and retry.');
+ if(active>=DMS_DOCUMENT_PARSER_CONCURRENCY)throw Error('Document validation is busy. Retain the upload and retry.');
  active++;
  try{
   await new Promise<void>((resolve,reject)=>{

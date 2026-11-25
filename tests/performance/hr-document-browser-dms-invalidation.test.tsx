@@ -172,7 +172,12 @@ it.each(["add", "edit"] as const)("actual %s confirmed document save refreshes b
   expect(q.getQueryState(unrelatedKey)?.isInvalidated).toBe(false); expect(q.getQueryData(inactiveKey)).toEqual({revision: 1});
   expect(m.store!.hasDraft(draftKey)).toBe(false); expect(m.shell?.isDirty).toBe(false);
   const write = mode === "add" ? m.create : m.update; expect(write).toHaveBeenCalledTimes(1);
-  expect(write).toHaveBeenCalledWith({...(mode === "edit" ? {id: 11} : {}), title: "Synthetic changed", description: null, document_type_id: 1,
+  expect(write).toHaveBeenCalledWith({...(mode === "edit" ? {
+    id: 11,
+    expectedReminderInputs: {
+      expiry_date: null, document_type_id: 1, owning_company_id: 1, owning_branch_id: 4, status: "draft", reminder_policy_id: null,
+    },
+  } : {}), title: "Synthetic changed", description: null, document_type_id: 1,
     category_id: 2, status: "draft", confidentiality_level: "internal", issue_date: null, expiry_date: null,
     owning_company_id: mode === "edit" ? 1 : null, owning_branch_id: mode === "edit" ? 4 : null, party_id: null},
     ...(mode === "add" ? [{operationId: expect.stringMatching(/^[0-9a-f-]{36}$/), revision: null}] : []));

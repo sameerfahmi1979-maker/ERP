@@ -5,7 +5,8 @@ import {hrRuleForms,type HrRuleChoices,type HrRuleEntity} from '@/lib/hr/special
 import type {ActionResult} from './settings';
 
 // Fixed F06 form projections, not a generic table reader or privileged fallback.
-const references:Record<string,{table:string;name:string;code:string;company?:boolean;status?:boolean}>={
+type Reference = {table:string;name:string;code:string;company?:boolean;status?:boolean};
+const references:Record<string,Reference>={
  required_document_type_id:{table:'hr_identity_document_types',name:'name_en',code:'code'},
  required_training_type_id:{table:'hr_training_types',name:'name_en',code:'code'},
  required_access_card_type_id:{table:'hr_access_card_types',name:'name_en',code:'code'},
@@ -24,32 +25,39 @@ references.access_card_type_id=references.required_access_card_type_id;
 references.medical_record_type_id=references.required_medical_record_type_id;
 references.escalation_role_id=references.approval_role_id;
 
+async function readReferenceChoices(client: Awaited<ReturnType<typeof createClient>>, spec: Reference) {
+ const projection=`id,${spec.name},${spec.code}${spec.company?',owner_company_id,owner_company:owner_companies(legal_name_en)':''}`;
+ const rows:Array<{id:number;label:string}>=[];let after=0;
+ for(;;){
+  const {data,error}=await client.from(spec.table).select(projection).is('deleted_at',null)
+   .eq(spec.status?'status':'is_active',spec.status?'active':true).gt('id',after).order('id').limit(200);
+  if(error||!Array.isArray(data))throw Error('Reference read failed');
+  if(!data.length)return rows;
+  for(const item of data){
+   const row=item as unknown as Record<string,unknown>;
+   if(typeof row.id!=='number'||!Number.isSafeInteger(row.id)||row.id<=after||typeof row[spec.name]!=='string')throw Error('Invalid reference response');
+   const company=row.owner_company as {legal_name_en?:string}|null;
+   const scope=spec.company?company?.legal_name_en??(row.owner_company_id==null?'Shared across companies':'Company details unavailable'):null;
+   rows.push({id:row.id,label:`${row[spec.name]}${row[spec.code]?' · '+row[spec.code]:''}${scope?' — '+scope:''}`});
+   after=row.id;
+  }
+ }
+}
+
 export async function getHrRuleChoices(entity:HrRuleEntity):Promise<ActionResult<HrRuleChoices>>{
  try{
   const ctx=await getAuthContext();
   if(!hasGlobalPermission(ctx,'hr.settings.manage')&&!hasGlobalPermission(ctx,'hr.admin'))return{success:false,error:'Global HR configuration permission is required.'};
   if(!Object.hasOwn(hrRuleForms,entity))return{success:false,error:'Invalid HR configuration.'};
-  const client=await createClient(),output:HrRuleChoices={};
-  // Only the fields in this form are fetched, through the current actor's RLS.
-  await Promise.all(hrRuleForms[entity].fields.filter(f=>f.kind==='reference').map(async field=>{
+  const client=await createClient();
+  const requests=new Map<Reference,ReturnType<typeof readReferenceChoices>>();
+  const fields=hrRuleForms[entity].fields.filter(field=>field.kind==='reference');
+  const choices=await Promise.all(fields.map(async field=>{
    const spec=references[field.key];if(!spec)throw Error('Unsupported reference');
-   const rows:Array<{id:number;label:string}>=[];let after=0;
-   for(;;){
-    const projection=`id,${spec.name},${spec.code}${spec.company?',owner_company_id,owner_company:owner_companies(legal_name_en)':''}`;
-    const query=client.from(spec.table).select(projection).is('deleted_at',null).eq(spec.status?'status':'is_active',spec.status?'active':true).gt('id',after).order('id').limit(200);
-    const {data,error}=await query;
-    if(error||!data)throw Error('Reference read failed');
-    if(!data.length)break;
-    for(const item of data){
-     const row=item as unknown as Record<string,unknown>;
-     if(typeof row.id!=='number'||!Number.isSafeInteger(row.id)||row.id<=after||typeof row[spec.name]!=='string')throw Error('Invalid reference response');
-     const company=row.owner_company as {legal_name_en?:string}|null;
-     const scope=spec.company?company?.legal_name_en??(row.owner_company_id==null?'Shared across companies':'Company details unavailable'):null;
-     rows.push({id:row.id,label:`${row[spec.name]}${row[spec.code]?' · '+row[spec.code]:''}${scope?' — '+scope:''}`});after=row.id;
-    }
-   }
-   output[field.key]=rows;
+   const request=requests.get(spec)??readReferenceChoices(client,spec);
+   requests.set(spec,request);
+   return [field.key,await request] as const;
   }));
-  return{success:true,data:output};
+  return{success:true,data:Object.fromEntries(choices)};
  }catch{return{success:false,error:'Reference choices could not load. Retry before saving; your entries are retained.'};}
 }

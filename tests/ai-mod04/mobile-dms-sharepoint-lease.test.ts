@@ -128,7 +128,11 @@ describe("worker-held SharePoint admission lease", () => {
     expect(await (await post({ op: "start", sessionId: 42 })).json()).toEqual({ success: true, data: { status: "review_pending" } });
     expect(state.start).toHaveBeenCalledWith({ uploadSessionId: 42, onlyIfUploaded: true });
     expect(await (await post(details)).json()).toEqual({ success: true, data: { id: 42 } });
-    expect(state.dispatchV5).toHaveBeenCalledWith(details, expect.objectContaining({ profile: expect.objectContaining({ auth_user_id: authUserId }) }));
+    expect(state.dispatchV5).toHaveBeenCalledWith(
+      details,
+      expect.objectContaining({ profile: expect.objectContaining({ auth_user_id: authUserId }) }),
+      expect.any(AbortSignal),
+    );
 
     const target = "http://localhost/api/mobile/dms/v1?fileId=42";
     expect((await GET(new NextRequest(target))).status).toBe(401);

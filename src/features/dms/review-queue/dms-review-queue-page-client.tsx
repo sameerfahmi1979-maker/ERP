@@ -49,12 +49,14 @@ export function DmsReviewQueuePageClient({
   const [drawerOpen, setDrawerOpen]     = useState(!!notificationTarget);
   const [loadFailed, setLoadFailed] = useState(initialLoadFailed);
   const [countsFailed, setCountsFailed] = useState(initialCounts === null);
+  const [countsPending, setCountsPending] = useState(false);
   const [detailFailed, setDetailFailed] = useState(false);
   const [detailPending, setDetailPending] = useState(false);
   const [drawerDirty, setDrawerDirty] = useState(false);
   const [drawerBusy, setDrawerBusy] = useState(false);
   const listSequence = useRef(0);
   const detailSequence = useRef(0);
+  const countsAbort = useRef<AbortController | null>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const listAbort=useRef<AbortController|null>(null),detailAbort=useRef<AbortController|null>(null);
   const notificationKey=notificationTarget?(notificationTarget.token??`item:${notificationTarget.item.id}`):null;
@@ -66,36 +68,72 @@ export function DmsReviewQueuePageClient({
     setOpenedNotification(notificationKey);
     setSelectedItem(notificationTarget.item);setDrawerOpen(true);setDetailFailed(false);setDetailPending(false);
   }
-  useEffect(()=>()=>{++listSequence.current;++detailSequence.current;listAbort.current?.abort();detailAbort.current?.abort();},[]);
+  useEffect(()=>()=>{++listSequence.current;++detailSequence.current;listAbort.current?.abort();detailAbort.current?.abort();countsAbort.current?.abort();},[]);
+
+  const refreshCounts = useCallback(async () => {
+    countsAbort.current?.abort();
+    const controller = new AbortController();
+    countsAbort.current = controller;
+    setCountsPending(true);
+    try {
+      const result = await readJson<{success:true;data:ReviewQueueCounts}>(
+        "dms-review", {kind:"counts"}, controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      if (result.success && result.data) {
+        setCounts(result.data);
+        setCountsFailed(false);
+      } else {
+        setCountsFailed(true);
+      }
+    } catch {
+      if (!controller.signal.aborted) setCountsFailed(true);
+    } finally {
+      if (!controller.signal.aborted) setCountsPending(false);
+    }
+  }, []);
 
   const refresh = useCallback((nextFilters?: ReviewQueueFilters, nextPage?: number) => {
     const f = nextFilters ?? filters;
     const p = nextPage ?? page;
     const sequence = ++listSequence.current;
-    listAbort.current?.abort();const controller=new AbortController();listAbort.current=controller;
+    listAbort.current?.abort();
+    const controller = new AbortController();
+    listAbort.current = controller;
 
     startTransition(async () => {
       setLoadFailed(false);
       try {
-      const [itemsOutcome, countsOutcome] = await Promise.allSettled([
-        readJson<{success:true;data:{items:ReviewQueueItem[];total:number}}>("dms-review",{kind:"list",filters:{...f,page:p,pageSize}},controller.signal),
-        readJson<{success:true;data:ReviewQueueCounts}>("dms-review",{kind:"counts"},controller.signal),
-      ]);
-      if (sequence !== listSequence.current) return;
-      const itemsResult=itemsOutcome.status==="fulfilled"?itemsOutcome.value:null;
-      const countsResult=countsOutcome.status==="fulfilled"?countsOutcome.value:null;
-      if (itemsResult?.success && itemsResult.data) {
-        const last=Math.max(1,Math.ceil(itemsResult.data.total/pageSize));
-        if(p>last){const tail=await readJson<{success:true;data:{items:ReviewQueueItem[];total:number}}>("dms-review",{kind:"list",filters:{...f,page:last,pageSize}},controller.signal);if(sequence!==listSequence.current)return;setPage(last);setItems(tail.data.items);setTotal(tail.data.total);}
-        else {setItems(itemsResult.data.items);setTotal(itemsResult.data.total);}
-      } else { setLoadFailed(true); }
-      if (countsResult?.success && countsResult.data) {
-        setCounts(countsResult.data);
+        const readPage = (pageNumber: number) => readJson<{success:true;data:{items:ReviewQueueItem[];total:number}}>(
+          "dms-review", {kind:"list", filters:{...f,page:pageNumber,pageSize}}, controller.signal,
+        );
+        const result = await readPage(p);
+        if (sequence !== listSequence.current) return;
+        if (!result.success || !result.data) {
+          setLoadFailed(true);
+          return;
+        }
+        const last = Math.max(1, Math.ceil(result.data.total / pageSize));
+        if (p > last) {
+          const tail = await readPage(last);
+          if (sequence !== listSequence.current) return;
+          setPage(last);
+          setItems(tail.data.items);
+          setTotal(tail.data.total);
+        } else {
+          setItems(result.data.items);
+          setTotal(result.data.total);
+        }
+      } catch {
+        if (sequence === listSequence.current) setLoadFailed(true);
       }
-      setCountsFailed(!countsResult?.success || !countsResult.data);
-      } catch { if (sequence === listSequence.current) { setLoadFailed(true); setCountsFailed(true); } }
     });
   }, [filters, page, pageSize]);
+
+  const refreshQueue = useCallback(() => {
+    refresh();
+    void refreshCounts();
+  }, [refresh, refreshCounts]);
 
   const handleFilterChange = (f: ReviewQueueFilters) => {
     setFilters(f);
@@ -140,15 +178,15 @@ export function DmsReviewQueuePageClient({
     setDrawerOpen(false);
     setSelectedItem(null);
     setDrawerDirty(false); setDrawerBusy(false); ++detailSequence.current;
-    refresh();
+    refreshQueue();
   };
 
   // Refresh the open drawer item in-place without closing it (used after Start Review)
   const handleItemRefreshed = useCallback(() => {
     if (!selectedItem) return;
     void loadDetail(selectedItem.id);
-    refresh();
-  }, [selectedItem, refresh, loadDetail]);
+    refreshQueue();
+  }, [selectedItem, refreshQueue, loadDetail]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -157,7 +195,7 @@ export function DmsReviewQueuePageClient({
       {notificationTargetFailed&&<p role="alert">The requested review item is unavailable or no longer permitted. Its notification has not been marked read.</p>}
       {notificationBlocked&&<p role="status">Finish or close your current review before opening the notified item. Your unsaved entries are unchanged and the alert remains unread.</p>}
       {/* Dashboard cards */}
-      {isPending ? <p role="status">Refreshing review summary…</p> : countsFailed ? <p role="status" className="text-sm text-muted-foreground">Review summary is unavailable. Refresh to retry; unavailable counts are not zero.</p> : <DmsReviewQueueDashboardCards counts={counts} />}
+      {countsPending ? <p role="status">Refreshing review summary…</p> : countsFailed ? <p role="status" className="text-sm text-muted-foreground">Review summary is unavailable. Refresh to retry; unavailable counts are not zero.</p> : <DmsReviewQueueDashboardCards counts={counts} />}
 
       {/* Filters */}
       <DmsReviewQueueFilters
@@ -175,7 +213,7 @@ export function DmsReviewQueuePageClient({
         <Button
           variant="outline"
           size="sm"
-          onClick={() => refresh()}
+          onClick={refreshQueue}
           disabled={isPending}
         >
           <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isPending ? "animate-spin" : ""}`} />

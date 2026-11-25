@@ -1,4 +1,6 @@
 import "server-only";
+import { observeAssistantQuery } from "@/lib/ai/common/assistant/publication-reads";
+
 import {z} from "zod";
 import {createClient} from "@/lib/supabase/server";
 import {getAuthContext,type AuthContext} from "@/lib/rbac/check";
@@ -66,6 +68,10 @@ export async function searchDocuments(raw:unknown,context?:AuthContext,callerSig
     if(cursor&&cursor.count!==result.count)throw Error("Invalid or stale search cursor; restart the search.");
     const rows=z.array(searchDocumentRow).parse(result.data);
     if(rows.length!==Math.min(p.pageSize,Math.max(0,result.count-offset))||new Set(rows.map(r=>r.id)).size!==rows.length)throw Error("Incomplete search page");
+    observeAssistantQuery(() => ({
+      kind:"document_page",limit:p.pageSize,params:{args:prepared.args,filters:p.filters,offset},
+      result:{count:result.count,rows:rows.map(row=>[row.id,row.updated_at,row.document_type?.name_en??null,row.document_type?.type_code??null])},
+    }));
     const excerpts=new Map<number,{excerpt:string;content_version:string|null}>();
     if(p.includeExcerpts&&rows.length&&prepared.args.text_query){
       const read=await db.rpc("ai_mod02_search_excerpts",{document_ids:rows.map(r=>r.id),search_text:prepared.args.text_query}).abortSignal(signal);

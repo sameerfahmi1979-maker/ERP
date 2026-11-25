@@ -10,6 +10,7 @@ import { issueRetainedPayslip, PayslipRoutingRetry } from "@/lib/official-docume
 import { readPayslipOriginal } from "@/lib/official-documents/payslip-storage";
 import { PAYSLIP_RENDERER_VERSION, renderPayslipPdf } from "@/lib/official-documents/payslip-pdf";
 import { logger } from "@/lib/logger";
+import { invalidatePayrollWorkspace } from "@/server/payroll-workspace-refresh";
 
 const positive = z.number().int().positive().safe();
 const uuid = z.uuid();
@@ -23,11 +24,18 @@ const reviewInput = z.strictObject({
   after: positive.optional(),
 });
 const scopeSchema = z.array(z.object({ company_id: positive, branch_id: positive, company: text, branch: text }));
-const deliveryHistory = z.array(z.object({
+const deliveryEvent = z.object({
   id: positive, kind: text, channel: z.enum(["email", "print"]), state: text, at: z.iso.datetime({ offset: true }),
   completed_at: z.iso.datetime({ offset: true }).nullish(),
   can_handover: z.boolean().optional(), can_bounce: z.boolean().optional(), can_reconcile: z.boolean().optional(),
-}));
+});
+const deliveryHistory = z.array(deliveryEvent);
+const historyQuery = reviewInput.pick({ company: true, branch: true, month: true }).extend({
+  slip: positive, before: positive.optional(),
+});
+const historyPage = z.object({
+  rows: deliveryHistory.max(50), count: z.number().int().nonnegative().safe(), next_before: positive.nullable(),
+});
 const workSchema = z.object({
   access: z.object({ view: z.boolean(), issue: z.boolean(), deliver: z.boolean() }),
   rows: z.array(z.object({
@@ -35,7 +43,8 @@ const workSchema = z.object({
     slip: z.object({
       id: positive, issued_at: z.iso.datetime({ offset: true }).nullable(), checksum: digest.nullable(),
       filename: z.string().regex(/^Payslip-\d{4}-\d{2}-\d+\.pdf$/),
-      delivery: z.object({ history: deliveryHistory, actions: z.array(z.enum(["initial", "resend", "print"])) }),
+      delivery: z.object({ history: deliveryHistory, history_count: historyPage.shape.count.optional(),
+        actions: z.array(z.enum(["initial", "resend", "print"])) }),
     }).nullable(),
   })),
   next_after: positive.nullable(),
@@ -71,8 +80,21 @@ const deliverySchema = z.discriminatedUnion("action", [
   }),
 ]);
 
+const deliveryReceipt = z.object({
+  id: positive, slip: positive, channel: z.enum(["email", "print"]), state: text,
+});
+
+function confirmDelivery(raw: unknown, slip: number, action: z.infer<typeof deliverySchema>["action"], id?: number) {
+  const receipt = deliveryReceipt.parse(raw);
+  const channel = action === "initial" ? null : (action === "print" || action === "handover" ? "print" : "email");
+  if (receipt.slip !== slip || (id !== undefined && receipt.id !== id) ||
+      (channel !== null && receipt.channel !== channel)) throw new Error("The payslip receipt target could not be confirmed.");
+  return receipt;
+}
+
 const unavailable = "Payslip access is unavailable in this scope.";
 type Failure = { ok: false; error: string; uncertain: boolean };
+type CommandResult<Receipt> = { ok: true; receipt: Receipt; refreshRequired?: true } | Failure;
 class ScopedPayslipError extends Error {
   constructor(readonly code: string) {
     super("Scoped payslip operation failed.");
@@ -107,12 +129,21 @@ export async function readPayslipWorkspace(input: unknown) {
   const parsed = reviewInput.safeParse(input);
   if (!parsed.success) return { ok: false as const, error: "Enter an employer, branch, and payroll month." };
   const { company, branch, month, employee, after } = parsed.data;
-  return read("t17_payslip_workspace", {
+  return read("t17_payslip_workspace_summary", {
     p_company: company, p_branch: branch, p_month: month, p_employee: employee ?? null, p_after: after ?? null,
   }, workSchema);
 }
 
-export async function issuePayslip(input: unknown): Promise<{ ok: true } | Failure> {
+export async function readPayslipDeliveryHistory(input: unknown) {
+  const parsed = historyQuery.safeParse(input);
+  if (!parsed.success) return { ok: false as const, error: "Choose an exact payslip and delivery page." };
+  const { company, branch, month, slip, before } = parsed.data;
+  return read("t17_payslip_delivery_history", {
+    p_company: company, p_branch: branch, p_month: month, p_slip: slip, p_before: before ?? null,
+  }, historyPage);
+}
+
+export async function issuePayslip(input: unknown): Promise<CommandResult<{ id: number; routed: boolean }>> {
   const parsed = issueSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Choose the employee's exact approved payroll result.", uncertain: false };
   if (!canUseApplication(await getAuthContext())) return { ok: false, error: unavailable, uncertain: false };
@@ -124,7 +155,7 @@ export async function issuePayslip(input: unknown): Promise<{ ok: true } | Failu
     return data;
   };
   try {
-    await issueRetainedPayslip(parsed.data, {
+    const receipt = await issueRetainedPayslip(parsed.data, {
       begin: async ({ operation, batch, employee }) => prepareSchema.parse(await actorRpc("t17_issue_prepare", {
         p_operation: operation, p_batch: batch, p_employee: employee,
       })),
@@ -143,26 +174,28 @@ export async function issuePayslip(input: unknown): Promise<{ ok: true } | Failu
       },
       finalize: async (id) => z.object({ can_deliver: z.boolean() }).parse(await actorRpc("t17_issue_finalize", { p_slip: id })),
       routeInitial: async (id, operation) => {
-        await actorRpc("t17_delivery_command", { p_operation: operation, p_slip: id, p_action: "initial", p_data: {} });
+        const raw = await actorRpc("t17_delivery_command", { p_operation: operation, p_slip: id, p_action: "initial", p_data: {} });
+        confirmDelivery(raw, id, "initial");
       },
     });
-    return { ok: true };
+    return { ok: true, receipt, ...invalidatePayrollWorkspace("payslips") };
   } catch (error) {
     return errorResult(error);
   }
 }
 
-export async function changePayslipDelivery(input: unknown): Promise<{ ok: true } | Failure> {
+export async function changePayslipDelivery(input: unknown): Promise<CommandResult<z.infer<typeof deliveryReceipt>>> {
   const parsed = deliverySchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Check the selected payslip and delivery details.", uncertain: false };
   if (!canUseApplication(await getAuthContext())) return { ok: false, error: unavailable, uncertain: false };
   const { operation, slip, action, data } = parsed.data;
   try {
-    const { error } = await (await createClient()).rpc("t17_delivery_command", {
+    const { data: raw, error } = await (await createClient()).rpc("t17_delivery_command", {
       p_operation: operation, p_slip: slip, p_action: action, p_data: data,
     });
     if (error) throw new ScopedPayslipError(error.code);
-    return { ok: true };
+    const receipt = confirmDelivery(raw, slip, action, "delivery" in data ? data.delivery : undefined);
+    return { ok: true, receipt, ...invalidatePayrollWorkspace("payslips") };
   } catch (error) {
     return errorResult(error);
   }

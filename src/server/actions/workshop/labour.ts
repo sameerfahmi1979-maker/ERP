@@ -1,13 +1,14 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import type { OperationsCommandResult } from "@/lib/operations/command-result";
+import { refreshOperationsPaths } from "@/server/operations/revalidate-command-paths";
 import { z } from "zod";
 import { fleetId } from "@/lib/fleet/asset-contract";
 import { logger } from "@/lib/logger";
 import { canUseApplication, getAuthContext } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
 import { jobWorkRequest, labourHrQueue, labourPayroll, labourPreview, labourReviewScopes, labourWorkspace,
-  outsideWorkspace, workshopJobIndex } from "@/lib/workshop/labour-contract";
+  outsideWorkspace, workshopJobIndexPage } from "@/lib/workshop/labour-contract";
 
 async function read<T>(rpc: string, params: Record<string, unknown>, shape: z.ZodType<T>) {
   try {
@@ -27,7 +28,9 @@ async function read<T>(rpc: string, params: Record<string, unknown>, shape: z.Zo
 
 export async function listWorkshopWork(before?: number) {
   if (!fleetId.optional().safeParse(before).success) return null;
-  return read("t12_job_work_index", { p_before: before }, workshopJobIndex);
+  const page = await read("fa_workshop_job_index_page", { p_before: before }, workshopJobIndexPage);
+  const first = page?.rows[0]?.id;
+  return first !== undefined && before !== undefined && first >= before ? null : page;
 }
 export async function readWorkshopLabour(job: number) {
   if (!fleetId.safeParse(job).success) return null;
@@ -56,33 +59,49 @@ export async function readWorkshopPayroll(branch: number, through: string, cutof
   return read("t12_labour_payroll", { p_branch: branch, p_through: through, p_cutoff: cutoff, p_before: before }, labourPayroll);
 }
 
-export async function saveJobWork(input: unknown): Promise<{ ok: true } | { ok: false; error: string }> {
+const receipt = z.object({ id: fleetId, replayed: z.boolean() });
+const jobWorkCommands = {
+  labour: { rpc: "t12_labour_command", key: "p_job", receipt: receipt.extend({
+    assignment: fleetId, decision: z.string().nullable(), minutes: z.number().nullable(), cost_status: z.enum(["rate-required", "valued"]).nullable(),
+  }) },
+  rate: { rpc: "t12_labour_rate", key: "p_branch", receipt },
+  outside: { rpc: "t12_outside_work", key: "p_job", receipt: receipt.extend({
+    job: fleetId, revision: fleetId, state: z.string().min(1), finance_receipt: fleetId.nullable(),
+  }) },
+  hr: { rpc: "t12_labour_hr", key: "p_version", receipt: receipt.extend({
+    version: fleetId, day: z.iso.date(), eligible_minutes: z.number().positive(),
+  }) },
+  correction: { rpc: "t12_labour_correction", key: "p_claim", receipt: receipt.extend({ day: z.iso.date() }) },
+};
+type JobWorkReceipt = z.infer<(typeof jobWorkCommands)[keyof typeof jobWorkCommands]["receipt"]>;
+
+export async function saveJobWork(input: unknown): Promise<OperationsCommandResult<JobWorkReceipt>> {
   const parsed = jobWorkRequest.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Check all required fields before saving." };
+  if (!parsed.success) return { ok: false, uncertain: false, error: "Check all required fields before saving." };
+  let dispatched = false;
   try {
-    if (!canUseApplication(await getAuthContext())) return { ok: false, error: "Sign in again to continue." };
+    if (!canUseApplication(await getAuthContext())) return { ok: false, uncertain: false, error: "Sign in again to continue." };
     const { nonce, parent, family, action, data } = parsed.data;
-    const route = {
-      labour: { rpc: "t12_labour_command", key: "p_job" },
-      rate: { rpc: "t12_labour_rate", key: "p_branch" },
-      outside: { rpc: "t12_outside_work", key: "p_job" },
-      hr: { rpc: "t12_labour_hr", key: "p_version" },
-      correction: { rpc: "t12_labour_correction", key: "p_claim" },
-    }[family];
+    const route = jobWorkCommands[family];
     const request = { p_operation: nonce, [route.key]: parent,
       ...(family === "hr" ? { p_digest: data.digest, p_reason: data.reason } : { p_action: action, p_data: data }) };
-    const { error } = await (await createClient()).rpc(route.rpc, request);
+    const client = await createClient();
+    dispatched = true;
+    const { data: raw, error } = await client.rpc(route.rpc, request);
     if (error) {
-      if (["PT409", "42501", "22023", "P0409"].includes(error.code)) return { ok: false, error: error.message };
-      if (["23505", "23P01", "22007", "22008", "22P02"].includes(error.code)) return { ok: false, error: "Check the date, reference or conflicting allocation." };
+      if (["PT409", "42501", "22023", "P0409"].includes(error.code)) return { ok: false, uncertain: false, error: error.message };
+      if (["23505", "23P01", "22007", "22008", "22P02"].includes(error.code)) return { ok: false, uncertain: false, error: "Check the date, reference or conflicting allocation." };
       logger.warn("Workshop workload save failed", { family, action, code: error.code });
-      return { ok: false, error: "The save could not be confirmed. Retry with the same details." };
+      return { ok: false, uncertain: true, error: "The save could not be confirmed. Retry with the same details." };
     }
-    revalidatePath("/modules/workshop");
-    revalidatePath("/admin/hr/operations/workshop-labour");
-    revalidatePath("/admin/hr/payroll/workshop");
-    return { ok: true };
+    const result = route.receipt.safeParse(raw);
+    if (!result.success || ("job" in result.data && result.data.job !== parent) ||
+      ("version" in result.data && result.data.version !== parent)) {
+      return { ok: false, uncertain: true, error: "The save could not be confirmed. Retry with the same details." };
+    }
+    const refresh = refreshOperationsPaths({ kind: "job-work", job: route.key === "p_job" ? parent : null });
+    return { ok: true, receipt: result.data, ...refresh };
   } catch {
-    return { ok: false, error: "The save could not be confirmed. Retry with the same details." };
+    return { ok: false, uncertain: dispatched, error: dispatched ? "The save could not be confirmed. Retry with the same details." : "The save could not start. Try again." };
   }
 }

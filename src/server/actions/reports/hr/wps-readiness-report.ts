@@ -1,6 +1,6 @@
 /** Internal WPS-readiness review only; never a bank file or payment receipt. */
 import type {ReportFetcher, ReportDataResult} from "@/lib/report-center/types";
-import type {ReportReadClient} from "@/lib/report-center/scoped-read-client";
+import {hasReportSourceGenerationGuard,type ReportReadClient} from "@/lib/report-center/scoped-read-client";
 import {z} from "zod";
 import {createHash} from "node:crypto";
 import {checkWpsReadiness} from "@/lib/hr/payroll/wps-readiness";
@@ -49,12 +49,13 @@ export const wpsReadinessFetcher:ReportFetcher={
   for(const rows of [components,effects,holds])if(new Set(rows.map(row=>row.id)).size!==rows.length)throw Error("Duplicate payroll review facts");
   return{employees,profiles,wpsRows,components,effects,holds};
   };
-  // Fixed two-pass reconciliation, never retries until a convenient result.
-  // Versions detect edit-and-revert; full values detect changed selection and
-  // reference labels. This is a bounded review snapshot, not a payment lock.
-  const first=await collect(),confirmed=await collect(),source=JSON.stringify(first);
-  if(source!==JSON.stringify(confirmed))throw Error("Payroll review sources changed during collection. Run it again.");
-  const {employees,profiles,wpsRows,components,effects,holds}=confirmed;
+  // Both report runners check source generations and current authority after
+  // collection. Standalone readers still reconcile two complete snapshots.
+  const snapshot=await collect(),source=JSON.stringify(snapshot);
+  if(!hasReportSourceGenerationGuard(db)&&source!==JSON.stringify(await collect())){
+   throw Error("Payroll review sources changed during collection. Run it again.");
+  }
+  const {employees,profiles,wpsRows,components,effects,holds}=snapshot;
   const columns=["employee_code","employee_name","company","bank_name","wps_applicable","wps_status","payment_method","missing_fields","hold_status","readiness_status"];
   const profileMap=unique(profiles),wpsMap=unique(wpsRows),holdSet=new Set(holds.map(row=>row.employee_id));
   // Group once; never issue a salary query per employee.

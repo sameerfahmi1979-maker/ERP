@@ -116,8 +116,25 @@ export type DmsDocumentFilters = {
 
 // ── Validation schemas ─────────────────────────────────────────────────────────
 
-const documentUpdateSchema = documentCreateSchema.partial().extend({
+const reminderInputsSchema = z.object({
+  expiry_date: z.iso.date().nullable(),
+  document_type_id: z.number().int().positive(),
+  owning_company_id: z.number().int().positive().nullable(),
+  owning_branch_id: z.number().int().positive().nullable(),
+  status: z.string(),
+  reminder_policy_id: z.number().int().positive().nullable(),
+});
+
+export type DmsReminderInputs = z.infer<typeof reminderInputsSchema>;
+const reminderInputFields = Object.keys(reminderInputsSchema.shape) as Array<keyof DmsReminderInputs>;
+const reminderInputColumns = reminderInputFields.join(", ");
+
+const documentUpdateSchema = documentCreateSchema.extend({
+  status: documentCreateSchema.shape.status.removeDefault(),
+  confidentiality_level: documentCreateSchema.shape.confidentiality_level.removeDefault(),
+}).partial().extend({
   id: z.number().int().positive(),
+  expectedReminderInputs: reminderInputsSchema.optional(),
 });
 
 export type CreateDmsDocumentInput = z.infer<typeof documentCreateSchema>;
@@ -458,21 +475,20 @@ export async function createDmsDocument(
 
 export async function updateDmsDocument(
   input: UpdateDmsDocumentInput
-): Promise<ActionResult<{ id: number }>> {
+): Promise<ActionResult<{ id: number; reminderInputs?: DmsReminderInputs }>> {
   try {
     const ctx = await getAuthContext();
     if (!hasPermission(ctx, "dms.documents.edit") && !hasPermission(ctx, "dms.admin")) {
       return { success: false, error: "Permission denied" };
     }
 
-    const { id, ...rest } = input;
-    if (!id) return { success: false, error: "Document ID required" };
+    if (!input.id) return { success: false, error: "Document ID required" };
 
-    const parsed = documentCreateSchema.partial().safeParse(rest);
+    const parsed = documentUpdateSchema.safeParse(input);
     if (!parsed.success) {
       return { success: false, error: parsed.error.issues[0]?.message ?? "Validation failed" };
     }
-    const data = parsed.data;
+    const { id, expectedReminderInputs, ...data } = parsed.data;
     if(data.originContext)return {success:false,error:'The original creation context cannot be reassigned through a document update.'};
 
     if (data.expiry_date && data.issue_date && data.expiry_date < data.issue_date) {
@@ -495,7 +511,7 @@ export async function updateDmsDocument(
 
     const supabase = await createClient();
 
-    const { data: updated, error } = await supabase
+    let update = supabase
       .from("dms_documents")
       .update({
         ...data,
@@ -503,12 +519,34 @@ export async function updateDmsDocument(
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
-      .is("deleted_at", null)
-      .select("id")
-      .maybeSingle();
+      .is("deleted_at", null);
+    let reminderInputsChanged = false;
+    let currentInputs = expectedReminderInputs;
+    if (!currentInputs && reminderInputFields.some(field => data[field] !== undefined)) {
+      const { data: current, error } = await supabase
+        .from("dms_documents")
+        .select(reminderInputColumns)
+        .eq("id", id)
+        .is("deleted_at", null)
+        .maybeSingle();
+      const snapshot = reminderInputsSchema.safeParse(current);
+      if (error || !snapshot.success) return { success: false, error: "Document unavailable or access denied" };
+      currentInputs = snapshot.data;
+    }
+    if (currentInputs) {
+      for (const field of reminderInputFields) {
+        const previous = currentInputs[field];
+        // Verify caller-supplied or freshly read values in the same write.
+        update = previous === null ? update.is(field, null) : update.eq(field, previous);
+        if (data[field] !== undefined && data[field] !== previous) reminderInputsChanged = true;
+      }
+    }
 
+    const { data: updated, error } = await update
+      .select(currentInputs ? `id, ${reminderInputColumns}` : "id")
+      .maybeSingle();
     if (error) return { success: false, error: error.message };
-    if (!updated) return { success: false, error: "Document unavailable or access denied" };
+    if (!updated) return { success: false, error: "Document changed or is unavailable. Refresh before saving again." };
 
     await insertDmsEvent(supabase, id, "document_updated", ctx.profile?.id ?? null, "Document metadata updated");
 
@@ -523,8 +561,7 @@ export async function updateDmsDocument(
 
     revalidateDmsDocuments(id);
 
-    // Rebuild expiry reminders if expiry_date was changed
-    if (data.expiry_date !== undefined) {
+    if (reminderInputsChanged) {
       try {
         const settings = await getDmsNotificationSettingsForScheduler();
         const reminderDays = settings?.reminder_days_before?.length
@@ -536,7 +573,8 @@ export async function updateDmsDocument(
       }
     }
 
-    return { success: true, data: { id } };
+    const savedInputs = currentInputs ? reminderInputsSchema.safeParse(updated) : null;
+    return { success: true, data: { id, ...(savedInputs?.success && { reminderInputs: savedInputs.data }) } };
   } catch (err) {
     logger.error("updateDmsDocument error", err);
     return { success: false, error: "Failed to update document" };

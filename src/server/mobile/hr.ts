@@ -76,8 +76,8 @@ async function mutate(db:Db,i:Mutation){
   return normalizeReceipt(raw,i.operationId,i.employeeId,expectedId);
 }
 export function dispatchHr(raw:Input<"profile">,ctx:AuthContext):ReturnType<typeof profile>;
-export function dispatchHr(raw:HrCommand,ctx:AuthContext):Promise<unknown>;
-export async function dispatchHr(raw:HrCommand,ctx:AuthContext){
+export function dispatchHr(raw:HrCommand,ctx:AuthContext,signal?:AbortSignal):Promise<unknown>;
+export async function dispatchHr(raw:HrCommand,ctx:AuthContext,signal?:AbortSignal){
   if(!canUseApplication(ctx))throw denied();
   const i=hrCommand.parse(raw);
   const db=await createClient();
@@ -115,6 +115,6 @@ export async function dispatchHr(raw:HrCommand,ctx:AuthContext){
         }
       }
     }
-    default:return (await import("./hr-expanded")).expandedHr(db,ctx,i);
+    default:return (await import("./hr-expanded")).expandedHr(db,ctx,i,signal);
   }
 }

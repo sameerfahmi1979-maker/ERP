@@ -1,6 +1,6 @@
 import "server-only";
 import {createClient} from "@/lib/supabase/server";
-import {hasPermission,type AuthContext} from "@/lib/rbac/check";
+import {hasGlobalPermission,hasPermission,type AuthContext} from "@/lib/rbac/check";
 type Metric={status:"ready";value:number}|{status:"restricted"|"failed"};
 /** Bounded, ordinary-caller reads. Missing/failed metrics never become sample values. */
 export async function readHomeDashboard(ctx:AuthContext){
@@ -16,7 +16,7 @@ export async function readHomeDashboard(ctx:AuthContext){
   const [employees,documentsPending,parties,activity]=await Promise.all([
     count("employees",hasPermission(ctx,"hr.employees.view")),
     count("dms_ai_job_queue",hasPermission(ctx,"dms.admin")||hasPermission(ctx,"dms.documents.view"),true),
-    count("parties",hasPermission(ctx,"parties.view")),
+    count("parties",hasGlobalPermission(ctx,"master_data.parties.view")||hasGlobalPermission(ctx,"master_data.party_master.view")),
     (async()=>{if(!hasPermission(ctx,"audit.view"))return{status:"restricted"as const,rows:[]};
       try{const r=await db.from("audit_logs").select("id,action,module_code,created_at").order("created_at",{ascending:false}).order("id",{ascending:false}).range(0,9);
         if(r.error||!Array.isArray(r.data))throw Error("Activity unavailable");return{status:"ready"as const,rows:r.data};

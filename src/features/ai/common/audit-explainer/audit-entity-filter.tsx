@@ -10,6 +10,7 @@ const ENTITY_TYPES = [
   { value: "organization", label: "Organization" },
   { value: "branch", label: "Branch" },
   { value: "party", label: "Party" },
+  { value: "employee", label: "Employee" },
   { value: "work_site", label: "Work Site" },
   { value: "dms_document", label: "DMS Document" },
 ];

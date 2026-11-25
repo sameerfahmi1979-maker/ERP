@@ -65,6 +65,7 @@ export function ERPCombobox({
   filterFn,
   onDirtyMark,
   maxVisibleOptions,
+  onOpenChange,
   onSearchQueryChange,
 }: ERPComboboxProps) {
   const [open, setOpen] = React.useState(false);
@@ -105,34 +106,24 @@ export function ERPCombobox({
 
   const actualFilterFn = filterFn ?? defaultFilterFn;
 
-  // ── Filtered options (memoised) ─────────────────────────────────────────────
-  const filteredOptions = React.useMemo(() => {
-    if (!searchQuery) return options;
-    return options.filter((opt) => actualFilterFn(opt, searchQuery));
-  }, [options, searchQuery, actualFilterFn]);
-
-  // ── Visible options with optional truncation ────────────────────────────────
-  // When maxVisibleOptions is set and the list is larger than the threshold
-  // (only applies when the search field is empty), truncate the list and always
-  // keep the currently selected option in view.
-  const { visibleOptions, showTypeHint } = React.useMemo(() => {
-    if (!maxVisibleOptions || searchQuery || filteredOptions.length <= maxVisibleOptions) {
-      return { visibleOptions: filteredOptions, showTypeHint: false };
+  const { visibleOptions, matchCount } = React.useMemo(() => {
+    if (!open) return { visibleOptions: [], matchCount: 0 };
+    const limit = maxVisibleOptions || Infinity;
+    const selectedValue = value == null ? null : String(value);
+    const matches: ERPComboboxOption[] = [];
+    let count = 0;
+    let selected: ERPComboboxOption | undefined;
+    for (const option of options) {
+      if (searchQuery && !actualFilterFn(option, searchQuery)) continue;
+      count++;
+      if (matches.length < limit) matches.push(option);
+      if (!selected && selectedValue !== null && String(option.value) === selectedValue) selected = option;
     }
-
-    // Separate selected from the rest so it always appears
-    const selected = filteredOptions.filter(
-      (opt) => opt.value === value || String(opt.value) === String(value)
-    );
-    const rest = filteredOptions
-      .filter((opt) => opt.value !== value && String(opt.value) !== String(value))
-      .slice(0, Math.max(0, maxVisibleOptions - selected.length));
-
-    return {
-      visibleOptions: [...selected, ...rest],
-      showTypeHint: true,
-    };
-  }, [filteredOptions, maxVisibleOptions, searchQuery, value]);
+    const visibleOptions = selected && count > limit
+      ? [selected, ...matches.filter(option => option !== selected).slice(0, limit - 1)]
+      : matches;
+    return { visibleOptions, matchCount: count };
+  }, [open, options, searchQuery, actualFilterFn, maxVisibleOptions, value]);
 
   // ── Selected option ─────────────────────────────────────────────────────────
   const selectedOption = React.useMemo(() => {
@@ -154,6 +145,12 @@ export function ERPCombobox({
 
   // ── Interaction handlers ────────────────────────────────────────────────────
 
+  const changeOpen = React.useCallback((next: boolean) => {
+    if (next && (disabled || readOnly)) return;
+    setOpen(next);
+    onOpenChange?.(next);
+  }, [disabled, readOnly, onOpenChange]);
+
   const handleSelect = React.useCallback(
     (optionValue: string | number) => {
       const isAlreadySelected =
@@ -171,10 +168,10 @@ export function ERPCombobox({
         onValueChange(optionValue);
         dispatchDirtySignal();
       }
-      setOpen(false);
+      changeOpen(false);
       setSearchQuery('');
     },
-    [value, required, onValueChange, dispatchDirtySignal]
+    [value, required, onValueChange, dispatchDirtySignal, changeOpen]
   );
 
   const handleClear = React.useCallback(
@@ -212,7 +209,7 @@ export function ERPCombobox({
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div ref={containerRef} className={cn('relative', className)}>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={changeOpen}>
         <PopoverTrigger asChild>
           <Button
             type="button"
@@ -263,7 +260,7 @@ export function ERPCombobox({
               {!resultsPending && !error && options.length === 0 && (
                 <CommandEmpty>{emptyText}</CommandEmpty>
               )}
-              {!resultsPending && !error && options.length > 0 && filteredOptions.length === 0 && (
+              {!resultsPending && !error && options.length > 0 && matchCount === 0 && (
                 <CommandEmpty>{noResultsText}</CommandEmpty>
               )}
               {!resultsPending && !error && visibleOptions.length > 0 && (
@@ -295,9 +292,9 @@ export function ERPCombobox({
                   })}
                 </CommandGroup>
               )}
-              {!resultsPending && !error && showTypeHint && (
+              {!resultsPending && !error && visibleOptions.length < matchCount && (
                 <div className="px-3 py-2 text-[11px] text-muted-foreground border-t border-border text-center">
-                  Showing {visibleOptions.length} of {filteredOptions.length} — type to search
+                  Showing {visibleOptions.length} of {matchCount} — {searchQuery ? 'narrow your search' : 'type to search'}
                 </div>
               )}
             </CommandList>

@@ -35,6 +35,7 @@ export function EmailFeatureFlagsPanel({ flags, onRefresh, canManage = false }: 
       <AlgtDialog open={!!confirming} title="Enable email feature?" onOpenChange={open=>{if(!operation.busy&&!open)setConfirming(null);}} actions={<><Button variant="outline" disabled={operation.busy} onClick={()=>setConfirming(null)}>Keep disabled</Button><Button disabled={operation.busy||!canManage||operation.uncertain} onClick={()=>{if(confirming){const flag=confirming;setConfirming(null);void operation.change(flag.featureCode,flag.workspaceRevision,{is_enabled:true});}}}>Confirm enable</Button></>}>
         <p>Enable {confirming?.featureName}? This permits email for this feature when its provider and backend delivery service are available. It does not confirm delivery.</p>
       </AlgtDialog>
+      {canManage && flags.length > 0 && <p className="text-xs text-muted-foreground">Switch changes save immediately. Features that require approval prompt for confirmation before enablement.</p>}
       {flags.map((flag) => (
         <div key={flag.featureCode} className="flex items-center justify-between py-2 px-3 rounded-md hover:bg-muted/20 transition-colors">
           <div className="flex-1 min-w-0 mr-4">

@@ -16,7 +16,7 @@ import { routeOcr } from "@/lib/dms/ocr/ocr-router";
 import { preparationResponseSchema } from "@/lib/dms/preparation/response-schema";
 import { StructuredAiFailure, structuredFailureCodes } from "@/lib/dms/ai/structured-failure";
 import type { DmsAiJobHandlerResult } from "@/lib/dms/ai-jobs/job-types";
-import { preparationTraceId, traceOperation, traceSpan } from '@/lib/performance/trace';
+import { preparationTraceId, traceDetachedOperation, traceSpan } from '@/lib/performance/trace';
 const analysisReceipt = z.strictObject({ output: modelPreparationSchema, provider: z.string(), model: z.string().nullable(), configId: z.number().int().positive().nullable(),
   promptVersion: z.literal("dms-preparation/1"), schemaVersion: z.literal("dms-preparation/1"), inputHash: z.string().regex(/^[a-f0-9]{64}$/), promptTokens: z.number().int().nonnegative().nullable(), completionTokens: z.number().int().nonnegative().nullable(), durationMs: z.number().nonnegative() });
 // Preserve received output before parsing or quality validation. Legacy validated receipts remain replayable.
@@ -34,7 +34,7 @@ const targetSchema = z.strictObject({ documentTypeId: z.number().int().positive(
 export async function runDocumentPreparationJob(documentId: number): Promise<DmsAiJobHandlerResult | null> {
   const claim = currentJobClaim();
   if (!claim) return { success: false, errorCode: "auth_error", retryable: false };
-  return traceOperation('dms.rerun', () => prepareDocument(documentId,claim), preparationTraceId(claim.jobId));
+  return traceDetachedOperation('dms.rerun', () => prepareDocument(documentId,claim), preparationTraceId(claim.jobId));
 }
 
 async function prepareDocument(documentId: number, claim: NonNullable<ReturnType<typeof currentJobClaim>>): Promise<DmsAiJobHandlerResult | null> {
@@ -212,9 +212,11 @@ async function prepareDocument(documentId: number, claim: NonNullable<ReturnType
       if (target.canApply) candidate.values.unshift({ key: "document_type_id", label: "Document type and registered category", current: String(source.documentTypeId), proposed: String(target.documentTypeId), evidence: [], confidence: null });
     } else if (!approvedSaved && !reviewed && code && code !== source.typeCode) candidate.warnings.push("The suggested type was not in the verified catalogue. The existing type is retained.");
     if (source.files.some(f => (f.text?.length ?? 0) > 24000)) candidate.warnings.push("Analysis used bounded source excerpts. Review the original for material outside those excerpts.");
-    const published = z.object({ success: z.literal(true), resultId: z.number().int().positive(), replayed: z.boolean() }).strict().parse(await traceSpan('dms.publish', () => rpc("publish", { candidate,
+    const receipt = z.strictObject({ success: z.literal(true), resultId: z.number().int().positive(), replayed: z.boolean() });
+    const published = await traceSpan('dms.publish', async () => receipt.parse(await rpc("publish", { candidate,
       provenance: { provider: analyzed.provider, model: analyzed.model, configId: analyzed.configId, promptVersion: analyzed.promptVersion, schemaVersion: analyzed.schemaVersion, inputHash: analyzed.inputHash, promptTokens: analyzed.promptTokens, completionTokens: analyzed.completionTokens, durationMs: analyzed.durationMs },
-      candidateText: working.files.map(f => f.text ?? "").join("\n\n").slice(0, 100000) })));
+      candidateText: working.files.map(f => f.text ?? "").join("\n\n").slice(0, 100000) }))).catch(() => null);
+    if (!published) return { success: false, errorCode: "preparation_publication_unconfirmed", retryable: false };
     return { success: published.success, modelName: analyzed.model, providerCode: analyzed.provider, inputTokenCount: analyzed.promptTokens, outputTokenCount: analyzed.completionTokens };
   } catch (error) {
     // A retained uncertain stage needs reconciliation, not a fresh paid request.

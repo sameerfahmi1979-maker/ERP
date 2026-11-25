@@ -1,7 +1,7 @@
 "use server";
 
 import {HR_LETTER_CAPABILITIES,hrLetterSourceFilters} from "@/lib/official-documents/hr-source-contract";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canUseApplication, getAuthContext } from "@/lib/rbac/check";
@@ -21,10 +21,46 @@ import type { ReportRegistryEntry } from "@/lib/report-center/types";
 
 const requestSchema = z.object({ outputCode: z.string().regex(/^[A-Z0-9_]{1,100}$/), employeeId: z.number().int().positive().refine(Number.isSafeInteger),
   language: z.enum(["en", "ar", "bilingual"]), templateId: z.number().int().positive().refine(Number.isSafeInteger).optional(),
-  inputs: z.record(z.string(), z.string().max(5000)).default({}),wordingReview:z.boolean().default(false) }).strict();
+  inputs: z.record(z.string(), z.string().max(5000)).default({}), wordingReview: z.boolean().default(false),
+  previewSessionId: z.uuid().optional() }).strict();
 
-/** Canonical PDF draft, not an issuance. No serial/link/history/storage writer.
- * Pending business approval may be reviewed as a draft; missing wording may not. */
+const MAX_PREVIEW_BYTES = 8 * 1024 * 1024;
+const MAX_REUSABLE_DRAFTS = 4;
+const DRAFT_REUSE_MS = 10_000;
+const recentDrafts = new Map<string, {
+  result: ReturnType<typeof renderOfficialHtmlToPdf>;
+  expiresAt: number;
+}>();
+
+/** Only share rendition of freshly verified, byte-identical draft input within its workbench. */
+function renderDraft(plan: Parameters<typeof renderOfficialHtmlToPdf>[0], key?: string) {
+  if (key === undefined) return renderOfficialHtmlToPdf(plan);
+  const now = Date.now();
+  for (const [cacheKey, state] of recentDrafts) {
+    if (state.expiresAt <= now) recentDrafts.delete(cacheKey);
+  }
+  const cached = recentDrafts.get(key);
+  if (cached) return cached.result;
+  const result = renderOfficialHtmlToPdf(plan);
+  if (recentDrafts.size >= MAX_REUSABLE_DRAFTS) return result;
+
+  const state = { result, expiresAt: Number.POSITIVE_INFINITY };
+  recentDrafts.set(key, state);
+  void result.then(pdf => {
+    if (pdf.buffer.length > MAX_PREVIEW_BYTES) {
+      recentDrafts.delete(key);
+      return;
+    }
+    state.expiresAt = Date.now() + DRAFT_REUSE_MS;
+    setTimeout(() => {
+      if (recentDrafts.get(key) === state) recentDrafts.delete(key);
+    }, DRAFT_REUSE_MS).unref();
+  }, () => recentDrafts.delete(key));
+  return result;
+}
+
+/** Canonical PDF draft. Source-backed previews retain report-run history.
+ * Official issuance has its own serial, verification link, and original-file workflow. */
 export async function previewOfficialDocument(request: z.input<typeof requestSchema>) {
   try {
     const parsed = requestSchema.safeParse(request);
@@ -69,9 +105,14 @@ export async function previewOfficialDocument(request: z.input<typeof requestSch
       issuedDateAr: new Intl.DateTimeFormat("ar-AE-u-nu-arab", { day: "numeric", month: "long", year: "numeric" }).format(now) }), layoutVersion: OFFICIAL_DOCUMENT_LAYOUT_VERSION });
     plan.html = injectDraftWatermark(plan.html);
     if ([plan.html, plan.headerHtml, plan.footerHtml].some(part => /(?:src\s*=\s*["']https?:|url\(\s*["']?https?:|@import|<script\b)/i.test(part ?? ""))) throw Error("Draft resources must be embedded");
-    const pdf = await renderOfficialHtmlToPdf(plan);
+    const previewKey = input.previewSessionId && createHash("sha256").update(JSON.stringify([
+      input.previewSessionId, ctx.profile.id, ctx.profile.auth_user_id, ctx.roleAssignments,
+      access.subject, input.outputCode, input.language, input.wordingReview, values.data,
+      data, branding.provenance, definition.version, plan,
+    ])).digest("hex");
+    const pdf = await renderDraft(plan, previewKey);
     // Bound serialized preview responses, not just renderer/Storage limits.
-    if (pdf.buffer.length > 8 * 1024 * 1024) return { success: false as const, error: "This preview is too large for an interactive draft. Reduce its content." };
+    if (pdf.buffer.length > MAX_PREVIEW_BYTES) return { success: false as const, error: "This preview is too large for an interactive draft. Reduce its content." };
     const fresh = await getAuthContext();
     if (fresh.profile?.id !== ctx.profile.id || !canUseApplication(fresh)) throw Error("Principal changed");
     const current = await getEmployeeAccess(fresh, input.employeeId);

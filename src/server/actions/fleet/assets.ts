@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
-  fleetAsset, fleetChoices, fleetCommand, fleetId, fleetPartyChoices, fleetReceipt, fleetRow,
-  type FleetReceipt,
+  fleetAssetPage, fleetAssetPageNumber, fleetAssetSection, fleetAssetSummary,
+  fleetChoices, fleetCommand, fleetId, fleetPartyChoices, fleetReceipt, fleetRow,
+  type FleetAssetSection, type FleetReceipt,
 } from "@/lib/fleet/asset-contract";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { canUseApplication } from "@/lib/rbac/scope";
@@ -26,7 +27,14 @@ export async function listFleetAssets(query: string, offset: number) {
 
 export async function getFleetAsset(asset: number) {
   if (!fleetId.safeParse(asset).success) return null;
-  return readFleet("t05_read_fleet_asset", { p_asset: asset }, fleetAsset);
+  return readFleet("t05_read_fleet_asset_summary", { p_asset: asset }, fleetAssetSummary);
+}
+
+export async function getFleetAssetPage(asset: number, section: FleetAssetSection, page: number) {
+  if (!fleetId.safeParse(asset).success || !fleetAssetSection.safeParse(section).success ||
+      !fleetAssetPageNumber.safeParse(page).success) return null;
+  const result = await readFleet("t05_read_fleet_asset_page", { p_asset: asset, p_section: section, p_page: page }, fleetAssetPage);
+  return result?.section === section ? result : null;
 }
 
 export async function getFleetChoices(company?: number, branch?: number) {

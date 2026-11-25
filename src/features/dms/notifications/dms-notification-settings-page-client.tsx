@@ -72,18 +72,25 @@ export function DmsNotificationSettingsClient({
   // Lookup data
   const [roleOptions, setRoleOptions] = useState<RoleOption[]>([]);
   const [userOptions, setUserOptions] = useState<UserOption[]>([]);
-  const [lookupLoading, setLookupLoading] = useState(true);
+  const [lookupStatus, setLookupStatus] = useState<"loading" | "loaded" | "failed">("loading");
+  const [lookupAttempt, setLookupAttempt] = useState(0);
 
-  // Load roles + users once
   useEffect(() => {
-    getDmsNotificationRecipientOptions().then((res) => {
+    let current = true;
+    void getDmsNotificationRecipientOptions().then((res) => {
+      if (!current) return;
       if (res.success && res.data) {
         setRoleOptions(res.data.roles);
         setUserOptions(res.data.users);
+        setLookupStatus("loaded");
+      } else {
+        setLookupStatus("failed");
       }
-      setLookupLoading(false);
+    }).catch(() => {
+      if (current) setLookupStatus("failed");
     });
-  }, []);
+    return () => { current = false; };
+  }, [lookupAttempt]);
 
   // ── Role recipients ───────────────────────────────────────────────────────
 
@@ -262,6 +269,15 @@ export function DmsNotificationSettingsClient({
         </div>
 
         <div className="border-t pt-4 space-y-4">
+          {lookupStatus === "failed" && (
+            <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
+              Recipient choices could not be loaded. Existing selections are preserved.
+              <Button type="button" size="sm" variant="outline" onClick={() => {
+                setLookupStatus("loading");
+                setLookupAttempt(value => value + 1);
+              }}>Retry choices</Button>
+            </div>
+          )}
 
           {/* Role recipients */}
           <div className="space-y-2">
@@ -280,7 +296,8 @@ export function DmsNotificationSettingsClient({
               options={roleOptions.map((r) => ({ value: r.role_code, label: r.role_name }))}
               placeholder="Select roles..."
               searchPlaceholder="Search roles..."
-              loading={lookupLoading}
+              loading={lookupStatus === "loading"}
+              disabled={lookupStatus === "failed"}
             />
           </div>
 
@@ -304,7 +321,8 @@ export function DmsNotificationSettingsClient({
               }))}
               placeholder="Select users..."
               searchPlaceholder="Search by name..."
-              loading={lookupLoading}
+              loading={lookupStatus === "loading"}
+              disabled={lookupStatus === "failed"}
               maxVisibleOptions={20}
             />
           </div>

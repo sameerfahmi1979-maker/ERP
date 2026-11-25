@@ -1,6 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ read: vi.fn(), rpc: vi.fn() }));
-vi.mock("@/lib/ai/common/assistant/entity-access", () => ({ readAuthorizedAssistantEntity: state.read }));
+vi.mock("@/lib/rbac/check", () => ({ getAuthContext: async () => context() }));
+vi.mock("@/lib/ai/common/assistant/entity-access", () => ({
+  assistantSourceKey: ({ entityType, entityId }: { entityType: string; entityId: number }) => `${entityType}:${entityId}`,
+  readAuthorizedAssistantEntity: state.read,
+  readAuthorizedAssistantSourceVersions: async (refs: Array<{ entityType: string; entityId: number }>) => {
+    const versions = new Map();
+    for (const { entityType, entityId } of refs) {
+      const row = await state.read(entityType, entityId);
+      if (row) versions.set(`${entityType}:${entityId}`, row.version);
+    }
+    return versions;
+  },
+}));
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ rpc: state.rpc }) }));
 import { assistantAuthorityFingerprint, createAssistantHistoryBinding, createAssistantHistoryVerifier, verifyAssistantSessionNow } from "@/lib/ai/common/assistant/history-access";
 import type { AuthContext } from "@/lib/rbac/check";
@@ -46,4 +58,25 @@ describe("retained history source checks", () => {
     b.roleAssignments![0].branchId = null; expect(assistantAuthorityFingerprint(a)).not.toBe(assistantAuthorityFingerprint(b));
   });
   it.each([{ data: false, error: null }, { data: null, error: { message: "unavailable" } }])("denies invalid/unavailable current sessions", async result => { state.rpc.mockResolvedValue(result); await expect(verifyAssistantSessionNow()).rejects.toThrow(); });
+});
+it("reuses the admitted session client for all 50 unique retained bindings and withholds the next", async () => {
+  const ctx = context();
+  const db = { rpc: state.rpc } as unknown as Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>;
+  const verify = createAssistantHistoryVerifier(ctx, 7, db);
+  function binding(entityId: number) {
+    return {
+      version: 1,
+      ownerProfileId: ctx.profile!.id,
+      sessionId: 7,
+      authorityFingerprint: assistantAuthorityFingerprint(ctx),
+      sources: [{ reference: { ...ref, entityId }, sourceVersion: "source-v1" }],
+    };
+  }
+  for (let entityId = 1; entityId <= 50; entityId++) {
+    expect(await verify(binding(entityId))).toBe(true);
+  }
+  expect(await verify(binding(51))).toBe(false);
+  expect(await verify(binding(50))).toBe(true);
+  expect(state.read).toHaveBeenCalledTimes(50);
+  expect(state.read).toHaveBeenLastCalledWith("company", 50, { context: ctx, db });
 });

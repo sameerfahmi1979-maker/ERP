@@ -125,6 +125,71 @@ it("complete selected union crosses 1000 rows with exact page/filter/sort over e
   expect(state.calls.filter(c => c.table === "dms_documents").every(c => (c.methods.find(m => m[0] === "in")?.[2] as number[]).length <= 200)).toBe(true);
   const match = hrBrowserDocumentsPage.parse((await documents({search: "01107", columnFilters: {source: "dms_link"}})).data); expect(match.totalCount).toBe(1); expect(match.rows[0].id).toBe(1107);
 });
+it("projects only qualifying selected documents for a late multi-page search", async () => {
+  state.rows.dms_document_links = Array.from({length: 1107}, (_, i) => link(i + 1, i + 1));
+  state.rows.dms_documents = [
+    ...Array.from({length: 1107}, (_, i) => doc(i + 1, {title: `Title ${String(i + 1).padStart(5, "0")}`})),
+    doc(2000, {title: "Other employee 01107"}),
+  ];
+
+  const page = hrBrowserDocumentsPage.parse((await documents({search: "01107", columnFilters: {source: "dms_link"}})).data);
+  expect(page.totalCount).toBe(1);
+  expect(page.rows.map(r => r.id)).toEqual([1107]);
+  expect(state.calls.filter(c => c.table === "dms_document_links").map(c => c.methods.find(m => m[0] === "range")))
+    .toEqual([["range", 0, 499], ["range", 500, 999], ["range", 1000, 1499]]);
+  const projected = state.calls.filter(c => c.table === "dms_documents" && c.methods.some(m => m[0] === "in"));
+  expect(projected).toHaveLength(1);
+  expect(projected[0].methods).toContainEqual(["in", "id", [1107]]);
+});
+it("preserves exact search priority, masked metadata and local fallbacks", async () => {
+  state.rows.dms_document_links = [link(1, 2), link(2, 2), link(3, 99)];
+  state.rows.dms_documents = [doc(2, {title: "Passport original", document_no: null}), doc(3, {title: "Visible but unrelated"})];
+  state.rows.employee_identity_documents = [
+    identity(1, {dms_document_id: 2, document_number: "DUPLICATE-PRIORITY"}),
+    identity(2, {dms_document_id: 3, document_number: "VISIBLE-NONMATCH"}),
+    identity(3, {dms_document_id: 99, document_number: "HIDDEN-FALLBACK"}),
+    identity(4, {dms_document_id: 99, document_number: "DUPLICATE-FALLBACK"}),
+    identity(5, {document_number: "LOCAL-FALLBACK"}),
+  ];
+
+  const result = await documents({search: "Passport", sortKey: "title", sortDir: "asc"});
+  const page = hrBrowserDocumentsPage.parse(result.data);
+  expect(page.totalCount).toBe(3);
+  expect(page.rows).toEqual([
+    expect.objectContaining({key: "identity:3", id: null, documentNo: "HIDDEN-FALLBACK", source: "hr_identity"}),
+    expect.objectContaining({key: "identity:5", id: null, documentNo: "LOCAL-FALLBACK", source: "hr_identity"}),
+    expect.objectContaining({key: "dms:2", documentNo: null, source: "dms_link"}),
+  ]);
+  expect(JSON.stringify(page)).not.toContain("VISIBLE-NONMATCH");
+});
+it("zero search matches produce an exact empty page without linked metadata reads", async () => {
+  const page = hrBrowserDocumentsPage.parse((await documents({search: "no matches"})).data);
+  expect(page.totalCount).toBe(0);
+  expect(page.rows).toEqual([]);
+  expect(state.calls.filter(c => c.table === "dms_documents" && c.methods.some(m => m[0] === "in"))).toHaveLength(0);
+});
+it("retains link order for tied search ranks before slicing", async () => {
+  state.rows.dms_document_links = [link(1, 3), link(2, 1), link(3, 2)];
+  state.rows.dms_documents = [doc(1, {title: "Same match"}), doc(2, {title: "Same match"}), doc(3, {title: "Same match"})];
+
+  const filtered = {search: "match", sortKey: "title", sortDir: "desc", pageSize: 1};
+  const first = hrBrowserDocumentsPage.parse((await documents(filtered)).data);
+  const later = hrBrowserDocumentsPage.parse((await documents({...filtered, page: 2})).data);
+  expect(first.totalCount).toBe(3);
+  expect(first.rows.map(row => row.id)).toEqual([3]);
+  expect(later.totalCount).toBe(3);
+  expect(later.rows.map(row => row.id)).toEqual([1]);
+});
+it("preserves the composition ceiling ahead of search on a large mixed union", async () => {
+  state.rows.dms_document_links = Array.from({length: 2501}, (_, i) => link(i + 1, i + 1));
+  state.rows.dms_documents = Array.from({length: 2501}, (_, i) => doc(i + 1));
+  state.rows.employee_identity_documents = Array.from({length: 2500}, (_, i) => identity(i + 1));
+
+  const result = await documents({search: "no matches"});
+  expect(result.data).toMatchObject({availability: "too_large"});
+  expect(result.data).not.toHaveProperty("rows");
+  expect(state.calls.some(c => c.table === "dms_documents" && c.methods.some(m => m[0] === "or"))).toBe(false);
+});
 it("legacy dependent links are merged once behind independent dependent and employee authorization", async () => {
   state.rows.employee_dependents = [dependent(7, {dms_document_id: 2})]; state.rows.dms_document_links = [link(1, 2, {entity_type: "employee_dependent", entity_id: 7})];
   const page = hrBrowserDocumentsPage.parse((await readHrDocumentBrowser({operation: "documents", entityType: "employee_dependent", entityId: 7})).data); expect(page.rows).toHaveLength(1); expect(page.rows[0].source).toBe("dependent_link");

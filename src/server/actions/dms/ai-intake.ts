@@ -28,6 +28,7 @@ import { logDmsAiUsage } from "@/lib/ai/observability/log-dms-ai-usage";
 import { buildClassificationCandidates, loadClassificationCandidateData } from "@/lib/dms/ai/classification-candidate-builder";
 import { buildSanitizedClassificationPayload } from "@/lib/dms/ai/classification-output";
 import { resolveSuggestedDocumentType } from "@/lib/dms/ai/classification-resolver";
+import { EMPLOYMENT_CONTRACT_TYPE, isMohreEmploymentContract, mohreEmploymentOwnershipWarning } from "@/lib/dms/ai/mohre-employment-contract";
 import { getAzureDocumentIntelligenceProvider, getDmsAiProvider } from "@/lib/dms/ai/factory";
 import { loadMetadataFieldsForDocumentType } from "@/lib/dms/ai/load-metadata-fields";
 import { hashOcrText, PROMPT_VERSION } from "@/lib/dms/ai/prompt-builders";
@@ -56,6 +57,12 @@ import { z } from "zod";
 import {batchDraftUuidSchema,batchDraftPrepareEnvelopeSchema} from "@/lib/dms/numbered-batch-draft";
 
 export async function recoverAiIntakeApproval(sessionId:number){return recoverNumberedAiApproval(sessionId);}
+
+async function loadEmploymentContractType(supabase: SupabaseClient) {
+  const { data, error } = await supabase.from("dms_document_types").select("id,type_code,name_en")
+    .eq("type_code", EMPLOYMENT_CONTRACT_TYPE).eq("is_active", true).is("deleted_at", null).maybeSingle();
+  return error ? null : data;
+}
 
 // ── Entity → party database matching ──────────────────────────────────────────
 
@@ -586,6 +593,15 @@ async function runAiIntake(
       type_code: s.type_code,
       name_en: s.name_en,
     }));
+    const earlyEmploymentEvidence = isMohreEmploymentContract(ocrText);
+    if (earlyEmploymentEvidence && !typeRows.some(row => row.type_code === EMPLOYMENT_CONTRACT_TYPE)) {
+      const type = await loadEmploymentContractType(supabase);
+      if (type) {
+        typeRows.push(type);
+        typeCandidates.unshift({ typeCode: type.type_code, nameEn: type.name_en,
+          description: "MOHRE employment contract with work style and transaction number", categoryName: null });
+      }
+    }
 
     // ── SPEED.1 P3: combined classify + extract in Pass 1 ─────────────────
     // Include the top-ranked candidate's metadata fields in Pass 1. When the
@@ -683,10 +699,16 @@ async function runAiIntake(
       aiOutput.extraction.fullTextTranscription ?? ocrText ?? "";
 
     const firstSuggestion = aiOutput.classification.suggestedTypeCode;
+    const employmentSource = earlyEmploymentEvidence ? ocrText
+      : isMohreEmploymentContract(pass1Transcription) ? pass1Transcription : null;
+    if (employmentSource && !earlyEmploymentEvidence && !typeRows.some(row => row.type_code === EMPLOYMENT_CONTRACT_TYPE)) {
+      const type = await loadEmploymentContractType(supabase);
+      if (type) typeRows.push(type);
+    }
     let typeResolution = resolveSuggestedDocumentType(
       firstSuggestion,
       typeRows as Array<{ id: number; type_code: string; name_en?: string }>,
-      pass1Transcription,
+      employmentSource ?? pass1Transcription,
       aiOutput.classification.confidenceScore
     );
     if (!typeResolution.typeCode || ["HSE_PERMIT_AR", "VISA", "VISA_RESIDENCE"].includes(typeResolution.typeCode)) {
@@ -861,6 +883,19 @@ async function runAiIntake(
       suggestedTypeId = aiOutput.classification.suggestedTypeId;
     }
 
+    let employerWarning: string | null = null;
+    if (employmentSource && suggestedTypeCode === EMPLOYMENT_CONTRACT_TYPE) {
+      const company = typedSession.owning_company_id;
+      const owner = company == null ? null : await supabase.from("owner_companies")
+        .select("legal_name_en").eq("id", company).maybeSingle();
+      employerWarning = mohreEmploymentOwnershipWarning(employmentSource, owner?.data?.legal_name_en ?? null);
+      if (employerWarning) {
+        aiOutput.warnings = [...(aiOutput.warnings ?? []), employerWarning];
+        aiOutput.classification.needsHumanReview = true;
+        aiOutput.classification.reviewReason = employerWarning;
+      }
+    }
+
     // ── Build extracted fields JSON ────────────────────────────────────────
 
     const extractedFieldsJson: Record<string, unknown> = {};
@@ -977,6 +1012,7 @@ async function runAiIntake(
               ...(approvedMissing.length ? { missingRequiredFields: approvedMissing } : {}) }
             : approvedReview }),
           ...(trainingReview && { warnings: aiOutput.warnings, trainingProfile: { profileId: trainingReview.profileId, state: trainingReview.prepared ? "verified" : "held", reasons: trainingReview.reasons } }),
+          ...(employerWarning && { warnings: aiOutput.warnings }),
         },
         // For image-based docs (passports, Emirates IDs, certificates, scanned PDFs)
         // local OCR produces no text — use the AI's full_text_transcription instead.

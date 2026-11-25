@@ -885,8 +885,10 @@ async function runAiIntake(
 
     let employerWarning: string | null = null;
     if (employmentSource && suggestedTypeCode === EMPLOYMENT_CONTRACT_TYPE) {
-      const company = typedSession.owning_company_id;
-      const owner = company == null ? null : await supabase.from("owner_companies")
+      // The source attestation already authorized this exact intake's company and branch.
+      // Read only its legal name for this comparison.
+      const company = verifiedSource?.plan.source.company;
+      const owner = company == null ? null : await adminClient.from("owner_companies")
         .select("legal_name_en").eq("id", company).maybeSingle();
       employerWarning = mohreEmploymentOwnershipWarning(employmentSource, owner?.data?.legal_name_en ?? null);
       if (employerWarning) {

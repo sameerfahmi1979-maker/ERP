@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { jsPDF } from "jspdf";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -23,7 +25,7 @@ const object = {
   lastModified: "2026-11-23T00:00:00Z",
 };
 const bytes = Buffer.from("%PDF-1.7\nsynthetic");
-const sha256 = (await import("node:crypto")).createHash("sha256").update(bytes).digest("hex");
+const sha256 = createHash("sha256").update(bytes).digest("hex");
 const source = {
   operationId, sessionId: 42, actorId: 51, authSessionId, companyId: 1, branchId: 1,
   path: "sessions/fixture/original.pdf", filename: "original.pdf", sha256, byteCount: bytes.length,
@@ -50,6 +52,7 @@ function post(body: unknown) {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.stubEnv("DMS_AGENT_CENTER_SHAREPOINT_FLOW", "1");
+  vi.stubEnv("DMS_SHAREPOINT_EMPLOYER_ROUTING", "0");
   mocks.verify.mockResolvedValue({ bytes, object, proof: { sha256 } });
 });
 
@@ -163,5 +166,62 @@ describe("supervised SharePoint intake boundary", () => {
     mocks.admin.mockResolvedValue({ data: { ...source, state: "processing", attemptId, processingRevision: "2026-11-23T00:01:00Z", started: false } });
     expect((await post({ op: "reviewSharePoint", operationId, sharePointLease, sessionId: 42 })).status).toBe(409);
     expect(mocks.analyze).not.toHaveBeenCalled();
+  });
+});
+
+function employerCommand() {
+  const doc = new jsPDF();
+  doc.text([
+    "MINISTRY OF HUMAN RESOURCES",
+    "AND EMIRATISATION",
+    "EMPLOYMENT CONTRACT FULL WORK",
+    "Work Style: Full Work",
+    "Transaction Number: MB100000000AE",
+    "1. Establishment Name",
+    "7 ORYX GENERAL TRANSPORT L L C",
+    "Establishment No: 1000",
+    "Article 2 - Employment Terms and Conditions",
+  ], 20, 20);
+  const pdf = Buffer.from(doc.output("arraybuffer"));
+  return {
+    op: "routeEmployer", operationId, sharePointLease, pdfBase64: pdf.toString("base64"),
+    byteCount: pdf.byteLength, sha256: createHash("sha256").update(pdf).digest("hex"),
+  };
+}
+
+describe("employer routing before SharePoint admission", () => {
+  it("extracts the literal establishment name from the verified PDF and binds the returned company", async () => {
+    vi.stubEnv("DMS_AGENT_CENTER_SHAREPOINT_FLOW", "0");
+    vi.stubEnv("DMS_SHAREPOINT_EMPLOYER_ROUTING", "1");
+    const command = employerCommand();
+    mocks.admin
+      .mockResolvedValueOnce({ data: { status: "inspect" } })
+      .mockResolvedValueOnce({ data: { status: "bound", companyId: 4 } });
+    const response = await post(command);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ data: { status: "bound", companyId: 4 } });
+    const binding = {
+      p_operation: operationId, p_lease: sharePointLease, p_bytes: command.byteCount, p_hash: command.sha256,
+    };
+    expect(mocks.admin).toHaveBeenNthCalledWith(1, "dms_route_sharepoint_employer", expect.objectContaining({
+      ...binding, p_kind: "inspect", p_company_name: null,
+    }));
+    expect(mocks.admin).toHaveBeenNthCalledWith(2, "dms_route_sharepoint_employer", expect.objectContaining({
+      ...binding, p_kind: "employer", p_company_name: "7 ORYX GENERAL TRANSPORT L L C",
+    }));
+    expect(mocks.upload).not.toHaveBeenCalled();
+    expect(mocks.analyze).not.toHaveBeenCalled();
+  });
+
+  it("rejects a forged hash and preserves an already bound decision without another extraction", async () => {
+    const command = employerCommand();
+    expect((await post(command)).status).toBe(404);
+    vi.stubEnv("DMS_SHAREPOINT_EMPLOYER_ROUTING", "1");
+    expect((await post({ ...command, sha256 })).status).toBe(422);
+    expect(mocks.admin).not.toHaveBeenCalled();
+
+    mocks.admin.mockResolvedValue({ data: { status: "bound", companyId: 4 } });
+    expect((await post(command)).status).toBe(200);
+    expect(mocks.admin).toHaveBeenCalledTimes(1);
   });
 });

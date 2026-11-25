@@ -327,3 +327,15 @@ test('replays the original review once after uncertain transport, only on that p
     assert.deepEqual(sent, Array(2).fill({ op: 'reviewSharePoint', ...binding }));
   }
 });
+
+test('admits and starts AI Fill under the bound employer company, keeping the original operation', async () => {
+  const f = fixture('pending_upload');
+  f.client.scopes = async () => [{ companyId: 7, branchId: null }, { companyId: 4, branchId: null }];
+  const routed = { ...config, employerCompanyIds: [4], routedCompanyId: 4 };
+  assert.equal((await runDmsPilot({ ...f, config: routed })).status, 'review_pending');
+  assert.deepEqual(f.calls.map(([action]) => action), ['admit', 'upload', 'complete', 'start']);
+  assert.deepEqual(f.calls[0][1].scope, { companyId: 4, branchId: null });
+  assert.equal(f.calls[0][1].operationId, config.operationId);
+  await assert.rejects(runDmsPilot({ ...f, config: { ...routed, routedCompanyId: 9 } }), /pilot_scope_mismatch/);
+  await assert.rejects(runDmsPilot({ ...f, config: { ...routed, routedCompanyId: undefined } }), /pilot_scope_mismatch/);
+});

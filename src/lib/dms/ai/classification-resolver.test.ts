@@ -1,0 +1,57 @@
+import { describe, expect, it } from "vitest";
+import { resolveSuggestedDocumentType } from "./classification-resolver";
+import { mohreEmploymentOwnershipWarning } from "./mohre-employment-contract";
+
+const catalog = [
+  { id: 13, type_code: "CONTRACT", name_en: "Contract" },
+  { id: 67, type_code: "EMPLOYMENT_CONTRACT", name_en: "Employment Contract" },
+  { id: 16, type_code: "LABOUR_CARD", name_en: "Labour Card" },
+];
+
+const employmentForm = [
+  "MINISTRY OF HUMAN RESOURCES",
+  "& EMIRATISATION",
+  "EMPLOYMENT CONTRACT FULL WORK",
+  "Work permit (Recruiting a worker from outside the country)",
+  "Work Style",
+  "Full Work",
+  "Transaction Number",
+  "MB100000000AE",
+  "1. Establishment Name    TEST ORYX TRANSPORT L L C",
+  "Establishment No",
+  "Article (2) (Contract Details)",
+].join("\n");
+
+describe("MOHRE employment contract classification", () => {
+  it("uses the specific document type even when the generic suggestion is high confidence", () => {
+    expect(resolveSuggestedDocumentType("CONTRACT", catalog, employmentForm, 0.99)).toMatchObject({
+      source: "heuristic",
+      typeCode: "EMPLOYMENT_CONTRACT",
+      typeId: 67,
+    });
+  });
+
+  it("preserves a Labour Card with the separate card labels", () => {
+    const labourCard = "Electronic Work Permit Information\nMinistry of Human Resources\nCard Number\nCard Issuance Date\nCard Expiry Date";
+    expect(resolveSuggestedDocumentType("VISA", catalog, labourCard, 0.99).typeCode).toBe("LABOUR_CARD");
+  });
+
+  it("does not treat a reference to an employment contract in an ordinary agreement as the MOHRE form", () => {
+    const commercial = "Service contract between First Party and Second Party. Employees supply their employment contracts.";
+    expect(resolveSuggestedDocumentType("CONTRACT", catalog, commercial, 0.99).typeCode).toBe("CONTRACT");
+  });
+
+  it("flags a different company even when the employer is a known legal entity", () => {
+    expect(mohreEmploymentOwnershipWarning(employmentForm, "Alliance Transport L.L.C.")).toMatch(/^Employer mismatch:/);
+  });
+
+  it("treats punctuation and spacing in the legal suffix as equivalent", () => {
+    expect(mohreEmploymentOwnershipWarning(employmentForm, "Test Oryx Transport L.L.C.")).toBeNull();
+  });
+
+  it("holds ownership for review when the owner or labelled employer is missing", () => {
+    expect(mohreEmploymentOwnershipWarning(employmentForm, null)).toMatch(/^Employer ownership could not be verified/);
+    const unreadable = employmentForm.replace("TEST ORYX TRANSPORT L L C", "");
+    expect(mohreEmploymentOwnershipWarning(unreadable, "Test Oryx Transport L.L.C.")).toMatch(/^Employer ownership could not be verified/);
+  });
+});

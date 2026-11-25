@@ -1,0 +1,29 @@
+export const EMPLOYMENT_CONTRACT_TYPE = "EMPLOYMENT_CONTRACT";
+
+export function isMohreEmploymentContract(text: string): boolean {
+  const header = text.slice(0, 1400);
+  return /\bministry\s+of\s+human\s+resources\b/i.test(header) &&
+    /^\s*employment[ \t]+contract(?:[ \t]+(?:full|part)[ \t]+(?:work|time))?\b/im.test(header) &&
+    /\btransaction\s+number\b/i.test(header) &&
+    /\bwork\s+style\b/i.test(header);
+}
+
+function normalizedCompanyName(name: string): string {
+  return name.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+export function mohreEmploymentOwnershipWarning(text: string, owningCompany: string | null): string | null {
+  if (!isMohreEmploymentContract(text)) return null;
+
+  const name = text.match(/^[ \t]*(?:1[.)][ \t]*)?establishment[ \t]+name[ \t]*[:–-]?[ \t]*([^\r\n]+)/im)?.[1]
+    ?.split(/\p{Script=Arabic}/u, 1)[0]?.trim();
+  const printed = normalizedCompanyName(name ?? "");
+  const owner = normalizedCompanyName(owningCompany ?? "");
+
+  if (!printed || !owner) {
+    return "Employer ownership could not be verified from this employment contract. Confirm the employer and intake company before approval.";
+  }
+  if (printed === owner) return null;
+
+  return "Employer mismatch: the printed establishment name differs from the intake’s owning company. Confirm ownership before approval.";
+}

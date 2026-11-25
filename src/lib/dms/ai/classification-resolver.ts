@@ -1,3 +1,5 @@
+import { EMPLOYMENT_CONTRACT_TYPE, isMohreEmploymentContract } from "./mohre-employment-contract";
+
 /**
  * Resolves AI-suggested document type codes to canonical ERP type_code values.
  * Applies fingerprint heuristics when the model misclassifies common UAE documents.
@@ -133,6 +135,17 @@ export function resolveSuggestedDocumentType(
 ): TypeResolutionResult {
   const text = transcription ?? "";
   const aiCode = suggestedTypeCode ? normalizeToken(suggestedTypeCode) : null;
+  if (aiCode !== EMPLOYMENT_CONTRACT_TYPE && isMohreEmploymentContract(text)) {
+    const contract = findTypeRow(typeRows, EMPLOYMENT_CONTRACT_TYPE);
+    if (contract) {
+      return {
+        typeCode: contract.type_code,
+        typeId: contract.id,
+        source: "heuristic",
+        overrideReason: "The MOHRE form contains the employment contract heading, work style and transaction number",
+      };
+    }
+  }
   const visaSuggestion = aiCode !== null && (TYPE_CODE_ALIASES[aiCode] === "VISA" || aiCode === "VISA_RESIDENCE");
   if (
     (aiCode === "HSE_PERMIT_AR" || aiCode === null || visaSuggestion) &&
@@ -219,6 +232,7 @@ export const TYPE_CLASSIFICATION_FINGERPRINTS: Record<string, string> = {
   VISA:
     "UAE residence visa / entry permit, UID, file number, sponsor, GDRFA/ICP — stamp or card in passport",
   LABOUR_CARD: "MOHRE labour card, work permit number, employer name, Emirates ID link",
+  EMPLOYMENT_CONTRACT: "MOHRE employment contract heading, work style, transaction number, establishment and employment term",
   DRIVING_LICENSE: "RTA/Traffic driving licence, licence number, vehicle classes, UAE emirate",
   MEDICAL_INSURANCE: "Health insurance card, member/card ID, insurer/TPA, network class, policy dates",
   TRADE_LICENSE: "Commercial/trade licence, licence number, DED/SEDD authority, company legal name",

@@ -54,4 +54,10 @@ describe("MOHRE employment contract classification", () => {
     const unreadable = employmentForm.replace("TEST ORYX TRANSPORT L L C", "");
     expect(mohreEmploymentOwnershipWarning(unreadable, "Test Oryx Transport L.L.C.")).toMatch(/^Employer ownership could not be verified/);
   });
+
+  it("reads the establishment name immediately below the label in OCR reading order", () => {
+    const wrapped = employmentForm.replace("Name    TEST ORYX", "Name\nTEST ORYX");
+    expect(mohreEmploymentOwnershipWarning(wrapped, "Alliance Transport L.L.C.")).toMatch(/^Employer mismatch:/);
+    expect(mohreEmploymentOwnershipWarning(wrapped, "Test Oryx Transport L.L.C.")).toBeNull();
+  });
 });

@@ -15,8 +15,12 @@ function normalizedCompanyName(name: string): string {
 export function mohreEmploymentOwnershipWarning(text: string, owningCompany: string | null): string | null {
   if (!isMohreEmploymentContract(text)) return null;
 
-  const name = text.match(/^[ \t]*(?:1[.)][ \t]*)?establishment[ \t]+name[ \t]*[:–-]?[ \t]*([^\r\n]+)/im)?.[1]
-    ?.split(/\p{Script=Arabic}/u, 1)[0]?.trim();
+  const label = text.match(/^[ \t]*(?:1[.)][ \t]*)?establishment[ \t]+name[ \t]*[:–-]?[ \t]*([^\r\n]*)/im);
+  const followingLine = label && text.slice((label.index ?? 0) + label[0].length)
+    .match(/^(?:\r\n?|\n)[ \t]*([^\r\n]+)/)?.[1];
+  const candidate = (label?.[1].trim() || followingLine || "").split(/\p{Script=Arabic}/u, 1)[0].trim();
+  const nextField = /^(?:establishment\s+(?:no\b|number\b)|represented\s+by\b|passport\b|nationality\b|title\b|emirate\b|telephone\b|e-?mail\b)/i;
+  const name = /\p{Script=Latin}/u.test(candidate) && !nextField.test(candidate) ? candidate : "";
   const printed = normalizedCompanyName(name ?? "");
   const owner = normalizedCompanyName(owningCompany ?? "");
 

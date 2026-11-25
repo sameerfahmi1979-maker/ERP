@@ -12,22 +12,38 @@ function normalizedCompanyName(name: string): string {
   return name.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 }
 
-export function mohreEmploymentOwnershipWarning(text: string, owningCompany: string | null): string | null {
-  if (!isMohreEmploymentContract(text)) return null;
+type EmployerEvidence =
+  | { kind: "not_applicable" }
+  | { kind: "unresolved" }
+  | { kind: "employer"; name: string };
 
-  const label = text.match(/^[ \t]*(?:1[.)][ \t]*)?establishment[ \t]+name[ \t]*[:–-]?[ \t]*([^\r\n]*)/im);
-  const followingLine = label && text.slice((label.index ?? 0) + label[0].length)
-    .match(/^(?:\r\n?|\n)[ \t]*([^\r\n]+)/)?.[1];
-  const candidate = (label?.[1].trim() || followingLine || "").split(/\p{Script=Arabic}/u, 1)[0].trim();
+export function readMohreEmploymentEmployer(text: string): EmployerEvidence {
+  if (!isMohreEmploymentContract(text)) return { kind: "not_applicable" };
+
+  const label = /^[ \t]*(?:1[.)][ \t]*)?establishment[ \t]+name[ \t]*[:–-]?[ \t]*([^\r\n]*)/gim;
   const nextField = /^(?:establishment\s+(?:no\b|number\b)|represented\s+by\b|passport\b|nationality\b|title\b|emirate\b|telephone\b|e-?mail\b)/i;
-  const name = /\p{Script=Latin}/u.test(candidate) && !nextField.test(candidate) ? candidate : "";
-  const printed = normalizedCompanyName(name ?? "");
-  const owner = normalizedCompanyName(owningCompany ?? "");
+  const names = new Map<string, string>();
+  for (const match of text.matchAll(label)) {
+    const followingLine = text.slice(match.index + match[0].length).match(/^(?:\r\n?|\n)[ \t]*([^\r\n]+)/)?.[1];
+    const candidate = (match[1].trim() || followingLine || "").split(/\p{Script=Arabic}/u, 1)[0].trim();
+    if (candidate.length > 300 || !/\p{Script=Latin}/u.test(candidate) || nextField.test(candidate)) {
+      return { kind: "unresolved" };
+    }
+    names.set(normalizedCompanyName(candidate), candidate);
+  }
+  const [name] = names.values();
+  return names.size === 1 ? { kind: "employer", name } : { kind: "unresolved" };
+}
 
-  if (!printed || !owner) {
+export function mohreEmploymentOwnershipWarning(text: string, owningCompany: string | null): string | null {
+  const employer = readMohreEmploymentEmployer(text);
+  if (employer.kind === "not_applicable") return null;
+
+  const owner = normalizedCompanyName(owningCompany ?? "");
+  if (employer.kind === "unresolved" || !owner) {
     return "Employer ownership could not be verified from this employment contract. Confirm the employer and intake company before approval.";
   }
-  if (printed === owner) return null;
+  if (normalizedCompanyName(employer.name) === owner) return null;
 
   return "Employer mismatch: the printed establishment name differs from the intake’s owning company. Confirm ownership before approval.";
 }

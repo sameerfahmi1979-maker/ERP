@@ -168,3 +168,60 @@ test('holds pinned discovery metadata if the content fingerprint differs from ap
   assert.deepEqual(steps, ['inspect', 'defer']);
   assert.deepEqual(results, ['deferred']);
 });
+
+test('binds a verified employer company before duplicate checks or intake admission', async () => {
+  const item = { operation_id: operationId, item_id: 'company-routing', version: 'c:1', lease_token: firstLease };
+  const calls = [];
+  const bytes = Buffer.from('%PDF-7ORYX-contract');
+  const results = await runContinuousIntake({
+    config: { companyId: 1, employerCompanyIds: [4] },
+    client: {
+      async profile() { return { userId: authUserId }; },
+      async routeEmployer(binding, pdf) {
+        calls.push('route');
+        assert.equal(binding.operationId, operationId);
+        assert.equal(binding.sharePointLease, firstLease);
+        assert.equal(binding.byteCount, bytes.length);
+        assert.equal(pdf, bytes);
+        return { companyId: 4, status: 'bound' };
+      },
+    },
+    ledger: {
+      claimPdf: async () => calls.length ? null : item,
+      advancePdf: async (_item, step) => {
+        calls.push(step);
+        return { inspect: calls.length === 1 ? 'download' : 'review_pending', prepare: 'ready' }[step];
+      },
+    },
+    graph: { readDiscoveredPdf: async () => ({ name: 'representative.pdf', bytes }) },
+    runPilot: async ({ config }) => {
+      calls.push('intake');
+      assert.equal(config.operationId, operationId);
+      assert.equal(config.routedCompanyId, 4);
+      return { status: 'review_pending' };
+    },
+  });
+  assert.deepEqual(calls, ['inspect', 'route', 'prepare', 'intake', 'inspect']);
+  assert.deepEqual(results, ['review_pending']);
+});
+
+test('does not admit a held or unapproved employer destination', async () => {
+  for (const decision of [{ status: 'held' }, { status: 'bound', companyId: 99 }]) {
+    const calls = [];
+    const result = await runContinuousIntake({
+      config: { companyId: 1, employerCompanyIds: [4] },
+      client: { profile: async () => ({}), routeEmployer: async () => decision },
+      ledger: {
+        claimPdf: async () => calls.length ? null : { operation_id: operationId, lease_token: firstLease },
+        advancePdf: async (_item, step) => {
+          calls.push(step);
+          return step === 'inspect' ? 'download' : 'deferred';
+        },
+      },
+      graph: { readDiscoveredPdf: async () => ({ name: 'representative.pdf', bytes: Buffer.from('%PDF-fixture') }) },
+      runPilot: async () => assert.fail('a held or unapproved company must never reach admission'),
+    });
+    assert.deepEqual(calls, decision.status === 'held' ? ['inspect'] : ['inspect', 'defer']);
+    assert.deepEqual(result, [decision.status === 'held' ? 'held' : 'deferred']);
+  }
+});

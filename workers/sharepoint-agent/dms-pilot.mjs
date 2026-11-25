@@ -37,6 +37,15 @@ export function readDmsPilotConfig(env) {
     agentCenterAdmission,
     agentCenterSharePointFlow,
   };
+  const employerCompanies = env.PILOT_EMPLOYER_COMPANY_IDS;
+  if (employerCompanies) {
+    const ids = employerCompanies.split(',').map(Number);
+    if (!continuous || agentCenterAdmission || !/^[1-9]\d*(?:,[1-9]\d*)*$/.test(employerCompanies) ||
+        ids.some(id => !Number.isSafeInteger(id) || id === config.companyId) || new Set(ids).size !== ids.length) {
+      throw new ConnectionError('invalid_employer_routing_configuration');
+    }
+    config.employerCompanyIds = Object.freeze(ids);
+  }
   if (agentCenterSharePointFlow) {
     const branch = env.PILOT_ERP_BRANCH_ID ?? '';
     const version = env.PILOT_GRAPH_VERSION;
@@ -127,6 +136,9 @@ export function createDmsPilotClient(config, { fetch = globalThis.fetch, shutdow
       if (scope?.more || !Array.isArray(scope?.rows)) throw new ConnectionError('pilot_scope_unavailable');
       return scope.rows;
     },
+    routeEmployer: (binding, bytes) => post('routeEmployer', {
+      ...binding, pdfBase64: bytes.toString('base64'),
+    }, 40_000, sharePointIntakeEndpoint),
     admit: request => post('admit', { request }),
     admitSharePoint: (request, sharePointLease) => post('admitSharePoint', { request, sharePointLease }),
     stageSharePoint: (binding, bytes) => post('stageSharePoint', { ...binding, pdfBase64: bytes.toString('base64') }, 60_000, sharePointIntakeEndpoint),
@@ -187,11 +199,15 @@ export async function runDmsPilot({ config, client, graph, ledger, signal, sourc
   }
   const scopes = await client.scopes();
   const branchId = config.agentCenterSharePointFlow ? config.branchId : null;
-  const matchingScopes = scopes.filter(scope => scope.companyId === config.companyId && scope.branchId === branchId);
+  const companyId = config.routedCompanyId ?? config.companyId;
+  const allowedCompanies = [config.companyId, ...(config.employerCompanyIds ?? [])];
+  const matchingScopes = scopes.filter(scope => scope.companyId === companyId && scope.branchId === branchId);
   // The protected path requires an explicitly scoped branch account. The older
   // company-wide pilot can still inherit branches within its own company.
-  if (matchingScopes.length !== 1 || (config.agentCenterSharePointFlow && scopes.length !== 1) ||
-      scopes.some(scope => (!config.oneFileSession && scope.companyId !== config.companyId) ||
+  if (matchingScopes.length !== 1 || !allowedCompanies.includes(companyId) ||
+      (config.employerCompanyIds?.length && !config.routedCompanyId) ||
+      (config.agentCenterSharePointFlow && scopes.length !== 1) ||
+      scopes.some(scope => (!config.oneFileSession && !allowedCompanies.includes(scope.companyId)) ||
         (scope.branchId !== null && (!Number.isSafeInteger(scope.branchId) || scope.branchId <= 0)))) {
     throw new ConnectionError('pilot_scope_mismatch');
   }
@@ -208,7 +224,7 @@ export async function runDmsPilot({ config, client, graph, ledger, signal, sourc
 
   const request = {
     version: 1, operationId: config.operationId, authUserId: config.authUserId, context: null,
-    scope: { companyId: config.companyId, branchId },
+    scope: { companyId, branchId },
     metadata: { original_filename: name, mime_type: 'application/pdf', file_size_bytes: bytes.length, sha256_hash: config.sha256 },
   };
   if (!await canWrite()) return { status: 'paused' };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveSuggestedDocumentType } from "./classification-resolver";
-import { mohreEmploymentOwnershipWarning } from "./mohre-employment-contract";
+import { mohreEmploymentOwnershipWarning, readMohreEmploymentEmployer } from "./mohre-employment-contract";
 
 const catalog = [
   { id: 13, type_code: "CONTRACT", name_en: "Contract" },
@@ -59,5 +59,26 @@ describe("MOHRE employment contract classification", () => {
     const wrapped = employmentForm.replace("Name    TEST ORYX", "Name\nTEST ORYX");
     expect(mohreEmploymentOwnershipWarning(wrapped, "Alliance Transport L.L.C.")).toMatch(/^Employer mismatch:/);
     expect(mohreEmploymentOwnershipWarning(wrapped, "Test Oryx Transport L.L.C.")).toBeNull();
+  });
+});
+
+describe("MOHRE employer routing evidence", () => {
+  it("uses the printed employer below its label instead of the employee's details", () => {
+    const contract = employmentForm.replace("Name    TEST ORYX", "Name\n7 ORYX").replace("TEST ORYX", "7 ORYX");
+    expect(readMohreEmploymentEmployer(contract)).toEqual({ kind: "employer", name: "7 ORYX TRANSPORT L L C" });
+  });
+
+  it("holds conflicting employer labels and only accepts repeated copies of the same name", () => {
+    const repeated = employmentForm + "\n1. Establishment Name: Test Oryx Transport L.L.C.";
+    expect(readMohreEmploymentEmployer(repeated)).toMatchObject({ kind: "employer" });
+    expect(readMohreEmploymentEmployer(repeated + "\n1. Establishment Name: Different Company LLC"))
+      .toEqual({ kind: "unresolved" });
+  });
+
+  it("holds a missing employer and ignores unrelated documents", () => {
+    expect(readMohreEmploymentEmployer(employmentForm.replace("TEST ORYX TRANSPORT L L C", "")))
+      .toEqual({ kind: "unresolved" });
+    expect(readMohreEmploymentEmployer("Labour Card\nEstablishment Name: Test Oryx"))
+      .toEqual({ kind: "not_applicable" });
   });
 });

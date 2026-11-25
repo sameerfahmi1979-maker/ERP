@@ -26,10 +26,25 @@ export async function runContinuousIntake({ config, client, graph, ledger, signa
           if (deferred === 'paused') break;
           continue;
         }
+        let routedCompanyId;
+        if (config.employerCompanyIds?.length) {
+          await client.profile();
+          const route = await client.routeEmployer({
+            operationId: item.operation_id, sharePointLease: item.lease_token, sha256, byteCount: source.bytes.length,
+          }, source.bytes);
+          if (route.status === 'held') {
+            receipts.push(route.status);
+            continue;
+          }
+          if (route.status !== 'bound' || ![config.companyId, ...config.employerCompanyIds].includes(route.companyId)) {
+            throw new Error('pilot_employer_route_unconfirmed');
+          }
+          routedCompanyId = route.companyId;
+        }
         status = await advance('prepare', sha256);
         if (status === 'ready') {
           const result = await runPilot({
-            config: { ...config, sha256, operationId: item.operation_id },
+            config: { ...config, routedCompanyId, sha256, operationId: item.operation_id },
             client, graph, source, signal, sharePointLease: item.lease_token,
             ledger: { read: async () => ({ paused: await advance('fence') !== 'ready' }) },
           });

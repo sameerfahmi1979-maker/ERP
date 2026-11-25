@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { withMobileToken } from "@/lib/supabase/mobile-request";
 import { createClient } from "@/lib/supabase/server";
+import { extractFileContent } from "@/lib/dms/file-content-extractor";
+import { readMohreEmploymentEmployer } from "@/lib/dms/ai/mohre-employment-contract";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { readVerifiedIntakeSource } from "@/server/dms-verified-intake-source";
 import { analyzeSharePointWorkPermit } from "@/server/dms-sharepoint-worker-ai";
@@ -14,10 +16,18 @@ const maxBodyBytes = maxBase64Length + 1024;
 const id = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/);
 const scope = { operationId: z.uuid(), sessionId: id, sharePointLease: z.uuid() };
-const commandSchema = z.discriminatedUnion("op", [
+const reviewCommands = [
   z.strictObject({ op: z.literal("stageSharePoint"), ...scope, pdfBase64: z.string().min(4).max(maxBase64Length) }),
   z.strictObject({ op: z.literal("reviewSharePoint"), ...scope }),
+] as const;
+const commandSchema = z.discriminatedUnion("op", [
+  ...reviewCommands,
+  z.strictObject({
+    op: z.literal("routeEmployer"), operationId: z.uuid(), sharePointLease: z.uuid(),
+    sha256, byteCount: id.max(maxPdfBytes), pdfBase64: z.string().min(4).max(maxBase64Length),
+  }),
 ]);
+type ReviewCommand = z.infer<(typeof reviewCommands)[number]>;
 
 const identity = z.object({ operationId: z.uuid(), sessionId: id });
 const sourceSchema = identity.extend({
@@ -99,11 +109,11 @@ async function readCommand(request: Request) {
   }
 }
 
-function exact(candidate: z.infer<typeof identity>, input: z.infer<typeof commandSchema>) {
+function exact(candidate: z.infer<typeof identity>, input: ReviewCommand) {
   return candidate.operationId === input.operationId && candidate.sessionId === input.sessionId;
 }
 
-async function advance(input: z.infer<typeof commandSchema>, token: string) {
+async function advance(input: ReviewCommand, token: string) {
   const client = await createClient();
   const user = await client.auth.getUser(token);
   if (user.error || !user.data.user) return unavailable(401);
@@ -187,8 +197,50 @@ async function advance(input: z.infer<typeof commandSchema>, token: string) {
   return respond({ success: true, data: receipt.data });
 }
 
+const employerDecision = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("inspect") }),
+  z.object({ status: z.literal("held") }),
+  z.object({ status: z.literal("bound"), companyId: id }),
+]);
+
+async function routeEmployer(input: Extract<z.infer<typeof commandSchema>, { op: "routeEmployer" }>, token: string) {
+  const client = await createClient();
+  const user = await client.auth.getUser(token);
+  if (user.error || !user.data.user) return unavailable(401);
+
+  const bytes = Buffer.from(input.pdfBase64, "base64");
+  if (bytes.byteLength !== input.byteCount || bytes.toString("base64") !== input.pdfBase64 ||
+      createHash("sha256").update(bytes).digest("hex") !== input.sha256 ||
+      !bytes.subarray(0, 1024).includes("%PDF-")) return unavailable(422);
+
+  const admin = createAdminClient();
+  const binding = {
+    p_operation: input.operationId, p_lease: input.sharePointLease, p_user: user.data.user.id,
+    p_hash: input.sha256, p_bytes: input.byteCount,
+  };
+  const before = await admin.rpc("dms_route_sharepoint_employer", {
+    ...binding, p_kind: "inspect", p_company_name: null,
+  }).retry(false);
+  if (before.error) return blockedBy(before.error);
+  const retained = employerDecision.safeParse(before.data);
+  if (!retained.success) return unavailable(503);
+  if (retained.data.status !== "inspect") return respond({ success: true, data: retained.data });
+
+  const extracted = await extractFileContent(bytes, "application/pdf", "source.pdf", { skipPdfPageRendering: true });
+  const employer = readMohreEmploymentEmployer(extracted.text);
+  const decision = await admin.rpc("dms_route_sharepoint_employer", {
+    ...binding, p_kind: employer.kind, p_company_name: employer.kind === "employer" ? employer.name : null,
+  }).retry(false);
+  if (decision.error) return blockedBy(decision.error);
+  const resolved = employerDecision.safeParse(decision.data);
+  if (!resolved.success || resolved.data.status === "inspect") return unavailable(503);
+  return respond({ success: true, data: resolved.data });
+}
+
 export async function POST(request: Request) {
-  if (process.env.DMS_AGENT_CENTER_SHAREPOINT_FLOW !== "1") return unavailable(404);
+  const workerReviewEnabled = process.env.DMS_AGENT_CENTER_SHAREPOINT_FLOW === "1";
+  const employerRoutingEnabled = process.env.DMS_SHAREPOINT_EMPLOYER_ROUTING === "1";
+  if (!workerReviewEnabled && !employerRoutingEnabled) return unavailable(404);
   const token = /^Bearer ([A-Za-z0-9_.-]{1,8192})$/.exec(request.headers.get("authorization") ?? "")?.[1];
   if (!token) return unavailable(401);
   let parsed;
@@ -199,7 +251,13 @@ export async function POST(request: Request) {
   }
   if (!parsed?.success) return unavailable(400);
   try {
-    return await withMobileToken(token, () => advance(parsed.data, token));
+    const input = parsed.data;
+    if (input.op === "routeEmployer") {
+      return employerRoutingEnabled
+        ? await withMobileToken(token, () => routeEmployer(input, token))
+        : unavailable(404);
+    }
+    return workerReviewEnabled ? await withMobileToken(token, () => advance(input, token)) : unavailable(404);
   } catch (error) {
     return error instanceof ProviderReservationDenied ? error.response : unavailable(503);
   }

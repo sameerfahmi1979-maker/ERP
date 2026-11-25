@@ -64,11 +64,11 @@ REVOKE ALL ON FUNCTION erp_private.dms_run_auto_expiry() FROM PUBLIC, anon, auth
 DO $job$
 DECLARE
   existing cron.job%ROWTYPE;
+  runner_command constant text := 'SELECT erp_private.dms_run_auto_expiry();';
 BEGIN
   SELECT * INTO STRICT existing
   FROM cron.job
-  WHERE jobname = 'dms-auto-expire'
-  FOR UPDATE;
+  WHERE jobname = 'dms-auto-expire';
 
   IF existing.username <> current_user OR existing.database <> current_database()
     OR existing.schedule <> '0 1 * * *'
@@ -77,7 +77,17 @@ BEGIN
     RAISE EXCEPTION 'Reviewed DMS auto-expiry job required';
   END IF;
 
-  PERFORM cron.alter_job(existing.jobid, command => 'SELECT erp_private.dms_run_auto_expiry();');
+  -- Managed pg_cron grants the job owner read access and the alteration API.
+  PERFORM cron.alter_job(existing.jobid, command => runner_command);
+
+  IF NOT EXISTS (
+    SELECT 1 FROM cron.job AS job
+    WHERE job.jobid = existing.jobid
+      AND job.command = runner_command
+      AND to_jsonb(job) - 'command' = to_jsonb(existing) - 'command'
+  ) THEN
+    RAISE EXCEPTION 'DMS auto-expiry job configuration changed during migration';
+  END IF;
 END
 $job$;
 

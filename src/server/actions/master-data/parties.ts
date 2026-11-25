@@ -24,15 +24,180 @@ import type {
   PaymentMethod,
 } from "@/features/master-data/parties/party-types";
 import { logger } from "@/lib/logger";
+import { partyIbanCandidate } from "@/lib/master-data/party-iban";
 import { getAuthContext, hasPermission, hasGlobalPermission } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
+import { readAllPages } from "@/server/reads/all-pages";
 import { createNumberedParty } from "@/server/numbered-party-create";
 import { savePartyRecord, changePartyState } from "@/server/party-save";
 import { partyTypeState, type PartyTypeState, type PartySaveReceipt } from "@/lib/master-data/party-save-contract";
 import { attachPartyReferenceLabels } from "@/server/party-reference-labels";
 import type { WorkspaceSaveContract } from "@/lib/workspace/save-contract";
+import {
+  partyCatalogueExportInput,
+  partyCataloguePageInput,
+  partyCatalogueSortDirections,
+  type PartyCataloguePage,
+  type PartyCatalogueRow as PartyTableRow,
+} from "@/features/master-data/parties/party-catalogue";
+import { matchPartyCatalogue } from "@/server/reads/party-catalogue-criteria";
 
 // ─── List & Fetch ────────────────────────────────────────────────────────────
+
+const partyListProjection = `
+  *,
+  party_natures!party_nature_id(name_en),
+  party_statuses!party_status_id(name_en),
+  party_types!primary_party_type_id(type_name),
+  parent_party:erp_party_parent(display_name)
+`;
+
+type PartyCatalogueRow = Party & {
+  party_natures?: { name_en?: string } | null;
+  party_statuses?: { name_en?: string } | null;
+  party_types?: { type_name?: string } | null;
+  parent_party?: { display_name?: string } | null;
+};
+
+const partyTableProjection = `
+  id,workspace_revision,party_code,display_name,legal_name_en,main_phone,main_mobile,main_email,
+  country_id,emirate_id,city_id,area_zone_id,is_active,is_locked,updated_at,
+  party_statuses!party_status_id(name_en),party_types!primary_party_type_id(type_name)
+`;
+
+function partyCatalogueQuery(db: Awaited<ReturnType<typeof createClient>>, projection: string, typeId?: number) {
+  const selected = typeId === undefined ? projection : `${projection},type_scope:party_type_assignments!inner()`;
+  let query = db.from("parties").select(selected, { count: "exact" });
+  if (typeId !== undefined) {
+    query = query.eq("type_scope.party_type_id", typeId).eq("type_scope.is_active", true);
+  }
+  return query.order("display_name").order("id");
+}
+
+type PartyTableProjection = PartyTableRow & Pick<PartyCatalogueRow, "party_statuses">;
+
+async function attachPartyTableLabels(rows: PartyTableProjection[]): Promise<PartyTableRow[]> {
+  return attachPartyReferenceLabels("parties", rows.map(({ party_statuses, ...row }) => ({
+    ...row,
+    party_status_name: party_statuses?.name_en ?? null,
+    primary_type_name: row.party_types?.type_name ?? null,
+  })));
+}
+
+async function readPartyCatalogue(db: Awaited<ReturnType<typeof createClient>>, typeId?: number): Promise<Party[]> {
+  const data = await readAllPages<PartyCatalogueRow>(async (from, to) => {
+    const { data, count, error } = await partyCatalogueQuery(db, partyListProjection, typeId).range(from, to);
+    return { data: data as unknown as PartyCatalogueRow[] | null, count, error };
+  }, { identity: row => row.id, maxRows: 50000 });
+
+  return attachPartyReferenceLabels("parties", data.map((row) => ({
+    ...row,
+    party_nature_name: row.party_natures?.name_en ?? null,
+    party_status_name: row.party_statuses?.name_en ?? null,
+    primary_type_name: row.party_types?.type_name ?? null,
+    parent_party_name: row.parent_party?.display_name ?? null,
+  })));
+}
+
+const partyListForbidden = { success: false, kind: "forbidden", error: "You do not have permission to view parties" } as const;
+const partyListFailed = { success: false, kind: "failed", error: "Parties could not be loaded. Try again." } as const;
+const partyTypeUnavailable = { success: false, kind: "not_found", error: "This party type is not configured or available." } as const;
+
+async function getPartyCatalogueAuthority(typeCode?: string) {
+  const ctx = await getAuthContext();
+  if (!hasGlobalPermission(ctx, "master_data.parties.view") && !hasGlobalPermission(ctx, "master_data.party_master.view")) {
+    return partyListForbidden;
+  }
+
+  const db = await createClient();
+  if (typeCode === undefined) return { success: true, db, typeId: undefined } as const;
+  const { data, error } = await db.from("party_types").select("id").eq("type_code", typeCode).maybeSingle();
+  if (error) return error.code === "42501" ? partyListForbidden : partyListFailed;
+  if (!data) return partyTypeUnavailable;
+  if (!Number.isSafeInteger(data.id) || data.id < 1) return partyListFailed;
+  return { success: true, db, typeId: data.id } as const;
+}
+
+async function readPartyTableCatalogue(db: Awaited<ReturnType<typeof createClient>>, typeId?: number, selectedIds?: number[]) {
+  const rows = await readAllPages<PartyTableProjection>(async (from, to) => {
+    let query = partyCatalogueQuery(db, partyTableProjection, typeId);
+    if (selectedIds) query = query.in("id", selectedIds);
+    const { data, count, error } = await query.range(from, to);
+    return { data: data as unknown as PartyTableProjection[] | null, count, error };
+  }, { identity: row => row.id, maxRows: selectedIds?.length, batchSize: selectedIds?.length });
+  return attachPartyTableLabels(rows);
+}
+
+export async function getPartyCataloguePage(input: unknown): Promise<ActionResult<PartyCataloguePage>> {
+  const parsed = partyCataloguePageInput.safeParse(input);
+  if (!parsed.success) return partyListFailed;
+  const { typeCode, pageIndex, pageSize, ...criteria } = parsed.data;
+
+  try {
+    const authority = await getPartyCatalogueAuthority(typeCode);
+    if (!authority.success) return authority;
+    const { db, typeId } = authority;
+    const offset = pageIndex * pageSize;
+    if (criteria.search || criteria.filters.length || criteria.sorting.length) {
+      const { rows, sortAscendingFirst } = matchPartyCatalogue(await readPartyTableCatalogue(db, typeId), { typeCode, ...criteria });
+      return { success: true, data: { rows: rows.slice(offset, offset + pageSize), totalCount: rows.length, sortAscendingFirst } };
+    }
+
+    const query = () => partyCatalogueQuery(db, partyTableProjection, typeId);
+    let response = await query().range(offset, offset + pageSize - 1);
+    if (offset > 0 && response.status === 416 && (!response.error?.code || response.error.code === "PGRST103")) {
+      const counted = await query().range(0, 0);
+      if (counted.error || counted.count === null || counted.count > offset || counted.data?.length !== Math.min(1, counted.count)) {
+        return counted.error?.code === "42501" ? partyListForbidden : partyListFailed;
+      }
+      response = { ...counted, data: [] };
+    }
+
+    const { data, count, error } = response;
+    if (error?.code === "42501") return partyListForbidden;
+    const rows = data as unknown as PartyTableProjection[] | null;
+    if (error || count === null || !Number.isSafeInteger(count) || count < 0 || !Array.isArray(rows) ||
+        rows.length !== Math.min(pageSize, Math.max(0, count - offset)) ||
+        rows.some(row => !Number.isSafeInteger(row?.id) || row.id < 1) || new Set(rows.map(row => row.id)).size !== rows.length) {
+      return partyListFailed;
+    }
+
+    const hydrated = rows.length ? await attachPartyTableLabels(rows) : [];
+    return { success: true, data: {
+      rows: hydrated, totalCount: count,
+      sortAscendingFirst: offset === 0 ? partyCatalogueSortDirections(hydrated[0]) : undefined,
+    } };
+  } catch {
+    logger.warn("Party catalogue page could not be verified.");
+    return partyListFailed;
+  }
+}
+
+export async function getPartyCatalogueExport(input: unknown): Promise<ActionResult<PartyTableRow[]>> {
+  const parsed = partyCatalogueExportInput.safeParse(input);
+  if (!parsed.success) return partyListFailed;
+  const { typeCode, selectedIds, ...criteria } = parsed.data;
+  try {
+    const authority = await getPartyCatalogueAuthority(typeCode);
+    if (!authority.success) return authority;
+    // Global search and automatic sorting depend on other authorized rows. Text
+    // column filters can be evaluated on the selected rows after label hydration.
+    const boundedSelection = selectedIds && selectedIds.length <= 100 && !criteria.search && !criteria.sorting.length
+      ? selectedIds : undefined;
+    const rows = await readPartyTableCatalogue(authority.db, authority.typeId, boundedSelection);
+    const matching = criteria.search || criteria.filters.length || criteria.sorting.length
+      ? matchPartyCatalogue(rows, { typeCode, ...criteria }).rows : rows;
+    if (!selectedIds) return { success: true, data: matching };
+
+    const selection = new Set(selectedIds);
+    const selected = matching.filter(row => selection.has(row.id));
+    return selected.length === selection.size
+      ? { success: true, data: selected } : partyListFailed;
+  } catch {
+    logger.warn("Party catalogue export could not be verified.");
+    return partyListFailed;
+  }
+}
 
 export async function getParties(): Promise<ActionResult<Party[]>> {
   try {
@@ -41,40 +206,7 @@ export async function getParties(): Promise<ActionResult<Party[]>> {
       return { success: false, kind: 'forbidden', error: "You do not have permission to view parties" };
     }
 
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("parties")
-      .select(`
-        *,
-        party_natures!party_nature_id(name_en),
-        party_statuses!party_status_id(name_en),
-        party_types!primary_party_type_id(type_name),
-        countries!country_id(name_en),
-        emirates!emirate_id(name_en),
-        cities!city_id(name_en),
-        areas_zones!area_zone_id(name_en),
-        parent_party:erp_party_parent(display_name)
-      `)
-      .order("display_name");
-
-    if (error || !Array.isArray(data)) {
-      logger.warn("Party list read failed.", {code:error?.code});
-      return { success: false, kind: 'failed', error: "Parties could not be loaded. Try again." };
-    }
-
-    const parties = (data ?? []).map((row: Record<string, unknown>) => ({
-      ...(row as Party),
-      party_nature_name: (row.party_natures as { name_en?: string } | null)?.name_en ?? null,
-      party_status_name: (row.party_statuses as { name_en?: string } | null)?.name_en ?? null,
-      primary_type_name: (row.party_types as { type_name?: string } | null)?.type_name ?? null,
-      country_name: (row.countries as { name_en?: string } | null)?.name_en ?? null,
-      emirate_name: (row.emirates as { name_en?: string } | null)?.name_en ?? null,
-      city_name: (row.cities as { name_en?: string } | null)?.name_en ?? null,
-      area_zone_name: (row.areas_zones as { name_en?: string } | null)?.name_en ?? null,
-      parent_party_name: (row.parent_party as { display_name?: string } | null)?.display_name ?? null,
-    }));
-
-    return { success: true, data: await attachPartyReferenceLabels('parties', parties as Party[]) };
+    return { success: true, data: await readPartyCatalogue(await createClient()) };
   } catch {
     logger.warn("Party list read could not complete.");
     return { success: false, kind: 'failed', error: "Parties could not be loaded. Try again." };
@@ -566,26 +698,22 @@ export async function getPartyAuditLogs(partyId: number): Promise<ActionResult<P
 
 export async function checkDuplicateIban(iban: string, excludeBankDetailId?: number | null): Promise<ActionResult<{ isDuplicate: boolean; existingParties: { party_code: string; display_name: string }[] }>> {
   try {
+    const canonical = partyIbanCandidate(iban);
+    if (!canonical) return { success: false, error: "Enter an IBAN with valid check digits." };
+    const ctx = await getAuthContext();
+    if (!hasGlobalPermission(ctx, "master_data.parties.manage_bank_details")) {
+      return { success: false, kind: "forbidden", error: "Permission denied" };
+    }
     const supabase = await createClient();
-    let query = supabase
-      .from("party_bank_details")
-      .select("id, party_id, parties!party_id(party_code, display_name)")
-      .eq("iban", iban.trim())
-      .eq("is_active", true);
-
-    if (excludeBankDetailId) query = query.neq("id", excludeBankDetailId);
-
-    const { data, error } = await query;
-    if (error) return { success: false, error: error.message };
-
-    const rows = (data ?? []).map((row: Record<string, unknown>) => ({
-      party_code: (row.parties as { party_code?: string } | null)?.party_code ?? "Unknown",
-      display_name: (row.parties as { display_name?: string } | null)?.display_name ?? "Unknown",
-    }));
-
-    return { success: true, data: { isDuplicate: rows.length > 0, existingParties: rows } };
-  } catch (error) {
-    return { success: false, error: String(error) };
+    const { data, error } = await supabase.rpc("perf_party_iban_advisory", {
+      p_iban: canonical, p_exclude_bank_detail: excludeBankDetailId ?? null,
+    });
+    if (error || !Array.isArray(data)) {
+      return { success: false, kind: "failed", error: "The IBAN advisory could not be checked." };
+    }
+    return { success: true, data: { isDuplicate: data.length > 0, existingParties: data } };
+  } catch {
+    return { success: false, kind: "failed", error: "The IBAN advisory could not be checked." };
   }
 }
 
@@ -603,38 +731,7 @@ export async function getPartiesByTypeCode(typeCode: string): Promise<ActionResu
     if (typeError) return {success:false,kind:'failed',error:'The party type could not be loaded. Try again.'};
     if (!typeRow) return {success:false,kind:'not_found',error:'This party type is not configured or available.'};
 
-    const { data: assignments, error: assignmentError } = await supabase
-      .from("party_type_assignments")
-      .select("party_id")
-      .eq("party_type_id", typeRow.id)
-      .eq("is_active", true);
-
-    if (assignmentError || !Array.isArray(assignments)) return {success:false,kind:'failed',error:'Party assignments could not be loaded. Try again.'};
-
-    const partyIds = (assignments ?? []).map((a: { party_id: number }) => a.party_id);
-    if (partyIds.length === 0) return { success: true, data: [] };
-
-    const { data, error } = await supabase
-      .from("parties")
-      .select(`*, party_natures!party_nature_id(name_en), party_statuses!party_status_id(name_en), party_types!primary_party_type_id(type_name), countries!country_id(name_en), emirates!emirate_id(name_en), cities!city_id(name_en), areas_zones!area_zone_id(name_en), parent_party:erp_party_parent(display_name)`)
-      .in("id", partyIds)
-      .order("display_name");
-
-    if (error || !Array.isArray(data)) return {success:false,kind:'failed',error:'Parties could not be loaded. Try again.'};
-
-    const parties = (data ?? []).map((row: Record<string, unknown>) => ({
-      ...(row as Party),
-      party_nature_name: (row.party_natures as { name_en?: string } | null)?.name_en ?? null,
-      party_status_name: (row.party_statuses as { name_en?: string } | null)?.name_en ?? null,
-      primary_type_name: (row.party_types as { type_name?: string } | null)?.type_name ?? null,
-      country_name: (row.countries as { name_en?: string } | null)?.name_en ?? null,
-      emirate_name: (row.emirates as { name_en?: string } | null)?.name_en ?? null,
-      city_name: (row.cities as { name_en?: string } | null)?.name_en ?? null,
-      area_zone_name: (row.areas_zones as { name_en?: string } | null)?.name_en ?? null,
-      parent_party_name: (row.parent_party as { display_name?: string } | null)?.display_name ?? null,
-    }));
-
-    return { success: true, data: await attachPartyReferenceLabels('parties', parties as Party[]) };
+    return { success: true, data: await readPartyCatalogue(supabase, typeRow.id) };
   } catch {
     return { success: false, kind:'failed', error: 'Parties could not be loaded. Try again.' };
   }

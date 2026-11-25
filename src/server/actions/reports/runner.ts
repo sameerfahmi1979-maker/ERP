@@ -15,6 +15,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { readActiveReportRegistryEntry, REPORT_CONFIGURATION_LOAD_ERROR } from "@/server/reads/report-registry-entry";
 import { runReport, createReportRunLog } from "@/lib/report-center/report-runner";
 import { resolveReportBranding } from "@/lib/report-center/branding-resolver";
+import { screenPageSchema } from "@/lib/report-center/analytical-screen-page";
+import { usesFreshAnalyticalExport } from "@/lib/report-center/recruitment-reports";
 import type {
   ReportRunRequest,
   ReportRunResult,
@@ -37,6 +39,7 @@ const runReportSchema = z.object({
   filters: z.record(z.string(), z.unknown()).optional(),
   templateId: z.number().int().positive().optional(),
   ownerCompanyIds: z.array(z.number().int().positive()).optional(),
+  screenPage: screenPageSchema.optional(),
 });
 
 const resolveTemplateSchema = z.object({
@@ -91,9 +94,10 @@ export async function runReportAction(
       requestedByUserId: ctx.profile.id,
     };
 
-    const result = await runReport(request, ctx);
+    const result = await runReport(request, ctx, usesFreshAnalyticalExport(request.reportCode)
+      ? {refreshInteractiveActor: getAuthContext} : undefined);
 
-    if (result.success) {
+    if (result.success && !parsed.data.screenPage?.receipt) {
       await logAudit({
         module_code: "REPORTS",
         entity_name: "erp_report_runs",

@@ -33,11 +33,11 @@ import {
   type ERPExportOptions,
   type ExportBrandingContext,
 } from "@/lib/export";
-import { sendExportEmail } from "@/server/actions/email";
+import { getLegacyEmailExportAccess, sendExportEmail } from "@/server/actions/email";
 import { useLegacyEmailAccess } from "@/hooks/use-legacy-email-access";
 import { format } from "date-fns";
 import { Download, FileDown, FileSpreadsheet, FileText, Loader2, MailPlus, Printer } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export interface ERPExportMenuProps<T = unknown> {
@@ -46,11 +46,13 @@ export interface ERPExportMenuProps<T = unknown> {
   /** Filename base (without extension) */
   filename: string;
   /** Data to export */
-  data: T[];
-  /** Complete authorized output on demand. Never pass just the visible page.
-   * Callers fence obsolete responses. Generic email is disabled for this mode;
-   * the owning module must prepare and reverify its complete email result. */
+  data?: T[];
+  /** Derive the currently authorized, sorted local rows only when exporting. */
+  localRows?: { count: number; load: () => T[] };
+  /** Complete authorized output on demand. Callers fence obsolete results. */
   loadData?: () => Promise<T[]>;
+  /** Preserve an existing legacy email action with fresh complete reads and global sending authority. */
+  allowCompleteLegacyEmail?: boolean;
   /** Column definitions */
   columns: ERPExportColumn<T>[];
   /** Optional subtitle */
@@ -95,7 +97,9 @@ export function ERPExportMenu<T = unknown>({
   title,
   filename,
   data,
+  localRows,
   loadData,
+  allowCompleteLegacyEmail = false,
   columns,
   subtitle,
   filters,
@@ -120,12 +124,58 @@ export function ERPExportMenu<T = unknown>({
   // Email dialog state (Phase 002E.3D)
   const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [emailRows, setEmailRows] = useState<T[]>();
+  const emailFlight = useRef(false);
+  const active = useRef(true);
+  useEffect(() => {
+    active.current = true;
+    return () => { active.current = false; };
+  }, []);
   const legacyEmailAllowed = useLegacyEmailAccess();
-  const canEmail = legacyEmailAllowed && !loadData;
+  const completeLegacyEmail = !!loadData && allowCompleteLegacyEmail;
+  const canEmail = legacyEmailAllowed && (!loadData || completeLegacyEmail);
+  const emailAllowed = useRef(canEmail);
+  useEffect(() => { emailAllowed.current = canEmail; }, [canEmail]);
+  if (completeLegacyEmail && !canEmail && emailRows) {
+    setEmailRows(undefined);
+    setIsEmailDialogOpen(false);
+  }
 
   // Check if data is available
-  const hasData = !!loadData || (data && data.length > 0);
+  const rowCount = localRows?.count ?? data?.length ?? 0;
+  const resolveLocalRows = () => localRows?.load() ?? data ?? [];
+  const currentEmailRows = () => emailRows ?? resolveLocalRows();
+  const emailCount = emailRows?.length ?? rowCount;
+  const hasData = !!loadData || rowCount > 0;
   const isDisabled = disabled || !hasData || isExporting || isSendingEmail;
+
+  function changeEmailOpen(open: boolean) {
+    setIsEmailDialogOpen(open);
+    if (!open) setEmailRows(undefined);
+  }
+
+  async function openEmail() {
+    if (!canEmail || disabled || exportFlight.current) return;
+    if (requiresTemplateSelection) { onRequireTemplateSelection?.(); return; }
+    if (!completeLegacyEmail || !loadData) { changeEmailOpen(true); return; }
+
+    exportFlight.current = true;
+    setIsExporting(true);
+    setExportType("email");
+    try {
+      if (!await getLegacyEmailExportAccess()) throw Error("Legacy email access changed.");
+      const rows = await loadData();
+      if (!active.current || !emailAllowed.current) return;
+      if (!rows.length) throw Error("No matching rows are available.");
+      setEmailRows(rows);
+      changeEmailOpen(true);
+    } catch {
+      if (active.current) toast.error("The complete email attachment could not be verified.");
+    } finally {
+      exportFlight.current = false;
+      if (active.current) { setIsExporting(false); setExportType(null); }
+    }
+  }
 
   /**
    * Handle export action.
@@ -156,7 +206,8 @@ export function ERPExportMenu<T = unknown>({
         printWindow.opener = null;
         printWindow.document.title = "Preparing complete report…";
       }
-      const completeData = loadData ? await loadData() : data;
+      const completeData = loadData ? await loadData() : resolveLocalRows();
+      if (loadData && !active.current) { printWindow?.close(); return; }
       if (!completeData.length) throw Error("No matching documents to export.");
       // Prepare export options (branding forwarded if present)
       const options: ERPExportOptions<T> = {
@@ -224,9 +275,20 @@ export function ERPExportMenu<T = unknown>({
       return { success: false, error: "No attachment" };
     }
     
+    if (completeLegacyEmail && emailFlight.current) return { success: false, error: "Email verification is already in progress." };
+    emailFlight.current = true;
     setIsSendingEmail(true);
     
     try {
+      if (completeLegacyEmail && loadData) {
+        if (!canEmail || !emailRows || !await getLegacyEmailExportAccess()) {
+          return { success: false, error: "Legacy email access changed." };
+        }
+        const verified = await loadData();
+        if (!active.current || !emailAllowed.current || JSON.stringify(verified) !== JSON.stringify(emailRows)) {
+          return { success: false, error: "The export result changed. Reopen the email to prepare its current attachment." };
+        }
+      }
       // Parse email strings to arrays
       const toEmails = input.to
         .split(/[,;\n]/)
@@ -257,14 +319,14 @@ export function ERPExportMenu<T = unknown>({
         attachment: input.attachment,
         context: {
           moduleCode,
-          recordCount: data.length,
+          recordCount: emailCount,
           exportMode,
         },
       });
       
       if (result.success) {
         toast.success("Email sent successfully!");
-        setIsEmailDialogOpen(false);
+        changeEmailOpen(false);
       } else {
         toast.error(result.error || "Failed to send email");
       }
@@ -276,6 +338,7 @@ export function ERPExportMenu<T = unknown>({
       toast.error(errorMessage);
       return { success: false, error: errorMessage };
     } finally {
+      emailFlight.current = false;
       setIsSendingEmail(false);
     }
   };
@@ -342,29 +405,22 @@ export function ERPExportMenu<T = unknown>({
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onClick={() => {
-                if (!canEmail) return;
-                if (requiresTemplateSelection) {
-                  onRequireTemplateSelection?.();
-                  return;
-                }
-                setIsEmailDialogOpen(true);
-              }}
+              onClick={() => void openEmail()}
               disabled={isExporting || isSendingEmail || !canEmail}
-              title={loadData ? "Use the module's Send by Email action to verify all matching documents" : !canEmail ? "Legacy Email Export temporarily requires global sending authority" : undefined}
+              title={loadData && !completeLegacyEmail ? "Use the module's Send by Email action to verify all matching documents" : !canEmail ? "Legacy Email Export temporarily requires global sending authority" : undefined}
               className="cursor-pointer"
             >
               <MailPlus className="mr-2 h-4 w-4" />
-              <span>{loadData ? "Use module email action" : canEmail ? "Send by Email" : "Email — global senders only"}</span>
+              <span>{loadData && !completeLegacyEmail ? "Use module email action" : canEmail ? "Send by Email" : "Email — global senders only"}</span>
             </DropdownMenuItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
 
       {/* Email Dialog (Phase 002E.3D) */}
-      <ERPSendEmailDialog
+      {(!completeLegacyEmail || (isEmailDialogOpen && canEmail)) && <ERPSendEmailDialog
         open={isEmailDialogOpen}
-        onOpenChange={setIsEmailDialogOpen}
+        onOpenChange={changeEmailOpen}
         title={title}
         subtitle={subtitle}
         defaultSubject={`${title} - ${format(new Date(), "yyyy-MM-dd")}`}
@@ -373,7 +429,7 @@ export function ERPExportMenu<T = unknown>({
 Please find attached the ${title.toLowerCase()} report.
 
 ${subtitle ? `${subtitle}\n` : ""}
-Total Records: ${data.length}
+Total Records: ${emailCount}
 Export Mode: ${exportMode === "selected" ? "Selected Rows" : exportMode === "filtered" ? "Filtered Rows" : "All Rows"}
 Generated: ${format(new Date(), "yyyy-MM-dd HH:mm")}
 ${generatedBy ? `Generated By: ${generatedBy}` : ""}
@@ -390,13 +446,13 @@ Best Regards`}
                 subtitle,
                 filename,
                 columns,
-                data,
+                data: currentEmailRows(),
                 generatedBy,
                 generatedAt: new Date(),
                 filters,
                 orientation,
                 exportMode,
-                rowCount: data.length,
+                rowCount: emailCount,
                 branding: resolvedTemplate ? { ...resolvedTemplate, reportCode } : undefined,
               }),
           },
@@ -410,13 +466,13 @@ Best Regards`}
                 subtitle,
                 filename,
                 columns,
-                data,
+                data: currentEmailRows(),
                 generatedBy,
                 generatedAt: new Date(),
                 filters,
                 orientation,
                 exportMode,
-                rowCount: data.length,
+                rowCount: emailCount,
                 branding: resolvedTemplate ? { ...resolvedTemplate, reportCode } : undefined,
               }),
           },
@@ -430,23 +486,23 @@ Best Regards`}
                 subtitle,
                 filename,
                 columns,
-                data,
+                data: currentEmailRows(),
                 generatedBy,
                 generatedAt: new Date(),
                 filters,
                 orientation,
                 exportMode,
-                rowCount: data.length,
+                rowCount: emailCount,
               }),
           },
         ]}
         defaultAttachmentType="pdf"
         generatedBy={generatedBy}
-        recordCount={data.length}
+        recordCount={emailCount}
         exportMode={exportMode}
         moduleCode={moduleCode}
         onPreparedSend={handleSendEmail}
-      />
+      />}
     </>
   );
 }

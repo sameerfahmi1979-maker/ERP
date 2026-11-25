@@ -24,6 +24,14 @@ const claimSchema = z.object({
 });
 const settled = z.object({ success: z.literal(true), jobId: z.number().int().positive(), attemptNumber: z.number().int().positive(),
   status: z.enum(["completed", "failed", "retry_scheduled"]) });
+const preparationPublication = z.object({
+  success: z.literal(true), preparation: z.literal(true), context: z.object({
+    state: z.string(), resultId: z.number().int().positive().nullable(),
+    source: z.object({ documentId: z.number().int().positive() }),
+  }),
+});
+const preparationPublicationUnconfirmed = (job: ClaimedJob, outcome: DmsAiJobHandlerResult) =>
+  job.job_type === DMS_AI_JOB_TYPE.AI_RE_EXTRACTION && outcome.errorCode === "preparation_publication_unconfirmed";
 type ClaimedJob = Pick<DmsAiJobQueueRow, "id" | "job_type" | "payload_json" | "attempt_count" | "max_attempts" | "locked_by">;
 export async function runDmsAiJob(job: ClaimedJob, claim: JobClaim): Promise<string | null> {
   if (job.id !== claim.jobId || job.locked_by !== claim.workerId || job.attempt_count !== claim.attemptNumber) return null;
@@ -41,7 +49,8 @@ export async function runDmsAiJob(job: ClaimedJob, claim: JobClaim): Promise<str
       catch (error) { outcome = { success: false, errorCode: sanitizeJobError(error).code, retryable: true }; }
       const scope = currentJobClaim();
       return {
-        result: scope?.failed ? { success: false, errorCode: "publication_rejected", retryable: !scope.uncertainWrite } : outcome,
+        result: scope?.failed && !preparationPublicationUnconfirmed(job, outcome)
+          ? { success: false, errorCode: "publication_rejected", retryable: !scope.uncertainWrite } : outcome,
         publication: scope?.semanticPublication,
       };
     });
@@ -55,6 +64,22 @@ export async function runDmsAiJob(job: ClaimedJob, claim: JobClaim): Promise<str
     }
   } catch (error) { result = { success: false, errorCode: sanitizeJobError(error).code, retryable: true }; }
   try {
+    if (preparationPublicationUnconfirmed(job, result)) {
+      // This read bypasses the poisoned handler scope while retaining the exact
+      // claim binding and the database's current actor and source checks.
+      const { data, error } = await db.rpc("ai_mod04_preparation_worker", {
+        p_action: "context", p_data: { jobId: job.id, token: claim.token },
+      });
+      if (error && !["42501", "PT409", "40001"].includes(error.code)) return null;
+      const confirmation = preparationPublication.safeParse(data);
+      if (!error && !confirmation.success) return null;
+      if (!error && confirmation.success && confirmation.data.context.state === "review_required" &&
+          confirmation.data.context.source.documentId === job.payload_json.documentId && confirmation.data.context.resultId !== null) {
+        result = { success: true };
+      } else {
+        result = { success: false, errorCode: "publication_rejected", retryable: false };
+      }
+    }
     // Outside the handler scope: settling a failed poisoned attempt remains
     // possible. The DB owns counts, backoff, history and terminal review atomically.
     const { data, error } = await db.rpc("f07_ai_worker", { p_action: "settle", p_data: {
@@ -65,7 +90,15 @@ export async function runDmsAiJob(job: ClaimedJob, claim: JobClaim): Promise<str
     return receipt.data.status;
   } catch { return null; } // Leave the claim for bounded recovery; never pretend success.
 }
-export async function processNextDmsAiJobs(input: { limit: number; workerId: string; preparationOnly?: boolean; runtimeSecret?: string }): Promise<ProcessResult> {
+export type PreparationRecoveryPass = { runtimeId: string; result?: Promise<void> };
+
+export async function processNextDmsAiJobs(input: {
+  limit: number;
+  workerId: string;
+  preparationOnly?: boolean;
+  runtimeSecret?: string;
+  preparationRecovery?: PreparationRecoveryPass;
+}): Promise<ProcessResult> {
   const at = Date.now();
   const totals: ProcessResult = { processed: 0, completed: 0, failed: 0, retryScheduled: 0, durationMs: 0 };
   if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 50 || !input.workerId.trim() || input.workerId.length > 64) return totals;
@@ -74,8 +107,13 @@ export async function processNextDmsAiJobs(input: { limit: number; workerId: str
   const dispatchRpc = input.preparationOnly ? 'dms_preparation_dispatch_worker' : 'f07_ai_worker';
   const runtime = input.preparationOnly ? {runtimeId:input.workerId,runtimeSecret:input.runtimeSecret} : {};
   try {
-    const recovered = await db.rpc(dispatchRpc, { p_action: "recover", p_data: runtime });
-    if (recovered.error || recovered.data?.success !== true) throw new Error("Recovery unavailable");
+    const recover = async () => {
+      const recovered = await db.rpc(dispatchRpc, { p_action: "recover", p_data: runtime });
+      if (recovered.error || recovered.data?.success !== true) throw new Error("Recovery unavailable");
+    };
+    const pass = input.preparationRecovery;
+    if (input.preparationOnly && pass?.runtimeId === input.workerId) await (pass.result ??= recover());
+    else await recover();
     // Claim just in time, not a batch whose leases expire while earlier jobs run.
     for (let i = 0; i < input.limit; i++) {
       const { data, error } = await db.rpc(dispatchRpc, { p_action: "claim", p_data: { ...runtime,workerId: input.workerId, limit: 1, preparationVersion:1 } });

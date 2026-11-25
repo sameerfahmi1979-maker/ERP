@@ -46,6 +46,7 @@ export function AiFeatureFlagsPanel({ flags, canManage=false }: AiFeatureFlagsPa
             All AI features default to <strong>disabled</strong>. Enable only after configuring the
             corresponding provider and confirming with Sameer.
             <strong> Human review must remain enabled for all DMS features</strong> until auto-save is approved.
+            {canManage && <span className="mt-1 block">Switch changes save immediately. Where allowed, removing human review requires confirmation.</span>}
           </span>
         </div>
       </div>

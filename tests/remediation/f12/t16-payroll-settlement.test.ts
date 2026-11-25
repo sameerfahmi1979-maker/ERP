@@ -124,7 +124,7 @@ it("halts inactive accounts and hides rejected RPC details", async () => {
   await expect(savePayrollSettlementCommand(issue)).resolves.toMatchObject({ ok: false, uncertain: false });
   expect(mock.rpc).not.toHaveBeenCalled();
   mock.rpc.mockResolvedValue(read({ batch, state: "prepared", base64: "FINANCIAL_SENTINEL" }));
-  await expect(savePayrollSettlementCommand(issue)).resolves.toEqual({ ok: true });
+  await expect(savePayrollSettlementCommand(issue)).resolves.toEqual({ ok: true, receipt: { batch, state: "prepared" } });
   mock.rpc.mockResolvedValueOnce({ data: null, error: { code: "42501", message: "FINANCIAL_SENTINEL" } });
   expect(await savePayrollSettlementCommand(receipt)).toEqual({ ok: false, uncertain: false,
     error: "You need settlement access for this employer and branch." });
@@ -227,11 +227,32 @@ it("paginates the exact approved review and resets the cursor between versions",
   const earlier = { ...workspace.reviews[0], review: batch, number: 1, batch: null };
   const second = { ...workspace, reviews: [...workspace.reviews, earlier], next_after: 87 };
   const html = await renderWorkspace(second, { ...params, review, after: "65" } as typeof params);
-  expect(mock.rpc).toHaveBeenLastCalledWith("t16_payroll_workspace", {
+  expect(mock.rpc).toHaveBeenLastCalledWith("t16_payroll_workspace_summary", {
     p_company: company, p_branch: branch, p_month: "2026-11-01", p_after: 65, p_selected_review: review,
   });
   expect(html).toContain("Next employees");
   expect(html).toContain("after=87");
   expect(html).toContain("First employees");
   expect(html).toContain("review=" + batch + '"');
+});
+
+it("loads bank events only for an explicitly opened, scoped history page", async () => {
+  const summarized = { ...workspace, reviews: [{ ...workspace.reviews[0], batch: {
+    ...workspace.reviews[0].batch, history: [], history_count: 75,
+  } }] };
+  mock.rpc.mockResolvedValueOnce(read(scopes)).mockResolvedValueOnce(read(summarized));
+  const closed = renderToStaticMarkup(await PayrollSettlementWorkspace({ params }));
+  expect(closed).toContain("Bank file history (75)");
+  expect(mock.rpc.mock.calls.map(([method]) => method)).toEqual(["t16_payroll_scopes", "t16_payroll_workspace_summary"]);
+
+  mock.rpc.mockResolvedValueOnce(read(scopes)).mockResolvedValueOnce(read(summarized)).mockResolvedValueOnce(read({
+    rows: [{ sequence: 66, kind: "accepted", at: "2026-11-19T06:00:00Z", channel: "cheque" }],
+    count: 75, next_after: 66,
+  }));
+  const opened = renderToStaticMarkup(await PayrollSettlementWorkspace({ params: { ...params, bank_history: "65" } }));
+  expect(opened).toContain("Bank accepted");
+  expect(opened).toContain("bank_history=66");
+  expect(mock.rpc).toHaveBeenLastCalledWith("t16_payroll_bank_history", {
+    p_company: company, p_branch: branch, p_month: "2026-11-01", p_review: review, p_after: 65,
+  });
 });

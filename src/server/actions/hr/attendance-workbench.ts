@@ -43,8 +43,44 @@ export async function readRecentAttendance(raw:unknown=null) {
   return{success:true as const,rows:parsed.data.slice(0,25),hasMore:parsed.data.length>25};
  }catch{return{success:false as const,error:'Recent confirmations unavailable.'};}
 }
-import{z}from'zod';import{revalidatePath}from'next/cache';import{getAuthContext}from'@/lib/rbac/check';import{canUseHrChild}from'@/lib/hr/child-authority';import{createClient}from'@/lib/supabase/server';import{attendanceRosterQuery,attendanceRosterRow,attendanceRosterPage,attendanceRowRequest,attendanceReceipt}from'@/lib/hr/attendance-workbench-contract';import{isDefiniteEmployeeRejection}from'@/lib/hr/employee-contract';
+import{z}from'zod';import{revalidatePath}from'next/cache';import{getAuthContext}from'@/lib/rbac/check';import{canUseHrChild}from'@/lib/hr/child-authority';import{createClient}from'@/lib/supabase/server';import{attendanceRosterQuery,attendanceRosterRow,attendanceRosterPage,attendanceSelectionPage,attendanceRowRequest,attendanceReceipt}from'@/lib/hr/attendance-workbench-contract';import{isDefiniteEmployeeRejection}from'@/lib/hr/employee-contract';
 export async function readLeavePeriodBalances(employee:unknown,after=0){const id=z.number().int().positive().safe();if(!id.safeParse(employee).success||!Number.isSafeInteger(after)||after<0)return{success:false as const,error:'Invalid period request.'};try{const ctx=await getAuthContext();if(!ctx.isAccountActive||!ctx.profile||ctx.profile.must_change_password)return{success:false as const,error:'Current account required.'};const r=await(await createClient()).rpc('f12_leave_period_balances',{p_employee:employee,p_after:after}),parsed=z.array(z.object({id,leave_type_id:id,leave_year:z.number().int(),period_start:z.string().nullable(),period_end:z.string().nullable(),period_basis:z.string().nullable(),entitled_days:z.number(),used_days:z.number(),reserved_days:z.number().nullable(),known:z.boolean()}).strict()).max(26).safeParse(r.data);if(r.error||!parsed.success)return{success:false as const,error:'Complete period facts unavailable.'};return{success:true as const,rows:parsed.data.slice(0,25),hasMore:parsed.data.length>25};}catch{return{success:false as const,error:'Period availability unknown.'};}}
-export async function readAttendanceRoster(raw:unknown){const p=attendanceRosterQuery.safeParse(raw);if(!p.success)return{success:false as const,error:'Choose a valid date, company, status and page.'};try{if(!canUseHrChild(await getAuthContext(),'attendance-summary'))return{success:false as const,error:'Current attendance read and manage access required.',denied:true};const q=p.data,r=await(await createClient()).rpc('f12_attendance_roster',{p_date:q.date,p_company:q.company,p_branch:q.branch,p_site:q.site,p_team:q.team,p_shift:q.shift,p_search:q.search,p_page:q.page,p_history:q.history,p_state:q.state}),parsed=attendanceRosterPage.safeParse(r.data);if(r.error||!parsed.success||parsed.data.page!==q.page)return{success:false as const,denied:r.error?.code==='42501',error:'The complete permitted roster could not be verified.'};return{success:true as const,data:parsed.data};}catch{return{success:false as const,error:'Roster unavailable. Existing drafts were not saved or cleared.'};}}
+async function readRosterWindow(raw: unknown, selection: boolean) {
+  const criteria = attendanceRosterQuery.safeParse(raw);
+  if (!criteria.success) return {success:false as const,error:'Choose a valid date, company, status and page.'};
+  try {
+    if (!canUseHrChild(await getAuthContext(), 'attendance-summary')) {
+      return {success:false as const,error:'Current attendance read and manage access required.',denied:true};
+    }
+    const q = criteria.data;
+    const {data,error} = await (await createClient()).rpc(selection?'f12_attendance_selection':'f12_attendance_roster', {
+      p_date:q.date,p_company:q.company,p_branch:q.branch,p_site:q.site,p_team:q.team,p_shift:q.shift,
+      p_search:q.search,p_page:q.page,p_history:q.history,p_state:q.state,
+    });
+    const parsed = (selection?attendanceSelectionPage:attendanceRosterPage).safeParse(data);
+    if (error || !parsed.success || parsed.data.page!==q.page) {
+      return {success:false as const,denied:error?.code==='42501',error:'The complete permitted roster could not be verified.'};
+    }
+    if (selection) {
+      const {rows,total} = parsed.data;
+      const expected = Math.min(500, Math.max(0, total-(q.page-1)*25));
+      if (rows.length!==expected || rows.some((row,index)=>index>0 && row.employee_id<=rows[index-1].employee_id)) {
+        return {success:false as const,error:'The complete permitted roster could not be verified.'};
+      }
+    }
+    return {success:true as const,data:parsed.data};
+  } catch {
+    return {success:false as const,error:'Roster unavailable. Existing drafts were not saved or cleared.'};
+  }
+}
+
+export async function readAttendanceRoster(raw: unknown) {
+  return readRosterWindow(raw, false);
+}
+
+export async function readAttendanceSelection(raw: unknown) {
+  return readRosterWindow(raw, true);
+}
+
 export async function saveAttendanceRow(raw:unknown){let dispatched=false;try{const p=attendanceRowRequest.safeParse(raw);if(!p.success)return{success:false as const,uncertain:false,error:'Check the work site, dates, times and breaks.'};if(!canUseHrChild(await getAuthContext(),'attendance-summary'))return{success:false as const,uncertain:false,denied:true,error:'Current attendance access unavailable.'};const db=await createClient();dispatched=true;const r=await db.rpc('f12_save_attendance',{p_request:p.data});if(r.error)return{success:false as const,uncertain:!isDefiniteEmployeeRejection(r.error.code)&&r.error.code!=='PT409',denied:r.error.code==='42501',conflict:r.error.code==='PT409',error:r.error.code==='PT409'?'Employee, attendance or shift/leave context changed. Review the current opening.':'Attendance not confirmed. Check the current eligibility, approval and original receipt.'};const receipt=attendanceReceipt.safeParse(r.data);if(!receipt.success||receipt.data.operation_id!==p.data.operation||receipt.data.employee_id!==p.data.employeeId||p.data.id!==null&&receipt.data.id!==p.data.id)return{success:false as const,uncertain:true,error:'Receipt mismatch. Keep the original operation.'};try{revalidatePath('/admin/hr/time/attendance');revalidatePath(`/admin/hr/employees/record/${p.data.employeeId}`);}catch{/* Commit receipt is authoritative. */}return{success:true as const,data:receipt.data};}catch{return{success:false as const,uncertain:dispatched,error:dispatched?'Outcome unconfirmed; check the original receipt before another save.':'Attendance unavailable. No request was sent.'};}}
 export async function reconcileAttendanceRow(operation:unknown){const p=z.string().uuid().safeParse(operation);if(!p.success)return{success:false as const,error:'Invalid original operation.'};try{if(!canUseHrChild(await getAuthContext(),'attendance-summary'))return{success:false as const,denied:true,error:'Current attendance access unavailable.'};const r=await(await createClient()).rpc('f12_reconcile_attendance',{p_operation:p.data}),receipt=attendanceReceipt.safeParse(r.data);if(r.error||!receipt.success||receipt.data.operation_id!==p.data)return{success:false as const,denied:r.error?.code==='42501',error:'Original outcome remains unresolved; absence is not proof of failure.'};return{success:true as const,data:receipt.data};}catch{return{success:false as const,error:'Receipt unavailable; no private fields replayed.'};}}

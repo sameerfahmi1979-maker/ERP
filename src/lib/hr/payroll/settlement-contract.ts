@@ -60,6 +60,14 @@ const settlementResult = z.object({
   remaining: money.optional(), can_record: z.boolean().optional(),
   lines: z.array(settlementLine), payments: z.array(settlementPayment),
 });
+const bankEvent = z.object({
+  kind: text, at: z.iso.datetime({ offset: true }), wps_file: uuid.nullish(), channel: channel.nullish(),
+});
+export const payrollBankHistoryQuery = payrollSettlementQuery.extend({ review: uuid });
+export const payrollBankHistoryPage = z.object({
+  rows: z.array(bankEvent.extend({ sequence: id })).max(50), count, next_after: id.nullable(),
+});
+
 const batch = z.object({
   id: uuid,
   state: text,
@@ -73,9 +81,7 @@ const batch = z.object({
     channel: z.enum(["cheque", "zero"]), state: text, actions: z.array(alternateAction), reference: handoffReference.nullish(),
   })),
   results: z.array(settlementResult),
-  history: z.array(z.object({
-    kind: text, at: z.iso.datetime({ offset: true }), wps_file: uuid.nullish(), channel: channel.nullish(),
-  })),
+  history: z.array(bankEvent), history_count: count.optional(),
 });
 const settlementReview = z.object({
   review: uuid, version: uuid, digest, number: id, month, batch: batch.nullable(),
@@ -143,4 +149,6 @@ export type PayrollHandoffAction = z.infer<typeof wpsAction> | z.infer<typeof al
 export type PayrollSettlementAction = z.infer<typeof payrollSettlementRequest>["action"];
 export type PayrollEvidenceOption = z.infer<typeof payrollEvidenceOption>;
 export type PayrollSettlementRequest = z.infer<typeof payrollSettlementRequest>;
-export type PayrollSettlementCommandResult = { ok: true } | { ok: false; error: string; uncertain: boolean };
+export type PayrollSettlementCommandResult = {
+  ok: true; receipt: z.infer<typeof payrollSettlementReceipt>; refreshRequired?: true;
+} | { ok: false; error: string; uncertain: boolean };

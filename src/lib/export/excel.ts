@@ -4,7 +4,6 @@
  * to exceljs (4.x — no known CVEs, actively maintained).
  */
 
-import ExcelJS from "exceljs";
 import type { ERPExportOptions, ERPExportResult } from "./export-types";
 import { getTypedExportValue, generateFilename, formatFilters } from "./format-export-data";
 import { format } from "date-fns";
@@ -33,6 +32,7 @@ export async function exportToExcel<T>(options: ERPExportOptions<T>): Promise<ER
     if(options.canCommit?.()===false)throw Error('This report is no longer current. Run it again before exporting.');
     const { columns, data, filename, title, subtitle, generatedBy, generatedAt, filters, branding } = options;
 
+    const { default: ExcelJS } = await import("exceljs");
     const workbook = new ExcelJS.Workbook();
     workbook.creator = generatedBy ?? "ERP";
     workbook.created = generatedAt ?? new Date();

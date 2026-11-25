@@ -19,8 +19,13 @@ vi.mock('@/components/erp/table/list-controls',async(importOriginal)=>({
   EditFilters:()=>null,
 }));
 import {OutputOpsConsole} from '@/features/output-ops/output-ops-console';
-const row={id:7,output_code:'F08_QA',template_key:'qa',document_class:'G',lifecycle_state:'rendering',serial_no:'F08-7',serial_status:'reserved',owner_company_id:1,source_record_type:'employee',source_record_id:1,generated_at:'2026-10-18T00:00:00Z',total_duration_ms:null,qr_status:null};
-beforeEach(()=>{vi.resetAllMocks();m.owner={identity:{authUserId:'a',scopeVersion:'1'},generation:0,isLive:()=>true};m.list.mockResolvedValue({success:true,data:{rows:[row],total:1,canRetry:true,canRevoke:false}});m.metrics.mockResolvedValue({success:true,data:{rendererHealthy:true,issuedLast24h:0,failedLast24h:0,avgRenderMsLast24h:0,stuckInFlight:[],reconciliationRequired:[],voidedSerials:0,stateCounts:{},scheduleRuns:{succeededLast24h:0,retryable:0,terminal:0,terminalRecent:[]}}});m.retry.mockResolvedValue({success:true,data:{outcome:{success:true,issuanceId:7,serialNo:'F08-7',qr:{status:'not_requested'}}}});});
+const row={id:7,output_code:'F08_QA',template_key:'qa',document_class:'G',lifecycle_state:'rendering',serial_no:'F08-7',serial_status:'reserved',owner_company_id:1,source_record_type:'employee',source_record_id:1,generated_at:'2026-10-18T00:00:00Z',total_duration_ms:null,qr_status:null,canRetry:true,canRevoke:false};
+const emptyMetrics = {
+  rendererHealthy: true, issuedLast24h: 0, failedLast24h: 0, avgRenderMsLast24h: 0,
+  stuckCount: 0, stuckInFlight: [], reconciliationCount: 0, reconciliationRequired: [], voidedSerials: 0,
+  stateCounts: {}, scheduleRuns: null,
+};
+beforeEach(()=>{vi.resetAllMocks();m.owner={identity:{authUserId:'a',scopeVersion:'1'},generation:0,isLive:()=>true};m.list.mockResolvedValue({success:true,data:{rows:[row],total:1,canRetry:true,canRevoke:false}});m.metrics.mockResolvedValue({success:true,data:emptyMetrics});m.retry.mockResolvedValue({success:true,data:{outcome:{success:true,issuanceId:7,serialNo:'F08-7',qr:{status:'not_requested'}}}});});
 afterEach(cleanup);
 async function recovery(){fireEvent.click(await screen.findByRole('button',{name:'Recover original'}));await screen.findByText('Recover Original Issuance');fireEvent.change(screen.getByLabelText('Reason'),{target:{value:'Synthetic interrupted request'}});fireEvent.submit(screen.getByLabelText('Reason').closest('form')!);}
 it('interrupted rows offer recovery of the same original, never promise a fresh issuance',async()=>{
@@ -32,3 +37,21 @@ it('retirement suppresses a late old-account recovery acknowledgement',async()=>
  await act(async()=>resolve({success:true,data:{outcome:{success:true,issuanceId:7,qr:{status:'not_requested'}}}}));expect(m.toast).not.toHaveBeenCalled();
 });
 it('read failures remove mutation controls instead of treating stale history as current',async()=>{m.list.mockResolvedValue({success:false,error:'Unavailable'});render(<OutputOpsConsole/>);await screen.findByRole('alert');expect(screen.queryByRole('button',{name:'Recover original'})).toBeNull();});
+it("requires retry authority on the displayed issuance's exact scope", async () => {
+  m.list.mockResolvedValue({ success: true, data: { rows: [{ ...row, canRetry: false }], total: 1, canRetry: true, canRevoke: false } });
+  render(<OutputOpsConsole />);
+  await screen.findByRole("button", { name: "Open issuance 7" });
+  expect(screen.queryByRole("button", { name: "Recover original" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+});
+it("distinguishes a restricted worker summary from unavailable metrics", async () => {
+  render(<OutputOpsConsole />);
+  await screen.findByText("Restricted");
+  const refresh = screen.getByRole<HTMLButtonElement>("button", { name: "Refresh" });
+  await waitFor(() => expect(refresh.disabled).toBe(false));
+  m.metrics.mockResolvedValue({ success: false, error: "Synthetic metrics unavailable" });
+  fireEvent.click(refresh);
+  await screen.findByRole("alert");
+  expect(screen.queryByText("Restricted")).toBeNull();
+  await waitFor(() => expect(screen.getAllByText("Unavailable")).toHaveLength(7));
+});

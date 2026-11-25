@@ -42,7 +42,11 @@ export function DataQualitySummaryCards({ summary }: Props) {
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+    <div className="space-y-2">
+      <p className="text-sm text-muted-foreground">
+        Counts from the latest {summary.sample_count.toLocaleString()} of {summary.matching_count.toLocaleString()} matching findings.
+      </p>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
       {cards.map((card) => (
         <div
           key={card.label}
@@ -55,6 +59,7 @@ export function DataQualitySummaryCards({ summary }: Props) {
           <div className="mt-2 text-2xl font-bold">{card.value}</div>
         </div>
       ))}
+      </div>
     </div>
   );
 }

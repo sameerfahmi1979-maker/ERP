@@ -2,14 +2,17 @@ import {afterAll,afterEach,beforeAll,describe,expect,it,vi} from 'vitest';
 import http from 'node:http';
 import {jsPDF} from 'jspdf';
 import {gotenbergConvertHtml,gotenbergConvertUrl,isGotenbergHealthy,getGotenbergVersion} from '@/lib/pdf/gotenberg';
+import {renderOfficialHtmlToPdf} from '@/lib/output/html-adapter';
 import {readValidatedPdfResponse} from '@/lib/pdf/validate-response';
 
 // Real loopback HTTP transport. No Gotenberg/Chromium or browser is launched.
 let origin:string, mode='success';
 const pdf=new jsPDF();pdf.text('F18 synthetic renderer response',20,20);
 const bytes=Buffer.from(pdf.output('arraybuffer'));
+const traffic: Array<string | undefined> = [];
 const secret='F18_SYNTHETIC_PRIVATE_RESPONSE';
 const server=http.createServer((req,res)=>{
+ traffic.push(req.url);
  req.on('end',()=>{
  res.setHeader('Connection','close');
  if(mode==='hang')return;
@@ -23,7 +26,7 @@ const server=http.createServer((req,res)=>{
 });
 beforeAll(async()=>{await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));origin=`http://127.0.0.1:${(server.address() as {port:number}).port}`;
  vi.stubEnv('GOTENBERG_URL',origin);vi.stubEnv('INTERNAL_SITE_URL','http://127.0.0.1:17089');});
-afterEach(()=>{mode='success';});
+afterEach(()=>{mode='success'; traffic.length=0;});
 afterAll(async()=>{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));vi.unstubAllEnvs();});
 describe('F18 renderer dependency faults',()=>{
  it('accepts an actually parsed synthetic PDF over local HTTP',async()=>{const result=await gotenbergConvertHtml({html:'<p>synthetic</p>'});expect(result.buffer).toEqual(bytes);expect(result.fileSizeBytes).toBe(bytes.length);});
@@ -42,4 +45,11 @@ describe('F18 renderer dependency faults',()=>{
   await expect(readValidatedPdfResponse(response)).rejects.toThrow(kind==='type'?'application/pdf':'size limit');expect(cancel).toHaveBeenCalledOnce();
  });
  it('cancels rejected PDF response bodies',async()=>{const cancel=vi.fn();const response=new Response(new ReadableStream({cancel}),{status:503});await expect(readValidatedPdfResponse(response)).rejects.toThrow('HTTP 503');await Promise.resolve();expect(cancel).toHaveBeenCalledOnce();});
+});
+
+it("checks one healthy renderer before converting the exact PDF", async () => {
+  const result = await renderOfficialHtmlToPdf({html:"<p>synthetic original</p>"});
+  expect(result.buffer).toEqual(bytes);
+  expect(result.rendererVersion).toBe("gotenberg@prod");
+  expect(traffic).toEqual(["/health", "/forms/chromium/convert/html"]);
 });

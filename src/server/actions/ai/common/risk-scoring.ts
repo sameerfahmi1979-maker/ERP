@@ -1,5 +1,7 @@
 "use server";
 
+import { observeAssistantQuery } from "@/lib/ai/common/assistant/publication-reads";
+
 /**
  * ERP COMMON AI.5 — AI Risk Scoring Server Actions
  * Review-based entity risk scores — no auto-block/update/resolve.
@@ -29,9 +31,10 @@ import {
   type RiskScoreRow,
   type RiskScoreStatus,
 } from "@/lib/ai/common/risk-scoring";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission, hasPermission } from "@/lib/rbac/check";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { readAiGroupedCounts, readAiSummaryFeature } from "@/server/reads/ai-summary";
 import { logAudit } from "@/server/actions/audit";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -149,42 +152,49 @@ function mapScoreRow(row: Record<string, unknown>, entityLabel: string | null = 
   };
 }
 
+const riskLabelSources = {
+  party: { table: "parties", fields: ["display_name"] },
+  company: { table: "owner_companies", fields: ["trade_name", "legal_name_en"] },
+  branch: { table: "branches", fields: ["branch_name_en"] },
+  site: { table: "work_sites", fields: ["site_name"] },
+  dms_document: { table: "dms_documents", fields: ["document_no", "title"] },
+} as const;
+
+async function resolveEntityLabels(
+  supabase: ReturnType<typeof createAdminClient>,
+  references: Array<{ entityType: string; entityId: number }>,
+): Promise<Map<string, string>> {
+  const idsByType = new Map<keyof typeof riskLabelSources, Set<number>>();
+  for (const { entityType, entityId } of references) {
+    if (!Object.hasOwn(riskLabelSources, entityType) || !Number.isSafeInteger(entityId) || entityId <= 0) continue;
+    const type = entityType as keyof typeof riskLabelSources;
+    const ids = idsByType.get(type) ?? new Set<number>();
+    ids.add(entityId);
+    idsByType.set(type, ids);
+  }
+
+  const labels = new Map<string, string>();
+  await Promise.all(Array.from(idsByType, async ([type, ids]) => {
+    const { table, fields } = riskLabelSources[type];
+    const { data, error } = await supabase.from(table).select(["id", ...fields].join(", ")).in("id", [...ids]);
+    if (error) return;
+    for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
+      const id = row.id;
+      if (typeof id !== "number" || !ids.has(id)) continue;
+      const label = fields.map(field => row[field]).find(value => typeof value === "string");
+      if (typeof label === "string") labels.set(`${type}:${id}`, label);
+    }
+  }));
+  return labels;
+}
+
 async function resolveEntityLabel(
   supabase: ReturnType<typeof createAdminClient>,
   entityType: string,
-  entityId: number
+  entityId: number,
 ): Promise<string | null> {
-  if (entityType === "party") {
-    const { data } = await supabase.from("parties").select("display_name").eq("id", entityId).maybeSingle();
-    return (data as { display_name?: string } | null)?.display_name ?? null;
-  }
-  if (entityType === "company") {
-    const { data } = await supabase
-      .from("owner_companies")
-      .select("trade_name, legal_name_en")
-      .eq("id", entityId)
-      .maybeSingle();
-    const row = data as { trade_name?: string; legal_name_en?: string } | null;
-    return row?.trade_name ?? row?.legal_name_en ?? null;
-  }
-  if (entityType === "branch") {
-    const { data } = await supabase.from("branches").select("branch_name_en").eq("id", entityId).maybeSingle();
-    return (data as { branch_name_en?: string } | null)?.branch_name_en ?? null;
-  }
-  if (entityType === "site") {
-    const { data } = await supabase.from("work_sites").select("site_name").eq("id", entityId).maybeSingle();
-    return (data as { site_name?: string } | null)?.site_name ?? null;
-  }
-  if (entityType === "dms_document") {
-    const { data } = await supabase
-      .from("dms_documents")
-      .select("document_no, title")
-      .eq("id", entityId)
-      .maybeSingle();
-    const row = data as { document_no?: string; title?: string } | null;
-    return row?.document_no ?? row?.title ?? null;
-  }
-  return null;
+  const labels = await resolveEntityLabels(supabase, [{ entityType, entityId }]);
+  return labels.get(`${entityType}:${entityId}`) ?? null;
 }
 
 async function insertRiskScoreEvent(
@@ -702,7 +712,6 @@ export async function getRiskScores(
     if (!canViewRisk(ctx)) return { success: false, error: "Permission denied." };
 
     const supabase = await createClient();
-    const admin = createAdminClient();
     const limit = parsed.data.limit ?? 100;
     const offset = parsed.data.offset ?? 0;
 
@@ -725,15 +734,12 @@ export async function getRiskScores(
     const { data, error, count } = await query;
     if (error) return { success: false, error: error.message };
 
-    const rows: RiskScoreRow[] = [];
-    for (const row of (data ?? []) as Record<string, unknown>[]) {
-      const label = await resolveEntityLabel(
-        admin,
-        row.entity_type as string,
-        row.entity_id as number
-      );
-      rows.push(mapScoreRow(row, label));
-    }
+    const result = (data ?? []) as Record<string, unknown>[];
+    const labels = result.length === 0 ? new Map<string, string>() : await resolveEntityLabels(
+      createAdminClient(),
+      result.map(row => ({ entityType: row.entity_type as string, entityId: row.entity_id as number })),
+    );
+    const rows = result.map(row => mapScoreRow(row, labels.get(`${row.entity_type}:${row.entity_id}`) ?? null));
 
     return { success: true, data: { rows, total: count ?? rows.length } };
   } catch (err) {
@@ -816,7 +822,7 @@ export async function getRiskScoreForEntity(input: {
     const supabase = await createClient();
     const admin = createAdminClient();
 
-    const { data: row } = await supabase
+    const { data: row, error: readError } = await supabase
       .from("erp_ai_risk_scores")
       .select("*")
       .eq("entity_type", parsed.data.entityType)
@@ -825,6 +831,8 @@ export async function getRiskScoreForEntity(input: {
       .not("status", "in", '("superseded","failed")')
       .maybeSingle();
 
+    if (readError) return { success: false, error: "Risk score unavailable." };
+    observeAssistantQuery(() => ({kind: "risk", reference: parsed.data, limit: 1, result: row ? [[row.id,row.risk_score,row.risk_level,row.status]] : []}));
     if (!row) return { success: true, data: null };
 
     const label = await resolveEntityLabel(
@@ -1036,60 +1044,37 @@ export async function getRiskScoreCountForEntity(input: {
 
 export async function getRiskScoreSummary(): Promise<
   ActionResult<{
-    critical: number;
-    high: number;
-    stale: number;
-    unreviewed: number;
-    featureEnabled: boolean;
+    critical: number | null;
+    high: number | null;
+    stale: number | null;
+    unreviewed: number | null;
+    featureEnabled: boolean | null;
   }>
 > {
   try {
     const ctx = await getAuthContext();
     if (!ctx.profile) return { success: false, error: "Not authenticated." };
-    if (!canViewRisk(ctx)) return { success: false, error: "Permission denied." };
+    if (!hasGlobalPermission(ctx, "ai.risk.view") && !hasGlobalPermission(ctx, "ai.common.admin")) {
+      return { success: false, error: "Permission denied." };
+    }
 
-    const supabase = await createClient();
-    const featureEnabled = await isRiskScoreEnabled();
-
-    const { count: criticalCount } = await supabase
-      .from("erp_ai_risk_scores")
-      .select("id", { count: "exact", head: true })
-      .is("deleted_at", null)
-      .eq("risk_level", "critical");
-
-    const { count: highCount } = await supabase
-      .from("erp_ai_risk_scores")
-      .select("id", { count: "exact", head: true })
-      .is("deleted_at", null)
-      .eq("risk_level", "high");
-
-    const { count: staleCount } = await supabase
-      .from("erp_ai_risk_scores")
-      .select("id", { count: "exact", head: true })
-      .is("deleted_at", null)
-      .or("status.eq.stale,stale_at.not.is.null");
-
-    const { count: unreviewedCount } = await supabase
-      .from("erp_ai_risk_scores")
-      .select("id", { count: "exact", head: true })
-      .is("deleted_at", null)
-      .is("reviewed_at", null)
-      .in("status", ["calculated", "stale"]);
-
-    return {
-      success: true,
-      data: {
-        critical: criticalCount ?? 0,
-        high: highCount ?? 0,
-        stale: staleCount ?? 0,
-        unreviewed: unreviewedCount ?? 0,
-        featureEnabled,
-      },
-    };
-  } catch (err) {
-    return { success: false, error: String(err).slice(0, 200) };
+    const db = await createClient();
+    const query = () => db.from("erp_ai_risk_scores").select("id", { count: "exact", head: true }).is("deleted_at", null);
+    const [featureEnabled, counts] = await Promise.all([
+      readAiSummaryFeature(db, "ERP_AI_RISK_SCORE"),
+      readAiGroupedCounts(db, "risk", {
+        critical: () => query().eq("risk_level", "critical"),
+        high: () => query().eq("risk_level", "high"),
+        stale: () => query().or("status.eq.stale,stale_at.not.is.null"),
+        unreviewed: () => query().is("reviewed_at", null).in("status", ["calculated", "stale"]),
+      }),
+    ]);
+    return { success: true, data: { ...counts, featureEnabled } };
+  } catch {
+    return { success: false, error: "Risk scores summary could not be loaded." };
   }
 }
+
 
 export async function isRiskScoringEnabled(): Promise<boolean> {
   return isRiskScoreEnabled();

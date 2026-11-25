@@ -20,3 +20,13 @@ it("subject sets require the exact F03 protected reader and retain original writ
  expect(sql).toContain("REVOKE ALL ON FUNCTION erp_private.perf_notification_document_ids(text) FROM PUBLIC,anon,authenticated,service_role");
  expect(sql).not.toMatch(/CREATE OR REPLACE|ALTER POLICY f03_principal|DISABLE ROW LEVEL SECURITY|GRANT.*service_role/);
 });
+
+it("broad personal notice reads bind the current recipient before caller-scoped decoration",()=>{
+ const sql=readFileSync('supabase/migrations/20261122180006_dms_personal_recipient_projection.sql','utf8');
+ expect(sql).toContain('WITH (security_invoker = true, security_barrier = true)');
+ expect(sql.indexOf('q.recipient_user_id = (SELECT public.current_user_profile_id())')).toBeLessThan(sql.indexOf('document_refs AS MATERIALIZED'));
+ expect(sql).toContain('n.source_entity_id = q.document_id AND n.recipient_user_id = q.recipient_user_id');
+ expect(sql).toContain('n.channel_in_app AND n.deleted_at IS NULL AND n.scheduled_for <= statement_timestamp()');
+ expect(sql).toContain('GRANT SELECT ON public.perf_dms_my_notification_read TO authenticated');
+ expect(sql).not.toMatch(/SECURITY DEFINER|ALTER POLICY|CREATE OR REPLACE VIEW/i);
+});

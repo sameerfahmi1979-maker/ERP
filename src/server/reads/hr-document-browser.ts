@@ -166,8 +166,24 @@ export async function readHrDocumentBrowser(input: unknown, context?: AuthContex
     const links = linkResult.value, identities = identityResult.value;
     const ids = [...new Set([...links.map(row => row.document_id), ...identities.flatMap(row => row.dms_document_id ? [row.dms_document_id] : []), ...(legacyDocumentId ? [legacyDocumentId] : [])])];
     if (ids.length > MAX_COMPOSITION) throw new CompositionTooLarge();
+    const loadSearchMatches = async () => {
+      const shared = await prepareDocumentQuery(db, p.search, ctx, {subject: {type: p.entityType, id: p.entityId}, content: true, signal});
+      const matching = await complete(() => shared.query.select("id").order("id").abortSignal(signal ?? AbortSignal.timeout(15000)) as unknown as Query, z.object({id}), signal);
+      return new Set(matching.map(row => row.id));
+    };
+    let matchingIds: Set<number> | null = null;
+    let decorationIds = ids;
+    // Keep the original full composition when the union could exceed its ceiling.
+    if (p.search && ids.length + identities.length <= MAX_COMPOSITION) {
+      matchingIds = await loadSearchMatches();
+      // An identity reference needs the visibility check even when its DMS
+      // document did not match, because only a hidden document permits a local fallback.
+      const identityDocumentIds = new Set(identities.map(row => row.dms_document_id));
+      const matched = matchingIds;
+      decorationIds = ids.filter(documentId => matched.has(documentId) || identityDocumentIds.has(documentId));
+    }
     const documents = new Map<number, z.infer<typeof document>>();
-    for (const batch of chunks(ids)) {
+    for (const batch of chunks(decorationIds)) {
       signal?.throwIfAborted();
       const rows = await complete(() => select("dms_documents", "id,document_no,title,status,issue_date,expiry_date,document_type:dms_document_types(name_en)").in("id", batch).is("deleted_at", null).order("id"), document, signal);
       for (const row of rows) {if (!batch.includes(row.id)) throw Error("Document membership mismatch"); documents.set(row.id, row);}
@@ -189,12 +205,7 @@ export async function readHrDocumentBrowser(input: unknown, context?: AuthContex
         status: r.status ?? d?.status ?? null, issueDate: r.issue_date ?? d?.issue_date ?? null, expiryDate: r.expiry_date ?? d?.expiry_date ?? null, source: "hr_identity"});
     }
     if (rows.length > MAX_COMPOSITION) throw new CompositionTooLarge();
-    let matchingIds:Set<number>|null=null;
-    if(p.search){
-      const shared=await prepareDocumentQuery(db,p.search,ctx,{subject:{type:p.entityType,id:p.entityId},content:true,signal});
-      const matching=await complete(()=>shared.query.select("id").order("id").abortSignal(signal??AbortSignal.timeout(15000)) as unknown as Query,z.object({id}),signal);
-      matchingIds=new Set(matching.map(r=>r.id));
-    }
+    if (p.search) matchingIds ??= await loadSearchMatches();
     const filtered = rows.filter(row => HR_BROWSER_DOCUMENT_FIELDS.every(key => !p.columnFilters[key] || contains(row[key], p.columnFilters[key]!))
       && (!p.search || (row.id!==null?matchingIds?.has(row.id):matchesSearchText(`${row.title} ${row.typeNameEn??""}`,p.search))));
     filtered.sort((a, b) => {

@@ -7,7 +7,7 @@ import {getLinkedEmployeeId} from "@/lib/rbac/employee-access";
 import {createClient} from "@/lib/supabase/server";
 import {readAllPages} from "@/server/reads/all-pages";
 import {readDmsDocumentPage} from "@/server/reads/dms-documents";
-import {readDmsEntityDocuments} from "@/server/reads/dms-entity-documents";
+import {readDmsEntityFolder} from "@/server/reads/dms-entity-documents";
 import {getDmsDocumentRecordData} from "@/server/actions/dms/documents";
 import {readDmsApprovals} from "@/server/reads/dms-approvals";
 import {readDmsRenewalPage} from "@/server/reads/dms-renewal-page";
@@ -52,9 +52,10 @@ export async function readMobileProfile(ctx:AuthContext){
 type Db=Awaited<ReturnType<typeof createClient>>;
 const rowId=z.number().int().positive().safe();
 const linkSchema=z.object({id:rowId,document_id:rowId}).strip();
-const documentSchema=z.object({id:rowId,title:z.string(),document_no:z.string(),description:z.string().nullable(),expiry_date:z.string().nullable(),status:z.string(),document_type_id:rowId.nullable(),document_type:z.object({name_en:z.string().nullable()}).nullable()}).strip();
-type Document=z.infer<typeof documentSchema>;
-const documentFields="id,title,document_no,description,expiry_date,status,document_type_id,document_type:dms_document_types(name_en)";
+const documentSummarySchema=z.object({id:rowId,title:z.string(),document_no:z.string(),expiry_date:z.string().nullable(),status:z.string(),document_type:z.object({name_en:z.string().nullable()}).nullable()});
+const documentSchema=documentSummarySchema.extend({description:z.string().nullable()});
+type DocumentSummary=z.infer<typeof documentSummarySchema>;
+const documentSummaryFields="id,title,document_no,expiry_date,status,document_type:dms_document_types(name_en)";
 const normalized=(s:string)=>normalizeIdentity(s);
 const terms=(s:string)=>normalized(s).split(" ").filter(Boolean);
 export const mobileDocumentRow=(r:{id:number;title:string;document_no:string;expiry_date:string|null;status:string;document_type?:{name_en:string|null}|null})=>({id:r.id,title:r.title,number:r.document_no,expiry:r.expiry_date,type:r.document_type?.name_en??null,status:r.status});
@@ -106,15 +107,13 @@ export async function readMobileRecords(entityType:"employee"|"site",search:stri
 }
 export async function readMobileFolder(input:{entityType:"employee"|"site";entityId:number;page:number},ctx:AuthContext){
  await admitFolder(ctx,input.entityType,input.entityId);
- const parent={entityType:input.entityType,entityId:input.entityId};
- const [list,summary,checklist]=await Promise.all([readDmsEntityDocuments({...parent,operation:"list",offset:(input.page-1)*25,limit:25},ctx),readDmsEntityDocuments({...parent,operation:"summary"},ctx),readDmsEntityDocuments({...parent,operation:"checklist"},ctx)]);
- if(!list.success||!list.data||list.data.availability!=="available"||!("rows" in list.data)||!("totalCount" in list.data)||list.data.criteria.operation!=="list")throw new MobileDmsError(list.error??"The folder could not be completely loaded.");
- if(!summary.success||!summary.data||summary.data.availability!=="available"||!("summary" in summary.data))throw new MobileDmsError(summary.error??"The folder summary is unavailable.");
- if(!checklist.success||!checklist.data||checklist.data.availability!=="available"||!("missing" in checklist.data))throw new MobileDmsError(checklist.error??"The required-document checklist is unavailable.");
- const missing=checklist.data.missing,missingCount=summary.data.summary.missingRequiredDocuments;
+ const result=await readDmsEntityFolder({entityType:input.entityType,entityId:input.entityId,offset:(input.page-1)*25},ctx);
+ const {data,folder}=result;
+ if(!result.success||!data||data.availability!=="available"||!("rows" in data)||!("totalCount" in data)||data.criteria.operation!=="list"||!folder)throw new MobileDmsError(result.error??"The folder could not be completely loaded.");
+ const {summary,missing}=folder,missingCount=summary.missingRequiredDocuments;
  if((missing===null)!==(missingCount===null)||(missing!==null&&missing.length!==missingCount))throw new MobileDmsError("Required documents changed while loading. Refresh this folder.",409);
- const rows=list.data.rows.map(r=>{if(!("document_id" in r))throw new MobileDmsError("Unexpected folder row.");return mobileDocumentRow({id:r.document_id,title:r.title,document_no:r.document_no,expiry_date:r.expiry_date,status:r.status,document_type:{name_en:r.document_type_name}});});
- return {rows,total:list.data.totalCount,summary:summary.data.summary,missing};
+ const rows=data.rows.map(r=>{if(!("document_id" in r))throw new MobileDmsError("Unexpected folder row.");return mobileDocumentRow({id:r.document_id,title:r.title,document_no:r.document_no,expiry_date:r.expiry_date,status:r.status,document_type:{name_en:r.document_type_name}});});
+ return {rows,total:data.totalCount,summary,missing};
 }
 
 export async function readMobileDocuments(raw:MobileDocumentsInput,ctx:AuthContext){
@@ -134,15 +133,15 @@ export async function readMobileDocuments(raw:MobileDocumentsInput,ctx:AuthConte
  if(matches.length>50)throw new MobileDmsError("Too many matching records. Refine the name or choose an exact folder.",400);
  const labels=new Map<number,string[]>();
  for(const match of matches)for(const id of await linksFor(db,match.entityType,match.id)){const known=labels.get(id)??[];known.push(`${match.label} ${match.code??""} ${match.description??""} ${match.alternateLabel??""}`);labels.set(id,known);}
- const base=()=>{
-  let q=db.from("dms_documents").select(documentFields,{count:"exact"}).is("deleted_at",null).eq("is_archived",false).not("status","in","(archived,superseded,deleted)");
+ const base=(projection:string)=>{
+  let q=db.from("dms_documents").select(projection,{count:"exact"}).is("deleted_at",null).eq("is_archived",false).not("status","in","(archived,superseded,deleted)");
   if(input.typeId)q=q.eq("document_type_id",input.typeId);if(parentIds)q=q.in("id",parentIds);
   if(input.validity==="expired")q=q.lt("expiry_date",today);if(input.validity==="expiring")q=q.gte("expiry_date",today).lte("expiry_date",soon);
   if(input.validity==="valid")q=q.or(`expiry_date.is.null,expiry_date.gte.${today}`);
   return q;
  };
  if(!input.search&&!entityId){
-  const from=(input.page-1)*25,r=await base().order("created_at",{ascending:false}).order("id",{ascending:true}).range(from,from+24),parsed=z.array(documentSchema).safeParse(r.data);
+  const from=(input.page-1)*25,r=await base(documentSummaryFields).order("created_at",{ascending:false}).order("id",{ascending:true}).range(from,from+24),parsed=z.array(documentSummarySchema).safeParse(r.data);
   if(r.error||r.count===null||!Number.isSafeInteger(r.count)||r.count<0||!parsed.success||parsed.data.length!==Math.min(25,Math.max(0,r.count-from))||new Set(parsed.data.map(d=>d.id)).size!==parsed.data.length)throw new MobileDmsError("Documents or their current count could not be verified.");
   return {rows:parsed.data.map(mobileDocumentRow),total:r.count,more:from+25<r.count};
  }
@@ -153,7 +152,7 @@ export async function readMobileDocuments(raw:MobileDocumentsInput,ctx:AuthConte
   return {...r,data:z.array(z.object({id:rowId})).parse(r.data)};
  },{identity:r=>r.id,maxRows:500,batchSize:100}):[];
  const rows=await readAllPages(async(from,to)=>{
-  let q=base();
+  let q=base(`${documentSummaryFields},description`);
   if(ts.length){
    const ors=ts.flatMap(t=>["title","document_no","description"].map(f=>`${f}.ilike.${literalContains(t)}`));
    if(labels.size)ors.push(`id.in.(${[...labels.keys()].join(",")})`);
@@ -163,21 +162,26 @@ export async function readMobileDocuments(raw:MobileDocumentsInput,ctx:AuthConte
   const r=await q.order("id").range(from,to);
   return {...r,data:z.array(documentSchema).parse(r.data)};
  },{identity:r=>r.id,maxRows:5000,batchSize:200});
- const candidates=new Map<number,Document>(rows.filter(r=>ts.every(t=>normalized(`${r.title} ${r.document_no} ${r.description??""} ${r.document_type?.name_en??""} ${(labels.get(r.id)??[]).join(" ")}`).includes(t))).map(r=>[r.id,r]));
+ const candidates=new Map<number,DocumentSummary>(rows.filter(r=>ts.every(t=>normalized(`${r.title} ${r.document_no} ${r.description??""} ${r.document_type?.name_en??""} ${(labels.get(r.id)??[]).join(" ")}`).includes(t))).map(r=>[r.id,r]));
  // Supplement metadata/name partial matches with the existing invoker content
  // search. Extracted text is never returned; the RPC retains its native RLS.
  if(input.search){
   const content=await readAllPages(async(from,to)=>{
-   let q=db.rpc("ai_mod02_search_documents",{text_query:input.search,include_content:true},{get:true,count:"exact"}).select(documentFields).is("deleted_at",null).eq("is_archived",false).not("status","in","(archived,superseded,deleted)");
+   let q=db.rpc("ai_mod02_search_documents",{text_query:input.search,include_content:true},{get:true,count:"exact"}).select(documentSummaryFields).is("deleted_at",null).eq("is_archived",false).not("status","in","(archived,superseded,deleted)");
    if(input.typeId)q=q.eq("document_type_id",input.typeId);if(parentIds)q=q.in("id",parentIds);
    if(input.validity==="expired")q=q.lt("expiry_date",today);if(input.validity==="expiring")q=q.gte("expiry_date",today).lte("expiry_date",soon);if(input.validity==="valid")q=q.or(`expiry_date.is.null,expiry_date.gte.${today}`);
-   const r=await q.order("id").range(from,to);return {...r,data:z.array(documentSchema).parse(r.data)};
-  },{identity:r=>r.id,maxRows:5000,batchSize:200});for(const r of content)candidates.set(r.id,r);
+   const r=await q.order("id").range(from,to);return {...r,data:z.array(documentSummarySchema).parse(r.data)};
+  },{identity:r=>r.id,maxRows:5000,batchSize:500});for(const r of content)candidates.set(r.id,r);
  }
- const rank=(r:Document)=>{const q=normalized(input.search),title=normalized(r.title),number=normalized(r.document_no);return number===q?0:title===q?1:title.startsWith(q)?2:3;};
- const sorted=[...candidates.values()].sort((a,b)=>rank(a)-rank(b)||normalized(a.title).localeCompare(normalized(b.title))||a.id-b.id),from=(input.page-1)*25;
- return {rows:sorted.slice(from,from+25).map(mobileDocumentRow),total:sorted.length,more:from+25<sorted.length,
-  suggestions:sorted.length===0&&!entityId?await suggestMobileRecords(input.search,ctx):[]};
+ const q=normalized(input.search);
+ const ranked=[...candidates.values()].map(row=>{
+  const title=normalized(row.title),number=normalized(row.document_no);
+  return {row,title,rank:number===q?0:title===q?1:title.startsWith(q)?2:3};
+ });
+ ranked.sort((a,b)=>a.rank-b.rank||a.title.localeCompare(b.title)||a.row.id-b.row.id);
+ const from=(input.page-1)*25;
+ return {rows:ranked.slice(from,from+25).map(({row})=>mobileDocumentRow(row)),total:ranked.length,more:from+25<ranked.length,
+  suggestions:ranked.length===0&&!entityId?await suggestMobileRecords(input.search,ctx):[]};
 }
 
 export async function readMobileUploads(beforeId:number|undefined,ctx:AuthContext,page=1){

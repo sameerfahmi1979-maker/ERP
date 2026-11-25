@@ -51,6 +51,23 @@ export const fleetAsset = fleetRow.omit({ plate: true }).extend({
   proof_choices: z.array(fleetProof),
 });
 
+export const fleetAssetSummary = fleetAsset.omit({ evidence: true, proof_choices: true }).extend({
+  history: fleetAsset.shape.history.max(1),
+  plates: fleetAsset.shape.plates.max(1),
+  meters: fleetAsset.shape.meters.max(2),
+});
+export const fleetAssetPageSize = 25;
+export const fleetAssetPageNumber = z.number().int().min(1).max(Math.floor(2147483647 / fleetAssetPageSize));
+export const fleetAssetSection = z.enum(["history", "plates", "meters", "evidence", "proof"]);
+const fleetAssetPageBase = z.object({ has_more: z.boolean() });
+export const fleetAssetPage = z.discriminatedUnion("section", [
+  fleetAssetPageBase.extend({ section: z.literal("history"), rows: fleetAsset.shape.history.max(fleetAssetPageSize) }),
+  fleetAssetPageBase.extend({ section: z.literal("plates"), rows: fleetAsset.shape.plates.max(fleetAssetPageSize) }),
+  fleetAssetPageBase.extend({ section: z.literal("meters"), rows: fleetAsset.shape.meters.max(fleetAssetPageSize) }),
+  fleetAssetPageBase.extend({ section: z.literal("evidence"), rows: fleetAsset.shape.evidence.max(fleetAssetPageSize) }),
+  fleetAssetPageBase.extend({ section: z.literal("proof"), rows: fleetAsset.shape.proof_choices.max(fleetAssetPageSize) }),
+]);
+
 export const fleetCommand = z.object({
   operation: z.uuid(), asset: fleetId.nullable(),
   action: z.enum(["create", "identity", "ownership", "operation", "location", "configuration", "plate", "meter", "verify-document", "lifecycle"]),
@@ -62,6 +79,8 @@ export const fleetReceipt = z.object({
 }).strict();
 
 export type FleetAsset = z.infer<typeof fleetAsset>;
+export type FleetAssetSummary = z.infer<typeof fleetAssetSummary>;
+export type FleetAssetSection = z.infer<typeof fleetAssetSection>;
 export type FleetChoices = z.infer<typeof fleetChoices>;
 export type FleetCommand = z.infer<typeof fleetCommand>;
 export type FleetReceipt = z.infer<typeof fleetReceipt>;

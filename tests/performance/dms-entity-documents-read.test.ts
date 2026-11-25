@@ -53,6 +53,7 @@ vi.mock("@/lib/supabase/server", () => ({createClient: async () => {s.clients++;
 vi.mock("@/lib/supabase/admin", () => ({createAdminClient: () => {s.admin++;return client();}}));
 import {getDmsDocumentsByEntity, getAvailableDmsDocumentsForLink} from "@/server/actions/dms/entity-documents";
 import {readDmsEntityDocuments,ENTITY_DOCUMENTS_TIMEOUT_MS} from "@/server/reads/dms-entity-documents";
+import {readMobileFolder} from "@/server/mobile/dms";
 import {entityDocumentsCriteriaSchema,entityDocumentsResponseSchema,entityDocumentsListPage,entityDocumentsAttachPage,entityDocumentsSelectedPage,entityDocumentsSummaryPage} from "@/lib/reads/dms-entity-documents-schema";
 import {GET,POST} from "@/app/api/reads/dms-entity-documents/route";
 const doc=(id:number, extra:Row={})=>({id,document_no:`DOC-${id}`,title:`Document ${id}`,status:"active",is_archived:false,issue_date:null,expiry_date:null,created_at:"2026-01-01T00:00:00Z",updated_at:"2026-01-01T00:00:00Z",deleted_at:null,legacy_document_code:null,description:null,confidentiality_level:"internal",migrated_from_table:null,document_type_id:1,document_type:{type_code:"TEST",name_en:"Evidence"},ai_risk_level:null,ai_risk_score:null,completeness_score:null,...extra});
@@ -67,6 +68,46 @@ it("RED baseline: linked documents traverse provider pages beyond 1000",async()=
 it("RED baseline: attach exclusion failure must not become successful choices",async()=>{s.fault="dms_document_links";const r=await getAvailableDmsDocumentsForLink("employee",1);expect(r.success).toBe(false);expect(r.data).toBeUndefined();});
 it("RED baseline: linked ordering has an ID tie breaker",async()=>{await getDmsDocumentsByEntity("employee",1);expect(s.calls.find(c=>c.table==="dms_document_links")?.methods).toContainEqual(["order","id",{ascending:false}]);});
 const read=(operation="list",extra={})=>readDmsEntityDocuments({operation,entityType:"employee",entityId:1,...extra});
+it("uses one shared protected source pass for the exact late Mobile folder page",async()=>{
+  s.ctx.permissionCodes.push("hr.employees.view");
+  s.rows.dms_documents=Array.from({length:1107},(_,i)=>doc(i+1));
+  s.rows.dms_document_links=s.rows.dms_documents.map(d=>link(Number(d.id)));
+  const result=await readMobileFolder({entityType:"employee",entityId:1,page:45},s.ctx);
+  expect(result.total).toBe(1107);
+  expect(result.rows.map(row=>row.id)).toEqual([7,6,5,4,3,2,1]);
+  expect(result.summary.totalDocuments).toBe(1107);
+  expect(result.missing).toBeNull();
+  expect(s.clients).toBe(1);
+  expect(s.calls.filter(c=>c.table==="employees")).toHaveLength(1);
+  expect(s.calls.filter(c=>c.table==="dms_document_links")).toHaveLength(3);
+  expect(s.calls.filter(c=>c.table==="dms_documents")).toHaveLength(6);
+  expect(s.calls.filter(c=>c.table==="dms_document_files")).toHaveLength(1);
+  expect(s.admin).toBe(0);
+});
+it("uses one checked required-rule set and fails closed if it becomes unavailable",async()=>{
+  s.ctx.permissionCodes.push("hr.employees.view");
+  s.global=true;
+  s.rows.dms_documents=[doc(1),doc(2,{document_type_id:2,status:"archived"})];
+  s.rows.dms_document_links=[link(1),link(2)];
+  s.rows.dms_required_document_rules=[
+    {id:11,rule_code:"PRESENT",rule_name:"Identity",entity_type:"employee",document_type_id:1,is_required:true,is_active:true,document_type:{type_code:"ID"}},
+    {id:12,rule_code:"MISSING",rule_name:"Safety evidence",entity_type:"employee",document_type_id:2,is_required:true,is_active:true,document_type:{type_code:"SAFE"}},
+  ];
+  const input={entityType:"employee" as const,entityId:1,page:1};
+  const result=await readMobileFolder(input,s.ctx);
+  expect(result.rows.map(row=>row.id)).toEqual([1]);
+  expect(result.total).toBe(1);
+  expect(result.summary).toMatchObject({totalDocuments:1,missingRequiredDocuments:1,openComplianceFindings:0});
+  expect(result.missing).toEqual([{ruleId:12,label:"Safety evidence",typeCode:"SAFE",documentTypeId:2}]);
+  expect(s.calls.filter(c=>c.table==="dms_required_document_rules")).toHaveLength(1);
+  s.fault="dms_required_document_rules";
+  await expect(readMobileFolder(input,s.ctx)).rejects.toMatchObject({status:503});
+});
+it("does not enumerate mobile links for a hidden selected employee",async()=>{
+  s.ctx.permissionCodes.push("hr.employees.view");
+  await expect(readMobileFolder({entityType:"employee",entityId:987,page:1},s.ctx)).rejects.toMatchObject({status:503});
+  expect(s.calls.map(c=>c.table)).toEqual(["employees"]);
+});
 it("native composition counts all authorized links, pages late rows and counts files only for that page",async()=>{
   s.rows.dms_documents=Array.from({length:1107},(_,i)=>doc(i+1));s.rows.dms_document_links=s.rows.dms_documents.map(d=>link(Number(d.id)));
   s.rows.dms_document_files=Array.from({length:1107},(_,i)=>({id:i+1,document_id:1,deleted_at:null}));
@@ -258,4 +299,27 @@ it("all three business mutation blocks preserve the original source (line-ending
 });
 it("protected read service has no privileged client, broad JSON/row projection, provider or mutation",()=>{
   const source=readFileSync("src/server/reads/dms-entity-documents.ts","utf8");expect(source).not.toMatch(/createAdminClient|supabase\/admin|\.insert\(|\.update\(|\.delete\(|\.upload\(|\.select\(["'`]\*/);expect(source).toContain("f03_has_document_permission");expect(source).toContain("current_user_has_permission");
+});
+it.each([0, 900, 1000, 1100])("reads only the requested attachment window at %i", async offset=>{
+  s.rows.dms_documents=Array.from({length:1001},(_,i)=>doc(i+1));
+  const r=entityDocumentsAttachPage.parse((await read("attach",{offset})).data);
+  const calls=s.calls.filter(c=>c.table==="dms_documents");
+  const ranges=calls.map(c=>c.methods.find(m=>m[0]==="range")?.slice(1));
+  expect(r.totalCount).toBe(1001);
+  expect(r.rows.map(d=>d.id)).toEqual(Array.from({length:Math.min(25,Math.max(0,1001-offset))},(_,i)=>1001-offset-i));
+  expect(ranges).toEqual([[offset,offset+24]]);
+});
+it("excludes linked choices before fetching the requested attachment window",async()=>{
+  s.rows.dms_documents=Array.from({length:1001},(_,i)=>doc(i+1));
+  s.rows.dms_document_links=[link(1001),link(999),link(7001)];
+  const r=entityDocumentsAttachPage.parse((await read("attach",{offset:1,limit:2})).data);
+  expect(r.totalCount).toBe(999);expect(r.rows.map(d=>d.id)).toEqual([998,997]);
+  const calls=s.calls.filter(c=>c.table==="dms_documents");expect(calls).toHaveLength(1);
+  expect(calls[0].methods).toContainEqual(["range",1,2]);
+});
+it("keeps the pre-exclusion source limit near 5000",async()=>{
+  s.rows.dms_documents=Array.from({length:5001},(_,i)=>doc(i+1));s.rows.dms_document_links=[link(1),link(2)];
+  expect((await read("attach")).data).toMatchObject({availability:"too_large"});
+  s.rows.dms_documents.pop();s.rows.dms_document_links.push(link(9999));
+  const r=entityDocumentsAttachPage.parse((await read("attach")).data);expect(r.totalCount).toBe(4998);
 });

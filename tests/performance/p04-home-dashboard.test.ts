@@ -5,9 +5,19 @@ vi.mock("@/lib/supabase/server",()=>({createClient:async()=>({from:(table:string
 import {readHomeDashboard} from "@/server/reads/home-dashboard";
 beforeEach(()=>{s.calls=[];s.fail=false;});
 it("preserves genuine zero counts and has no sample fallback or nonexistent legacy tables",async()=>{
-  const r=await readHomeDashboard(syntheticAuthContext(["dashboard.view","hr.employees.view","parties.view","dms.documents.view","audit.view"]));
+  const r=await readHomeDashboard(syntheticAuthContext(["dashboard.view","hr.employees.view","master_data.parties.view","dms.documents.view","audit.view"]));
   expect(r.employees).toEqual({status:"ready",value:0});expect(r.documentsPending).toEqual({status:"ready",value:0});expect(r.parties).toEqual({status:"ready",value:0});expect(r.activity).toEqual({status:"ready",rows:[]});
   expect(s.calls.sort()).toEqual(["audit_logs","dms_ai_job_queue","employees","parties"].sort());
+});
+it("checks the global Party Master capability and rejects scoped or legacy aliases",async()=>{
+  const globalAlias=syntheticAuthContext(["dashboard.view","master_data.party_master.view"]);
+  expect((await readHomeDashboard(globalAlias)).parties).toEqual({status:"ready",value:0});
+  expect(s.calls).toEqual(["parties"]);
+  s.calls=[];
+  const scoped=syntheticAuthContext(["dashboard.view","master_data.parties.view","parties.view"]);
+  scoped.globalPermissionCodes=["dashboard.view","parties.view"];
+  expect((await readHomeDashboard(scoped)).parties).toEqual({status:"restricted"});
+  expect(s.calls).toHaveLength(0);
 });
 it("restricted capabilities perform no private business reads",async()=>{
   expect(await readHomeDashboard(syntheticAuthContext(["dashboard.view"]))).toMatchObject({employees:{status:"restricted"},documentsPending:{status:"restricted"},parties:{status:"restricted"},activity:{status:"restricted"}});expect(s.calls).toHaveLength(0);

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission } from "@/lib/rbac/check";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { ComplianceFindingsPageClient } from "@/features/ai/common/compliance-checker";
 import { getComplianceFindingSummary } from "@/server/actions/ai/common/compliance-checker";
@@ -19,9 +19,8 @@ type PageProps = {
 export default async function AiCompliancePage({ searchParams }: PageProps) {
   const ctx = await getAuthContext();
   const canView =
-    hasPermission(ctx, "ai.compliance.view") ||
-    hasPermission(ctx, "ai.common.admin") ||
-    ctx.roleCodes.includes("system_admin");
+    hasGlobalPermission(ctx, "ai.compliance.view") ||
+    hasGlobalPermission(ctx, "ai.common.admin");
 
   if (!canView) {
     redirect("/access-denied");
@@ -30,11 +29,11 @@ export default async function AiCompliancePage({ searchParams }: PageProps) {
   const params = await searchParams;
   const summaryResult = await getComplianceFindingSummary();
   const defaultSummary = {
-    open: 0,
-    critical: 0,
-    high: 0,
-    waivedResolved: 0,
-    featureEnabled: false,
+    open: null,
+    critical: null,
+    high: null,
+    waivedResolved: null,
+    featureEnabled: null,
   };
 
   const entityId = params.entityId ? Number(params.entityId) : undefined;

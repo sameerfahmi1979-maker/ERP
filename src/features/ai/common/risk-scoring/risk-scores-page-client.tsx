@@ -40,11 +40,11 @@ import { RiskLevelBadge } from "./risk-level-badge";
 
 interface RiskScoresPageClientProps {
   summary: {
-    critical: number;
-    high: number;
-    stale: number;
-    unreviewed: number;
-    featureEnabled: boolean;
+    critical: number | null;
+    high: number | null;
+    stale: number | null;
+    unreviewed: number | null;
+    featureEnabled: boolean | null;
   };
   initialEntityType?: string;
   initialEntityId?: number;
@@ -197,7 +197,10 @@ export function RiskScoresPageClient({
 
   return (
     <QueryReadBoundary queries={[uiRead1,uiRead2]}><div className="space-y-4">
-      {!summary.featureEnabled && (
+      {summary.featureEnabled === null && <p role="status" className="text-sm text-muted-foreground">
+        The AI feature status is unavailable. Reload before running the tool.
+      </p>}
+      {summary.featureEnabled === false && (
         <Alert className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
           <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-300" />
           <AlertDescription className="text-amber-900 text-sm dark:text-amber-200">
@@ -213,7 +216,7 @@ export function RiskScoresPageClient({
             <ShieldAlert className="h-8 w-8 text-red-500 dark:text-red-300" />
             <div>
               <p className="text-xs text-muted-foreground">Critical</p>
-              <p className="text-2xl font-bold">{summary.critical}</p>
+              <p className="text-2xl font-bold">{summary.critical ?? "Unavailable"}</p>
             </div>
           </CardContent>
         </Card>
@@ -222,7 +225,7 @@ export function RiskScoresPageClient({
             <TrendingUp className="h-8 w-8 text-orange-500 dark:text-orange-300" />
             <div>
               <p className="text-xs text-muted-foreground">High</p>
-              <p className="text-2xl font-bold">{summary.high}</p>
+              <p className="text-2xl font-bold">{summary.high ?? "Unavailable"}</p>
             </div>
           </CardContent>
         </Card>
@@ -231,7 +234,7 @@ export function RiskScoresPageClient({
             <Clock className="h-8 w-8 text-amber-500 dark:text-amber-300" />
             <div>
               <p className="text-xs text-muted-foreground">Stale</p>
-              <p className="text-2xl font-bold">{summary.stale}</p>
+              <p className="text-2xl font-bold">{summary.stale ?? "Unavailable"}</p>
             </div>
           </CardContent>
         </Card>
@@ -240,7 +243,7 @@ export function RiskScoresPageClient({
             <CheckCircle2 className="h-8 w-8 text-blue-500 dark:text-blue-300" />
             <div>
               <p className="text-xs text-muted-foreground">Unreviewed</p>
-              <p className="text-2xl font-bold">{summary.unreviewed}</p>
+              <p className="text-2xl font-bold">{summary.unreviewed ?? "Unavailable"}</p>
             </div>
           </CardContent>
         </Card>

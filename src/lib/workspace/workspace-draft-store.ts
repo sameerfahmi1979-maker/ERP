@@ -39,7 +39,7 @@ export function snapshotFormData(formId: string): WorkspaceFormDraft {
   // surviving a patch. Repeated-name/multi-value controls need a typed adapter.
   for (const control of Array.from(form.elements)) {
     if (control instanceof HTMLInputElement && control.type === "checkbox" &&
-      control.name && !control.disabled && !forbidden.has(control.name) && isDraftFieldAllowed(control.name)) {
+      control.name && !control.matches(":disabled") && !forbidden.has(control.name) && isDraftFieldAllowed(control.name)) {
       snapshot[control.name] = String(control.checked);
     }
   }
@@ -52,6 +52,19 @@ export function createWorkspaceDraftStore(): WorkspaceDraftStoreApi {
   const view = new Map<string, string>();
   const listeners = new Set<() => void>();
   const emit = () => { for (const listener of listeners) listener(); };
+
+  function patchDraft(key: WorkspaceDraftKey, patch: WorkspaceFormDraft) {
+    const existing = map.get(key);
+    let updated: WorkspaceFormDraft | undefined;
+    for (const [field, value] of Object.entries(patch)) {
+      if (!isDraftFieldAllowed(field) || typeof value !== "string" || existing?.[field] === value) continue;
+      updated ??= { ...existing };
+      updated[field] = value;
+    }
+    if (!updated) return;
+    map.set(key, updated);
+    emit();
+  }
 
   return {
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
@@ -70,26 +83,14 @@ export function createWorkspaceDraftStore(): WorkspaceDraftStoreApi {
       emit();
     },
 
-    patchDraft(key, patch) {
-      const existing = map.get(key) ?? {};
-      const merged = { ...existing };
-      for (const [k, v] of Object.entries(patch)) {
-        if (isDraftFieldAllowed(k) && typeof v === "string") merged[k] = v;
-      }
-      map.set(key, merged);
-      emit();
-    },
+    patchDraft,
 
     writeField(key, fieldName, value) {
-      if (!isDraftFieldAllowed(fieldName) || typeof value !== "string") return;
-      const existing = map.get(key) ?? {};
-      map.set(key, { ...existing, [fieldName]: value });
-      emit();
+      patchDraft(key, { [fieldName]: value });
     },
 
     clearDraft(key) {
-      map.delete(key);
-      emit();
+      if (map.delete(key)) emit();
     },
 
     clearDraftsForTab(tabId) {

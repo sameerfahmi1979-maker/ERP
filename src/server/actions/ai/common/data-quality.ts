@@ -21,7 +21,7 @@ import type {
   DataQualityStatus,
   DataQualitySummary,
 } from '@/lib/ai/common/data-quality/types';
-import { getAuthContext, hasPermission } from '@/lib/rbac/check';
+import { getAuthContext, hasGlobalPermission, hasPermission } from '@/lib/rbac/check';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logAudit } from '@/server/actions/audit';
 
@@ -31,9 +31,9 @@ type AuthCtx = Awaited<ReturnType<typeof getAuthContext>>;
 
 function canViewDataQuality(ctx: AuthCtx): boolean {
   return (
-    hasPermission(ctx, 'ai.data_quality.view') ||
-    hasPermission(ctx, 'ai.common.view') ||
-    hasPermission(ctx, 'ai.common.admin')
+    hasGlobalPermission(ctx, 'ai.data_quality.view') ||
+    hasGlobalPermission(ctx, 'ai.common.view') ||
+    hasGlobalPermission(ctx, 'ai.common.admin')
   );
 }
 
@@ -75,8 +75,8 @@ export async function getDataQualitySummary(
 
     const summary = await buildDataQualitySummary();
     return { data: summary, error: null };
-  } catch (err) {
-    return { data: null, error: (err as Error).message };
+  } catch {
+    return { data: null, error: 'Data quality summary could not be loaded.' };
   }
 }
 

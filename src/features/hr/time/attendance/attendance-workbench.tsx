@@ -1,6 +1,6 @@
 'use client';
 import{attendanceRosterStates}from'@/lib/hr/attendance-workbench-contract';
-import{useEffect,useLayoutEffect,useMemo,useRef,useState}from'react';import{useQuery,useQueryClient}from'@tanstack/react-query';import{Button}from'@/components/ui/button';import{Input}from'@/components/ui/input';import{Table,TableHeader,TableHead,TableBody,TableRow,TableCell}from'@/components/ui/table';import{OwnerCompanySelect}from'@/components/erp/organizations/owner-company-select';import{BranchSelect}from'@/components/erp/organizations/branch-select';import{ERPCombobox}from'@/components/erp/combobox';import{useWorkspaceDraftStoreContext}from'@/components/workspace/workspace-draft-provider';import{useWorkspaceFormOwner}from'@/hooks/use-workspace-form-owner';import{useWorkspace}from'@/hooks/use-workspace';import{useReadLifetime}from'@/hooks/use-read-lifetime';import{useHrChildOwnerLifetime}from'@/features/hr/employees/use-hr-child-owner-lifetime';import{hrTimeReadIdentity}from'@/lib/reads/hr-time-schema';import type{AuthContext}from'@/lib/rbac/check';import{createAttendanceBatchState}from'@/lib/hr/attendance-batch-state';import{type AttendanceRosterRow,type EnteredAttendance}from'@/lib/hr/attendance-workbench-contract';import{readAttendanceRoster,saveAttendanceRow,reconcileAttendanceRow}from'@/server/actions/hr/attendance-workbench';import Link from'next/link';import{AttendanceFilter,AttendanceConfirmations}from'./attendance-support';
+import{useEffect,useLayoutEffect,useMemo,useRef,useState}from'react';import{useQuery,useQueryClient}from'@tanstack/react-query';import{Button}from'@/components/ui/button';import{Input}from'@/components/ui/input';import{Table,TableHeader,TableHead,TableBody,TableRow,TableCell}from'@/components/ui/table';import{OwnerCompanySelect}from'@/components/erp/organizations/owner-company-select';import{BranchSelect}from'@/components/erp/organizations/branch-select';import{ERPCombobox}from'@/components/erp/combobox';import{useWorkspaceDraftStoreContext}from'@/components/workspace/workspace-draft-provider';import{useWorkspaceFormOwner}from'@/hooks/use-workspace-form-owner';import{useWorkspace}from'@/hooks/use-workspace';import{useReadLifetime}from'@/hooks/use-read-lifetime';import{useHrChildOwnerLifetime}from'@/features/hr/employees/use-hr-child-owner-lifetime';import{hrTimeReadIdentity}from'@/lib/reads/hr-time-schema';import type{AuthContext}from'@/lib/rbac/check';import{createAttendanceBatchState}from'@/lib/hr/attendance-batch-state';import{type AttendanceRosterRow,type EnteredAttendance}from'@/lib/hr/attendance-workbench-contract';import{readAttendanceRoster,readAttendanceSelection,saveAttendanceRow,reconcileAttendanceRow}from'@/server/actions/hr/attendance-workbench';import Link from'next/link';import{AttendanceFilter,AttendanceConfirmations}from'./attendance-support';
 import styles from './attendance-workbench.module.css';
 import {TimesheetSiteSelect} from './timesheet-site-select';
 import {SimpleTimesheetCells,TimesheetBulkFields} from './simple-timesheet-fields';
@@ -43,19 +43,26 @@ export function AttendanceWorkbench({authContext,initial}:{authContext:AuthConte
  };
  const selectAll=async()=>{
   if(!ready||flight.current)return;
-  if(total>500&&changed){setMessage('Save or discard the current batch before preparing the next batch; no rows were silently omitted.');return;}const first=total>500?nextBatch:1,last=Math.min(Math.ceil(total/25),first+19),expected=Math.min(500,total-(first-1)*25);
+  if(total>500&&changed){setMessage('Save or discard the current batch before preparing the next batch; no rows were silently omitted.');return;}
+  const first=total>500?nextBatch:1,expected=Math.min(500,Math.max(0,total-(first-1)*25));
+  const unavailable='Roster changed or became unavailable. All-matching selection not applied.';
   flight.current=true;setBusy(true);
-  try{const all:Record<string,AttendanceRosterRow>={};for(let p=first;p<=last;p++){
-   const r=await readAttendanceRoster({...query,page:p});if(!life.active)return;
-   if(!r.success&&'denied'in r&&r.denied){
-    setSelected({});qc.removeQueries({queryKey:['f12-attendance-roster',authority]});qc.setQueryData(['f12-attendance-roster',authority,query],r);
-    session.retire();redraw(n=>n+1);throw Error('Current attendance access revoked. Private drafts and selections removed; original receipt references retained.');
+  try{
+   const result=await readAttendanceSelection({...query,page:first});
+   if(!life.active)return;
+   if(!result.success&&'denied'in result&&result.denied){
+    setSelected({});qc.removeQueries({queryKey:['f12-attendance-roster',authority]});qc.setQueryData(['f12-attendance-roster',authority,query],result);
+    session.retire();redraw(n=>n+1);
+    setMessage('Current attendance access revoked. Private drafts and selections removed; original receipt references retained.');
+    return;
    }
-   if(!r.success||r.data.total!==total)throw Error('Roster changed or became unavailable. All-matching selection not applied.');
-   for(const row of r.data.rows)all[key(row)]=row;
-  }
-  if(Object.keys(all).length!==expected)throw Error('Incomplete batch selection.');setSelected(all);setMessage(`Selected ${expected} of ${total} matching employees for ${date}; no values saved.`);return all;
-  }catch(e){if(life.active)setMessage((e as Error).message);}finally{flight.current=false;if(ownership.active)setBusy(false);}
+   if(!result.success||result.data.total!==total){setMessage(unavailable);return;}
+   const all=Object.fromEntries(result.data.rows.map(row=>[key(row),row]));
+   if(Object.keys(all).length!==expected){setMessage(unavailable);return;}
+   setSelected(all);setMessage(`Selected ${expected} of ${total} matching employees for ${date}; no values saved.`);
+   return all;
+  }catch{if(life.active)setMessage(unavailable);}
+  finally{flight.current=false;if(ownership.active)setBusy(false);}
  };
 
  const applyBulk=async(fields:TimesheetFields,replaceExisting:boolean,all:boolean)=>{
@@ -64,18 +71,21 @@ export function AttendanceWorkbench({authContext,initial}:{authContext:AuthConte
   const targets=all?await selectAll():selected;if(!targets||!life.active)return;
   flight.current=true;setBusy(true);
   try{
+  const openingDrafts=session.drafts;
   const prepared:{row:AttendanceRosterRow;value:EnteredAttendance;reason:string}[]=[];
-  let applied=0,excluded=0,complex=0,unchanged=0,failed=0;
+  let excluded=0,complex=0,unchanged=0;
   for(const row of Object.values(targets)){
-   const old=session.drafts[key(row)];
+   const old=openingDrafts[key(row)];
    if(!canEditTimesheetRow(row)||old?.request||old?.status==='conflict'){excluded++;continue;}
    const original=old?.values??row.entered??{attendance_type:'site' as const,intervals:[]};
    const result=applyTimesheetFields(original,date,fields,replaceExisting);if(result.skippedTimes)complex++;
    if(!result.changed){unchanged++;continue;}
    prepared.push({row,value:result.value,reason:old?.reason??''});
   }
-  if(prepared.filter(p=>!session.drafts[key(p.row)]).length+Object.keys(session.drafts).length>500){setMessage('Save or review the current batch before adding more rows. No rows were changed.');return;}
-  for(const p of prepared){try{session.edit(p.row,date,p.value,p.reason);applied++;}catch{failed++;break;}}
+  if(prepared.filter(p=>!openingDrafts[key(p.row)]).length+Object.keys(openingDrafts).length>500){setMessage('Save or review the current batch before adding more rows. No rows were changed.');return;}
+  let result={applied:0,failed:true};
+  try{result=session.editMany(date,prepared);}catch{/* Use the batch failure summary below. */}
+  const {applied,failed}=result;
   if(all&&total>500&&!failed)setNextBatch(p=>p+20>Math.ceil(total/25)?1:p+20);
   redraw(n=>n+1);setMessage(`${applied} drafts updated; ${excluded} locked, ineligible or held; ${complex} complex/non-work time entries preserved; ${unchanged} unchanged. ${failed?'Draft preparation stopped; review retained rows before continuing.':'Save changes when ready.'}`);
   }finally{flight.current=false;if(ownership.active)setBusy(false);}

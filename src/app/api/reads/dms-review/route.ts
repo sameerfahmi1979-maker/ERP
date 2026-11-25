@@ -9,6 +9,6 @@ const schema=z.discriminatedUnion("kind",[
 export const dynamic="force-dynamic";
 export async function POST(request:Request){return readRoute(request,async input=>{
  const p=schema.safeParse(input);if(!p.success)return {success:false,error:"Invalid review read"};
- const result=await (p.data.kind==="list"?getDmsReviewQueueItems(p.data.filters):p.data.kind==="detail"?getDmsReviewQueueItem(p.data.id):getDmsReviewQueueCounts());
+ const result=await (p.data.kind==="list"?getDmsReviewQueueItems(p.data.filters,request.signal):p.data.kind==="detail"?getDmsReviewQueueItem(p.data.id,request.signal):getDmsReviewQueueCounts(request.signal));
  return result.error==="Not authenticated"?{success:false,error:"Permission denied"}:result;
 });}

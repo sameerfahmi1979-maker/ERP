@@ -59,18 +59,22 @@ export function EditColumns({ columns, defaults, onApply }: { columns: ListColum
   </AlgtDialog>;
 }
 
-export type ListFilter = { id: string; label: string; type: "text" | "number" | "date" | "select" | "multi-select"; options?: { value: string; label: string }[] };
+export type ListFilter = { id: string; label: string; type: "text" | "number" | "date" | "select" | "multi-select"; options?: { value: string; label: string }[]; disabled?: boolean };
 export type FilterValues = Record<string, string>;
-export function EditFilters({ definitions, values, onApply, scopeLabel }: { definitions: ListFilter[]; values: FilterValues; onApply: (values: FilterValues) => void; scopeLabel: string }) {
+export function EditFilters({ definitions, values, onApply, scopeLabel, onOpenChange, children }: {
+  definitions: ListFilter[]; values: FilterValues; onApply: (values: FilterValues) => void; scopeLabel: string;
+  onOpenChange?: (open: boolean) => void; children?: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(values);
   const count = definitions.filter(field => values[field.id]).length;
-  const changeOpen = (next: boolean) => { if (next) setDraft({ ...values }); setOpen(next); };
+  const changeOpen = (next: boolean) => { if (next) setDraft({ ...values }); setOpen(next); onOpenChange?.(next); };
   return <div className="contents">
     <AlgtDialog open={open} onOpenChange={changeOpen} title="Edit filters" trigger={<Button icon={<Filter20Regular />}>Edit filters{count ? ` (${count})` : ""}</Button>}
       actions={<><Button appearance="subtle" onClick={() => setDraft({})}>Clear filters</Button><Button onClick={() => changeOpen(false)}>Cancel</Button><Button appearance="primary" onClick={() => { onApply(Object.fromEntries(definitions.map(field => [field.id, draft[field.id] ?? ""]))); changeOpen(false); }}>Apply</Button></>}>
       <p className="mb-4 text-sm">{scopeLabel} Filters combine with AND. They never grant access to additional records.</p>
-      <div className="grid gap-4">{definitions.map(field => field.type === "multi-select" ? <fieldset key={field.id} className="grid gap-1">
+      {children}
+      <div className="grid gap-4">{definitions.map(field => field.type === "multi-select" ? <fieldset key={field.id} disabled={field.disabled} className="grid gap-1">
         <legend className="text-sm font-medium">{field.label}</legend>
         <p className="text-xs text-muted-foreground">Match any selected value; none means all.</p>
         {field.options?.map(option => <Checkbox key={option.value} label={option.label} checked={(draft[field.id] ?? "").split(",").includes(option.value)}
@@ -80,9 +84,9 @@ export function EditFilters({ definitions, values, onApply, scopeLabel }: { defi
             return { ...previous, [field.id]: (field.options ?? []).filter(item => selected.has(item.value)).map(item => item.value).join(",") };
           })} />)}
       </fieldset> : <label key={field.id} className="grid gap-1 text-sm font-medium">{field.label}
-        {field.type === "select" ? <select aria-label={field.label} className="h-10 rounded-sm border p-2 bg-transparent font-normal" value={draft[field.id] ?? ""} onChange={event => setDraft(previous => ({ ...previous, [field.id]: event.target.value }))}>
+        {field.type === "select" ? <select aria-label={field.label} disabled={field.disabled} className="h-10 rounded-sm border p-2 bg-transparent font-normal" value={draft[field.id] ?? ""} onChange={event => setDraft(previous => ({ ...previous, [field.id]: event.target.value }))}>
           <option value="">All</option>{field.options?.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select> : <Input aria-label={field.label} type={field.type} value={draft[field.id] ?? ""} onChange={(_, data) => setDraft(previous => ({ ...previous, [field.id]: data.value }))} />}
+        </select> : <Input aria-label={field.label} disabled={field.disabled} type={field.type} value={draft[field.id] ?? ""} onChange={(_, data) => setDraft(previous => ({ ...previous, [field.id]: data.value }))} />}
       </label>)}</div>
     </AlgtDialog>
     {count > 0 && <div className="flex flex-wrap items-center gap-2 w-full text-sm" aria-label="Active filters">

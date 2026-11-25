@@ -1,5 +1,7 @@
 "use server";
 
+import { readAllPages } from "@/server/reads/all-pages";
+
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { revalidatePath } from "next/cache";
@@ -49,6 +51,8 @@ export type DmsDocumentTypeFilters = {
   search?: string;
 };
 
+export type DmsDocumentTypeChoice = Pick<DmsDocumentTypeRow, "id" | "type_code" | "name_en" | "is_active">;
+
 const documentTypeSchema = z.object({
   type_code: z
     .string()
@@ -86,26 +90,46 @@ export async function getDmsDocumentTypes(
 ): Promise<ActionResult<DmsDocumentTypeRow[]>> {
   try {
     const supabase = await createClient();
-    let query = supabase
-      .from("dms_document_types")
-      .select("*, category:dms_document_categories(category_code, name_en), metadata_defs:dms_metadata_definitions(id)")
-      .is("deleted_at", null);
+    const data = await readAllPages(async (from, to) => {
+      let query = supabase
+        .from("dms_document_types")
+        .select("*, category:dms_document_categories(category_code, name_en), metadata_defs:dms_metadata_definitions(id)", { count: "exact" })
+        .is("deleted_at", null);
 
-    if (filters?.category_id !== undefined) query = query.eq("category_id", filters.category_id);
-    if (filters?.is_system !== undefined) query = query.eq("is_system", filters.is_system);
-    if (filters?.is_active !== undefined) query = query.eq("is_active", filters.is_active);
-    if (filters?.requires_expiry !== undefined) query = query.eq("requires_expiry_tracking", filters.requires_expiry);
-    if (filters?.search) {
-      query = query.or(`type_code.ilike.%${filters.search}%,name_en.ilike.%${filters.search}%`);
-    }
+      if (filters?.category_id !== undefined) query = query.eq("category_id", filters.category_id);
+      if (filters?.is_system !== undefined) query = query.eq("is_system", filters.is_system);
+      if (filters?.is_active !== undefined) query = query.eq("is_active", filters.is_active);
+      if (filters?.requires_expiry !== undefined) query = query.eq("requires_expiry_tracking", filters.requires_expiry);
+      if (filters?.search) {
+        query = query.or(`type_code.ilike.%${filters.search}%,name_en.ilike.%${filters.search}%`);
+      }
 
-    const { data, error } = await query
-      .order("sort_order", { ascending: true })
-      .order("name_en", { ascending: true });
-    if (error) return { success: false, error: error.message };
-    return { success: true, data: (data ?? []) as DmsDocumentTypeRow[] };
+      return await query.order("sort_order").order("name_en").order("id").range(from, to);
+    }, { identity: row => row.id });
+    return { success: true, data: data as DmsDocumentTypeRow[] };
   } catch (err) {
     return { success: false, error: String(err) };
+  }
+}
+
+export async function getDmsDocumentTypeChoices(activeOnly = false): Promise<ActionResult<DmsDocumentTypeChoice[]>> {
+  try {
+    const ctx = await getAuthContext();
+    if (!hasPermission(ctx, "dms.documents.view") && !hasPermission(ctx, "dms.admin")) {
+      return { success: false, error: "Permission denied" };
+    }
+    const supabase = await createClient();
+    const data = await readAllPages(async (from, to) => {
+      const query = supabase
+        .from("dms_document_types")
+        .select("id, type_code, name_en, is_active", { count: "exact" })
+        .is("deleted_at", null);
+      if (activeOnly) query.eq("is_active", true);
+      return await query.order("sort_order").order("name_en").order("id").range(from, to);
+    }, { identity: row => row.id });
+    return { success: true, data };
+  } catch {
+    return { success: false, error: "Document type choices could not be loaded. Please retry." };
   }
 }
 

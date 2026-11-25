@@ -32,6 +32,24 @@ describe("Mobile DMS bearer route",()=>{
    expect(await res.json()).toEqual({success:true,data:{contractVersion:"mobile-dms/5.0",documentId:99,value:false}});
    expect(rpc).toHaveBeenCalledWith("mobile_dms_collections",{p_action:"favourite_set",p_data:{documentId:99,value:false}});
  });
+ it("recovers exact evidence with the existing bearer and sends no private request fields",async()=>{
+   actor();
+   const rpc=vi.fn().mockResolvedValueOnce({data:true}).mockResolvedValueOnce({error:{code:"PT404"}});
+   vi.mocked(createClient).mockResolvedValue({rpc} as unknown as Awaited<ReturnType<typeof createClient>>);
+   const evidence={kind:"missing",parent:{entityType:"employee",entityId:60},requestId:724,revision:3,documentTypeId:9};
+   const body=JSON.stringify({op:"documentRequestEvidence",...evidence});
+   expect((await post(body)).status).toBe(401);
+   expect((await post(JSON.stringify({op:"documentRequestEvidence",...evidence,audience:"parent"}),token)).status).toBe(400);
+   expect(rpc).not.toHaveBeenCalled();
+   const current=await post(body,token);
+   expect(current.status).toBe(200);
+   expect(current.headers.get("cache-control")).toBe("private, no-store");
+   expect(await current.json()).toEqual({success:true,data:{contractVersion:"mobile-dms/5.0",available:true}});
+   expect(rpc).toHaveBeenCalledExactlyOnceWith("mobile_dms_request_evidence",{p_data:evidence});
+   const unavailable=await post(body,token);
+   expect(unavailable.status).toBe(404);
+   expect(await unavailable.json()).toMatchObject({success:false,code:"unavailable"});
+ });
  it("withholds the canonical bytes when the recipient link is revoked during storage I/O",async()=>{
    actor();const digest="d".repeat(64);let revoked=false;
    const rpc=vi.fn(async (name:string,args:{p_action?:string})=>{

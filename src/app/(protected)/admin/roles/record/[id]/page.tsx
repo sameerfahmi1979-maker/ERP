@@ -1,7 +1,8 @@
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { LoadError } from "@/components/erp/load-error";
+import { getAuthContext, hasGlobalPermission, hasPermission } from "@/lib/rbac/check";
 import { redirect, notFound } from "next/navigation";
 import { RoleWorkspaceForm } from "@/features/roles/role-workspace-form";
-import { getRoleById } from "@/server/actions/roles";
+import { getRoleById } from "@/server/queries/roles";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -20,10 +21,11 @@ export default async function RoleRecordPage({ params, searchParams }: Props) {
   const numericId = parseInt(id);
   if (isNaN(numericId)) notFound();
 
-  const result = await getRoleById(numericId);
-  if (!result.success || !result.data) notFound();
+  const mode = modeParam === "edit" && hasGlobalPermission(authContext, "roles.manage") ? "edit" : "view";
+  const retryHref = `/admin/roles/record/${numericId}${mode === "edit" ? "?mode=edit" : ""}`;
+  const role = await getRoleById(numericId, authContext).catch(() => undefined);
+  if (role === undefined) return <LoadError title="Role" retryHref={retryHref} />;
+  if (role === null) notFound();
 
-  const mode = modeParam === "edit" && hasPermission(authContext, "roles.manage") ? "edit" : "view";
-
-  return <RoleWorkspaceForm role={result.data} mode={mode} authContext={authContext} />;
+  return <RoleWorkspaceForm role={role} mode={mode} authContext={authContext} />;
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, type FormEvent, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { type FormEvent, type ReactNode } from "react";
+import { OperationsCommandStatus, useOperationsCommand } from "@/features/operations/use-operations-command";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { saveWorkshopAction } from "@/server/actions/workshop/workshop";
@@ -54,47 +54,27 @@ export function WorkshopForm({ asset, action, button, makeData, children, reason
   children?: ReactNode;
   disabled?: boolean;
 }) {
-  const router = useRouter();
-  const savedRequest = useRef<{ fingerprint: string; nonce: string } | null>(null);
-  const active = useRef(false);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ error: boolean; text: string }>();
+  const command = useOperationsCommand(saveWorkshopAction, form => form.reset());
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (active.current) return;
+    if (command.blocked) return;
     const form = event.currentTarget;
     const inputs = new FormData(form);
     const fields = makeData(inputs);
     fields.reason = value(inputs, "reason");
     const data = Object.fromEntries(Object.entries(fields).filter(([, item]) => item !== undefined));
-    const fingerprint = JSON.stringify(data);
-    if (savedRequest.current?.fingerprint !== fingerprint) savedRequest.current = { fingerprint, nonce: crypto.randomUUID() };
-    active.current = true;
-    setBusy(true);
-    setMessage(undefined);
-    try {
-      const result = await saveWorkshopAction({ nonce: savedRequest.current.nonce, asset, action, data });
-      if (result.ok) {
-        savedRequest.current = null;
-        form.reset();
-        setMessage({ error: false, text: "Saved." });
-        router.refresh();
-      } else setMessage({ error: true, text: result.error });
-    } catch {
-      setMessage({ error: true, text: "The save could not be confirmed. Retry using the same details." });
-    } finally {
-      setBusy(false);
-      active.current = false;
-    }
+    void command.submit({ nonce: crypto.randomUUID(), asset, action, data }, form);
   }
 
-  return <form onSubmit={submit} className={formGrid}>
-    {children}
-    <Field label={reasonLabel}><Input name="reason" required maxLength={1000} /></Field>
-    <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-3">
-      <Button disabled={busy || disabled} type="submit">{busy ? "SavingÃ¢â‚¬Â¦" : button}</Button>
-      {message && <p role={message.error ? "alert" : "status"} className={message.error ? "text-sm text-destructive" : "text-sm"}>{message.text}</p>}
-    </div>
+  return <form onSubmit={submit} className="space-y-3">
+    <fieldset disabled={command.blocked} className={formGrid}>
+      {children}
+      <Field label={reasonLabel}><Input name="reason" required maxLength={1000} /></Field>
+      <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-3">
+        <Button disabled={disabled} type="submit">{command.busy ? "Saving…" : button}</Button>
+      </div>
+    </fieldset>
+    <OperationsCommandStatus command={command} saved={command.receipt ? "Saved." : undefined} />
   </form>;
 }

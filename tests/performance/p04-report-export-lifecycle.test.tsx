@@ -20,9 +20,9 @@ const attachment = {filename: "synthetic.csv", contentType: "text/csv", base64Co
 const input: PreparedEmailInput = {to: "controlled@example.invalid", cc: "", bcc: "", subject: "Synthetic", body: "Synthetic", attachmentType: "csv", attachment};
 function deferred<T>() {let resolve!: (value: T) => void; const promise = new Promise<T>(done => {resolve = done;}); return {promise, resolve};}
 let permitted = true;
-function mount() {
+function mount(loadEmailReport?: () => Promise<{data: {columns: string[]; rows: Record<string, unknown>[]}; runId?: number}>) {
   const exportAction = vi.fn();
-  const ui = () => <ReportExportToolbar registryEntry={registry} data={{columns: ["name"], rows: [{name: "SYNTHETIC_PRIVATE"}]}} onExport={exportAction} canUseData={() => permitted} rowCount={1} runId={91} />;
+  const ui = () => <ReportExportToolbar registryEntry={registry} data={{columns: ["name"], rows: [{name: "SYNTHETIC_PRIVATE"}]}} onExport={exportAction} canUseData={() => permitted} rowCount={1} runId={91} loadEmailReport={loadEmailReport} />;
   const view = render(ui()); return {...view, exportAction, refresh: () => view.rerender(ui())};
 }
 function email() {fireEvent.click(screen.getByRole("button", {name: "Email"})); expect(m.dialog).not.toBeNull(); return m.dialog!;}
@@ -64,6 +64,17 @@ it("current send preserves payload and its committed outcome", async () => {
   mount(); const props = email(); await expect(props.onPreparedSend!(input)).resolves.toEqual({success: true});
   expect(m.send).toHaveBeenCalledWith(expect.objectContaining({to: ["controlled@example.invalid"], attachment, runId: 91, attachmentFormat: "csv", context: {moduleCode: "REPORTS", recordCount: 1}}));
   expect(m.success).toHaveBeenCalledTimes(1);
+});
+it("loads the complete authorized email output and associates the freshly prepared attachment with that run", async () => {
+  const rows = [{name: "FRESH_1"}, {name: "FRESH_2"}];
+  const load = vi.fn(async () => ({data: {columns: ["name"], rows}, runId: 92}));
+  mount(load);
+  const props = email();
+  const prepared = await props.attachmentOptions.find(option => option.type === "csv")!.generateAttachment();
+  expect(load).toHaveBeenCalledOnce();
+  expect(m.csv).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({data: rows}));
+  await expect(props.onPreparedSend!({...input, attachment: prepared})).resolves.toEqual({success: true});
+  expect(m.send).toHaveBeenCalledWith(expect.objectContaining({runId: 92, context: {moduleCode: "REPORTS", recordCount: 2}}));
 });
 it("retained prepared send cannot dispatch for a retired report", async () => {
   mount(); const props = email(); permitted = false;

@@ -23,6 +23,8 @@ export interface LookupQueryOptions {
   parentValueCode?: string | null;
   includeInactive?: boolean;
   enabled?: boolean;
+  /** A closed field can resolve its saved label without loading all choices. */
+  choicesEnabled?: boolean;
   selected?: string | number | null;
   valueField?: "id" | "code";
 }
@@ -58,10 +60,10 @@ export function useLookupValuesQuery(
   categoryCode: string,
   options: LookupQueryOptions = {}
 ): LookupQueryResult {
-  const { parentValueCode = null, includeInactive = false, enabled = true, selected = null, valueField = "id" } = options;
+  const { parentValueCode = null, includeInactive = false, enabled = true, choicesEnabled = true, selected = null, valueField = "id" } = options;
   const hasSelected = selected !== null && selected !== "";
   const queryKey = queryKeys.lookup.values(categoryCode, parentValueCode, includeInactive);
-  const activeLease = useLookupReadLease(enabled && !!categoryCode, queryKey);
+  const activeLease = useLookupReadLease(enabled && !!categoryCode && choicesEnabled, queryKey);
 
   const result = useQuery({
     queryKey,
@@ -76,7 +78,9 @@ export function useLookupValuesQuery(
     retry: retryAuthorizedRead,
   });
 
-  const present = (result.data ?? []).some(value => String(valueField === "code" ? value.value_code : value.id) === String(selected));
+  const matchingChoice = hasSelected
+    ? result.data?.find(value => String(valueField === "code" ? value.value_code : value.id) === String(selected))
+    : undefined;
   const selectedKey = [...queryKey, "selected", valueField, selected];
   const selectedLease = useLookupReadLease(enabled && !!categoryCode && hasSelected, selectedKey);
   const selection = useQuery({
@@ -86,24 +90,29 @@ export function useLookupValuesQuery(
       if (!Array.isArray(result)) throw Error("Failed to load lookup values");
       return result;
     }),
-    enabled: selectedLease.enabled && result.isSuccess && !present,
+    enabled: selectedLease.enabled && (!choicesEnabled || result.isSuccess) && !matchingChoice,
     retry: retryAuthorizedRead,
   });
-  const denied = (result.error instanceof ReadError && [401,403].includes(result.error.status)) || (!present && selection.error instanceof ReadError && [401,403].includes(selection.error.status));
-  const data = denied || !activeLease.readable() ? [] : [...(result.data ?? []), ...(!present && hasSelected && selectedLease.readable() ? selection.data ?? [] : [])];
+  const denied = (result.error instanceof ReadError && [401,403].includes(result.error.status)) || (!matchingChoice && selection.error instanceof ReadError && [401,403].includes(selection.error.status));
+  const choices = choicesEnabled ? result.data ?? [] : matchingChoice ? [matchingChoice] : [];
+  const retained = !matchingChoice && hasSelected && selectedLease.readable() ? selection.data ?? [] : [];
+  const data = denied || !activeLease.readable() ? [] : [...choices, ...retained];
 
   return {
     data,
     options: data.map(mapLookupValueToOption),
     isLoading: result.isLoading || selection.isLoading,
     isFetching: result.isFetching || selection.isFetching,
-    error: result.error instanceof Error ? result.error.message : !present && selection.error instanceof Error ? selection.error.message : null,
+    error: result.error instanceof Error && (choicesEnabled || denied)
+      ? result.error.message
+      : !matchingChoice && selection.error instanceof Error ? selection.error.message : null,
     refetch: async () => {
-      if (!activeLease.isCurrent() || (hasSelected && !present && !selectedLease.isCurrent())) return;
+      if (choicesEnabled && !activeLease.isCurrent()) return;
+      if (hasSelected && !matchingChoice && !selectedLease.isCurrent()) return;
       // Register all reads before yielding: a cancelled first read can resolve,
       // but must not dispatch a selected-value read into a retired cache.
-      const pending = [result.refetch()];
-      if (hasSelected && !present && selectedLease.isCurrent()) pending.push(selection.refetch());
+      const pending: Promise<unknown>[] = choicesEnabled ? [result.refetch()] : [];
+      if (hasSelected && !matchingChoice && selectedLease.isCurrent()) pending.push(selection.refetch());
       await Promise.all(pending);
     },
   };

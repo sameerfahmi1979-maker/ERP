@@ -2,14 +2,14 @@
 // Actual six tabs and shared dialog/session. Read adapters, selectors, table
 // renderer and server actions are doubled; not a browser acceptance claim.
 import '../f05/setup';
-import {cleanup,render,screen,fireEvent,waitFor} from '@testing-library/react';
+import {act,cleanup,render,screen,fireEvent,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {createWorkspaceDraftStore} from '@/lib/workspace/workspace-draft-store';
 import type {ReactNode} from 'react';
 import type {AuthContext} from '@/lib/rbac/check';
 type TestRow=Record<string,unknown>&{id:number};
 type TestTable={data:TestRow[];columns:{id?:string;cell?:(props:{row:{original:TestRow}})=>ReactNode}[]};
-const m=vi.hoisted(()=>({rows:[] as TestRow[],create:vi.fn(),update:vi.fn(),archive:vi.fn(),invalidate:vi.fn(),success:vi.fn(),error:vi.fn(),store:null as unknown}));
+const m=vi.hoisted(()=>({rows:[] as TestRow[],create:vi.fn(),update:vi.fn(),archive:vi.fn(),invalidate:vi.fn(),success:vi.fn(),error:vi.fn(),ibanRead:vi.fn(),store:null as unknown}));
 vi.mock('@/hooks/use-workspace-form-owner',()=>({useWorkspaceFormOwner:()=>({id:'six-child-editors'})}));
 vi.mock('@/components/workspace/workspace-draft-provider',()=>({useWorkspaceDraftStoreContext:()=>m.store}));
 vi.mock('@/hooks/use-workspace-navigation-lock',()=>({useWorkspaceNavigationLock:vi.fn()}));
@@ -23,7 +23,7 @@ vi.mock('@/server/actions/master-data/party-tax-registrations',()=>({createParty
 vi.mock('@/server/actions/master-data/party-documents',()=>({createPartyDocument:m.create,updatePartyDocument:m.update,deletePartyDocument:vi.fn()}));
 vi.mock('@/server/actions/master-data/party-notes',()=>({createPartyNote:m.create,updatePartyNote:m.update,deletePartyNote:vi.fn(),getPartyNotes:vi.fn(),getPartyNoteTypes:vi.fn()}));
 vi.mock('@/server/actions/master-data/party-finance-profiles',()=>({getPartyFinanceProfile:async()=>({success:true,data:null}),upsertPartyFinanceProfile:vi.fn()}));
-vi.mock('@/server/actions/master-data/parties',()=>({getPartyContactRoles:vi.fn(),getPartyContactDepartments:vi.fn(),checkDuplicateIban:vi.fn(),getPartyLicenseStatuses:vi.fn(),getPartyLicenseTypes:vi.fn(),getPartyTaxStatuses:vi.fn(),getPaymentMethods:vi.fn(),getPartyDocumentTypes:vi.fn(),getPartyDocumentStatuses:vi.fn()}));
+vi.mock('@/server/actions/master-data/parties',()=>({getPartyContactRoles:vi.fn(),getPartyContactDepartments:vi.fn(),checkDuplicateIban:m.ibanRead,getPartyLicenseStatuses:vi.fn(),getPartyLicenseTypes:vi.fn(),getPartyTaxStatuses:vi.fn(),getPaymentMethods:vi.fn(),getPartyDocumentTypes:vi.fn(),getPartyDocumentStatuses:vi.fn()}));
 vi.mock('@/features/master-data/parties/hooks/use-party-child-queries',()=>{
  const query=()=>({items:m.rows,isLoading:false,refetch:vi.fn()});return {usePartyContactsQuery:query,usePartyBankDetailsQuery:query,usePartyLicensesQuery:query,usePartyTaxRegistrationsQuery:query,usePartyDocumentsQuery:query};
 });
@@ -57,7 +57,7 @@ const cases=[
  {name:'document',component:()=> <PartyDocumentsTab partyId={4}/>,button:'Edit record',row:{...common,document_title:'Synthetic document',document_type_id:1,document_status_id:1,expiry_required:false,renewal_notice_days:0,issuing_authority_party_id:42}},
  {name:'note',component:()=> <PartyNotesTab partyId={4} canManage currentUserProfileId={7}/>,button:'Edit note',row:{...common,note_body:'Synthetic private note',note_title:'Synthetic title',is_private:true}},
 ];
-beforeEach(()=>{vi.resetAllMocks();m.store=createWorkspaceDraftStore();m.update.mockImplementation(async input=>({success:true,data:{id:input.id,revision:'5',changed:true,replayed:false}}));});afterEach(cleanup);
+beforeEach(()=>{vi.resetAllMocks();m.store=createWorkspaceDraftStore();m.update.mockImplementation(async input=>({success:true,data:{id:input.id,revision:'5',changed:true,replayed:false}}));});afterEach(()=>{cleanup();vi.useRealTimers();});
 const submit=()=>fireEvent.click(screen.getByRole('button',{name:'Save',exact:true}));
 for(const c of cases){
  it(`${c.name} actual list opens archive and preserves the reviewed version`,async()=>{
@@ -99,4 +99,89 @@ it('bank tab does not allow verification while its parent workspace is read-only
  m.rows=[{...common,account_holder_name:'Synthetic holder',is_verified:false}];
  render(<PartyBankDetailsTab partyId={4} disabled authContext={{isAccountActive:true,profile:{id:7},globalPermissionCodes:['master_data.parties.manage_bank_details','master_data.parties.verify_bank_details']} as unknown as AuthContext}/>);
  expect(screen.queryByRole('button',{name:'Verify bank details'})).toBeNull();expect(screen.queryByRole('button',{name:'Edit record'})).toBeNull();
+});
+
+const firstIban = 'AE610330111100000000001';
+const secondIban = 'AE340330111100000000002';
+const duplicateIban = (name: string) => ({
+  success: true,
+  data: { isDuplicate: true, existingParties: [{ party_code: 'SYNTH', display_name: name }] },
+});
+
+function openBankDetail() {
+  m.rows = [];
+  render(cases.find(tab => tab.name === 'bank')!.component());
+  fireEvent.click(screen.getByRole('button', { name: 'Add Bank Detail' }));
+  return screen.getByRole('textbox', { name: 'IBAN', exact: true });
+}
+
+it('coalesces 23 Party IBAN edits into one canonical advisory read and writes only on Add', async () => {
+  vi.useFakeTimers();
+  m.ibanRead.mockResolvedValue({ success: true, data: { isDuplicate: false, existingParties: [] } });
+  m.create.mockResolvedValue({ success: true, data: { id: 88, revision: '1', replayed: false } });
+  const iban = openBankDetail();
+  fireEvent.change(screen.getByRole('textbox', { name: 'Account Holder Name' }), { target: { value: 'Test holder' } });
+  const typed = firstIban.toLowerCase();
+  for (let length = 1; length <= typed.length; length++) {
+    fireEvent.change(iban, { target: { value: typed.slice(0, length) } });
+  }
+  expect(m.ibanRead).not.toHaveBeenCalled();
+  await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+  expect(m.ibanRead).toHaveBeenCalledOnce();
+  expect(m.ibanRead.mock.calls[0][0]).toBe(firstIban);
+  expect(m.create).not.toHaveBeenCalled();
+  expect(m.update).not.toHaveBeenCalled();
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Add', exact: true })); });
+  expect(m.create).toHaveBeenCalledOnce();
+  expect(m.create.mock.calls[0][0]).toMatchObject({ party_id: 4, iban: typed });
+});
+
+it('ignores an obsolete Party IBAN response and never checks incomplete or invalid input', async () => {
+  vi.useFakeTimers();
+  let resolveFirst!: (value: ReturnType<typeof duplicateIban>) => void;
+  m.ibanRead
+    .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
+    .mockResolvedValueOnce(duplicateIban('Current reply'))
+    .mockRejectedValueOnce(new Error('Advisory read failed'));
+  const iban = openBankDetail();
+  const enter = (value: string) => fireEvent.change(iban, { target: { value } });
+  const pause = () => act(async () => { await vi.advanceTimersByTimeAsync(400); });
+  enter(firstIban.slice(0, 18));
+  await pause();
+  enter(firstIban.slice(0, -1) + '9');
+  await pause();
+  expect(m.ibanRead).not.toHaveBeenCalled();
+  enter(firstIban);
+  await pause();
+  enter(secondIban);
+  await pause();
+  expect(screen.getByText(/Current reply/)).toBeTruthy();
+  await act(async () => { resolveFirst(duplicateIban('Obsolete reply')); });
+  expect(screen.queryByText(/Obsolete reply/)).toBeNull();
+  expect(screen.getByText(/Current reply/)).toBeTruthy();
+  enter(firstIban);
+  await pause();
+  expect(screen.queryByText(/Current reply|Obsolete reply/)).toBeNull();
+  expect(m.create).not.toHaveBeenCalled();
+});
+
+it('does not publish a Party IBAN warning after the active party changes', async () => {
+  vi.useFakeTimers();
+  let finish!: (value: ReturnType<typeof duplicateIban>) => void;
+  m.ibanRead.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  m.rows = [];
+  const authContext = {
+    isAccountActive: true, profile: { id: 7 }, globalPermissionCodes: ['master_data.parties.manage_bank_details'],
+  } as AuthContext;
+  const ui = render(<PartyBankDetailsTab partyId={4} authContext={authContext} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Add Bank Detail' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'IBAN', exact: true }), { target: { value: firstIban } });
+  await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+  expect(m.ibanRead).toHaveBeenCalledOnce();
+
+  ui.rerender(<PartyBankDetailsTab partyId={5} authContext={authContext} />);
+  await act(async () => { finish(duplicateIban('Former party scope')); await vi.advanceTimersByTimeAsync(400); });
+  expect(screen.queryByText(/Former party scope/)).toBeNull();
+  expect(m.ibanRead).toHaveBeenCalledOnce();
+  expect(m.create).not.toHaveBeenCalled();
 });

@@ -1,18 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ERPChildDialogForm } from "@/features/dms/documents/section-read-boundary";
+import { ERPChildDialogForm, useDmsReadReady } from "@/features/dms/documents/section-read-boundary";
+import { useReadCacheOwner } from "@/components/layout/read-cache-boundary";
 import { ERPCombobox } from "@/components/erp/combobox/erp-combobox";
 import { RequiredLabel } from "@/components/erp/required-label";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { FilePlus } from "lucide-react";
 import type { DmsUploadSessionRow } from "@/server/actions/dms/upload-sessions";
 import { createDocumentFromUpload } from "@/server/actions/dms/document-upload-attach";
 import { linkDmsDocumentToEntity } from "@/server/actions/dms/entity-documents";
+import { getDmsDocumentTypeChoices } from "@/server/actions/dms/document-types";
 import { FileTypeIcon } from "./dms-file-type-icon";
 import { FileSize } from "./dms-file-size";
 import { useUploadCreationSession } from "./use-upload-creation-session";
@@ -32,7 +35,7 @@ interface DmsCreateDocumentFromUploadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   session: DmsUploadSessionRow | null;
-  documentTypes: DmsDocumentTypeOption[];
+  documentTypes?: DmsDocumentTypeOption[];
   entityContext?: DmsEntityContext | null;
   onSuccess?: (documentId: number, documentNo: string) => void;
 }
@@ -50,20 +53,46 @@ function CreateDocumentSession({
   onSuccess,
 }: DmsCreateDocumentFromUploadDialogProps) {
   const router = useRouter();
+  const owner = useReadCacheOwner();
+  const readReady = useDmsReadReady();
   const creation = useUploadCreationSession(session!.id, `${entityContext?.entityType ?? "inbox"}:${entityContext?.entityId ?? ""}`);
   const {title, documentTypeId, description, issueDate, expiryDate} = creation.draft;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [loadedTypes, setLoadedTypes] = useState<DmsDocumentTypeOption[]>([]);
+  const [lookupStatus, setLookupStatus] = useState<"loading" | "ready" | "failed">("loading");
+  const [lookupAttempt, setLookupAttempt] = useState(0);
+  const typeLookupAdmitted = !!owner?.admits(owner.identity) && readReady;
+  const typesReady = documentTypes !== undefined || (typeLookupAdmitted && lookupStatus === "ready");
+  useEffect(() => {
+    if (documentTypes !== undefined || !owner || !typeLookupAdmitted) return;
+    const identity = owner.identity;
+    let current = true;
+    const isCurrent = () => current && owner.admits(identity);
+    void getDmsDocumentTypeChoices(true).then(result => {
+      if (!isCurrent()) return;
+      if (result.success && result.data) {
+        setLoadedTypes(result.data);
+        setLookupStatus("ready");
+      } else {
+        setLookupStatus("failed");
+      }
+    }).catch(() => {
+      if (isCurrent()) setLookupStatus("failed");
+    });
+    return () => { current = false; };
+  }, [documentTypes, lookupAttempt, owner, typeLookupAdmitted]);
   const locked = !!creation.pending || !!creation.receipt || !!creation.recoveryError;
   const edit = (patch: Partial<typeof creation.draft>) => {
     if (locked || isSubmitting) return;
     creation.edit({...creation.draft, ...patch});
     setMessage(null);
   };
-  const typeOptions = documentTypes.map((t) => ({value: t.id, label: `${t.type_code} — ${t.name_en}`}));
+  const typeOptions = (documentTypes ?? loadedTypes).map((t) => ({ value: t.id, label: `${t.type_code} — ${t.name_en}` }));
 
   const handleSubmit = async () => {
     if (!session || isSubmitting || creation.recoveryError) return;
+    if (!creation.pending && !typesReady) return;
     if (!creation.pending && (!title.trim() || !documentTypeId)) { setMessage("Title and document type are required"); return; }
     setMessage(null);
     setIsSubmitting(true);
@@ -118,7 +147,7 @@ function CreateDocumentSession({
       mode={creation.receipt ? "view" : "add"}
       size="lg"
       isSubmitting={isSubmitting}
-      submitDisabled={!!creation.recoveryError}
+      submitDisabled={!!creation.recoveryError || (!creation.pending && !typesReady)}
       closeDisabled={!!creation.pending}
       submitLabel={creation.pending ? "Retry original request" : "Create document"}
       isDirty={!creation.receipt && (title !== "" || documentTypeId !== null || description !== "" || issueDate !== "" || expiryDate !== "" || !!creation.pending)}
@@ -158,11 +187,23 @@ function CreateDocumentSession({
           <ERPCombobox name="document_type_id" ariaLabel="Document Type" required
             options={typeOptions}
             value={documentTypeId}
-            disabled={locked}
+            disabled={locked || !typesReady}
             onValueChange={(v) => edit({documentTypeId:v as number | null})}
             placeholder="Select document type…"
             searchPlaceholder="Search types…"
           />
+          {documentTypes === undefined && lookupStatus === "loading" && (
+            <p role="status" className="text-xs text-muted-foreground">Loading document types…</p>
+          )}
+          {documentTypes === undefined && lookupStatus === "failed" && (
+            <div role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-sm text-destructive">
+              Document types could not be loaded.
+              <Button type="button" size="sm" variant="outline" onClick={() => {
+                setLookupStatus("loading");
+                setLookupAttempt(value => value + 1);
+              }}>Retry document types</Button>
+            </div>
+          )}
         </div>
 
         <div>

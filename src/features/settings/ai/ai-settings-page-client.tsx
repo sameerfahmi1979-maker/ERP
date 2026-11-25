@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { OperationStatus } from "@/components/erp/operation-status";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -43,16 +44,21 @@ interface AiSettingsPageClientProps {
   configs: AiProviderConfig[];
   featureFlags: AiFeatureFlag[];
   usageLogs: UsageLogRow[];
+  activePanel?: string;
+  failedPanels?: { providers: boolean; flags: boolean; logs: boolean };
 }
 
 export function AiSettingsPageClient({
   configs,
   featureFlags,
   usageLogs,
+  failedPanels = { providers: false, flags: false, logs: false },
   permissions,
+  activePanel = permissions.canViewProviders ? "providers" : permissions.canViewFlags ? "flags" : "logs",
 }: AiSettingsPageClientProps) {
   const [addOpen, setAddOpen] = useState(false);
   const router = useRouter();
+  const [navigationPending, startNavigation] = useTransition();
 
   const enabledCount = configs.filter((c) => c.isActive && c.isEnabled).length;
   const testedCount = configs.filter((c) => c.lastTestStatus === "success").length;
@@ -74,7 +80,7 @@ export function AiSettingsPageClient({
             </p>
           </div>
         </div>
-        {permissions.canManage && <Button onClick={() => setAddOpen(true)} className="gap-2">
+        {permissions.canManage && <Button disabled={failedPanels.providers} onClick={() => setAddOpen(true)} className="gap-2">
           <Plus className="h-4 w-4" />
           Add Provider
         </Button>}
@@ -84,46 +90,49 @@ export function AiSettingsPageClient({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
           title="Configured Providers"
-          value={permissions.canViewProviders ? configs.length : "Restricted"}
+          value={failedPanels.providers ? "Unavailable" : permissions.canViewProviders ? configs.length : "Restricted"}
           description="Total AI provider configurations"
           colorClass="text-violet-500"
           icon={Brain}
         />
         <SummaryCard
           title="Enabled Providers"
-          value={permissions.canViewProviders ? enabledCount : "Restricted"}
+          value={failedPanels.providers ? "Unavailable" : permissions.canViewProviders ? enabledCount : "Restricted"}
           description="Enabled configuration; operation readiness is not verified"
           colorClass="text-green-500"
           icon={ShieldCheck}
         />
         <SummaryCard
           title="Tested Successfully"
-          value={permissions.canViewProviders ? testedCount : "Restricted"}
+          value={failedPanels.providers ? "Unavailable" : permissions.canViewProviders ? testedCount : "Restricted"}
           description="Last connection check passed; not end-to-end acceptance"
           colorClass="text-blue-500"
           icon={ShieldCheck}
         />
         <SummaryCard
           title="Active AI Features"
-          value={permissions.canViewFlags ? enabledFlagsCount : "Restricted"}
-          description={permissions.canViewFlags ? `of ${featureFlags.length} features enabled` : "Feature configuration is outside your permission"}
+          value={failedPanels.flags ? "Unavailable" : permissions.canViewFlags ? enabledFlagsCount : "Restricted"}
+          description={failedPanels.flags ? "Feature configuration could not be loaded" : permissions.canViewFlags ? `of ${featureFlags.length} features enabled` : "Feature configuration is outside your permission"}
           colorClass="text-amber-500"
           icon={ToggleLeft}
         />
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue={permissions.canViewProviders ? "providers" : permissions.canViewFlags ? "features" : "usage"} className="w-full">
+      {navigationPending && <OperationStatus state="pending">Loading AI settings panel…</OperationStatus>}
+      <Tabs value={activePanel} className="w-full" onValueChange={panel => {
+        if (typeof panel !== "string" || panel === activePanel) return;
+        startNavigation(() => router.replace(`/admin/settings/ai?panel=${encodeURIComponent(panel)}`, { scroll: false }));
+      }}>
         <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:grid-cols-none lg:flex">
           {permissions.canViewProviders && <TabsTrigger value="providers" className="gap-2">
             <Brain className="h-4 w-4" />
             Providers
           </TabsTrigger>}
-          {permissions.canViewFlags && <TabsTrigger value="features" className="gap-2">
+          {permissions.canViewFlags && <TabsTrigger value="flags" className="gap-2">
             <ToggleLeft className="h-4 w-4" />
             Feature Flags
           </TabsTrigger>}
-          {permissions.canViewUsage && <TabsTrigger value="usage" className="gap-2">
+          {permissions.canViewUsage && <TabsTrigger value="logs" className="gap-2">
             <BarChart3 className="h-4 w-4" />
             Usage Logs
           </TabsTrigger>}
@@ -131,20 +140,26 @@ export function AiSettingsPageClient({
         </TabsList>
 
         {permissions.canViewProviders && <TabsContent value="providers" className="mt-4">
-          <AiProviderConfigList configs={configs} onAdd={() => setAddOpen(true)} {...permissions} />
+          {failedPanels.providers
+            ? <OperationStatus state="failed" retry={() => router.refresh()}>AI providers could not be loaded.</OperationStatus>
+            : <AiProviderConfigList configs={configs} onAdd={() => setAddOpen(true)} {...permissions} />}
         </TabsContent>}
 
-        {permissions.canViewFlags && <TabsContent value="features" className="mt-4">
-          <AiFeatureFlagsPanel flags={featureFlags} canManage={permissions.canManage} />
+        {permissions.canViewFlags && <TabsContent value="flags" className="mt-4">
+          {failedPanels.flags
+            ? <OperationStatus state="failed" retry={() => router.refresh()}>AI feature flags could not be loaded.</OperationStatus>
+            : <AiFeatureFlagsPanel flags={featureFlags} canManage={permissions.canManage} />}
         </TabsContent>}
 
-        <TabsContent value="usage" className="mt-4">
-          {permissions.canViewUsage && <AiUsageLogTable logs={usageLogs} />}
+        <TabsContent value="logs" className="mt-4">
+          {permissions.canViewUsage && (failedPanels.logs
+            ? <OperationStatus state="failed" retry={() => router.refresh()}>AI usage logs could not be loaded.</OperationStatus>
+            : <AiUsageLogTable logs={usageLogs} />)}
         </TabsContent>
         <TabsContent value="quality" className="mt-4"><AiQualityPanel/></TabsContent>
       </Tabs>
 
-      {addOpen && permissions.canManage && (
+      {addOpen && permissions.canManage && !failedPanels.providers && (
         <AiProviderFormDialog
           open={addOpen}
           canManageSecrets={permissions.canManageSecrets}

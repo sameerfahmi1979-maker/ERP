@@ -49,6 +49,8 @@ export function hrRulePayload(entity:HrRuleEntity,state:HrRuleFormState,row?:HrR
  }));
 }
 export function hrRuleReferenceLabel(row:HrRuleRow,field:HrRuleField):string{
+ const labels=row.reference_labels as Record<string,string>|undefined;
+ if(typeof labels?.[field.key]==='string')return labels[field.key];
  const relation=row[field.relation??''];
  if(relation&&typeof relation==='object'){
   const r=relation as Record<string,unknown>,name=r[field.nameKey??'name_en'];

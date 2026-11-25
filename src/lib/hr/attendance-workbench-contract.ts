@@ -18,3 +18,4 @@ export const attendanceRosterQuery=z.object({date:employeeDate,company:employeeI
 export const attendanceRosterRow=z.object({employee_id:employeeId,employee_code:z.string(),full_name_en:z.string(),id:employeeId.nullable(),revision:z.string().nullable(),fingerprint:z.string().regex(/^[0-9a-f]{64}$/),eligible:z.boolean(),approved_leave:z.boolean(),approval_status:z.string().nullable(),entered:enteredAttendance.nullable(),schedule:z.array(attendanceInterval).max(8).nullable(),context_warning:z.string().nullable(),work_site_label:z.string().nullable().optional()}).strict();
 export type AttendanceRosterRow=z.infer<typeof attendanceRosterRow>;
 export const attendanceRosterPage=z.object({rows:z.array(attendanceRosterRow).max(25),total:z.number().int().nonnegative().safe(),page:z.number().int().positive()}).strict();
+export const attendanceSelectionPage=attendanceRosterPage.extend({rows:z.array(attendanceRosterRow).max(500)});

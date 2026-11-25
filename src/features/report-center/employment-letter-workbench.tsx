@@ -36,6 +36,7 @@ export function EmploymentLetterWorkbench({authContext,employeeId,item,onOpenCha
   useLayoutEffect(()=>{ownerRef.current=owner;},[owner]);
   const alive=useRef(false),flight=useRef<Promise<void>|null>(null),flightRevision=useRef<string|null>(null);
   const attemptedRevision=useRef<string|null>(null);
+  const previewSessionId=useRef<string|null>(null);
   const [language,setLanguage]=useState<OfficialDocumentLanguage>(item.previewLanguages?.[0]??'en');
   const [wordingReview,setWordingReview]=useState(initialSample);
   const [inputs,setInputs]=useState<Record<string,string>>(()=>initialInputs(initialSample));
@@ -72,7 +73,9 @@ export function EmploymentLetterWorkbench({authContext,employeeId,item,onOpenCha
     setBusy(true);setError(null);flightRevision.current=request.revision;
     const job=(async()=>{
       try{
+        previewSessionId.current??=crypto.randomUUID();
         const result=await previewOfficialDocument({outputCode:item.outputCode,employeeId,language:request.language,inputs:request.inputs,
+          previewSessionId:previewSessionId.current,
           ...(request.templateId?{templateId:request.templateId}:{}),...(request.wordingReview?{wordingReview:true}:{})});
         if(!current())return;
         if(!result.success){setError({revision:request.revision,message:result.error});return;}

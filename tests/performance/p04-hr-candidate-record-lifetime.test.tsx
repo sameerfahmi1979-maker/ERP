@@ -157,7 +157,9 @@ it('record-point denial retires the form independently of an already-cached succ
 it('salary view revocation redacts Profile, Overview and stored value while retaining allowed dirty notes',async()=>{
  const view=mount();await ready();await screen.findByText('54,321 AED');section('Profile');
  fireEvent.change(screen.getByLabelText('Internal Notes'),{target:{value:'Retain permitted notes'}});
- expect(state.store!.getDraft(draftKey)?.expected_salary).toBe('54321');
+ expect(state.store!.getDraft(draftKey)).toEqual({notes:'Retain permitted notes'});
+ fireEvent.change(screen.getByLabelText('Expected Salary (AED)'),{target:{value:'54322'}});
+ expect(state.store!.getDraft(draftKey)?.expected_salary).toBe('54322');
  await revokeSalary(view.client);
  expect((screen.getByLabelText('Expected Salary (AED)') as HTMLInputElement).value).toBe('');
  expect(screen.queryByText('54,321 AED')).toBeNull();

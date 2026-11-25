@@ -5,15 +5,16 @@ import { PayslipCommand } from "@/features/hr/payroll-payslips/payslip-command";
 import { PayslipWorkspace } from "@/features/hr/payroll-payslips/payslip-workspace";
 
 const mock = vi.hoisted(() => ({
-  scopes: vi.fn(), read: vi.fn(), issue: vi.fn(), delivery: vi.fn(), refresh: vi.fn(),
+  scopes: vi.fn(), read: vi.fn(), issue: vi.fn(), delivery: vi.fn(), history: vi.fn(), refresh: vi.fn(),
 }));
 vi.mock("@/server/actions/hr/payslips", () => ({
   listPayslipScopes: mock.scopes,
   readPayslipWorkspace: mock.read,
+  readPayslipDeliveryHistory: mock.history,
   issuePayslip: mock.issue,
   changePayslipDelivery: mock.delivery,
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mock.refresh }) }));
+vi.mock("@/server/actions/hr/payroll-workspace-refresh", () => ({ refreshPayrollWorkspace: mock.refresh }));
 
 const scope = { company_id: 17, branch_id: 22, company: "Synthetic Employer", branch: "Synthetic Branch" };
 const access = { issue: true, view: true, deliver: true };
@@ -84,7 +85,8 @@ it("keeps an unconfirmed issue frozen and retries the original exact request", a
   await screen.findByRole("alert");
   expect((screen.getByRole("button", { name: "Issue payslip" }) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Retry same request" }));
-  await waitFor(() => expect(mock.refresh).toHaveBeenCalledOnce());
+  await screen.findByText("Original payslip retained.");
+  expect(mock.refresh).not.toHaveBeenCalled();
   expect(mock.issue.mock.calls[0][0]).toMatchObject({ batch: employee.batch, employee: 41 });
   expect(mock.issue.mock.calls[1][0]).toEqual(mock.issue.mock.calls[0][0]);
   expect(mock.delivery).not.toHaveBeenCalled();
@@ -98,7 +100,8 @@ it("records handover against the retained print item and requires an explicit re
   expect(mock.delivery).not.toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Handed the original to the employee." } });
   fireEvent.click(screen.getByRole("button", { name: "Confirm handover" }));
-  await waitFor(() => expect(mock.refresh).toHaveBeenCalledOnce());
+  await screen.findByText("Delivery action recorded.");
+  expect(mock.refresh).not.toHaveBeenCalled();
   expect(mock.delivery.mock.calls[0][0]).toMatchObject({
     slip: 73, action: "handover", data: { delivery: 92, reason: "Handed the original to the employee." },
   });
@@ -111,7 +114,8 @@ it("records a traceable bounce without entering a new recipient or exposing an a
   fireEvent.change(screen.getByLabelText("Provider reference"), { target: { value: "Synthetic-acceptance-91" } });
   fireEvent.change(screen.getByLabelText("Reason"), { target: { value: "Verified mailbox delivery failure." } });
   fireEvent.click(screen.getByRole("button", { name: "Record bounce" }));
-  await waitFor(() => expect(mock.refresh).toHaveBeenCalledOnce());
+  await screen.findByText("Delivery action recorded.");
+  expect(mock.refresh).not.toHaveBeenCalled();
   expect(mock.delivery.mock.calls[0][0]).toMatchObject({
     slip: 73, action: "bounce", data: { delivery: 91, reference: "Synthetic-acceptance-91", reason: "Verified mailbox delivery failure." },
   });
@@ -144,7 +148,8 @@ it("starts with no email disposition and retries the same confirmed outcome afte
   await screen.findByRole("alert");
   expect(disposition.closest("fieldset")?.disabled).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Retry same request" }));
-  await waitFor(() => expect(mock.refresh).toHaveBeenCalledOnce());
+  await screen.findByText("Delivery action recorded.");
+  expect(mock.refresh).not.toHaveBeenCalled();
   expect(mock.delivery.mock.calls[0][0]).toMatchObject({
     slip: 73, action: "reconcile-email",
     data: { delivery: 91, disposition: "not-accepted", reference: "Synthetic/review-91", reason: "Checked the provider delivery evidence." },
@@ -177,4 +182,39 @@ it("offers only flagged email evidence actions after reversal and keeps confirme
   expect(screen.queryByText("Start delivery")).toBeNull();
   expect(screen.queryByText("Queue print copy")).toBeNull();
   expect(screen.queryByText("Confirm handover")).toBeNull();
+});
+
+it("keeps the history cursor independent and loads only the explicitly selected visible payslip", async () => {
+  const summarized = { ...slip, delivery: { ...slip.delivery, history: [slip.delivery.history[0]], history_count: 75 } };
+  mock.scopes.mockResolvedValue({ ok: true, data: [scope] });
+  mock.read.mockResolvedValue({ ok: true, data: { access, rows: [{ ...employee, slip: summarized }], next_after: 80 } });
+  const view = render(await PayslipWorkspace({ params: { ...params, after: "40" } }));
+  expect(screen.getByRole("link", { name: "Delivery history (75)" }).getAttribute("href"))
+    .toContain("after=40&delivery_history=73");
+  expect(mock.history).not.toHaveBeenCalled();
+
+  mock.history.mockResolvedValueOnce({ ok: true, data: {
+    rows: [{ ...slip.delivery.history[0], can_bounce: true }], count: 75, next_before: 91,
+  } });
+  view.rerender(await PayslipWorkspace({ params: { ...params, after: "40", delivery_history: "73", before_delivery: "92" } }));
+  expect(screen.getByRole("link", { name: "Next deliveries" }).getAttribute("href"))
+    .toContain("after=40&delivery_history=73&before_delivery=91");
+  expect(mock.history).toHaveBeenCalledWith({ company: 17, branch: 22, month: "2026-10-01", slip: 73, before: 92 });
+
+  view.rerender(await PayslipWorkspace({ params: { ...params, delivery_history: "999" } }));
+  expect(mock.history).toHaveBeenCalledOnce();
+});
+
+it("keeps a confirmed issue when cache invalidation fails and retries only the refresh", async () => {
+  mock.issue.mockResolvedValueOnce({ ok: true, receipt: { id: 73, routed: true }, refreshRequired: true });
+  mock.refresh.mockResolvedValueOnce(true);
+  render(<PayslipCommand employee={employee.employee} batch={employee.batch} canIssue />);
+  fireEvent.click(screen.getByRole("button", { name: "Issue payslip" }));
+  await screen.findByRole("alert");
+  expect(screen.getByText("Original payslip retained.")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Retry same request" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Retry refreshing" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  expect(mock.issue).toHaveBeenCalledOnce();
+  expect(mock.refresh.mock.calls).toEqual([["payslips"]]);
 });

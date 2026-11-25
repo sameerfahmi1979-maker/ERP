@@ -2,7 +2,7 @@ import { ERPPageHeader } from "@/components/erp/page-header";
 import { LoadError } from "@/components/erp/load-error";
 import { AddBranchButton } from "@/features/branches/add-branch-button";
 import { BranchesTable } from "@/features/branches/branches-table";
-import { getAuthContext, hasPermission, hasPermissionInScope } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission, hasPermission, hasPermissionInScope } from "@/lib/rbac/check";
 import { listBranches } from "@/server/queries/branches";
 import { readBranchCompanyChoices } from "@/server/queries/branch-company-choices";
 
@@ -34,16 +34,12 @@ export default async function AdminBranchesPage() {
       </div>
     );
   }
-  const companies = await readBranchCompanyChoices().catch(() => null);
-  if (!companies) {
-    return (
-      <div className="p-6 space-y-4">
-        <ERPPageHeader title="Branches" description="Manage organizational branches and locations" breadcrumbs={[{ label: "Admin" }, { label: "Branches" }]} />
-        <LoadError title="Branch company choices" retryHref="/admin/branches" />
-      </div>
-    );
-  }
-  const writableCompanies = companies.filter(company => hasPermissionInScope(ctx, "branches.manage", company.id));
+  const canCreateInAnyCompany = hasGlobalPermission(ctx, "branches.manage") ||
+    ctx.roleAssignments?.some(assignment =>
+      assignment.ownerCompanyId !== null && assignment.branchId === null &&
+      assignment.permissionCodes.includes("branches.manage"));
+  const companies = canCreateInAnyCompany ? await readBranchCompanyChoices().catch(() => null) : [];
+  const writableCompanies = (companies ?? []).filter(company => hasPermissionInScope(ctx, "branches.manage", company.id));
 
   return (
     <div className="p-6 space-y-4">
@@ -56,6 +52,7 @@ export default async function AdminBranchesPage() {
         ]}
         actions={writableCompanies.length > 0 ? <AddBranchButton companies={writableCompanies} /> : null}
       />
+      {companies === null && <LoadError title="Branch company choices" retryHref="/admin/branches" />}
       <BranchesTable
         data={branches}
         authContext={ctx}

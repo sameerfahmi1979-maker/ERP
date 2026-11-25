@@ -57,8 +57,9 @@ export async function readWorkshopMaterial(job: number) {
       return null;
     }
     const parsed = materialWorkspace.safeParse(data);
-    if (!parsed.success && data !== null) logger.warn("Workshop material response validation failed");
-    return parsed.success ? parsed.data : null;
+    if (parsed.success && parsed.data.job === job) return parsed.data;
+    if (data !== null) logger.warn("Workshop material response validation failed");
+    return null;
   } catch {
     return null;
   }

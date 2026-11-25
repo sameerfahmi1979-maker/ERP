@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
+import { PayrollRefreshNotice } from "@/features/hr/payroll/payroll-refresh-notice";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { changeExitConfiguration } from "@/server/actions/hr/final-settlement";
@@ -205,7 +206,7 @@ function AdjustmentFields() {
 
 export function ExitConfigurationForm({ company, branch, eos, domain, title, target }: ConfigFormProps) {
   const [formVersion, setFormVersion] = useState(0);
-  const { record, pending, working, locked, message, setMessage } =
+  const { submit: record, retry, busy: working, locked, refreshError, retryRefresh, message, setMessage } =
     useExitMutation<Request>(changeExitConfiguration, () => setFormVersion(version => version + 1));
   const decisions = domain === "policy" ? ["approve", "reject"] as const : ["verify", "reject"] as const;
 
@@ -216,17 +217,17 @@ export function ExitConfigurationForm({ company, branch, eos, domain, title, tar
     const reason = field(form, "reason");
     const action = target ? getChoice(form, "decision", decisions) : "propose";
     if (!action || reason.length < 4 || reason.length > 2000) {
-      setMessage({ ok: false, text: "Enter a decision where required and a reason of at least four characters." });
+      setMessage({ error: true, text: "Enter a decision where required and a reason of at least four characters." });
       return;
     }
     const result: FormInput = target ? { data: { [domain]: target.id, digest: target.digest } }
       : domain === "policy" ? policyInput(form) : adjustmentInput(form);
     if ("error" in result) {
-      setMessage({ ok: false, text: result.error });
+      setMessage({ error: true, text: result.error });
       return;
     }
-    void record({ operation: crypto.randomUUID(), company, branch, ...(eos ? { eos } : {}), domain, action,
-      data: { ...result.data, reason } });
+    void record(() => ({ operation: crypto.randomUUID(), company, branch, ...(eos ? { eos } : {}), domain, action,
+      data: { ...result.data, reason } }));
   }
 
   return <form aria-label={title} onSubmit={submit} className="space-y-3">
@@ -237,7 +238,8 @@ export function ExitConfigurationForm({ company, branch, eos, domain, title, tar
       <Button type="submit" size="sm" className="justify-self-start">{title}</Button>
     </fieldset>
     {working && <p role="status" className="text-sm text-muted-foreground">Recording settlement action…</p>}
-    {message && <p role={message.ok ? "status" : "alert"} className={message.ok ? "text-sm text-muted-foreground" : "text-sm text-destructive"}>{message.text}</p>}
-    {pending && <Button type="button" size="sm" variant="outline" disabled={working} onClick={() => void record(pending)}>Retry same request</Button>}
+    {message && <p role={!message.error ? "status" : "alert"} className={!message.error ? "text-sm text-muted-foreground" : "text-sm text-destructive"}>{message.text}</p>}
+    {retry && <Button type="button" size="sm" variant="outline" disabled={working} onClick={() => void record()}>Retry same request</Button>}
+    {refreshError && <PayrollRefreshNotice busy={working} retry={() => void retryRefresh()} />}
   </form>;
 }

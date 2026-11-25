@@ -2,9 +2,37 @@ import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
 
-const operations = ["proxy", "auth.context", "auth.session", "auth.permissions", "employees.list", "departments.list", "departments.lookup", "documents.list", "session.route", "response.json",
+const readOperations = {
+  "/api/reads/dms-notifications": "dms.notifications.read",
+  "/api/reads/dms-inbox": "dms.inbox.read",
+  "/api/reads/dms-dashboard": "dms.dashboard.read",
+  "/api/reads/dms-review": "dms.review.read",
+  "/api/reads/dms-documents": "documents.list",
+  "/api/reads/dms-list-choices": "dms.filter.choices",
+  "/api/reads/dms-renewal-page": "dms.renewals.read",
+  "/api/reads/dms-approvals": "dms.approvals.read",
+  "/api/reads/dms-expiry-page": "dms.expiry.read",
+  "/api/reads/hr-dashboard": "hr.dashboard.read",
+  "/api/reads/hr-search": "hr.search.read",
+  "/api/reads/hr-document-browser": "hr.document-browser.read",
+  "/api/reads/hr-time": "hr.time.read",
+  "/api/reads/employees": "employees.list",
+  "/api/reads/lookup-search": "lookup.search.read",
+  "/api/reads/report-history": "reports.history.read",
+  "/api/reads/report-deliveries": "reports.deliveries.read",
+  "/api/notifications/bell": "notifications.bell.read",
+  "/api/reads/notifications": "notifications.list.read",
+} as const;
+
+export function performanceReadOperation(pathname: string): PerfOperation {
+  return Object.hasOwn(readOperations, pathname)
+    ? readOperations[pathname as keyof typeof readOperations]
+    : "read.route";
+}
+const operations = ["proxy", "auth.context", "auth.session", "auth.permissions", "employees.list", "departments.list", "departments.lookup", "documents.list", "session.route", "response.json", "read.route", "read.execute", ...Object.values(readOperations),
+  "permissions.page", "permissions.list", "permissions.grants", "permissions.roles", "permissions.export",
   "dms.intake", "dms.intake.admit", "dms.intake.verify", "dms.batch", "dms.rerun", "dms.rerun.admit", "dms.rerun.status", "dms.batch.member", "dms.batch.verify", "dms.batch.prepare", "dms.admit", "dms.receipt", "dms.eligibility",
-  "dms.fetch", "dms.verify", "dms.pdf.text", "dms.pdf.render", "dms.ocr", "dms.ocr.provider", "dms.model.first", "dms.model.second", "dms.publish", "dms.queue.wait", "dms.result.discovery", "dms.transfer.client"] as const;
+  "dms.fetch", "dms.verify", "dms.pdf.text", "dms.pdf.render", "dms.ocr", "dms.ocr.provider", "dms.model.first", "dms.model.second", "dms.publish", "dms.publish.receipt", "dms.queue.wait", "dms.result.discovery", "dms.transfer.client"] as const;
 export type PerfOperation = typeof operations[number];
 type Span = { name: string; ms: number; offsetMs: number; outcome: "ok" | "error"; status?: number; retry?: number; contentLength?: number | null };
 type Trace = { id: string; operation: PerfOperation; started: number; spans: Span[]; dropped: number; closed: boolean };
@@ -14,9 +42,9 @@ let admitted = 0;
 const MAX_SPANS = 128;
 export const PERF_HEADER = "x-algt-perf-correlation";
 export const PERF_ROUTE_HEADER = "x-algt-perf-route";
-const routeTemplates = ["/admin/hr/employees", "/admin/hr/employees/record/[id]", "/admin/common-master-data/departments", "/dms/documents", "/dms/documents/record/[id]", "/api/auth/session", "/login", "other"] as const;
+const routeTemplates = ["/admin/hr/employees", "/admin/hr/employees/record/[id]", "/admin/common-master-data/departments", "/dms/documents", "/dms/documents/record/[id]", "/api/auth/session", "/admin/permissions", "/login", "other"] as const;
 export function performanceRoute(pathname: string): string {
-  if ((routeTemplates as readonly string[]).includes(pathname)) return pathname;
+  if (Object.hasOwn(readOperations, pathname) || (routeTemplates as readonly string[]).includes(pathname)) return pathname;
   if (/^\/admin\/hr\/employees\/record\/\d+$/.test(pathname)) return "/admin/hr/employees/record/[id]";
   if (/^\/dms\/documents\/record\/\d+$/.test(pathname)) return "/dms/documents/record/[id]";
   return "other";
@@ -47,7 +75,7 @@ function append(trace: Trace, span: Span) {
 }
 function elapsed(start: number) { return Math.round(Math.max(0, performance.now() - start) * 1000) / 1000; }
 function offset(trace: Trace, start: number) { return Math.round(Math.max(0, start - trace.started) * 1000) / 1000; }
-function safeId(value?: string | null) {
+export function performanceCorrelationId(value?: string | null) {
   return value && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ? value : randomUUID();
 }
 export function currentTraceId() { return scope.getStore()?.id; }
@@ -62,6 +90,11 @@ export function dmsTraceId(value: string) {
   return `${hash.slice(0,8)}-${hash.slice(8,12)}-4${hash.slice(13,16)}-8${hash.slice(17,20)}-${hash.slice(20,32)}`;
 }
 
+/** A queued worker owns its trace even when a request woke its dispatcher. */
+export function traceDetachedOperation<T>(operation: PerfOperation, work: () => Promise<T>, correlation?: string | null): Promise<T> {
+  return scope.exit(() => traceOperation(operation, work, correlation));
+}
+
 /** Never logs result values, exception text, URLs, principal IDs, headers or bindings. */
 export async function traceOperation<T>(operation: PerfOperation, work: () => Promise<T>, correlation?: string | null, route = "other"): Promise<T> {
   if (!operations.includes(operation)) return work();
@@ -69,7 +102,7 @@ export async function traceOperation<T>(operation: PerfOperation, work: () => Pr
   if (parent === null || parent?.closed) return work();
   if (parent && !parent.closed) return traceSpan(operation, work);
   if (!tracingEnabled()) return work();
-  const id = safeId(correlation);
+  const id = performanceCorrelationId(correlation);
   if (!admit(id)) return scope.run(null, work);
   const trace: Trace = { id, operation, started: performance.now(), spans: [], dropped: 0, closed: false };
   let outcome: "ok" | "error" = "ok";
@@ -126,7 +159,7 @@ const backendPaths = new Map<string, string>([
   ["/auth/v1/user", "backend.auth.user"], ["/auth/v1/token", "backend.auth.token"],
   ["/rest/v1/rpc/f03_current_session_valid", "backend.session.valid"],
   ["/rest/v1/rpc/f03_read_documents", "backend.documents.projection"],
-  ...["user_profiles", "user_roles", "roles", "role_permissions", "permissions", "employees", "departments", "dms_documents"].map(table => [`/rest/v1/${table}`, `backend.${table}`] as const),
+  ...["user_profiles", "user_roles", "roles", "role_permissions", "permissions", "employees", "departments", "dms_documents", "dms_upload_sessions", "erp_notifications", "f10_dms_personal_notification_read", "perf_dms_my_notification_read", "dms_ai_job_queue"].map(table => [`/rest/v1/${table}`, `backend.${table}`] as const),
 ]);
 /** SDK physical attempts, headers latency and advertised length; no body cloning or retries added. */
 export const performanceFetch: typeof fetch = async (input, init) => {

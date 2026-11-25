@@ -18,3 +18,13 @@ it.each([{page:0},{pageSize:101},{companyId:2},{columnFilters:{file_size_bytes:"
 it("distinguishes counted empty and out-of-range from failure",async()=>{s.total=0;expect((await readDmsInboxPage({})).data).toMatchObject({rows:[],totalCount:0});s.total=1107;s.mode="416";expect((await readDmsInboxPage({page:46})).data).toMatchObject({rows:[],totalCount:1107});});
 it.each(["active","forced","allowed"])("denies %s before data access",async mode=>{s.active=mode!=="active";s.forced=mode==="forced";s.allowed=mode!=="allowed";expect((await readDmsInboxPage({})).error).toBe("Permission denied");expect(s.ops).toHaveLength(0);});
 it("route is private and denial is not retried as an empty result",async()=>{const req=()=>new Request("http://localhost/api/reads/dms-inbox",{method:"POST",headers:{"content-type":"application/json"},body:"{}"});const r=await POST(req());expect(r.status).toBe(200);expect(r.headers.get("cache-control")).toContain("no-store");s.allowed=false;expect((await POST(req())).status).toBe(403);});
+
+it("forwards the current request cancellation to the counted Inbox page",async()=>{
+ const controller=new AbortController();
+ const req=new Request("http://localhost/api/reads/dms-inbox",{
+  method:"POST",headers:{"content-type":"application/json"},body:"{}",signal:controller.signal,
+ });
+ const r=await POST(req);
+ expect(r.status).toBe(200);
+ expect(s.ops).toContainEqual(["abortSignal",[req.signal]]);
+});

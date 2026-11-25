@@ -376,6 +376,10 @@ async function runAiIntake(
     // Admins may intentionally create a second document from the same file.
 
     const sessionCode = typedSession.session_code as string;
+    const auditScope = {
+      owner_company_id: typedSession.owning_company_id as number | null,
+      branch_id: typedSession.owning_branch_id as number | null,
+    };
 
     // Every synchronous status change must still own the revision it replaces.
     // Retain Postgres's returned precision when sending the next comparison.
@@ -422,6 +426,7 @@ async function runAiIntake(
         entity_id: uploadSessionId,
         entity_reference: sessionCode,
         action: "update",
+        ...auditScope,
         new_values: { event: "ai_intake_failed", reason: "provider_not_configured" },
       });
 
@@ -470,6 +475,7 @@ async function runAiIntake(
       entity_id: uploadSessionId,
       entity_reference: sessionCode,
       action: "update",
+      ...auditScope,
       new_values: { event: "ai_intake_started", uploaded_by: ctx.profile.id },
     });
 
@@ -687,6 +693,7 @@ async function runAiIntake(
         entity_id: uploadSessionId,
         entity_reference: sessionCode,
         action: "update",
+        ...auditScope,
         new_values: { event: "ai_intake_ai_failed", job_id: jobId, duration_ms: durationMs },
       });
       return { success: false, error: aiError ?? "AI analysis failed" };
@@ -1001,7 +1008,9 @@ async function runAiIntake(
         review_action: null,
         reviewed_by: null,
         reviewed_at: null,
-        raw_response_json: {...sanitizedResponse,preparation:prepared,
+        raw_response_json: {
+          ...sanitizedResponse,
+          preparation: prepared,
           classification: {
             ...sanitizedResponse.classification,
             needs_human_review: aiOutput.classification.needsHumanReview ?? false,
@@ -1045,13 +1054,18 @@ async function runAiIntake(
 
     // ── Complete job and publish the attested result ────────────────────────
 
+    const publicationUnconfirmed = () => ({
+      success: false as const,
+      uncertain: true as const,
+      error: "AI review publication is unconfirmed. Check this upload for progress before retrying.",
+    });
     const completedJob = await supabase
       .from("dms_ai_extraction_jobs")
       .update({ status: "complete", completed_at: completedAt, duration_ms: durationMs })
       .eq("id", jobId).eq("upload_session_id", uploadSessionId).eq("created_by", ctx.profile.id)
       .eq("status", "processing").select("id,upload_session_id,status").retry(false).maybeSingle();
     if (completedJob.error || completedJob.data?.id !== jobId ||
-      completedJob.data.upload_session_id !== uploadSessionId || completedJob.data.status !== "complete") return attemptUnconfirmed();
+      completedJob.data.upload_session_id !== uploadSessionId || completedJob.data.status !== "complete") return publicationUnconfirmed();
 
     if(!verifiedSource)return {success:false,error:'The exact original-file proof is missing. Retain this intake for reconciliation.'};
     const attestedAnalysis=await traceSpan('dms.publish', () => adminClient.rpc('f07_attest_intake_analysis',{
@@ -1063,7 +1077,7 @@ async function runAiIntake(
     const publication = { p_session: uploadSessionId, p_code: sessionCode, p_claim_at: aiRevision, p_job: jobId, p_result: resultId };
     const publish = async () => {
       try {
-        const { data, error } = await traceSpan("dms.publish", () =>
+        const { data, error } = await traceSpan("dms.publish.receipt", () =>
           supabase.rpc("dms_publish_intake_classification", publication).retry(false));
         return !error && data?.id === uploadSessionId && data.session_code === sessionCode &&
           data.intake_status === "review_pending" && data.review_status === "pending" &&
@@ -1072,7 +1086,7 @@ async function runAiIntake(
         return false;
       }
     };
-    if (!(await publish()) && !(await publish())) return attemptUnconfirmed();
+    if (!(await publish()) && !(await publish())) return publicationUnconfirmed();
 
     // NOTE (SPEED.2L flash fix, 2026-08-03): do NOT call revalidatePath here.
     // This action runs for 30s+; the client's status poll redirects to

@@ -21,7 +21,7 @@ type Props = {
 
 type StatCard = {
   title: string;
-  value: number;
+  value: number | null;
   subtitle?: string;
   icon: React.ElementType;
   href: string;
@@ -33,7 +33,7 @@ export function DmsOverviewClient({ stats }: Props) {
     {
       title: "Document Categories",
       value: stats.categories_total,
-      subtitle: `${stats.categories_active} active`,
+      subtitle: stats.categories_active === null ? "Active count unavailable" : `${stats.categories_active} active`,
       icon: FolderOpen,
       href: "/admin/dms/categories",
       color: "text-blue-600 bg-blue-50 dark:bg-blue-950/30",
@@ -41,7 +41,7 @@ export function DmsOverviewClient({ stats }: Props) {
     {
       title: "Document Types",
       value: stats.document_types_total,
-      subtitle: `${stats.document_types_active} active`,
+      subtitle: stats.document_types_active === null ? "Active count unavailable" : `${stats.document_types_active} active`,
       icon: FileType2,
       href: "/admin/dms/document-types",
       color: "text-purple-600 bg-purple-50 dark:bg-purple-950/30",
@@ -49,7 +49,7 @@ export function DmsOverviewClient({ stats }: Props) {
     {
       title: "System Types",
       value: stats.document_types_system,
-      subtitle: `${stats.document_types_custom} custom`,
+      subtitle: stats.document_types_custom === null ? "Custom count unavailable" : `${stats.document_types_custom} custom`,
       icon: Database,
       href: "/admin/dms/document-types",
       color: "text-indigo-600 bg-indigo-50 dark:bg-indigo-950/30",
@@ -65,7 +65,7 @@ export function DmsOverviewClient({ stats }: Props) {
     {
       title: "Tags",
       value: stats.tags_total,
-      subtitle: `${stats.tags_active} active`,
+      subtitle: stats.tags_active === null ? "Active count unavailable" : `${stats.tags_active} active`,
       icon: Tag,
       href: "/admin/dms/tags",
       color: "text-amber-600 bg-amber-50 dark:bg-amber-950/30",
@@ -73,7 +73,7 @@ export function DmsOverviewClient({ stats }: Props) {
     {
       title: "Retention Policies",
       value: stats.retention_policies_total,
-      subtitle: `${stats.retention_policies_active} active`,
+      subtitle: stats.retention_policies_active === null ? "Active count unavailable" : `${stats.retention_policies_active} active`,
       icon: Clock,
       href: "/admin/dms/retention-policies",
       color: "text-rose-600 bg-rose-50 dark:bg-rose-950/30",
@@ -81,7 +81,7 @@ export function DmsOverviewClient({ stats }: Props) {
     {
       title: "Approval Workflows",
       value: stats.approval_workflows_total,
-      subtitle: `${stats.approval_workflows_active} active`,
+      subtitle: stats.approval_workflows_active === null ? "Active count unavailable" : `${stats.approval_workflows_active} active`,
       icon: CheckCircle2,
       href: "/admin/dms/approval-workflows",
       color: "text-teal-600 bg-teal-50 dark:bg-teal-950/30",
@@ -108,7 +108,7 @@ export function DmsOverviewClient({ stats }: Props) {
                 <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-primary group-hover:translate-x-0.5 transition-all mt-0.5" />
               </div>
               <div className="mt-3">
-                <div className="text-2xl font-bold text-foreground">{card.value.toLocaleString()}</div>
+                <div className="text-2xl font-bold text-foreground">{card.value?.toLocaleString() ?? "Unavailable"}</div>
                 <div className="text-xs font-medium text-foreground mt-0.5">{card.title}</div>
                 {card.subtitle && (
                   <div className="text-[10px] text-muted-foreground mt-0.5">{card.subtitle}</div>

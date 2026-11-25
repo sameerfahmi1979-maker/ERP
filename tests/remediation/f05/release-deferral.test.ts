@@ -7,7 +7,15 @@ it('F09 integrates after F08 with the server font adapter and shared fenced send
  expect(read('src/lib/report-center/schedule-worker.ts')).toContain('processQueuedBatch');
  expect(read('src/app/api/internal/process-email-queue/route.ts')).not.toContain('new MicrosoftGraphEmailProvider');
  expect(read('src/lib/email/queue/service.ts')).toContain('F09_EMAIL_WORKER_ENABLED === "true"');
- expect(readdirSync('supabase/migrations').filter(p=>/_f09_/.test(p))).toEqual(['20261018090904_f09_integrated_delivery_foundation.sql','20261018093032_f09_schedule_recovery_and_review.sql','20261018100339_f09_dms_delivery_projection.sql','20261018102324_f09_dms_reminder_intent_fence.sql']);
+ const scheduleMigrations = readdirSync('supabase/migrations').filter(name => /_f09_/.test(name)).sort();
+ expect(scheduleMigrations).toEqual([
+  '20261018090904_f09_integrated_delivery_foundation.sql',
+  '20261018093032_f09_schedule_recovery_and_review.sql',
+  '20261018100339_f09_dms_delivery_projection.sql',
+  '20261018102324_f09_dms_reminder_intent_fence.sql',
+  '20261123020014_f09_schedule_worker_inventory.sql',
+  '20261123090920_f09_schedule_enqueue_batch.sql',
+ ]);
 });
 it('keeps the later F05 authentication transport and independently owned DMS migrations',()=>{
  expect(read('src/app/api/auth/login/route.ts')).toContain('POST');

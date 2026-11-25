@@ -165,19 +165,33 @@ export async function readHrSearch(input: unknown, context?: AuthContext, signal
       }
       return q;
     };
-    const counts = await boundedMap(sources, async s => {signal?.throwIfAborted(); const result = await build(s, true); signal?.throwIfAborted();
-      if (result.error || !Number.isSafeInteger(result.count) || result.count === null || result.count < 0) throw Error("Search count unavailable"); return result.count;});
+    const checkedCount = ({error, count}: {error: unknown; count: number | null}) => {
+      signal?.throwIfAborted();
+      if (error || count === null || !Number.isSafeInteger(count) || count < 0) throw Error("Search count unavailable");
+      return count;
+    };
+    const readPage = (source: Source, from: number, to: number) => build(source).order("id", {ascending: true}).range(from, to);
+    const mapPage = (source: Source, data: unknown, length: number) => {
+      const rows = z.array(schema(source)).length(length).parse(data);
+      if (new Set(rows.map(r => r.id)).size !== rows.length) throw Error("Duplicate search rows");
+      return rows.map(r => mapRow(source, r, p.query, today));
+    };
+    const firstPageSource = p.page === 1 && sources.length === 1 ? sources[0] : undefined;
+    // One source on page one needs no preliminary counts to calculate its range.
+    signal?.throwIfAborted();
+    const firstPage = firstPageSource ? await readPage(firstPageSource, 0, p.pageSize - 1) : null;
+    const counts = firstPage ? [checkedCount(firstPage)] : await boundedMap(sources, async s => {
+      signal?.throwIfAborted(); return checkedCount(await build(s, true));
+    });
     const totalCount = counts.reduce((sum, c) => sum + c, 0); if (!Number.isSafeInteger(totalCount)) throw Error("Search count overflow");
     const groupCounts: Partial<Record<HrSearchCategory, number>> = {}; sources.forEach((s, i) => {groupCounts[s.category] = (groupCounts[s.category] ?? 0) + counts[i];});
     const start = (p.page - 1) * p.pageSize; let offset = 0;
     const ranges = sources.flatMap((s, i) => {const before = offset; offset += counts[i]; const from = Math.max(0, start - before), to = Math.min(counts[i], start + p.pageSize - before);
       return to > from ? [{source: s, from, to: to - 1, count: counts[i]}] : [];});
-    const pages = await boundedMap(ranges, async ({source, from, to, count}) => {
-      signal?.throwIfAborted(); const result = await build(source).order("id", {ascending: true}).range(from, to); signal?.throwIfAborted();
-      if (result.error || result.count !== count) throw Error("Search changed or unavailable");
-      const rows = z.array(schema(source)).length(to - from + 1).parse(result.data);
-      if (new Set(rows.map(r => r.id)).size !== rows.length) throw Error("Duplicate search rows");
-      return rows.map(r => mapRow(source, r, p.query,today));
+    const pages = firstPageSource && firstPage ? [mapPage(firstPageSource, firstPage.data, Math.min(p.pageSize, totalCount))] : await boundedMap(ranges, async ({source, from, to, count}) => {
+      signal?.throwIfAborted(); const result = await readPage(source, from, to);
+      if (checkedCount(result) !== count) throw Error("Search changed or unavailable");
+      return mapPage(source, result.data, to - from + 1);
     });
     return {success: true as const, data: hrSearchPageReadSchema.parse({criteria: p, results: pages.flat(), totalCount, groupCounts,
       hasMore: p.page * p.pageSize < totalCount, ordering: "category-entity-id-v1", countScope: "authorized-matches"})};

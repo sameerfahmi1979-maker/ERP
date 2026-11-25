@@ -1,3 +1,5 @@
+import { HR_SETTINGS_FIRST_PAGE } from "@/lib/hr/settings-list";
+import { hrReadIdentity } from "@/lib/reads/hr-read-identity";
 import type {HrLookupFormInput} from "@/lib/hr/settings-save-contract";
 import type {WorkspaceSaveContract} from "@/lib/workspace/save-contract";
 import { LoadError } from "@/components/erp/load-error";
@@ -10,9 +12,9 @@ export default async function HrLeaveTypesPage() {
   const ctx = await getAuthContext();
   if (!hasPermission(ctx, "hr.settings.view") && !hasPermission(ctx, "hr.settings.manage") && !hasPermission(ctx, "hr.admin")) redirect("/admin/hr/settings");
   const canManage = hasGlobalPermission(ctx, "hr.settings.manage") || hasGlobalPermission(ctx, "hr.admin");
-const result = await listHrLeaveTypes({complete:true});
-  if (!result.success) return <LoadError title="HR records" retryHref="/admin/hr/settings/leave-types" />;
-  const data = result.data?.data ?? [];
+const result = await listHrLeaveTypes(HR_SETTINGS_FIRST_PAGE);
+  if (!result.success || !result.data) return <LoadError title="HR records" retryHref="/admin/hr/settings/leave-types" />;
+  const { data, total } = result.data;
 
   async function create(input: HrLookupFormInput, contract?: WorkspaceSaveContract) {
     "use server";
@@ -36,6 +38,8 @@ const result = await listHrLeaveTypes({complete:true});
       entity="hr_leave_types"
       principalId={ctx.profile?.id}
       initialData={data}
+      initialTotal={total}
+      readIdentity={hrReadIdentity(ctx)}
       canManage={canManage}
       onList={listHrLeaveTypes}
       onCreate={create}

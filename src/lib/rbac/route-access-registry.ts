@@ -166,27 +166,28 @@ export const ROUTE_ACCESS_REGISTRY: Record<string, RouteAccess> = {
   "/admin/users":                                 { requiredPermission: "users.view" },
   "/admin/organizations":                         { requiredPermission: "organizations.view" },
   "/admin/branches":                              { requiredPermission: "branches.view" },
-  "/admin/roles":                                 { requiredAnyPermissions: ["roles.view", "roles.manage"] },
+  "/admin/roles":                                 { requiredPermission: "roles.view" },
+  "/admin/roles/record/new":                       { requiredAnyGlobalPermissions: ["roles.manage"] },
   "/admin/permissions":                           { requiredPermission: "permissions.view" },
-  "/admin/settings/numbering":                    { requiredAnyPermissions: ["numbering.rules.view", "numbering.rules.manage"] },
+  "/admin/settings/numbering":                    { requiredAnyGlobalPermissions: ["numbering.rules.view", "numbering.rules.manage", "numbering.rules.lock"] },
   "/admin/settings/email":                        { requiredAnyGlobalPermissions: ["settings.email.view", "settings.email.manage", "settings.email.test", "settings.email.secrets.manage", "settings.email.feature_flags.manage", "settings.email.logs.view"] },
-  "/admin/settings/branding":                     { requiredAnyPermissions: ["branding.app.view", "branding.app.manage", "reports.manage"] },
+  "/admin/settings/branding":                     { requiredAnyGlobalPermissions: ["branding.app.view", "branding.app.manage", "reports.manage"] },
   "/admin/notifications":                         { requiredAnyGlobalPermissions: ["notifications.manage", "notifications.admin"] },
   "/admin/notifications/email-queue":             { requiredAnyGlobalPermissions: ["notifications.email_queue.view", "notifications.email_queue.manage", "notifications.admin"] },
   "/admin/notifications/templates":               { requiredAnyGlobalPermissions: ["notifications.templates.view", "notifications.admin"] },
   "/admin/notifications/logs":                    { requiredAnyGlobalPermissions: ["notifications.logs.view", "notifications.admin"] },
   "/admin/master-data":                           { requiredAnyPermissions: ["master_data.lookups.view", "master_data.geography.view", "master_data.parties.view"] },
-  "/admin/master-data/lookups/categories":        { requiredAnyPermissions: ["master_data.lookups.view", "master_data.lookups.manage", "master_data.lookups.lock"] },
-  "/admin/master-data/lookups/values":            { requiredAnyPermissions: ["master_data.lookups.view", "master_data.lookups.manage", "master_data.lookups.lock"] },
-  "/admin/master-data/lookups/system":            { requiredAnyPermissions: ["master_data.lookups.view", "master_data.lookups.manage", "master_data.lookups.lock"] },
+  "/admin/master-data/lookups/categories":        { requiredAnyGlobalPermissions: ["master_data.lookups.view", "master_data.lookups.manage", "master_data.lookups.lock"] },
+  "/admin/master-data/lookups/values":            { requiredAnyGlobalPermissions: ["master_data.lookups.view", "master_data.lookups.manage", "master_data.lookups.lock"] },
+  "/admin/master-data/lookups/system":            { requiredAnyGlobalPermissions: ["master_data.lookups.view", "master_data.lookups.manage", "master_data.lookups.lock"] },
   "/admin/audit":                                 { requiredPermission: "audit.view" },
   "/admin/settings/ai":                           { requiredAnyGlobalPermissions: ["settings.ai.view", "settings.ai.manage", "settings.ai.test", "settings.ai.secrets.manage", "settings.ai.usage.view"] },
   "/admin/ai/dashboard":                          { requiredAnyGlobalPermissions: aiDailyDashboardViewPermissions },
-  "/admin/ai/audit-explainer":                    { requiredAnyPermissions: ["ai.audit_explainer.use", "ai.common.admin"] },
-  "/admin/ai/data-quality":                       { requiredAnyPermissions: ["ai.data_quality.view", "ai.common.view", "ai.common.admin"] },
-  "/admin/ai/duplicates":                         { requiredAnyPermissions: ["ai.duplicates.view", "ai.common.view", "ai.common.admin"] },
-  "/admin/ai/compliance":                         { requiredAnyPermissions: ["ai.compliance.view", "ai.common.view", "ai.common.admin"] },
-  "/admin/ai/risk":                               { requiredAnyPermissions: ["ai.risk.view", "ai.common.view", "ai.common.admin"] },
+  "/admin/ai/audit-explainer":                    { requiredAnyGlobalPermissions: ["ai.audit_explainer.view", "ai.audit_explainer.use", "ai.audit_explainer.admin", "ai.common.view", "ai.common.admin"] },
+  "/admin/ai/data-quality":                       { requiredAnyGlobalPermissions: ["ai.data_quality.view", "ai.common.view", "ai.common.admin"] },
+  "/admin/ai/duplicates":                         { requiredAnyGlobalPermissions: ["ai.duplicates.view", "ai.common.admin"] },
+  "/admin/ai/compliance":                         { requiredAnyGlobalPermissions: ["ai.compliance.view", "ai.common.admin"] },
+  "/admin/ai/risk":                               { requiredAnyGlobalPermissions: ["ai.risk.view", "ai.common.admin"] },
   "/search":                                      { requiredAnyPermissions: ["ai.search.use", "ai.search.view", "ai.common.admin"] },
   "/assistant":                                   { requiredAnyPermissions: ["ai.assistant.use", "ai.assistant.view", "ai.common.admin"] },
 };
@@ -197,6 +198,8 @@ const payrollFinanceAccess: RouteAccess = { requiredAllPermissions: ["reports.vi
 function findRouteAccess(pathname: string): RouteAccess | undefined {
   const exact = ROUTE_ACCESS_REGISTRY[pathname];
   if (exact) return exact;
+
+  if (/^\/admin\/roles\/record\/\d+\/?$/.test(pathname)) return ROUTE_ACCESS_REGISTRY["/admin/roles"];
 
   const operationalPath = getOperationalAccessPath(pathname);
   if (operationalPath) return ROUTE_ACCESS_REGISTRY[operationalPath];
@@ -234,6 +237,8 @@ const FIRST_ROUTE_PRIORITY = [
   "/dms",
   "/admin/reports",
   "/admin/users",
+  "/admin/roles",
+  "/admin/roles/record/new",
   "/admin/master-data/parties",
   "/admin/common-master-data",
   "/notifications",

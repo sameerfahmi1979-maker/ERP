@@ -185,3 +185,45 @@ it("ordinary failed parallel identity reads cannot turn the permitted link subse
   state.fail = "employee_identity_documents"; const result = await read(documents, auth);
   expect(result.success).toBe(false); expect(result.data).toBeUndefined(); expect(state.calls.some(call => call.source === "f03_read_documents")).toBe(false);
 });
+
+it("selected search preserves checked subject, exact membership, masked fields and one caller signal", async () => {
+  state.rows.dms_document_links = Array.from({length: 501}, (_, index) => ({id: index + 1, document_id: index + 1}));
+  state.rows.ai_mod02_search_documents = [{id: 501}, {id: 502}];
+  state.rows.f03_read_documents = Array.from({length: 502}, (_, index) => ({
+    ...state.rows.f03_read_documents[0], id: index + 1, title: null, document_no: null,
+  }));
+
+  const control = new AbortController();
+  const result = await read({...documents, search: "654321"}, auth, control.signal);
+  const page = hrBrowserDocumentsPage.parse(result.data);
+  expect(page.totalCount).toBe(1);
+  expect(page.rows).toEqual([expect.objectContaining({id: 501, title: "Untitled", documentNo: null, source: "dms_link"})]);
+  const checked = state.calls.find(call => call.source === "ai_mod02_search_documents");
+  expect(checked?.url.searchParams.get("subject_type")).toBe("employee");
+  expect(checked?.url.searchParams.get("subject_id")).toBe("1");
+  expect(checked?.url.searchParams.get("include_content")).toBe("true");
+  const projected = state.calls.filter(call => call.source === "f03_read_documents");
+  expect(projected.map(call => call.url.searchParams.get("id"))).toEqual(["in.(501)"]);
+  expect(state.calls.every(call => call.signal === control.signal)).toBe(true);
+});
+it("partial counted search pages cannot turn into an exact result", async () => {
+  state.rows.ai_mod02_search_documents = [{id: 2}];
+  state.counts.ai_mod02_search_documents = 501;
+  const result = await read({...documents, search: "654321"}, auth);
+  expect(result.success).toBe(false);
+  expect(result.data).toBeUndefined();
+});
+it("aborted search cannot turn into an exact result or fetch a decoration page", async () => {
+  const control = new AbortController();
+  state.rows.ai_mod02_search_documents = [{id: 2}];
+  state.fetch.mockImplementation((call: Call) => {
+    const response = respond(call);
+    if (call.source === "ai_mod02_search_documents") control.abort();
+    return response;
+  });
+
+  const result = await read({...documents, search: "654321"}, auth, control.signal);
+  expect(result.success).toBe(false);
+  expect(result.data).toBeUndefined();
+  expect(state.calls.some(call => call.source === "f03_read_documents")).toBe(false);
+});

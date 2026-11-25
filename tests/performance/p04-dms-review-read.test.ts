@@ -16,6 +16,7 @@ vi.mock("@/lib/supabase/server",()=>({createClient:async()=>({from:(table:string
   return Promise.resolve({data:s.mode==="short"&&Array.isArray(data)?data.slice(0,1):data,count:s.mode==="null"?null:s.total,error:s.mode==="error"?{message:"secret"}:null}).then(resolve);
  }:(...args:unknown[])=>{c.ops.push([String(key),args]);return q;}});return q;
 }})}));
+import {POST} from "@/app/api/reads/dms-review/route";
 import {getDmsReviewQueueItems,getDmsReviewQueueCounts,getDmsReviewQueueItem} from "@/server/actions/dms/review-queue";
 beforeEach(()=>Object.assign(s,{allowed:true,admin:false,active:true,forced:false,total:1107,mode:"ok",calls:[]}));
 it("filters confidential parents before count and page without an all-document ID scan",async()=>{const r=await getDmsReviewQueueItems({page:3});expect(r.data?.items).toHaveLength(25);expect(r.data?.total).toBe(1107);expect(s.calls).toHaveLength(1);expect(s.calls[0].ops).toContainEqual(["not",["document.confidentiality_level","in",'("hr","legal","executive")']]);expect(s.calls[0].ops).toContainEqual(["or",["document_id.is.null,document.not.is.null"]]);expect(s.calls[0].ops).toContainEqual(["range",[50,74]]);});
@@ -26,3 +27,20 @@ it.each([{page:0},{pageSize:51},{assignedTo:-1},{companyId:3},{createdAfter:"bad
 it.each(["allowed","active","forced"])("blocks %s for every entrypoint",async mode=>{s.allowed=mode!=="allowed";s.active=mode!=="active";s.forced=mode==="forced";for(const r of [await getDmsReviewQueueItems(),await getDmsReviewQueueCounts(),await getDmsReviewQueueItem(1)])expect(r.error).toBe("Permission denied");expect(s.calls).toHaveLength(0);});
 it("detail reads stay ordinary and correlate both linked records to the source parent",async()=>{s.mode="detail";expect((await getDmsReviewQueueItem(1)).success).toBe(true);for(const c of s.calls.slice(1))expect(c.ops).toContainEqual(["or",["document_id.eq.7"]]);});
 it("admin remains exempt only from the legacy additional confidentiality filter",async()=>{s.admin=true;expect((await getDmsReviewQueueItems()).success).toBe(true);expect(s.calls[0].ops.some(([op])=>op==="not")).toBe(false);});
+
+it.each([["list",1],["counts",7],["detail",3]])(
+  "cancels all %s relation reads with the originating request signal",
+  async (kind, expected) => {
+    if(kind==="detail")s.mode="detail";
+    const req=new Request("http://localhost/api/reads/dms-review",{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify(kind==="list"?{kind,filters:{}}:kind==="detail"?{kind,id:1}:{kind}),
+      signal:new AbortController().signal,
+    });
+    const response=await POST(req);
+    expect(response.status).toBe(200);
+    expect(s.calls).toHaveLength(expected);
+    for(const call of s.calls)expect(call.ops).toContainEqual(["abortSignal",[req.signal]]);
+  },
+);

@@ -5,7 +5,7 @@
  * Phase BRANDING.4 - Report Branding Runtime and Asset Upload Integration
  *
  * Arabic support:
- *   - bidi-shaper/jspdf plugin is installed once at module load.
+ *   - bidi-shaper/jspdf is installed when a PDF is requested.
  *     It hooks into jsPDF's preProcessText event so every doc.text() call
  *     (including autoTable cell rendering) is automatically shaped (contextual
  *     Arabic glyph forms, lam-alef ligatures) and BiDi-reordered (UAX #9).
@@ -19,18 +19,12 @@
  * BRANDING.4: Async image embedding for logo, stamp, and signature assets.
  */
 
-import jsPDF from "jspdf";
+import type jsPDF from "jspdf";
 import { logger } from "@/lib/logger";
-import autoTable from "jspdf-autotable";
-import { installJsPdfShaper } from "bidi-shaper/jspdf";
 import type { ERPExportOptions, ERPExportResult, ExportBrandingContext } from "./export-types";
 import { getColumnValue, generateFilename, formatFilters } from "./format-export-data";
+import { loadPdfExportEngine } from "./load-pdf-export-engine";
 import { format } from "date-fns";
-
-// ── Install bidi-shaper plugin once on the jsPDF static API ───────────────────
-// After this line every doc.text() call (including autoTable internals) receives
-// proper Arabic shaping + BiDi reordering automatically.
-installJsPdfShaper(jsPDF.API as Parameters<typeof installJsPdfShaper>[0]);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Arabic font loader
@@ -318,8 +312,8 @@ export async function exportToPDF<T>(options: ERPExportOptions<T>): Promise<ERPE
 
     const hasArabic = exportDataHasArabic(options);
 
-    // Pre-load branding images and Arabic font in parallel
-    const [{ logoDataUrl, stampDataUrl, signatureDataUrl }] = await Promise.all([
+    const [{ jsPDF, autoTable }, { logoDataUrl, stampDataUrl, signatureDataUrl }] = await Promise.all([
+      loadPdfExportEngine(),
       preloadBrandingImages(branding),
     ]);
 

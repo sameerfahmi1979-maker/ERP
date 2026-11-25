@@ -6,7 +6,7 @@ const action=z.enum(["start","submit_document","fulfil","reject","cancel"]);
 const kind=z.enum(["missing","renewal"]);
 const requestRow=z.strictObject({id,kind,parent,ruleId:id.nullable(),documentTypeId:id.nullable(),sourceDocumentId:id.nullable(),sourceVersionId:id.nullable(),status:requestStatus,canonicalStatus:z.string().nullable(),revision:id,requesterLabel:z.string(),assigneeId:id.nullable(),assigneeLabel:z.string().nullable(),dueDate:z.iso.date().nullable(),notes:z.string().max(2000),submittedDocumentId:id.nullable(),submittedVersionId:id.nullable(),createdAt:z.iso.datetime({offset:true}),updatedAt:z.iso.datetime({offset:true}),actions:z.array(action).max(5)});
 const checklistRow=z.strictObject({ruleId:id,label:z.string(),documentTypeId:id.nullable(),state:z.enum(["present","missing","unknown"]),canRequest:z.boolean(),checklistHash:hash.nullable()}).refine(r=>r.canRequest===(r.checklistHash!==null)&&(!r.canRequest||r.state==="missing"&&r.documentTypeId!==null));
-export async function requests(input:CommandFor<"requiredChecklist"|"documentRequestOptions"|"documentRequests"|"documentRequestCreate"|"documentRequestAct">){
+export async function requests(input:CommandFor<"requiredChecklist"|"documentRequestOptions"|"documentRequests"|"documentRequestEvidence"|"documentRequestCreate"|"documentRequestAct">){
  const {op,...data}=input;
  switch(input.op){
   case "requiredChecklist":{
@@ -20,6 +20,10 @@ export async function requests(input:CommandFor<"requiredChecklist"|"documentReq
   case "documentRequests":{
    const r=await rpc("mobile_dms_requests",{p_action:"list",p_data:data},pagePayload(requestRow));
    return completePage(r.rows,input.page,25,r.totalCount,v=>v.kind+"/"+v.id);
+  }
+  case "documentRequestEvidence":{
+   const available=await rpc("mobile_dms_request_evidence",{p_data:data},z.literal(true));
+   return {available};
   }
   default:{
    const result=z.strictObject({request:requestRow,operationId:z.literal(input.operationId),replayed:z.boolean()});

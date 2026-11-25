@@ -1,5 +1,5 @@
 import{beforeEach,it,expect,vi}from'vitest';const m=vi.hoisted(()=>({ctx:vi.fn(),rpc:vi.fn(),cache:vi.fn()}));vi.mock('@/lib/rbac/check',()=>({getAuthContext:m.ctx}));vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({rpc:m.rpc})}));vi.mock('next/cache',()=>({revalidatePath:m.cache}));
-import{saveAttendanceRow,reconcileAttendanceRow,readAttendanceRoster,readAttendanceChoices,readRecentAttendance,readAttendanceEntryOpening,readTimesheetSites}from'@/server/actions/hr/attendance-workbench';
+import{saveAttendanceRow,reconcileAttendanceRow,readAttendanceRoster,readAttendanceSelection,readAttendanceChoices,readRecentAttendance,readAttendanceEntryOpening,readTimesheetSites}from'@/server/actions/hr/attendance-workbench';
 const req={employeeId:1,date:'2026-10-20',id:null,revision:null,fingerprint:'a'.repeat(64),operation:'11111111-1111-4111-8111-111111111111',reason:'Actual review',values:{attendance_type:'absent',intervals:[]}},receipt={employee_id:1,id:9,revision:'1',operation_id:req.operation,replayed:false};
 beforeEach(()=>{vi.resetAllMocks();m.ctx.mockResolvedValue({profile:{id:2},isAccountActive:true,permissionCodes:['hr.attendance.view','hr.attendance.manage']});m.rpc.mockResolvedValue({data:receipt,error:null});});
 it('uses cookie-client native command and original request identity',async()=>{expect(await saveAttendanceRow(req)).toEqual({success:true,data:receipt});expect(m.rpc).toHaveBeenCalledWith('f12_save_attendance',{p_request:req});});
@@ -18,3 +18,31 @@ it('invalid or revoked individual context cannot dispatch or silently open a dif
 it('actual-site selection is bounded and uses only the current cookie-scoped native query',async()=>{const rows=Array.from({length:26},(_,i)=>({id:i+1,label:'SYN-SITE-'+i}));m.rpc.mockResolvedValue({data:rows,error:null});expect(await readTimesheetSites({company:1,date:req.date,search:'yard',after:4})).toEqual({success:true,rows:rows.slice(0,25),hasMore:true});expect(m.rpc).toHaveBeenCalledWith('timesheet_site_choices',{p_company:1,p_date:req.date,p_search:'yard',p_after:4});});
 it('invalid and unauthorized site choices never dispatch',async()=>{expect(await readTimesheetSites({company:0,date:req.date,search:'',after:0})).toMatchObject({success:false});m.ctx.mockResolvedValue({profile:{id:2},isAccountActive:true,permissionCodes:['hr.attendance.view']});expect(await readTimesheetSites({company:1,date:req.date,search:'',after:0})).toMatchObject({success:false});expect(m.rpc).not.toHaveBeenCalled();});
 it('site transport failure and malformed replies stay unavailable',async()=>{m.rpc.mockRejectedValue(Error('private connection'));expect(await readTimesheetSites({company:1,date:req.date,search:'',after:0})).toMatchObject({success:false});m.rpc.mockResolvedValue({data:[{id:1,label:'Site',private:'must not leak'}],error:null});expect(await readTimesheetSites({company:1,date:req.date,search:'',after:0})).toMatchObject({success:false});});
+
+const selectionRow = (id: number) => ({
+  employee_id:id,employee_code:'SYN'+id,full_name_en:'Synthetic',id:null,revision:null,
+  fingerprint:'a'.repeat(64),eligible:true,approved_leave:false,approval_status:null,
+  entered:null,schedule:null,context_warning:null,
+});
+it('selects one bounded authorized window with the exact active browse criteria', async () => {
+  const rows=Array.from({length:500},(_,i)=>selectionRow(i+1));
+  m.rpc.mockResolvedValue({data:{rows,total:625,page:1},error:null});
+  expect(await readAttendanceSelection({date:req.date,company:1,branch:3,site:4,team:5,shift:6,search:'proof',state:'queried',history:true})).toEqual({success:true,data:{rows,total:625,page:1}});
+  expect(m.rpc).toHaveBeenCalledExactlyOnceWith('f12_attendance_selection',{p_date:req.date,p_company:1,p_branch:3,p_site:4,p_team:5,p_shift:6,p_search:'proof',p_page:1,p_history:true,p_state:'queried'});
+});
+it.each([
+ {rows:[selectionRow(1)],total:2,page:1},
+ {rows:[selectionRow(1),selectionRow(1)],total:2,page:1},
+ {rows:[selectionRow(2),selectionRow(1)],total:2,page:1},
+ {rows:[selectionRow(1)],total:1,page:2},
+])('selection fails safely when the counted window is incomplete or reordered',async data=>{
+ m.rpc.mockResolvedValue({data,error:null});
+ expect(await readAttendanceSelection({date:req.date,company:1})).toMatchObject({success:false});
+});
+it('selection keeps native scope denial separate from transport failure and never mutates',async()=>{
+ m.rpc.mockResolvedValueOnce({data:null,error:{code:'42501',message:'PRIVATE'}});
+ expect(await readAttendanceSelection({date:req.date,company:1})).toMatchObject({success:false,denied:true});
+ m.rpc.mockRejectedValueOnce(new Error('PRIVATE'));
+ expect(JSON.stringify(await readAttendanceSelection({date:req.date,company:1}))).not.toContain('PRIVATE');
+ expect(m.rpc.mock.calls.every(([routine])=>routine==='f12_attendance_selection')).toBe(true);
+});

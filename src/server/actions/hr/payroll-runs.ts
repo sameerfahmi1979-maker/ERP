@@ -1,16 +1,18 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import type { z } from "zod";
 import {
-  parsePayrollCommand, payrollCommandHeader, payrollQuery, payrollRunsPath, payrollScopes, payrollWorkspace,
+  parsePayrollCommand, payrollCalculationReceipt, payrollChangeReceipt, payrollCommandHeader, payrollQuery, payrollScopes, payrollWorkspace,
   type PayrollAction, type PayrollQuery,
 } from "@/lib/hr/payroll/run-contract";
 import { logger } from "@/lib/logger";
 import { canUseApplication, getAuthContext } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
 
-type CommandResult = { ok: true } | { ok: false; error: string; uncertain: boolean };
+import { invalidatePayrollWorkspace } from "@/server/payroll-workspace-refresh";
+
+type Receipt = z.infer<typeof payrollCalculationReceipt> | z.infer<typeof payrollChangeReceipt>;
+type CommandResult = { ok: true; receipt: Receipt; refreshRequired?: true } | { ok: false; error: string; uncertain: boolean };
 
 async function read<T>(rpc: string, params: Record<string, unknown>, shape: z.ZodType<T>) {
   try {
@@ -84,7 +86,7 @@ export async function savePayrollCommand(
     if (!canUseApplication(await getAuthContext())) return {
       ok: false, error: "Sign in again to continue.", uncertain: false,
     };
-    const { error } = await (await createClient()).rpc("t14_payroll_command", {
+    const { data, error } = await (await createClient()).rpc("t14_payroll_command", {
       p_operation: operation, p_company: company, p_branch: branch, p_action: action, p_data: fields,
     });
     if (error) {
@@ -93,8 +95,14 @@ export async function savePayrollCommand(
       logger.warn("Payroll command could not be confirmed", { action, code: error.code });
       return uncertain;
     }
-    revalidatePath(payrollRunsPath);
-    return { ok: true };
+    const receipt = (action === "calculate" ? payrollCalculationReceipt : payrollChangeReceipt).safeParse(data);
+    const expectedId = "rule" in fields ? fields.rule : "adjustment" in fields ? fields.adjustment : undefined;
+    if (!receipt.success || receipt.data.action !== action ||
+        (expectedId !== undefined && (!("id" in receipt.data) || receipt.data.id !== expectedId))) {
+      logger.warn("Payroll command receipt could not be confirmed", { action });
+      return uncertain;
+    }
+    return { ok: true, receipt: receipt.data, ...invalidatePayrollWorkspace("runs") };
   } catch {
     return uncertain;
   }

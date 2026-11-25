@@ -6,15 +6,51 @@ import { ERPPageHeader } from "@/components/erp/page-header";
 import { ROUTE_ACCESS_REGISTRY } from "@/lib/rbac/route-access-registry";
 import { getAuthContext } from "@/lib/rbac/check";
 import { fleetId } from "@/lib/fleet/asset-contract";
-import { supplyActionQueuePage, supplyActionQueueSearch, type SupplyWorkspace } from "@/lib/supply/contracts";
-import { getSupplyActionQueue, getSupplyWorkspace, listSupplyBranches } from "@/server/actions/inventory/stock-movements";
+import { supplyActionQueuePage, supplyActionQueueSearch, supplyMaxPage, type SupplyReceiptHistory, type SupplyWorkspace } from "@/lib/supply/contracts";
+import { getSupplyActionQueue, getSupplyReceiptHistory, getSupplyWorkspace, listSupplyBranches } from "@/server/actions/inventory/stock-movements";
 import { SupplyActions } from "./supply-actions";
 
 const status = (value: string) => value.replaceAll("-", " ");
 const date = new Intl.DateTimeFormat("en-AE", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Dubai" });
+const historyLinkClass = "text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:underline";
 
-function SupplyHistory({ data, kind }: { data: SupplyWorkspace; kind: "inventory" | "procurement" }) {
-  if (kind === "procurement") return <div className="grid gap-4 xl:grid-cols-2">
+function ReceiptHistory({ page, result, filters }: {
+  page: number | null; result: SupplyReceiptHistory | null; filters: URLSearchParams;
+}) {
+  const href = (target: number) => {
+    const params = new URLSearchParams(filters);
+    params.set("receiptPage", String(target));
+    return "/modules/procurement?" + params.toString();
+  };
+  const lastPage = result ? Math.max(1, Math.ceil(result.totalCount / result.pageSize)) : 1;
+  const firstRow = result ? (result.page - 1) * result.pageSize + 1 : 1;
+  return <section className="space-y-3 rounded-lg border bg-card p-4">
+    <h2 className="font-semibold">Goods receipts</h2>
+    {page === null ? <Link prefetch={false} className={historyLinkClass} href={href(1)}>Open receipt history</Link> :
+      !result ? <p role="alert" className="text-sm">Goods receipt history could not be loaded. <Link prefetch={false} className={historyLinkClass} href={href(page)}>Retry</Link></p> : <>
+        <p role="status" className="text-sm text-muted-foreground">{result.totalCount === 0 ? "No receipts in this branch." :
+          result.rows.length === 0 ? `No receipts on this page. ${result.totalCount} receipts in this branch.` :
+            `Showing ${firstRow}–${firstRow + result.rows.length - 1} of ${result.totalCount} receipts`}</p>
+        <ul className="divide-y">{result.rows.map(row => <li key={row.id} className="space-y-1 py-2 text-sm">
+          <p className="font-medium">{row.label} · {date.format(new Date(row.received_at))}</p>
+          <p>Delivered {row.delivered} · Accepted {row.accepted} · Quarantined {row.quarantined} · Rejected {row.rejected}</p>
+          {(row.lot || row.serial) && <p>{row.lot ? "Lot " + row.lot : "Serial " + row.serial}</p>}
+          {row.accepted_movement && <p>Accepted movement #{row.accepted_movement}</p>}
+          {row.quarantine_movement && <p>Quarantine movement #{row.quarantine_movement}</p>}
+          {row.inspections.map(item => <p key={item.id}>Inspection · {item.quantity} {item.outcome}{item.movement && ` · Movement #${item.movement}`}</p>)}
+          {row.returns.map(item => <p key={item.id}>Physical return {item.reference} · {item.quantity} · Movement #{item.movement}</p>)}
+        </li>)}</ul>
+        {(page > 1 || page < lastPage) && <nav className="flex flex-wrap gap-3 text-sm" aria-label="Goods receipt pages">
+          {page > 1 && <Link prefetch={false} className={historyLinkClass} href={href(1)}>First</Link>}
+          {page > 2 && <Link prefetch={false} className={historyLinkClass} href={href(Math.min(page - 1, lastPage))}>Previous</Link>}
+          {page < lastPage && page < supplyMaxPage && <Link prefetch={false} className={historyLinkClass} href={href(page + 1)}>Next</Link>}
+        </nav>}
+      </>}
+  </section>;
+}
+
+function ProcurementHistory({ data, history }: { data: SupplyWorkspace; history: React.ReactNode }) {
+  return <div className="grid gap-4 xl:grid-cols-2">
     <section className="space-y-3 rounded-lg border bg-card p-4">
       <h2 className="font-semibold">Recent purchase lines</h2>
       {!data.purchases?.length && <p className="text-sm text-muted-foreground">No purchase lines in this branch.</p>}
@@ -24,21 +60,11 @@ function SupplyHistory({ data, kind }: { data: SupplyWorkspace; kind: "inventory
         <p className="text-muted-foreground">Ordered {row.quantity} · Delivered {row.delivered} · Open to receive {row.quantity - row.delivered}</p>
       </li>)}</ul>
     </section>
-    <section className="space-y-3 rounded-lg border bg-card p-4">
-      <h2 className="font-semibold">Goods receipts</h2>
-      {!data.receipts?.length && <p className="text-sm text-muted-foreground">No receipts in this branch.</p>}
-      <ul className="divide-y">{data.receipts?.map(row => <li key={row.id} className="space-y-1 py-2 text-sm">
-        <p className="font-medium">{row.label} · {date.format(new Date(row.received_at))}</p>
-        <p>Delivered {row.delivered} · Accepted {row.accepted} · Quarantined {row.quarantined} · Rejected {row.rejected}</p>
-        {(row.lot || row.serial) && <p>{row.lot ? "Lot " + row.lot : "Serial " + row.serial}</p>}
-        {row.accepted_movement && <p>Accepted movement #{row.accepted_movement}</p>}
-        {row.quarantine_movement && <p>Quarantine movement #{row.quarantine_movement}</p>}
-        {row.inspections.map(item => <p key={item.id}>Inspection · {item.quantity} {item.outcome}{item.movement && ` · Movement #${item.movement}`}</p>)}
-        {row.returns.map(item => <p key={item.id}>Physical return {item.reference} · {item.quantity} · Movement #{item.movement}</p>)}
-      </li>)}</ul>
-    </section>
+    {history}
   </div>;
+}
 
+function InventoryHistory({ data }: { data: SupplyWorkspace }) {
   return <div className="grid gap-4 xl:grid-cols-2">
     <section className="space-y-3 rounded-lg border bg-card p-4">
       <h2 className="font-semibold">Stock layers</h2>
@@ -83,9 +109,12 @@ function SupplyHistory({ data, kind }: { data: SupplyWorkspace; kind: "inventory
   </div>;
 }
 
-export async function SupplyPage({ kind, branch, scope, queueSearch, queuePage }: {
+const pageNumber = (value: string | string[] | undefined) => typeof value === "string" && /^[1-9][0-9]*$/.test(value)
+  ? supplyActionQueuePage.safeParse(Number(value)).data ?? 1 : 1;
+
+export async function SupplyPage({ kind, branch, scope, queueSearch, queuePage, receiptPage }: {
   kind: "inventory" | "procurement"; branch?: string; scope?: string | string[];
-  queueSearch?: string | string[]; queuePage?: string | string[];
+  queueSearch?: string | string[]; queuePage?: string | string[]; receiptPage?: string | string[];
 }) {
   const root = kind === "inventory" ? "/modules/inventory" : "/modules/procurement";
   const name = kind === "inventory" ? "Inventory" : "Procurement";
@@ -102,11 +131,19 @@ export async function SupplyPage({ kind, branch, scope, queueSearch, queuePage }
   const selected = id ? branches?.find(row => row.id === id) : branches?.length === 1 ? branches[0] : undefined;
   const data = selected ? await getSupplyWorkspace(selected.id, kind) : null;
   const search = supplyActionQueueSearch.safeParse(queueSearch).data ?? "";
-  const page = typeof queuePage === "string" && /^[1-9][0-9]*$/.test(queuePage)
-    ? supplyActionQueuePage.safeParse(Number(queuePage)).data ?? 1 : 1;
+  const page = pageNumber(queuePage);
   const queueKind = kind === "inventory" ? "stock-review" : "receiving";
   const capability = kind === "inventory" ? "supply.approve" : "supply.purchase";
-  const queue = data?.rights.includes(capability) ? await getSupplyActionQueue(data.branch, queueKind, search, page) : null;
+  const queueOpen = queueSearch !== undefined || queuePage !== undefined;
+  const historyPage = kind === "procurement" && receiptPage !== undefined ? pageNumber(receiptPage) : null;
+  const [queue, history] = await Promise.all([
+    queueOpen && data?.rights.includes(capability) ? getSupplyActionQueue(data.branch, queueKind, search, page) : null,
+    data && historyPage !== null ? getSupplyReceiptHistory(data.branch, historyPage) : null,
+  ]);
+  const historyFilters = new URLSearchParams({
+    branch: String(data?.branch ?? ""), ...(typeof scope === "string" ? { scope } : {}),
+    ...(queueOpen ? { queueSearch: search, queuePage: String(page) } : {}),
+  });
   return <main className="space-y-4">
     <ERPPageHeader title={name} description={selected ? selected.company + " · " + selected.name : undefined}
       breadcrumbs={[{ label: "Finance & Supply" }, { label: name }]} />
@@ -126,11 +163,13 @@ export async function SupplyPage({ kind, branch, scope, queueSearch, queuePage }
           return <p key={domain} className="text-sm capitalize">{domain} · {policy ? policy.decision + " · " + policy.name : "Awaiting named owner acceptance"}</p>;
         })}
       </section>
-      <SupplyActions key={data.branch} workspace={kind} data={data} queueView={{
-        search, page, result: queue, open: queueSearch !== undefined || queuePage !== undefined,
+      <SupplyActions key={data.branch + ":" + queueOpen} workspace={kind} data={data} queueView={{
+        search, page, result: queue, open: queueOpen,
         scope: typeof scope === "string" ? scope : undefined,
+        receiptPage: historyPage ?? undefined,
       }} />
-      <SupplyHistory data={data} kind={kind} />
+      {kind === "procurement" ? <ProcurementHistory data={data} history={<ReceiptHistory page={historyPage} result={history} filters={historyFilters} />} /> :
+        <InventoryHistory data={data} />}
     </>}
   </main>;
 }

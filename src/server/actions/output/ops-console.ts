@@ -17,7 +17,6 @@
  */
 
 import { z } from "zod";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { canAccessIssuedFile } from "@/lib/output/issued-file-access";
 import { getAuthContext, hasPermission, type AuthContext } from "@/lib/rbac/check";
@@ -46,23 +45,6 @@ async function requireOps(
     return { error: `You do not have the required permission (${permission}).` };
   }
   return { ctx };
-}
-
-/** Company scope for non-global operators. Returns null when unrestricted. */
-async function allowedCompanies(ctx: AuthContext): Promise<Set<number> | null> {
-  if (ctx.roleCodes.includes("system_admin") || ctx.roleCodes.includes("group_admin")) return null;
-  const db = await createClient();
-  const { data } = await db
-    .from("user_roles")
-    .select("owner_company_id")
-    .eq("user_profile_id", ctx.profile?.id ?? 0)
-    .eq("is_active", true)
-    .not("owner_company_id", "is", null);
-  return new Set(
-    (data ?? [])
-      .map((r: { owner_company_id: number | null }) => r.owner_company_id)
-      .filter((id): id is number => id !== null)
-  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -110,6 +92,8 @@ export interface OpsIssuanceRow {
   /** ms from generation to issue (null while in flight / failed). */
   total_duration_ms: number | null;
   qr_status: string | null;
+  canRetry: boolean;
+  canRevoke: boolean;
 }
 
 export interface OpsIssuanceList {
@@ -122,74 +106,31 @@ export interface OpsIssuanceList {
 export async function listOpsIssuances(input: OpsListFilters): Promise<ActionResult<OpsIssuanceList>> {
   const gate = await requireOps("outputs.ops.view");
   if ("error" in gate) return { success: false, error: gate.error };
-  const { ctx } = gate;
+  const parsed = listFiltersSchema.safeParse(input ?? {});
+  if (!parsed.success) return { success: false, error: "Invalid issuance filters." };
 
-  const f = listFiltersSchema.parse(input ?? {});
-  const db = await createClient();
-
-  let q = db
-    .from("erp_generated_pdf_documents")
-    .select(
-      "id, output_code, template_key, document_class, lifecycle_state, serial_no, serial_status, owner_company_id, source_record_type, source_record_id, file_name, file_size_bytes, renderer, renderer_version, generated_by, generated_at, issued_at, failed_at, cancelled_at, revoked_at, superseded_by_id, failure_reason",
-      { count: "exact" }
-    );
-
-  const companies = await allowedCompanies(ctx);
-  if (companies !== null) {
-    if (companies.size === 0) return { success: true, data: { rows: [], total: 0, canRetry: false, canRevoke: false } };
-    q = q.in("owner_company_id", [...companies]);
-  }
-  if (f.lifecycleState) q = q.eq("lifecycle_state", f.lifecycleState);
-  if (f.documentClass) q = q.eq("document_class", f.documentClass);
-  if (f.outputCode) q = q.eq("output_code", f.outputCode);
-  if (f.ownerCompanyId != null) q = q.eq("owner_company_id", f.ownerCompanyId);
-  if (f.renderer) q = q.eq("renderer", f.renderer);
-  if (f.generatedBy != null) q = q.eq("generated_by", f.generatedBy);
-  if (f.dateFrom) q = q.gte("generated_at", f.dateFrom);
-  if (f.dateTo) q = q.lte("generated_at", f.dateTo);
-  if (f.search) {
-    // Strip only % (wildcard) and PostgREST or() delimiters; keep _ because it is
-    // ubiquitous in output codes and serials (it matching any-one-char is harmless).
-    const s = f.search.replace(/[%,()]/g, "").trim();
-    if (s) q = q.or(`serial_no.ilike.%${s}%,file_name.ilike.%${s}%,output_code.ilike.%${s}%`);
-  }
-
-  const { data, error, count } = await q
-    .order("generated_at", { ascending: false })
-    .range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
-  if (error) return { success: false, error: error.message };
-
-  // QR status per row (single query, no N+1).
-  const ids = (data ?? []).map((r) => r.id as number);
-  const qrByDoc = new Map<number, string>();
-  if (ids.length > 0) {
-    const { data: links } = await db
-      .from("erp_output_public_links")
-      .select("generated_pdf_document_id, status")
-      .in("generated_pdf_document_id", ids);
-    for (const l of links ?? []) {
-      qrByDoc.set(l.generated_pdf_document_id as number, l.status as string);
+  try {
+    const { search, ...filters } = parsed.data;
+    const sanitizedSearch = search?.replace(/[%,()]/g, "").trim();
+    const { data, error } = await (await createClient()).rpc("speed_output_ops_read", {
+      p_mode: "list", p_input: { ...filters, ...(sanitizedSearch ? { search: sanitizedSearch } : {}) },
+    });
+    const result = data as Pick<OpsIssuanceList, "rows" | "total"> | null;
+    if (error || !result || !Array.isArray(result.rows) || result.rows.length > filters.pageSize ||
+        !Number.isSafeInteger(result.total) || result.total < result.rows.length) {
+      return { success: false, error: "Issuance history could not be verified." };
     }
+    return {
+      success: true,
+      data: {
+        ...result,
+        canRetry: hasPermission(gate.ctx, "outputs.ops.retry"),
+        canRevoke: hasPermission(gate.ctx, "outputs.ops.revoke"),
+      },
+    };
+  } catch {
+    return { success: false, error: "Issuance history could not be verified." };
   }
-
-  const rows: OpsIssuanceRow[] = (data ?? []).map((r) => ({
-    ...(r as unknown as Omit<OpsIssuanceRow, "total_duration_ms" | "qr_status">),
-    total_duration_ms:
-      r.issued_at && r.generated_at
-        ? new Date(r.issued_at as string).getTime() - new Date(r.generated_at as string).getTime()
-        : null,
-    qr_status: qrByDoc.get(r.id as number) ?? null,
-  }));
-
-  return {
-    success: true,
-    data: {
-      rows,
-      total: count ?? rows.length,
-      canRetry: hasPermission(ctx, "outputs.ops.retry"),
-      canRevoke: hasPermission(ctx, "outputs.ops.revoke"),
-    },
-  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -240,50 +181,37 @@ export interface OpsIssuanceDetail extends OpsIssuanceRow {
 export async function getOpsIssuanceDetail(issuanceId: number): Promise<ActionResult<OpsIssuanceDetail>> {
   const gate = await requireOps("outputs.ops.view");
   if ("error" in gate) return { success: false, error: gate.error };
-  const { ctx } = gate;
+  const denied = { success: false, error: "Issuance not found or access denied." };
+  if (!Number.isSafeInteger(issuanceId) || issuanceId <= 0) return denied;
 
-  const db = await createClient();
-  const { data: r, error } = await db
-    .from("erp_generated_pdf_documents")
-    .select("*")
-    .eq("id", issuanceId)
-    .single();
-  if (error || !r) return { success: false, error: "Issuance not found." };
+  try {
+    const { data, error } = await (await createClient()).rpc("speed_output_ops_read", {
+      p_mode: "detail", p_input: { id: issuanceId },
+    });
+    const detail = data as Omit<OpsIssuanceDetail, "stage_durations_ms"> | null;
+    if (error || detail?.id !== issuanceId || !Array.isArray(detail.qr_links)) return denied;
 
-  const companies = await allowedCompanies(ctx);
-  if (companies !== null && !companies.has(r.owner_company_id as number)) {
-    return { success: false, error: "You do not have access to this issuance's company." };
+    const stamp = (v: string | null) => v ? new Date(v).getTime() : null;
+    const generated = stamp(detail.generated_at), rendering = stamp(detail.rendering_started_at);
+    const uploaded = stamp(detail.uploaded_at), issued = stamp(detail.issued_at);
+    const elapsed = (start: number | null, end: number | null) =>
+      start != null && end != null ? Math.max(0, end - start) : null;
+
+    return {
+      success: true,
+      data: {
+        ...detail,
+        stage_durations_ms: {
+          queue: elapsed(generated, rendering),
+          render: elapsed(rendering, uploaded),
+          upload_finalize: elapsed(uploaded, issued),
+          total: elapsed(generated, issued),
+        },
+      },
+    };
+  } catch {
+    return denied;
   }
-
-  const { data: links } = await db
-    .from("erp_output_public_links")
-    .select("id, status, issued_at, expires_at, cancelled_at, cancel_reason, view_count")
-    .eq("generated_pdf_document_id", issuanceId)
-    .order("id");
-
-  const t = (v: string | null) => (v ? new Date(v).getTime() : null);
-  const g = t(r.generated_at), rs = t(r.rendering_started_at), up = t(r.uploaded_at), is = t(r.issued_at);
-
-  // Content-adjacent data (the rendered variable values) requires document-level rights.
-  const mayViewContent = hasPermission(ctx, "reports.view") || hasPermission(ctx, "reports.manage");
-
-  const detail: OpsIssuanceDetail = {
-    ...(r as unknown as Omit<OpsIssuanceDetail, "qr_links" | "stage_durations_ms" | "total_duration_ms" | "qr_status" | "data_snapshot_json" | "data_snapshot_hidden">),
-    data_snapshot_json: mayViewContent ? r.data_snapshot_json : null,
-    data_snapshot_hidden: !mayViewContent && r.data_snapshot_json != null,
-    total_duration_ms: g != null && is != null ? is - g : null,
-    qr_status: (links ?? [])[0]?.status ?? null,
-    qr_links: (links ?? []) as OpsIssuanceDetail["qr_links"],
-    // Clamped at 0: generated_at is a DB default while stage stamps are set by the
-    // app, so sub-second clock skew can otherwise produce small negative values.
-    stage_durations_ms: {
-      queue: g != null && rs != null ? Math.max(0, rs - g) : null,
-      render: rs != null && up != null ? Math.max(0, up - rs) : null,
-      upload_finalize: up != null && is != null ? Math.max(0, is - up) : null,
-      total: g != null && is != null ? Math.max(0, is - g) : null,
-    },
-  };
-  return { success: true, data: detail };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -308,23 +236,18 @@ export async function retryOpsIssuance(
 ): Promise<ActionResult<{ outcome: GenerateOfficialDocumentOutcome }>> {
   const gate = await requireOps("outputs.ops.retry");
   if ("error" in gate) return { success: false, error: gate.error };
-  const { ctx } = gate;
-
   const parsed = retrySchema.safeParse(input);
   if (!parsed.success) return { success: false, error: "A retry reason (min 5 characters) is required." };
+  if (!(await canAccessIssuedFile(parsed.data.issuanceId, "outputs.ops.retry"))) return { success: false, error: "Original request unavailable or access denied." };
 
   const db = await createClient();
   const { data: row, error } = await db
     .from("erp_generated_pdf_documents")
-    .select("id, output_code, source_record_type, source_record_id, template_id, owner_company_id, lifecycle_state, serial_no")
+    .select("id, output_code, lifecycle_state")
     .eq("id", parsed.data.issuanceId)
     .single();
   if (error || !row) return { success: false, error: "Issuance not found." };
 
-  const companies = await allowedCompanies(ctx);
-  if (companies !== null && !companies.has(row.owner_company_id as number)) {
-    return { success: false, error: "You do not have access to this issuance's company." };
-  }
   if (!["pending", "rendering", "uploaded", "failed_retryable", "reconciliation_required", "issued"].includes(String(row.lifecycle_state))) {
     return { success: false, error: "Only an interrupted original or issued verification activation can be recovered." };
   }
@@ -332,7 +255,6 @@ export async function retryOpsIssuance(
     return { success: false, error: "Legacy issuances without an output code cannot be retried here." };
   }
 
-  if (!(await canAccessIssuedFile(row.id as number, "outputs.ops.retry"))) return { success: false, error: "Original request unavailable or access denied." };
   try { await logAudit({ module_code: "reports", entity_name: "erp_generated_pdf_documents", entity_id: row.id, entity_reference: String(row.output_code ?? row.id), action: "update", new_values: { event: "output_recovery_requested", reason: parsed.data.reason } }); }
   catch { return { success: false, error: "Recovery request audit was not recorded. No replacement was created." }; }
   const outcome = await recoverOfficialDocument(row.id as number);
@@ -352,28 +274,22 @@ const cancelSchema = z.object({
 export async function cancelOpsIssuance(input: z.infer<typeof cancelSchema>): Promise<ActionResult> {
   const gate = await requireOps("outputs.ops.retry");
   if ("error" in gate) return { success: false, error: gate.error };
-  const { ctx } = gate;
-
   const parsed = cancelSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: "A cancel reason (min 5 characters) is required." };
+  if (!(await canAccessIssuedFile(parsed.data.issuanceId, "outputs.ops.retry"))) return { success: false, error: "Original request unavailable or access denied." };
 
   const db = await createClient();
   const { data: row, error } = await db
     .from("erp_generated_pdf_documents")
-    .select("id, output_code, owner_company_id, lifecycle_state, serial_no")
+    .select("id, lifecycle_state")
     .eq("id", parsed.data.issuanceId)
     .single();
   if (error || !row) return { success: false, error: "Issuance not found." };
 
-  const companies = await allowedCompanies(ctx);
-  if (companies !== null && !companies.has(row.owner_company_id as number)) {
-    return { success: false, error: "You do not have access to this issuance's company." };
-  }
   if (row.lifecycle_state !== "cancelled" && !canTransition(row.lifecycle_state as LifecycleState, "cancelled")) {
     return { success: false, error: `A ${row.lifecycle_state} issuance cannot be cancelled.` };
   }
 
-  if (!(await canAccessIssuedFile(row.id as number, "outputs.ops.retry"))) return { success: false, error: "Original request unavailable or access denied." };
   const cancelled = await db.rpc("f08_end_operation", { p_id: row.id, p_lease: null, p_cancel: true, p_reason: parsed.data.reason });
   if (cancelled.error || cancelled.data?.id !== row.id) return { success: false, error: "Cancellation was not confirmed. Refresh the original request; no replacement was created." };
   return { success: true };
@@ -383,111 +299,39 @@ export async function cancelOpsIssuance(input: z.infer<typeof cancelSchema>): Pr
 // Metrics + reconciliation queue
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface OpsMetrics {
-  stateCounts: Record<string, number>;
-  issuedLast24h: number;
-  failedLast24h: number;
-  avgRenderMsLast24h: number | null;
-  rendererHealthy: boolean;
-  /** In-flight rows stuck longer than 15 minutes (candidates for reconciliation). */
-  stuckInFlight: Array<{ id: number; output_code: string | null; lifecycle_state: string | null; generated_at: string }>;
-  reconciliationRequired: Array<{ id: number; output_code: string | null; failure_reason: string | null; generated_at: string }>;
-  voidedSerials: number;
-  /** OUTPUT.7 schedules worker visibility (global — worker runs are not company-scoped rows). */
-  scheduleRuns: {
-    retryable: number;
-    terminal: number;
-    succeededLast24h: number;
-    terminalRecent: Array<{ id: number; schedule_id: number; failure_reason: string | null; finished_at: string | null }>;
-  };
-}
+const metricCount = z.number().int().nonnegative();
+const metricRow = z.object({
+  id: z.number().int().positive(),
+  output_code: z.string().nullable(),
+  generated_at: z.string(),
+});
+const opsMetricsSchema = z.object({
+  stateCounts: z.record(z.string(), metricCount),
+  issuedLast24h: metricCount,
+  failedLast24h: metricCount,
+  avgRenderMsLast24h: z.number().nullable(),
+  voidedSerials: metricCount,
+  stuckCount: metricCount,
+  stuckInFlight: z.array(metricRow.extend({ lifecycle_state: z.string().nullable() })).max(20),
+  reconciliationCount: metricCount,
+  reconciliationRequired: z.array(metricRow.extend({ failure_reason: z.string().nullable() })).max(20),
+  scheduleRuns: z.null(),
+});
+
+export type OpsMetrics = z.infer<typeof opsMetricsSchema> & { rendererHealthy: boolean };
 
 export async function getOpsMetrics(): Promise<ActionResult<OpsMetrics>> {
   const gate = await requireOps("outputs.ops.view");
   if ("error" in gate) return { success: false, error: gate.error };
-  const { ctx } = gate;
+  const unavailable = { success: false, error: "Output operations metrics could not be verified." };
 
-  const db = await createClient();
-  const companies = await allowedCompanies(ctx);
-
-  let base = db.from("erp_generated_pdf_documents").select("lifecycle_state, generated_at, issued_at, rendering_started_at, uploaded_at, serial_status, id, output_code, failure_reason");
-  if (companies !== null) {
-    if (companies.size === 0) {
-      return {
-        success: true,
-        data: {
-          stateCounts: {}, issuedLast24h: 0, failedLast24h: 0, avgRenderMsLast24h: null,
-          rendererHealthy: await isGotenbergHealthy(), stuckInFlight: [], reconciliationRequired: [], voidedSerials: 0,
-          scheduleRuns: await getScheduleRunsSummary(db),
-        },
-      };
-    }
-    base = base.in("owner_company_id", [...companies]);
+  try {
+    const { data, error } = await (await createClient()).rpc("speed_output_ops_read", { p_mode: "metrics", p_input: {} });
+    const result = opsMetricsSchema.safeParse(data);
+    if (error || !result.success) return unavailable;
+    const rendererHealthy = await isGotenbergHealthy().catch(() => false);
+    return { success: true, data: { ...result.data, rendererHealthy } };
+  } catch {
+    return unavailable;
   }
-  const { data, error } = await base.order("generated_at", { ascending: false }).limit(2000);
-  if (error) return { success: false, error: error.message };
-
-  const rows = data ?? [];
-  const stateCounts: Record<string, number> = {};
-  const dayAgo = Date.now() - 24 * 3600 * 1000;
-  let issued24 = 0, failed24 = 0, renderSum = 0, renderN = 0, voided = 0;
-  const stuck: OpsMetrics["stuckInFlight"] = [];
-  const recon: OpsMetrics["reconciliationRequired"] = [];
-
-  for (const r of rows) {
-    const st = (r.lifecycle_state as string) ?? "unknown";
-    stateCounts[st] = (stateCounts[st] ?? 0) + 1;
-    const gen = new Date(r.generated_at as string).getTime();
-    if (st === "issued" && gen >= dayAgo) issued24++;
-    if ((st === "failed_retryable" || st === "failed_terminal") && gen >= dayAgo) failed24++;
-    if (r.serial_status === "voided") voided++;
-    if (st === "issued" && gen >= dayAgo && r.rendering_started_at && r.uploaded_at) {
-      renderSum += new Date(r.uploaded_at as string).getTime() - new Date(r.rendering_started_at as string).getTime();
-      renderN++;
-    }
-    if ((st === "pending" || st === "rendering" || st === "uploaded") && Date.now() - gen > 15 * 60 * 1000) {
-      stuck.push({ id: r.id as number, output_code: r.output_code, lifecycle_state: st, generated_at: r.generated_at as string });
-    }
-    if (st === "reconciliation_required") {
-      recon.push({ id: r.id as number, output_code: r.output_code, failure_reason: r.failure_reason, generated_at: r.generated_at as string });
-    }
-  }
-
-  return {
-    success: true,
-    data: {
-      stateCounts,
-      issuedLast24h: issued24,
-      failedLast24h: failed24,
-      avgRenderMsLast24h: renderN > 0 ? Math.round(renderSum / renderN) : null,
-      rendererHealthy: await isGotenbergHealthy(),
-      stuckInFlight: stuck.slice(0, 20),
-      reconciliationRequired: recon.slice(0, 20),
-      voidedSerials: voided,
-      scheduleRuns: await getScheduleRunsSummary(db),
-    },
-  };
-}
-
-/** OUTPUT.7 — schedules worker run summary for the Ops Console. */
-async function getScheduleRunsSummary(
-  db: ReturnType<typeof createAdminClient>
-): Promise<OpsMetrics["scheduleRuns"]> {
-  const dayAgoIso = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-  const [retryable, terminal, succeeded24, terminalRecent] = await Promise.all([
-    db.from("erp_report_schedule_runs").select("id", { count: "exact", head: true }).eq("status", "failed_retryable"),
-    db.from("erp_report_schedule_runs").select("id", { count: "exact", head: true }).eq("status", "failed_terminal"),
-    db.from("erp_report_schedule_runs").select("id", { count: "exact", head: true }).eq("status", "succeeded").gte("finished_at", dayAgoIso),
-    db.from("erp_report_schedule_runs")
-      .select("id, schedule_id, failure_reason, finished_at")
-      .eq("status", "failed_terminal")
-      .order("finished_at", { ascending: false })
-      .limit(10),
-  ]);
-  return {
-    retryable: retryable.count ?? 0,
-    terminal: terminal.count ?? 0,
-    succeededLast24h: succeeded24.count ?? 0,
-    terminalRecent: (terminalRecent.data ?? []) as OpsMetrics["scheduleRuns"]["terminalRecent"],
-  };
 }

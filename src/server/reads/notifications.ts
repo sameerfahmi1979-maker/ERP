@@ -5,7 +5,7 @@ import {canUseApplication,hasGlobalPermission} from "@/lib/rbac/scope";
 import {createClient} from "@/lib/supabase/server";
 import {literalContains, literalLike} from "@/lib/reads/search";
 import {isInternalActionUrlAllowed} from "@/lib/security/action-url";
-import {notificationCriteriaSchema, notificationPageSchema, unreadCountSchema} from "@/lib/reads/notifications-schema";
+import {notificationCriteriaSchema, notificationPageSchema, notificationPreviewSchema, unreadCountSchema} from "@/lib/reads/notifications-schema";
 const fields = ["id", "notification_code", "source_module", "source_entity_type", "source_entity_id", "notification_type", "severity", "title", "message",
   "recipient_user_id", "recipient_role_code", "recipient_email", "channel_in_app", "channel_email", "status", "scheduled_for", "read_at", "dismissed_at", "archived_at", "action_url", "action_label", "created_at", "updated_at"] as const;
 const sortColumns = {id: "id", title: "title", severity: "severity", sourceModule: "source_module", status: "status", createdAt: "created_at", recipientEmail: "recipient_email"} as const;
@@ -57,4 +57,54 @@ export async function readUnreadNotificationCount(context?: AuthContext, signal?
     if (result.error) throw Error("Unavailable count");
     return {success: true as const, data: unreadCountSchema.parse({count: result.count})};
   } catch {signal?.throwIfAborted(); return {success: false as const, error: "Unread count could not be verified. Please retry."};}
+}
+
+/** The separately authorized count supplies the badge total; the preview needs only a bounded page. */
+export async function readUnreadNotificationPreview(context?: AuthContext, signal?: AbortSignal) {
+  try {
+    signal?.throwIfAborted();
+    const ctx = context ?? await getAuthContext();
+    signal?.throwIfAborted();
+    if (!canUseApplication(ctx) || !ctx.profile) {
+      return {success: false as const, error: "Permission denied"};
+    }
+    const db = await createClient();
+    signal?.throwIfAborted();
+    const due = new Date().toISOString();
+    const query = db.from("erp_notifications")
+      .select("id,title,message,severity,created_at,action_url,action_label,recipient_user_id,status,channel_in_app,scheduled_for")
+      .eq("recipient_user_id", ctx.profile.id)
+      .eq("status", "unread")
+      .eq("channel_in_app", true)
+      .lte("scheduled_for", due)
+      .is("deleted_at", null)
+      .order("created_at", {ascending: false, nullsFirst: false})
+      .order("id", {ascending: true})
+      .range(0,9);
+    const result = await (signal ? query.abortSignal(signal) : query);
+    signal?.throwIfAborted();
+    const rows = result.data;
+    if (result.error || !Array.isArray(rows) || rows.some(row =>
+      row.recipient_user_id !== ctx.profile!.id || row.status !== "unread" ||
+      row.channel_in_app !== true || !Number.isFinite(Date.parse(row.scheduled_for)) ||
+      Date.parse(row.scheduled_for) > Date.parse(due),
+    )) {
+      throw Error("Unverified preview");
+    }
+    const data = notificationPreviewSchema.parse({
+      rows: rows.map(row => ({
+        id: row.id,
+        title: row.title,
+        message: row.message,
+        severity: row.severity,
+        createdAt: row.created_at,
+        actionUrl: isInternalActionUrlAllowed(row.action_url) ? row.action_url : null,
+        actionLabel: row.action_label,
+      })),
+    });
+    return {success: true as const, data};
+  } catch {
+    signal?.throwIfAborted();
+    return {success: false as const, error: "Notification preview could not be verified. Please retry."};
+  }
 }

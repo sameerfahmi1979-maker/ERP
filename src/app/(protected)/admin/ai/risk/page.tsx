@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission } from "@/lib/rbac/check";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { RiskScoresPageClient } from "@/features/ai/common/risk-scoring";
 import { getRiskScoreSummary } from "@/server/actions/ai/common/risk-scoring";
@@ -19,9 +19,8 @@ type PageProps = {
 export default async function AiRiskPage({ searchParams }: PageProps) {
   const ctx = await getAuthContext();
   const canView =
-    hasPermission(ctx, "ai.risk.view") ||
-    hasPermission(ctx, "ai.common.admin") ||
-    ctx.roleCodes.includes("system_admin");
+    hasGlobalPermission(ctx, "ai.risk.view") ||
+    hasGlobalPermission(ctx, "ai.common.admin");
 
   if (!canView) {
     redirect("/access-denied");
@@ -30,11 +29,11 @@ export default async function AiRiskPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const summaryResult = await getRiskScoreSummary();
   const defaultSummary = {
-    critical: 0,
-    high: 0,
-    stale: 0,
-    unreviewed: 0,
-    featureEnabled: false,
+    critical: null,
+    high: null,
+    stale: null,
+    unreviewed: null,
+    featureEnabled: null,
   };
 
   const entityId = params.entityId ? Number(params.entityId) : undefined;

@@ -6,6 +6,7 @@ type ReadResult = { data: unknown; error: unknown; count?: number | null };
 type ReadQuery = PromiseLike<ReadResult> & {
   order: (column: string) => ReadQuery;
   range: (from: number, to: number) => ReadQuery;
+  setHeader?: (name: string, value: string) => ReadQuery;
 };
 
 /** Preserve the already-scoped query and every caller filter on each page.
@@ -14,7 +15,7 @@ type ReadQuery = PromiseLike<ReadResult> & {
  * Counts changing during the read fail closed. The report facade checks source
  * revisions across collection before relying on any materialized pages.
  */
-export function completeReportRead<T extends object>(query: T): T {
+export function completeReportRead<T extends object>(query: T, { generationFenced = false } = {}): T {
   const state = { one: false, singular: false };
   const wrap = (target: object): object => new Proxy(target, {
     get(value, key, receiver) {
@@ -25,17 +26,23 @@ export function completeReportRead<T extends object>(query: T): T {
             if (result.error) throw new Error("Report data could not be read. No partial report was produced.");
             return result;
           }
-          const paged = (value as ReadQuery).order("id");
+          let paged = (value as ReadQuery).order("id");
+          const countOnce = generationFenced && typeof paged.setHeader === "function";
           const rows: unknown[] = [];
           let total: number | undefined;
           for (let offset = 0; ; offset += REPORT_READ_PAGE_SIZE) {
+            // A generation-fenced caller rechecks every source and its scope before
+            // releasing results. The initial exact count still sets the hard bound.
+            if (countOnce && offset === REPORT_READ_PAGE_SIZE) paged = paged.setHeader!("Prefer", "");
             const result = await paged.range(offset, offset + REPORT_READ_PAGE_SIZE - 1);
-            if (result.error || !Array.isArray(result.data) || !Number.isSafeInteger(result.count) || result.count! < 0) {
+            const expectsCount = !countOnce || total === undefined;
+            if (result.error || !Array.isArray(result.data) ||
+                (expectsCount && (!Number.isSafeInteger(result.count) || result.count! < 0))) {
               throw new Error("Report completeness could not be verified. No partial report was produced.");
             }
-            if (result.count! > REPORT_READ_MAX_ROWS) throw new Error("This report exceeds the 20,000-row safe export limit. Narrow the filters; no partial report was produced.");
             total ??= result.count!;
-            if (result.count !== total || result.data.length > REPORT_READ_PAGE_SIZE || rows.length + result.data.length > total) {
+            if (total > REPORT_READ_MAX_ROWS) throw new Error("This report exceeds the 20,000-row safe export limit. Narrow the filters; no partial report was produced.");
+            if ((result.count != null && result.count !== total) || result.data.length > REPORT_READ_PAGE_SIZE || rows.length + result.data.length > total) {
               throw new Error("Report data changed during collection. Run it again; no partial report was produced.");
             }
             rows.push(...result.data);

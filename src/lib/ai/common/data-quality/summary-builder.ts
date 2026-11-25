@@ -9,17 +9,24 @@ import { buildEntityLink } from './route-links';
 export async function buildDataQualitySummary(): Promise<DataQualitySummary> {
   const supabase = createAdminClient();
 
-  const { data: openFindings } = await supabase
+  const sampleLimit = 500;
+  const { data: openFindings, count, error } = await supabase
     .from('erp_ai_data_quality_findings')
     .select(
-      'id, finding_key, entity_type, entity_id, rule_code, rule_category, severity, status, title, description, recommendation, safe_evidence_json, detected_at, last_seen_at, resolved_at, resolved_by, reviewed_at, reviewed_by, created_at, updated_at, source_table, source_field'
+      'id, finding_key, entity_type, entity_id, rule_code, rule_category, severity, status, title, description, recommendation, safe_evidence_json, detected_at, last_seen_at, resolved_at, resolved_by, reviewed_at, reviewed_by, created_at, updated_at, source_table, source_field',
+      { count: 'exact' },
     )
     .in('status', ['open', 'reviewed'])
     .is('deleted_at', null)
     .order('detected_at', { ascending: false })
-    .limit(500);
+    .order('id', { ascending: false })
+    .limit(sampleLimit);
 
-  const allFindings: DataQualityFinding[] = (openFindings ?? []).map((f) => ({
+  if (error || count === null || !Number.isSafeInteger(count) || count < 0 ||
+      !Array.isArray(openFindings) || openFindings.length !== Math.min(count, sampleLimit)) {
+    throw Error('Data quality summary could not be completely loaded.');
+  }
+  const allFindings: DataQualityFinding[] = openFindings.map((f) => ({
     ...f,
     source_link: buildEntityLink(f.entity_type, f.entity_id),
   })) as DataQualityFinding[];
@@ -53,6 +60,8 @@ export async function buildDataQualitySummary(): Promise<DataQualitySummary> {
     .maybeSingle();
 
   return {
+    sample_count: allFindings.length,
+    matching_count: count,
     total_open: totalOpen,
     total_reviewed: totalReviewed,
     total_by_severity: bySeverity,

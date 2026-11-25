@@ -26,7 +26,7 @@ export default async function JobWorkDetail({ params }: { params: Promise<{ id: 
       Assessment, job history and technical QC
     </Link>}
     {labour && <JobLabour data={labour} />}
-    {material && <WorkshopMaterial job={id} />}
+    {material && <WorkshopMaterial workspace={material} />}
     {outside && <JobOutside data={outside} />}
   </main>;
 }

@@ -1,3 +1,4 @@
+import { LoadError } from "@/components/erp/load-error";
 import { getAuthContext, hasPermission } from "@/lib/rbac/check";
 import { listUserScopeOptions } from "@/server/queries/user-scope-options";
 import { listRoles } from "@/server/queries/roles";
@@ -18,10 +19,12 @@ export default async function NewUserRecordPage() {
     );
   }
 
-  const [{ companies, branches }, roles] = await Promise.all([
-    listUserScopeOptions(),
-    listRoles(),
+  const [scopeOptions, roles] = await Promise.all([
+    listUserScopeOptions().catch(() => null),
+    listRoles().catch(() => null),
   ]);
+  if (!scopeOptions || !roles) return <LoadError title="New user role and scope choices" retryHref="/admin/users/record/new" />;
+  const { companies, branches } = scopeOptions;
 
   return (
     <UserWorkspaceForm

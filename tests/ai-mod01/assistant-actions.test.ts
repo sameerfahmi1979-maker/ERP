@@ -1,14 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ ctx: {} as Record<string, unknown>, session: {} as Record<string, unknown>, messages: [] as Record<string, unknown>[], drafts: [] as Record<string, unknown>[], tableErrors: {} as Record<string, unknown>, calls: [] as Array<[string, string, ...unknown[]]>, engine: vi.fn(), binding: vi.fn() }));
 vi.mock("nanoid", () => ({ nanoid: () => "SYNTHETIC-SESSION" }));
-// These history regression cases model the older deployed database. Installed
-// AI05 admission/replay/failure behavior is covered by ai-mod05 tests/native SQL.
-vi.mock('@/server/ai/quality-turn',()=>({beginQualityTurn:async()=>null,finishQualityTurn:async()=>true}));
+vi.mock('@/server/ai/quality-turn',()=>({beginQualityTurn:async()=>({requestId:"synthetic-request",hash:"a".repeat(64),authorityHash:"b".repeat(64)})}));
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({
+  rpc: async (name: string, args: Record<string, unknown>) => {
+    state.calls.push([name, "rpc", args]);
+    return { data: 99, error: state.tableErrors.erp_ai_assistant_messages ?? null };
+  },
+}) }));
 vi.mock("@/lib/rbac/check", () => ({ getAuthContext: async () => state.ctx, hasPermission: (ctx: { permissionCodes: string[] }, code: string) => ctx.permissionCodes.includes(code) }));
 vi.mock("@/server/actions/audit", () => ({ logAudit: async () => {} }));
 vi.mock("@/lib/ai/common/assistant/assistant-engine", () => ({ MAX_USER_MESSAGE_LENGTH: 1000, runAssistantTurn: state.engine }));
 vi.mock("@/lib/ai/common/assistant/entity-access", () => ({ normalizeAssistantReference: (entityType: string, entityId: number) => ({ entityType, entityId }), readAuthorizedAssistantEntity: async () => ({ label: "SYNTHETIC", version: "v1" }) }));
-vi.mock("@/lib/ai/common/assistant/history-access", () => ({ HISTORY_WITHHELD: "SOURCE WITHHELD", verifyAssistantSessionNow: async () => {}, createAssistantHistoryBinding: state.binding, createAssistantHistoryVerifier: () => async (raw: { current?: boolean }) => raw?.current === true }));
+vi.mock("@/lib/ai/common/assistant/history-access", () => ({
+  HISTORY_WITHHELD: "SOURCE WITHHELD",
+  verifyAssistantSessionNow: async () => {},
+  hasSameAssistantAuthority: () => true,
+  createAssistantHistoryBinding: state.binding,
+  createAssistantHistoryVerifier: () => async (raw: { current?: boolean }) => raw?.current === true,
+  verifyAssistantHistoryPage: async (_ctx: unknown, _id: number, _db: unknown, bindings: Array<{ current?: boolean }>) =>
+    bindings.map(raw => raw?.current === true),
+}));
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ from(table: string) {
   const rows = () => table === "erp_ai_assistant_messages" ? state.messages : table === "erp_ai_assistant_action_drafts" ? state.drafts : [state.session];
   let operation = "read";
@@ -67,11 +79,11 @@ describe("Assistant server-action history/caller adoption", () => {
   it("does not run a model on another owner's session", async () => { state.session.owner_user_profile_id = 12; expect((await sendAssistantMessage({ sessionId: 7, userMessage: "SYNTHETIC" })).success).toBe(false); expect(state.engine).not.toHaveBeenCalled(); });
   it("saves the prompt/answer pair together with current binding", async () => {
     const r = await sendAssistantMessage({ sessionId: 7, userMessage: "SYNTHETIC" }); expect(r.success).toBe(true);
-    const saved = state.calls.find(c => c[0] === "erp_ai_assistant_messages" && c[1] === "insert")![2] as Array<Record<string, unknown>>;
-    expect(saved).toHaveLength(2); expect(saved.map(x => x.role)).toEqual(["user", "assistant"]); expect((saved[0].safe_metadata_json as Record<string, unknown>).ai_mod01_binding).toEqual({ current: true });
+    const saved = state.calls.find(c => c[0] === "erp_publish_assistant_turn")![2];
+    expect(saved).toMatchObject({p_prompt:"SYNTHETIC",p_answer:"SYNTHETIC",p_binding:{current:true},p_meta:{ai_mod01_binding:{current:true}}});
   });
   it("does not claim the history was saved when the write is unconfirmed", async () => { state.tableErrors.erp_ai_assistant_messages = {}; const r = await sendAssistantMessage({ sessionId: 7, userMessage: "SYNTHETIC" }); expect(r.code).toBe("HISTORY_UNCONFIRMED"); expect(state.engine).toHaveBeenCalledTimes(1); });
-  it("does not serialize replay-unsafe composite responses as verified history", async () => { state.engine.mockResolvedValue({ responseText: "SYNTHETIC", outputType: "text", historyReplayAllowed: false, safeAuditMeta: {} }); await sendAssistantMessage({ sessionId: 7, userMessage: "SYNTHETIC" }); const pair = state.calls.find(c => c[0] === "erp_ai_assistant_messages" && c[1] === "insert")![2] as Array<Record<string, unknown>>; expect((pair[1].safe_metadata_json as Record<string, unknown>).ai_mod01_binding).toBe(null); });
+  it("does not serialize replay-unsafe composite responses as verified history", async () => { state.engine.mockResolvedValue({ responseText: "SYNTHETIC", outputType: "text", historyReplayAllowed: false, safeAuditMeta: {} }); await sendAssistantMessage({ sessionId: 7, userMessage: "SYNTHETIC" }); const saved = state.calls.find(c => c[0] === "erp_publish_assistant_turn")![2]; expect(saved).toMatchObject({p_binding:{current:true},p_meta:{ai_mod01_binding:null}}); });
   it("rejects one-sided context and inactive/password-held administrators", async () => {
     expect((await startAssistantSession({ contextEntityId: 7 })).success).toBe(false);
     state.ctx.isAccountActive = false; expect((await getAssistantSession(7)).success).toBe(false);

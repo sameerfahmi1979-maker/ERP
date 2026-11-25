@@ -7,13 +7,14 @@ import {
   payrollSettlementPath, payrollSettlementQuery, type PayrollSettlementResult,
   type PayrollSettlementReview, type PayrollSettlementScope, type PayrollSettlementWorkspaceData,
 } from "@/lib/hr/payroll/settlement-contract";
-import { listPayrollSettlementScopes, readPayrollSettlement } from "@/server/actions/hr/payroll-settlement";
+import { listPayrollSettlementScopes, readPayrollBankHistory, readPayrollSettlement } from "@/server/actions/hr/payroll-settlement";
 import { AllocationForm, HandoffForm, PrepareFiles, RecordPaymentForm, ReversePaymentForm } from "./payroll-settlement-forms";
 
 type Params = Record<string, string | string[] | undefined>;
 type Selection = { scope: PayrollSettlementScope; month: string; review?: string; employee?: number; after?: number };
 type Batch = NonNullable<PayrollSettlementReview["batch"]>;
 type Access = PayrollSettlementWorkspaceData["access"];
+type BankHistoryPage = Awaited<ReturnType<typeof readPayrollBankHistory>>;
 
 const monthFormat = new Intl.DateTimeFormat("en-AE", { timeZone: "UTC", month: "long", year: "numeric" });
 const timeFormat = new Intl.DateTimeFormat("en-AE", { timeZone: "Asia/Dubai", dateStyle: "medium", timeStyle: "short" });
@@ -77,11 +78,12 @@ function scopeKey(scope: PayrollSettlementScope) {
   return scope.company_id + "." + scope.branch_id;
 }
 
-function href({ scope, month, review, employee, after }: Selection, section = "") {
+function href({ scope, month, review, employee, after }: Selection, section = "", bankHistory?: string) {
   const parameters = new URLSearchParams({ company: String(scope.company_id), branch: String(scope.branch_id), month });
   if (review) parameters.set("review", review);
   if (employee !== undefined) parameters.set("employee", String(employee));
   if (after !== undefined) parameters.set("after", String(after));
+  if (bankHistory) parameters.set("bank_history", bankHistory);
   return payrollSettlementPath + "?" + parameters + section;
 }
 
@@ -153,12 +155,20 @@ function AlternateChannels({ batch, issue, scope }: { batch: Batch; issue: boole
   </ul>;
 }
 
-function BankHistory({ batch }: { batch: Batch }) {
-  if (!batch.history.length) return null;
-  return <details className="rounded-md border px-3 py-2">
-    <summary className="cursor-pointer text-sm font-medium">Bank file history</summary>
+function BankHistory({ batch, selection, page, opened }: {
+  batch: Batch; selection: Selection; page: BankHistoryPage; opened: boolean;
+}) {
+  if (!opened && !batch.history.length) {
+    return batch.history_count ? <Link prefetch={false} className={linkClass}
+      href={href(selection, "#bank-file-history", "first")}>Bank file history ({batch.history_count})</Link> : null;
+  }
+  const events = page?.rows ?? batch.history;
+  return <details id="bank-file-history" open={opened || undefined} className="rounded-md border px-3 py-2">
+    <summary className="cursor-pointer text-sm font-medium">Bank file history{page ? " (" + page.count + ")" : ""}</summary>
+    {opened && !page && <p role="alert" className="mt-2 text-sm">Bank history could not be loaded. Reload the page to retry.</p>}
+    {page && events.length === 0 && <p className="mt-2 text-sm">No bank events on this page.</p>}
     <ol className="mt-2 divide-y">
-      {batch.history.map((item, index) => <li key={item.kind + item.at + index} className="flex flex-wrap justify-between gap-2 py-2 text-sm">
+      {events.map((item, index) => <li key={item.kind + item.at + index} className="flex flex-wrap justify-between gap-2 py-2 text-sm">
         <div>
           <p>{bankLabels[item.kind] ?? title(item.kind)}</p>
           {(item.wps_file || item.channel) && <p className="text-xs text-muted-foreground">
@@ -169,10 +179,17 @@ function BankHistory({ batch }: { batch: Batch }) {
         <time dateTime={item.at} className="text-xs text-muted-foreground">{timeFormat.format(new Date(item.at))}</time>
       </li>)}
     </ol>
+    {page && <nav aria-label="Bank history pages" className="mt-2 flex gap-4 text-sm">
+      <Link prefetch={false} className={linkClass} href={href(selection, "#bank-file-history", "first")}>First bank events</Link>
+      {page.next_after && <Link prefetch={false} className={linkClass}
+        href={href(selection, "#bank-file-history", String(page.next_after))}>Next bank events</Link>}
+    </nav>}
   </details>;
 }
 
-function ApprovedVersion({ selection, review, access }: { selection: Selection; review: PayrollSettlementReview; access: Access }) {
+function ApprovedVersion({ selection, review, access, history, historyOpened }: {
+  selection: Selection; review: PayrollSettlementReview; access: Access; history: BankHistoryPage; historyOpened: boolean;
+}) {
   const batch = review.batch;
   const scope = { company: selection.scope.company_id, branch: selection.scope.branch_id };
   return <section className={panelClass} aria-labelledby="wps-files-heading">
@@ -192,7 +209,7 @@ function ApprovedVersion({ selection, review, access }: { selection: Selection; 
     {batch ? <>
       <BankFiles batch={batch} issue={access.issue} scope={scope} />
       <AlternateChannels batch={batch} issue={access.issue} scope={scope} />
-      <BankHistory batch={batch} />
+      <BankHistory batch={batch} selection={selection} page={history} opened={historyOpened} />
     </> : <>
       {review.issue_blocker && <p className="text-sm text-muted-foreground">{review.issue_blocker}</p>}
       {access.issue && review.can_issue === true && <PrepareFiles key={review.review} scope={scope} sealed={{ review: review.review, version: review.version, digest: review.digest }} />}
@@ -327,6 +344,12 @@ export async function PayrollSettlementWorkspace({ params }: { params: Params })
   const access = workspace?.access;
   const hasAccess = access && (access.issue || access.reconcile);
   const loadIssue = scopes === null || (scope && !invalidMonth && !hasAccess);
+  const historyOpened = params.bank_history !== undefined;
+  const historyCursor = one(params.bank_history);
+  const historyAfter = historyCursor === "first" ? undefined :
+    historyCursor && /^[1-9]\d*$/.test(historyCursor) ? Number(historyCursor) : NaN;
+  const history = historyOpened && query.success && !invalidMonth && hasAccess && review && batch
+    ? await readPayrollBankHistory({ ...query.data, review: review.review, after: historyAfter }) : null;
 
   return <main className="mx-auto w-full max-w-7xl space-y-5 pb-8">
     <ERPPageHeader title="WPS and payment reconciliation" breadcrumbs={[
@@ -350,7 +373,8 @@ export async function PayrollSettlementWorkspace({ params }: { params: Params })
       </Link>)}
     </nav>}
     {hasAccess && reviews.length > 0 && !review && <p role="alert" className="text-sm text-destructive">Choose a version from this payroll month.</p>}
-    {hasAccess && selection && review && <ApprovedVersion selection={selection} review={review} access={access} />}
+    {hasAccess && selection && review && <ApprovedVersion selection={selection} review={review} access={access}
+      history={history} historyOpened={historyOpened} />}
     {workspace && access?.reconcile && selection && batch && <Employees selection={selection} batch={batch} nextAfter={workspace.next_after} />}
     {access?.reconcile && selection && batch && result && <EmployeeDetail key={batch.id + "." + result.employee}
       selection={selection} batch={batch} result={result} reconcile={access.reconcile} />}

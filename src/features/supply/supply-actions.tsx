@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import Form from "next/form";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -79,6 +80,10 @@ function purchaseOperations(data: SupplyWorkspace, queue: SupplyActionQueue | nu
   const add = (action: string, title: string, fields: Field[]) => list.push({ family: "purchase", action, title, fields });
   const unit = select("uom", "Item unit", data.units);
   const open = data.purchases ?? [];
+  const receipts = data.receipt_choices ?? (data.receipts ?? []).map(row => ({
+    id: row.id, label: row.label,
+    needs_inspection: row.quarantined > row.inspections.reduce((sum, inspection) => sum + inspection.quantity, 0),
+  }));
   const bin = select("bin", "Available bin", data.bins.filter(r => r.kind === "available"), true);
   if (rights.has("supply.purchase")) {
     const receivableLines = queue?.queue === "receiving" ? queue.rows.map(row => ({
@@ -93,20 +98,28 @@ function purchaseOperations(data: SupplyWorkspace, queue: SupplyActionQueue | nu
       text("delivery_note", "Delivery note"), qty("quantity", "Delivered quantity"), qty("accepted", "Accepted", "0"), qty("rejected", "Rejected", "0"),
       qty("quarantined", "Quarantined", "0"), unit, bin, select("quarantine_bin", "Quarantine bin", data.bins.filter(b => b.kind === "quarantine"), true),
       text("lot", "Lot (if required)", true), text("serial", "Serial (if required)", true)]);
-    add("supplier-return", "Record physical supplier return", [select("receipt", "Original goods receipt", data.receipts ?? []),
+    add("supplier-return", "Record physical supplier return", [select("receipt", "Original goods receipt", receipts),
       actorId("movement", "Exact receipt movement number"), unit, qty("quantity", "Returned quantity"), text("reference", "Supplier return reference")]);
   }
   if (rights.has("supply.purchase.approve")) {
     add("approve", "Approve an independent purchase line", [select("purchase", "Pending purchase line", open.filter(r => !r.approved_at))]);
-    add("quarantine", "Inspect quarantined goods", [select("receipt", "Receipt awaiting disposition", (data.receipts ?? []).filter(r =>
-      r.quarantined > r.inspections.reduce((sum, row) => sum + row.quantity, 0))),
+    add("quarantine", "Inspect quarantined goods", [select("receipt", "Receipt awaiting disposition", receipts.filter(row => row.needs_inspection)),
       choice("outcome", "Inspection outcome", { accepted: "Accept into stock", rejected: "Reject and retain for supplier return" }),
       bin, unit, qty("quantity", "Inspected quantity")]);
   }
   return list;
 }
 
-type QueueView = { search: string; page: number; open: boolean; scope?: string; result: SupplyActionQueue | null };
+type QueueView = { search: string; page: number; open: boolean; scope?: string; receiptPage?: number; result: SupplyActionQueue | null };
+
+function queueHref(workspace: "inventory" | "procurement", branch: number, view: QueueView, page: number) {
+  const params = new URLSearchParams({
+    branch: String(branch), ...(view.scope ? { scope: view.scope } : {}),
+    queueSearch: view.search, queuePage: String(page),
+    ...(view.receiptPage ? { receiptPage: String(view.receiptPage) } : {}),
+  });
+  return `/modules/${workspace}?${params}`;
+}
 
 function SupplyQueueControls({ view, workspace, branch }: {
   view: QueueView;
@@ -115,10 +128,7 @@ function SupplyQueueControls({ view, workspace, branch }: {
 }) {
   const root = "/modules/" + workspace;
   const result = view.result;
-  const target = (page: number) => root + "?" + new URLSearchParams({
-    branch: String(branch), ...(view.scope ? { scope: view.scope } : {}),
-    queueSearch: view.search, queuePage: String(page),
-  }).toString();
+  const target = (page: number) => queueHref(workspace, branch, view, page);
   const label = workspace === "inventory" ? "Pending stock reviews" : "Purchase lines open for receiving";
   const lastPage = result ? Math.max(1, Math.ceil(result.totalCount / result.pageSize)) : 1;
   const firstRow = result && result.rows.length ? (result.page - 1) * result.pageSize + 1 : 0;
@@ -127,6 +137,7 @@ function SupplyQueueControls({ view, workspace, branch }: {
     <Form action={root} className="flex flex-wrap items-end gap-2">
       <input type="hidden" name="branch" value={branch} />
       {view.scope && <input type="hidden" name="scope" value={view.scope} />}
+      {view.receiptPage && <input type="hidden" name="receiptPage" value={view.receiptPage} />}
       <label className="grid max-w-sm gap-1 text-sm">
         Search {workspace === "inventory" ? "stock reviews" : "purchase lines"}
         <Input key={view.search} name="queueSearch" defaultValue={view.search} maxLength={120} />
@@ -150,12 +161,24 @@ function SupplyQueueControls({ view, workspace, branch }: {
 export function SupplyActions({ data, workspace, queueView }: {
   data: SupplyWorkspace; workspace: "inventory" | "procurement"; queueView?: QueueView;
 }) {
+  const router = useRouter();
+  const [opening, startOpening] = useTransition();
   const queueAction = workspace === "inventory" ? "stock:decide" : "purchase:receive";
   const [selection, setSelection] = useState(queueView?.open ? queueAction : "");
   const result = queueView?.result ?? null;
   const operations = workspace === "inventory" ? inventoryOperations(data, result) : purchaseOperations(data, result);
   const selected = operations.find(op => op.family + ":" + op.action === selection);
   if (!operations.length) return null;
+  const queueNeedsOpening = queueView && !queueView.open && !result;
+  function openQueue() {
+    if (!queueView) return;
+    const destination = queueHref(workspace, data.branch, queueView, queueView.page);
+    startOpening(() => router.push(destination));
+  }
+  function chooseAction(next: string) {
+    setSelection(next);
+    if (next === queueAction && queueNeedsOpening) openQueue();
+  }
   function transform(form: SupplyRequest["data"]) {
     if (selected?.family === "stock" && ["count", "reserve"].includes(selected.action)) {
       const layer = data.layers?.find(row => row.id === form.layer);
@@ -168,12 +191,18 @@ export function SupplyActions({ data, workspace, queueView }: {
   }
   return <section className="space-y-3 rounded-lg border bg-card p-4" aria-labelledby="supply-actions">
     <h2 id="supply-actions" className="font-semibold">Actions</h2>
-    <select className={selectStyle + " max-w-md"} aria-label="Choose an action" value={selection} onChange={event => setSelection(event.target.value)}>
+    <select className={selectStyle + " max-w-md"} aria-label="Choose an action" value={selection} disabled={opening}
+      onChange={event => chooseAction(event.target.value)}>
       <option value="">Choose an action</option>
       {operations.map(op => <option key={op.family + ":" + op.action} value={op.family + ":" + op.action}>{op.title}</option>)}
     </select>
-    {selected && selection === queueAction && queueView && <SupplyQueueControls view={queueView} workspace={workspace} branch={data.branch} />}
-    {selected && <SupplyForm key={selection} parent={data.branch} family={selected.family} action={selected.action} title={selected.title}
+    {selected && selection === queueAction && queueNeedsOpening && (opening
+      ? <p role="status" className="text-sm">Loading actionable records…</p>
+      : <p role="alert" className="text-sm">Actionable records could not be loaded.{" "}
+        <Button type="button" variant="outline" size="sm" onClick={openQueue}>Retry queue</Button></p>)}
+    {selected && selection === queueAction && queueView && !queueNeedsOpening &&
+      <SupplyQueueControls view={queueView} workspace={workspace} branch={data.branch} />}
+    {selected && (selection !== queueAction || !queueNeedsOpening) && <SupplyForm key={selection} parent={data.branch} family={selected.family} action={selected.action} title={selected.title}
       fields={selected.fields} transform={transform} />}
   </section>;
 }

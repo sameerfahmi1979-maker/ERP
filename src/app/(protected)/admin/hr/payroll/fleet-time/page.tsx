@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { ERPPageHeader } from "@/components/erp/page-header";
 import { FleetPayrollReview } from "@/features/fleet/time-workspace";
 import { fleetSelectClass } from "@/features/fleet/asset-form";
+import { fleetPayrollReviewQuery } from "@/lib/fleet/payroll-review-query";
 import { fleetTimeDate } from "@/lib/fleet/time-contract";
 import { getAuthContext, canUseApplication } from "@/lib/rbac/check";
 import { createClient } from "@/lib/supabase/server";
@@ -21,18 +22,13 @@ export default async function FleetPayrollPage({searchParams}: {searchParams: Pr
   const workDate = params.day === undefined ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(new Date()) : params.day;
   const day = fleetTimeDate.safeParse(workDate);
   if (!day.success) notFound();
-  const cutoffText = typeof params.cutoff === "string" && /^\d{4}-\d{2}-\d{2}T\d\d:\d\d$/.test(params.cutoff) ? params.cutoff : "";
-  const cutoff = cutoffText ? cutoffText + ":00+04:00" : new Date().toISOString();
-  const before = params.before === undefined ? undefined : Number(params.before);
-  const candidateBefore = params.older === undefined ? undefined : Number(params.older);
+  const review = fleetPayrollReviewQuery(employer, day.data, params);
   const db = await createClient();
   const [organizations, queue, candidates] = await Promise.all([
     db.from("owner_companies").select("id,trade_name,legal_name_en").in("id", companies),
-    readFleetPayrollQueue(employer, day.data, before),
-    readFleetPayrollCandidates(employer, cutoff, candidateBefore),
+    readFleetPayrollQueue(employer, day.data, review.before),
+    readFleetPayrollCandidates(employer, review.cutoff, review.older),
   ]);
-  const query = new URLSearchParams({ company: String(employer), day: day.data, ...(cutoffText ? {cutoff:cutoffText} : {}) });
-  const queryLink = (key: string, value: number) => "/admin/hr/payroll/fleet-time?" + new URLSearchParams([...query, [key, String(value)]]);
   return <main className="container mx-auto space-y-5 py-6">
     <ERPPageHeader title="Fleet overtime review" breadcrumbs={[{label:"Payroll & WPS",href:"/admin/hr/payroll"},{label:"Fleet overtime"}]} />
     <form className="flex flex-wrap items-end gap-3">
@@ -45,7 +41,7 @@ export default async function FleetPayrollPage({searchParams}: {searchParams: Pr
         </select>
       </label>
       <label className="space-y-1 text-sm"><span>Original work date</span><Input name="day" type="date" defaultValue={day.data} required /></label>
-      <label className="space-y-1 text-sm"><span>Candidate cutoff (Dubai time)</span><Input name="cutoff" type="datetime-local" defaultValue={cutoffText} /></label>
+      <label className="space-y-1 text-sm"><span>Candidate cutoff (Dubai time)</span><Input name="cutoff" type="datetime-local" step="0.001" defaultValue={review.cutoffText} /></label>
       <Button type="submit">Load</Button>
     </form>
     <section className="space-y-2">
@@ -53,7 +49,7 @@ export default async function FleetPayrollPage({searchParams}: {searchParams: Pr
       {queue === null ? <p role="status">Fleet work could not be loaded.</p> :
         queue.length === 0 ? <p className="text-sm text-muted-foreground">No Fleet work is available for this date.</p> :
           queue.slice(0, 25).map(row => <FleetPayrollReview key={row.work} row={row} />)}
-      {queue && queue.length > 25 && <Link className="text-primary underline" href={queryLink("before",queue[24].work)}>More work</Link>}
+      {queue && queue.length > 25 && <Link className="text-primary underline" href={review.pageHref("/admin/hr/payroll/fleet-time", "before", queue[24].work)}>More work</Link>}
     </section>
     <section className="space-y-2">
       <h2 className="font-semibold">Verified candidates available by cutoff</h2>
@@ -63,7 +59,7 @@ export default async function FleetPayrollPage({searchParams}: {searchParams: Pr
           <ul className="space-y-1">{candidates.slice(0, 25).map(row => <li key={row.id} className="rounded-md border p-2 text-sm">
             {row.date} · Employee {row.employee} · {row.minutes} minutes · {row.currency} {row.amount} · Fleet source {row.work}
           </li>)}</ul>}
-      {candidates && candidates.length > 25 && <Link className="text-primary underline" href={queryLink("older",candidates[24].id)}>Older candidates</Link>}
+      {candidates && candidates.length > 25 && <Link className="text-primary underline" href={review.pageHref("/admin/hr/payroll/fleet-time", "older", candidates[24].id)}>Older candidates</Link>}
     </section>
   </main>;
 }

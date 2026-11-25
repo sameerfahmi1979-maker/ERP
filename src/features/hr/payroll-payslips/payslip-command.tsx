@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState, useTransition, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
+import { PayrollRefreshNotice } from "@/features/hr/payroll/payroll-refresh-notice";
+import { usePayrollCommand } from "@/hooks/use-payroll-command";
 import { Input } from "@/components/ui/input";
 import { changePayslipDelivery, issuePayslip } from "@/server/actions/hr/payslips";
 
@@ -46,51 +47,30 @@ export function PayslipCommand({ employee, batch, canIssue, delivery, compact = 
   compact?: boolean;
   delivery?: { slip: number; actions: PayslipDeliveryOption[] };
 }) {
-  const router = useRouter();
-  const running = useRef(false);
-  const [pending, setPending] = useState<Request | null>(null);
-  const [working, setWorking] = useState(false);
-  const [refreshing, beginRefresh] = useTransition();
   const [selected, setSelected] = useState("");
   const [draft, setDraft] = useState(emptyDraft);
-  const [result, setResult] = useState<{ ok: boolean; text: string }>();
+  const {
+    submit: execute, retry, busy: working, refreshError, retryRefresh, locked, message: result, setMessage: setResult,
+  } = usePayrollCommand(
+    async (request: Request) => request.kind === "issue" ? issuePayslip(request.data) : changePayslipDelivery(request.data),
+    {
+      target: "payslips",
+      onSuccess(request) {
+        setDraft(emptyDraft);
+        return request.kind === "issue" ? "Original payslip retained." : "Delivery action recorded.";
+      },
+      unconfirmed: "The result is unconfirmed. Retry the same request.",
+    },
+  );
   const choices = delivery?.actions ?? [];
   const action = choices.find(option => optionKey(option) === selected) ?? choices[0];
   const key = action ? optionKey(action) : "";
   const { reason, reference, disposition } = draft.key === key ? draft : emptyDraft;
   const providerReference = action?.kind === "bounce" || action?.kind === "reconcile-email";
-  const locked = working || refreshing || pending !== null;
-
-  async function execute(request: Request) {
-    if (running.current) return;
-    running.current = true;
-    setWorking(true);
-    setResult(undefined);
-    try {
-      const response = request.kind === "issue"
-        ? await issuePayslip(request.data)
-        : await changePayslipDelivery(request.data);
-      if (response.ok) {
-        setPending(null);
-        setDraft(emptyDraft);
-        setResult({ ok: true, text: request.kind === "issue" ? "Original payslip retained." : "Delivery action recorded." });
-        beginRefresh(() => router.refresh());
-      } else {
-        setPending(response.uncertain ? request : null);
-        setResult({ ok: false, text: response.error ?? "The request could not be completed." });
-      }
-    } catch {
-      setPending(request);
-      setResult({ ok: false, text: "The result is unconfirmed. Retry the same request." });
-    } finally {
-      setWorking(false);
-      running.current = false;
-    }
-  }
 
   function requestIssue() {
     if (locked || !canIssue) return;
-    void execute({ kind: "issue", data: { operation: crypto.randomUUID(), batch, employee } });
+    void execute(() => ({ kind: "issue", data: { operation: crypto.randomUUID(), batch, employee } }));
   }
 
   function requestDelivery(event: FormEvent<HTMLFormElement>) {
@@ -99,18 +79,18 @@ export function PayslipCommand({ employee, batch, canIssue, delivery, compact = 
     const cleanedReason = reason.trim();
     const cleanedReference = reference.trim();
     if (action.kind !== "initial" && cleanedReason.length < 3) {
-      setResult({ ok: false, text: "Enter a reason of at least three characters." });
+      setResult({ error: true, text: "Enter a reason of at least three characters." });
       return;
     }
     if (providerReference && !/^[A-Za-z0-9][A-Za-z0-9 ._:/#-]{2,119}$/.test(cleanedReference)) {
-      setResult({ ok: false, text: "Enter a valid provider reference for this email." });
+      setResult({ error: true, text: "Enter a valid provider reference for this email." });
       return;
     }
     if (action.kind === "reconcile-email" && !disposition) {
-      setResult({ ok: false, text: "Choose the outcome confirmed by the provider." });
+      setResult({ error: true, text: "Choose the outcome confirmed by the provider." });
       return;
     }
-    void execute({
+    void execute(() => ({
       kind: "delivery", data: {
         operation: crypto.randomUUID(), slip: delivery.slip, action: action.kind,
         data: {
@@ -120,10 +100,10 @@ export function PayslipCommand({ employee, batch, canIssue, delivery, compact = 
           ...(action.kind === "reconcile-email" && disposition ? { disposition } : {}),
         },
       },
-    });
+    }));
   }
 
-  if (!canIssue && !action && !pending && !result) return null;
+  if (!canIssue && !action && !retry && !refreshError && !result) return null;
 
   const deliveryForm = action && <form onSubmit={requestDelivery}>
       <fieldset className="grid gap-2" disabled={locked}>
@@ -131,7 +111,7 @@ export function PayslipCommand({ employee, batch, canIssue, delivery, compact = 
           Delivery action
           <select value={optionKey(action)} onChange={event => {
             setSelected(event.target.value);
-            setResult(undefined);
+            setResult(null);
             setDraft(emptyDraft);
           }} className="min-h-9 rounded-md border bg-background px-2 text-sm focus-visible:ring-2 focus-visible:ring-ring">
             {choices.map(option => <option key={optionKey(option)} value={optionKey(option)}>
@@ -172,11 +152,12 @@ export function PayslipCommand({ employee, batch, canIssue, delivery, compact = 
       <div className="mt-2">{deliveryForm}</div>
     </details> : deliveryForm}
     {working && <p role="status" className="text-xs text-muted-foreground">Working…</p>}
-    {result && <p role={result.ok ? "status" : "alert"} className={result.ok ? "text-xs text-muted-foreground" : "text-xs text-destructive"}>
+    {result && <p role={!result.error ? "status" : "alert"} className={!result.error ? "text-xs text-muted-foreground" : "text-xs text-destructive"}>
       {result.text}
     </p>}
-    {pending && <Button type="button" size="sm" variant="outline" disabled={working} onClick={() => void execute(pending)}>
+    {retry && <Button type="button" size="sm" variant="outline" disabled={working} onClick={() => void execute()}>
       Retry same request
     </Button>}
+    {refreshError && <PayrollRefreshNotice busy={working} retry={() => void retryRefresh()} />}
   </div>;
 }

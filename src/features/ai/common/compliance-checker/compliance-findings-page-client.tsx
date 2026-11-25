@@ -43,11 +43,11 @@ import {
 
 interface ComplianceFindingsPageClientProps {
   summary: {
-    open: number;
-    critical: number;
-    high: number;
-    waivedResolved: number;
-    featureEnabled: boolean;
+    open: number | null;
+    critical: number | null;
+    high: number | null;
+    waivedResolved: number | null;
+    featureEnabled: boolean | null;
   };
   initialEntityType?: string;
   initialEntityId?: number;
@@ -181,7 +181,10 @@ export function ComplianceFindingsPageClient({
       {isScanning && <OperationStatus state="pending">Checking compliance evidence…</OperationStatus>}
       {scanNotice && <OperationStatus state={scanNotice.state} retryLabel={scanNotice.state === "unconfirmed" ? "Reload findings" : "Retry scan"}
         retry={scanNotice.state === "unconfirmed" ? () => void refetch().then(result => { if (result.isSuccess) setScanNotice(null); }) : () => void handleScan()}>{scanNotice.message}</OperationStatus>}
-      {!summary.featureEnabled && (
+      {summary.featureEnabled === null && <p role="status" className="text-sm text-muted-foreground">
+        The AI feature status is unavailable. Reload before running the tool.
+      </p>}
+      {summary.featureEnabled === false && (
         <Alert className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
           <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-300" />
           <AlertDescription className="text-amber-900 text-sm dark:text-amber-200">
@@ -197,7 +200,7 @@ export function ComplianceFindingsPageClient({
             <AlertTriangle className="h-8 w-8 text-amber-500 dark:text-amber-300" />
             <div>
               <p className="text-xs text-muted-foreground">Open</p>
-              <p className="text-2xl font-bold">{summary.open}</p>
+              <p className="text-2xl font-bold">{summary.open ?? "Unavailable"}</p>
             </div>
           </CardContent>
         </Card>
@@ -206,7 +209,7 @@ export function ComplianceFindingsPageClient({
             <ShieldAlert className="h-8 w-8 text-red-500 dark:text-red-300" />
             <div>
               <p className="text-xs text-muted-foreground">Critical</p>
-              <p className="text-2xl font-bold">{summary.critical}</p>
+              <p className="text-2xl font-bold">{summary.critical ?? "Unavailable"}</p>
             </div>
           </CardContent>
         </Card>
@@ -215,7 +218,7 @@ export function ComplianceFindingsPageClient({
             <Scale className="h-8 w-8 text-orange-500 dark:text-orange-300" />
             <div>
               <p className="text-xs text-muted-foreground">High</p>
-              <p className="text-2xl font-bold">{summary.high}</p>
+              <p className="text-2xl font-bold">{summary.high ?? "Unavailable"}</p>
             </div>
           </CardContent>
         </Card>
@@ -224,7 +227,7 @@ export function ComplianceFindingsPageClient({
             <CheckCircle2 className="h-8 w-8 text-emerald-500 dark:text-emerald-300" />
             <div>
               <p className="text-xs text-muted-foreground">Waived / Resolved</p>
-              <p className="text-2xl font-bold">{summary.waivedResolved}</p>
+              <p className="text-2xl font-bold">{summary.waivedResolved ?? "Unavailable"}</p>
             </div>
           </CardContent>
         </Card>

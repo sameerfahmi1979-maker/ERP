@@ -152,6 +152,8 @@ export function workspaceReducer(
     }
 
     case "MARK_DIRTY": {
+      const target = state.tabs.find(tab => tab.id === action.tabId);
+      if (!target || Boolean(target.dirty) === action.dirty) return state;
       return {
         ...state,
         tabs: state.tabs.map((t) =>
@@ -270,10 +272,11 @@ export function persistToStorage(tabs: WorkspaceTab[], activeTabId: string | nul
       const returnRoute = tab.returnRoute ? safePersistedWorkspaceRoute(tab.returnRoute) : null;
       return [{id:tab.id, route, openedAt:tab.openedAt, lastActiveAt:tab.lastActiveAt, ...(returnRoute ? {returnRoute} : {})}];
     }).slice(0, MAX_TABS + 1);
-    localStorage.setItem(key, JSON.stringify({
+    const manifest = JSON.stringify({
       version:5, principalId, tabs:persisted,
       activeTabId:persisted.some(tab => tab.id === activeTabId) ? activeTabId : null,
-    }));
+    });
+    if (localStorage.getItem(key) !== manifest) localStorage.setItem(key, manifest);
   } catch { /* Storage can be disabled; working memory remains available. */ }
 }
 

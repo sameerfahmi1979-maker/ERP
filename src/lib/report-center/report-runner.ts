@@ -25,10 +25,12 @@ import { REPORT_FETCHERS } from "./report-fetchers";
 import { PAYROLL_FINANCE_REPORT } from "./payroll-finance-contract";
 import { assertAccountActive, hasPermission, getAuthContextForProfileId, type AuthContext } from "@/lib/rbac/check";
 import { createScopedReportReadClient,revalidateScopedReportReadClient,type ReportReadClient } from "./scoped-read-client";
-import { isRecruitmentReport } from "./recruitment-reports";
+import { isRecruitmentReport, usesFreshAnalyticalExport } from "./recruitment-reports";
+import { analyticalBrandingVersion, matchesScreenPageReceipt, pageAnalyticalRows, screenPageReceipt, screenRunId } from "./analytical-screen-page";
 import {collectedCompanyIds,reportAuthorityIdentity} from './result-identity';
 import {getEmployeeAccess} from '@/lib/rbac/employee-access';
 import { readActiveReportRegistryEntry, REPORT_CONFIGURATION_LOAD_ERROR } from "@/server/reads/report-registry-entry";
+import { brandingPermission } from "@/lib/branding/asset-permissions";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Run log helpers
@@ -159,11 +161,17 @@ export async function failReportRunLog(
  */
 export async function runReport(
   request: ReportRunRequest,
-  actor: AuthContext
+  actor: AuthContext,
+  {refreshInteractiveActor}: {refreshInteractiveActor?: () => Promise<AuthContext>} = {},
 ): Promise<ReportRunResult> {
   const startMs = Date.now();
   assertAccountActive(actor);
   if(actor.profile!.id!==request.requestedByUserId) return {success:false,error:"Report principal mismatch"};
+  const analytical = usesFreshAnalyticalExport(request.reportCode);
+  if (request.screenPage && (!analytical || request.outputFormat !== "screen")) {
+    return {success: false, error: "Result paging is only available for analytical report previews."};
+  }
+  const continuation = request.screenPage?.receipt;
   if (request.reportCode === PAYROLL_FINANCE_REPORT && request.outputFormat !== "screen") {
     return { success: false, error: "Payroll reconciliation is available only in Report Center." };
   }
@@ -217,7 +225,9 @@ export async function runReport(
   }
 
   // ── 4. Create run log (status=running) ────────────────────────────────────
-  const { runId } = await createReportRunLog({
+  // A receipt ties a continuation to a completed run, while every request still
+  // recollects and revalidates current authority and source facts below.
+  const runId = continuation ? screenRunId(continuation) : (await createReportRunLog({
     reportCode: request.reportCode,
     reportId: registryEntry.id,
     runByUserId: request.requestedByUserId,
@@ -231,17 +241,18 @@ export async function runReport(
     templateSelectedManually: !!request.templateId,
     sensitiveProfile: registryEntry.sensitive_profile,
     sensitiveDataIncluded: registryEntry.sensitive_profile !== "normal",
-  });
+  })).runId;
 
   if(!runId)return {success:false,error:'Report audit admission could not be confirmed. No report was produced.'};
+  const failRun = async (message: string) => {
+    if (!continuation) await failReportRunLog(runId, message, Date.now() - startMs);
+  };
 
   // ── 5. Fetch data ─────────────────────────────────────────────────────────
   const fetcher = REPORT_FETCHERS[request.reportCode];
   if (!fetcher) {
     const errMsg = 'The data source for this report is not available. Ask an administrator to review its configuration; no partial report was produced.';
-    if (runId) {
-      await failReportRunLog(runId, errMsg, Date.now() - startMs);
-    }
+    await failRun(errMsg);
     return { success: false, error: errMsg, runId: runId ?? undefined };
   }
 
@@ -265,19 +276,21 @@ export async function runReport(
     );
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    if (runId) {
-      await failReportRunLog(runId, errMsg, Date.now() - startMs);
-    }
+    await failRun(errMsg);
     return { success: false, error: errMsg, runId: runId ?? undefined };
   }
 
   // Caller-supplied company IDs are hints, never the identity of returned data.
   // Rebind the final letterhead to the actual complete, scoped collection.
   let actualCompanies:number[];
+  let outputActor = actor;
   try{
     actualCompanies=collectedCompanyIds(rawData);
     if(request.ownerCompanyIds?.length && JSON.stringify([...new Set(request.ownerCompanyIds)].sort((a,b)=>a-b))!==JSON.stringify(actualCompanies))throw Error('The requested company context no longer matches the report data. Run it again.');
-    const fresh=await getAuthContextForProfileId(actor.profile!.id);
+    // Interactive runs check their live session immediately before publication.
+    // Workers retain their existing profile-based recheck and never need cookies.
+    const fresh=refreshInteractiveActor ? actor : await getAuthContextForProfileId(actor.profile!.id);
+    outputActor = fresh;
     assertAccountActive(fresh);
     if(reportAuthorityIdentity(fresh)!==reportAuthorityIdentity(actor))throw Error('Your report permissions changed during collection. Run it again.');
     await revalidateScopedReportReadClient(collectionClient,fresh);
@@ -290,12 +303,12 @@ export async function runReport(
     }
     const hasUnassignedScope = isRecruitmentReport(request.reportCode) && rawData.rows.some(row => row.owner_company_id === null);
     brandingResult=await resolveReportBranding({templateId:request.templateId,ownerCompanyIds:hasUnassignedScope ? [] : actualCompanies,registryEntry,isLetterType:registryEntry.is_letter_type},fresh);
-    if(brandingResult.requiresManualTemplateSelection){await failReportRunLog(runId,'Company letterhead selection required',Date.now()-startMs);return {success:false,runId,requiresManualTemplateSelection:true,error:'This report spans multiple companies. Select a governed group or neutral letterhead.'};}
+    if(brandingResult.requiresManualTemplateSelection){await failRun('Company letterhead selection required');return {success:false,runId,requiresManualTemplateSelection:true,error:'This report spans multiple companies. Select a governed group or neutral letterhead.'};}
     const brandCompany=brandingResult.resolvedBrandingProfile?.owner_company_id;
     if(brandCompany!==null&&brandCompany!==undefined && (hasUnassignedScope||actualCompanies.length!==1||actualCompanies[0]!==brandCompany))throw Error('Choose a letterhead matching the report company, or a governed group/neutral letterhead for combined data.');
   }catch(error){
     const message=error instanceof Error&&/company context|permissions changed|scope changed|data changed|employee report access changed|Choose a letterhead/.test(error.message)?error.message:'Report company or branding authority could not be verified. No output was produced.';
-    await failReportRunLog(runId,message,Date.now()-startMs);return {success:false,error:message,runId};
+    await failRun(message);return {success:false,error:message,runId};
   }
 
   // ── 6. Apply redaction ────────────────────────────────────────────────────
@@ -304,9 +317,53 @@ export async function runReport(
     permissionCodes: callerPermissionCodes,
   });
 
+  let preview: ReturnType<typeof pageAnalyticalRows> | undefined;
+  let brandingVersion: string | undefined;
+  let brandingCanSign: boolean | undefined;
+  try {
+    if (refreshInteractiveActor) {
+      outputActor = await refreshInteractiveActor();
+      if (!outputActor.profile || outputActor.profile.auth_user_id !== actor.profile!.auth_user_id || !outputActor.isAccountActive) {
+        const message = "Your report session is no longer active. Sign in and run it again.";
+        await failRun(message);
+        return {success: false, error: message, runId};
+      }
+      if (reportAuthorityIdentity(outputActor) !== reportAuthorityIdentity(actor)) {
+        const message = "Your report permissions changed during collection. Run it again.";
+        await failRun(message);
+        return {success: false, error: message, runId};
+      }
+    }
+    if (analytical) {
+      brandingCanSign = brandingPermission(outputActor, "reports.sign", brandingResult.resolvedBrandingProfile?.owner_company_id ?? null);
+      brandingVersion = analyticalBrandingVersion(registryEntry, brandingResult, brandingCanSign);
+    }
+    if (request.screenPage) {
+      const filters = Object.entries(request.filters ?? {}).sort(([a], [b]) => a.localeCompare(b));
+      const receipt = screenPageReceipt(runId, {
+        actor: [actor.profile!.auth_user_id, reportAuthorityIdentity(actor)],
+        report: request.reportCode,
+        filters,
+        companies: actualCompanies,
+        brandingVersion,
+        rawData,
+        visibleColumns: sanitizedData.columns,
+        summary,
+      });
+      if (continuation && !matchesScreenPageReceipt(continuation, receipt)) {
+        return {success: false, error: "Report data, scope or branding changed. Run the report again."};
+      }
+      preview = pageAnalyticalRows(sanitizedData, request.screenPage, receipt);
+    }
+  } catch {
+    const message = "The analytical report result could not be verified. Run the report again.";
+    await failRun(message);
+    return {success: false, error: message, runId};
+  }
+
   // ── 7. Complete run log ───────────────────────────────────────────────────
   const durationMs = Date.now() - startMs;
-  if (runId) {
+  if (!continuation) {
     const completed=await completeReportRunLog(
       runId,
       sanitizedData.rows.length,
@@ -321,7 +378,9 @@ export async function runReport(
     success: true,
     runId: runId ?? undefined,
     rowCount: sanitizedData.rows.length,
-    data: sanitizedData,
+    data: preview?.data ?? sanitizedData,
+    ...(preview ? {screenPage: preview.screenPage} : {}),
+    ...(brandingVersion ? {analyticalBrandingVersion: brandingVersion, analyticalBrandingCanSign: brandingCanSign} : {}),
     redactionSummary: summary,
     resolvedBrandingProfileId:
       brandingResult.resolvedBrandingProfile?.id ?? undefined,

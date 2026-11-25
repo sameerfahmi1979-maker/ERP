@@ -13,6 +13,14 @@ beforeEach(() => {
   vi.mocked(createClient).mockResolvedValue({rpc: invoke} as unknown as Awaited<ReturnType<typeof createClient>>);
 });
 describe("request and collection delivery", () => {
+  it("recovers only the exact current evidence request in one read", async () => {
+    const request = {kind:"missing" as const,parent,requestId:724,revision:3,documentTypeId:9};
+    invoke.mockResolvedValueOnce({data:true}).mockResolvedValueOnce({error:{code:"PT404"}});
+    expect(await requests({op:"documentRequestEvidence",...request})).toEqual({available:true});
+    expect(invoke).toHaveBeenCalledExactlyOnceWith("mobile_dms_request_evidence",{p_data:request});
+    await expect(requests({op:"documentRequestEvidence",...request})).rejects.toMatchObject({status:404});
+    expect(invoke).toHaveBeenCalledTimes(2);
+  });
   it("exposes the current checklist hash only for a requestable missing rule", async () => {
     const row = {ruleId: 2, label: "Certificate", documentTypeId: 9, state:"missing", canRequest:true, checklistHash:hash};
     invoke.mockResolvedValue({data:{rows:[row],totalCount:1,coverage:"complete",missingCount:1}});

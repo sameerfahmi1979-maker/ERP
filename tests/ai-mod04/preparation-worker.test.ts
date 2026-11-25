@@ -1,8 +1,16 @@
 import {createHash} from "node:crypto";
 import {afterEach,beforeEach,describe,expect,it,vi} from "vitest";
 import {runDocumentPreparationJob} from "@/server/dms-preparation-worker";
+import {currentJobClaim} from "@/lib/dms/ai-jobs/claim-scope";
+import {runDmsAiJob} from "@/lib/dms/ai-jobs/job-runner";
+import {DMS_AI_JOB_TYPE} from "@/lib/dms/ai-jobs/job-types";
+import {preparationTraceId,traceOperation} from "@/lib/performance/trace";
 const m=vi.hoisted(()=>({db:vi.fn(),claim:vi.fn(),complete:vi.fn(),ocr:vi.fn(),bytes:vi.fn(),provider:vi.fn()}));
-vi.mock("@/lib/supabase/admin",()=>({createAdminClient:m.db}));vi.mock("@/lib/dms/ai-jobs/claim-scope",()=>({currentJobClaim:m.claim}));
+vi.mock("@/lib/supabase/admin",()=>({createAdminClient:m.db}));
+vi.mock("@/lib/dms/ai-jobs/claim-scope",async importOriginal=>{
+ const actual=await importOriginal<typeof import("@/lib/dms/ai-jobs/claim-scope")>();
+ return {...actual,currentJobClaim:()=>actual.currentJobClaim()??m.claim()};
+});
 vi.mock("@/lib/ai/common/provider-bridge",()=>({callCommonAiStructuredCompletion:m.complete}));vi.mock("@/server/dms-verified-intake-source",()=>({readVerifiedIntakeSource:m.bytes}));vi.mock("@/lib/dms/ocr/ocr-router",()=>({routeOcr:m.ocr}));vi.mock("@/lib/dms/ai/factory",()=>({getDmsAiProvider:m.provider}));
 const hash="a".repeat(64),stage=new Map<string,unknown>();let context:any,published:any,failPublication=false,rpc:ReturnType<typeof vi.fn>;
 let companyId: number, targetType: string;
@@ -28,7 +36,7 @@ beforeEach(()=>{vi.resetAllMocks();stage.clear();published=null;failPublication=
   if(context.target && (p.candidate.proposedType?.typeCode!==context.target.typeCode || !stage.has(`analysis:${context.target.documentTypeId}`))) {
    return {data:null,error:{code:"PT409"}};
   }
-  published=p;context.resultId=99;if(failPublication)throw Error("lost after commit");return {data:{success:true,resultId:99,replayed:false}};
+  published=p;context.resultId=99;context.state="review_required";if(failPublication)throw Error("lost after commit");return {data:{success:true,resultId:99,replayed:false}};
  }throw Error(action);});
  const data=(table:string)=>table==="erp_ai_feature_flags"?[{feature_code:"DMS_OCR",is_enabled:true},{feature_code:"DMS_OCR_ROUTER",is_enabled:true}]:[{type_code:"CERTIFICATE",name_en:"Certificate"},{type_code:targetType,name_en:"Other"}];
  m.db.mockReturnValue({rpc,storage:{from:vi.fn(()=>({}))},from:(table:string)=>{const chain:any={select:()=>chain,eq:()=>chain,is:()=>chain,order:()=>chain,limit:async()=>({data:data(table),error:null}),in:async()=>({data:data(table),error:null}),maybeSingle:async()=>({data:{owning_company_id:companyId},error:null})};return chain;}});
@@ -36,6 +44,84 @@ beforeEach(()=>{vi.resetAllMocks();stage.clear();published=null;failPublication=
 });
 afterEach(() => vi.unstubAllEnvs());
 describe("document preparation worker adoption",()=>{
+ it('emits a separate redacted preparation trace when the admission trace has closed',async()=>{
+  vi.stubEnv('ALGT_PERF_ENABLED','true');
+  vi.stubEnv('ALGT_PERF_LOG_RETENTION_DAYS','1');
+  vi.stubEnv('ALGT_PERF_SAMPLE_PERCENT','100');
+  const logged=vi.spyOn(console,'info').mockImplementation(()=>undefined);
+  const prior=rpc.getMockImplementation()!;
+  let release!:()=>void;
+  const admitted=new Promise<void>(resolve=>{release=resolve;});
+  rpc.mockImplementation(async(name,args)=>{
+   if(args.p_action==='context')await admitted;
+   return prior(name,args);
+  });
+  context.mode='reread_files';
+  m.complete.mockResolvedValue(response('OTHER'));
+  try {
+   let pending:ReturnType<typeof runDocumentPreparationJob> | undefined;
+   await traceOperation('dms.rerun.admit',async()=>{pending=runDocumentPreparationJob(1);});
+   release();
+   expect(await pending).toMatchObject({success:true});
+   const logs=logged.mock.calls.flatMap(([message])=>typeof message==='string'?[JSON.parse(message)]:[]);
+   expect(logs.map(log=>log.operation).sort()).toEqual(['dms.rerun','dms.rerun.admit']);
+   const worker=logs.find(log=>log.operation==='dms.rerun');
+   expect(worker).toMatchObject({id:preparationTraceId(10),route:'other',outcome:'ok'});
+   expect(worker.spans).toEqual(expect.arrayContaining(['dms.ocr','dms.model.first','dms.model.second','dms.publish'].map(name=>expect.objectContaining({name,outcome:'ok'}))));
+   expect(JSON.stringify(logs)).not.toMatch(/SYN-DOC|SYNTHETIC|ABC|synthetic\/SYN|00000000-0000-4000-8000-000000000001/);
+  } finally {
+   logged.mockRestore();
+  }
+ });
+ it.each([
+  {receipt:"exact",status:"completed"},
+  {receipt:"different_document",status:"failed"},
+  {receipt:"authority_denied",status:"failed"},
+  {receipt:"unavailable",status:null},
+ ] as const)("settles a lost publication acknowledgement only with current authority ($receipt)",async({receipt,status})=>{
+  const claim={...m.claim(),workerId:"synthetic-worker",attemptNumber:1};
+  m.claim.mockReturnValue(undefined);
+  failPublication=true;
+  const job={id:claim.jobId,job_type:DMS_AI_JOB_TYPE.AI_RE_EXTRACTION,
+   payload_json:{documentId:1,source:"admin_manual_retry"},attempt_count:1,max_attempts:3,locked_by:claim.workerId};
+  const prior=rpc.getMockImplementation()!;
+  let readbackClaim:unknown;
+  rpc.mockImplementation(async(name,args)=>{
+   if(name==="f07_ai_worker") {
+    if(args.p_action==="assert")return {data:{success:true}};
+    if(args.p_action==="settle")return {data:{success:true,jobId:claim.jobId,attemptNumber:1,
+     status:args.p_data.success?"completed":"failed"}};
+   }
+   if(args.p_action==="publish"){
+    const scope=currentJobClaim()!;
+    scope.failed=true;
+    scope.uncertainWrite=true;
+   }
+   if(args.p_action==="context"&&published){
+    readbackClaim=currentJobClaim();
+    if(receipt==="different_document")return {data:{success:true,preparation:true,
+     context:{...context,source:{...context.source,documentId:2}}}};
+    if(receipt==="authority_denied")return {error:{code:"42501"}};
+    if(receipt==="unavailable")return {error:{code:"08006"}};
+   }
+   return prior(name,args);
+  });
+
+  expect(await runDmsAiJob(job,claim)).toBe(status);
+  expect(controlAction("context")).toEqual(Array.from({length:2},()=>["ai_mod04_preparation_worker",
+   {p_action:"context",p_data:{jobId:claim.jobId,token:claim.token}}]));
+  expect(readbackClaim).toBeUndefined();
+  expect(controlAction("publish")).toHaveLength(1);
+  expect(m.complete).toHaveBeenCalledOnce();
+  if(status===null){
+   expect(controlAction("settle")).toHaveLength(0);
+  }else{
+   expect(controlAction("settle")).toEqual([["f07_ai_worker",{p_action:"settle",p_data:{
+    jobId:claim.jobId,token:claim.token,success:status==="completed",
+    errorCode:status==="failed"?"publication_rejected":undefined,retryable:false,
+   }}]]);
+  }
+ });
  it("retains a received malformed result and its usage before validation; recovery never repeats the paid call",async()=>{
   m.complete.mockResolvedValue({...response(),rawJson:'{"fields":"invalid"}'});
   expect(await runDocumentPreparationJob(1)).toMatchObject({success:false,errorCode:"provider_output_invalid",retryable:false});
@@ -64,7 +150,7 @@ describe("document preparation worker adoption",()=>{
  it("recovers a received valid result after publication failure with no new paid analysis",async()=>{
   const original=rpc.getMockImplementation()!;let once=true;
   rpc.mockImplementation(async(name,args)=>{if(args.p_action==='publish'&&once){once=false;return {error:{code:'XX000'},data:null};}return original(name,args);});
-  expect(await runDocumentPreparationJob(1)).toMatchObject({errorCode:"database_error"});
+  expect(await runDocumentPreparationJob(1)).toMatchObject({errorCode:"preparation_publication_unconfirmed"});
   expect((await runDocumentPreparationJob(1))?.success).toBe(true);expect(m.complete).toHaveBeenCalledOnce();
  });
  it("replays legacy validated receipts without a provider call",async()=>{

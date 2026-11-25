@@ -1,4 +1,5 @@
 import "server-only";
+import { observeAssistantQuery } from "@/lib/ai/common/assistant/publication-reads";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthContext, hasPermission, type AuthContext } from "@/lib/rbac/check";
@@ -64,6 +65,9 @@ async function owningDocumentGroups(db: Db, ctx: AuthContext, rows: SearchDocume
     const ids = [...new Set(rows.flatMap(r => r[field] ? [r[field]!] : []))];
     const r = ids.length ? await db.from(table).select(by === "company" ? "id,company_code,trade_name" : "id,branch_code,branch_name_en").in("id", ids).abortSignal(signal) : { data: [], error: null };
     if (r.error || !Array.isArray(r.data) || r.data.length !== ids.length) throw Error("Grouping source unavailable");
+    const labelRows=r.data;
+    observeAssistantQuery(() => ({kind:by==="company"?"company_labels":"branch_labels",limit:ids.length,params:{ids},
+      result:labelRows.map(raw=>{const row=raw as unknown as Record<string,unknown>;return [row.id,row[by==="company"?"company_code":"branch_code"],row[by==="company"?"trade_name":"branch_name_en"]];}).sort((a,b)=>Number(a[0])-Number(b[0]))}));
     const labels = new Map(r.data.map(raw => { const v = raw as unknown as Record<string, unknown>; return [id.parse(v.id), `${z.string().parse(v[by === "company" ? "company_code" : "branch_code"])} — ${z.string().parse(v[by === "company" ? "trade_name" : "branch_name_en"])}`]; }));
     for (const row of rows) { const label = row[field] ? labels.get(row[field]!) : "No recorded ownership"; if (!label) throw Error("Grouping source unavailable"); groups.set(label, (groups.get(label) ?? 0) + 1); }
   } else if (by === "site") {
@@ -75,6 +79,9 @@ async function owningDocumentGroups(db: Db, ctx: AuthContext, rows: SearchDocume
     const ids = [...new Set(pairs.map(p => p.entity_id))];
     const sites = ids.length ? await db.from("work_sites").select("id,site_code,site_name").in("id", ids).is("deleted_at", null).abortSignal(signal) : { data: [], error: null };
     if (sites.error || !Array.isArray(sites.data) || sites.data.length !== ids.length) throw Error("Site grouping source unavailable");
+    const siteRows=sites.data;
+    observeAssistantQuery(() => ({kind:"site_links",limit:2000,params:{ids:rows.map(row=>row.id)},result:pairs.map(p=>[p.document_id,p.entity_id])}));
+    observeAssistantQuery(() => ({kind:"site_labels",limit:ids.length,params:{ids},result:siteRows.map(s=>[s.id,s.site_code,s.site_name]).sort((a,b)=>Number(a[0])-Number(b[0]))}));
     const labels = new Map(sites.data.map(s => [s.id, `${s.site_code} — ${s.site_name}`]));
     for (const row of rows) { const siteIds = [...new Set(pairs.filter(p => p.document_id === row.id).map(p => p.entity_id))]; if (!siteIds.length) groups.set("No permitted site association", (groups.get("No permitted site association") ?? 0) + 1); for (const siteId of siteIds) { const label = labels.get(siteId); if (!label) throw Error("Site source unavailable"); groups.set(label, (groups.get(label) ?? 0) + 1); } }
   } else for (const row of rows) {
@@ -116,8 +123,9 @@ async function documentQuestion(db: Db, ctx: AuthContext, input: QuestionInput, 
   if (expiry && data.rows.length === 1 && hasPermission(ctx, "hr.compliance.view")) {
     const document = data.rows[0];
     for (const table of ["employee_identity_documents", "employee_access_cards"] as const) {
-      const related = await db.from(table).select("id,employee_id,expiry_date").eq("dms_document_id", document.id).is("deleted_at", null).limit(2).abortSignal(signal);
+      const related = await db.from(table).select("id,employee_id,expiry_date").eq("dms_document_id", document.id).is("deleted_at", null).order("id").limit(2).abortSignal(signal);
       if (related.error || !Array.isArray(related.data)) throw Error("HR expiry comparison unavailable");
+      observeAssistantQuery(() => ({kind: table === "employee_identity_documents" ? "expiry_identity" : "expiry_access", reference: {entityType:"dms_document",entityId:document.id}, limit:2, result:related.data.map(row=>[row.id,row.employee_id,row.expiry_date])}));
       if (related.data.length > 1 || related.data.some(r => r.expiry_date !== null && r.expiry_date !== document.expiry_date)) return answer(`The permitted linked HR evidence and ${document.document_no} need reconciliation. I cannot choose one expiry as authoritative. Review the current HR identity/access-card record and this document; nothing was updated.`, "clarification_required", { links: [{ label: document.document_no, route: document.route }], evidence: [document.provenance], subject: resolved });
     }
   }
@@ -134,6 +142,7 @@ async function dependentQuestion(db: Db, ctx: AuthContext, input: QuestionInput,
   if (r.error || r.count === null) throw Error(unavailable);
   const rows = z.array(z.object({ id, employee_id: id, dependent_name_en: z.string(), updated_at: z.string() }).strip()).parse(r.data);
   if (rows.some(r => r.employee_id !== subject.entityId) || rows.length !== Math.min(20, r.count)) throw Error(unavailable);
+  observeAssistantQuery(() => ({kind: "dependents", reference: subject, limit: 20, result: {count:r.count,rows:rows.map(row=>[row.id,row.dependent_name_en,row.updated_at])}}));
   return answer(rows.length ? `Recorded active dependents for ${parent.label} (${parent.businessCode}):\n${rows.map(r => `• ${r.dependent_name_en}`).join("\n")}` : `No active dependent relationships are recorded in your permitted view for ${parent.businessCode}.`, rows.length ? "available" : "no_matches", {
     evidence: [evidence(subject, "employees", null, parent.version, parent.businessCode ?? parent.label), ...rows.slice(0, 19).map(r => evidence({ entityType: "dependent", entityId: r.id }, "employee_dependents", "employee_id", r.updated_at, r.dependent_name_en))],
     exactTotal: r.count, completeness: r.count > rows.length ? "preview" : "complete", links: [{ label: `Open ${parent.businessCode ?? parent.label}`, route: buildEntityRoute("employee", subject.entityId)! }], subject,
@@ -153,6 +162,7 @@ async function policyQuestion(db: Db, input: QuestionInput, signal: AbortSignal)
   if (!companyId) return answer("This context has no verified policy applicability. Choose the owning company/branch.", "held");
   const config = await db.from("system_settings").select("value").eq("category", "AI").eq("key", "ERP_AI_APPROVED_POLICY_SOURCES").maybeSingle();
   if (config.error) return answer("The approved policy library is unavailable to this session. No company rule can be inferred.", "held");
+  observeAssistantQuery(() => ({kind:"policy",reference:selected,limit:1,result:config.data?.value??null}));
   if (!config.data) return answer("No approved policy-source library has been configured. Ask the policy owner to register the applicable approved DMS version.", "held");
   const raw = typeof config.data.value === "string" ? JSON.parse(config.data.value) : config.data.value;
   const library = policyLibrarySchema.parse(raw), today = dubaiDate();
@@ -175,6 +185,7 @@ async function policyQuestion(db: Db, input: QuestionInput, signal: AbortSignal)
       const excerpt = await db.rpc("ai_mod02_search_excerpts", { document_ids: [p.documentId], search_text: searchText }).abortSignal(signal);
       if (excerpt.error) return answer("The applicable policy source is known, but the supporting passage or content permission could not be verified.", "held");
       const passages = z.array(z.object({ document_id: id, excerpt: z.string().max(120), document_version: z.string(), content_version: z.string().nullable() }).strip()).max(1).parse(excerpt.data);
+      observeAssistantQuery(() => ({kind:"excerpt",reference:{entityType:"dms_document",entityId:p.documentId},limit:1,term:searchText,result:passages.map(row=>[row.document_id,row.document_version,row.content_version,row.excerpt])}));
       const sourceVersion = doc.data.updated_at;
       if (passages.some(e => e.document_id !== p.documentId || e.document_version !== sourceVersion)) throw Error("Policy evidence changed");
       for (const passage of passages) {
@@ -211,6 +222,11 @@ export async function answerAssistantQuestion(raw: unknown, callerSignal?: Abort
     else if (plan.tool === "approval") {
       if (input.context?.entityType !== "dms_document") result = answer("Open the exact document to check its recorded approval state.", "clarification_required");
       else { const r = await readSearchApprovalStatus({ documentId: input.context.entityId, pageSize: 5 }, signal); if (!r.success || !("data" in r) || !r.data || !("routing" in r.data)) throw Error(unavailable);
+        const approval=r.data;
+        observeAssistantQuery(() => ({kind:"approval",reference:input.context!,limit:1,result:{
+          approvalStatus:approval.state?.approvalStatus??null,workflow:approval.routing.workflow,
+          assignees:approval.routing.assignees.map(person=>person.label),notificationReadiness:approval.routing.notificationReadiness,
+        }}));
         result = answer(`Recorded approval status: ${r.data.state?.approvalStatus ?? "Unknown"}. Routing: ${r.data.routing.workflow}. Assigned approver: ${r.data.routing.assignees.map(person=>person.label).join(", ")||"No verified assignment"}. Notification delivery: ${r.data.routing.notificationReadiness}.\n${r.data.holds.join("\n")}\nOpen the normal approval screen; this answer cannot approve or assign a reviewer.`, "held", { links: [{ label: "Open document", route: buildEntityRoute("dms_document", input.context.entityId)! }] }); }
     } else if (plan.tool === "briefing") {
       const r = await getAiDailyDashboard({ scope: "today" }); if (!r.success || !r.data) throw Error(unavailable);

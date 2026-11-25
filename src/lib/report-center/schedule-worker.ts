@@ -1,9 +1,28 @@
 import "server-only";
+import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { emailWorkerEnabled, processQueuedBatch } from "@/lib/email/queue/service";
 import { reserveScheduleSlots, type DueScheduleSlot } from "./schedule-slots";
 import { withDeadline } from "@/lib/email/queue/delivery-contract";
 import { F09_LIMITS, queryWithin } from "@/lib/email/queue/runtime-limits";
+
+const positiveId = z.number().int().positive();
+const reservedRuns = z.array(z.object({ id: positiveId })).max(25);
+const batchCount = z.number().int().min(0).max(25);
+const enqueueCounts = z.object({ queued: batchCount, skipped: batchCount, failed: batchCount });
+const scheduleInventory = z.object({
+    due: z.array(z.object({
+        id: positiveId,
+        frequency: z.enum(["daily", "weekly", "monthly"]),
+        day_of_week: z.number().int().nullable(),
+        day_of_month: z.number().int().nullable(),
+        time_of_day: z.string().nullable(),
+        timezone: z.string(),
+        next_run_at: z.string(),
+        updated_at: z.string(),
+    })).max(25),
+    reserved: reservedRuns,
+});
 export interface ScheduleWorkerResult {
     claimed: number;
     queued: number;
@@ -33,12 +52,15 @@ export async function processDueSchedules(options: {
         throw new Error("Invalid schedule limit");
     const db = createAdminClient();
     await withDeadline(F09_LIMITS.scheduleProductionMs, async signal => {
-    const { data, error } = await queryWithin(db.from("erp_report_schedules")
-        .select("id,frequency,day_of_week,day_of_month,time_of_day,timezone,next_run_at,updated_at")
-        .eq("is_active", true).is("deleted_at", null).lte("next_run_at", new Date().toISOString()).order("next_run_at").limit(limit), signal);
+    const { data, error } = await queryWithin(db.rpc("f09_schedule_worker_inventory", {
+        p_limit: limit, p_due_at: new Date().toISOString(),
+    }), signal);
     if (error)
-        throw new Error("Due schedule lookup failed");
-    const slots=(data??[]).map(s=>({...s,time_of_day:s.time_of_day??"07:00"})) as DueScheduleSlot[];
+        throw new Error("Schedule inventory unavailable");
+    const inventory = scheduleInventory.parse(data);
+    if (inventory.due.length > limit || inventory.reserved.length > limit)
+        throw new Error("Schedule inventory exceeds the requested limit");
+    const slots: DueScheduleSlot[] = inventory.due.map(s => ({ ...s, time_of_day: s.time_of_day ?? "07:00" }));
     const reserved = await reserveScheduleSlots(slots, policy, async (s, next) => {
         signal.throwIfAborted();
         const r = await queryWithin(db.rpc("f09_reserve_schedule_slot", { p_schedule_id: s.id, p_expected_due: s.next_run_at, p_expected_updated_at: s.updated_at, p_next_due: next }), signal);
@@ -49,12 +71,34 @@ export async function processDueSchedules(options: {
     result.claimed = reserved.reserved;
     result.skipped = reserved.conflicted + reserved.invalid;
     signal.throwIfAborted();
-    // Repair reservation->enqueue response loss, never replay pre-F09 runs.
-    const pending = await queryWithin(db.from("erp_report_schedule_runs").select("id").eq("delivery_engine", "f09")
-        .eq("status", "failed_retryable").eq("attempt_count", 0).order("id").limit(limit), signal);
-    if (pending.error)
-        throw new Error("Reserved run lookup failed");
-    for (const run of pending.data ?? []) {
+    let pending = inventory.reserved;
+    if (slots.length > 0) {
+        // A reservation may have committed even when its response was lost.
+        const refreshed = await queryWithin(db.from("erp_report_schedule_runs").select("id").eq("delivery_engine", "f09")
+            .eq("status", "failed_retryable").eq("attempt_count", 0).order("id").limit(limit), signal);
+        if (refreshed.error)
+            throw new Error("Reserved run lookup failed");
+        pending = reservedRuns.parse(refreshed.data);
+        if (pending.length > limit)
+            throw new Error("Reserved runs exceed the requested limit");
+    }
+    if (pending.length > 1) {
+        const batch = await queryWithin(db.rpc("f09_enqueue_schedule_run_batch", {
+            p_run_ids: pending.map(run => run.id),
+        }), signal);
+        if (!batch.error) {
+            const counts = enqueueCounts.parse(batch.data);
+            if (counts.queued + counts.skipped + counts.failed !== pending.length)
+                throw new Error("Invalid schedule enqueue totals");
+            result.queued += counts.queued;
+            result.skipped += counts.skipped;
+            result.terminal += counts.failed;
+            return;
+        }
+        // The reply can be lost after commit. Replay only these same run IDs.
+        // The single-run routine returns the existing durable intent on replay.
+    }
+    for (const run of pending) {
         signal.throwIfAborted();
         const q = await queryWithin(db.rpc("f09_enqueue_schedule_run", { p_run_id: run.id }), signal);
         if (q.error) {

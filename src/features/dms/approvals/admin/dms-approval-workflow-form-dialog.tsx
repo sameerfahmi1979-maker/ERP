@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PlusCircle, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 
@@ -100,7 +100,7 @@ export function DmsApprovalWorkflowFormDialog(props: Props) {
   return props.open ? <WorkflowFormSession key={props.editing?.id ?? "new"} {...props} /> : null;
 }
 
-function AssignedApprovers({ companyId, branchId, requiredRole, index, selected, disabled, onChange }: {
+function AssignedApprovers({ companyId, branchId, requiredRole, index, selected, disabled, onChange, load }: {
   companyId: number;
   branchId: number | null;
   requiredRole: string;
@@ -108,13 +108,14 @@ function AssignedApprovers({ companyId, branchId, requiredRole, index, selected,
   selected: number[];
   disabled: boolean;
   onChange: (ids: number[]) => void;
+  load: typeof adminListApprovalAssigneeOptions;
 }) {
   const [options, setOptions] = useState<Array<{ id: number; label: string }>>([]);
   const [status, setStatus] = useState<"loading" | "loaded" | "failed">("loading");
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let current = true;
-    void adminListApprovalAssigneeOptions({ companyId, branchId, requiredRole }).then(result => {
+    void load({ companyId, branchId, requiredRole }).then(result => {
       if (!current) return;
       if (result.success && result.data) {
         setOptions(result.data);
@@ -122,7 +123,7 @@ function AssignedApprovers({ companyId, branchId, requiredRole, index, selected,
       } else setStatus("failed");
     }).catch(() => { if (current) setStatus("failed"); });
     return () => { current = false; };
-  }, [companyId, branchId, requiredRole, attempt]);
+  }, [load, companyId, branchId, requiredRole, attempt]);
 
   return <>
     <label className="block text-xs mt-2">Assigned approvers
@@ -155,6 +156,16 @@ function WorkflowFormSession({
 }: Props) {
   const isEdit = !!editing;
   const formId = useId();
+  const pendingAssigneeReads = useRef(new Map<string, ReturnType<typeof adminListApprovalAssigneeOptions>>());
+  const loadAssignees = useCallback<typeof adminListApprovalAssigneeOptions>(criteria => {
+    const key = JSON.stringify([criteria.companyId, criteria.branchId, criteria.requiredRole]);
+    const pending = pendingAssigneeReads.current;
+    const existing = pending.get(key);
+    if (existing) return existing;
+    const request = adminListApprovalAssigneeOptions(criteria).finally(() => pending.delete(key));
+    pending.set(key, request);
+    return request;
+  }, []);
 
   // ── Form state ─────────────────────────────────────────────────────────────
 
@@ -561,6 +572,7 @@ function WorkflowFormSession({
                         {companyId ? <AssignedApprovers key={JSON.stringify([companyId, branchId, step.requires_role])}
                           companyId={companyId} branchId={branchId} requiredRole={step.requires_role} index={idx}
                           selected={step.assignee_profile_ids ?? []} disabled={submitting}
+                          load={loadAssignees}
                           onChange={ids => updateStep(step._id, { assignee_profile_ids: ids })} />
                           : <p className="mt-2 text-xs text-muted-foreground">Choose a company to load assigned approvers.</p>}
                         <label className="block text-xs mt-2">Decision rule

@@ -133,7 +133,7 @@ export function WorkSiteWorkspaceForm({ site, mode, companies = [], authContext 
       if (result.success && result.data) {
         saveAttempt.current.resolved();
         setRevision(result.data.revision);
-        toast.success(existingId ? "Work site updated" : "Work site created");
+        toast.success(result.data.changed === false ? "No changes to save" : existingId ? "Work site updated" : "Work site created");
         // Track the newly created ID so subsequent saves within this session update correctly
         if (!existingId && result.data && typeof (result.data as { id?: number }).id === "number") {
           setCreatedId((result.data as { id: number }).id);

@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
+import { PayrollRefreshNotice } from "@/features/hr/payroll/payroll-refresh-notice";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { changeExitSettlement } from "@/server/actions/hr/final-settlement";
@@ -178,7 +179,7 @@ export function ExitSettlementCommand({ company, branch, eos, options, currency,
   currency: string; paymentChannels: readonly string[]; lines: readonly SettlementLine[];
 }) {
   const [selection, setSelection] = useState("");
-  const { record, pending, working, locked, message, setMessage } =
+  const { submit: record, retry, busy: working, locked, refreshError, retryRefresh, message, setMessage } =
     useExitMutation<Request>(changeExitSettlement, () => setSelection(""));
   const choice = options.find(option => option.key === selection);
 
@@ -187,16 +188,16 @@ export function ExitSettlementCommand({ company, branch, eos, options, currency,
     if (locked || !choice) return;
     const extra = readFields(choice, new FormData(event.currentTarget), currency, paymentChannels, lines);
     if ("error" in extra) {
-      setMessage({ ok: false, text: extra.error });
+      setMessage({ error: true, text: extra.error });
       return;
     }
-    void record({
+    void record(() => ({
       operation: crypto.randomUUID(), company, branch, eos, action: choice.action,
       data: { ...choice.data, ...extra.fields },
-    });
+    }));
   }
 
-  if (!options.length && !pending && !message) return null;
+  if (!options.length && !retry && !refreshError && !message) return null;
   return <section className="space-y-3 rounded-lg border bg-card p-4" aria-labelledby="exit-actions-heading">
     <h2 id="exit-actions-heading" className="font-semibold">Settlement actions</h2>
     {options.length > 0 && <form onSubmit={submit}>
@@ -205,7 +206,7 @@ export function ExitSettlementCommand({ company, branch, eos, options, currency,
           Settlement action
           <select className={selectClassName} value={choice?.key ?? ""} required onChange={event => {
             setSelection(event.target.value);
-            setMessage(undefined);
+            setMessage(null);
           }}>
             <option value="" disabled>Select an action</option>
             {options.map(option => <option key={option.key} value={option.key}>{option.title}</option>)}
@@ -218,10 +219,11 @@ export function ExitSettlementCommand({ company, branch, eos, options, currency,
       </fieldset>
     </form>}
     {working && <p role="status" className="text-sm text-muted-foreground">Recording settlement action…</p>}
-    {message && <p role={message.ok ? "status" : "alert"} className={message.ok ? "text-sm text-muted-foreground" : "text-sm text-destructive"}>{message.text}</p>}
-    {pending && <Button type="button" size="sm" variant="outline" disabled={working} onClick={() => void record(pending)}>
+    {message && <p role={!message.error ? "status" : "alert"} className={!message.error ? "text-sm text-muted-foreground" : "text-sm text-destructive"}>{message.text}</p>}
+    {retry && <Button type="button" size="sm" variant="outline" disabled={working} onClick={() => void record()}>
       Retry same request
     </Button>}
+    {refreshError && <PayrollRefreshNotice busy={working} retry={() => void retryRefresh()} />}
   </section>;
 }
 

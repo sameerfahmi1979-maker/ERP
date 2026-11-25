@@ -20,25 +20,28 @@ export function dmsErrorResponse(e:unknown,operationId?:string){
  const uncertain=error.uncertain||mutationCommitted();
  return Response.json({success:false,error:error.message,code:error.code,...(uncertain?{uncertain:true,...(operationId?{operationId}:{})}:operationId&&error.code==="source_changed"?{noEffect:true}:{})},{status:error.status,headers:privateHeaders});
 }
-async function execute(input:MobileDmsV5Command,ctx:AuthContext){
+async function execute(input:MobileDmsV5Command,ctx:AuthContext,packSignal?:AbortSignal){
  switch(input.op){
   case "documentReceiptLookup":return lookupReceipt(input.original);
   case "documentDetails":case "documentSources":case "documentMetadata":case "documentMetadataSave":case "documentTags":case "documentTagOptions":case "documentTagsChange":case "documentComments":case "documentCommentAdd":case "documentCommentEdit":case "documentCommentDelete":case "documentHistory":return documents(input,ctx);
   case "processingStatus":case "processingAction":return processing(input,ctx);
   case "documentCompare":case "documentQuestion":case "documentNaturalSearch":case "documentNotifications":case "documentNotificationAction":case "documentQrLookup":return search(input,ctx);
-  case "requiredChecklist":case "documentRequestOptions":case "documentRequests":case "documentRequestCreate":case "documentRequestAct":return requests(input);
+  case "requiredChecklist":case "documentRequestOptions":case "documentRequests":case "documentRequestEvidence":case "documentRequestCreate":case "documentRequestAct":return requests(input);
   case "documentShareRecipients":case "documentShares":return readShares(input);
   case "documentShareCreate":case "documentShareRevoke":return mutateShare(input);
   case "documentShareResolve":return resolveShare(input.token);
-  case "documentPackManifest":case "documentPackValidate":return packs(input,ctx);
+  case "documentPackManifest":case "documentPackValidate":return packs(input,ctx,packSignal);
   case "documentFavourites":case "documentFavouriteSet":case "documentSavedFilters":case "documentSavedFilterSave":case "documentSavedFilterDelete":return collections(input);
   case "documentBatchAdmit":case "documentBatchRecover":case "documentBatchMember":return batch(input);
  }
 }
-export async function dispatchMobileDmsV5(input:MobileDmsV5Command,ctx:AuthContext){
+export async function dispatchMobileDmsV5(input:MobileDmsV5Command,ctx:AuthContext,signal?:AbortSignal){
  return withMutationEffect(async()=>{try {
-  const data=await execute(input,ctx);
+  const packSignal=input.op==="documentPackManifest"||input.op==="documentPackValidate"?signal:undefined;
+  const data=await execute(input,ctx,packSignal);
+  packSignal?.throwIfAborted();
   await verifySession(ctx);
+  packSignal?.throwIfAborted();
   const body=JSON.stringify({success:true,data:{contractVersion:"mobile-dms/5.0",...data}});
   if(Buffer.byteLength(body)>(input.op==="documentCompare"?1572864:1048576))throw new DmsError(413,"output_limit","This result exceeds the supported size.");
   return new Response(body,{headers:{...privateHeaders,"Content-Type":"application/json; charset=utf-8"}});

@@ -84,3 +84,22 @@ it("bell preview performs only one bounded query and one shared authority resolu
   state.results = [result()]; const response = await GET(new Request("http://localhost/api/notifications/bell?list=1"));
   expect(response.status).toBe(200); expect(state.authReads).toBe(1); expect(state.calls.filter(call => call[0] === "from")).toHaveLength(1); expect(state.calls).toContainEqual(["range", 0, 9]);
 });
+
+it("bounded bell preview returns only used fields and skips the exact count", async () => {
+  state.results = [result([{...row, recipient_email:"PRIVATE", action_url:"https://blocked.invalid"}], 1103)];
+  const res = await GET(new Request("http://localhost/api/notifications/bell?preview=1"));
+  expect(res.status).toBe(200);
+  expect(state.calls).toContainEqual(["range", 0, 9]);
+  expect(state.calls.find(call=>call[0]==="select")?.[2]).toBeUndefined();
+  expect(await res.json()).toMatchObject({success:true, data:{rows:[{
+    id:1, title:row.title, message:row.message, severity:row.severity, createdAt:row.created_at, actionUrl:null,
+  }]}});
+  expect(state.authReads).toBe(1);
+});
+
+it("bounded bell preview rejects a foreign or stale row even when the database read succeeds", async () => {
+  state.results = [result([{...row, recipient_user_id:7}])];
+  const res = await GET(new Request("http://localhost/api/notifications/bell?preview=1"));
+  expect(res.status).toBe(503);
+  expect(await res.text()).not.toContain(row.title);
+});

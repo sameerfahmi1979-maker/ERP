@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getAuthContext, hasPermission } from "@/lib/rbac/check";
+import { getAuthContext, hasGlobalPermission } from "@/lib/rbac/check";
 import { getAuditExplainerOverview, isAuditExplainerEnabled } from "@/server/actions/ai/common/audit-explainer";
 import { AuditExplainerPageClient } from "@/features/ai/common/audit-explainer";
 
@@ -12,21 +12,19 @@ export default async function AuditExplainerPage() {
   const ctx = await getAuthContext();
 
   const canView =
-    hasPermission(ctx, "ai.audit_explainer.view") ||
-    hasPermission(ctx, "ai.audit_explainer.use") ||
-    hasPermission(ctx, "ai.audit_explainer.admin") ||
-    hasPermission(ctx, "ai.common.view") ||
-    hasPermission(ctx, "ai.common.admin") ||
-    ctx.roleCodes.includes("system_admin");
+    hasGlobalPermission(ctx, "ai.audit_explainer.view") ||
+    hasGlobalPermission(ctx, "ai.audit_explainer.use") ||
+    hasGlobalPermission(ctx, "ai.audit_explainer.admin") ||
+    hasGlobalPermission(ctx, "ai.common.view") ||
+    hasGlobalPermission(ctx, "ai.common.admin");
 
   if (!canView) {
     redirect("/access-denied");
   }
 
   const canUseAi =
-    hasPermission(ctx, "ai.audit_explainer.use") ||
-    hasPermission(ctx, "ai.common.admin") ||
-    ctx.roleCodes.includes("system_admin");
+    hasGlobalPermission(ctx, "ai.audit_explainer.use") ||
+    hasGlobalPermission(ctx, "ai.common.admin");
 
   const isEnabled = await isAuditExplainerEnabled();
 
@@ -37,6 +35,8 @@ export default async function AuditExplainerPage() {
   return (
     <AuditExplainerPageClient
       initialTimeline={initialTimeline}
+      initialUnavailableSources={overviewResult.data?.unavailableSources}
+      initialReadFailed={!overviewResult.success}
       canUseAi={canUseAi}
       isEnabled={isEnabled}
     />

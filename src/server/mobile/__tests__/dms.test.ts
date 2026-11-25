@@ -2,7 +2,7 @@ import {beforeEach, describe, expect, it, vi} from "vitest";
 import {createHash} from "node:crypto";
 const mocks=vi.hoisted(()=>({createClient:vi.fn(),linked:vi.fn(),record:vi.fn(),approvals:vi.fn(),renewals:vi.fn(),expiry:vi.fn(),notifications:vi.fn(),approve:vi.fn(),reject:vi.fn(),complete:vi.fn(),auth:vi.fn(),documents:vi.fn(),intake:vi.fn(),entityDocuments:vi.fn(),delivery:vi.fn(),mobileToken:vi.fn()}));
 vi.mock("@/app/api/dms/file/route",()=>({GET:mocks.delivery}));
-vi.mock("@/server/reads/dms-entity-documents",()=>({readDmsEntityDocuments:mocks.entityDocuments}));
+vi.mock("@/server/reads/dms-entity-documents",()=>({readDmsEntityFolder:mocks.entityDocuments}));
 vi.mock("@/server/actions/dms/ai-intake",()=>({getAiIntakeSession:mocks.intake,getIntakeSessionSignedUrl:vi.fn(),startAiIntakeFromUploadSession:vi.fn()}));
 vi.mock("@/lib/rbac/check",async original=>({...await original<typeof import("@/lib/rbac/check")>(),getAuthContext:mocks.auth}));
 vi.mock("@/lib/supabase/mobile-request",()=>({createMobileSupabaseClient:vi.fn(),withMobileToken:(_token:string,work:()=>unknown)=>work(),mobileAccessToken:mocks.mobileToken}));
@@ -37,14 +37,14 @@ describe("HTTP compatibility",()=>{
 });
 describe("folder checklist API",()=>{
  const missing=[{ruleId:2,label:"Emirates ID",typeCode:"EMIRATES_ID",documentTypeId:2}];
- const prepare=(items:typeof missing|null)=>{
+ const prepare=(items:typeof missing|null,count=items?.length??null)=>{
   mocks.auth.mockResolvedValue(ctx(["dms.documents.view","hr.employees.view"]));
-  mocks.entityDocuments.mockImplementation(async(criteria:{operation:string})=>({success:true,data:{criteria,availability:"available",...(criteria.operation==="list"?{rows:[],totalCount:0}:criteria.operation==="summary"?{summary:{missingRequiredDocuments:items?.length??null}}:{missing:items})}}));
+  mocks.entityDocuments.mockImplementation(async(criteria:{offset:number})=>({success:true,data:{criteria:{...criteria,operation:"list"},availability:"available",rows:[],totalCount:0},folder:{summary:{missingRequiredDocuments:count},missing:items}}));
  };
- it("returns named missing types beside the existing folder summary",async()=>{prepare(missing);const r=await POST(request({op:"folder",entityType:"employee",entityId:4,page:1}));expect(r.status).toBe(200);expect(await r.json()).toMatchObject({success:true,data:{rows:[],total:0,summary:{missingRequiredDocuments:1},missing}});expect(mocks.entityDocuments).toHaveBeenCalledWith({entityType:"employee",entityId:4,operation:"checklist"},expect.anything());});
+ it("returns named missing types beside the existing folder summary",async()=>{prepare(missing);const r=await POST(request({op:"folder",entityType:"employee",entityId:4,page:1}));expect(r.status).toBe(200);expect(await r.json()).toMatchObject({success:true,data:{rows:[],total:0,summary:{missingRequiredDocuments:1},missing}});expect(mocks.entityDocuments).toHaveBeenCalledExactlyOnceWith({entityType:"employee",entityId:4,offset:0},expect.anything());});
  it("preserves restricted requirements as null instead of an empty checklist",async()=>{prepare(null);const r=await POST(request({op:"folder",entityType:"employee",entityId:4,page:1}));expect(r.status).toBe(200);expect(await r.json()).toMatchObject({success:true,data:{missing:null,summary:{missingRequiredDocuments:null}}});});
- it("does not return a successful folder when checklist reading fails",async()=>{prepare(missing);mocks.entityDocuments.mockImplementation(async(criteria:{operation:string})=>criteria.operation==="checklist"?{success:false,error:"Checklist unavailable"}:{success:true,data:{criteria,availability:"available",...(criteria.operation==="list"?{rows:[],totalCount:0}:{summary:{missingRequiredDocuments:1}})}});const r=await POST(request({op:"folder",entityType:"employee",entityId:4,page:1}));expect(r.status).toBe(503);expect(await r.json()).toMatchObject({success:false});});
- it("rejects a changed count rather than presenting a mismatched checklist",async()=>{prepare(missing);mocks.entityDocuments.mockImplementation(async(criteria:{operation:string})=>({success:true,data:{criteria,availability:"available",...(criteria.operation==="list"?{rows:[],totalCount:0}:criteria.operation==="summary"?{summary:{missingRequiredDocuments:2}}:{missing})}}));const r=await POST(request({op:"folder",entityType:"employee",entityId:4,page:1}));expect(r.status).toBe(409);expect(await r.json()).toMatchObject({success:false});});
+ it("does not return a successful folder when checklist reading fails",async()=>{prepare(missing);mocks.entityDocuments.mockResolvedValue({success:false,error:"Checklist unavailable"});const r=await POST(request({op:"folder",entityType:"employee",entityId:4,page:1}));expect(r.status).toBe(503);expect(await r.json()).toMatchObject({success:false});});
+ it("rejects a changed count rather than presenting a mismatched checklist",async()=>{prepare(missing,2);const r=await POST(request({op:"folder",entityType:"employee",entityId:4,page:1}));expect(r.status).toBe(409);expect(await r.json()).toMatchObject({success:false});});
 });
 describe("mobile contracts",()=>{
  it("retains the original document search payload",()=>expect(mobileDocumentCriteria.safeParse({search:"",page:1}).success).toBe(true));
@@ -144,6 +144,20 @@ describe("partial search",()=>{
   const docs=[{id:2,title:"Sameer Passport",document_no:"DMS-2",description:null,expiry_date:null,status:"active",document_type_id:4,document_type:{name_en:"Passport"}},{id:1,title:"Same",document_no:"DMS-1",description:null,expiry_date:null,status:"active",document_type_id:4,document_type:{name_en:"Passport"}}];
   const from=vi.fn((table:string)=>query(table==="dms_document_types"?{data:[],count:0,error:null}:{data:docs,count:2,error:null}));mocks.createClient.mockResolvedValue({from,rpc:vi.fn(()=>query({data:[],count:0,error:null}))});
   const result=await readMobileDocuments({search:"same",page:1,validity:"all",personal:false},ctx(["dms.documents.view"]));expect(result.total).toBe(2);expect(result.rows.map(r=>r.id)).toEqual([1,2]);
+ });
+ it("uses bounded content-summary pages without reading unused descriptions or losing late exact matches",async()=>{
+  const docs=Array.from({length:501},(_,i)=>({id:i+1,title:`Permit ${String(i+1).padStart(3,"0")}`,document_no:i===500?"DMS-5000":`OTHER-${i+1}`,expiry_date:null,status:"active",document_type:null}));
+  const content=query(null);
+  content.range=vi.fn(async(from:number,to:number)=>({data:docs.slice(from,to+1),count:docs.length,error:null}));
+  const metadata=query({data:[],count:0,error:null});
+  const rpc=vi.fn(()=>content);
+  mocks.createClient.mockResolvedValue({from:vi.fn(()=>metadata),rpc});
+  const result=await readMobileDocuments({search:"DMS-5000",page:1,validity:"all",personal:false},ctx(["dms.documents.view"]));
+  expect(result).toMatchObject({total:501,more:true,rows:[{id:501,number:"DMS-5000"},...docs.slice(0,24).map(({id})=>({id}))]});
+  expect(content.select).toHaveBeenCalledWith("id,title,document_no,expiry_date,status,document_type:dms_document_types(name_en)");
+  expect(content.range).toHaveBeenNthCalledWith(1,0,499);
+  expect(content.range).toHaveBeenNthCalledWith(2,500,999);
+  expect(content.range).toHaveBeenCalledTimes(2);
  });
  it("fails explicitly on incomplete protected results",async()=>{mocks.createClient.mockResolvedValue({from:vi.fn((table:string)=>query({data:[],count:table==="dms_document_types"?0:2,error:null})),rpc:vi.fn(()=>query({data:[],count:0,error:null}))});await expect(readMobileDocuments({search:"same",page:1,validity:"all",personal:false},ctx(["dms.documents.view"]))).rejects.toThrow();});
 });

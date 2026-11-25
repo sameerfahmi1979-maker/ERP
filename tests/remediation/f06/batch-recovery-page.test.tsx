@@ -16,6 +16,11 @@ function clientProps(node:ReactNode):Record<string,unknown>|undefined{
  for(const child of Array.isArray(children)?children:[children]){const found=clientProps(child as ReactNode);if(found)return found;}
 }
 beforeEach(()=>{vi.resetAllMocks();m.defaults.mockResolvedValue({success:true,data:{documentTypes:[]}})});
+it('loads the permitted Inbox without fetching create-document defaults', async () => {
+ const node = await Page({ searchParams: Promise.resolve({}) });
+ expect(clientProps(node)).toMatchObject({ initialSessions: [], documents: [], batchEnabled: true });
+ expect(m.defaults).not.toHaveBeenCalled();
+});
 it('uses the recovered original subject and receipt rather than starting an unlinked upload',async()=>{
  const receipt={batch_code:'BATCH1',manifest:{context:{type:'employee',id:9}}};m.find.mockResolvedValue({success:true,receipts:[receipt]});
  const node=await Page({searchParams:Promise.resolve({recoverBatch:'BATCH1'})});
